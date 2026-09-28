@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { deleteRun } from "@/lib/runActions";
+import DeleteRunButton from "./DeleteRunButton";
 
 // There's no login system yet, so every run on this page belongs to one
 // fixed tenant read from the environment. Once real auth exists, this will
@@ -140,18 +142,35 @@ export default async function Home({
       <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Runs</h2>
       {runs.length === 0 && <p style={{ color: "#777" }}>No runs yet.</p>}
       <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-        {runs.map((run) => (
-          <li key={run.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-            <Link href={`/runs/${run.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-              <div style={{ fontWeight: 600 }}>{run.decision_statement}</div>
-              <div style={{ color: "#666", fontSize: 14 }}>
-                {run.entry_point ? entryPointLabel[run.entry_point] : "No starting point recorded"} &middot;{" "}
-                Audience: {run.audience} &middot; Status: {run.status} &middot;{" "}
-                {new Date(run.created_at).toLocaleString()}
-              </div>
-            </Link>
-          </li>
-        ))}
+        {runs.map((run) => {
+          const deleteThisRun = deleteRun.bind(null, run.id);
+          return (
+            <li
+              key={run.id}
+              style={{
+                border: "1px solid #ddd",
+                borderRadius: 8,
+                padding: 16,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <Link href={`/runs/${run.id}`} style={{ textDecoration: "none", color: "inherit", flex: 1 }}>
+                <div style={{ fontWeight: 600 }}>{run.decision_statement}</div>
+                <div style={{ color: "#666", fontSize: 14 }}>
+                  {run.entry_point ? entryPointLabel[run.entry_point] : "No starting point recorded"} &middot;{" "}
+                  Audience: {run.audience} &middot; Status: {run.status} &middot;{" "}
+                  {new Date(run.created_at).toLocaleString()}
+                </div>
+              </Link>
+              <form action={deleteThisRun}>
+                <DeleteRunButton />
+              </form>
+            </li>
+          );
+        })}
       </ul>
     </main>
   );

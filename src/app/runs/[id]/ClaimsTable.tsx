@@ -10,6 +10,7 @@ type Claim = {
   claim_kind: "own_finding" | "external_citation" | "insight" | null;
   theme: string | null;
   status: "pending" | "accepted" | "rejected";
+  source_filename: string | null;
 };
 
 const kindLabel: Record<string, string> = {
@@ -112,6 +113,7 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
             <th style={{ padding: "8px 6px", width: "40%" }}>Claim</th>
             <th style={{ padding: "8px 6px" }}>Kind</th>
             <th style={{ padding: "8px 6px" }}>Theme</th>
+            <th style={{ padding: "8px 6px" }}>Source</th>
             <th style={{ padding: "8px 6px" }}>Review</th>
           </tr>
         </thead>
@@ -136,20 +138,25 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
                 {claim.claim_text}
               </td>
               <td style={{ padding: "10px 6px" }}>
-                <select
-                  value={claim.claim_kind ?? ""}
-                  disabled={isPending}
-                  onChange={(e) =>
-                    startTransition(() => {
-                      setClaimKind(runId, claim.id, e.target.value as "own_finding" | "external_citation" | "insight");
-                    })
-                  }
-                  style={{ padding: 4 }}
-                >
-                  <option value="own_finding">{kindLabel.own_finding}</option>
-                  <option value="external_citation">{kindLabel.external_citation}</option>
-                  <option value="insight">{kindLabel.insight}</option>
-                </select>
+                {claim.origin === "generated" ? (
+                  <span style={{ color: "#999" }}>&mdash;</span>
+                ) : (
+                  <select
+                    value={claim.claim_kind ?? ""}
+                    disabled={isPending}
+                    onChange={(e) =>
+                      startTransition(() => {
+                        setClaimKind(runId, claim.id, e.target.value as "own_finding" | "external_citation" | "insight");
+                      })
+                    }
+                    style={{ padding: 4 }}
+                  >
+                    {!claim.claim_kind && <option value="">Not set</option>}
+                    <option value="own_finding">{kindLabel.own_finding}</option>
+                    <option value="external_citation">{kindLabel.external_citation}</option>
+                    <option value="insight">{kindLabel.insight}</option>
+                  </select>
+                )}
               </td>
               <td style={{ padding: "10px 6px" }}>
                 <ThemeCell
@@ -158,6 +165,9 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
                   themes={themes}
                   onThemeAdded={(theme) => setExtraThemes((prev) => [...prev, theme])}
                 />
+              </td>
+              <td style={{ padding: "10px 6px", fontSize: 12, color: "#666", maxWidth: 160 }}>
+                {claim.source_filename ?? "\u2014"}
               </td>
               <td style={{ padding: "10px 6px", whiteSpace: "nowrap" }}>
                 <button
