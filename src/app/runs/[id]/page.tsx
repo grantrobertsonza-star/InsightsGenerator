@@ -83,6 +83,45 @@ async function generateInsightsAction(runId: string, documentId: string) {
   revalidatePath(`/runs/${runId}`);
 }
 
+async function processRunAction(runId: string) {
+  "use server";
+  const documents = await withTenant(TENANT_ID, async (client) => {
+    const result = await client.query<{ id: string; kind: "report" | "table" | "evidence" }>(
+      "select id, kind from documents where run_id = $1",
+      [runId]
+    );
+    return result.rows;
+  });
+
+  const errors: string[] = [];
+
+  for (const doc of documents) {
+    try {
+      if (doc.kind === "report") {
+        await extractClaimsFromDocument(TENANT_ID, runId, doc.id);
+      } else if (doc.kind === "table") {
+        await generateInsightsFromTable(TENANT_ID, runId, doc.id);
+      }
+      // "evidence" documents are not processed by either agent yet.
+    } catch (error) {
+      errors.push(`${doc.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    // Still revalidate so whatever succeeded shows up, but surface that
+    // something failed rather than silently dropping it.
+    await withTenant(TENANT_ID, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+        [TENANT_ID, runId, JSON.stringify({ errors })]
+      );
+    });
+  }
+
+  revalidatePath(`/runs/${runId}`);
+}
+
 async function uploadDocument(runId: string, formData: FormData) {
   "use server";
   const files = formData.getAll("file") as File[];
@@ -131,6 +170,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   const documents = await getDocuments(id);
   const claims = await getClaims(id);
   const uploadWithRunId = uploadDocument.bind(null, id);
+  const processRunWithId = processRunAction.bind(null, id);
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px", fontFamily: "sans-serif" }}>
@@ -169,7 +209,19 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         </button>
       </form>
 
-      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Documents</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Documents</h2>
+        {documents.length > 0 && (
+          <form action={processRunWithId}>
+            <button
+              type="submit"
+              style={{ padding: "8px 16px", background: "#14213D", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}
+            >
+              Process this run
+            </button>
+          </form>
+        )}
+      </div>
       {documents.length === 0 && <p style={{ color: "#777" }}>Nothing uploaded yet.</p>}
       <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8, marginBottom: 40 }}>
         {documents.map((doc) => {
