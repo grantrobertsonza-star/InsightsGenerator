@@ -68,7 +68,18 @@ export async function extractClaimsFromDocument(
       "You extract discrete, checkable factual or statistical claims from a market research report. " +
       "A claim is one specific assertion a reader could independently verify or dispute, such as a " +
       "reported percentage, a comparison between groups, a trend over time, or a causal statement. " +
-      "Do not extract vague or purely descriptive sentences. Do not invent claims the text does not make.",
+      "Do not extract vague or purely descriptive sentences. Do not invent claims the text does not make.\n\n" +
+      "Classify every claim you extract as exactly one of:\n" +
+      "- own_finding: a specific data point or statistical result from the report's own primary " +
+      "research or analysis (its own sample, its own survey, its own tables).\n" +
+      "- external_citation: a fact, statistic, or benchmark the report states but attributes to " +
+      "someone else's research, cited for context or comparison rather than produced by this study.\n" +
+      "- insight: a higher-order interpretive or comparative statement the report draws from its own " +
+      "findings, such as ranking which factor matters most, or explaining why a pattern occurs.\n\n" +
+      "Also assign each claim a short theme (two to five words, e.g. \"Structural readiness\", " +
+      "\"Demographic gaps in DFS use\", \"Segment profiles\"). Use the SAME theme name, worded " +
+      "identically, for every claim that belongs together, so claims can be grouped by it. Aim for " +
+      "roughly four to eight themes total, not one per claim.",
     tool_choice: { type: "tool", name: "record_claims" },
     tools: [
       {
@@ -86,8 +97,17 @@ export async function extractClaimsFromDocument(
                     type: "string",
                     description: "The claim, in the report's own words as closely as possible.",
                   },
+                  claim_kind: {
+                    type: "string",
+                    enum: ["own_finding", "external_citation", "insight"],
+                    description: "Which of the three categories this claim falls into.",
+                  },
+                  theme: {
+                    type: "string",
+                    description: "A short theme name, reused identically across claims in the same theme.",
+                  },
                 },
-                required: ["claim_text"],
+                required: ["claim_text", "claim_kind", "theme"],
               },
             },
           },
@@ -114,23 +134,35 @@ export async function extractClaimsFromDocument(
       `Expected an array of claims but got: ${JSON.stringify(rawInput).slice(0, 500)}`
     );
   }
-  const claims = rawInput.claims as { claim_text?: unknown }[];
+  const claims = rawInput.claims as { claim_text?: unknown; claim_kind?: unknown; theme?: unknown }[];
 
-  // Claude occasionally proposes something with no real text attached;
-  // per the extraction rules, that should be dropped rather than stored.
+  const validKinds = new Set(["own_finding", "external_citation", "insight"]);
+
+  // Claude occasionally proposes something with no real text attached, or an
+  // unrecognized classification; per the extraction rules, that should be
+  // dropped rather than stored.
   const validClaims = claims.filter(
-    (claim): claim is { claim_text: string } =>
-      typeof claim.claim_text === "string" && claim.claim_text.trim().length > 0
+    (claim): claim is { claim_text: string; claim_kind: string; theme: string } =>
+      typeof claim.claim_text === "string" &&
+      claim.claim_text.trim().length > 0 &&
+      typeof claim.claim_kind === "string" &&
+      validKinds.has(claim.claim_kind) &&
+      typeof claim.theme === "string" &&
+      claim.theme.trim().length > 0
   );
 
   const inserted = await withTenant(tenantId, async (client) => {
+    // Re-running extraction on the same document replaces its previous
+    // claims rather than duplicating them.
+    await client.query("delete from claims where source_document_id = $1", [documentId]);
+
     const rows: { id: string; claim_text: string }[] = [];
     for (const claim of validClaims) {
       const result = await client.query<{ id: string; claim_text: string }>(
-        `insert into claims (tenant_id, run_id, origin, claim_text, source_document_id)
-         values ($1, $2, 'stated', $3, $4)
+        `insert into claims (tenant_id, run_id, origin, claim_text, claim_kind, theme, source_document_id)
+         values ($1, $2, 'stated', $3, $4, $5, $6)
          returning id, claim_text`,
-        [tenantId, runId, claim.claim_text, documentId]
+        [tenantId, runId, claim.claim_text, claim.claim_kind, claim.theme, documentId]
       );
       rows.push(result.rows[0]);
     }

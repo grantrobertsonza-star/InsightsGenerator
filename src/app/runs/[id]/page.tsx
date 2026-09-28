@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractClaimsFromDocument } from "@/lib/extractClaims";
+import ClaimsTable from "./ClaimsTable";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 const BUCKET = "documents";
@@ -27,6 +28,9 @@ type Claim = {
   id: string;
   origin: "stated" | "generated";
   claim_text: string;
+  claim_kind: "own_finding" | "external_citation" | "insight" | null;
+  theme: string | null;
+  status: "pending" | "accepted" | "rejected";
 };
 
 async function getRun(runId: string): Promise<Run | null> {
@@ -52,7 +56,7 @@ async function getDocuments(runId: string): Promise<Document[]> {
 async function getClaims(runId: string): Promise<Claim[]> {
   return withTenant(TENANT_ID, async (client) => {
     const result = await client.query<Claim>(
-      "select id, origin, claim_text from claims where run_id = $1 order by created_at",
+      "select id, origin, claim_text, claim_kind, theme, status from claims where run_id = $1 order by created_at",
       [runId]
     );
     return result.rows;
@@ -175,26 +179,11 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       </ul>
 
       <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Claims</h2>
-      {claims.length === 0 && <p style={{ color: "#777" }}>None extracted yet.</p>}
-      <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        {claims.map((claim) => (
-          <li key={claim.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-            <span
-              style={{
-                display: "inline-block",
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                color: claim.origin === "generated" ? "#2A6FDB" : "#666",
-                marginBottom: 4,
-              }}
-            >
-              {claim.origin}
-            </span>
-            <div>{claim.claim_text}</div>
-          </li>
-        ))}
-      </ul>
+      {claims.length === 0 ? (
+        <p style={{ color: "#777" }}>None extracted yet.</p>
+      ) : (
+        <ClaimsTable runId={id} claims={claims} />
+      )}
     </main>
   );
 }
