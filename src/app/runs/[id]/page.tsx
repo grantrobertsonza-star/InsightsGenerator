@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { withTenant } from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { extractClaimsFromDocument } from "@/lib/extractClaims";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 const BUCKET = "documents";
@@ -20,6 +21,12 @@ type Document = {
   kind: "report" | "table" | "evidence";
   source_filename: string;
   uploaded_at: string;
+};
+
+type Claim = {
+  id: string;
+  origin: "stated" | "generated";
+  claim_text: string;
 };
 
 async function getRun(runId: string): Promise<Run | null> {
@@ -40,6 +47,22 @@ async function getDocuments(runId: string): Promise<Document[]> {
     );
     return result.rows;
   });
+}
+
+async function getClaims(runId: string): Promise<Claim[]> {
+  return withTenant(TENANT_ID, async (client) => {
+    const result = await client.query<Claim>(
+      "select id, origin, claim_text from claims where run_id = $1 order by created_at",
+      [runId]
+    );
+    return result.rows;
+  });
+}
+
+async function extractClaimsAction(runId: string, documentId: string) {
+  "use server";
+  await extractClaimsFromDocument(TENANT_ID, runId, documentId);
+  revalidatePath(`/runs/${runId}`);
 }
 
 async function uploadDocument(runId: string, formData: FormData) {
@@ -85,6 +108,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   }
 
   const documents = await getDocuments(id);
+  const claims = await getClaims(id);
   const uploadWithRunId = uploadDocument.bind(null, id);
 
   return (
@@ -126,11 +150,48 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
 
       <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Documents</h2>
       {documents.length === 0 && <p style={{ color: "#777" }}>Nothing uploaded yet.</p>}
+      <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8, marginBottom: 40 }}>
+        {documents.map((doc) => {
+          const extractAction = extractClaimsAction.bind(null, id, doc.id);
+          return (
+            <li key={doc.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <strong>{doc.source_filename}</strong> &middot; {doc.kind} &middot;{" "}
+                {new Date(doc.uploaded_at).toLocaleString()}
+              </div>
+              {doc.kind === "report" && (
+                <form action={extractAction}>
+                  <button
+                    type="submit"
+                    style={{ padding: "6px 12px", background: "#2A6FDB", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}
+                  >
+                    Extract claims
+                  </button>
+                </form>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Claims</h2>
+      {claims.length === 0 && <p style={{ color: "#777" }}>None extracted yet.</p>}
       <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        {documents.map((doc) => (
-          <li key={doc.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-            <strong>{doc.source_filename}</strong> &middot; {doc.kind} &middot;{" "}
-            {new Date(doc.uploaded_at).toLocaleString()}
+        {claims.map((claim) => (
+          <li key={claim.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
+            <span
+              style={{
+                display: "inline-block",
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                color: claim.origin === "generated" ? "#2A6FDB" : "#666",
+                marginBottom: 4,
+              }}
+            >
+              {claim.origin}
+            </span>
+            <div>{claim.claim_text}</div>
           </li>
         ))}
       </ul>
