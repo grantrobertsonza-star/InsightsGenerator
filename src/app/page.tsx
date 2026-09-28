@@ -142,12 +142,14 @@ export default async function Home({
       <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
         {runs.map((run) => (
           <li key={run.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
-            <div style={{ fontWeight: 600 }}>{run.decision_statement}</div>
-            <div style={{ color: "#666", fontSize: 14 }}>
-              {run.entry_point ? entryPointLabel[run.entry_point] : "No starting point recorded"} &middot;{" "}
-              Audience: {run.audience} &middot; Status: {run.status} &middot;{" "}
-              {new Date(run.created_at).toLocaleString()}
-            </div>
+            <Link href={`/runs/${run.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ fontWeight: 600 }}>{run.decision_statement}</div>
+              <div style={{ color: "#666", fontSize: 14 }}>
+                {run.entry_point ? entryPointLabel[run.entry_point] : "No starting point recorded"} &middot;{" "}
+                Audience: {run.audience} &middot; Status: {run.status} &middot;{" "}
+                {new Date(run.created_at).toLocaleString()}
+              </div>
+            </Link>
           </li>
         ))}
       </ul>

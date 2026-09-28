@@ -1,0 +1,139 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { withTenant } from "@/lib/db";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+const BUCKET = "documents";
+
+type Run = {
+  id: string;
+  decision_statement: string | null;
+  audience: string | null;
+  status: string;
+  entry_point: "generate" | "validate" | null;
+};
+
+type Document = {
+  id: string;
+  kind: "report" | "table" | "evidence";
+  source_filename: string;
+  uploaded_at: string;
+};
+
+async function getRun(runId: string): Promise<Run | null> {
+  return withTenant(TENANT_ID, async (client) => {
+    const result = await client.query<Run>(
+      "select id, decision_statement, audience, status, entry_point from runs where id = $1",
+      [runId]
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
+async function getDocuments(runId: string): Promise<Document[]> {
+  return withTenant(TENANT_ID, async (client) => {
+    const result = await client.query<Document>(
+      "select id, kind, source_filename, uploaded_at from documents where run_id = $1 order by uploaded_at desc",
+      [runId]
+    );
+    return result.rows;
+  });
+}
+
+async function uploadDocument(runId: string, formData: FormData) {
+  "use server";
+  const file = formData.get("file") as File | null;
+  const kind = String(formData.get("kind") ?? "report");
+
+  if (!file || file.size === 0) {
+    return;
+  }
+
+  // Tenant-scoped path: even though this bucket is only ever touched by
+  // server code using the secret key, every object still lives under the
+  // tenant's own folder, so nothing has to change here when client-facing
+  // storage policies are added later.
+  const storagePath = `${TENANT_ID}/${runId}/${Date.now()}-${file.name}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(storagePath, buffer, { contentType: file.type || undefined });
+
+  if (uploadError) {
+    throw new Error(`Upload failed: ${uploadError.message}`);
+  }
+
+  await withTenant(TENANT_ID, async (client) => {
+    await client.query(
+      `insert into documents (tenant_id, run_id, kind, source_filename, storage_path)
+       values ($1, $2, $3, $4, $5)`,
+      [TENANT_ID, runId, kind, file.name, storagePath]
+    );
+  });
+
+  revalidatePath(`/runs/${runId}`);
+}
+
+export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const run = await getRun(id);
+  if (!run) {
+    notFound();
+  }
+
+  const documents = await getDocuments(id);
+  const uploadWithRunId = uploadDocument.bind(null, id);
+
+  return (
+    <main style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px", fontFamily: "sans-serif" }}>
+      <Link href="/" style={{ fontSize: 14, color: "#2A6FDB" }}>
+        &larr; All runs
+      </Link>
+
+      <h1 style={{ fontSize: 24, fontWeight: 700, margin: "8px 0" }}>{run.decision_statement}</h1>
+      <p style={{ color: "#666", marginBottom: 32 }}>
+        Audience: {run.audience} &middot; Status: {run.status} &middot; Starting point:{" "}
+        {run.entry_point === "generate" ? "Generate from data" : "Validate existing insights"}
+      </p>
+
+      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Upload a document</h2>
+      <form
+        action={uploadWithRunId}
+        style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 40, maxWidth: 420 }}
+      >
+        <label>
+          What kind of file is this?
+          <select name="kind" style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}>
+            <option value="report">Report (a document with written findings)</option>
+            <option value="table">Table / raw data (a spreadsheet or cross-tab)</option>
+            <option value="evidence">Evidence (prior research, for comparison)</option>
+          </select>
+        </label>
+        <label>
+          File
+          <input type="file" name="file" required style={{ display: "block", marginTop: 4 }} />
+        </label>
+        <button
+          type="submit"
+          style={{ padding: "10px 16px", background: "#14213D", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}
+        >
+          Upload
+        </button>
+      </form>
+
+      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Documents</h2>
+      {documents.length === 0 && <p style={{ color: "#777" }}>Nothing uploaded yet.</p>}
+      <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        {documents.map((doc) => (
+          <li key={doc.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
+            <strong>{doc.source_filename}</strong> &middot; {doc.kind} &middot;{" "}
+            {new Date(doc.uploaded_at).toLocaleString()}
+          </li>
+        ))}
+      </ul>
+    </main>
+  );
+}
