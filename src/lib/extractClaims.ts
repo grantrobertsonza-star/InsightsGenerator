@@ -15,15 +15,13 @@ type ExtractedDocument = {
   // something (PDF). Empty for Word documents, which have no fixed pages
   // once the text is pulled out of them.
   pages: PageText[];
+  // Where a browser-viewable PDF version of this document lives in storage,
+  // for the "view source" side panel. Null if nothing viewable is available.
+  previewStoragePath: string | null;
 };
 
-/**
- * Reads a document's file out of storage and returns its text, split by
- * page where that concept applies. PDF and Word (.docx) are both handled;
- * anything else is assumed to already be plain text.
- */
 /** Runs a PDF buffer through unpdf and returns it split into per-page text. */
-async function extractPagesFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedDocument> {
+async function extractPagesFromPdfBuffer(pdfBuffer: Buffer): Promise<Omit<ExtractedDocument, "previewStoragePath">> {
   const pdf = await getDocumentProxy(new Uint8Array(pdfBuffer));
   const result = await extractPdfText(pdf, { mergePages: false });
   // unpdf returns one text string per page when mergePages is false.
@@ -32,7 +30,18 @@ async function extractPagesFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedDo
   return { fullText: pages.map((p) => p.text).join("\n\n"), pages };
 }
 
-async function extractDocumentText(storagePath: string, filename: string): Promise<ExtractedDocument> {
+/**
+ * Reads a document's file out of storage and returns its text, split by
+ * page where that concept applies (PDF, and Word/PowerPoint once converted).
+ * Also ensures a PDF version exists in storage for the preview panel: a
+ * native PDF is already viewable as-is; a converted Word or PowerPoint file
+ * gets its converted PDF uploaded alongside the original for that purpose.
+ */
+async function extractDocumentText(
+  storagePath: string,
+  filename: string,
+  documentId: string
+): Promise<ExtractedDocument> {
   const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
   if (error || !data) {
     throw new Error(`Could not download ${filename} from storage: ${error?.message}`);
@@ -42,7 +51,8 @@ async function extractDocumentText(storagePath: string, filename: string): Promi
   const lowerName = filename.toLowerCase();
 
   if (lowerName.endsWith(".pdf")) {
-    return extractPagesFromPdfBuffer(buffer);
+    const pages = await extractPagesFromPdfBuffer(buffer);
+    return { ...pages, previewStoragePath: storagePath };
   }
 
   if (lowerName.endsWith(".docx") || lowerName.endsWith(".pptx")) {
@@ -51,12 +61,24 @@ async function extractDocumentText(storagePath: string, filename: string): Promi
     // each Word page (or PowerPoint slide) gets a real page number and
     // every claim gets a quote that can be checked against it.
     const pdfBuffer = await convertOfficeDocToPdf(buffer, filename);
-    return extractPagesFromPdfBuffer(pdfBuffer);
+    const pages = await extractPagesFromPdfBuffer(pdfBuffer);
+
+    const previewStoragePath = `${storagePath}.preview.pdf`;
+    const { error: previewUploadError } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .upload(previewStoragePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+    if (previewUploadError) {
+      // A missing preview shouldn't block extraction itself; the side panel
+      // will just say no preview is available for this document.
+      return { ...pages, previewStoragePath: null };
+    }
+
+    return { ...pages, previewStoragePath };
   }
 
   // Fall back to treating it as plain text (e.g. .txt, .csv used as a report).
   const text = buffer.toString("utf-8");
-  return { fullText: text, pages: [] };
+  return { fullText: text, pages: [], previewStoragePath: null };
 }
 
 /**
@@ -114,15 +136,17 @@ export async function extractClaimsFromDocument(
     throw new Error("Document not found for this run");
   }
 
-  const extracted = await extractDocumentText(document.storage_path, document.source_filename);
+  const extracted = await extractDocumentText(document.storage_path, document.source_filename, documentId);
   const hasPages = extracted.pages.length > 0;
 
-  // Store the extracted text so this only has to run once per document.
+  // Store the extracted text, and the location of a browser-viewable PDF
+  // version (the "view source" panel reads this), so this only has to run
+  // once per document.
   await withTenant(tenantId, async (client) => {
-    await client.query("update documents set extracted_text = $1 where id = $2", [
-      extracted.fullText,
-      documentId,
-    ]);
+    await client.query(
+      "update documents set extracted_text = $1, preview_storage_path = $2 where id = $3",
+      [extracted.fullText, extracted.previewStoragePath, documentId]
+    );
   });
 
   // If almost nothing came out of the file, calling Claude is pointless and

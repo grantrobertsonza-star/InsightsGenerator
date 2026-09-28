@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setClaimStatus, setClaimKind, setClaimTheme } from "@/lib/claimActions";
+import { getDocumentPreviewUrl } from "@/lib/previewActions";
 
 type Claim = {
   id: string;
@@ -13,7 +14,57 @@ type Claim = {
   source_filename: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
+  source_document_id: string | null;
 };
+
+type Viewer = { url: string; page: number | null; title: string };
+
+function DocumentPreviewPanel({ viewer, onClose }: { viewer: Viewer; onClose: () => void }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        width: "45vw",
+        minWidth: 360,
+        height: "100vh",
+        background: "white",
+        borderLeft: "1px solid #ccc",
+        boxShadow: "-4px 0 16px rgba(0,0,0,0.15)",
+        zIndex: 1000,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "10px 14px",
+          borderBottom: "1px solid #ddd",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {viewer.title}
+          {viewer.page != null && <span style={{ color: "#666", fontWeight: 400 }}> &middot; page {viewer.page}</span>}
+        </div>
+        <button
+          onClick={onClose}
+          style={{ padding: "4px 10px", border: "1px solid #ccc", borderRadius: 6, background: "white", cursor: "pointer" }}
+        >
+          Close
+        </button>
+      </div>
+      <iframe
+        src={viewer.page != null ? `${viewer.url}#page=${viewer.page}` : viewer.url}
+        style={{ flex: 1, border: "none" }}
+        title="Source document preview"
+      />
+    </div>
+  );
+}
 
 const kindLabel: Record<string, string> = {
   own_finding: "Own finding",
@@ -109,6 +160,23 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
   const [themeFilter, setThemeFilter] = useState(ALL);
   const [kindFilter, setKindFilter] = useState(ALL);
   const [statusFilter, setStatusFilter] = useState(ALL);
+
+  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [viewerLoadingId, setViewerLoadingId] = useState<string | null>(null);
+  const [viewerError, setViewerError] = useState<string | null>(null);
+
+  async function openPreview(claim: Claim) {
+    if (!claim.source_document_id) return;
+    setViewerError(null);
+    setViewerLoadingId(claim.id);
+    const result = await getDocumentPreviewUrl(claim.source_document_id);
+    setViewerLoadingId(null);
+    if ("error" in result) {
+      setViewerError(result.error);
+      return;
+    }
+    setViewer({ url: result.url, page: claim.source_page, title: claim.source_filename ?? "Source document" });
+  }
 
   const themes = Array.from(
     new Set([...claims.map((c) => c.theme).filter((t): t is string => Boolean(t)), ...extraThemes])
@@ -240,6 +308,26 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
               <td style={{ padding: "10px 6px", fontSize: 12, color: "#666", maxWidth: 160 }}>
                 {claim.source_filename ?? "\u2014"}
                 {claim.source_page != null && <span> &middot; p.{claim.source_page}</span>}
+                {claim.source_document_id && (
+                  <div>
+                    <button
+                      onClick={() => openPreview(claim)}
+                      disabled={viewerLoadingId === claim.id}
+                      style={{
+                        marginTop: 2,
+                        padding: 0,
+                        border: "none",
+                        background: "none",
+                        color: "#2A6FDB",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      {viewerLoadingId === claim.id ? "Opening..." : "View source"}
+                    </button>
+                  </div>
+                )}
                 {claim.quote_verified === false && (
                   <div
                     title="The quoted sentence for this claim could not be found verbatim in the source text. Worth a manual check."
@@ -284,6 +372,32 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
           ))}
         </tbody>
       </table>
+      {viewerError && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            maxWidth: 320,
+            background: "#FBEAE9",
+            border: "1px solid #B3261E",
+            color: "#B3261E",
+            padding: "10px 14px",
+            borderRadius: 8,
+            fontSize: 13,
+            zIndex: 1001,
+          }}
+        >
+          {viewerError}
+          <button
+            onClick={() => setViewerError(null)}
+            style={{ marginLeft: 10, border: "none", background: "none", color: "#B3261E", cursor: "pointer", textDecoration: "underline" }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {viewer && <DocumentPreviewPanel viewer={viewer} onClose={() => setViewer(null)} />}
     </>
   );
 }

@@ -35,6 +35,7 @@ type Claim = {
   source_filename: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
+  source_document_id: string | null;
 };
 
 async function getRun(runId: string): Promise<Run | null> {
@@ -62,7 +63,7 @@ async function getClaims(runId: string): Promise<Claim[]> {
     const result = await client.query<Claim>(
       `select c.id, c.origin, c.claim_text, c.claim_kind, c.theme, c.status,
               coalesce(d1.source_filename, d2.source_filename) as source_filename,
-              c.source_page, c.quote_verified
+              c.source_page, c.quote_verified, c.source_document_id
        from claims c
        left join documents d1 on d1.id = c.source_document_id
        left join documents d2 on d2.id = c.source_table_id
