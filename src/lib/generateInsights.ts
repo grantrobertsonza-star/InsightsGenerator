@@ -58,7 +58,7 @@ export async function generateInsightsFromTable(
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8000,
     system:
       "You are the insight generator in Insights Elevator. You run only against raw tables or a " +
       "dataset, never narrative text. Your job is not to check what a report already says; a " +

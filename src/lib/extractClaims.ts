@@ -1,29 +1,66 @@
 import { extractText as extractPdfText, getDocumentProxy } from "unpdf";
+import * as mammoth from "mammoth";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { withTenant } from "./db";
 
 const BUCKET = "documents";
 
+type PageText = { pageNumber: number; text: string };
+
+type ExtractedDocument = {
+  // Full plain text, used for storage and for non-paginated formats.
+  fullText: string;
+  // Per-page text, only populated for formats where a page genuinely means
+  // something (PDF). Empty for Word documents, which have no fixed pages
+  // once the text is pulled out of them.
+  pages: PageText[];
+};
+
 /**
- * Reads a document's file out of storage and returns its plain text.
- * Only PDF is handled for now; anything else is assumed to already be text.
+ * Reads a document's file out of storage and returns its text, split by
+ * page where that concept applies. PDF and Word (.docx) are both handled;
+ * anything else is assumed to already be plain text.
  */
-async function extractText(storagePath: string, filename: string): Promise<string> {
+async function extractDocumentText(storagePath: string, filename: string): Promise<ExtractedDocument> {
   const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
   if (error || !data) {
     throw new Error(`Could not download ${filename} from storage: ${error?.message}`);
   }
 
   const buffer = Buffer.from(await data.arrayBuffer());
+  const lowerName = filename.toLowerCase();
 
-  if (filename.toLowerCase().endsWith(".pdf")) {
+  if (lowerName.endsWith(".pdf")) {
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const { text } = await extractPdfText(pdf, { mergePages: true });
-    return text;
+    const result = await extractPdfText(pdf, { mergePages: false });
+    // unpdf returns one text string per page when mergePages is false.
+    const pageTexts = Array.isArray(result.text) ? result.text : [result.text];
+    const pages = pageTexts.map((text, index) => ({ pageNumber: index + 1, text }));
+    return { fullText: pages.map((p) => p.text).join("\n\n"), pages };
   }
 
-  return buffer.toString("utf-8");
+  if (lowerName.endsWith(".docx")) {
+    const { value } = await mammoth.extractRawText({ buffer });
+    // Word documents don't carry fixed page breaks once the text is pulled
+    // out this way, so there is no reliable page number to attach here.
+    return { fullText: value, pages: [] };
+  }
+
+  // Fall back to treating it as plain text (e.g. .txt, .csv used as a report).
+  const text = buffer.toString("utf-8");
+  return { fullText: text, pages: [] };
+}
+
+/** Loose match used to check whether a claimed quote really appears in the source text. */
+function normalizeForMatch(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function quoteAppearsIn(quote: string, sourceText: string): boolean {
+  const normalizedQuote = normalizeForMatch(quote);
+  if (normalizedQuote.length === 0) return false;
+  return normalizeForMatch(sourceText).includes(normalizedQuote);
 }
 
 /**
@@ -32,6 +69,10 @@ async function extractText(storagePath: string, filename: string): Promise<strin
  * red-teamer verifies any of them. This is the "stated" origin path,
  * separate from the insight generator's "generated" path, which mines
  * tables directly rather than reading prose.
+ *
+ * Each claim is asked to carry the exact sentence it came from (and, for a
+ * PDF, the page it came from), so the claim can be checked against the
+ * source rather than just trusted.
  */
 export async function extractClaimsFromDocument(
   tenantId: string,
@@ -50,25 +91,73 @@ export async function extractClaimsFromDocument(
     throw new Error("Document not found for this run");
   }
 
-  const text = await extractText(document.storage_path, document.source_filename);
+  const extracted = await extractDocumentText(document.storage_path, document.source_filename);
+  const hasPages = extracted.pages.length > 0;
 
   // Store the extracted text so this only has to run once per document.
   await withTenant(tenantId, async (client) => {
-    await client.query("update documents set extracted_text = $1 where id = $2", [text, documentId]);
+    await client.query("update documents set extracted_text = $1 where id = $2", [
+      extracted.fullText,
+      documentId,
+    ]);
   });
 
+  // If almost nothing came out of the file, calling Claude is pointless and
+  // the resulting error is confusing. Record why and stop here instead.
+  if (extracted.fullText.trim().length < 50) {
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_claims_empty_text', $3)`,
+        [
+          tenantId,
+          runId,
+          JSON.stringify({ documentId, filename: document.source_filename, textLength: extracted.fullText.length }),
+        ]
+      );
+    });
+    throw new Error(
+      `Almost no readable text came out of "${document.source_filename}" (${extracted.fullText.length} characters). ` +
+        `The file may be image-based, empty, or in a format this reader cannot parse properly.`
+    );
+  }
+
   // Keep the model honest about length: send a generous but bounded excerpt
-  // rather than risking a silent truncation deep inside the API call.
-  const excerpt = text.slice(0, 60000);
+  // rather than risking a silent truncation deep inside the API call. When
+  // pages are known, tag each one so the model can report where a claim
+  // came from instead of guessing.
+  const MAX_CHARS = 60000;
+  let excerpt: string;
+  if (hasPages) {
+    const tagged: string[] = [];
+    let used = 0;
+    for (const page of extracted.pages) {
+      const block = `\n\n[[PAGE ${page.pageNumber}]]\n${page.text}`;
+      if (used + block.length > MAX_CHARS) break;
+      tagged.push(block);
+      used += block.length;
+    }
+    excerpt = tagged.join("");
+  } else {
+    excerpt = extracted.fullText.slice(0, MAX_CHARS);
+  }
+
+  const pageInstruction = hasPages
+    ? "The text is divided into pages marked like \"[[PAGE 3]]\". For every claim, report the page " +
+      "number it came from in page_number.\n\n"
+    : "";
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16000,
     system:
       "You extract discrete, checkable factual or statistical claims from a market research report. " +
       "A claim is one specific assertion a reader could independently verify or dispute, such as a " +
       "reported percentage, a comparison between groups, a trend over time, or a causal statement. " +
       "Do not extract vague or purely descriptive sentences. Do not invent claims the text does not make.\n\n" +
+      pageInstruction +
+      "For every claim, also give the exact sentence (verbatim, copied not paraphrased) in the source " +
+      "text that the claim is drawn from, in source_quote. This is used to check the claim against the " +
+      "document, so it must be copied exactly as it appears, not summarized.\n\n" +
       "Classify every claim you extract as exactly one of:\n" +
       "- own_finding: a specific data point or statistical result from the report's own primary " +
       "research or analysis (its own sample, its own survey, its own tables).\n" +
@@ -106,8 +195,16 @@ export async function extractClaimsFromDocument(
                     type: "string",
                     description: "A short theme name, reused identically across claims in the same theme.",
                   },
+                  source_quote: {
+                    type: "string",
+                    description: "The exact verbatim sentence in the source text this claim is drawn from.",
+                  },
+                  page_number: {
+                    type: "integer",
+                    description: "The page this claim came from, only when the text was divided into pages.",
+                  },
                 },
-                required: ["claim_text", "claim_kind", "theme"],
+                required: ["claim_text", "claim_kind", "theme", "source_quote"],
               },
             },
           },
@@ -128,13 +225,50 @@ export async function extractClaimsFromDocument(
     throw new Error("Claude did not return a structured claims list");
   }
 
-  const rawInput = toolUse.input as { claims?: unknown };
-  if (!Array.isArray(rawInput.claims)) {
+  if (response.stop_reason === "max_tokens") {
+    // The response was cut off mid-generation, so whatever is in toolUse.input
+    // is an incomplete, unusable fragment rather than a real (if short) answer.
+    // This happens on long, claim-dense documents; raising max_tokens further
+    // or extracting in smaller sections are the two ways out of it.
     throw new Error(
-      `Expected an array of claims but got: ${JSON.stringify(rawInput).slice(0, 500)}`
+      `Claude's response was cut off before it finished (hit the output limit) while extracting claims ` +
+        `from "${document.source_filename}". This document produced more claims than fit in one response. ` +
+        `Try again, or let us know so the limit can be raised further.`
     );
   }
-  const claims = rawInput.claims as { claim_text?: unknown; claim_kind?: unknown; theme?: unknown }[];
+
+  const rawInput = toolUse.input as { claims?: unknown };
+  let claims: {
+    claim_text?: unknown;
+    claim_kind?: unknown;
+    theme?: unknown;
+    source_quote?: unknown;
+    page_number?: unknown;
+  }[];
+
+  if (Array.isArray(rawInput.claims)) {
+    claims = rawInput.claims;
+  } else {
+    // Rather than crashing the whole run when the model returns nothing
+    // usable, record it for diagnosis and treat it as "no claims found".
+    claims = [];
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_claims_bad_response', $3)`,
+        [
+          tenantId,
+          runId,
+          JSON.stringify({
+            documentId,
+            filename: document.source_filename,
+            textLength: extracted.fullText.length,
+            stopReason: response.stop_reason,
+            rawInput: JSON.stringify(rawInput).slice(0, 1000),
+          }),
+        ]
+      );
+    });
+  }
 
   const validKinds = new Set(["own_finding", "external_citation", "insight"]);
 
@@ -142,14 +276,26 @@ export async function extractClaimsFromDocument(
   // unrecognized classification; per the extraction rules, that should be
   // dropped rather than stored.
   const validClaims = claims.filter(
-    (claim): claim is { claim_text: string; claim_kind: string; theme: string } =>
+    (claim): claim is {
+      claim_text: string;
+      claim_kind: string;
+      theme: string;
+      source_quote: string;
+      page_number?: number;
+    } =>
       typeof claim.claim_text === "string" &&
       claim.claim_text.trim().length > 0 &&
       typeof claim.claim_kind === "string" &&
       validKinds.has(claim.claim_kind) &&
       typeof claim.theme === "string" &&
-      claim.theme.trim().length > 0
+      claim.theme.trim().length > 0 &&
+      typeof claim.source_quote === "string" &&
+      claim.source_quote.trim().length > 0
   );
+
+  // Build a lookup so a claim's quote can be checked against the specific
+  // page it says it came from, falling back to the whole document text.
+  const pageTextByNumber = new Map(extracted.pages.map((p) => [p.pageNumber, p.text]));
 
   const inserted = await withTenant(tenantId, async (client) => {
     // Re-running extraction on the same document replaces its previous
@@ -158,11 +304,30 @@ export async function extractClaimsFromDocument(
 
     const rows: { id: string; claim_text: string }[] = [];
     for (const claim of validClaims) {
+      const pageNumber =
+        typeof claim.page_number === "number" && pageTextByNumber.has(claim.page_number)
+          ? claim.page_number
+          : null;
+      const textToCheckAgainst = pageNumber ? pageTextByNumber.get(pageNumber)! : extracted.fullText;
+      const quoteVerified = quoteAppearsIn(claim.source_quote, textToCheckAgainst);
+
       const result = await client.query<{ id: string; claim_text: string }>(
-        `insert into claims (tenant_id, run_id, origin, claim_text, claim_kind, theme, source_document_id)
-         values ($1, $2, 'stated', $3, $4, $5, $6)
+        `insert into claims
+           (tenant_id, run_id, origin, claim_text, claim_kind, theme, source_document_id,
+            source_page, source_quote, quote_verified)
+         values ($1, $2, 'stated', $3, $4, $5, $6, $7, $8, $9)
          returning id, claim_text`,
-        [tenantId, runId, claim.claim_text, claim.claim_kind, claim.theme, documentId]
+        [
+          tenantId,
+          runId,
+          claim.claim_text,
+          claim.claim_kind,
+          claim.theme,
+          documentId,
+          pageNumber,
+          claim.source_quote,
+          quoteVerified,
+        ]
       );
       rows.push(result.rows[0]);
     }

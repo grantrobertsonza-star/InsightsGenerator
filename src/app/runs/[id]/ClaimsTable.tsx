@@ -11,6 +11,8 @@ type Claim = {
   theme: string | null;
   status: "pending" | "accepted" | "rejected";
   source_filename: string | null;
+  source_page: number | null;
+  quote_verified: boolean | null;
 };
 
 const kindLabel: Record<string, string> = {
@@ -97,16 +99,85 @@ function ThemeCell({
   );
 }
 
+const ALL = "__all__";
+
 export default function ClaimsTable({ runId, claims }: { runId: string; claims: Claim[] }) {
   const [isPending, startTransition] = useTransition();
   const [extraThemes, setExtraThemes] = useState<string[]>([]);
+
+  const [sourceFilter, setSourceFilter] = useState(ALL);
+  const [themeFilter, setThemeFilter] = useState(ALL);
+  const [kindFilter, setKindFilter] = useState(ALL);
+  const [statusFilter, setStatusFilter] = useState(ALL);
 
   const themes = Array.from(
     new Set([...claims.map((c) => c.theme).filter((t): t is string => Boolean(t)), ...extraThemes])
   ).sort();
 
+  const sources = Array.from(
+    new Set(claims.map((c) => c.source_filename).filter((s): s is string => Boolean(s)))
+  ).sort();
+
+  const filteredClaims = claims.filter((claim) => {
+    if (sourceFilter !== ALL && claim.source_filename !== sourceFilter) return false;
+    if (themeFilter !== ALL && claim.theme !== themeFilter) return false;
+    if (kindFilter !== ALL && claim.claim_kind !== kindFilter) return false;
+    if (statusFilter !== ALL && claim.status !== statusFilter) return false;
+    return true;
+  });
+
+  const selectStyle = { padding: "6px 8px", fontSize: 13 };
+  const filtersActive =
+    sourceFilter !== ALL || themeFilter !== ALL || kindFilter !== ALL || statusFilter !== ALL;
+
   return (
     <>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14 }}>
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={selectStyle}>
+          <option value={ALL}>All sources</option>
+          {sources.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
+        <select value={themeFilter} onChange={(e) => setThemeFilter(e.target.value)} style={selectStyle}>
+          <option value={ALL}>All themes</option>
+          {themes.map((theme) => (
+            <option key={theme} value={theme}>
+              {theme}
+            </option>
+          ))}
+        </select>
+        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={selectStyle}>
+          <option value={ALL}>All kinds</option>
+          <option value="own_finding">{kindLabel.own_finding}</option>
+          <option value="external_citation">{kindLabel.external_citation}</option>
+          <option value="insight">{kindLabel.insight}</option>
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
+          <option value={ALL}>All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        {filtersActive && (
+          <button
+            onClick={() => {
+              setSourceFilter(ALL);
+              setThemeFilter(ALL);
+              setKindFilter(ALL);
+              setStatusFilter(ALL);
+            }}
+            style={{ padding: "6px 10px", fontSize: 13, border: "1px solid #ccc", borderRadius: 6, background: "white", cursor: "pointer" }}
+          >
+            Clear filters
+          </button>
+        )}
+        <span style={{ fontSize: 12, color: "#888" }}>
+          Showing {filteredClaims.length} of {claims.length}
+        </span>
+      </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
@@ -118,7 +189,7 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
           </tr>
         </thead>
         <tbody>
-          {claims.map((claim) => (
+          {filteredClaims.map((claim) => (
             <tr
               key={claim.id}
               style={{ borderBottom: "1px solid #eee", opacity: claim.status === "rejected" ? 0.5 : 1 }}
@@ -168,6 +239,15 @@ export default function ClaimsTable({ runId, claims }: { runId: string; claims: 
               </td>
               <td style={{ padding: "10px 6px", fontSize: 12, color: "#666", maxWidth: 160 }}>
                 {claim.source_filename ?? "\u2014"}
+                {claim.source_page != null && <span> &middot; p.{claim.source_page}</span>}
+                {claim.quote_verified === false && (
+                  <div
+                    title="The quoted sentence for this claim could not be found verbatim in the source text. Worth a manual check."
+                    style={{ color: "#B3261E", fontSize: 11, marginTop: 2 }}
+                  >
+                    &#9888; unverified quote
+                  </div>
+                )}
               </td>
               <td style={{ padding: "10px 6px", whiteSpace: "nowrap" }}>
                 <button
