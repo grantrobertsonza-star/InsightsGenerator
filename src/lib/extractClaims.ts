@@ -1,8 +1,8 @@
 import { extractText as extractPdfText, getDocumentProxy } from "unpdf";
-import * as mammoth from "mammoth";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { withTenant } from "./db";
+import { convertOfficeDocToPdf } from "./convertToPdf";
 
 const BUCKET = "documents";
 
@@ -22,6 +22,16 @@ type ExtractedDocument = {
  * page where that concept applies. PDF and Word (.docx) are both handled;
  * anything else is assumed to already be plain text.
  */
+/** Runs a PDF buffer through unpdf and returns it split into per-page text. */
+async function extractPagesFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedDocument> {
+  const pdf = await getDocumentProxy(new Uint8Array(pdfBuffer));
+  const result = await extractPdfText(pdf, { mergePages: false });
+  // unpdf returns one text string per page when mergePages is false.
+  const pageTexts = Array.isArray(result.text) ? result.text : [result.text];
+  const pages = pageTexts.map((text, index) => ({ pageNumber: index + 1, text }));
+  return { fullText: pages.map((p) => p.text).join("\n\n"), pages };
+}
+
 async function extractDocumentText(storagePath: string, filename: string): Promise<ExtractedDocument> {
   const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
   if (error || !data) {
@@ -32,19 +42,16 @@ async function extractDocumentText(storagePath: string, filename: string): Promi
   const lowerName = filename.toLowerCase();
 
   if (lowerName.endsWith(".pdf")) {
-    const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const result = await extractPdfText(pdf, { mergePages: false });
-    // unpdf returns one text string per page when mergePages is false.
-    const pageTexts = Array.isArray(result.text) ? result.text : [result.text];
-    const pages = pageTexts.map((text, index) => ({ pageNumber: index + 1, text }));
-    return { fullText: pages.map((p) => p.text).join("\n\n"), pages };
+    return extractPagesFromPdfBuffer(buffer);
   }
 
-  if (lowerName.endsWith(".docx")) {
-    const { value } = await mammoth.extractRawText({ buffer });
-    // Word documents don't carry fixed page breaks once the text is pulled
-    // out this way, so there is no reliable page number to attach here.
-    return { fullText: value, pages: [] };
+  if (lowerName.endsWith(".docx") || lowerName.endsWith(".pptx")) {
+    // Word and PowerPoint both go through the same route: convert to PDF
+    // with LibreOffice, then read it exactly like a native PDF upload, so
+    // each Word page (or PowerPoint slide) gets a real page number and
+    // every claim gets a quote that can be checked against it.
+    const pdfBuffer = await convertOfficeDocToPdf(buffer, filename);
+    return extractPagesFromPdfBuffer(pdfBuffer);
   }
 
   // Fall back to treating it as plain text (e.g. .txt, .csv used as a report).
@@ -52,9 +59,25 @@ async function extractDocumentText(storagePath: string, filename: string): Promi
   return { fullText: text, pages: [] };
 }
 
-/** Loose match used to check whether a claimed quote really appears in the source text. */
+/**
+ * Loose match used to check whether a claimed quote really appears in the
+ * source text. Normalizes away things that are extraction artifacts, not
+ * real differences: curly quotes vs straight ones, en/em dashes, ligatures,
+ * non-breaking spaces, and words hyphenated across a line break.
+ */
 function normalizeForMatch(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
+  return text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u00A0/g, " ")
+    .replace(/\u00AD/g, "")
+    .replace(/\uFB01/g, "fi")
+    .replace(/\uFB02/g, "fl")
+    .replace(/-\s*\n\s*/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
 }
 
 function quoteAppearsIn(quote: string, sourceText: string): boolean {
@@ -309,7 +332,20 @@ export async function extractClaimsFromDocument(
           ? claim.page_number
           : null;
       const textToCheckAgainst = pageNumber ? pageTextByNumber.get(pageNumber)! : extracted.fullText;
-      const quoteVerified = quoteAppearsIn(claim.source_quote, textToCheckAgainst);
+      let quoteVerified = quoteAppearsIn(claim.source_quote, textToCheckAgainst);
+
+      // A quoted sentence can start near the bottom of one page and finish
+      // on the next, or Claude can be off by one page in its own count.
+      // Before concluding a quote really isn't there, also check the pages
+      // either side of the one it was attributed to.
+      if (!quoteVerified && pageNumber) {
+        const neighboringText = [pageTextByNumber.get(pageNumber - 1), pageTextByNumber.get(pageNumber + 1)]
+          .filter((t): t is string => Boolean(t))
+          .join(" ");
+        if (neighboringText.length > 0 && quoteAppearsIn(claim.source_quote, neighboringText)) {
+          quoteVerified = true;
+        }
+      }
 
       const result = await client.query<{ id: string; claim_text: string }>(
         `insert into claims

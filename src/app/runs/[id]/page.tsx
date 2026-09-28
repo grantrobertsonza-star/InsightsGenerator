@@ -140,7 +140,12 @@ async function uploadDocument(runId: string, formData: FormData) {
     // server code using the secret key, every object still lives under the
     // tenant's own folder, so nothing has to change here when client-facing
     // storage policies are added later.
-    const storagePath = `${TENANT_ID}/${runId}/${Date.now()}-${file.name}`;
+    // The storage path uses a sanitized version of the file name, since
+    // characters like "%", "#" or "?" are reserved in URLs and break the
+    // Storage API's request encoding. The real file name is kept as-is in
+    // source_filename for display everywhere else.
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const storagePath = `${TENANT_ID}/${runId}/${Date.now()}-${safeFileName}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
     const { error: uploadError } = await supabaseAdmin.storage
