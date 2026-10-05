@@ -1,1 +1,8 @@
-{}
+{
+  "functions": {
+    "api/parse-stats-file.py": {
+      "memory": 3009,
+      "maxDuration": 60
+    }
+  }
+}
