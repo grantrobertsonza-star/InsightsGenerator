@@ -83,22 +83,65 @@ export function findDuplicateGroups(
 }
 
 /**
+ * Groups code-generated findings that are exact structural repeats of one
+ * another -- same source table, same underlying cells, same wording. This
+ * is deliberately NOT the fuzzy Jaccard check above: a generated finding's
+ * wording is a fixed sentence template (see bannerPlanComputation.ts), so
+ * two generated findings about two different schools, or two different
+ * variables, routinely share 60-80% of their tokens through the template
+ * alone -- "School X has a single Y reading of Z, too little data in this
+ * group alone to test against the others" barely changes word to word.
+ * Comparing them by wording similarity flags nearly every such finding in
+ * a run as a duplicate of every other one, regardless of topic. A
+ * generated finding is already guaranteed unique by construction (one per
+ * banner-category x stub-column pairing, and archiveAndReplaceFindings
+ * clears a table's previous findings before writing fresh ones), so the
+ * only way two of them are a genuine repeat is if they trace back to the
+ * exact same table and the exact same rows.
+ */
+export function findGeneratedDuplicateGroups(
+  findings: { id: string; finding_text: string; source_table_id: string | null; source_cells: string | null }[]
+): string[][] {
+  const byKey = new Map<string, string[]>();
+  for (const f of findings) {
+    const key = `${f.source_table_id ?? ""}::${f.source_cells ?? ""}::${f.finding_text}`;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(f.id);
+  }
+  return Array.from(byKey.values()).filter((group) => group.length > 1);
+}
+
+/**
  * Re-scans every non-rejected finding in a run and refreshes which ones are
  * flagged as probable duplicates of each other. Safe to call repeatedly:
  * it clears the previous grouping first, so once someone rejects the
  * redundant copy of a finding, the survivor stops being flagged next time
  * this runs.
+ *
+ * Generated (code-computed) findings and narrative (model-authored)
+ * findings are deduped separately and by different rules -- see
+ * findGeneratedDuplicateGroups above for why wording similarity is the
+ * wrong check for the former.
  */
 export async function detectDuplicateFindings(tenantId: string, runId: string): Promise<void> {
   const findings = await withTenant(tenantId, async (client) => {
-    const result = await client.query<{ id: string; finding_text: string }>(
-      "select id, finding_text from findings where run_id = $1 and status != 'rejected'",
+    const result = await client.query<{
+      id: string;
+      finding_text: string;
+      origin: string;
+      source_table_id: string | null;
+      source_cells: string | null;
+    }>(
+      "select id, finding_text, origin, source_table_id, source_cells from findings where run_id = $1 and status != 'rejected'",
       [runId]
     );
     return result.rows;
   });
 
-  const groups = findDuplicateGroups(findings);
+  const generated = findings.filter((f) => f.origin === "generated");
+  const narrative = findings.filter((f) => f.origin !== "generated");
+
+  const groups = [...findGeneratedDuplicateGroups(generated), ...findDuplicateGroups(narrative)];
 
   await withTenant(tenantId, async (client) => {
     await client.query("update findings set duplicate_group_id = null where run_id = $1", [runId]);
