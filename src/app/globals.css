@@ -2,25 +2,62 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --surface: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  --primary-dark: #1e3a8a;
+
+  --success: #16a34a;
+  --success-light: #f0fdf4;
+  --danger: #dc2626;
+  --danger-light: #fef2f2;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-light);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Keep the product's look consistent (white + blue) rather than
+   auto-inverting to a dark theme the design hasn't been built for yet. */
+
+/* A thin brand gradient used under the header bar on every page, the kind
+   of small detail that separates a "styled app" from a "designed product". */
+.brand-accent-bar {
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary) 0%, #60a5fa 50%, var(--primary-dark) 100%);
+}
+
+/* A soft, always-on card shadow, slightly deeper on hover, used in place of
+   shadows that only appear on hover so the page reads as designed rather
+   than flat by default. */
+.card-surface {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 6px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+.card-surface:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.06);
 }

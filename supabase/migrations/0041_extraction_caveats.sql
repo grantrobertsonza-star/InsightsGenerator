@@ -1,0 +1,12 @@
+-- A caveat tag the extraction step itself attaches to a stated (narrative)
+-- finding, separate from the computed caveats a table-derived finding gets
+-- from its own stated_stats. First use: std_unknown, set when a finding
+-- states a mean or average with no standard deviation, standard error,
+-- confidence interval, or range given alongside it -- the same "report the
+-- figure as stated only" treatment base_size_unknown already gets, just for
+-- a missing spread rather than a missing base. Stored on the finding
+-- itself (not the verdict) since it's a property of what the source
+-- document actually said, independent of whether or when the finding gets
+-- verified; verifyFindings.ts folds it into statistical_checks.caveats
+-- alongside whatever else that finding's verdict accumulates.
+alter table findings add column if not exists extraction_caveats jsonb not null default '[]';

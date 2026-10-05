@@ -1,0 +1,18 @@
+-- research_objective now gets overwritten the moment any objective
+-- candidate is accepted (it holds the joined, numbered text of whatever's
+-- currently accepted, kept in sync by runSync.ts). The objective framer
+-- used to read research_objective as "the researcher's original starting
+-- objective" and carry it forward verbatim as its own candidate on every
+-- run; once research_objective itself became a live, synced value instead
+-- of the researcher's original typed text, that carry-forward logic
+-- started re-inserting the framer's own already-numbered output as a new
+-- candidate, which then got joined back in, compounding with every
+-- document processed.
+--
+-- initial_research_objective is a one-time snapshot taken at project
+-- creation (whatever the researcher typed, or whatever the brief/proposal
+-- intake filled in) and never touched again afterward, so the framer has a
+-- stable value to treat as "the researcher's own starting point" no matter
+-- how many objective candidates get accepted, rejected, or regenerated
+-- later.
+alter table runs add column initial_research_objective text;

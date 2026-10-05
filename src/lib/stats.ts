@@ -18,13 +18,28 @@ export function designEffect(weights: number[]) {
   return { designEffect: Math.round((1 + cv ** 2) * 100) / 100 };
 }
 
-export function checkBaseSize(n: number, segmentName: string) {
-  // No formal ESOMAR/MRS/Insights Association numeric floor exists; n=30 and
-  // n=100 are informal conventions only. Never surface this as a standards
-  // violation, only as a caution.
-  if (n < 30) return { flag: `${segmentName} has a base size of ${n}, below the informal n=30 caution threshold.` };
-  if (n < 100) return { flag: `${segmentName} has a base size of ${n}, below the informal n=100 convention for sub-group reporting.` };
-  return { flag: null as string | null };
+export type BaseSizeTag = "base_size_small" | "base_size_borderline" | null;
+
+export function checkBaseSize(n: number, segmentName: string): { flag: string | null; tag: BaseSizeTag } {
+  // No formal ESOMAR/MRS/Insights Association numeric floor exists; these
+  // bands are informal conventions only. Never surface this as a standards
+  // violation, only as a caution. A 50-99 base is treated as usable without
+  // comment, same as 100+; only below 50 gets flagged, since below 30 and
+  // the 30-49 band carry meaningfully different confidence even though
+  // neither is a hard cutoff.
+  if (n < 30) {
+    return {
+      tag: "base_size_small",
+      flag: `${segmentName} has a base size of ${n}, below the informal n=30 caution threshold.`,
+    };
+  }
+  if (n < 50) {
+    return {
+      tag: "base_size_borderline",
+      flag: `${segmentName} has a base size of ${n}, in the borderline 30-49 range: usable but weaker than a medium or large base.`,
+    };
+  }
+  return { tag: null, flag: null };
 }
 
 export function twoProportionGap(n1: number, p1: number, n2: number, p2: number, confidence: 90 | 95 | 99 = 95) {
@@ -62,4 +77,139 @@ export function pearsonCorrelation(xs: number[], ys: number[]) {
   const sdY = Math.sqrt(ys.reduce((a, y) => a + (y - meanY) ** 2, 0));
   if (sdX === 0 || sdY === 0) return { r: null as number | null };
   return { r: Math.round((cov / (sdX * sdY)) * 100) / 100, note: "descriptive association only; not evidence of causation" };
+}
+
+// Approximate thresholds for Welch's t, reused from the same Z_SCORES table
+// rather than a true t-distribution lookup. With the group sizes this
+// pipeline actually sees (rarely under a dozen per side, often far more),
+// the t and normal distributions are close enough that this stays a fair
+// descriptive heuristic, consistent with flagOutlier's and twoProportionGap's
+// own z-based thresholds elsewhere in this file -- not a claim of exact
+// statistical rigor.
+const APPROX_T_THRESHOLDS = Z_SCORES;
+
+/**
+ * Compares the means of two numeric groups (Welch's t-test, unequal
+ * variances assumed), the continuous-outcome counterpart to
+ * twoProportionGap's binary/proportion comparison. Used for a numeric
+ * column split by a category -- "do Region=East rows average higher
+ * satisfaction than the rest?" -- rather than a yes/no rate.
+ */
+export function compareGroupMeans(group1: number[], group2: number[], confidence: 90 | 95 | 99 = 95) {
+  if (group1.length < 2 || group2.length < 2) {
+    return { mean1: null as number | null, mean2: null as number | null, gap: null as number | null, tScore: null as number | null, significant: false };
+  }
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const variance = (xs: number[], m: number) => xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1);
+  const m1 = mean(group1);
+  const m2 = mean(group2);
+  const v1 = variance(group1, m1);
+  const v2 = variance(group2, m2);
+  const se = Math.sqrt(v1 / group1.length + v2 / group2.length);
+  const mean1 = Math.round(m1 * 100) / 100;
+  const mean2 = Math.round(m2 * 100) / 100;
+  const gap = Math.round((m1 - m2) * 100) / 100;
+  if (se === 0) return { mean1, mean2, gap, tScore: null as number | null, significant: false };
+  const t = (m1 - m2) / se;
+  return {
+    mean1,
+    mean2,
+    gap,
+    tScore: Math.round(t * 100) / 100,
+    significant: Math.abs(t) >= APPROX_T_THRESHOLDS[confidence],
+  };
+}
+
+export type DecisionStumpResult = {
+  splitColumn: string;
+  outcomeColumn: string;
+  splitDescription: string;
+  group1Indices: number[];
+  group1Mean: number;
+  group2Indices: number[];
+  group2Mean: number;
+  gap: number;
+  tScore: number;
+};
+
+/**
+ * A single-level decision stump: searches one candidate splitting column
+ * (numeric, tried at every midpoint between its distinct sorted values; or
+ * categorical, tried as each category versus everything else) for whichever
+ * split most separates a numeric outcome column, via compareGroupMeans.
+ * Deliberately not a full decision tree -- one split, picked because it's
+ * the strongest this table actually supports for this outcome, not because
+ * it was assumed in advance. Returns null when no split clears both the
+ * minimum group size and the significance threshold.
+ */
+export function findBestStumpSplit(
+  rows: Record<string, string | number | null>[],
+  splitColumn: string,
+  outcomeColumn: string,
+  minGroupSize = 5
+): DecisionStumpResult | null {
+  const pairs = rows
+    .map((row, index) => ({ index, split: row[splitColumn], outcome: row[outcomeColumn] }))
+    .filter(
+      (p): p is { index: number; split: string | number; outcome: number } =>
+        p.split !== null && p.split !== undefined && typeof p.outcome === "number"
+    );
+
+  if (pairs.length < minGroupSize * 2) return null;
+
+  const splitIsNumeric = pairs.every((p) => typeof p.split === "number");
+
+  type Candidate = { label: string; group1: typeof pairs; group2: typeof pairs };
+  const candidates: Candidate[] = [];
+
+  if (splitIsNumeric) {
+    const uniqueSorted = Array.from(new Set(pairs.map((p) => p.split as number))).sort((a, b) => a - b);
+    for (let i = 0; i < uniqueSorted.length - 1; i++) {
+      const threshold = (uniqueSorted[i] + uniqueSorted[i + 1]) / 2;
+      const group1 = pairs.filter((p) => (p.split as number) < threshold);
+      const group2 = pairs.filter((p) => (p.split as number) >= threshold);
+      if (group1.length >= minGroupSize && group2.length >= minGroupSize) {
+        candidates.push({ label: `${splitColumn} < ${Math.round(threshold * 100) / 100}`, group1, group2 });
+      }
+    }
+  } else {
+    const categories = Array.from(new Set(pairs.map((p) => String(p.split))));
+    for (const category of categories) {
+      const group1 = pairs.filter((p) => String(p.split) === category);
+      const group2 = pairs.filter((p) => String(p.split) !== category);
+      if (group1.length >= minGroupSize && group2.length >= minGroupSize) {
+        candidates.push({ label: `${splitColumn} = "${category}"`, group1, group2 });
+      }
+    }
+  }
+
+  let best: { candidate: Candidate; mean1: number; mean2: number; gap: number; tScore: number } | null = null;
+
+  for (const candidate of candidates) {
+    const comparison = compareGroupMeans(
+      candidate.group1.map((p) => p.outcome),
+      candidate.group2.map((p) => p.outcome)
+    );
+    if (comparison.tScore === null || comparison.mean1 === null || comparison.mean2 === null) continue;
+    if (!best || Math.abs(comparison.tScore) > Math.abs(best.tScore)) {
+      best = { candidate, mean1: comparison.mean1, mean2: comparison.mean2, gap: comparison.gap ?? 0, tScore: comparison.tScore };
+    }
+  }
+
+  if (!best) return null;
+  // Reuse the 95%-confidence threshold as the bar for "worth surfacing as a
+  // pattern" -- the same bar compareGroupMeans itself uses by default.
+  if (Math.abs(best.tScore) < APPROX_T_THRESHOLDS[95]) return null;
+
+  return {
+    splitColumn,
+    outcomeColumn,
+    splitDescription: best.candidate.label,
+    group1Indices: best.candidate.group1.map((p) => p.index),
+    group1Mean: best.mean1,
+    group2Indices: best.candidate.group2.map((p) => p.index),
+    group2Mean: best.mean2,
+    gap: best.gap,
+    tScore: best.tScore,
+  };
 }

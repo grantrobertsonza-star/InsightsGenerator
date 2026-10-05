@@ -1,0 +1,11 @@
+-- The research methodology actually used to produce the underlying
+-- evidence (sampling, data collection method, instruments, participants,
+-- timeframe) -- as the brief, proposal, or full report itself states it,
+-- never invented by this app. Distinct from everything else this pipeline
+-- generates, nothing here is AI-authored content about the project; it's
+-- an extracted quote/paraphrase of what the original researcher already
+-- wrote down about how they did the work. Null until generateMethodology-
+-- Summary finds something to extract (see src/lib/methodologyExtractor.ts),
+-- and stays null rather than getting a fabricated placeholder when no
+-- uploaded document states one.
+alter table runs add column if not exists methodology text;
