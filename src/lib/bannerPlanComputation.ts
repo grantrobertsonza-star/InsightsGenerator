@@ -139,7 +139,44 @@ export function computeBannerPlanPatterns(
             .filter((value): value is number => typeof value === "number"),
         }));
         const anova = oneWayAnova(anovaGroups);
-        if (anova.fStat === null && anova.pValue === null) continue;
+
+        // oneWayAnova only returns null/null when fewer than two groups
+        // have at least two readings each -- most often every group here
+        // has exactly one reading (one arsenic test per school, say), so
+        // there's no within-group spread to test against at all. That's
+        // not "no difference found", it's "nothing to test", so rather
+        // than silently dropping the pair, surface one descriptive finding
+        // per category: its single value (or small-sample mean), with no
+        // significance claim attached. No pairwise fallback either -- the
+        // same lack of spread that sinks the omnibus test sinks every
+        // pairwise t-test built on it.
+        if (anova.fStat === null && anova.pValue === null) {
+          for (const category of categories) {
+            const groupRows = groupsByCategory.get(category) ?? [];
+            const values = groupRows.map(({ row }) => row[stubColumn]).filter((value): value is number => typeof value === "number");
+            if (values.length === 0) continue;
+            const mean = Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
+            patterns.push({
+              patternType: "banner_comparison",
+              description:
+                `${stubColumn} for ${bannerColumn} "${category}": ${mean}` +
+                (values.length > 1 ? ` (n=${values.length}).` : ` (single reading).`) +
+                ` Too little data in this group to test against the others.`,
+              theme: `${bannerColumn} & ${stubColumn}`,
+              statedStats: {
+                testType: "descriptive_summary",
+                category,
+                n: values.length,
+                mean,
+                bannerColumn,
+                stubColumn,
+                caveats: ["insufficient_n_for_test", "sampling_assumed_random"],
+              },
+              rowIndices: groupRows.map((g) => g.index),
+            });
+          }
+          continue;
+        }
 
         const allRowIndices = categories.flatMap((category) => (groupsByCategory.get(category) ?? []).map((g) => g.index));
         const meansDescription = anova.groupMeans.map((g) => `${g.label}=${g.mean} (n=${g.n})`).join(", ");

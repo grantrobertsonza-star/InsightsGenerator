@@ -288,6 +288,27 @@ function NotSignificantBadge() {
   );
 }
 
+// A descriptive_summary pattern (bannerPlanComputation.ts) never ran a test
+// at all -- typically one reading per banner category, with nothing to test
+// it against -- so it earns its own badge rather than being lumped in with
+// "tested but not significant", which would overstate how much happened.
+function isDescriptiveOnly(finding: Pick<Finding, "pattern_type" | "stated_stats">): boolean {
+  if (finding.pattern_type !== "banner_comparison") return false;
+  const caveats = (finding.stated_stats as { caveats?: unknown } | null)?.caveats;
+  return Array.isArray(caveats) && caveats.includes("insufficient_n_for_test");
+}
+
+function DescriptiveOnlyBadge() {
+  return (
+    <span
+      title="There wasn't enough data in this group to test it against anything -- this is just its own value, shown for reference, not a tested comparison."
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-200 bg-slate-50"
+    >
+      descriptive only
+    </span>
+  );
+}
+
 function KindControl({
   runId,
   finding,
@@ -827,11 +848,11 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                   </button>
                 )}
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
                 {themeFindings.map((finding) => (
                   <div
                     key={finding.id}
-                    className={`card-surface flex min-w-[280px] max-w-[400px] flex-1 basis-[320px] flex-col gap-2.5 rounded-xl border border-border border-l-4 bg-white p-4 ${colorFor(theme).borderLeft} ${
+                    className={`card-surface flex flex-col gap-2.5 rounded-xl border border-border border-l-4 bg-white p-4 ${colorFor(theme).borderLeft} ${
                       finding.status === "rejected" ? "opacity-50" : ""
                     }`}
                   >
@@ -840,6 +861,7 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                         <OriginBadge origin={finding.origin} />
                         <DataTypeBadge dataType={finding.data_type} />
                         {isNotSignificantComparison(finding) && <NotSignificantBadge />}
+                        {isDescriptiveOnly(finding) && <DescriptiveOnlyBadge />}
                       </div>
                       <ReviewButtons runId={runId} finding={finding} isPending={isPending} startTransition={startTransition} onOptimisticStatus={setOptimisticStatus} />
                     </div>
@@ -874,11 +896,11 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
               </p>
               <div className="flex flex-col gap-3">
                 {duplicateGroups.map(({ groupId, findings: groupFindings }) => (
-                  <div key={groupId} className="flex flex-wrap gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3">
+                  <div key={groupId} className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3">
                     {groupFindings.map((finding) => (
                       <div
                         key={finding.id}
-                        className={`card-surface flex min-w-[280px] max-w-[400px] flex-1 basis-[320px] flex-col gap-2.5 rounded-xl border border-amber-200 border-l-4 border-l-amber-400 bg-white p-4 ${
+                        className={`card-surface flex flex-col gap-2.5 rounded-xl border border-amber-200 border-l-4 border-l-amber-400 bg-white p-4 ${
                           finding.status === "rejected" ? "opacity-50" : ""
                         }`}
                       >
@@ -887,6 +909,7 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                             <OriginBadge origin={finding.origin} />
                             <DataTypeBadge dataType={finding.data_type} />
                             {isNotSignificantComparison(finding) && <NotSignificantBadge />}
+                        {isDescriptiveOnly(finding) && <DescriptiveOnlyBadge />}
                             <DuplicateBadge />
                           </div>
                           <ReviewButtons runId={runId} finding={finding} isPending={isPending} startTransition={startTransition} onOptimisticStatus={setOptimisticStatus} />
@@ -940,6 +963,7 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                         <OriginBadge origin={finding.origin} />
                         <DataTypeBadge dataType={finding.data_type} />
                         {isNotSignificantComparison(finding) && <NotSignificantBadge />}
+                        {isDescriptiveOnly(finding) && <DescriptiveOnlyBadge />}
                         {finding.duplicate_group_id && <DuplicateBadge />}
                       </div>
                       <div className="text-foreground">{finding.finding_text}</div>

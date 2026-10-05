@@ -247,15 +247,25 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
       // generation (insightGenerator.ts only picks up robust/use_with_caution
       // verdicts), while it still shows up here, badged, for review.
       const notSignificant = allCaveats.includes("not_significant");
+      // A descriptive_summary pattern (bannerPlanComputation.ts, emitted
+      // when there's too little within-group data to run any test at all --
+      // typically one reading per category) never claimed a difference in
+      // the first place, so it gets its own rationale rather than being
+      // described as "tested but not significant", which would misstate
+      // what happened.
+      const insufficientData = allCaveats.includes("insufficient_n_for_test");
       prepared.push({
         findingId: finding.id,
-        verdictTier: notSignificant ? "not_supported" : cautions.length > 0 ? "use_with_caution" : "robust",
-        rationale: notSignificant
-          ? `This comparison was computed by the pipeline but did not reach statistical significance, so the ` +
-            `apparent difference isn't a reliable pattern.${cautions.length > 0 ? ` ${cautions.join(" ")}` : ""}`
-          : cautions.length > 0
-            ? `Statistically significant as computed by the pipeline. ${cautions.join(" ")}`
-            : "Statistically significant as computed by the pipeline's own arithmetic, with no base-size caution.",
+        verdictTier: notSignificant || insufficientData ? "not_supported" : cautions.length > 0 ? "use_with_caution" : "robust",
+        rationale: insufficientData
+          ? "This is a single-group reading, not a tested comparison -- there wasn't enough data within the " +
+            "group to test it against anything, so it's descriptive only."
+          : notSignificant
+            ? `This comparison was computed by the pipeline but did not reach statistical significance, so the ` +
+              `apparent difference isn't a reliable pattern.${cautions.length > 0 ? ` ${cautions.join(" ")}` : ""}`
+            : cautions.length > 0
+              ? `Statistically significant as computed by the pipeline. ${cautions.join(" ")}`
+              : "Statistically significant as computed by the pipeline's own arithmetic, with no base-size caution.",
         statisticalChecks: { ...checks, caveats: allCaveats },
         verificationMethod: "single_pass",
       });
