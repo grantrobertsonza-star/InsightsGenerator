@@ -30,19 +30,19 @@ export function isStatsFileName(fileName: string): boolean {
  * bannerPlanComputation.ts - sees exactly what it already expects from a
  * CSV/Excel upload and needs no SPSS-specific branch of its own.
  *
- * NOT YET VERIFIED END TO END: the cross-function call this makes (Node
- * server action -> Python serverless function, both in the same Vercel
- * deployment) hasn't been exercised against a live deployment from this
- * session - see the accompanying message for why. Test it, ideally with
- * `vercel dev` locally against a real file, before relying on it.
+ * This function tells the Python function where the file already is in
+ * Supabase Storage rather than sending it the file's bytes, and the
+ * Python function writes its result back to storage rather than returning
+ * it directly, both for the same reason: Vercel serverless functions cap
+ * a function invocation's request AND response body at 4.5MB, and a real
+ * SPSS/Stata/SAS file - let alone its fully label-decoded JSON equivalent,
+ * which is usually larger again - routinely exceeds that (confirmed
+ * against a 26MB real file: a direct byte-body call failed with
+ * FUNCTION_PAYLOAD_TOO_LARGE, a 413, before this was fixed). Downloading
+ * the converted result from storage here is an ordinary Supabase Storage
+ * download, not a function invocation payload, so it has no such limit.
  */
 export async function parseStatsFile(storagePath: string, sourceFilename: string): Promise<ParsedTable> {
-  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
-  if (error || !data) {
-    throw new Error(`Could not download file from storage: ${error?.message}`);
-  }
-  const buffer = Buffer.from(await data.arrayBuffer());
-
   // VERCEL_URL is set automatically on Vercel (preview and production) to
   // this deployment's own hostname, so this always calls the sibling
   // Python function within the same deployment rather than guessing at a
@@ -58,11 +58,8 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
 
   const response = await fetch(`${base}/api/parse-stats-file`, {
     method: "POST",
-    headers: {
-      "content-type": "application/octet-stream",
-      "x-source-filename": sourceFilename,
-    },
-    body: buffer,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
   });
 
   if (!response.ok) {
@@ -78,5 +75,19 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
     );
   }
 
-  return (await response.json()) as ParsedTable;
+  const { resultPath } = (await response.json()) as { resultPath: string };
+
+  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
+  if (error || !data) {
+    throw new Error(`Converted SPSS/Stata/SAS result could not be read back from storage: ${error?.message}`);
+  }
+  const parsed = JSON.parse(await data.text()) as ParsedTable;
+
+  // Best-effort cleanup: this intermediate file has no further use once
+  // read, and leaving it around would otherwise just accumulate in the
+  // bucket indefinitely. A failure here is never worth surfacing to the
+  // caller - the actual table has already been read successfully.
+  await supabaseAdmin.storage.from(BUCKET).remove([resultPath]).catch(() => {});
+
+  return parsed;
 }

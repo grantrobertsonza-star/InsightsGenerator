@@ -14,16 +14,28 @@ ecosystem's reader for all three formats and surfaces both label kinds, so
 decoding happens once, here, rather than being reimplemented in every
 place a header or a category value gets displayed or compared.
 
-NOT YET VERIFIED END TO END: this function has not been exercised against
-a real .sav/.dta/.sas7bdat file or deployed to Vercel from this session -
-see the accompanying message for why, and test it (ideally with
-`vercel dev` locally, against a real file) before relying on it.
+Request/response shape: the request body is a small JSON object naming
+where the source file already lives in Supabase Storage
+({storagePath, sourceFilename, bucket?}), not the file's bytes, and the
+response is likewise just the storage path of a converted-result JSON
+file this function wrote ({resultPath}), not the parsed table itself.
+This function downloads the source file from storage and uploads its
+result back to storage directly, rather than carrying either one through
+the HTTP request/response body that invokes it, because Vercel serverless
+functions cap both directions of that body at 4.5MB - comfortably smaller
+than a real SPSS/Stata/SAS file's own size, let alone the size of its
+fully label-decoded JSON equivalent. Caller (parseStatsFile.ts) downloads
+the result from the path this returns using the same Supabase client it
+already has, which has no such limit since that's an ordinary storage
+download, not a function invocation payload.
 """
 
 import json
 import math
 import os
 import tempfile
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler
 
 import pyreadstat
@@ -33,6 +45,49 @@ READERS = {
     ".dta": pyreadstat.read_dta,
     ".sas7bdat": pyreadstat.read_sas7bdat,
 }
+
+DEFAULT_BUCKET = "documents"
+
+
+def _supabase_env() -> tuple[str, str]:
+    url = os.environ["NEXT_PUBLIC_SUPABASE_URL"].rstrip("/")
+    key = os.environ["SUPABASE_SECRET_KEY"]
+    return url, key
+
+
+def _storage_download(bucket: str, path: str) -> bytes:
+    base_url, key = _supabase_env()
+    request = urllib.request.Request(
+        f"{base_url}/storage/v1/object/{bucket}/{path}",
+        headers={"apikey": key, "Authorization": f"Bearer {key}"},
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Could not download {path} from storage ({exc.code}): {detail}") from exc
+
+
+def _storage_upload(bucket: str, path: str, data: bytes, content_type: str) -> None:
+    base_url, key = _supabase_env()
+    request = urllib.request.Request(
+        f"{base_url}/storage/v1/object/{bucket}/{path}",
+        data=data,
+        method="POST",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request):
+            pass
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Could not upload result to {path} ({exc.code}): {detail}") from exc
 
 
 def _clean_value(value):
@@ -129,11 +184,19 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            source_filename = self.headers.get("x-source-filename", "upload.sav")
             length = int(self.headers.get("content-length", 0))
-            body = self.rfile.read(length)
-            result = convert(body, source_filename)
-            self._send_json(200, result)
+            body = json.loads(self.rfile.read(length) or b"{}")
+            storage_path = body["storagePath"]
+            source_filename = body.get("sourceFilename", "upload.sav")
+            bucket = body.get("bucket", DEFAULT_BUCKET)
+
+            file_bytes = _storage_download(bucket, storage_path)
+            result = convert(file_bytes, source_filename)
+
+            result_path = f"{storage_path}.converted.json"
+            _storage_upload(bucket, result_path, json.dumps(result).encode("utf-8"), "application/json")
+
+            self._send_json(200, {"resultPath": result_path})
         except Exception as exc:  # noqa: BLE001 - surfaced to the Node caller as a clear parse failure
             self._send_json(500, {"error": str(exc)})
 
