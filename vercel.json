@@ -1,7 +1,1 @@
-{
-  "functions": {
-    "api/parse-stats-file.py": {
-      "runtime": "python3.12"
-    }
-  }
-}
+{}
