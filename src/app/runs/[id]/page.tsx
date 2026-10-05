@@ -39,7 +39,8 @@ import ProcessProgress from "./ProcessProgress";
 import WorkingDataTabs from "./WorkingDataTabs";
 import FindingsTable from "./FindingsTable";
 import ResearchAssistantCard, { type AssistantChatMessage } from "./ResearchAssistantCard";
-import { ArrowLeftIcon, UploadIcon, BoltIcon, DocumentIcon, ChartIcon, GridIcon, DownloadIcon, PresentationIcon, TranscriptIcon, ListIcon, SparkleIcon, TargetIcon, CheckIcon, ChatIcon, BookIcon } from "@/components/icons";
+import { ArrowLeftIcon, UploadIcon, BoltIcon, DocumentIcon, ChartIcon, GridIcon, DownloadIcon, PresentationIcon, TranscriptIcon, ListIcon, SparkleIcon, TargetIcon, CheckIcon, ChatIcon, BookIcon, InfoIcon } from "@/components/icons";
+import FileInput from "@/components/FileInput";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -132,6 +133,8 @@ type Finding = {
   source_cells: { rowIndices?: number[] } | null;
   duplicate_group_id: string | null;
   researcher_note: string | null;
+  pattern_type: string | null;
+  stated_stats: Record<string, unknown> | null;
 };
 
 async function getRun(runId: string): Promise<Run | null> {
@@ -237,7 +240,8 @@ async function getFindings(runId: string): Promise<Finding[]> {
       `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
               coalesce(d1.source_filename, d2.source_filename) as source_filename,
               c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
-              c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type
+              c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
+              c.pattern_type, c.stated_stats
        from findings c
        left join documents d1 on d1.id = c.source_document_id
        left join documents d2 on d2.id = c.source_table_id
@@ -2000,10 +2004,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   // has no evidence to infer an objective from until findings exist.
   const findingsSection = (
         <CollapsibleSection
-          key="findings"
+          key={`findings-${findings.some((f) => f.status === "pending")}`}
           title="Findings"
           icon={<ChartIcon className="h-4 w-4 text-primary" />}
-          defaultOpen={false}
+          defaultOpen={findings.some((f) => f.status === "pending")}
           headerRight={
             findings.length > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -2348,58 +2352,34 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         >
           <form action={uploadWithRunId} className="flex max-w-xl flex-col gap-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="block">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                  <DocumentIcon className="h-3.5 w-3.5 text-primary" />
-                  Reports
-                </span>
-                <input
-                  type="file"
-                  name="reportFiles"
-                  multiple
-                  className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                />
-              </label>
-              <label className="block">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                  <ChartIcon className="h-3.5 w-3.5 text-primary" />
-                  Tables
-                </span>
-                <input
-                  type="file"
-                  name="tableFiles"
-                  multiple
-                  accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                  className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                />
-                <span className="mt-1 block text-[11px] text-muted">Already aggregated</span>
-              </label>
-              <label className="block">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                  <GridIcon className="h-3.5 w-3.5 text-primary" />
-                  Raw data
-                </span>
-                <input
-                  type="file"
-                  name="rawTableFiles"
-                  multiple
-                  accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                  className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                />
-                <span className="mt-1 block text-[11px] text-muted">One row per respondent</span>
-              </label>
-              <label className="block">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                  <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
-                  Transcripts
-                </span>
-                <input
-                  type="file"
-                  name="transcriptFiles"
-                  multiple
-                  className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                />
-              </label>
+              <FileInput
+                name="reportFiles"
+                multiple
+                icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
+                label="Reports"
+              />
+              <FileInput
+                name="tableFiles"
+                multiple
+                accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+                icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
+                label="Tables"
+                caption="Already aggregated"
+              />
+              <FileInput
+                name="rawTableFiles"
+                multiple
+                accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+                icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
+                label="Raw data"
+                caption="One row per respondent"
+              />
+              <FileInput
+                name="transcriptFiles"
+                multiple
+                icon={<TranscriptIcon className="h-3.5 w-3.5 text-primary" />}
+                label="Transcripts"
+              />
             </div>
             <SubmitButton
               pendingLabel="Uploading..."
@@ -2614,7 +2594,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                                       </p>
                                       <div className="grid grid-cols-2 gap-2">
                                         <label className="block">
-                                          <span className="text-[10px] text-muted">Strata column</span>
+                                          <span
+                                            className="inline-flex items-center gap-1 text-[10px] text-muted"
+                                            title="Name the column that records which stratum (named sub-group) each respondent was drawn from, only if your sample was deliberately split into groups sampled at different rates (e.g. a province oversampled to get enough responses there). Leave on None for an ordinary simple-random or quota sample, the common case."
+                                          >
+                                            Strata column
+                                            <InfoIcon className="h-3 w-3 shrink-0" />
+                                          </span>
                                           <select
                                             name="strataColumn"
                                             defaultValue=""
@@ -2629,7 +2615,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                                           </select>
                                         </label>
                                         <label className="block">
-                                          <span className="text-[10px] text-muted">Weight column</span>
+                                          <span
+                                            className="inline-flex items-center gap-1 text-[10px] text-muted"
+                                            title="Name the numeric column that already holds each respondent's survey weight (a correction factor for being over- or under-represented in the raw sample), if your data has one. Leave on None if respondents should all count equally."
+                                          >
+                                            Weight column
+                                            <InfoIcon className="h-3 w-3 shrink-0" />
+                                          </span>
                                           <select
                                             name="weightColumn"
                                             defaultValue=""

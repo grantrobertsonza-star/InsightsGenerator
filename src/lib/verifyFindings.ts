@@ -218,11 +218,20 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
     if (finding.origin === "generated" && finding.stated_stats) {
       const { checks, cautions, caveats } = baseSizeCautionsFor(finding.stated_stats);
       const allCaveats = [...new Set([...caveats, ...extractionCaveatsFor(finding)])];
+      // A banner-comparison pattern that didn't reach significance is still
+      // surfaced as a finding (bannerPlanComputation.ts tags it rather than
+      // discarding it), but it isn't a real pattern the pipeline can stand
+      // behind. not_supported keeps it out of insight/recommendation
+      // generation (insightGenerator.ts only picks up robust/use_with_caution
+      // verdicts), while it still shows up here, badged, for review.
+      const notSignificant = allCaveats.includes("not_significant");
       prepared.push({
         findingId: finding.id,
-        verdictTier: cautions.length > 0 ? "use_with_caution" : "robust",
-        rationale:
-          cautions.length > 0
+        verdictTier: notSignificant ? "not_supported" : cautions.length > 0 ? "use_with_caution" : "robust",
+        rationale: notSignificant
+          ? `This comparison was computed by the pipeline but did not reach statistical significance, so the ` +
+            `apparent difference isn't a reliable pattern.${cautions.length > 0 ? ` ${cautions.join(" ")}` : ""}`
+          : cautions.length > 0
             ? `Statistically significant as computed by the pipeline. ${cautions.join(" ")}`
             : "Statistically significant as computed by the pipeline's own arithmetic, with no base-size caution.",
         statisticalChecks: { ...checks, caveats: allCaveats },

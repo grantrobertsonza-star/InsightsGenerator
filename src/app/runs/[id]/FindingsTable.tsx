@@ -22,6 +22,8 @@ type Finding = {
   source_cells: { rowIndices?: number[] } | null;
   duplicate_group_id: string | null;
   researcher_note: string | null;
+  pattern_type: string | null;
+  stated_stats: Record<string, unknown> | null;
 };
 
 type Viewer =
@@ -265,6 +267,23 @@ function DuplicateBadge() {
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-inset ring-amber-200 bg-amber-50"
     >
       <span aria-hidden>&#9888;</span> possible duplicate
+    </span>
+  );
+}
+
+function isNotSignificantComparison(finding: Pick<Finding, "pattern_type" | "stated_stats">): boolean {
+  if (finding.pattern_type !== "banner_comparison") return false;
+  const caveats = (finding.stated_stats as { caveats?: unknown } | null)?.caveats;
+  return Array.isArray(caveats) && caveats.includes("not_significant");
+}
+
+function NotSignificantBadge() {
+  return (
+    <span
+      title="This banner comparison was computed and tested, but the difference did not reach statistical significance. It's shown for completeness, not treated as a real pattern, and won't be carried into insights or recommendations."
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-200 bg-slate-50"
+    >
+      not significant
     </span>
   );
 }
@@ -820,6 +839,7 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                       <div className="flex flex-wrap items-center gap-1">
                         <OriginBadge origin={finding.origin} />
                         <DataTypeBadge dataType={finding.data_type} />
+                        {isNotSignificantComparison(finding) && <NotSignificantBadge />}
                       </div>
                       <ReviewButtons runId={runId} finding={finding} isPending={isPending} startTransition={startTransition} onOptimisticStatus={setOptimisticStatus} />
                     </div>
@@ -866,6 +886,7 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                           <div className="flex flex-wrap items-center gap-1">
                             <OriginBadge origin={finding.origin} />
                             <DataTypeBadge dataType={finding.data_type} />
+                            {isNotSignificantComparison(finding) && <NotSignificantBadge />}
                             <DuplicateBadge />
                           </div>
                           <ReviewButtons runId={runId} finding={finding} isPending={isPending} startTransition={startTransition} onOptimisticStatus={setOptimisticStatus} />
@@ -918,6 +939,7 @@ export default function FindingsTable({ runId, findings: findingsProp }: { runId
                       <div className="mb-1.5 flex flex-wrap items-center gap-1">
                         <OriginBadge origin={finding.origin} />
                         <DataTypeBadge dataType={finding.data_type} />
+                        {isNotSignificantComparison(finding) && <NotSignificantBadge />}
                         {finding.duplicate_group_id && <DuplicateBadge />}
                       </div>
                       <div className="text-foreground">{finding.finding_text}</div>

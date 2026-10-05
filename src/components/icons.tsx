@@ -207,3 +207,13 @@ export function BookIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function InfoIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 7.5h.01" />
+    </svg>
+  );
+}

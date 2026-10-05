@@ -73,9 +73,16 @@ function categoryPairs(categories: string[]): [string, string][] {
  * every pairwise comparison of a banner column's own categories (capped at
  * MAX_CATEGORY_CARDINALITY) -- never a search across columns not named,
  * which is exactly the discipline tableComputation.ts's disabled
- * decision-stump search lacked. Only significant comparisons are returned,
- * matching tableComputation.ts's own convention of surfacing findings
- * rather than every tested-and-rejected comparison.
+ * decision-stump search lacked.
+ *
+ * Per the 2026-10-05 decision, every tested comparison is returned, not
+ * just the significant ones: a non-significant result is tagged with a
+ * "not_significant" caveat instead of being discarded, so the Findings
+ * list shows the full pre-specified plan rather than only the differences
+ * that happened to clear significance. verifyFindings.ts reads that tag
+ * and routes the finding to a "not_supported" verdict, which keeps it out
+ * of insight and recommendation generation while still surfacing it, badged,
+ * for review.
  */
 export function computeBannerPlanPatterns(
   rows: Row[],
@@ -115,14 +122,15 @@ export function computeBannerPlanPatterns(
             .map(({ row }) => row[stubColumn])
             .filter((value): value is number => typeof value === "number");
           const comparison = compareGroupMeans(valuesA, valuesB);
-          if (!comparison.significant || comparison.mean1 === null || comparison.mean2 === null) continue;
+          if (comparison.mean1 === null || comparison.mean2 === null) continue;
 
           patterns.push({
             patternType: "banner_comparison",
             description:
               `${bannerColumn} "${catA}" averages ${comparison.mean1} on ${stubColumn} (n=${valuesA.length}), ` +
               `versus ${comparison.mean2} for "${catB}" (n=${valuesB.length}): a gap of ${comparison.gap} ` +
-              `(t=${comparison.tScore}).`,
+              `(t=${comparison.tScore}).` +
+              (comparison.significant ? "" : " Not statistically significant."),
             theme: `${bannerColumn} & ${stubColumn}`,
             statedStats: {
               ...comparison,
@@ -132,7 +140,9 @@ export function computeBannerPlanPatterns(
               n2: valuesB.length,
               bannerColumn,
               stubColumn,
-              caveats: ["uncorrected_multiple_comparisons", "sampling_assumed_random"],
+              caveats: comparison.significant
+                ? ["uncorrected_multiple_comparisons", "sampling_assumed_random"]
+                : ["not_significant", "uncorrected_multiple_comparisons", "sampling_assumed_random"],
             },
             rowIndices: [...groupA.map((g) => g.index), ...groupB.map((g) => g.index)],
           });
@@ -151,14 +161,14 @@ export function computeBannerPlanPatterns(
             const pA = countA / nA;
             const pB = countB / nB;
             const result = twoProportionGap(nA, pA, nB, pB);
-            if (!result.significant) continue;
 
             patterns.push({
               patternType: "banner_comparison",
               description:
                 `${bannerColumn} "${catA}" (n=${nA}) versus "${catB}" (n=${nB}) on ${stubColumn}="${stubCategory}": ` +
                 `${Math.round(pA * 1000) / 10}% vs ${Math.round(pB * 1000) / 10}% (gap ${result.gapPercent} pts, ` +
-                `z=${result.zScore}).`,
+                `z=${result.zScore}).` +
+                (result.significant ? "" : " Not statistically significant."),
               theme: `${bannerColumn} & ${stubColumn}`,
               statedStats: {
                 ...result,
@@ -169,7 +179,9 @@ export function computeBannerPlanPatterns(
                 bannerColumn,
                 stubColumn,
                 stubCategory,
-                caveats: ["uncorrected_multiple_comparisons", "sampling_assumed_random"],
+                caveats: result.significant
+                  ? ["uncorrected_multiple_comparisons", "sampling_assumed_random"]
+                  : ["not_significant", "uncorrected_multiple_comparisons", "sampling_assumed_random"],
               },
               rowIndices: [...groupA.map((g) => g.index), ...groupB.map((g) => g.index)],
             });

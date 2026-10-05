@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { deleteRun } from "@/lib/runActions";
 import DeleteRunButton from "./DeleteRunButton";
 import { BoltIcon, CheckIcon, DocumentIcon, ChartIcon, GridIcon, BookIcon, TranscriptIcon } from "@/components/icons";
+import FileInput from "@/components/FileInput";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractDocumentText } from "@/lib/extractFindings";
 import { extractBriefFields } from "@/lib/briefIntake";
@@ -392,58 +393,34 @@ export default async function Home({
                   with it.
                 </p>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <label className="block">
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                      <DocumentIcon className="h-3.5 w-3.5 text-primary" />
-                      Reports
-                    </span>
-                    <input
-                      type="file"
-                      name="reportFiles"
-                      multiple
-                      className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                      <ChartIcon className="h-3.5 w-3.5 text-primary" />
-                      Tables
-                    </span>
-                    <input
-                      type="file"
-                      name="tableFiles"
-                      multiple
-                      accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                      className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                    />
-                    <span className="mt-1 block text-[11px] text-muted">Already aggregated</span>
-                  </label>
-                  <label className="block">
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                      <GridIcon className="h-3.5 w-3.5 text-primary" />
-                      Raw data
-                    </span>
-                    <input
-                      type="file"
-                      name="rawTableFiles"
-                      multiple
-                      accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                      className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                    />
-                    <span className="mt-1 block text-[11px] text-muted">One row per respondent</span>
-                  </label>
-                  <label className="block">
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                      <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
-                      Transcripts
-                    </span>
-                    <input
-                      type="file"
-                      name="transcriptFiles"
-                      multiple
-                      className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                    />
-                  </label>
+                  <FileInput
+                    name="reportFiles"
+                    multiple
+                    icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Reports"
+                  />
+                  <FileInput
+                    name="tableFiles"
+                    multiple
+                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+                    icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Tables"
+                    caption="Already aggregated"
+                  />
+                  <FileInput
+                    name="rawTableFiles"
+                    multiple
+                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+                    icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Raw data"
+                    caption="One row per respondent"
+                  />
+                  <FileInput
+                    name="transcriptFiles"
+                    multiple
+                    icon={<TranscriptIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Transcripts"
+                  />
                 </div>
               </div>
               <label className="block">
