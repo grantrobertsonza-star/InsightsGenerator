@@ -1646,6 +1646,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
 
   const documents = await getDocuments(id);
   const findings = await getFindings(id);
+  // Which raw tables already have at least one finding from a previous
+  // "Compute banner comparisons" click -- the button itself is a full
+  // recompute (generateFindingsFromBannerPlan replaces this table's own
+  // findings each run, see archiveAndReplaceFindings), but its label read
+  // as a one-shot "do this once" action even once results already existed,
+  // which is what prompted the mislabeling question.
+  const tableIdsWithFindings = new Set(findings.map((f) => f.source_table_id).filter((tableId): tableId is string => tableId !== null));
   const latestProcessErrors = await getLatestProcessErrors(id);
   const documentTablePreviews = await getDocumentTablePreviews(id);
   const documentTablesByDocument = new Map<string, DocumentTablePreview[]>();
@@ -2792,7 +2799,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                                           className="flex items-center gap-1.5 rounded-lg bg-success px-2.5 py-1 text-[11px] font-medium text-white shadow-sm transition hover:opacity-90"
                                           icon={<ChartIcon className="h-3 w-3" />}
                                         >
-                                          Compute banner comparisons
+                                          {tableIdsWithFindings.has(t.id) ? "Recompute banner comparisons" : "Compute banner comparisons"}
                                         </SubmitButton>
                                       </form>
                                     )}
