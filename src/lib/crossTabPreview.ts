@@ -17,6 +17,7 @@
 // the real computation will do with the same plan.
 
 import { distinctCategories, isNumericColumn, MAX_CATEGORY_CARDINALITY } from "./bannerPlanComputation";
+import { oneWayAnova } from "./stats";
 
 type Row = Record<string, string | number | null>;
 
@@ -32,6 +33,13 @@ export type CategoricalCrossTab = {
   rowTotals: number[];
   bannerTruncated: boolean;
   stubTruncated: boolean;
+  // True when the banner column is itself a continuous numeric measurement
+  // (it only lands in this categorical branch because the STUB happened to
+  // be categorical) -- a cross-tab grid built from one-reading-per-row
+  // "categories" is never meaningful, independent of how many distinct
+  // values there happen to be, so this is called out as its own warning
+  // rather than folded into the cardinality-truncation one.
+  bannerIsNumeric: boolean;
 };
 
 export type NumericGroupSummary = {
@@ -43,6 +51,10 @@ export type NumericGroupSummary = {
   mean: (number | null)[];
   stdDev: (number | null)[];
   bannerTruncated: boolean;
+  // Only set when there are more than two banner categories, matching
+  // bannerPlanComputation.ts's own rule for when an omnibus ANOVA runs
+  // instead of a single pairwise comparison.
+  anova: { fStat: number | null; pValue: number | null; significant: boolean } | null;
 };
 
 export type CrossTabPreviewTable = CategoricalCrossTab | NumericGroupSummary;
@@ -94,6 +106,7 @@ export function computeCrossTabPreview(
         const n: number[] = [];
         const mean: (number | null)[] = [];
         const stdDev: (number | null)[] = [];
+        const valuesByCategory: number[][] = [];
         for (const category of bannerCategories) {
           const values = (groupsByCategory.get(category) ?? [])
             .map((row) => row[stubColumn])
@@ -101,8 +114,14 @@ export function computeCrossTabPreview(
           n.push(values.length);
           mean.push(values.length > 0 ? round(values.reduce((a, b) => a + b, 0) / values.length) : null);
           stdDev.push(sampleStdDev(values));
+          valuesByCategory.push(values);
         }
-        tables.push({ kind: "numeric", bannerColumn, stubColumn, bannerCategories, n, mean, stdDev, bannerTruncated });
+        let anova: NumericGroupSummary["anova"] = null;
+        if (bannerCategories.length > 2) {
+          const result = oneWayAnova(bannerCategories.map((category, i) => ({ label: category, values: valuesByCategory[i] })));
+          anova = { fStat: result.fStat, pValue: result.pValue, significant: result.significant };
+        }
+        tables.push({ kind: "numeric", bannerColumn, stubColumn, bannerCategories, n, mean, stdDev, bannerTruncated, anova });
       } else {
         const allStubCategories = distinctCategories(rows, stubColumn);
         const stubCategories = allStubCategories.slice(0, MAX_CATEGORY_CARDINALITY);
@@ -125,6 +144,7 @@ export function computeCrossTabPreview(
           rowTotals,
           bannerTruncated,
           stubTruncated,
+          bannerIsNumeric: isNumericColumn(rows, bannerColumn),
         });
       }
     }

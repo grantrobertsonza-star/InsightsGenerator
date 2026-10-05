@@ -213,3 +213,162 @@ export function findBestStumpSplit(
     tScore: best.tScore,
   };
 }
+
+// ---------------------------------------------------------------------------
+// One-way ANOVA: the correct omnibus test for "does this numeric outcome
+// differ across these groups overall", for a banner column with MORE than
+// two categories (bannerPlanComputation.ts uses compareGroupMeans directly
+// when there are exactly two, since an ANOVA across two groups reduces to
+// the same comparison). Unlike every other threshold in this file, which
+// approximates with a z-score lookup, the F-distribution's shape depends on
+// both degrees of freedom, so there's no small fixed table to reuse -- this
+// computes a real p-value via the regularized incomplete beta function
+// (Numerical Recipes' betacf/betai, the standard approach when no stats
+// library is available), rather than a cruder approximation.
+// ---------------------------------------------------------------------------
+
+function logGamma(x: number): number {
+  const g = 7;
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
+    1.5056327351493116e-7,
+  ];
+  if (x < 0.5) {
+    return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x);
+  }
+  const xm1 = x - 1;
+  let a = c[0];
+  const t = xm1 + g + 0.5;
+  for (let i = 1; i < g + 2; i++) a += c[i] / (xm1 + i);
+  return 0.5 * Math.log(2 * Math.PI) + (xm1 + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+function betaContinuedFraction(x: number, a: number, b: number): number {
+  const MAX_ITERATIONS = 200;
+  const EPSILON = 3e-9;
+  const MIN_VALUE = 1e-300;
+  const qab = a + b;
+  const qap = a + 1;
+  const qam = a - 1;
+  let c = 1;
+  let d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < MIN_VALUE) d = MIN_VALUE;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= MAX_ITERATIONS; m++) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < MIN_VALUE) d = MIN_VALUE;
+    c = 1 + aa / c;
+    if (Math.abs(c) < MIN_VALUE) c = MIN_VALUE;
+    d = 1 / d;
+    h *= d * c;
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < MIN_VALUE) d = MIN_VALUE;
+    c = 1 + aa / c;
+    if (Math.abs(c) < MIN_VALUE) c = MIN_VALUE;
+    d = 1 / d;
+    const delta = d * c;
+    h *= delta;
+    if (Math.abs(delta - 1) < EPSILON) break;
+  }
+  return h;
+}
+
+/** Regularized incomplete beta function I_x(a, b), used below to turn an
+ * F-statistic into a real p-value. */
+function regularizedIncompleteBeta(x: number, a: number, b: number): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const logBt = logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x);
+  const bt = Math.exp(logBt);
+  if (x < (a + 1) / (a + b + 2)) {
+    return (bt * betaContinuedFraction(x, a, b)) / a;
+  }
+  return 1 - (bt * betaContinuedFraction(1 - x, b, a)) / b;
+}
+
+/** The upper-tail p-value for an F-statistic with (d1, d2) degrees of
+ * freedom: P(F >= f). */
+export function fTestPValue(f: number, d1: number, d2: number): number {
+  if (f <= 0 || d1 <= 0 || d2 <= 0) return 1;
+  const x = d2 / (d2 + d1 * f);
+  return regularizedIncompleteBeta(x, d2 / 2, d1 / 2);
+}
+
+/**
+ * One-way ANOVA across any number of groups: tests whether a numeric
+ * outcome's mean genuinely differs across all of them at once, the single
+ * omnibus comparison market-research convention runs before (not instead
+ * of) pairwise post-hoc comparisons when a banner column has more than two
+ * categories. Groups with fewer than 2 values are dropped rather than
+ * failing the whole test, same tolerance compareGroupMeans has for a group
+ * too small to have a variance.
+ */
+export function oneWayAnova(
+  groups: { label: string; values: number[] }[],
+  confidence: 90 | 95 | 99 = 95
+): {
+  fStat: number | null;
+  pValue: number | null;
+  dfBetween: number | null;
+  dfWithin: number | null;
+  significant: boolean;
+  groupMeans: { label: string; n: number; mean: number }[];
+} {
+  const usable = groups.filter((g) => g.values.length >= 2);
+  if (usable.length < 2) {
+    return { fStat: null, pValue: null, dfBetween: null, dfWithin: null, significant: false, groupMeans: [] };
+  }
+
+  const groupMeansRaw = usable.map((g) => g.values.reduce((a, b) => a + b, 0) / g.values.length);
+  const allValues = usable.flatMap((g) => g.values);
+  const grandMean = allValues.reduce((a, b) => a + b, 0) / allValues.length;
+
+  const sumSquaresBetween = usable.reduce(
+    (sum, g, i) => sum + g.values.length * (groupMeansRaw[i] - grandMean) ** 2,
+    0
+  );
+  const sumSquaresWithin = usable.reduce(
+    (sum, g, i) => sum + g.values.reduce((s, v) => s + (v - groupMeansRaw[i]) ** 2, 0),
+    0
+  );
+
+  const dfBetween = usable.length - 1;
+  const dfWithin = allValues.length - usable.length;
+  const groupMeans = usable.map((g, i) => ({
+    label: g.label,
+    n: g.values.length,
+    mean: Math.round(groupMeansRaw[i] * 100) / 100,
+  }));
+
+  if (dfWithin <= 0) {
+    return { fStat: null, pValue: null, dfBetween, dfWithin, significant: false, groupMeans };
+  }
+
+  const meanSquareBetween = sumSquaresBetween / dfBetween;
+  const meanSquareWithin = sumSquaresWithin / dfWithin;
+
+  if (meanSquareWithin === 0) {
+    // Every group has zero internal spread: any non-zero gap between group
+    // means is as significant a difference as this data can show.
+    const significant = meanSquareBetween > 0;
+    return { fStat: null, pValue: significant ? 0 : 1, dfBetween, dfWithin, significant, groupMeans };
+  }
+
+  const fStat = meanSquareBetween / meanSquareWithin;
+  const pValue = fTestPValue(fStat, dfBetween, dfWithin);
+  const alpha = confidence === 90 ? 0.1 : confidence === 99 ? 0.01 : 0.05;
+
+  return {
+    fStat: Math.round(fStat * 100) / 100,
+    pValue: Math.round(pValue * 1000) / 1000,
+    dfBetween,
+    dfWithin,
+    significant: pValue < alpha,
+    groupMeans,
+  };
+}

@@ -27,7 +27,7 @@
 // agreed the field already runs on, and is tagged sampling_assumed_random
 // to disclose that rather than imply a real design was recreated.
 
-import { twoProportionGap, compareGroupMeans } from "./stats";
+import { twoProportionGap, compareGroupMeans, oneWayAnova } from "./stats";
 
 type Row = Record<string, string | number | null>;
 
@@ -109,6 +109,60 @@ export function computeBannerPlanPatterns(
       if (stubColumn === bannerColumn) continue;
       const stubIsNumeric = isNumericColumn(rows, stubColumn);
 
+      // Numeric stub with more than two banner categories: run the omnibus
+      // ANOVA first, exactly once for this banner/stub pair, instead of
+      // going straight to every pairwise combination. Pairwise comparisons
+      // only run afterward, and only if the ANOVA itself came back
+      // significant -- the standard "omnibus, then post-hoc" convention,
+      // which also means a banner column with many categories (common once
+      // School/Region/etc. have a dozen+ values) produces one honest answer
+      // to "do these groups differ at all" instead of dozens of individually
+      // underpowered, multiple-comparison-inflated pairwise tests.
+      if (stubIsNumeric && categories.length > 2) {
+        const anovaGroups = categories.map((category) => ({
+          label: category,
+          values: (groupsByCategory.get(category) ?? [])
+            .map(({ row }) => row[stubColumn])
+            .filter((value): value is number => typeof value === "number"),
+        }));
+        const anova = oneWayAnova(anovaGroups);
+        if (anova.fStat === null && anova.pValue === null) continue;
+
+        const allRowIndices = categories.flatMap((category) => (groupsByCategory.get(category) ?? []).map((g) => g.index));
+        const meansDescription = anova.groupMeans.map((g) => `${g.label}=${g.mean} (n=${g.n})`).join(", ");
+
+        patterns.push({
+          patternType: "banner_comparison",
+          description:
+            `${stubColumn} by ${bannerColumn} across ${anova.groupMeans.length} groups: ${meansDescription}` +
+            (anova.fStat !== null && anova.pValue !== null
+              ? ` (F=${anova.fStat}, p=${anova.pValue}).`
+              : ".") +
+            (anova.significant ? "" : " No significant difference across groups overall (one-way ANOVA)."),
+          theme: `${bannerColumn} & ${stubColumn}`,
+          statedStats: {
+            testType: "one_way_anova",
+            fStat: anova.fStat,
+            pValue: anova.pValue,
+            dfBetween: anova.dfBetween,
+            dfWithin: anova.dfWithin,
+            significant: anova.significant,
+            groupMeans: anova.groupMeans,
+            bannerColumn,
+            stubColumn,
+            caveats: anova.significant
+              ? ["sampling_assumed_random"]
+              : ["not_significant", "sampling_assumed_random"],
+          },
+          rowIndices: allRowIndices,
+        });
+
+        if (!anova.significant) continue;
+        // Falls through to the pairwise loop below only when the omnibus
+        // test found a real overall difference, to identify which specific
+        // groups it came from.
+      }
+
       for (const [catA, catB] of categoryPairs(categories)) {
         const groupA = groupsByCategory.get(catA) ?? [];
         const groupB = groupsByCategory.get(catB) ?? [];
@@ -124,13 +178,15 @@ export function computeBannerPlanPatterns(
           const comparison = compareGroupMeans(valuesA, valuesB);
           if (comparison.mean1 === null || comparison.mean2 === null) continue;
 
+          const isPostHoc = categories.length > 2;
           patterns.push({
             patternType: "banner_comparison",
             description:
               `${bannerColumn} "${catA}" averages ${comparison.mean1} on ${stubColumn} (n=${valuesA.length}), ` +
               `versus ${comparison.mean2} for "${catB}" (n=${valuesB.length}): a gap of ${comparison.gap} ` +
               `(t=${comparison.tScore}).` +
-              (comparison.significant ? "" : " Not statistically significant."),
+              (comparison.significant ? "" : " Not statistically significant.") +
+              (isPostHoc ? " Post-hoc pairwise comparison, following a significant overall difference across all groups." : ""),
             theme: `${bannerColumn} & ${stubColumn}`,
             statedStats: {
               ...comparison,
@@ -140,9 +196,12 @@ export function computeBannerPlanPatterns(
               n2: valuesB.length,
               bannerColumn,
               stubColumn,
-              caveats: comparison.significant
-                ? ["uncorrected_multiple_comparisons", "sampling_assumed_random"]
-                : ["not_significant", "uncorrected_multiple_comparisons", "sampling_assumed_random"],
+              caveats: [
+                ...(comparison.significant ? [] : ["not_significant"]),
+                "uncorrected_multiple_comparisons",
+                "sampling_assumed_random",
+                ...(isPostHoc ? ["post_hoc_after_significant_anova"] : []),
+              ],
             },
             rowIndices: [...groupA.map((g) => g.index), ...groupB.map((g) => g.index)],
           });

@@ -98,6 +98,28 @@ function baseSizeCautionsFor(
     caveats.push("base_size_unknown");
     cautions.push(`${String(stats.group2Label ?? "Group 2")}'s base size was not available, so its stability could not be checked.`);
   }
+
+  // A one-way ANOVA pattern (bannerPlanComputation.ts, for a banner column
+  // with more than two categories) has no n1/n2 at all -- it spans however
+  // many groups the banner has -- so it gets its own base-size pass across
+  // every group the test actually used, same informal n=30/50 bands, rather
+  // than silently skipping the check just because the two-group shape above
+  // doesn't match.
+  if (stats.testType === "one_way_anova" && Array.isArray(stats.groupMeans)) {
+    const groupChecks: Record<string, unknown> = {};
+    for (const group of stats.groupMeans) {
+      if (!group || typeof group !== "object") continue;
+      const label = typeof (group as { label?: unknown }).label === "string" ? (group as { label: string }).label : "a group";
+      const n = typeof (group as { n?: unknown }).n === "number" ? (group as { n: number }).n : null;
+      if (n === null) continue;
+      const check = checkBaseSize(n, label);
+      groupChecks[label] = check;
+      if (check.flag) cautions.push(check.flag);
+      if (check.tag) caveats.push(check.tag);
+    }
+    if (Object.keys(groupChecks).length > 0) checks.anova_group_base_sizes = groupChecks;
+  }
+
   return { checks, cautions, caveats };
 }
 

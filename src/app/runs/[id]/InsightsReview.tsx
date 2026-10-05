@@ -30,6 +30,7 @@ const CAVEAT_LABELS: Record<string, string> = {
   base_size_unknown: "Base size unknown",
   std_unknown: "Spread unknown",
   uncorrected_multiple_comparisons: "Multiple comparisons",
+  post_hoc_after_significant_anova: "Post-hoc (after significant ANOVA)",
 };
 
 function caveatLabel(caveat: string): string {

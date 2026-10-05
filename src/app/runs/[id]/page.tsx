@@ -1536,7 +1536,16 @@ function CrossTabPreviewSection({ tables }: { tables: CrossTabPreviewTable[] }) 
               <p className="mb-1 font-medium text-foreground">
                 {table.bannerColumn} &times; {table.stubColumn}
               </p>
-              {bannerIsTooGranular && (
+              {table.kind === "categorical" && table.bannerIsNumeric && (
+                <p className="mb-1 rounded border border-red-200 bg-red-50 px-1.5 py-1 text-red-800">
+                  {table.bannerColumn} holds continuous numeric readings, not categories, so this table is
+                  comparing individual values against each other row by row, which isn&apos;t meaningful
+                  regardless of how many distinct values there are. If you want a mean {table.bannerColumn} per{" "}
+                  {table.stubColumn}, swap them: make {table.stubColumn} the banner and {table.bannerColumn} the
+                  stub instead.
+                </p>
+              )}
+              {bannerIsTooGranular && !(table.kind === "categorical" && table.bannerIsNumeric) && (
                 <p className="mb-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-amber-800">
                   {table.bannerColumn} has more than {table.bannerCategories.length} distinct values; only the
                   first {table.bannerCategories.length} are shown below. A column this granular is closer to an
@@ -1582,6 +1591,19 @@ function CrossTabPreviewSection({ tables }: { tables: CrossTabPreviewTable[] }) 
                 </div>
               ) : (
                 <div className="overflow-x-auto">
+                  {table.anova && (
+                    <p
+                      className={`mb-1 inline-block rounded px-1.5 py-0.5 ${
+                        table.anova.significant ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500"
+                      }`}
+                    >
+                      One-way ANOVA across {table.bannerCategories.length} groups:{" "}
+                      {table.anova.fStat !== null && table.anova.pValue !== null
+                        ? `F=${table.anova.fStat}, p=${table.anova.pValue}`
+                        : "not enough data per group"}
+                      {table.anova.significant ? " -- significant overall" : " -- not significant overall"}
+                    </p>
+                  )}
                   <table className="w-full border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border">
@@ -2317,7 +2339,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   return (
     <>
       <header className="border-b border-border bg-white">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-6 py-5">
+        <div className="mx-auto flex max-w-[90rem] items-center gap-3 px-6 py-5">
           <Link href="/" className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-base font-bold text-white shadow-sm">
             IE
           </Link>
@@ -2333,7 +2355,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       </header>
       <div className="brand-accent-bar" />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12">
+      <main className="mx-auto w-full max-w-[90rem] flex-1 px-6 py-12">
         <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
           {run.project_name ?? run.research_objective ?? run.business_problem ?? "Untitled project"}
         </h1>
@@ -2543,7 +2565,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           }
         >
           {documents.length === 0 && <p className="text-sm text-muted">Nothing uploaded yet.</p>}
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {documents.map((doc) => {
               const extractAction = extractFindingsAction.bind(null, id, doc.id);
               const generateAction = generateFindingsAction.bind(null, id, doc.id);
