@@ -42,16 +42,16 @@ export type BannerComparisonPattern = {
 // Same bound tableComputation.ts uses for the same reason: an ID-like or
 // free-text column (hundreds of distinct values) named as a banner or stub
 // by mistake shouldn't turn into hundreds of categories compared pairwise.
-const MAX_CATEGORY_CARDINALITY = 10;
+export const MAX_CATEGORY_CARDINALITY = 10;
 
-function distinctCategories(rows: Row[], column: string): string[] {
+export function distinctCategories(rows: Row[], column: string): string[] {
   const present = rows
     .map((row) => row[column])
     .filter((value): value is string | number => value !== null && value !== undefined);
   return Array.from(new Set(present.map((value) => String(value))));
 }
 
-function isNumericColumn(rows: Row[], column: string): boolean {
+export function isNumericColumn(rows: Row[], column: string): boolean {
   const present = rows.map((row) => row[column]).filter((value) => value !== null && value !== undefined);
   if (present.length === 0) return false;
   return present.every((value) => typeof value === "number");

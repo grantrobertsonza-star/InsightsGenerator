@@ -41,6 +41,7 @@ import FindingsTable from "./FindingsTable";
 import ResearchAssistantCard, { type AssistantChatMessage } from "./ResearchAssistantCard";
 import { ArrowLeftIcon, UploadIcon, BoltIcon, DocumentIcon, ChartIcon, GridIcon, DownloadIcon, PresentationIcon, TranscriptIcon, ListIcon, SparkleIcon, TargetIcon, CheckIcon, ChatIcon, BookIcon, InfoIcon } from "@/components/icons";
 import FileInput from "@/components/FileInput";
+import { computeCrossTabPreview, type CrossTabPreviewTable } from "@/lib/crossTabPreview";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -1505,6 +1506,114 @@ async function uploadDocument(runId: string, formData: FormData) {
   revalidatePath(`/runs/${runId}`);
 }
 
+/**
+ * A quick, non-statistical look at a saved banner plan's shape, rendered
+ * right below it once both sides have at least one column (see
+ * computeCrossTabPreview for why a continuous stub gets a group-summary
+ * table here instead of a frequency grid). This is purely descriptive --
+ * nothing here runs a significance test or writes a finding -- so a
+ * degenerate column choice (a near-unique continuous measure ticked as a
+ * banner, say) is visible before "Compute banner comparisons" turns it
+ * into hundreds of meaningless findings.
+ */
+function CrossTabPreviewSection({ tables }: { tables: CrossTabPreviewTable[] }) {
+  if (tables.length === 0) return null;
+  return (
+    <details open className="mt-2 rounded-lg border border-border bg-white p-2 text-[11px]">
+      <summary className="cursor-pointer select-none font-medium text-foreground">
+        Preview cross-tabs ({tables.length})
+      </summary>
+      <p className="mt-1 text-muted">
+        Every banner x stub pairing in this plan, counts and averages only, no significance testing.
+        Check this before computing: a banner or stub column that looks sparse or near-unique here will
+        produce the same kind of noise once comparisons actually run.
+      </p>
+      <div className="mt-2 space-y-4">
+        {tables.map((table) => {
+          const bannerIsTooGranular = table.bannerTruncated;
+          return (
+            <div key={`${table.bannerColumn}__${table.stubColumn}`}>
+              <p className="mb-1 font-medium text-foreground">
+                {table.bannerColumn} &times; {table.stubColumn}
+              </p>
+              {bannerIsTooGranular && (
+                <p className="mb-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-amber-800">
+                  {table.bannerColumn} has more than {table.bannerCategories.length} distinct values; only the
+                  first {table.bannerCategories.length} are shown below. A column this granular is closer to an
+                  ID than a segment, and usually makes a poor banner.
+                </p>
+              )}
+              {table.kind === "categorical" ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="py-1 pr-3 font-semibold text-muted">{table.bannerColumn}</th>
+                        {table.stubCategories.map((stubCategory) => (
+                          <th key={stubCategory} className="py-1 pr-3 font-semibold text-muted">
+                            {stubCategory}
+                          </th>
+                        ))}
+                        <th className="py-1 pr-3 font-semibold text-muted">n</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {table.bannerCategories.map((bannerCategory, i) => (
+                        <tr key={bannerCategory} className="border-b border-border last:border-0">
+                          <td className="py-1 pr-3 text-foreground">{bannerCategory}</td>
+                          {table.counts[i].map((count, j) => (
+                            <td key={table.stubCategories[j]} className="py-1 pr-3 text-foreground">
+                              {count}
+                              {table.rowTotals[i] > 0 && (
+                                <span className="text-muted"> ({Math.round((count / table.rowTotals[i]) * 1000) / 10}%)</span>
+                              )}
+                            </td>
+                          ))}
+                          <td className="py-1 pr-3 text-muted">{table.rowTotals[i]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {table.stubTruncated && (
+                    <p className="mt-1 text-muted">
+                      Showing first {table.stubCategories.length} categories of {table.stubColumn}.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="py-1 pr-3 font-semibold text-muted">{table.bannerColumn}</th>
+                        <th className="py-1 pr-3 font-semibold text-muted">n</th>
+                        <th className="py-1 pr-3 font-semibold text-muted">Mean {table.stubColumn}</th>
+                        <th className="py-1 pr-3 font-semibold text-muted">Std dev</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {table.bannerCategories.map((bannerCategory, i) => (
+                        <tr key={bannerCategory} className="border-b border-border last:border-0">
+                          <td className="py-1 pr-3 text-foreground">{bannerCategory}</td>
+                          <td className="py-1 pr-3 text-foreground">{table.n[i]}</td>
+                          <td className="py-1 pr-3 text-foreground">{table.mean[i] ?? "--"}</td>
+                          <td className="py-1 pr-3 text-muted">
+                            {table.stdDev[i] ?? (table.n[i] < 2 ? "n too small" : "--")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
 export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const run = await getRun(id);
@@ -2644,6 +2753,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                                       </SubmitButton>
                                     </form>
                                   )}
+                                  {t.ingestion_type === "raw" &&
+                                    (t.banner_columns?.length ?? 0) > 0 &&
+                                    (t.stub_columns?.length ?? 0) > 0 && (
+                                      <CrossTabPreviewSection
+                                        tables={computeCrossTabPreview(t.rows, t.banner_columns ?? [], t.stub_columns ?? [])}
+                                      />
+                                    )}
                                   {t.ingestion_type === "raw" &&
                                     (t.banner_columns?.length ?? 0) > 0 &&
                                     (t.stub_columns?.length ?? 0) > 0 && (
