@@ -67,6 +67,93 @@ function categoryPairs(categories: string[]): [string, string][] {
   return pairs;
 }
 
+// A rounded p-value of 0 is a display artifact, not an actual zero
+// probability -- "p=0" reads as a mistake, so anything below the display's
+// own precision is written the conventional way instead.
+function formatPValue(p: number | null): string {
+  if (p === null) return "p n/a";
+  if (p < 0.001) return "p<0.001";
+  return `p=${p}`;
+}
+
+// These four build the actual sentence a researcher reads in the Findings
+// list. Per the user's own correction (2026-10-05), a finding needs to read
+// as a plain-English statement with the numbers backing it up, not a
+// formula-shaped printout of whatever the test happened to compute --
+// "AgeBand "45-54" (n=88) versus "18-24" (n=65) on X: 21.6% vs 21.5%" forces
+// the reader to do the interpretation themselves every time.
+
+function describeProportionGap(
+  bannerColumn: string,
+  stubColumn: string,
+  stubCategory: string,
+  catA: string,
+  catB: string,
+  nA: number,
+  nB: number,
+  pA: number,
+  pB: number,
+  result: { gapPercent: number; zScore: number | null; significant: boolean }
+): string {
+  const pctA = Math.round(pA * 1000) / 10;
+  const pctB = Math.round(pB * 1000) / 10;
+  const gapAbs = Math.abs(result.gapPercent);
+  const zText = result.zScore !== null ? `z=${result.zScore}` : "z n/a";
+  const subject = `${bannerColumn} "${catA}" and "${catB}"`;
+  if (result.gapPercent === 0) {
+    return `${subject} are equally likely to fall into ${stubColumn}="${stubCategory}" (${pctA}% vs ${pctB}%, n=${nA} vs ${nB}), no gap at all (${zText}).`;
+  }
+  const direction = result.gapPercent > 0 ? "more" : "less";
+  const sigClause = result.significant
+    ? `a statistically significant ${gapAbs}-point gap (${zText})`
+    : `not a statistically significant difference (${gapAbs}-point gap, ${zText})`;
+  return `${bannerColumn} "${catA}" is ${direction} likely than "${catB}" to fall into ${stubColumn}="${stubCategory}" ` +
+    `(${pctA}% vs ${pctB}%, n=${nA} vs ${nB}): ${sigClause}.`;
+}
+
+function describeMeanGap(
+  bannerColumn: string,
+  stubColumn: string,
+  catA: string,
+  catB: string,
+  nA: number,
+  nB: number,
+  comparison: { mean1: number; mean2: number; gap: number; tScore: number | null; significant: boolean },
+  isPostHoc: boolean
+): string {
+  const tText = comparison.tScore !== null ? `t=${comparison.tScore}` : "t n/a";
+  const subject = `${bannerColumn} "${catA}" and "${catB}"`;
+  let sentence: string;
+  if (comparison.gap === 0) {
+    sentence = `${subject} average the same on ${stubColumn} (${comparison.mean1}, n=${nA} vs ${nB}), no gap at all (${tText}).`;
+  } else {
+    const direction = comparison.gap > 0 ? "higher" : "lower";
+    const sigClause = comparison.significant
+      ? `a statistically significant gap of ${Math.abs(comparison.gap)} (${tText})`
+      : `not a statistically significant difference (gap of ${Math.abs(comparison.gap)}, ${tText})`;
+    sentence = `${bannerColumn} "${catA}" averages ${direction} on ${stubColumn} than "${catB}" ` +
+      `(${comparison.mean1} vs ${comparison.mean2}, n=${nA} vs ${nB}): ${sigClause}.`;
+  }
+  return sentence + (isPostHoc ? " Post-hoc comparison, following a significant overall difference across all groups." : "");
+}
+
+function describeAnova(
+  bannerColumn: string,
+  stubColumn: string,
+  anova: { fStat: number | null; pValue: number | null; significant: boolean; groupMeans: { label: string; n: number; mean: number }[] }
+): string {
+  const sorted = [...anova.groupMeans].sort((a, b) => b.mean - a.mean);
+  const listing = sorted.map((g) => `${g.label} ${g.mean} (n=${g.n})`).join(", ");
+  const statsText = anova.fStat !== null && anova.pValue !== null ? ` (F=${anova.fStat}, ${formatPValue(anova.pValue)})` : "";
+  if (!anova.significant) {
+    return `${stubColumn} looks broadly similar across ${bannerColumn} groups: ${listing}${statsText}, no statistically significant difference overall (one-way ANOVA).`;
+  }
+  const top = sorted[0];
+  const bottom = sorted[sorted.length - 1];
+  return `${stubColumn} differs by ${bannerColumn}: highest for "${top.label}" at ${top.mean}, lowest for "${bottom.label}" at ${bottom.mean} ` +
+    `(full breakdown: ${listing})${statsText}, a statistically significant spread across all ${sorted.length} groups (one-way ANOVA).`;
+}
+
 /**
  * Computes every pre-specified banner x stub comparison for one raw table.
  * Only ever tests the columns named in bannerColumns/stubColumns, via
@@ -159,9 +246,9 @@ export function computeBannerPlanPatterns(
             patterns.push({
               patternType: "banner_comparison",
               description:
-                `${stubColumn} for ${bannerColumn} "${category}": ${mean}` +
-                (values.length > 1 ? ` (n=${values.length}).` : ` (single reading).`) +
-                ` Too little data in this group to test against the others.`,
+                values.length > 1
+                  ? `${bannerColumn} "${category}" averages ${mean} on ${stubColumn} (n=${values.length}), too little data in this group alone to test against the others.`
+                  : `${bannerColumn} "${category}" has a single ${stubColumn} reading of ${mean}, too little data in this group alone to test against the others.`,
               theme: `${bannerColumn} & ${stubColumn}`,
               statedStats: {
                 testType: "descriptive_summary",
@@ -179,16 +266,10 @@ export function computeBannerPlanPatterns(
         }
 
         const allRowIndices = categories.flatMap((category) => (groupsByCategory.get(category) ?? []).map((g) => g.index));
-        const meansDescription = anova.groupMeans.map((g) => `${g.label}=${g.mean} (n=${g.n})`).join(", ");
 
         patterns.push({
           patternType: "banner_comparison",
-          description:
-            `${stubColumn} by ${bannerColumn} across ${anova.groupMeans.length} groups: ${meansDescription}` +
-            (anova.fStat !== null && anova.pValue !== null
-              ? ` (F=${anova.fStat}, p=${anova.pValue}).`
-              : ".") +
-            (anova.significant ? "" : " No significant difference across groups overall (one-way ANOVA)."),
+          description: describeAnova(bannerColumn, stubColumn, anova),
           theme: `${bannerColumn} & ${stubColumn}`,
           statedStats: {
             testType: "one_way_anova",
@@ -231,12 +312,16 @@ export function computeBannerPlanPatterns(
           const isPostHoc = categories.length > 2;
           patterns.push({
             patternType: "banner_comparison",
-            description:
-              `${bannerColumn} "${catA}" averages ${comparison.mean1} on ${stubColumn} (n=${valuesA.length}), ` +
-              `versus ${comparison.mean2} for "${catB}" (n=${valuesB.length}): a gap of ${comparison.gap} ` +
-              `(t=${comparison.tScore}).` +
-              (comparison.significant ? "" : " Not statistically significant.") +
-              (isPostHoc ? " Post-hoc pairwise comparison, following a significant overall difference across all groups." : ""),
+            description: describeMeanGap(
+              bannerColumn,
+              stubColumn,
+              catA,
+              catB,
+              valuesA.length,
+              valuesB.length,
+              { mean1: comparison.mean1, mean2: comparison.mean2, gap: comparison.gap ?? 0, tScore: comparison.tScore, significant: comparison.significant },
+              isPostHoc
+            ),
             theme: `${bannerColumn} & ${stubColumn}`,
             statedStats: {
               ...comparison,
@@ -273,11 +358,7 @@ export function computeBannerPlanPatterns(
 
             patterns.push({
               patternType: "banner_comparison",
-              description:
-                `${bannerColumn} "${catA}" (n=${nA}) versus "${catB}" (n=${nB}) on ${stubColumn}="${stubCategory}": ` +
-                `${Math.round(pA * 1000) / 10}% vs ${Math.round(pB * 1000) / 10}% (gap ${result.gapPercent} pts, ` +
-                `z=${result.zScore}).` +
-                (result.significant ? "" : " Not statistically significant."),
+              description: describeProportionGap(bannerColumn, stubColumn, stubCategory, catA, catB, nA, nB, pA, pB, result),
               theme: `${bannerColumn} & ${stubColumn}`,
               statedStats: {
                 ...result,
