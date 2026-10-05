@@ -33,13 +33,14 @@ export type CategoricalCrossTab = {
   rowTotals: number[];
   bannerTruncated: boolean;
   stubTruncated: boolean;
-  // True when the banner column is itself a continuous numeric measurement
-  // (it only lands in this categorical branch because the STUB happened to
-  // be categorical) -- a cross-tab grid built from one-reading-per-row
-  // "categories" is never meaningful, independent of how many distinct
-  // values there happen to be, so this is called out as its own warning
-  // rather than folded into the cardinality-truncation one.
-  bannerIsNumeric: boolean;
+  // True when the banner column is a continuous measurement in disguise:
+  // numeric AND past the cardinality cap (same rule computeBannerPlanPatterns
+  // uses to skip it outright). A cross-tab grid built from one-reading-per-
+  // row "categories" is never meaningful, so this is its own warning rather
+  // than folded into the generic truncation one -- but a numeric column
+  // with few distinct values (number of children, 0-4) is a legitimate
+  // discrete banner and does NOT trip this.
+  bannerIsContinuous: boolean;
 };
 
 export type NumericGroupSummary = {
@@ -144,7 +145,7 @@ export function computeCrossTabPreview(
           rowTotals,
           bannerTruncated,
           stubTruncated,
-          bannerIsNumeric: isNumericColumn(rows, bannerColumn),
+          bannerIsContinuous: isNumericColumn(rows, bannerColumn) && allBannerCategories.length > MAX_CATEGORY_CARDINALITY,
         });
       }
     }

@@ -1536,23 +1536,24 @@ function CrossTabPreviewSection({ tables }: { tables: CrossTabPreviewTable[] }) 
               <p className="mb-1 font-medium text-foreground">
                 {table.bannerColumn} &times; {table.stubColumn}
               </p>
-              {table.kind === "categorical" && table.bannerIsNumeric && (
+              {table.kind === "categorical" && table.bannerIsContinuous && (
                 <p className="mb-1 rounded border border-red-200 bg-red-50 px-1.5 py-1 text-red-800">
-                  {table.bannerColumn} holds continuous numeric readings, not categories, so this table is
-                  comparing individual values against each other row by row, which isn&apos;t meaningful
-                  regardless of how many distinct values there are. If you want a mean {table.bannerColumn} per{" "}
-                  {table.stubColumn}, swap them: make {table.stubColumn} the banner and {table.bannerColumn} the
-                  stub instead.
+                  {table.bannerColumn} looks like a continuous measurement rather than a set of categories
+                  (more than {table.bannerCategories.length} distinct values), so it&apos;s excluded as a banner:
+                  comparing individual readings against each other row by row isn&apos;t meaningful. If you want a
+                  mean {table.bannerColumn} per {table.stubColumn}, swap them: make {table.stubColumn} the banner
+                  and {table.bannerColumn} the stub instead. (Compute banner comparisons already skips this column
+                  as a banner for the same reason, nothing will actually be generated from it.)
                 </p>
               )}
-              {bannerIsTooGranular && !(table.kind === "categorical" && table.bannerIsNumeric) && (
+              {bannerIsTooGranular && !(table.kind === "categorical" && table.bannerIsContinuous) && (
                 <p className="mb-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-amber-800">
                   {table.bannerColumn} has more than {table.bannerCategories.length} distinct values; only the
                   first {table.bannerCategories.length} are shown below. A column this granular is closer to an
                   ID than a segment, and usually makes a poor banner.
                 </p>
               )}
-              {table.kind === "categorical" ? (
+              {table.kind === "categorical" && table.bannerIsContinuous ? null : table.kind === "categorical" ? (
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left">
                     <thead>

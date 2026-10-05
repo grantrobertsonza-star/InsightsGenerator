@@ -92,7 +92,20 @@ export function computeBannerPlanPatterns(
   const patterns: BannerComparisonPattern[] = [];
 
   for (const bannerColumn of bannerColumns) {
-    const categories = distinctCategories(rows, bannerColumn).slice(0, MAX_CATEGORY_CARDINALITY);
+    const allBannerCategories = distinctCategories(rows, bannerColumn);
+    // A banner column is meant to be a segmenting variable (Gender, Region,
+    // a handful of named groups), not a continuous measurement. A numeric
+    // column with more distinct values than the cardinality cap is a
+    // continuous reading in disguise (Arsenic_Level, a timestamp, an ID),
+    // and comparing individual readings against each other row by row is
+    // never meaningful, no matter how the categories get capped -- so this
+    // skips it entirely rather than silently truncating it into a
+    // degenerate comparison. A numeric column with few distinct values
+    // (say, number of children, 0-4) is a legitimate discrete banner and
+    // still goes through below.
+    if (isNumericColumn(rows, bannerColumn) && allBannerCategories.length > MAX_CATEGORY_CARDINALITY) continue;
+
+    const categories = allBannerCategories.slice(0, MAX_CATEGORY_CARDINALITY);
     if (categories.length < 2) continue;
 
     const groupsByCategory = new Map<string, { index: number; row: Row }[]>();
