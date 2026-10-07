@@ -229,11 +229,11 @@ export default function ObjectiveBriefReview({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-2xl text-sm text-muted">
-          Every objective suggested here is already accepted, so the project moves on without waiting on a
-          review step; the decision framer, and everything downstream of it, reads whichever objective(s)
-          are currently accepted as what this project is trying to learn, and a project can genuinely be
-          organized around more than one. Reject anything that doesn&apos;t belong (it never affects another
-          accepted one), edit one in place, or write your own below.
+          Add your own objective, or ask for suggestions once there are findings. Suggestions are only
+          proposals: nothing is checked against one until you accept it. Accepted objectives are what the
+          decision framer, and everything downstream of it, treat as what this project is trying to learn,
+          and a project can be organized around more than one. Reject anything that doesn&apos;t belong,
+          or edit one in place.
         </p>
         {hasFindings && (
           <button

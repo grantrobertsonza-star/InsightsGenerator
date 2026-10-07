@@ -104,7 +104,9 @@ async function loadContext(tenantId: string, runId: string) {
       status: "resolved" | "partial" | "gap";
       conclusion: string;
     }>(
-      `select item_kind, item_text, status, conclusion
+      `select item_kind, item_text,
+              case when inferred then 'inferred' else status end as status,
+              conclusion
        from objective_validations where run_id = $1 order by item_kind, item_order`,
       [runId]
     );

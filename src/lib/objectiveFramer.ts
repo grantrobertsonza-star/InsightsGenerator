@@ -29,7 +29,8 @@ const MAX_FINDINGS_FOR_PROMPT = 120;
  */
 export async function generateObjectiveCandidates(
   tenantId: string,
-  runId: string
+  runId: string,
+  unmatchedInsightHeadlines?: string[]
 ): Promise<{ id: string; candidate_text: string }[]> {
   const run = await withTenant(tenantId, async (client) => {
     const result = await client.query<{
@@ -98,6 +99,14 @@ export async function generateObjectiveCandidates(
       "genuinely different objectives the evidence could also support.\n\n"
     : "";
 
+  const unmatchedBlock =
+    unmatchedInsightHeadlines && unmatchedInsightHeadlines.length > 0
+      ? "The accepted insights below are not covered by any objective this project has stated. Prioritise " +
+        "candidate objectives that these insights would answer, and name the insight in the rationale:\n" +
+        unmatchedInsightHeadlines.map((h) => `- ${h}`).join("\n") +
+        "\n\n"
+      : "";
+
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 4096,
@@ -118,6 +127,7 @@ export async function generateObjectiveCandidates(
       problemBlock +
       upfrontBlock +
       alreadyAcceptedBlock +
+      unmatchedBlock +
       "Propose three to five candidate objectives or hypotheses. For each, give a short rationale naming " +
       "which themes in the evidence support proposing it. Do not invent an objective the evidence has " +
       "nothing to do with, and do not propose two candidates that are really the same question worded " +
@@ -237,12 +247,22 @@ export async function generateObjectiveCandidates(
         }
       }
 
+      // Inferred objectives are accepted automatically only when the
+      // researcher stated none (typed, or imported from a brief/proposal).
+      // Once a stated objective exists, suggestions stay pending: the
+      // researcher has already said what the project is for.
+      const stated = await client.query(
+        "select 1 from objective_candidates where run_id = $1 and source = 'researcher_authored' and status = 'accepted' limit 1",
+        [runId]
+      );
+      const suggestionStatus = stated.rows.length > 0 ? "pending" : "accepted";
+
       for (const candidate of validCandidates) {
         const result = await client.query<{ id: string; candidate_text: string }>(
           `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-           values ($1, $2, $3, $4, 'ai_suggested', 'pending')
+           values ($1, $2, $3, $4, 'ai_suggested', $5)
            returning id, candidate_text`,
-          [tenantId, runId, candidate.candidate_text, candidate.rationale]
+          [tenantId, runId, candidate.candidate_text, candidate.rationale, suggestionStatus]
         );
         rows.push(result.rows[0]);
       }

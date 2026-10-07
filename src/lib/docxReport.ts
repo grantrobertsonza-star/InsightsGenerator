@@ -142,7 +142,7 @@ export type NarrativeReportPillar = {
 export type NarrativeReportObjectiveItem = {
   item_kind: "objective" | "decision";
   item_text: string;
-  status: "resolved" | "partial" | "gap";
+  status: "resolved" | "partial" | "gap" | "inferred";
   conclusion: string;
 };
 
@@ -211,6 +211,7 @@ const statusLabel: Record<NarrativeReportObjectiveItem["status"], string> = {
   resolved: "Resolved",
   partial: "Partially answered",
   gap: "Gap",
+  inferred: "Inferred, not independently tested",
 };
 
 const priorityLabel: Record<NarrativeReportRecommendation["priority"], string> =
@@ -683,6 +684,17 @@ export async function buildNarrativeReportDocx(
         }),
       );
       children.push(body(item.conclusion, { color: MUTED }));
+    }
+    if (input.objectiveItems.some((i) => i.status === "inferred")) {
+      children.push(
+        body(
+          "Note on inferred objectives: where no objective was stated, objectives were generated from this " +
+            "project's own evidence. Because the same evidence was then used to check them, they cannot " +
+            "show that the research answered what was asked, so no verdict is given. Treat them as themes " +
+            "the evidence points to, and set a stated objective if a real test is needed.",
+          { italic: true, color: MUTED },
+        ),
+      );
     }
 
     if (input.unmappedInsightHeadlines.length > 0) {

@@ -23,9 +23,11 @@ export type ObjectiveValidation = {
   status: ValidationStatus;
   conclusion: string;
   synthesized_insight_ids: string[];
+  /** True for objectives the app inferred from this project's own evidence. */
+  inferred: boolean;
 };
 
-type RawItem = { kind: "objective" | "decision"; order: number; text: string };
+type RawItem = { kind: "objective" | "decision"; order: number; text: string; inferred?: boolean };
 
 /**
  * Standard market-research reporting practice: every research objective and
@@ -57,7 +59,7 @@ type RawItem = { kind: "objective" | "decision"; order: number; text: string };
  * conclusion rather than one blended verdict standing in for all of them.
  */
 export async function generateObjectiveValidation(tenantId: string, runId: string): Promise<ObjectiveValidation[]> {
-  const { run, insights } = await withTenant(tenantId, async (client) => {
+  const { run, insights, candidates } = await withTenant(tenantId, async (client) => {
     const runResult = await client.query<{
       research_objective: string | null;
       decision_statement: string | null;
@@ -71,7 +73,12 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       [runId]
     );
 
-    return { run: runResult.rows[0], insights: insightsResult.rows };
+    const candidatesResult = await client.query<{ candidate_text: string; source: string }>(
+      "select candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
+      [runId]
+    );
+
+    return { run: runResult.rows[0], insights: insightsResult.rows, candidates: candidatesResult.rows };
   });
 
   if (!run) {
@@ -84,10 +91,19 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     );
   }
 
-  const objectiveItems = parseNumberedItems(run.research_objective);
+  // Per accepted candidate when there are any, so inferred objectives can be
+  // told apart from stated ones; otherwise fall back to the run's own text.
   const decisionItems = parseNumberedItems(run.decision_statement);
+  const objectiveRaw: RawItem[] =
+    candidates.length > 0
+      ? candidates.map(
+          (c, order): RawItem => ({ kind: "objective", order, text: c.candidate_text, inferred: c.source === "ai_suggested" })
+        )
+      : parseNumberedItems(run.research_objective).map(
+          (text, order): RawItem => ({ kind: "objective", order, text, inferred: false })
+        );
   const items: RawItem[] = [
-    ...objectiveItems.map((text, order): RawItem => ({ kind: "objective", order, text })),
+    ...objectiveRaw,
     ...decisionItems.map((text, order): RawItem => ({ kind: "decision", order, text })),
   ];
 
@@ -213,6 +229,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
         35
       ),
       synthesized_insight_ids: result?.insightIds ?? [],
+      inferred: item.inferred === true,
     };
   });
 
@@ -221,8 +238,8 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     for (const validation of validations) {
       await client.query(
         `insert into objective_validations
-           (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, generated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
+           (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
         [
           tenantId,
           runId,
@@ -232,6 +249,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
           validation.status,
           validation.conclusion,
           validation.synthesized_insight_ids,
+          validation.inferred,
         ]
       );
     }

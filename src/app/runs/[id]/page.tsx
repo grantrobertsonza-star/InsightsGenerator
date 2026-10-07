@@ -47,6 +47,9 @@ import {
 import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
 import ObjectiveBriefReview from "./ObjectiveBriefReview";
+import RunContextForm from "./RunContextForm";
+import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
+import ObjectiveCoverage from "./ObjectiveCoverage";
 import RecommendationsReview from "./RecommendationsReview";
 import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
 import InsightsReview from "./InsightsReview";
@@ -1287,7 +1290,7 @@ async function getObjectiveValidations(
 ): Promise<ObjectiveValidation[]> {
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ObjectiveValidation>(
-      `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids
+      `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred
        from objective_validations
        where run_id = $1
        order by item_kind, item_order`,
@@ -1477,12 +1480,55 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
 // reads runs.research_objective. Accepting one is still a manual step the
 // researcher takes on the Objective brief screen, this only makes sure
 // there's something to accept.
+// Ties the synthesized insights back to the stated objectives and decisions
+// after each analysis run. Skipped when none exist (objectives are optional).
+// Failures are logged, never thrown, so they cannot stop the pipeline.
+async function refreshObjectiveValidation(runId: string) {
+  try {
+    const has = await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ n: boolean }>(
+        `select (coalesce(trim(research_objective), '') <> '' or coalesce(trim(decision_statement), '') <> '') as n
+         from runs where id = $1`,
+        [runId],
+      );
+      return r.rows[0]?.n === true;
+    });
+    if (!has) return;
+    await generateObjectiveValidation(TENANT_ID, runId);
+  } catch (error) {
+    await withTenant(TENANT_ID, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
+      );
+    }).catch(() => {});
+  }
+}
+
 async function refreshObjectiveCandidates(runId: string) {
-  // Deliberately a no-op. Objectives are optional: when the researcher gave
-  // none, the run proceeds without one and nothing is scored against an
-  // inferred objective. Suggestions are only generated when the researcher
-  // asks for them (Objective screen, "Suggest objectives from these findings").
-  void runId;
+  // Objectives are optional. When the researcher stated none (typed or
+  // imported from a brief), objectives are inferred from the findings and
+  // accepted automatically, marked as inferred so reports can flag that
+  // their coverage is circular. Once a stated objective exists this does
+  // nothing; suggestions are then only made on request.
+  try {
+    const hasStated = await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query(
+        "select 1 from objective_candidates where run_id = $1 and source = 'researcher_authored' and status = 'accepted' limit 1",
+        [runId],
+      );
+      return r.rows.length > 0;
+    });
+    if (hasStated) return;
+    await generateObjectiveCandidates(TENANT_ID, runId);
+  } catch (error) {
+    await withTenant(TENANT_ID, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
+        [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
+      );
+    }).catch(() => {});
+  }
 }
 
 async function refreshDecisionCandidates(runId: string) {
@@ -2336,6 +2382,7 @@ async function processRunAction(
       await stage("synthesis", async () => {
         await refreshSynthesizedInsights(TENANT_ID, runId);
         await refreshSynthesizedInsightQuality(TENANT_ID, runId);
+        await refreshObjectiveValidation(runId);
       });
       await stage("recommendations", () =>
         refreshRecommendations(TENANT_ID, runId),
@@ -3247,7 +3294,12 @@ export default async function RunPage({
             <ul className="space-y-2">
               {objectiveValidations.map((item, index) => {
                 const badge =
-                  item.status === "resolved"
+                  item.inferred
+                    ? {
+                        label: "Inferred",
+                        className: "bg-slate-100 text-slate-600",
+                      }
+                    : item.status === "resolved"
                     ? {
                         label: "Resolved",
                         className: "bg-emerald-100 text-emerald-800",
@@ -3278,7 +3330,12 @@ export default async function RunPage({
                     <p className="mt-0.5 font-medium text-foreground">
                       {item.item_text}
                     </p>
-                    <p className="text-muted">{item.conclusion}</p>
+                    <p className="text-muted">
+                      {item.inferred
+                        ? "Inferred from this project's own evidence, so not an independent test. "
+                        : ""}
+                      {item.conclusion}
+                    </p>
                   </li>
                 );
               })}
@@ -3584,8 +3641,8 @@ export default async function RunPage({
   // the same regression objectiveKnownUpfront already fixed for the content
   // order (RunPage) but never for this list.
   const navSections: RunNavSection[] = [
-    { id: "upload", group: "Setup", label: "Set up" },
-    { id: "objective", group: "Setup", label: "Objective (optional)" },
+    { id: "objective", group: "Setup", label: "Objective and context" },
+    { id: "upload", group: "Setup", label: "Import data" },
     {
       id: "findings",
       group: "Analysis",
@@ -3626,11 +3683,14 @@ export default async function RunPage({
   // gating steps (see the reached/done flags above) is next up, falling
   // back to Findings -- the raw evidence, always relevant -- once nothing
   // is pending.
-  const defaultSectionId = !objectiveDone
-    ? "objective"
-    : decisionReached && !decisionDone
-      ? "decisions"
-      : "findings";
+  // A new project starts with context (all optional), then data import;
+  // once there are documents, the work is Findings.
+  const defaultSectionId =
+    documents.length === 0
+      ? "objective"
+      : findings.length === 0
+        ? "upload"
+        : "findings";
 
   return (
     <RunSectionProvider
@@ -3699,11 +3759,11 @@ export default async function RunPage({
         <div className="px-8 py-8">
           <SectionPanel id="upload">
             <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Set up
+              Import data
             </h2>
             <CollapsibleSection
               key={`upload-${uploadDone}`}
-              title="Upload additional documents"
+              title="Upload documents"
               bare
               icon={<UploadIcon className="h-4 w-4 text-primary" />}
               defaultOpen={!uploadDone}
@@ -3911,13 +3971,32 @@ export default async function RunPage({
 
           <SectionPanel id="objective">
             <h2 className="mb-2 text-xl font-semibold text-foreground">
-              Objective (optional)
+              Objective and context
             </h2>
             <p className="mb-5 text-sm text-muted">
               {run.research_objective && run.research_objective.trim().length > 0
-                ? "Findings and insights are checked against this objective."
-                : "No objective set. The analysis runs without one, and nothing is scored against an assumed objective. You can add your own, or ask for suggestions once there are findings."}
+                ? "Optional. Each objective is checked against the insights after every analysis run, and evidence that matches none is listed for you."
+                : "Optional. No objective set, so the analysis runs without one and nothing is judged against an assumed objective. You can add your own, or ask for suggestions once there are findings."}
             </p>
+            <RunContextForm
+              runId={id}
+              businessProblem={run.business_problem}
+              objective={run.initial_research_objective}
+              audience={run.audience}
+            />
+            <ObjectiveCoverage
+              runId={id}
+              validations={objectiveValidations}
+              insights={synthesizedInsights.map((i) => ({
+                id: i.id,
+                headline: i.headline,
+                review_status: i.review_status,
+              }))}
+              hasObjectiveOrDecision={Boolean(
+                (run.research_objective && run.research_objective.trim()) ||
+                  (run.decision_statement && run.decision_statement.trim()),
+              )}
+            />
             {objectiveSection}
           </SectionPanel>
 

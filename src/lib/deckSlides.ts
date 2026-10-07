@@ -87,7 +87,7 @@ export const PRIORITY_BADGES: Record<
   low: { glyph: "●", label: "LOW PRIORITY", color: COLORS.low }, // ●
 };
 
-type ValidationStatus = "resolved" | "partial" | "gap";
+type ValidationStatus = "resolved" | "partial" | "gap" | "inferred";
 
 /**
  * Icon + label pairs for the objective/decision validator's per-item
@@ -103,6 +103,7 @@ export const VALIDATION_BADGES: Record<
   resolved: { glyph: "●", label: "RESOLVED", color: COLORS.strong },
   partial: { glyph: "▲", label: "PARTIAL", color: COLORS.moderate },
   gap: { glyph: "?", label: "GAP", color: COLORS.exploratory },
+  inferred: { glyph: "◇", label: "INFERRED", color: COLORS.exploratory },
 };
 
 /**

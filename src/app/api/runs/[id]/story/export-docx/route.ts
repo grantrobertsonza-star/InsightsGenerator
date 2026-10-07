@@ -106,7 +106,9 @@ export async function GET(
 
     const objectiveValidationsResult =
       await client.query<NarrativeReportObjectiveItem>(
-        `select item_kind, item_text, status, conclusion
+        `select item_kind, item_text,
+              case when inferred then 'inferred' else status end as status,
+              case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion
        from objective_validations
        where run_id = $1
        order by item_kind, item_order`,
@@ -119,8 +121,9 @@ export async function GET(
        where si.run_id = $1 and si.review_status = 'accepted'
          and not exists (
            select 1 from objective_validations ov
-           where ov.run_id = $1 and si.id = any(ov.synthesized_insight_ids)
-         )`,
+           where ov.run_id = $1 and ov.inferred = false and si.id = any(ov.synthesized_insight_ids)
+         )
+         and exists (select 1 from objective_validations x where x.run_id = $1 and x.inferred = false)`,
       [runId],
     );
 
