@@ -240,16 +240,18 @@ export async function generateObjectiveCandidates(
       for (const candidate of validCandidates) {
         const result = await client.query<{ id: string; candidate_text: string }>(
           `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-           values ($1, $2, $3, $4, 'ai_suggested', 'accepted')
+           values ($1, $2, $3, $4, 'ai_suggested', 'pending')
            returning id, candidate_text`,
           [tenantId, runId, candidate.candidate_text, candidate.rationale]
         );
         rows.push(result.rows[0]);
       }
 
-      // Everything above just landed already accepted (see the status
-      // literals), so runs.research_objective needs to pick that up now,
-      // not only on a later manual accept click. Still inside the same
+      // The researcher's own carried-over text lands accepted; AI
+      // suggestions now land pending and are never scored against until
+      // the researcher accepts one (an objective inferred from the same
+      // findings it would then judge is circular). This sync picks up the
+      // researcher's own text, not only on a later manual accept click. Still inside the same
       // transaction, so a rollback on failure undoes this with everything
       // else.
       await syncResearchObjective(client, runId);

@@ -8,7 +8,6 @@ import { detectDuplicateFindings } from "./dedupe";
 import { refreshVerdicts } from "./verifyFindings";
 import { refreshStatedInsightValidations } from "./validateStatedInsights";
 import { refreshInsights } from "./insightGenerator";
-import { generateObjectiveCandidates } from "./objectiveFramer";
 import { generateDecisionCandidates } from "./decisionFramer";
 import { refreshSynthesizedInsights } from "./insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "./synthesizedInsightQualityScorer";
@@ -50,16 +49,8 @@ export async function sendAssistantMessage(
 // having nothing to propose (or failing) should stop a document uploaded
 // here from otherwise going through the full extract/verify/insight chain.
 async function refreshObjectiveCandidatesQuietly(runId: string) {
-  try {
-    await generateObjectiveCandidates(TENANT_ID, runId);
-  } catch (error) {
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
-        [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
-      );
-    });
-  }
+  // No-op by design: objectives are optional and never inferred automatically.
+  void runId;
 }
 
 async function refreshDecisionCandidatesQuietly(runId: string) {

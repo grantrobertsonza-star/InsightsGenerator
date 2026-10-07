@@ -19,7 +19,6 @@ import { mapWithConcurrency } from "@/lib/concurrency";
 import { deleteDocument } from "@/lib/documentActions";
 import { storeUploadedDocument } from "@/lib/documentUpload";
 import { generateDecisionCandidates } from "@/lib/decisionFramer";
-import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshVerdicts, reverifyFindings } from "@/lib/verifyFindings";
 import { refreshStatedInsightValidations } from "@/lib/validateStatedInsights";
 import {
@@ -1479,22 +1478,11 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
 // researcher takes on the Objective brief screen, this only makes sure
 // there's something to accept.
 async function refreshObjectiveCandidates(runId: string) {
-  try {
-    await generateObjectiveCandidates(TENANT_ID, runId);
-  } catch (error) {
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
-        [
-          TENANT_ID,
-          runId,
-          JSON.stringify({
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        ],
-      );
-    });
-  }
+  // Deliberately a no-op. Objectives are optional: when the researcher gave
+  // none, the run proceeds without one and nothing is scored against an
+  // inferred objective. Suggestions are only generated when the researcher
+  // asks for them (Objective screen, "Suggest objectives from these findings").
+  void runId;
 }
 
 async function refreshDecisionCandidates(runId: string) {
@@ -3596,35 +3584,18 @@ export default async function RunPage({
   // the same regression objectiveKnownUpfront already fixed for the content
   // order (RunPage) but never for this list.
   const navSections: RunNavSection[] = [
-    ...(objectiveKnownUpfront
-      ? [{ id: "objective", group: "Setup", label: "Objective setting" }]
-      : []),
-    { id: "upload", group: "Setup", label: "Upload documents" },
-    {
-      id: "documents",
-      group: "Setup",
-      label: "Documents",
-      badge: documents.length,
-    },
+    { id: "upload", group: "Setup", label: "Set up" },
+    { id: "objective", group: "Setup", label: "Objective (optional)" },
     {
       id: "findings",
       group: "Analysis",
       label: "Findings",
       badge: findings.length,
     },
-    ...(objectiveKnownUpfront
-      ? []
-      : [{ id: "objective", group: "Analysis", label: "Objective setting" }]),
-    {
-      id: "validations",
-      group: "Analysis",
-      label: "Report validations",
-      badge: statedInsightValidations.length,
-    },
     {
       id: "synthesized",
       group: "Analysis",
-      label: "Synthesized insights",
+      label: "Insights",
       badge: synthesizedInsights.length,
     },
     { id: "decisions", group: decisionGroup, label: "Business decisions" },
@@ -3695,8 +3666,117 @@ export default async function RunPage({
               about this project's identity, not any one analysis step), but
               lived outside every SectionPanel, so it rendered above
               whichever section was selected instead of only on Documents. */}
-          <SectionPanel id="documents">
-            <div className="mb-8 rounded-lg border border-dashed border-border bg-slate-50 p-4">
+
+          {latestProcessErrors && (
+            <div className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <p className="font-medium">
+                The last processing run hit an error on{" "}
+                {latestProcessErrors.errors.length === 1
+                  ? "one document"
+                  : `${latestProcessErrors.errors.length} documents`}
+                , at {new Date(latestProcessErrors.occurredAt).toLocaleString()}
+                .
+              </p>
+              <p className="mt-1 text-red-800">
+                Whatever succeeded elsewhere in that run still went through;
+                only the document(s) below didn&apos;t. Try processing again,
+                and if the same error keeps coming back, it&apos;s worth looking
+                into rather than retrying.
+              </p>
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-red-800">
+                {latestProcessErrors.errors.map((error, index) => (
+                  <li key={index} className="break-words">
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <RunNav sections={navSections} />
+
+        <div className="px-8 py-8">
+          <SectionPanel id="upload">
+            <h2 className="mb-5 text-xl font-semibold text-foreground">
+              Set up
+            </h2>
+            <CollapsibleSection
+              key={`upload-${uploadDone}`}
+              title="Upload additional documents"
+              bare
+              icon={<UploadIcon className="h-4 w-4 text-primary" />}
+              defaultOpen={!uploadDone}
+            >
+              <form
+                action={uploadWithRunId}
+                className="flex max-w-xl flex-col gap-3"
+              >
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <FileInput
+                    name="reportFiles"
+                    multiple
+                    icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Reports"
+                  />
+                  <FileInput
+                    name="tableFiles"
+                    multiple
+                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+                    icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Tables"
+                    caption="Already aggregated"
+                  />
+                  <FileInput
+                    name="rawTableFiles"
+                    multiple
+                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+                    icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
+                    label="Quant data"
+                    caption="One row per respondent"
+                  />
+                  <FileInput
+                    name="transcriptFiles"
+                    multiple
+                    icon={
+                      <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
+                    }
+                    label="Qual data"
+                    caption="Coded or uncoded"
+                  />
+                </div>
+                <SubmitButton
+                  pendingLabel="Uploading..."
+                  className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                  icon={<UploadIcon className="h-4 w-4" />}
+                >
+                  Upload
+                </SubmitButton>
+              </form>
+            </CollapsibleSection>
+          </SectionPanel>
+
+          {documents.some((d) => d.kind === "transcript") && (
+            <SectionPanel id="upload">
+              <TranscriptSetupTable
+                  runId={id}
+                  rows={documents
+                    .filter((d) => d.kind === "transcript")
+                    .map((d) => ({
+                      documentId: d.id,
+                      filename: d.source_filename,
+                      initial: transcriptSetups.get(d.id) ?? null,
+                      suggestion: setupSuggestions.get(d.id) ?? null,
+                      hasCoding: codebooksByDocument.has(d.id),
+                      accent:
+                        DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
+                    }))}
+                />
+            </SectionPanel>
+          )}
+
+          <SectionPanel id="upload">
+            <div className="mt-8 rounded-lg border border-dashed border-border bg-slate-50 p-4">
               <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <ChartIcon className="h-4 w-4 text-primary" />
                 Tracking
@@ -3803,118 +3883,65 @@ export default async function RunPage({
             </div>
           </SectionPanel>
 
-          {latestProcessErrors && (
-            <div className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-              <p className="font-medium">
-                The last processing run hit an error on{" "}
-                {latestProcessErrors.errors.length === 1
-                  ? "one document"
-                  : `${latestProcessErrors.errors.length} documents`}
-                , at {new Date(latestProcessErrors.occurredAt).toLocaleString()}
-                .
-              </p>
-              <p className="mt-1 text-red-800">
-                Whatever succeeded elsewhere in that run still went through;
-                only the document(s) below didn&apos;t. Try processing again,
-                and if the same error keeps coming back, it&apos;s worth looking
-                into rather than retrying.
-              </p>
-              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-red-800">
-                {latestProcessErrors.errors.map((error, index) => (
-                  <li key={index} className="break-words">
-                    {error}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        <RunNav sections={navSections} />
-
-        <div className="px-8 py-8">
-          <SectionPanel id="upload">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Upload documents
-            </h2>
-            <CollapsibleSection
-              key={`upload-${uploadDone}`}
-              title="Upload additional documents"
-              bare
-              icon={<UploadIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={!uploadDone}
-            >
-              <form
-                action={uploadWithRunId}
-                className="flex max-w-xl flex-col gap-3"
-              >
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <FileInput
-                    name="reportFiles"
-                    multiple
-                    icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Reports"
-                  />
-                  <FileInput
-                    name="tableFiles"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                    icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Tables"
-                    caption="Already aggregated"
-                  />
-                  <FileInput
-                    name="rawTableFiles"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                    icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Quant data"
-                    caption="One row per respondent"
-                  />
-                  <FileInput
-                    name="transcriptFiles"
-                    multiple
-                    icon={
-                      <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
-                    }
-                    label="Qual data"
-                    caption="Coded or uncoded"
-                  />
+          {documents.length > 0 && (
+            <SectionPanel id="upload">
+              <div className="mt-8 rounded-lg border border-border bg-white p-4">
+                <div className="mb-1 text-sm font-semibold text-foreground">
+                  Run analysis
                 </div>
-                <SubmitButton
-                  pendingLabel="Uploading..."
-                  className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                  icon={<UploadIcon className="h-4 w-4" />}
-                >
-                  Upload
-                </SubmitButton>
-              </form>
-            </CollapsibleSection>
-          </SectionPanel>
-
-          {documents.some((d) => d.kind === "transcript") && (
-            <SectionPanel id="documents">
-              <TranscriptSetupTable
-                  runId={id}
-                  rows={documents
-                    .filter((d) => d.kind === "transcript")
-                    .map((d) => ({
-                      documentId: d.id,
-                      filename: d.source_filename,
-                      initial: transcriptSetups.get(d.id) ?? null,
-                      suggestion: setupSuggestions.get(d.id) ?? null,
-                      hasCoding: codebooksByDocument.has(d.id),
-                      accent:
-                        DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
-                    }))}
-                />
+                <p className="mb-3 text-xs text-muted">
+                  Reads the files, codes the transcripts, checks the findings
+                  and writes the insights. Everything is accepted by default;
+                  you can review or change any of it afterwards.
+                </p>
+                <form action={processRunWithId} className="flex flex-col gap-2">
+                  <SubmitButton
+                    pendingLabel="Running..."
+                    className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                    icon={<BoltIcon className="h-4 w-4" />}
+                  >
+                    Run analysis
+                  </SubmitButton>
+                  <ProcessProgress runId={id} />
+                </form>
+              </div>
             </SectionPanel>
           )}
 
-          <SectionPanel id="documents">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Documents
+
+          <SectionPanel id="objective">
+            <h2 className="mb-2 text-xl font-semibold text-foreground">
+              Objective (optional)
             </h2>
+            <p className="mb-5 text-sm text-muted">
+              {run.research_objective && run.research_objective.trim().length > 0
+                ? "Findings and insights are checked against this objective."
+                : "No objective set. The analysis runs without one, and nothing is scored against an assumed objective. You can add your own, or ask for suggestions once there are findings."}
+            </p>
+            {objectiveSection}
+          </SectionPanel>
+
+          <SectionPanel id="findings">
+            <h2 className="mb-5 text-xl font-semibold text-foreground">
+              Findings
+            </h2>
+            <WorkingDataTabs
+              tabs={[
+                {
+                  id: "findings",
+                  label: `Findings (${findings.length})`,
+                  content: findingsSection,
+                },
+                {
+                  id: "report-claims",
+                  label: `Report claims${statedInsightValidations.length > 0 ? ` (${statedInsightValidations.length})` : ""}`,
+                  content: statedInsightValidationsSection,
+                },
+                {
+                  id: "files",
+                  label: `Files and evidence (${documents.length})`,
+                  content: (
+                    <>
             <CollapsibleSection
               key={`documents-${documentsReached}-${documentsDone}`}
               title="Documents"
@@ -3924,16 +3951,6 @@ export default async function RunPage({
               headerRight={
                 documents.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-2">
-                    <form action={processRunWithId}>
-                      <SubmitButton
-                        pendingLabel="Processing..."
-                        className="flex items-center gap-2 whitespace-nowrap rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                        icon={<BoltIcon className="h-4 w-4" />}
-                      >
-                        Process new documents
-                      </SubmitButton>
-                      <ProcessProgress runId={id} />
-                    </form>
                     <form action={regenerateUnreviewedWithId}>
                       <SubmitButton
                         pendingLabel="Regenerating..."
@@ -4508,28 +4525,13 @@ export default async function RunPage({
                 ]}
               />
             </CollapsibleSection>
+                    </>
+                  ),
+                },
+              ]}
+            />
           </SectionPanel>
 
-          <SectionPanel id="objective">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Objective setting
-            </h2>
-            {objectiveSection}
-          </SectionPanel>
-
-          <SectionPanel id="findings">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Findings
-            </h2>
-            {findingsSection}
-          </SectionPanel>
-
-          <SectionPanel id="validations">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Report insight validations
-            </h2>
-            {statedInsightValidationsSection}
-          </SectionPanel>
 
           <SectionPanel id="synthesized">
             <h2 className="mb-5 text-xl font-semibold text-foreground">

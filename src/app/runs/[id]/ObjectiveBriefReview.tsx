@@ -212,7 +212,7 @@ export default function ObjectiveBriefReview({
   // rejected candidates are never touched), so "regenerate" is the honest
   // word once there's something to regenerate.
   const hasAnyAiSuggested = candidates.some((c) => c.source === "ai_suggested");
-  const regenerateLabel = hasAnyAiSuggested ? "Regenerate suggestions" : "Get suggestions";
+  const regenerateLabel = hasAnyAiSuggested ? "Regenerate suggestions" : "Suggest objectives from these findings";
   const regenerateBusyLabel = hasAnyAiSuggested ? "Regenerating..." : "Generating...";
 
   function handleRegenerate() {
