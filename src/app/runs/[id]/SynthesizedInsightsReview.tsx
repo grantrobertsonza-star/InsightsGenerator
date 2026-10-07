@@ -42,6 +42,11 @@ export type SynthesizedInsightRow = {
   materiality_rationale: string | null;
   confidence_tier: ConfidenceTier | null;
   review_status: ReviewStatus;
+  why_score: number | null;
+  actionability_score: number | null;
+  novelty_score: number | null;
+  synthesis_score: number | null;
+  evidentiary_score: number | null;
   quality_score: number | null;
   quality_tier: QualityTier | null;
   quality_rationale: string | null;
@@ -56,7 +61,14 @@ export type SynthesizedInsightRow = {
   stability_reappeared_count: number | null;
   stability_checked_at: string | null;
   source_headlines: string[];
-  from_report: boolean;
+  // Every synthesized insight is net-new by synthesis: the report never said
+  // it. This says how much of it stands on claims the report itself made, so
+  // the "new" label never hides what it is built on (see
+  // discoveryClassification.ts, summarizeSynthesizedProvenance).
+  provenance_caption: string;
+  // Report claims this insight directly contradicts. Each is rated not
+  // supported for that reason.
+  contradicts: { original_text: string; rationale: string }[];
 };
 
 const confidenceTierLabel: Record<ConfidenceTier, string> = {
@@ -178,37 +190,63 @@ export default function SynthesizedInsightsReview({
   runId: string;
   insights: SynthesizedInsightRow[];
 }) {
-  const [confidenceFilter, setConfidenceFilter] = useState<"all" | ConfidenceTier>("all");
-  const [qualityFilter, setQualityFilter] = useState<"all" | QualityTier>("all");
+  const [confidenceFilter, setConfidenceFilter] = useState<
+    "all" | ConfidenceTier
+  >("all");
+  const [qualityFilter, setQualityFilter] = useState<"all" | QualityTier>(
+    "all",
+  );
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all");
   const [isCheckingStability, startStabilityCheck] = useTransition();
   const [stabilityError, setStabilityError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"insights" | "scores">("insights");
 
   if (insights.length === 0) {
     return (
       <p className="text-sm text-muted">
-        No synthesized insights yet. This builds from the pre-insights above once at least two of them
-        triangulate around the same underlying pattern; a run with findings that don&apos;t yet corroborate
-        each other across more than one theme may legitimately stay empty here for a while.
+        No synthesized insights yet. This builds from the pre-insights above
+        once at least two of them triangulate around the same underlying
+        pattern; a run with findings that don&apos;t yet corroborate each other
+        across more than one theme may legitimately stay empty here for a while.
       </p>
     );
   }
 
-  const strongCount = insights.filter((i) => i.confidence_tier === "strong").length;
-  const moderateCount = insights.filter((i) => i.confidence_tier === "moderate").length;
-  const exploratoryCount = insights.filter((i) => i.confidence_tier === "exploratory").length;
+  const strongCount = insights.filter(
+    (i) => i.confidence_tier === "strong",
+  ).length;
+  const moderateCount = insights.filter(
+    (i) => i.confidence_tier === "moderate",
+  ).length;
+  const exploratoryCount = insights.filter(
+    (i) => i.confidence_tier === "exploratory",
+  ).length;
 
-  const qualifiedCount = insights.filter((i) => i.quality_tier === "qualified").length;
-  const partialCount = insights.filter((i) => i.quality_tier === "partial").length;
-  const findingOnlyCount = insights.filter((i) => i.quality_tier === "finding").length;
+  const qualifiedCount = insights.filter(
+    (i) => i.quality_tier === "qualified",
+  ).length;
+  const partialCount = insights.filter(
+    (i) => i.quality_tier === "partial",
+  ).length;
+  const findingOnlyCount = insights.filter(
+    (i) => i.quality_tier === "finding",
+  ).length;
 
-  const acceptedCount = insights.filter((i) => i.review_status === "accepted").length;
+  const acceptedCount = insights.filter(
+    (i) => i.review_status === "accepted",
+  ).length;
   const rejectedCount = insights.length - acceptedCount;
 
   const filtered = insights.filter((insight) => {
-    if (confidenceFilter !== "all" && insight.confidence_tier !== confidenceFilter) return false;
-    if (qualityFilter !== "all" && insight.quality_tier !== qualityFilter) return false;
-    if (reviewFilter !== "all" && insight.review_status !== reviewFilter) return false;
+    if (
+      confidenceFilter !== "all" &&
+      insight.confidence_tier !== confidenceFilter
+    )
+      return false;
+    if (qualityFilter !== "all" && insight.quality_tier !== qualityFilter)
+      return false;
+    if (reviewFilter !== "all" && insight.review_status !== reviewFilter)
+      return false;
     return true;
   });
 
@@ -222,196 +260,447 @@ export default function SynthesizedInsightsReview({
     });
   }
 
+  const scoredCount = insights.filter((i) => i.quality_score !== null).length;
+
   return (
     <div className="space-y-4">
-      {acceptedCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3">
-          <p className="max-w-2xl text-xs text-muted">
-            Re-runs clustering on {STABILITY_RESAMPLE_COUNT_LABEL} random resamples of the evidence pool and
-            checks whether each accepted insight&apos;s evidence still groups together. Costs a handful of
-            extra model calls, so it only runs when you click it, never automatically.
-            <InfoDot
-              text={
-                "Reproducibility is separate from Insight quality above: quality judges the insight's own " +
-                "wording and reasoning, reproducibility tests whether its underlying cluster of evidence " +
-                "would form again on a resampled 75% of the pool. High quality + high reproducibility is " +
-                "the strongest combination; high quality with low reproducibility is a well-argued insight " +
-                "that may rest on an incidental grouping, worth a closer look or a hedge before it goes in " +
-                "front of a decision-maker. Neither score deletes or gates an insight automatically."
-              }
-            />
-          </p>
+      <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+        {(
+          [
+            ["insights", "Insights", insights.length],
+            ["scores", "Quality scores", scoredCount],
+          ] as const
+        ).map(([value, label, count]) => (
           <button
+            key={value}
             type="button"
-            disabled={isCheckingStability}
-            onClick={handleCheckStability}
-            className="whitespace-nowrap rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 disabled:opacity-60"
-          >
-            {isCheckingStability ? "Checking..." : "Check stability"}
-          </button>
-        </div>
-      )}
-      {stabilityError && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
-          <span>Couldn&apos;t run the stability check: {stabilityError}</span>
-          <button onClick={() => setStabilityError(null)} className="shrink-0 font-medium underline">
-            Dismiss
-          </button>
-        </div>
-      )}
-      <div>
-        <p className="mb-1.5 flex items-center text-xs font-semibold uppercase tracking-wide text-muted">
-          Triangulation (corroborating pre-insights)
-          <InfoDot
-            text={
-              "How many corroborating pre-insights (and distinct themes) fed each synthesized insight, " +
-              "computed from the evidence, not asserted by the model. This is a count of the evidence " +
-              "behind an insight, separate from whether the insight is well-reasoned (see Insight quality " +
-              "below) or whether that evidence still groups the same way on a resample (see Check " +
-              "stability)."
-            }
-          />
-        </p>
-        <div className="grid grid-cols-3 gap-2 sm:max-w-md">
-          <button
-            type="button"
-            title={confidenceTierDefinition.strong}
-            onClick={() => setConfidenceFilter((f) => (f === "strong" ? "all" : "strong"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
-              confidenceFilter === "strong" ? "border-success bg-success-light" : "border-border bg-white hover:border-slate-300"
+            onClick={() => setActiveTab(value)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+              activeTab === value
+                ? "bg-primary-light text-primary"
+                : "text-muted hover:text-foreground"
             }`}
           >
-            <div className="text-lg font-semibold text-success">{strongCount}</div>
-            <div className="text-xs text-muted">Strong</div>
+            {label}
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                activeTab === value
+                  ? "bg-white text-primary"
+                  : "bg-slate-100 text-muted"
+              }`}
+            >
+              {count}
+            </span>
           </button>
-          <button
-            type="button"
-            title={confidenceTierDefinition.moderate}
-            onClick={() => setConfidenceFilter((f) => (f === "moderate" ? "all" : "moderate"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
-              confidenceFilter === "moderate" ? "border-amber-400 bg-amber-50" : "border-border bg-white hover:border-slate-300"
-            }`}
-          >
-            <div className="text-lg font-semibold text-amber-700">{moderateCount}</div>
-            <div className="text-xs text-muted">Moderate</div>
-          </button>
-          <button
-            type="button"
-            title={confidenceTierDefinition.exploratory}
-            onClick={() => setConfidenceFilter((f) => (f === "exploratory" ? "all" : "exploratory"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
-              confidenceFilter === "exploratory" ? "border-slate-400 bg-slate-100" : "border-border bg-white hover:border-slate-300"
-            }`}
-          >
-            <div className="text-lg font-semibold text-slate-600">{exploratoryCount}</div>
-            <div className="text-xs text-muted">Exploratory</div>
-          </button>
-        </div>
+        ))}
       </div>
 
-      <div>
-        <p className="mb-1.5 flex items-center text-xs font-semibold uppercase tracking-wide text-muted">
-          Insight quality (why / actionability / novelty / synthesis / evidentiary fit)
-          <InfoDot
-            text={
-              "A one-time AI judgment of each insight's own text (not its evidence count): does it name a " +
-              "mechanism, imply an action, say something non-obvious, genuinely reframe its cluster rather " +
-              "than restate it, and stay proportionate to its chain of evidence. Scored 1/3/5 on each of " +
-              "five dimensions, summed out of 25. Independent of triangulation and of Check stability: a " +
-              "strong-confidence insight can still score 'Finding only' here."
-            }
-          />
-        </p>
-        <div className="grid grid-cols-3 gap-2 sm:max-w-md">
-          <button
-            type="button"
-            title={qualityTierDefinition.qualified}
-            onClick={() => setQualityFilter((f) => (f === "qualified" ? "all" : "qualified"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
-              qualityFilter === "qualified" ? "border-indigo-400 bg-indigo-50" : "border-border bg-white hover:border-slate-300"
-            }`}
-          >
-            <div className="text-lg font-semibold text-indigo-700">{qualifiedCount}</div>
-            <div className="text-xs text-muted">Qualified</div>
-          </button>
-          <button
-            type="button"
-            title={qualityTierDefinition.partial}
-            onClick={() => setQualityFilter((f) => (f === "partial" ? "all" : "partial"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
-              qualityFilter === "partial" ? "border-amber-400 bg-amber-50" : "border-border bg-white hover:border-slate-300"
-            }`}
-          >
-            <div className="text-lg font-semibold text-amber-700">{partialCount}</div>
-            <div className="text-xs text-muted">Partial</div>
-          </button>
-          <button
-            type="button"
-            title={qualityTierDefinition.finding}
-            onClick={() => setQualityFilter((f) => (f === "finding" ? "all" : "finding"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
-              qualityFilter === "finding" ? "border-slate-400 bg-slate-100" : "border-border bg-white hover:border-slate-300"
-            }`}
-          >
-            <div className="text-lg font-semibold text-slate-600">{findingOnlyCount}</div>
-            <div className="text-xs text-muted">Finding only</div>
-          </button>
-        </div>
-      </div>
+      {activeTab === "scores" && <QualityScoresTable insights={insights} />}
 
-      {rejectedCount > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setReviewFilter("all")}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-              reviewFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            All ({insights.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setReviewFilter((f) => (f === "accepted" ? "all" : "accepted"))}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-              reviewFilter === "accepted" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            Accepted ({acceptedCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setReviewFilter((f) => (f === "rejected" ? "all" : "rejected"))}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-              reviewFilter === "rejected" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            Rejected ({rejectedCount})
-          </button>
-        </div>
-      )}
+      {activeTab === "insights" && (
+        <>
+          {acceptedCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3">
+              <p className="max-w-2xl text-xs text-muted">
+                Re-runs clustering on {STABILITY_RESAMPLE_COUNT_LABEL} random
+                resamples of the evidence pool and checks whether each accepted
+                insight&apos;s evidence still groups together. Costs a handful
+                of extra model calls, so it only runs when you click it, never
+                automatically.
+                <InfoDot
+                  text={
+                    "Reproducibility is separate from Insight quality above: quality judges the insight's own " +
+                    "wording and reasoning, reproducibility tests whether its underlying cluster of evidence " +
+                    "would form again on a resampled 75% of the pool. High quality + high reproducibility is " +
+                    "the strongest combination; high quality with low reproducibility is a well-argued insight " +
+                    "that may rest on an incidental grouping, worth a closer look or a hedge before it goes in " +
+                    "front of a decision-maker. Neither score deletes or gates an insight automatically."
+                  }
+                />
+              </p>
+              <button
+                type="button"
+                disabled={isCheckingStability}
+                onClick={handleCheckStability}
+                className="whitespace-nowrap rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 disabled:opacity-60"
+              >
+                {isCheckingStability ? "Checking..." : "Check stability"}
+              </button>
+            </div>
+          )}
+          {stabilityError && (
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
+              <span>
+                Couldn&apos;t run the stability check: {stabilityError}
+              </span>
+              <button
+                onClick={() => setStabilityError(null)}
+                className="shrink-0 font-medium underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          <div>
+            <p className="mb-1.5 flex items-center text-xs font-semibold uppercase tracking-wide text-muted">
+              Triangulation (corroborating pre-insights)
+              <InfoDot
+                text={
+                  "How many corroborating pre-insights (and distinct themes) fed each synthesized insight, " +
+                  "computed from the evidence, not asserted by the model. This is a count of the evidence " +
+                  "behind an insight, separate from whether the insight is well-reasoned (see Insight quality " +
+                  "below) or whether that evidence still groups the same way on a resample (see Check " +
+                  "stability)."
+                }
+              />
+            </p>
+            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+              <button
+                type="button"
+                title={confidenceTierDefinition.strong}
+                onClick={() =>
+                  setConfidenceFilter((f) =>
+                    f === "strong" ? "all" : "strong",
+                  )
+                }
+                className={`rounded-lg border px-3 py-2 text-left transition ${
+                  confidenceFilter === "strong"
+                    ? "border-success bg-success-light"
+                    : "border-border bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg font-semibold text-success">
+                  {strongCount}
+                </div>
+                <div className="text-xs text-muted">Strong</div>
+              </button>
+              <button
+                type="button"
+                title={confidenceTierDefinition.moderate}
+                onClick={() =>
+                  setConfidenceFilter((f) =>
+                    f === "moderate" ? "all" : "moderate",
+                  )
+                }
+                className={`rounded-lg border px-3 py-2 text-left transition ${
+                  confidenceFilter === "moderate"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-border bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg font-semibold text-amber-700">
+                  {moderateCount}
+                </div>
+                <div className="text-xs text-muted">Moderate</div>
+              </button>
+              <button
+                type="button"
+                title={confidenceTierDefinition.exploratory}
+                onClick={() =>
+                  setConfidenceFilter((f) =>
+                    f === "exploratory" ? "all" : "exploratory",
+                  )
+                }
+                className={`rounded-lg border px-3 py-2 text-left transition ${
+                  confidenceFilter === "exploratory"
+                    ? "border-slate-400 bg-slate-100"
+                    : "border-border bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg font-semibold text-slate-600">
+                  {exploratoryCount}
+                </div>
+                <div className="text-xs text-muted">Exploratory</div>
+              </button>
+            </div>
+          </div>
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-muted">No synthesized insights match this filter.</p>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((insight) => (
-            <SynthesizedInsightCard key={insight.id} runId={runId} insight={insight} />
-          ))}
-        </div>
+          <div>
+            <p className="mb-1.5 flex items-center text-xs font-semibold uppercase tracking-wide text-muted">
+              Insight quality (why / actionability / novelty / synthesis /
+              evidentiary fit)
+              <InfoDot
+                text={
+                  "A one-time AI judgment of each insight's own text (not its evidence count): does it name a " +
+                  "mechanism, imply an action, say something non-obvious, genuinely reframe its cluster rather " +
+                  "than restate it, and stay proportionate to its chain of evidence. Scored 1/3/5 on each of " +
+                  "five dimensions, summed out of 25. Independent of triangulation and of Check stability: a " +
+                  "strong-confidence insight can still score 'Finding only' here."
+                }
+              />
+            </p>
+            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+              <button
+                type="button"
+                title={qualityTierDefinition.qualified}
+                onClick={() =>
+                  setQualityFilter((f) =>
+                    f === "qualified" ? "all" : "qualified",
+                  )
+                }
+                className={`rounded-lg border px-3 py-2 text-left transition ${
+                  qualityFilter === "qualified"
+                    ? "border-indigo-400 bg-indigo-50"
+                    : "border-border bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg font-semibold text-indigo-700">
+                  {qualifiedCount}
+                </div>
+                <div className="text-xs text-muted">Qualified</div>
+              </button>
+              <button
+                type="button"
+                title={qualityTierDefinition.partial}
+                onClick={() =>
+                  setQualityFilter((f) => (f === "partial" ? "all" : "partial"))
+                }
+                className={`rounded-lg border px-3 py-2 text-left transition ${
+                  qualityFilter === "partial"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-border bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg font-semibold text-amber-700">
+                  {partialCount}
+                </div>
+                <div className="text-xs text-muted">Partial</div>
+              </button>
+              <button
+                type="button"
+                title={qualityTierDefinition.finding}
+                onClick={() =>
+                  setQualityFilter((f) => (f === "finding" ? "all" : "finding"))
+                }
+                className={`rounded-lg border px-3 py-2 text-left transition ${
+                  qualityFilter === "finding"
+                    ? "border-slate-400 bg-slate-100"
+                    : "border-border bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg font-semibold text-slate-600">
+                  {findingOnlyCount}
+                </div>
+                <div className="text-xs text-muted">Finding only</div>
+              </button>
+            </div>
+          </div>
+
+          {rejectedCount > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setReviewFilter("all")}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                  reviewFilter === "all"
+                    ? "bg-primary text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                All ({insights.length})
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setReviewFilter((f) =>
+                    f === "accepted" ? "all" : "accepted",
+                  )
+                }
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                  reviewFilter === "accepted"
+                    ? "bg-primary text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Accepted ({acceptedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setReviewFilter((f) =>
+                    f === "rejected" ? "all" : "rejected",
+                  )
+                }
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                  reviewFilter === "rejected"
+                    ? "bg-primary text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Rejected ({rejectedCount})
+              </button>
+            </div>
+          )}
+
+          {filtered.length === 0 ? (
+            <p className="text-sm text-muted">
+              No synthesized insights match this filter.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((insight) => (
+                <SynthesizedInsightCard
+                  key={insight.id}
+                  runId={runId}
+                  insight={insight}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: SynthesizedInsightRow }) {
+const SCORE_COLUMNS = [
+  [
+    "why_score",
+    "Why",
+    "The Why: names a cause or driver (1 = what happened only, 3 = implied, 5 = root cause named).",
+  ],
+  [
+    "actionability_score",
+    "Action",
+    "Actionability: 1 = nice to know, 3 = vague direction, 5 = dictates a clear decision.",
+  ],
+  [
+    "novelty_score",
+    "Novelty",
+    "Novelty: 1 = obvious, 3 = confirms an assumption, 5 = overturns or sharpens one.",
+  ],
+  [
+    "synthesis_score",
+    "Synthesis",
+    "Synthesis: 1 = one source restated, 3 = a couple of similar points combined, 5 = reframes the cluster around a new tension.",
+  ],
+  [
+    "evidentiary_score",
+    "Evidence fit",
+    "Evidentiary proportionality: 1 = unsupported by the chain of evidence, 3 = asserted more confidently than it warrants, 5 = directly traceable, no leap.",
+  ],
+] as const;
+
+const scoreCellClass: Record<number, string> = {
+  1: "bg-slate-100 text-slate-600",
+  3: "bg-amber-50 text-amber-700",
+  5: "bg-indigo-50 text-indigo-700",
+};
+
+/**
+ * Every synthesized insight scored across the five quality dimensions, one
+ * row each: the per-dimension scores, the total out of 25, and the resulting
+ * classification. Read-only view of what synthesizedInsightQualityScorer.ts
+ * already stored; nothing here recomputes a score.
+ */
+function QualityScoresTable({
+  insights,
+}: {
+  insights: SynthesizedInsightRow[];
+}) {
+  const scored = insights.filter((i) => i.quality_score !== null).length;
+  return (
+    <div className="space-y-3">
+      <p className="max-w-3xl text-xs text-muted">
+        Each insight is scored 1, 3 or 5 on five dimensions, summed out of 25.
+        15 or more is a qualified insight, 12 to 14 partial, below 12 a finding
+        rather than an insight. Hover a column heading for its definition, or a
+        classification for the scorer&apos;s reason.
+        {scored < insights.length
+          ? ` ${insights.length - scored} insight${insights.length - scored === 1 ? " is" : "s are"} not scored yet.`
+          : ""}
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-white">
+        <table className="w-full min-w-[760px] text-left text-xs">
+          <thead>
+            <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <th className="px-3 py-2">Insight</th>
+              {SCORE_COLUMNS.map(([key, label, definition]) => (
+                <th
+                  key={key}
+                  title={definition}
+                  className="px-2 py-2 text-center"
+                >
+                  {label}
+                </th>
+              ))}
+              <th className="px-2 py-2 text-center">Total</th>
+              <th className="px-3 py-2">Classification</th>
+            </tr>
+          </thead>
+          <tbody>
+            {insights.map((insight) => {
+              const rejected = insight.review_status === "rejected";
+              return (
+                <tr
+                  key={insight.id}
+                  className={`border-b border-border last:border-0 ${rejected ? "opacity-50" : ""}`}
+                >
+                  <td className="max-w-sm px-3 py-2 align-top text-foreground">
+                    {insight.headline}
+                    {rejected ? (
+                      <span className="ml-1.5 text-[10px] uppercase text-muted">
+                        rejected
+                      </span>
+                    ) : null}
+                  </td>
+                  {SCORE_COLUMNS.map(([key]) => {
+                    const value = insight[key];
+                    return (
+                      <td key={key} className="px-2 py-2 text-center align-top">
+                        {value === null ? (
+                          <span className="text-muted">-</span>
+                        ) : (
+                          <span
+                            className={`inline-block min-w-6 rounded px-1.5 py-0.5 font-semibold ${scoreCellClass[value] ?? scoreCellClass[1]}`}
+                          >
+                            {value}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-2 text-center align-top font-semibold text-foreground">
+                    {insight.quality_score === null
+                      ? "-"
+                      : `${insight.quality_score}/25`}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    {insight.quality_tier ? (
+                      <span
+                        title={insight.quality_rationale ?? undefined}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${qualityTierClass[insight.quality_tier]}`}
+                      >
+                        {qualityTierLabel[insight.quality_tier]}
+                      </span>
+                    ) : (
+                      <span className="text-muted">Not scored</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SynthesizedInsightCard({
+  runId,
+  insight,
+}: {
+  runId: string;
+  insight: SynthesizedInsightRow;
+}) {
   const [isPending, startTransition] = useTransition();
   const isRejected = insight.review_status === "rejected";
 
   function handleDelete() {
     if (
       !confirm(
-        "Delete this synthesized insight? It will be kept in the run's history, but its member pre-insights become eligible for a future synthesis pass again."
+        "Delete this synthesized insight? It will be kept in the run's history, but its member pre-insights become eligible for a future synthesis pass again.",
       )
     )
       return;
@@ -419,14 +708,20 @@ function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: Sy
   }
 
   return (
-    <div className={`rounded-lg border border-border bg-white p-4 transition ${isRejected ? "opacity-50" : ""}`}>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+    <div
+      className={`card-surface flex flex-col gap-4 rounded-xl border border-border bg-white p-5 ${isRejected ? "opacity-50" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {insight.confidence_tier ? (
             <span
               title={confidenceTierDefinition[insight.confidence_tier]}
-              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${confidenceTierClass[insight.confidence_tier]}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${confidenceTierClass[insight.confidence_tier]}`}
             >
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-current"
+                aria-hidden
+              />
               {confidenceTierLabel[insight.confidence_tier]} confidence
             </span>
           ) : null}
@@ -437,12 +732,13 @@ function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: Sy
                   ? `${qualityTierDefinition[insight.quality_tier]} For this insight: ${insight.quality_rationale}`
                   : qualityTierDefinition[insight.quality_tier]
               }
-              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${qualityTierClass[insight.quality_tier]}`}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${qualityTierClass[insight.quality_tier]}`}
             >
-              {qualityTierLabel[insight.quality_tier]} &middot; {insight.quality_score}/25
+              {qualityTierLabel[insight.quality_tier]} &middot;{" "}
+              {insight.quality_score}/25
             </span>
           ) : (
-            <span className="inline-block rounded bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
               Not scored yet
             </span>
           )}
@@ -452,15 +748,18 @@ function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: Sy
               `${insight.source_theme_count > 1 ? ` across ${insight.source_theme_count} distinct themes` : " from a single theme"}. ` +
               "This count is what the Strong/Moderate/Exploratory confidence tier above is computed from."
             }
-            className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+            className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
           >
-            {insight.triangulation_count} corroborating pre-insight{insight.triangulation_count === 1 ? "" : "s"}
-            {insight.source_theme_count > 1 ? ` across ${insight.source_theme_count} themes` : ""}
+            {insight.triangulation_count} corroborating pre-insight
+            {insight.triangulation_count === 1 ? "" : "s"}
+            {insight.source_theme_count > 1
+              ? ` across ${insight.source_theme_count} themes`
+              : ""}
           </span>
           {insight.triangulation_count <= THIN_EVIDENCE_FLOOR && (
             <span
               title="This insight rests on the bare minimum of corroborating evidence; losing one supporting finding could undo it. A full reproducibility check (resampling the evidence and re-running synthesis) would confirm whether it holds up, but isn't run automatically."
-              className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+              className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700"
             >
               Thin evidence
             </span>
@@ -469,39 +768,42 @@ function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: Sy
             (insight.stability_testable_count === 0 ? (
               <span
                 title="Every resample dropped too much of this insight's own evidence to test it -- not a failure, just inconclusive. Usually happens to thin-evidence insights."
-                className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
               >
                 Stability: not testable
               </span>
             ) : (
               <span
                 title={`Reappeared in ${insight.stability_reappeared_count} of ${insight.stability_testable_count} resamples where it could be tested. Checked ${new Date(insight.stability_checked_at).toLocaleDateString("en-ZA")}.`}
-                className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  insight.stability_reappeared_count === insight.stability_testable_count
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                  insight.stability_reappeared_count ===
+                  insight.stability_testable_count
                     ? "bg-success-light text-success"
                     : "bg-amber-50 text-amber-700"
                 }`}
               >
-                Reproduced {insight.stability_reappeared_count}/{insight.stability_testable_count}
+                Reproduced {insight.stability_reappeared_count}/
+                {insight.stability_testable_count}
               </span>
             ))}
           {insight.action_plan_status === "retained_no_action" && (
-            <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+            <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
               No action plan yet, retained
             </span>
           )}
           {isRejected && (
-            <span className="inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+            <span className="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">
               Rejected
             </span>
           )}
-          <span
-            className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              insight.from_report ? "bg-primary-light text-primary" : "bg-indigo-50 text-indigo-700"
-            }`}
-          >
-            {insight.from_report ? "Confirms the report" : "New, found by the Elevator"}
+          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+            New, found by the Elevator
           </span>
+          {insight.contradicts.length > 0 && (
+            <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-rose-700">
+              Contradicts the report
+            </span>
+          )}
         </div>
         <button
           disabled={isPending}
@@ -513,47 +815,145 @@ function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: Sy
           <TrashIcon className="h-3 w-3" />
         </button>
       </div>
-      <div className="mb-2 text-sm font-semibold text-foreground">{insight.headline}</div>
-      <dl className="space-y-1.5 text-sm">
-        <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Observation</dt>
-          <dd className="text-foreground">{insight.observation}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Tension</dt>
-          <dd className="text-foreground">{insight.tension}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Implication</dt>
-          <dd className="text-foreground">{insight.implication}</dd>
-        </div>
-      </dl>
-      {insight.quality_rationale && (
-        <div className="mt-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Quality note: </span>
-          {insight.quality_rationale}
-        </div>
-      )}
-      {insight.materiality_rationale && (
-        <div className="mt-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
-          <span className="font-semibold uppercase tracking-wide text-slate-500">Materiality: </span>
-          {insight.materiality_rationale}
-        </div>
-      )}
-      <div className="mt-2 border-t border-border pt-2 text-xs text-muted">
-        Chain of evidence, from {insight.source_headlines.length} pre-insight
-        {insight.source_headlines.length === 1 ? "" : "s"}:
-        <ul className="mt-1 list-inside list-disc space-y-0.5">
-          {insight.source_headlines.map((headline, index) => (
-            <li key={index}>{headline}</li>
-          ))}
-        </ul>
+
+      <div className="text-lg font-semibold leading-snug text-foreground">
+        {insight.headline}
       </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <p className="-mt-1 text-xs text-muted">{insight.provenance_caption}</p>
+      {insight.contradicts.length > 0 && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">
+            This corrects the report, it does not add to it
+          </p>
+          <ul className="mt-1 space-y-1 text-xs text-rose-900">
+            {insight.contradicts.map((c, index) => (
+              <li key={index}>
+                The report said &ldquo;{c.original_text}&rdquo;. {c.rationale}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="h-px bg-border" />
+
+      {/* Laid out like a slide: the story on the left, why to trust it on
+          the right. Stacks on narrow screens. */}
+      <div className="grid overflow-hidden rounded-2xl border border-border bg-white lg:grid-cols-[1.4fr_1fr]">
+        <div className="flex flex-col gap-5 p-5 lg:p-6">
+          {[
+            {
+              letter: "O",
+              label: "Observation",
+              text: insight.observation,
+              badge: "bg-primary text-white",
+              labelColor: "text-primary",
+              bar: "bg-primary",
+            },
+            {
+              letter: "T",
+              label: "Tension",
+              text: insight.tension,
+              badge: "bg-amber-600 text-white",
+              labelColor: "text-amber-700",
+              bar: "bg-amber-500",
+            },
+            {
+              letter: "I",
+              label: "Implication",
+              text: insight.implication,
+              badge: "bg-indigo-600 text-white",
+              labelColor: "text-indigo-700",
+              bar: "bg-indigo-500",
+            },
+          ].map((part) => (
+            <div key={part.letter} className="flex gap-4">
+              <div className="flex shrink-0 flex-col items-center">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${part.badge}`}
+                >
+                  {part.letter}
+                </div>
+                <div className={`mt-1 w-0.5 flex-1 rounded ${part.bar} opacity-30`} />
+              </div>
+              <div className="min-w-0 flex-1 pb-1">
+                <div
+                  className={`mb-1 text-[11px] font-bold uppercase tracking-wide ${part.labelColor}`}
+                >
+                  {part.label}
+                </div>
+                <div className="text-[15px] leading-relaxed text-foreground">
+                  {part.text}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-5 border-t border-border bg-slate-50 p-5 lg:border-l lg:border-t-0 lg:p-6">
+          {insight.quality_rationale && (
+            <div>
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-teal-700">
+                Quality note
+              </div>
+              <div className="text-sm leading-relaxed text-slate-700">
+                {insight.quality_rationale}
+              </div>
+            </div>
+          )}
+          {insight.materiality_rationale && (
+            <div>
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-orange-800">
+                Materiality
+              </div>
+              <div className="text-sm leading-relaxed text-slate-700">
+                {insight.materiality_rationale}
+              </div>
+            </div>
+          )}
+          <div
+            className={
+              insight.quality_rationale || insight.materiality_rationale
+                ? "border-t border-border pt-4"
+                : ""
+            }
+          >
+            <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Chain of evidence &middot; {insight.source_headlines.length}{" "}
+              pre-insight
+              {insight.source_headlines.length === 1 ? "" : "s"}
+            </div>
+            <div className="flex flex-col">
+              {insight.source_headlines.map((headline, index) => (
+                <div key={index} className="flex gap-3">
+                  <div className="flex w-5 shrink-0 flex-col items-center">
+                    <div className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 border-slate-300 bg-white text-[10px] font-bold text-slate-500">
+                      {index + 1}
+                    </div>
+                    {index < insight.source_headlines.length - 1 && (
+                      <div
+                        className="w-0.5 flex-1 bg-border"
+                        style={{ minHeight: "10px" }}
+                      />
+                    )}
+                  </div>
+                  <div className="pb-3 text-[13px] leading-relaxed text-slate-600">
+                    {headline}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="-mt-1 flex flex-wrap justify-end gap-1.5">
         {isRejected ? (
           <button
             disabled={isPending}
-            onClick={() => startTransition(() => acceptSynthesizedInsight(runId, insight.id))}
+            onClick={() =>
+              startTransition(() => acceptSynthesizedInsight(runId, insight.id))
+            }
             className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
           >
             Accept
@@ -561,7 +961,9 @@ function SynthesizedInsightCard({ runId, insight }: { runId: string; insight: Sy
         ) : (
           <button
             disabled={isPending}
-            onClick={() => startTransition(() => rejectSynthesizedInsight(runId, insight.id))}
+            onClick={() =>
+              startTransition(() => rejectSynthesizedInsight(runId, insight.id))
+            }
             className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
           >
             Reject

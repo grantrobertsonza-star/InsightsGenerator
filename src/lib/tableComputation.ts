@@ -31,7 +31,8 @@ const MULTIPLE_COMPARISONS_CAVEAT = "uncorrected_multiple_comparisons";
 
 type Row = Record<string, string | number | null>;
 
-export type ComputedPatternType = "segment_difference" | "trend" | "outlier" | "relationship" | "segment_split";
+export type ComputedPatternType =
+  "segment_difference" | "trend" | "outlier" | "relationship" | "segment_split";
 
 export type ComputedPattern = {
   patternType: ComputedPatternType;
@@ -57,9 +58,33 @@ const MAX_CATEGORY_CARDINALITY = 10;
 const MIN_GROUP_SIZE = 5;
 const MAX_PATTERNS_PER_TABLE = 25;
 const CORRELATION_THRESHOLD = 0.3;
+const MAX_SCATTER_POINTS = 300;
+
+// An evenly-spaced sample rather than the first N: the first N rows of a
+// table are frequently a single stratum (sorted input, an early batch of
+// one survey wave), and charting only that slice would show a biased
+// slice of the relationship rather than the one the full-data correlation
+// above was actually computed from.
+function samplePairs(
+  paired: { a: number; b: number }[],
+  maxPoints: number,
+): { x: number; y: number }[] {
+  if (paired.length <= maxPoints) {
+    return paired.map((p) => ({ x: p.a, y: p.b }));
+  }
+  const step = paired.length / maxPoints;
+  const sampled: { x: number; y: number }[] = [];
+  for (let i = 0; i < maxPoints; i++) {
+    const p = paired[Math.floor(i * step)];
+    sampled.push({ x: p.a, y: p.b });
+  }
+  return sampled;
+}
 
 function isNumericColumn(rows: Row[], header: string): boolean {
-  const present = rows.map((row) => row[header]).filter((value) => value !== null && value !== undefined);
+  const present = rows
+    .map((row) => row[header])
+    .filter((value) => value !== null && value !== undefined);
   if (present.length < MIN_GROUP_SIZE) return false;
   return present.every((value) => typeof value === "number");
 }
@@ -67,10 +92,14 @@ function isNumericColumn(rows: Row[], header: string): boolean {
 function categoricalValues(rows: Row[], header: string): string[] | null {
   const present = rows
     .map((row) => row[header])
-    .filter((value): value is string | number => value !== null && value !== undefined);
+    .filter(
+      (value): value is string | number =>
+        value !== null && value !== undefined,
+    );
   if (present.length < MIN_GROUP_SIZE * 2) return null;
   const distinct = Array.from(new Set(present.map((value) => String(value))));
-  if (distinct.length < 2 || distinct.length > MAX_CATEGORY_CARDINALITY) return null;
+  if (distinct.length < 2 || distinct.length > MAX_CATEGORY_CARDINALITY)
+    return null;
   return distinct;
 }
 
@@ -80,17 +109,25 @@ function categoricalValues(rows: Row[], header: string): string[] | null {
  * LLM-authored, themes included.
  */
 function themeFor(...columns: string[]): string {
-  const unique = Array.from(new Set(columns.map((c) => c.trim()).filter(Boolean)));
+  const unique = Array.from(
+    new Set(columns.map((c) => c.trim()).filter(Boolean)),
+  );
   return unique.slice(0, 3).join(" & ");
 }
 
-export function computeTablePatterns(headers: string[], rows: Row[]): TableComputationResult {
+export function computeTablePatterns(
+  headers: string[],
+  rows: Row[],
+): TableComputationResult {
   const columns = headers.slice(0, MAX_COLUMNS_EXAMINED);
   const numericColumns = columns.filter((h) => isNumericColumn(rows, h));
   const categoricalColumns = columns
     .filter((h) => !numericColumns.includes(h))
     .map((header) => ({ header, categories: categoricalValues(rows, header) }))
-    .filter((c): c is { header: string; categories: string[] } => c.categories !== null);
+    .filter(
+      (c): c is { header: string; categories: string[] } =>
+        c.categories !== null,
+    );
 
   const patterns: ComputedPattern[] = [];
   const pushPattern = (pattern: ComputedPattern) => {
@@ -107,7 +144,11 @@ export function computeTablePatterns(headers: string[], rows: Row[]): TableCompu
           category,
           values: rows
             .map((row, index) => ({ index, value: row[numHeader] }))
-            .filter((r) => String(row(rows, r.index)[catHeader]) === category && typeof r.value === "number"),
+            .filter(
+              (r) =>
+                String(row(rows, r.index)[catHeader]) === category &&
+                typeof r.value === "number",
+            ),
         }))
         .filter((g) => g.values.length >= MIN_GROUP_SIZE)
         .sort((a, b) => b.values.length - a.values.length);
@@ -116,9 +157,13 @@ export function computeTablePatterns(headers: string[], rows: Row[]): TableCompu
       const [g1, g2] = groups;
       const comparison = compareGroupMeans(
         g1.values.map((v) => v.value as number),
-        g2.values.map((v) => v.value as number)
+        g2.values.map((v) => v.value as number),
       );
-      if (comparison.significant && comparison.mean1 !== null && comparison.mean2 !== null) {
+      if (
+        comparison.significant &&
+        comparison.mean1 !== null &&
+        comparison.mean2 !== null
+      ) {
         pushPattern({
           patternType: "segment_difference",
           description:
@@ -132,9 +177,21 @@ export function computeTablePatterns(headers: string[], rows: Row[]): TableCompu
             group2Label: g2.category,
             n1: g1.values.length,
             n2: g2.values.length,
+            // Named the same way bannerPlanComputation.ts names its own
+            // pairwise mean-gap stats, even though there's no banner plan
+            // here -- findingsChartData.ts's buildChartForThemeGroup reads
+            // these two fields generically to label a group_means chart's
+            // axes, and giving segment_difference findings the same field
+            // names lets them share that one chart builder rather than
+            // needing a second one that draws the identical chart shape.
+            bannerColumn: catHeader,
+            stubColumn: numHeader,
             caveats: [MULTIPLE_COMPARISONS_CAVEAT],
           },
-          rowIndices: [...g1.values.map((v) => v.index), ...g2.values.map((v) => v.index)],
+          rowIndices: [
+            ...g1.values.map((v) => v.index),
+            ...g2.values.map((v) => v.index),
+          ],
         });
       }
     }
@@ -147,11 +204,14 @@ export function computeTablePatterns(headers: string[], rows: Row[]): TableCompu
       const colB = numericColumns[j];
       const paired = rows
         .map((row) => ({ a: row[colA], b: row[colB] }))
-        .filter((r): r is { a: number; b: number } => typeof r.a === "number" && typeof r.b === "number");
+        .filter(
+          (r): r is { a: number; b: number } =>
+            typeof r.a === "number" && typeof r.b === "number",
+        );
       if (paired.length < 3) continue;
       const result = pearsonCorrelation(
         paired.map((p) => p.a),
-        paired.map((p) => p.b)
+        paired.map((p) => p.b),
       );
       if (result.r !== null && Math.abs(result.r) >= CORRELATION_THRESHOLD) {
         pushPattern({
@@ -163,6 +223,15 @@ export function computeTablePatterns(headers: string[], rows: Row[]): TableCompu
             variable1: colA,
             variable2: colB,
             pairCount: paired.length,
+            // A capped, evenly-spaced sample of the actual (a, b) pairs this
+            // r was computed from, so a scatter chart (findingsChartData.ts)
+            // has real points to draw rather than just the summary
+            // coefficient -- the correlation itself is still computed from
+            // every pair above, this sample is for the picture only.
+            // MAX_SCATTER_POINTS caps jsonb size on a large table without
+            // visibly thinning a scatter (a few hundred points reads the
+            // same as a few thousand at chart scale).
+            points: samplePairs(paired, MAX_SCATTER_POINTS),
             caveats: [MULTIPLE_COMPARISONS_CAVEAT],
           },
           rowIndices: [],
@@ -176,10 +245,15 @@ export function computeTablePatterns(headers: string[], rows: Row[]): TableCompu
   for (const header of numericColumns) {
     const values = rows
       .map((row, index) => ({ index, value: row[header] }))
-      .filter((r): r is { index: number; value: number } => typeof r.value === "number");
+      .filter(
+        (r): r is { index: number; value: number } =>
+          typeof r.value === "number",
+      );
     if (values.length < 4) continue;
     for (const { index, value } of values) {
-      const others = values.filter((v) => v.index !== index).map((v) => v.value);
+      const others = values
+        .filter((v) => v.index !== index)
+        .map((v) => v.value);
       const result = flagOutlier(value, others);
       if (result.flag) {
         pushPattern({
@@ -224,7 +298,11 @@ function row(rows: Row[], index: number): Row {
   return rows[index];
 }
 
-export type TableGroundingDigestEntry = { index: number; findingId: string; text: string };
+export type TableGroundingDigestEntry = {
+  index: number;
+  findingId: string;
+  text: string;
+};
 
 /**
  * A compact, cross-document digest of this run's already-computed,
@@ -236,7 +314,7 @@ export type TableGroundingDigestEntry = { index: number; findingId: string; text
 export async function getTableGroundingDigest(
   tenantId: string,
   runId: string,
-  limit = 20
+  limit = 20,
 ): Promise<TableGroundingDigestEntry[]> {
   const rows = await withTenant(tenantId, async (client) => {
     const result = await client.query<{ id: string; finding_text: string }>(
@@ -244,7 +322,7 @@ export async function getTableGroundingDigest(
        where run_id = $1 and origin = 'generated' and status != 'rejected'
        order by created_at asc
        limit $2`,
-      [runId, limit]
+      [runId, limit],
     );
     return result.rows;
   });

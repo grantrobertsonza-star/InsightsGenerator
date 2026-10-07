@@ -302,7 +302,21 @@ export async function generateDecisionCandidates(
   }
 
   const rawInput = toolUse.input as { candidates?: unknown };
-  const rawCandidates = Array.isArray(rawInput.candidates) ? rawInput.candidates : [];
+  // The model sometimes returns an array field as a JSON string.
+  let candidatesField: unknown = rawInput.candidates;
+  if (typeof candidatesField === "string") {
+    try {
+      candidatesField = JSON.parse(candidatesField);
+    } catch {
+      // leave as a string; reported in the diagnostic below
+    }
+  }
+  const rawCandidates: unknown[] = Array.isArray(candidatesField) ? candidatesField : [];
+  const candidatesFieldType = Array.isArray(rawInput.candidates)
+    ? "array"
+    : rawInput.candidates === undefined
+      ? "missing"
+      : typeof rawInput.candidates;
 
   const validCandidates = rawCandidates.filter(
     (c): c is { candidate_text: string; rationale: string } =>
@@ -322,7 +336,7 @@ export async function generateDecisionCandidates(
   if (validCandidates.length === 0) {
     const diagnostic =
       rawCandidates.length === 0
-        ? "the model returned zero candidates"
+        ? `the model returned zero candidates (candidates field was ${candidatesFieldType}, stop reason ${String(response.stop_reason)})`
         : `the model returned ${rawCandidates.length} candidate(s), but none had both a candidate_text and a rationale`;
     throw new Error(
       `No usable decision candidates came back this time (${diagnostic}). Nothing was changed, try again.`

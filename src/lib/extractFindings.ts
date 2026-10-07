@@ -1,11 +1,17 @@
 import { extractText as extractPdfText, getDocumentProxy } from "unpdf";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
-import { archiveAndReplaceFindings, type ArchiveReason } from "./findingArchive";
+import {
+  archiveAndReplaceFindings,
+  type ArchiveReason,
+} from "./findingArchive";
 import { logApiUsage } from "./apiUsage";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { withTenant } from "./db";
 import { convertOfficeDocToPdf } from "./convertToPdf";
-import { getTableGroundingDigest, type TableGroundingDigestEntry } from "./tableComputation";
+import {
+  getTableGroundingDigest,
+  type TableGroundingDigestEntry,
+} from "./tableComputation";
 
 const BUCKET = "documents";
 
@@ -24,12 +30,17 @@ export type ExtractedDocument = {
 };
 
 /** Runs a PDF buffer through unpdf and returns it split into per-page text. */
-async function extractPagesFromPdfBuffer(pdfBuffer: Buffer): Promise<Omit<ExtractedDocument, "previewStoragePath">> {
+async function extractPagesFromPdfBuffer(
+  pdfBuffer: Buffer,
+): Promise<Omit<ExtractedDocument, "previewStoragePath">> {
   const pdf = await getDocumentProxy(new Uint8Array(pdfBuffer));
   const result = await extractPdfText(pdf, { mergePages: false });
   // unpdf returns one text string per page when mergePages is false.
   const pageTexts = Array.isArray(result.text) ? result.text : [result.text];
-  const pages = pageTexts.map((text, index) => ({ pageNumber: index + 1, text }));
+  const pages = pageTexts.map((text, index) => ({
+    pageNumber: index + 1,
+    text,
+  }));
   return { fullText: pages.map((p) => p.text).join("\n\n"), pages };
 }
 
@@ -43,11 +54,15 @@ async function extractPagesFromPdfBuffer(pdfBuffer: Buffer): Promise<Omit<Extrac
 export async function extractDocumentText(
   storagePath: string,
   filename: string,
-  documentId: string
+  documentId: string,
 ): Promise<ExtractedDocument> {
-  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
+  const { data, error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .download(storagePath);
   if (error || !data) {
-    throw new Error(`Could not download ${filename} from storage: ${error?.message}`);
+    throw new Error(
+      `Could not download ${filename} from storage: ${error?.message}`,
+    );
   }
 
   const buffer = Buffer.from(await data.arrayBuffer());
@@ -69,7 +84,10 @@ export async function extractDocumentText(
     const previewStoragePath = `${storagePath}.preview.pdf`;
     const { error: previewUploadError } = await supabaseAdmin.storage
       .from(BUCKET)
-      .upload(previewStoragePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+      .upload(previewStoragePath, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
     if (previewUploadError) {
       // A missing preview shouldn't block extraction itself; the side panel
       // will just say no preview is available for this document.
@@ -157,7 +175,12 @@ function buildChunks(extracted: ExtractedDocument): DocumentChunk[] {
       }
     }
     if (current.length > 0) chunkTexts.push(current);
-    return chunkTexts.map((excerpt, index) => ({ index, total: chunkTexts.length, excerpt, hasPages: true }));
+    return chunkTexts.map((excerpt, index) => ({
+      index,
+      total: chunkTexts.length,
+      excerpt,
+      hasPages: true,
+    }));
   }
 
   // No page structure (the plain-text fallback for .txt/.csv): slice
@@ -170,7 +193,12 @@ function buildChunks(extracted: ExtractedDocument): DocumentChunk[] {
   for (let offset = 0; offset < text.length; offset += CHUNK_CHARS) {
     chunkTexts.push(text.slice(offset, offset + CHUNK_CHARS));
   }
-  return chunkTexts.map((excerpt, index) => ({ index, total: chunkTexts.length, excerpt, hasPages: false }));
+  return chunkTexts.map((excerpt, index) => ({
+    index,
+    total: chunkTexts.length,
+    excerpt,
+    hasPages: false,
+  }));
 }
 
 const VALID_FINDING_KINDS = new Set([
@@ -239,10 +267,10 @@ async function extractFindingsFromChunk(
   document: { source_filename: string },
   extracted: ExtractedDocument,
   chunk: DocumentChunk,
-  groundingDigest: TableGroundingDigestEntry[] = []
+  groundingDigest: TableGroundingDigestEntry[] = [],
 ): Promise<{ id: string; finding_text: string }[]> {
   const pageInstruction = chunk.hasPages
-    ? "The text is divided into pages marked like \"[[PAGE 3]]\". For every finding, report the page " +
+    ? 'The text is divided into pages marked like "[[PAGE 3]]". For every finding, report the page ' +
       "number it came from in page_number.\n\n"
     : "";
 
@@ -296,7 +324,7 @@ async function extractFindingsFromChunk(
       "- external_citation: a fact, statistic, or benchmark the report states but attributes to " +
       "someone else's research, cited for context or comparison rather than produced by this study.\n" +
       "- hypothesis: a tentative explanation the report offers for why something is happening, signaled " +
-      "by hedging language such as \"may suggest\", \"could indicate\", or \"possibly reflects\", " +
+      'by hedging language such as "may suggest", "could indicate", or "possibly reflects", ' +
       "not stated as a settled result.\n" +
       "- methodology: a statement about how the data was collected, sampled, measured, or analyzed " +
       "(sample size, method, instrument, a stated limitation), rather than a result itself.\n" +
@@ -313,8 +341,8 @@ async function extractFindingsFromChunk(
       "this only on what the report's own text actually connects, not on topical similarity; an insight " +
       "with no visible support in the text it gives should get an empty array, not a guess. Omit this " +
       "field, or leave it empty, for every finding that is not a stated_insight.\n\n" +
-      "Also assign each finding a short theme (two to five words, e.g. \"Structural readiness\", " +
-      "\"Demographic gaps in DFS use\", \"Segment profiles\"). Use the SAME theme name, worded " +
+      'Also assign each finding a short theme (two to five words, e.g. "Structural readiness", ' +
+      '"Demographic gaps in DFS use", "Segment profiles"). Use the SAME theme name, worded ' +
       "identically, for every finding that belongs together, so findings can be grouped by it. Aim for " +
       "roughly four to eight themes total, not one per finding.\n\n" +
       "Also classify each finding's data_type as either:\n" +
@@ -327,13 +355,14 @@ async function extractFindingsFromChunk(
       "when the source text gives that mean with no standard deviation, standard error, confidence " +
       "interval, or range anywhere alongside it, and false when it does give one of those, or when the " +
       "finding isn't about a mean at all. This flags a real, common gap (a report states \"average " +
-      "satisfaction was 7.2\" with no sense of how spread out the underlying scores were), not a " +
+      'satisfaction was 7.2" with no sense of how spread out the underlying scores were), not a ' +
       "judgment about whether the finding is otherwise trustworthy.",
     tool_choice: { type: "tool", name: "record_findings" },
     tools: [
       {
         name: "record_findings",
-        description: "Records the list of discrete findings found in the report text.",
+        description:
+          "Records the list of discrete findings found in the report text.",
         input_schema: {
           type: "object",
           properties: {
@@ -344,7 +373,8 @@ async function extractFindingsFromChunk(
                 properties: {
                   finding_text: {
                     type: "string",
-                    description: "The finding, in the report's own words as closely as possible.",
+                    description:
+                      "The finding, in the report's own words as closely as possible.",
                   },
                   finding_kind: {
                     type: "string",
@@ -357,24 +387,29 @@ async function extractFindingsFromChunk(
                       "recommendation",
                       "stated_insight",
                     ],
-                    description: "Which of the seven categories this finding falls into.",
+                    description:
+                      "Which of the seven categories this finding falls into.",
                   },
                   theme: {
                     type: "string",
-                    description: "A short theme name, reused identically across findings in the same theme.",
+                    description:
+                      "A short theme name, reused identically across findings in the same theme.",
                   },
                   data_type: {
                     type: "string",
                     enum: ["qualitative", "quantitative"],
-                    description: "Whether this finding's evidence is a number/statistic or a qualitative observation.",
+                    description:
+                      "Whether this finding's evidence is a number/statistic or a qualitative observation.",
                   },
                   source_quote: {
                     type: "string",
-                    description: "The exact verbatim sentence in the source text this finding is drawn from.",
+                    description:
+                      "The exact verbatim sentence in the source text this finding is drawn from.",
                   },
                   page_number: {
                     type: "integer",
-                    description: "The page this finding came from, only when the text was divided into pages.",
+                    description:
+                      "The page this finding came from, only when the text was divided into pages.",
                   },
                   supporting_indices: {
                     type: "array",
@@ -397,7 +432,13 @@ async function extractFindingsFromChunk(
                       "finding that isn't about a mean, or that does give a spread measure.",
                   },
                 },
-                required: ["finding_text", "finding_kind", "theme", "data_type", "source_quote"],
+                required: [
+                  "finding_text",
+                  "finding_kind",
+                  "theme",
+                  "data_type",
+                  "source_quote",
+                ],
               },
             },
           },
@@ -420,7 +461,7 @@ async function extractFindingsFromChunk(
     throw new Error(
       chunk.total > 1
         ? `Claude did not return a structured findings list for part ${chunk.index + 1} of ${chunk.total} of "${document.source_filename}".`
-        : "Claude did not return a structured findings list"
+        : "Claude did not return a structured findings list",
     );
   }
 
@@ -434,7 +475,7 @@ async function extractFindingsFromChunk(
       `Claude's response was cut off before it finished (hit the output limit) while extracting findings ` +
         `from "${document.source_filename}"${chunk.total > 1 ? ` (part ${chunk.index + 1} of ${chunk.total})` : ""}. ` +
         `This portion produced more findings than fit in one response. Try again, or let us know so the ` +
-        `limit can be raised further.`
+        `limit can be raised further.`,
     );
   }
 
@@ -462,7 +503,7 @@ async function extractFindingsFromChunk(
             stopReason: response.stop_reason,
             rawInput: JSON.stringify(rawInput).slice(0, 1000),
           }),
-        ]
+        ],
       );
     });
   }
@@ -475,8 +516,11 @@ async function extractFindingsFromChunk(
       ...finding,
       rawIndex,
       grounded_pattern_index:
-        typeof finding.grounded_pattern_index === "number" ? finding.grounded_pattern_index : undefined,
-      extractionCaveats: finding.mean_without_spread === true ? ["std_unknown"] : [],
+        typeof finding.grounded_pattern_index === "number"
+          ? finding.grounded_pattern_index
+          : undefined,
+      extractionCaveats:
+        finding.mean_without_spread === true ? ["std_unknown"] : [],
     }))
     .filter(
       (finding): finding is ValidatedFinding =>
@@ -487,9 +531,10 @@ async function extractFindingsFromChunk(
         typeof finding.theme === "string" &&
         finding.theme.trim().length > 0 &&
         (finding.data_type === undefined ||
-          (typeof finding.data_type === "string" && VALID_DATA_TYPES.has(finding.data_type))) &&
+          (typeof finding.data_type === "string" &&
+            VALID_DATA_TYPES.has(finding.data_type))) &&
         typeof finding.source_quote === "string" &&
-        finding.source_quote.trim().length > 0
+        finding.source_quote.trim().length > 0,
     );
 
   // Build a lookup so a finding's quote can be checked against the specific
@@ -497,7 +542,9 @@ async function extractFindingsFromChunk(
   // This uses the full document's pages (not just this chunk's), since a
   // quote always has to be checked against the real source regardless of
   // which chunk reported it.
-  const pageTextByNumber = new Map(extracted.pages.map((p) => [p.pageNumber, p.text]));
+  const pageTextByNumber = new Map(
+    extracted.pages.map((p) => [p.pageNumber, p.text]),
+  );
 
   const inserted = await withTenant(tenantId, async (client) => {
     const rows: { id: string; finding_text: string }[] = [];
@@ -512,21 +559,33 @@ async function extractFindingsFromChunk(
 
     for (const finding of validFindings) {
       const pageNumber =
-        typeof finding.page_number === "number" && pageTextByNumber.has(finding.page_number)
+        typeof finding.page_number === "number" &&
+        pageTextByNumber.has(finding.page_number)
           ? finding.page_number
           : null;
-      const textToCheckAgainst = pageNumber ? pageTextByNumber.get(pageNumber)! : extracted.fullText;
-      let quoteVerified = quoteAppearsIn(finding.source_quote, textToCheckAgainst);
+      const textToCheckAgainst = pageNumber
+        ? pageTextByNumber.get(pageNumber)!
+        : extracted.fullText;
+      let quoteVerified = quoteAppearsIn(
+        finding.source_quote,
+        textToCheckAgainst,
+      );
 
       // A quoted sentence can start near the bottom of one page and finish
       // on the next, or Claude can be off by one page in its own count.
       // Before concluding a quote really isn't there, also check the pages
       // either side of the one it was attributed to.
       if (!quoteVerified && pageNumber) {
-        const neighboringText = [pageTextByNumber.get(pageNumber - 1), pageTextByNumber.get(pageNumber + 1)]
+        const neighboringText = [
+          pageTextByNumber.get(pageNumber - 1),
+          pageTextByNumber.get(pageNumber + 1),
+        ]
           .filter((t): t is string => Boolean(t))
           .join(" ");
-        if (neighboringText.length > 0 && quoteAppearsIn(finding.source_quote, neighboringText)) {
+        if (
+          neighboringText.length > 0 &&
+          quoteAppearsIn(finding.source_quote, neighboringText)
+        ) {
           quoteVerified = true;
         }
       }
@@ -539,23 +598,23 @@ async function extractFindingsFromChunk(
       // as if the model had left the field unset.
       const groundedByFindingId =
         typeof finding.grounded_pattern_index === "number"
-          ? groundingDigest.find((g) => g.index === finding.grounded_pattern_index)?.findingId ?? null
+          ? (groundingDigest.find(
+              (g) => g.index === finding.grounded_pattern_index,
+            )?.findingId ?? null)
           : null;
 
-      // status starts at 'pending' (the schema's own default), not
-      // 'accepted': a freshly extracted finding hasn't actually been
-      // reviewed by anyone yet, and 'pending' is what the home page's
-      // "findings reviewed" count and "Regenerate unreviewed" both key
-      // off. Every downstream consumer (dedupe, verification, pre-insight
-      // generation) already excludes only 'rejected', treating 'pending'
-      // and 'accepted' identically, so this doesn't change what a finding
-      // is eligible for, only whether the review workflow can see it as
-      // unreviewed.
+      // status starts at 'accepted', not the schema's 'pending' default:
+      // with a run routinely surfacing well over a hundred findings,
+      // nobody actually works through them one by one before the rest of
+      // the pipeline (synthesis, recommendations) can run. A researcher
+      // reviews by exception instead -- rejecting the ones that are wrong
+      // -- so "Regenerate rejected" replaces only what's been rejected,
+      // leaving accepted findings (and everything built on them) alone.
       const result = await client.query<{ id: string; finding_text: string }>(
         `insert into findings
            (tenant_id, run_id, origin, finding_text, finding_kind, theme, data_type, source_document_id,
             source_page, source_quote, quote_verified, status, grounded_by_finding_id, extraction_caveats)
-         values ($1, $2, 'stated', $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12)
+         values ($1, $2, 'stated', $3, $4, $5, $6, $7, $8, $9, $10, 'accepted', $11, $12)
          returning id, finding_text`,
         [
           tenantId,
@@ -570,16 +629,21 @@ async function extractFindingsFromChunk(
           quoteVerified,
           groundedByFindingId,
           JSON.stringify(finding.extractionCaveats),
-        ]
+        ],
       );
       const row = result.rows[0];
       rows.push(row);
       idByRawIndex.set(finding.rawIndex, row.id);
 
-      if (finding.finding_kind === "stated_insight" && Array.isArray(finding.supporting_indices)) {
+      if (
+        finding.finding_kind === "stated_insight" &&
+        Array.isArray(finding.supporting_indices)
+      ) {
         const rawIndices = finding.supporting_indices.filter(
           (value): value is number =>
-            typeof value === "number" && Number.isInteger(value) && value !== finding.rawIndex
+            typeof value === "number" &&
+            Number.isInteger(value) &&
+            value !== finding.rawIndex,
         );
         if (rawIndices.length > 0) {
           pendingSupport.push({ insightId: row.id, rawIndices });
@@ -596,10 +660,10 @@ async function extractFindingsFromChunk(
         .map((rawIndex) => idByRawIndex.get(rawIndex))
         .filter((id): id is string => Boolean(id));
       if (supportIds.length === 0) continue;
-      await client.query(`update findings set cited_support_finding_ids = $1 where id = $2`, [
-        JSON.stringify(supportIds),
-        insightId,
-      ]);
+      await client.query(
+        `update findings set cited_support_finding_ids = $1 where id = $2`,
+        [JSON.stringify(supportIds), insightId],
+      );
     }
 
     return rows;
@@ -632,13 +696,17 @@ export async function extractFindingsFromDocument(
   tenantId: string,
   runId: string,
   documentId: string,
-  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {}
+  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
 ): Promise<{ id: string; finding_text: string }[]> {
-  const { onlyReplacePending = false, archiveReason = "manual_reextract" } = options;
+  const { onlyReplacePending = false, archiveReason = "manual_reextract" } =
+    options;
   const document = await withTenant(tenantId, async (client) => {
-    const result = await client.query<{ storage_path: string; source_filename: string }>(
+    const result = await client.query<{
+      storage_path: string;
+      source_filename: string;
+    }>(
       "select storage_path, source_filename from documents where id = $1 and run_id = $2",
-      [documentId, runId]
+      [documentId, runId],
     );
     return result.rows[0];
   });
@@ -647,7 +715,11 @@ export async function extractFindingsFromDocument(
     throw new Error("Document not found for this run");
   }
 
-  const extracted = await extractDocumentText(document.storage_path, document.source_filename, documentId);
+  const extracted = await extractDocumentText(
+    document.storage_path,
+    document.source_filename,
+    documentId,
+  );
 
   // Store the extracted text, and the location of a browser-viewable PDF
   // version (the "view source" panel reads this), so this only has to run
@@ -655,7 +727,7 @@ export async function extractFindingsFromDocument(
   await withTenant(tenantId, async (client) => {
     await client.query(
       "update documents set extracted_text = $1, preview_storage_path = $2 where id = $3",
-      [extracted.fullText, extracted.previewStoragePath, documentId]
+      [extracted.fullText, extracted.previewStoragePath, documentId],
     );
   });
 
@@ -668,13 +740,17 @@ export async function extractFindingsFromDocument(
         [
           tenantId,
           runId,
-          JSON.stringify({ documentId, filename: document.source_filename, textLength: extracted.fullText.length }),
-        ]
+          JSON.stringify({
+            documentId,
+            filename: document.source_filename,
+            textLength: extracted.fullText.length,
+          }),
+        ],
       );
     });
     throw new Error(
       `Almost no readable text came out of "${document.source_filename}" (${extracted.fullText.length} characters). ` +
-        `The file may be image-based, empty, or in a format this reader cannot parse properly.`
+        `The file may be image-based, empty, or in a format this reader cannot parse properly.`,
     );
   }
 
@@ -697,7 +773,7 @@ export async function extractFindingsFromDocument(
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_document_id",
       documentId,
-      onlyPending: onlyReplacePending,
+      onlyRejected: onlyReplacePending,
       archiveReason,
     });
   });
@@ -707,7 +783,15 @@ export async function extractFindingsFromDocument(
 
   for (const chunk of chunks) {
     try {
-      const rows = await extractFindingsFromChunk(tenantId, runId, documentId, document, extracted, chunk, groundingDigest);
+      const rows = await extractFindingsFromChunk(
+        tenantId,
+        runId,
+        documentId,
+        document,
+        extracted,
+        chunk,
+        groundingDigest,
+      );
       allRows.push(...rows);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -718,8 +802,14 @@ export async function extractFindingsFromDocument(
           [
             tenantId,
             runId,
-            JSON.stringify({ documentId, filename: document.source_filename, chunk: chunk.index, totalChunks: chunk.total, message }),
-          ]
+            JSON.stringify({
+              documentId,
+              filename: document.source_filename,
+              chunk: chunk.index,
+              totalChunks: chunk.total,
+              message,
+            }),
+          ],
         );
       }).catch(() => {});
     }
@@ -733,7 +823,7 @@ export async function extractFindingsFromDocument(
       throw new Error(chunkErrors[0]);
     }
     throw new Error(
-      `Extraction failed on every part of "${document.source_filename}" (${chunks.length} parts). First error: ${chunkErrors[0]}`
+      `Extraction failed on every part of "${document.source_filename}" (${chunks.length} parts). First error: ${chunkErrors[0]}`,
     );
   }
 

@@ -1,3 +1,5 @@
+import { refreshRecommendationQuality } from "./recommendationQualityScorer";
+import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -618,4 +620,10 @@ export async function refreshRecommendations(tenantId: string, runId: string): P
       );
     });
   }
+
+  // Quality control for what was just generated, and for the objective list
+  // it serves. Both are no-ops when nothing needs scoring, and neither can
+  // fail the step that called this.
+  await refreshRecommendationQuality(tenantId, runId);
+  await refreshObjectiveQuality(tenantId, runId);
 }

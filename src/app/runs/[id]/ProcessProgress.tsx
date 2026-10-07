@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 type ProgressPayload = {
-  phase: "extracting" | "finishing";
+  phase: "extracting" | "finishing" | "done";
   done: number;
   total: number;
   estimatedRemainingMs: number | null;
@@ -49,7 +49,9 @@ export default function ProcessProgress({ runId }: { runId: string }) {
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/runs/${runId}/process-progress`, { cache: "no-store" });
+        const response = await fetch(`/api/runs/${runId}/process-progress`, {
+          cache: "no-store",
+        });
         if (!response.ok || cancelled) return;
         const data = (await response.json()) as { progress: ProgressPayload };
         if (!cancelled) setProgress(data.progress);
@@ -70,14 +72,20 @@ export default function ProcessProgress({ runId }: { runId: string }) {
     };
   }, [pending, runId]);
 
-  if (!pending || !progress) return null;
+  if (!pending || !progress || progress.phase === "done") return null;
 
   if (progress.phase === "finishing") {
-    return <p className="mt-1.5 text-xs text-muted">Finishing up (verifying and synthesizing)...</p>;
+    return (
+      <p className="mt-1.5 text-xs text-muted">
+        Finishing up (verifying and synthesizing)...
+      </p>
+    );
   }
 
   const etaText =
-    progress.estimatedRemainingMs !== null ? `, ${formatEta(progress.estimatedRemainingMs)}` : "";
+    progress.estimatedRemainingMs !== null
+      ? `, ${formatEta(progress.estimatedRemainingMs)}`
+      : "";
 
   return (
     <p className="mt-1.5 text-xs text-muted">

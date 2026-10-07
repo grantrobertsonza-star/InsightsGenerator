@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 
-export type ArchiveReason = "regenerate_unreviewed" | "full_reprocess" | "manual_reextract";
+export type ArchiveReason =
+  "regenerate_unreviewed" | "full_reprocess" | "manual_reextract";
 
 /**
  * Before any delete that would remove findings (and, by cascade, their
@@ -14,11 +15,12 @@ export type ArchiveReason = "regenerate_unreviewed" | "full_reprocess" | "manual
  * never actually removed.
  *
  * documentColumn/documentId scope this to one document's findings, the
- * same scope every call site already used for its own delete. onlyPending
- * narrows it to findings still at status 'pending' ("Regenerate
- * unreviewed"); false archives and replaces everything regardless of
- * review status ("Reprocess all documents", or a single-document manual
- * re-extract).
+ * same scope every call site already used for its own delete. onlyRejected
+ * narrows it to findings still at status 'rejected' ("Regenerate
+ * rejected" -- findings insert as 'accepted' by default now, so a
+ * researcher reviews by exception, rejecting the ones that are wrong);
+ * false archives and replaces everything regardless of review status
+ * ("Reprocess all documents", or a single-document manual re-extract).
  *
  * insight_history.original_finding_id is unique (see 0021), but the live
  * `insights` table has no equivalent constraint stopping two insight rows
@@ -41,13 +43,13 @@ export async function archiveAndReplaceFindings(
   params: {
     documentColumn: "source_document_id" | "source_table_id";
     documentId: string;
-    onlyPending: boolean;
+    onlyRejected: boolean;
     archiveReason: ArchiveReason;
-  }
+  },
 ): Promise<void> {
-  const { documentColumn, documentId, onlyPending, archiveReason } = params;
-  const statusClause = onlyPending ? "and status = 'pending'" : "";
-  const statusClauseAliased = onlyPending ? "and f.status = 'pending'" : "";
+  const { documentColumn, documentId, onlyRejected, archiveReason } = params;
+  const statusClause = onlyRejected ? "and status = 'rejected'" : "";
+  const statusClauseAliased = onlyRejected ? "and f.status = 'rejected'" : "";
 
   await client.query(
     `insert into finding_history (
@@ -60,7 +62,7 @@ export async function archiveAndReplaceFindings(
      from findings
      where ${documentColumn} = $1 ${statusClause}
      on conflict (original_finding_id) do nothing`,
-    [documentId, archiveReason]
+    [documentId, archiveReason],
   );
 
   await client.query(
@@ -73,7 +75,7 @@ export async function archiveAndReplaceFindings(
      from verdicts v
      join findings f on f.id = v.finding_id
      where f.${documentColumn} = $1 ${statusClauseAliased}`,
-    [documentId]
+    [documentId],
   );
 
   await client.query(
@@ -94,7 +96,7 @@ export async function archiveAndReplaceFindings(
             implication, decision_context, quality_score, quality_tier, quality_rationale, created_at
      from picked_insights
      on conflict (original_finding_id) do nothing`,
-    [documentId]
+    [documentId],
   );
 
   await client.query(
@@ -113,8 +115,11 @@ export async function archiveAndReplaceFindings(
             r.timeline, r.metric, r.priority, r.status, r.created_at
      from recommendations r
      join picked_insights pi on pi.insight_id = r.insight_id`,
-    [documentId]
+    [documentId],
   );
 
-  await client.query(`delete from findings where ${documentColumn} = $1 ${statusClause}`, [documentId]);
+  await client.query(
+    `delete from findings where ${documentColumn} = $1 ${statusClause}`,
+    [documentId],
+  );
 }

@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Supabase CLI local state
+supabase/.temp
+supabase/.branches
+
+# Backups hold client data: never commit
+/backups/

@@ -47,12 +47,17 @@ export const MAX_CATEGORY_CARDINALITY = 10;
 export function distinctCategories(rows: Row[], column: string): string[] {
   const present = rows
     .map((row) => row[column])
-    .filter((value): value is string | number => value !== null && value !== undefined);
+    .filter(
+      (value): value is string | number =>
+        value !== null && value !== undefined,
+    );
   return Array.from(new Set(present.map((value) => String(value))));
 }
 
 export function isNumericColumn(rows: Row[], column: string): boolean {
-  const present = rows.map((row) => row[column]).filter((value) => value !== null && value !== undefined);
+  const present = rows
+    .map((row) => row[column])
+    .filter((value) => value !== null && value !== undefined);
   if (present.length === 0) return false;
   return present.every((value) => typeof value === "number");
 }
@@ -93,7 +98,7 @@ function describeProportionGap(
   nB: number,
   pA: number,
   pB: number,
-  result: { gapPercent: number; zScore: number | null; significant: boolean }
+  result: { gapPercent: number; zScore: number | null; significant: boolean },
 ): string {
   const pctA = Math.round(pA * 1000) / 10;
   const pctB = Math.round(pB * 1000) / 10;
@@ -107,8 +112,10 @@ function describeProportionGap(
   const sigClause = result.significant
     ? `a statistically significant ${gapAbs}-point gap (${zText})`
     : `not a statistically significant difference (${gapAbs}-point gap, ${zText})`;
-  return `${bannerColumn} "${catA}" is ${direction} likely than "${catB}" to fall into ${stubColumn}="${stubCategory}" ` +
-    `(${pctA}% vs ${pctB}%, n=${nA} vs ${nB}): ${sigClause}.`;
+  return (
+    `${bannerColumn} "${catA}" is ${direction} likely than "${catB}" to fall into ${stubColumn}="${stubCategory}" ` +
+    `(${pctA}% vs ${pctB}%, n=${nA} vs ${nB}): ${sigClause}.`
+  );
 }
 
 function describeMeanGap(
@@ -118,8 +125,14 @@ function describeMeanGap(
   catB: string,
   nA: number,
   nB: number,
-  comparison: { mean1: number; mean2: number; gap: number; tScore: number | null; significant: boolean },
-  isPostHoc: boolean
+  comparison: {
+    mean1: number;
+    mean2: number;
+    gap: number;
+    tScore: number | null;
+    significant: boolean;
+  },
+  isPostHoc: boolean,
 ): string {
   const tText = comparison.tScore !== null ? `t=${comparison.tScore}` : "t n/a";
   const subject = `${bannerColumn} "${catA}" and "${catB}"`;
@@ -131,27 +144,45 @@ function describeMeanGap(
     const sigClause = comparison.significant
       ? `a statistically significant gap of ${Math.abs(comparison.gap)} (${tText})`
       : `not a statistically significant difference (gap of ${Math.abs(comparison.gap)}, ${tText})`;
-    sentence = `${bannerColumn} "${catA}" averages ${direction} on ${stubColumn} than "${catB}" ` +
+    sentence =
+      `${bannerColumn} "${catA}" averages ${direction} on ${stubColumn} than "${catB}" ` +
       `(${comparison.mean1} vs ${comparison.mean2}, n=${nA} vs ${nB}): ${sigClause}.`;
   }
-  return sentence + (isPostHoc ? " Post-hoc comparison, following a significant overall difference across all groups." : "");
+  return (
+    sentence +
+    (isPostHoc
+      ? " Post-hoc comparison, following a significant overall difference across all groups."
+      : "")
+  );
 }
 
 function describeAnova(
   bannerColumn: string,
   stubColumn: string,
-  anova: { fStat: number | null; pValue: number | null; significant: boolean; groupMeans: { label: string; n: number; mean: number }[] }
+  anova: {
+    fStat: number | null;
+    pValue: number | null;
+    significant: boolean;
+    groupMeans: { label: string; n: number; mean: number }[];
+  },
 ): string {
   const sorted = [...anova.groupMeans].sort((a, b) => b.mean - a.mean);
-  const listing = sorted.map((g) => `${g.label} ${g.mean} (n=${g.n})`).join(", ");
-  const statsText = anova.fStat !== null && anova.pValue !== null ? ` (F=${anova.fStat}, ${formatPValue(anova.pValue)})` : "";
+  const listing = sorted
+    .map((g) => `${g.label} ${g.mean} (n=${g.n})`)
+    .join(", ");
+  const statsText =
+    anova.fStat !== null && anova.pValue !== null
+      ? ` (F=${anova.fStat}, ${formatPValue(anova.pValue)})`
+      : "";
   if (!anova.significant) {
     return `${stubColumn} looks broadly similar across ${bannerColumn} groups: ${listing}${statsText}, no statistically significant difference overall (one-way ANOVA).`;
   }
   const top = sorted[0];
   const bottom = sorted[sorted.length - 1];
-  return `${stubColumn} differs by ${bannerColumn}: highest for "${top.label}" at ${top.mean}, lowest for "${bottom.label}" at ${bottom.mean} ` +
-    `(full breakdown: ${listing})${statsText}, a statistically significant spread across all ${sorted.length} groups (one-way ANOVA).`;
+  return (
+    `${stubColumn} differs by ${bannerColumn}: highest for "${top.label}" at ${top.mean}, lowest for "${bottom.label}" at ${bottom.mean} ` +
+    `(full breakdown: ${listing})${statsText}, a statistically significant spread across all ${sorted.length} groups (one-way ANOVA).`
+  );
 }
 
 /**
@@ -174,7 +205,7 @@ function describeAnova(
 export function computeBannerPlanPatterns(
   rows: Row[],
   bannerColumns: string[],
-  stubColumns: string[]
+  stubColumns: string[],
 ): BannerComparisonPattern[] {
   const patterns: BannerComparisonPattern[] = [];
 
@@ -190,7 +221,11 @@ export function computeBannerPlanPatterns(
     // degenerate comparison. A numeric column with few distinct values
     // (say, number of children, 0-4) is a legitimate discrete banner and
     // still goes through below.
-    if (isNumericColumn(rows, bannerColumn) && allBannerCategories.length > MAX_CATEGORY_CARDINALITY) continue;
+    if (
+      isNumericColumn(rows, bannerColumn) &&
+      allBannerCategories.length > MAX_CATEGORY_CARDINALITY
+    )
+      continue;
 
     const categories = allBannerCategories.slice(0, MAX_CATEGORY_CARDINALITY);
     if (categories.length < 2) continue;
@@ -201,7 +236,7 @@ export function computeBannerPlanPatterns(
         category,
         rows
           .map((row, index) => ({ index, row }))
-          .filter(({ row }) => String(row[bannerColumn]) === category)
+          .filter(({ row }) => String(row[bannerColumn]) === category),
       );
     }
 
@@ -240,9 +275,14 @@ export function computeBannerPlanPatterns(
         if (anova.fStat === null && anova.pValue === null) {
           for (const category of categories) {
             const groupRows = groupsByCategory.get(category) ?? [];
-            const values = groupRows.map(({ row }) => row[stubColumn]).filter((value): value is number => typeof value === "number");
+            const values = groupRows
+              .map(({ row }) => row[stubColumn])
+              .filter((value): value is number => typeof value === "number");
             if (values.length === 0) continue;
-            const mean = Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
+            const mean =
+              Math.round(
+                (values.reduce((a, b) => a + b, 0) / values.length) * 100,
+              ) / 100;
             patterns.push({
               patternType: "banner_comparison",
               description:
@@ -265,7 +305,9 @@ export function computeBannerPlanPatterns(
           continue;
         }
 
-        const allRowIndices = categories.flatMap((category) => (groupsByCategory.get(category) ?? []).map((g) => g.index));
+        const allRowIndices = categories.flatMap((category) =>
+          (groupsByCategory.get(category) ?? []).map((g) => g.index),
+        );
 
         patterns.push({
           patternType: "banner_comparison",
@@ -319,8 +361,14 @@ export function computeBannerPlanPatterns(
               catB,
               valuesA.length,
               valuesB.length,
-              { mean1: comparison.mean1, mean2: comparison.mean2, gap: comparison.gap ?? 0, tScore: comparison.tScore, significant: comparison.significant },
-              isPostHoc
+              {
+                mean1: comparison.mean1,
+                mean2: comparison.mean2,
+                gap: comparison.gap ?? 0,
+                tScore: comparison.tScore,
+                significant: comparison.significant,
+              },
+              isPostHoc,
             ),
             theme: `${bannerColumn} & ${stubColumn}`,
             statedStats: {
@@ -338,7 +386,10 @@ export function computeBannerPlanPatterns(
                 ...(isPostHoc ? ["post_hoc_after_significant_anova"] : []),
               ],
             },
-            rowIndices: [...groupA.map((g) => g.index), ...groupB.map((g) => g.index)],
+            rowIndices: [
+              ...groupA.map((g) => g.index),
+              ...groupB.map((g) => g.index),
+            ],
           });
         } else {
           // Categorical stub: compare, for each category the stub column
@@ -346,19 +397,37 @@ export function computeBannerPlanPatterns(
           // into it. A banner column named "Gender" with a stub named
           // "Preferred channel" (App/Branch/Call centre) produces one
           // comparison per stub category, not one comparison overall.
-          const stubCategories = distinctCategories(rows, stubColumn).slice(0, MAX_CATEGORY_CARDINALITY);
+          const stubCategories = distinctCategories(rows, stubColumn).slice(
+            0,
+            MAX_CATEGORY_CARDINALITY,
+          );
           for (const stubCategory of stubCategories) {
             const nA = groupA.length;
             const nB = groupB.length;
-            const countA = groupA.filter(({ row }) => String(row[stubColumn]) === stubCategory).length;
-            const countB = groupB.filter(({ row }) => String(row[stubColumn]) === stubCategory).length;
+            const countA = groupA.filter(
+              ({ row }) => String(row[stubColumn]) === stubCategory,
+            ).length;
+            const countB = groupB.filter(
+              ({ row }) => String(row[stubColumn]) === stubCategory,
+            ).length;
             const pA = countA / nA;
             const pB = countB / nB;
             const result = twoProportionGap(nA, pA, nB, pB);
 
             patterns.push({
               patternType: "banner_comparison",
-              description: describeProportionGap(bannerColumn, stubColumn, stubCategory, catA, catB, nA, nB, pA, pB, result),
+              description: describeProportionGap(
+                bannerColumn,
+                stubColumn,
+                stubCategory,
+                catA,
+                catB,
+                nA,
+                nB,
+                pA,
+                pB,
+                result,
+              ),
               theme: `${bannerColumn} & ${stubColumn}`,
               statedStats: {
                 ...result,
@@ -366,14 +435,32 @@ export function computeBannerPlanPatterns(
                 group2Label: catB,
                 n1: nA,
                 n2: nB,
+                // Percent-form copies of pA/pB, stored alongside the gap so the
+                // findings-page chart layer (see findingsChartData.ts) can
+                // reconstruct the full banner x stub crosstab for a chart
+                // without re-deriving it from the sentence in description --
+                // the gap/z-score above are the significance test result, these
+                // two are just the plain proportions that test was run on.
+                pctA: Math.round(pA * 1000) / 10,
+                pctB: Math.round(pB * 1000) / 10,
                 bannerColumn,
                 stubColumn,
                 stubCategory,
                 caveats: result.significant
-                  ? ["uncorrected_multiple_comparisons", "sampling_assumed_random"]
-                  : ["not_significant", "uncorrected_multiple_comparisons", "sampling_assumed_random"],
+                  ? [
+                      "uncorrected_multiple_comparisons",
+                      "sampling_assumed_random",
+                    ]
+                  : [
+                      "not_significant",
+                      "uncorrected_multiple_comparisons",
+                      "sampling_assumed_random",
+                    ],
               },
-              rowIndices: [...groupA.map((g) => g.index), ...groupB.map((g) => g.index)],
+              rowIndices: [
+                ...groupA.map((g) => g.index),
+                ...groupB.map((g) => g.index),
+              ],
             });
           }
         }

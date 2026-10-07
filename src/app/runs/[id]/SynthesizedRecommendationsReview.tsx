@@ -11,6 +11,7 @@ import {
   regenerateSynthesizedRecommendations,
 } from "@/lib/recommendationActions";
 import { TrashIcon } from "@/components/icons";
+import { scoreRecommendationsAction } from "@/lib/qualityActions";
 
 type Priority = "high" | "medium" | "low";
 
@@ -36,7 +37,201 @@ type Recommendation = {
   confidence_tier: ConfidenceTier | null;
   quality_score: number | null;
   quality_tier: QualityTier | null;
+  // The recommendation's own quality scores (migration 0045). Impact is
+  // shown beside the total, not in it.
+  rec_actionability_score?: number | null;
+  rec_feasibility_score?: number | null;
+  rec_evidence_score?: number | null;
+  rec_impact_score?: number | null;
+  rec_quality_score?: number | null;
+  rec_quality_tier?: "weak" | "workable" | "strong" | null;
+  rec_quality_rationale?: string | null;
 };
+
+const recTierClass = {
+  strong: "bg-indigo-50 text-indigo-700",
+  workable: "bg-amber-50 text-amber-700",
+  weak: "bg-slate-100 text-slate-600",
+} as const;
+
+const recTierLabel = {
+  strong: "Strong",
+  workable: "Workable",
+  weak: "Needs work",
+} as const;
+
+const recScoreCellClass: Record<number, string> = {
+  1: "bg-slate-100 text-slate-600",
+  3: "bg-amber-50 text-amber-700",
+  5: "bg-indigo-50 text-indigo-700",
+};
+
+const REC_SCORE_COLUMNS: [
+  "rec_actionability_score" | "rec_feasibility_score" | "rec_evidence_score",
+  string,
+  string,
+][] = [
+  [
+    "rec_actionability_score",
+    "Actionability",
+    "A specific action with a named owner role, a realistic timeline and a metric that would show whether it worked.",
+  ],
+  [
+    "rec_feasibility_score",
+    "Feasibility",
+    "Within the owner's reach: authority, budget, skills and dependencies addressed, risks and alternatives considered.",
+  ],
+  [
+    "rec_evidence_score",
+    "Evidence strength",
+    "Follows clearly from the insight it is built on and goes no further than that evidence supports.",
+  ],
+];
+
+function RecommendationScoresTable({
+  runId,
+  recommendations,
+}: {
+  runId: string;
+  recommendations: Recommendation[];
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const scorable = recommendations;
+  const unscored = scorable.filter(
+    (r) => r.status !== "rejected" && (r.rec_quality_score ?? null) === null,
+  ).length;
+
+  function score() {
+    setMessage(null);
+    setError(null);
+    startTransition(async () => {
+      const result = await scoreRecommendationsAction(runId);
+      if (result.ok) setMessage(result.message);
+      else setError(result.error);
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-xs text-muted">
+          Each recommendation is scored 1, 3 or 5 on actionability, feasibility and evidence strength, summed
+          out of 15. 12 or more is strong, 9 to 11 workable, below 9 needs work. Expected impact is scored the
+          same way but kept out of the total: a recommendation can be well formed and still small, and the
+          reverse. Editing a recommendation clears its score so it is scored again.
+          {unscored > 0
+            ? ` ${unscored} recommendation${unscored === 1 ? " is" : "s are"} not scored yet.`
+            : ""}
+        </p>
+        {unscored > 0 && (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={score}
+            className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
+          >
+            {isPending ? "Scoring..." : "Score unscored"}
+          </button>
+        )}
+      </div>
+      {message && (
+        <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">{message}</div>
+      )}
+      {error && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">
+          <span>Couldn&apos;t score the recommendations: {error}</span>
+          <button onClick={() => setError(null)} className="shrink-0 font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+      <div className="overflow-x-auto rounded-xl border border-border bg-white">
+        <table className="w-full min-w-[820px] text-left text-xs">
+          <thead>
+            <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <th className="px-3 py-2">Recommendation</th>
+              {REC_SCORE_COLUMNS.map(([key, label, definition]) => (
+                <th key={key} title={definition} className="px-2 py-2 text-center">
+                  {label}
+                </th>
+              ))}
+              <th className="px-2 py-2 text-center">Total</th>
+              <th className="px-3 py-2">Rating</th>
+              <th
+                title="Expected effect on the outcome the decision is about, if done well. Shown beside the total, not added to it."
+                className="border-l border-border bg-slate-100 px-3 py-2 text-center"
+              >
+                Impact
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {scorable.map((rec) => {
+              const rejected = rec.status === "rejected";
+              const impact = rec.rec_impact_score ?? null;
+              return (
+                <tr
+                  key={rec.id}
+                  className={`border-b border-border align-top last:border-0 ${rejected ? "opacity-50" : ""}`}
+                >
+                  <td className="max-w-md px-3 py-2 text-foreground">
+                    {rec.action_text}
+                    <div className="mt-0.5 text-[11px] text-muted">From: {rec.synthesized_insight_headline}</div>
+                    {rejected && <span className="text-[10px] uppercase text-muted">rejected</span>}
+                  </td>
+                  {REC_SCORE_COLUMNS.map(([key]) => {
+                    const value = rec[key] ?? null;
+                    return (
+                      <td key={key} className="px-2 py-2 text-center">
+                        {value === null ? (
+                          <span className="text-muted">-</span>
+                        ) : (
+                          <span
+                            className={`inline-block min-w-6 rounded px-1.5 py-0.5 font-semibold ${recScoreCellClass[value] ?? recScoreCellClass[1]}`}
+                          >
+                            {value}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-2 text-center font-semibold text-foreground">
+                    {rec.rec_quality_score == null ? "-" : `${rec.rec_quality_score}/15`}
+                  </td>
+                  <td className="px-3 py-2">
+                    {rec.rec_quality_tier ? (
+                      <span
+                        title={rec.rec_quality_rationale ?? undefined}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${recTierClass[rec.rec_quality_tier]}`}
+                      >
+                        {recTierLabel[rec.rec_quality_tier]}
+                      </span>
+                    ) : (
+                      <span className="text-muted">Not scored</span>
+                    )}
+                  </td>
+                  <td className="border-l border-border bg-slate-50 px-3 py-2 text-center">
+                    {impact === null ? (
+                      <span className="text-muted">-</span>
+                    ) : (
+                      <span
+                        className={`inline-block min-w-6 rounded px-1.5 py-0.5 font-semibold ${recScoreCellClass[impact] ?? recScoreCellClass[1]}`}
+                      >
+                        {impact}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 const qualityTierClass: Record<QualityTier, string> = {
   qualified: "bg-indigo-50 text-indigo-700",
@@ -213,25 +408,26 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
 
   return (
     <div
-      className={`rounded-lg border p-4 transition ${
-        isAccepted ? "border-success bg-success-light" : isRejected ? "border-border opacity-50" : "border-border bg-white"
+      className={`card-surface flex flex-col gap-4 rounded-xl border bg-white p-5 ${
+        isAccepted ? "border-success" : isRejected ? "border-border opacity-50" : "border-border"
       }`}
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <span
-            className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
               recommendation.source === "ai_suggested" ? "bg-primary-light text-primary" : "bg-slate-100 text-slate-500"
             }`}
           >
             {sourceLabel[recommendation.source]}
           </span>
-          <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${priorityStyle[recommendation.priority]}`}>
+          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${priorityStyle[recommendation.priority]}`}>
+            <span className="mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden />
             {recommendation.priority} priority
           </span>
           {recommendation.confidence_tier && (
             <span
-              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${confidenceTierClass[recommendation.confidence_tier]}`}
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${confidenceTierClass[recommendation.confidence_tier]}`}
               title="Triangulation strength of the synthesized insight this recommendation was built from"
             >
               {confidenceTierLabel[recommendation.confidence_tier]}
@@ -239,7 +435,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
           )}
           {recommendation.quality_tier && (
             <span
-              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${qualityTierClass[recommendation.quality_tier]}`}
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${qualityTierClass[recommendation.quality_tier]}`}
               title="Quality score of the insight this recommendation was built from"
             >
               Insight: {recommendation.quality_score}/25
@@ -267,35 +463,63 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
         </button>
       </div>
 
-      <div className="mb-2 text-xs text-muted">
-        From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
-      </div>
-
       {isEditing ? (
-        <EditFields draft={draft} onChange={setDraft} />
+        <>
+          <p className="text-xs text-muted">
+            From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
+          </p>
+          <EditFields draft={draft} onChange={setDraft} />
+        </>
       ) : (
-        <div className="space-y-1.5 text-sm">
-          <div className="font-medium text-foreground">{recommendation.action_text}</div>
-          <div className="text-xs text-muted">
-            <span className="font-semibold text-foreground">{recommendation.owner_role}</span> &middot; {recommendation.timeline}
+        <>
+          <div className="text-lg font-semibold leading-snug text-foreground">{recommendation.action_text}</div>
+          <p className="-mt-2 text-xs text-muted">
+            From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
+          </p>
+
+          <div className="h-px bg-border" />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex gap-3 rounded-xl bg-primary-light/40 p-3.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">W</div>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-primary">Owner and timeline</div>
+                <div className="text-sm font-medium leading-relaxed text-foreground">{recommendation.owner_role}</div>
+                <div className="text-sm leading-relaxed text-foreground">{recommendation.timeline}</div>
+              </div>
+            </div>
+            <div className="flex gap-3 rounded-xl bg-indigo-50 p-3.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">M</div>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-indigo-700">Metric</div>
+                <div className="text-sm leading-relaxed text-foreground">{recommendation.metric}</div>
+              </div>
+            </div>
           </div>
-          <div className="text-xs text-muted">{recommendation.owner_feasibility_note}</div>
-          <div className="text-xs text-muted">
-            <span className="font-semibold text-foreground">Metric: </span>
-            {recommendation.metric}
+
+          <div className="flex gap-3 rounded-xl bg-amber-50 p-3.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-600 text-xs font-bold text-white">R</div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">Assumptions and risks</div>
+              <div className="text-sm leading-relaxed text-foreground">{recommendation.assumptions_and_risks}</div>
+            </div>
           </div>
-          <div className="text-xs text-muted">
-            <span className="font-semibold text-foreground">Assumptions and risks: </span>
-            {recommendation.assumptions_and_risks}
+
+          <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-slate-50 p-3.5">
+            <div>
+              <div className="mb-0.5 text-[11px] font-bold uppercase tracking-wide text-teal-700">Why this owner, and feasibility</div>
+              <div className="text-sm leading-relaxed text-slate-700">{recommendation.owner_feasibility_note}</div>
+            </div>
+            <div className="h-px bg-border" />
+            <div>
+              <div className="mb-0.5 text-[11px] font-bold uppercase tracking-wide text-orange-800">Alternatives considered</div>
+              <div className="text-sm leading-relaxed text-slate-700">{recommendation.alternatives_considered}</div>
+            </div>
           </div>
-          <div className="text-xs text-muted">
-            <span className="font-semibold text-foreground">Alternatives considered: </span>
-            {recommendation.alternatives_considered}
-          </div>
-        </div>
+        </>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="-mt-1 flex flex-wrap justify-end gap-1.5">
         {isEditing ? (
           <>
             <button
@@ -423,6 +647,7 @@ export default function SynthesizedRecommendationsReview({
   const [addInsightId, setAddInsightId] = useState(insightOptions[0]?.id ?? "");
   const [addDraft, setAddDraft] = useState<Draft>(emptyDraft);
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
+  const [activeTab, setActiveTab] = useState<"recommendations" | "scores">("recommendations");
 
   const live = recommendations.filter((r) => r.status !== "rejected");
   const highCount = live.filter((r) => r.priority === "high").length;
@@ -471,6 +696,41 @@ export default function SynthesizedRecommendationsReview({
         )}
       </div>
 
+      <div className="flex gap-1 rounded-lg bg-slate-50 p-1 sm:w-fit">
+        {(
+          [
+            ["recommendations", "Recommendations", live.length],
+            [
+              "scores",
+              "Quality scores",
+              live.filter((r) => (r.rec_quality_score ?? null) !== null).length,
+            ],
+          ] as const
+        ).map(([value, label, count]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setActiveTab(value)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+              activeTab === value ? "bg-primary-light text-primary" : "text-muted hover:text-foreground"
+            }`}
+          >
+            {label}
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                activeTab === value ? "bg-white text-primary" : "bg-slate-100 text-muted"
+              }`}
+            >
+              {count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "scores" && <RecommendationScoresTable runId={runId} recommendations={recommendations} />}
+
+      {activeTab === "recommendations" && (
+        <>
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           <span>Couldn&apos;t generate recommendations right now: {regenerateError}</span>
@@ -552,7 +812,7 @@ export default function SynthesizedRecommendationsReview({
       )}
 
       {accepted.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {accepted.map((rec) => (
             <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
           ))}
@@ -560,7 +820,7 @@ export default function SynthesizedRecommendationsReview({
       )}
 
       {pending.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {accepted.length > 0 && <div className="text-xs font-semibold uppercase tracking-wide text-muted">Other recommendations</div>}
           {pending.map((rec) => (
             <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
@@ -652,6 +912,8 @@ export default function SynthesizedRecommendationsReview({
             </div>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

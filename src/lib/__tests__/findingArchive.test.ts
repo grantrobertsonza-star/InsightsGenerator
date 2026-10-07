@@ -35,7 +35,7 @@ describe("archiveAndReplaceFindings", () => {
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: "doc-1",
-      onlyPending: false,
+      onlyRejected: false,
       archiveReason: "full_reprocess",
     });
 
@@ -55,19 +55,23 @@ describe("archiveAndReplaceFindings", () => {
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_document_id",
       documentId: "doc-1",
-      onlyPending: false,
+      onlyRejected: false,
       archiveReason: "manual_reextract",
     });
 
     const insightHistoryInsert = calls[2].text;
     expect(insightHistoryInsert).toMatch(/distinct on \(i\.finding_id\)/i);
-    expect(insightHistoryInsert).toMatch(/on conflict \(original_finding_id\) do nothing/i);
+    expect(insightHistoryInsert).toMatch(
+      /on conflict \(original_finding_id\) do nothing/i,
+    );
 
     // recommendation_history must join against the SAME picked set, not the
     // raw insights table -- otherwise it can reference an insight that lost
     // the pick and was never actually archived above.
     const recommendationHistoryInsert = calls[3].text;
-    expect(recommendationHistoryInsert).toMatch(/distinct on \(i\.finding_id\)/i);
+    expect(recommendationHistoryInsert).toMatch(
+      /distinct on \(i\.finding_id\)/i,
+    );
   });
 
   it("also guards finding_history with on conflict do nothing", async () => {
@@ -76,42 +80,44 @@ describe("archiveAndReplaceFindings", () => {
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: "doc-1",
-      onlyPending: false,
+      onlyRejected: false,
       archiveReason: "regenerate_unreviewed",
     });
 
-    expect(calls[0].text).toMatch(/on conflict \(original_finding_id\) do nothing/i);
+    expect(calls[0].text).toMatch(
+      /on conflict \(original_finding_id\) do nothing/i,
+    );
   });
 
-  it("scopes to pending findings only when onlyPending is true", async () => {
+  it("scopes to rejected findings only when onlyRejected is true", async () => {
     const { client, calls } = createMockClient();
 
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: "doc-1",
-      onlyPending: true,
+      onlyRejected: true,
       archiveReason: "regenerate_unreviewed",
     });
 
-    expect(calls[0].text).toMatch(/and status = 'pending'/i);
-    expect(calls[1].text).toMatch(/and f\.status = 'pending'/i);
-    expect(calls[2].text).toMatch(/and f\.status = 'pending'/i);
-    expect(calls[3].text).toMatch(/and f\.status = 'pending'/i);
-    expect(calls[4].text).toMatch(/and status = 'pending'/i);
+    expect(calls[0].text).toMatch(/and status = 'rejected'/i);
+    expect(calls[1].text).toMatch(/and f\.status = 'rejected'/i);
+    expect(calls[2].text).toMatch(/and f\.status = 'rejected'/i);
+    expect(calls[3].text).toMatch(/and f\.status = 'rejected'/i);
+    expect(calls[4].text).toMatch(/and status = 'rejected'/i);
   });
 
-  it("does not scope to pending when onlyPending is false (full reprocess touches everything)", async () => {
+  it("does not scope to rejected when onlyRejected is false (full reprocess touches everything)", async () => {
     const { client, calls } = createMockClient();
 
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: "doc-1",
-      onlyPending: false,
+      onlyRejected: false,
       archiveReason: "full_reprocess",
     });
 
     for (const call of calls) {
-      expect(call.text).not.toMatch(/status = 'pending'/i);
+      expect(call.text).not.toMatch(/status = 'rejected'/i);
     }
   });
 });

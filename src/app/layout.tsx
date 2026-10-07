@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import GlobalShell from "@/components/GlobalShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,13 +15,19 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Insights Elevator",
-  description: "Turn research reports and data into verified, decision-ready insights.",
+  description:
+    "Turn research reports and data into verified, decision-ready insights.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">{children}</body>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
+        <GlobalShell>{children}</GlobalShell>
+      </body>
     </html>
   );
 }

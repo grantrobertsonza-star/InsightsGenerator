@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { mkdtemp, readFile, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { pathToFileURL } from "url";
 
 const execFileAsync = promisify(execFile);
 
@@ -10,13 +11,29 @@ const execFileAsync = promisify(execFile);
 // .env.local if LibreOffice was installed somewhere else.
 const SOFFICE_PATH = process.env.LIBREOFFICE_PATH || "C:\\Program Files\\LibreOffice\\program\\soffice.exe";
 
+// LibreOffice cannot run two headless conversions on the same profile at once:
+// the second one fails outright. Processing several Word files together used
+// to hit that, so conversions go through one queue. They also use their own
+// profile folder (kept between runs, so only the first conversion is slow),
+// which stops a LibreOffice window the user has open from blocking them.
+let queue: Promise<unknown> = Promise.resolve();
+const PROFILE_URL = pathToFileURL(
+  path.join(tmpdir(), "insights-elevator-libreoffice-profile"),
+).href;
+
+export function convertOfficeDocToPdf(buffer: Buffer, originalFilename: string): Promise<Buffer> {
+  const run = queue.then(() => convertNow(buffer, originalFilename));
+  queue = run.catch(() => undefined);
+  return run;
+}
+
 /**
  * Converts a Word (.docx) or PowerPoint (.pptx) file to PDF using a local
  * LibreOffice install, so it can be run through the same page-by-page PDF
  * extraction and quote-grounding pipeline used for a native PDF upload.
  * Each PowerPoint slide becomes one PDF page.
  */
-export async function convertOfficeDocToPdf(buffer: Buffer, originalFilename: string): Promise<Buffer> {
+async function convertNow(buffer: Buffer, originalFilename: string): Promise<Buffer> {
   const tempDir = await mkdtemp(path.join(tmpdir(), "insights-elevator-"));
   const extension = path.extname(originalFilename) || ".docx";
   const inputPath = path.join(tempDir, `input${extension}`);
@@ -25,6 +42,7 @@ export async function convertOfficeDocToPdf(buffer: Buffer, originalFilename: st
     await writeFile(inputPath, buffer);
 
     await execFileAsync(SOFFICE_PATH, [
+      `-env:UserInstallation=${PROFILE_URL}`,
       "--headless",
       "--convert-to",
       "pdf",

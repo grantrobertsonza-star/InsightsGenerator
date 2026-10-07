@@ -2,6 +2,8 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
+import { applyRecordedContradictions, recordContradiction } from "./contradictionDetector";
+import { verificationBasisFor, type VerificationBasis } from "./discoveryClassification";
 
 // How many of a claim's evidence pool get shown to the model at once. A
 // claim with dozens of theme-matching findings in a large run would blow
@@ -30,6 +32,7 @@ type StatedInsightClaim = {
 
 type EvidenceRow = {
   id: string;
+  origin: "stated" | "generated" | "coded";
   finding_text: string;
   finding_kind: string | null;
   theme: string | null;
@@ -45,6 +48,9 @@ type PreparedVerdict = {
   statisticalChecks: Record<string, unknown>;
   corroborationLevel: "cross_source_corroborated" | "single_source" | "contradicted";
   dueCare: Record<string, unknown>;
+  verificationBasis: VerificationBasis;
+  /** Evidence found in direct conflict with the claim (only when the outcome is "contradicted"). */
+  contradictedBy: { id: string }[];
 };
 
 const TIER_FROM_CHAIN_OUTCOME: Record<string, ChainVerdictTier> = {
@@ -139,8 +145,8 @@ export async function validateStatedInsights(tenantId: string, runId: string): P
     for (const verdict of prepared) {
       await client.query(
         `insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks,
-                                verification_method, corroboration_level, due_care)
-         values ($1, $2, $3, $4, $5, 'chain_trace', $6, $7)`,
+                                verification_method, corroboration_level, due_care, verification_basis)
+         values ($1, $2, $3, $4, $5, 'chain_trace', $6, $7, $8)`,
         [
           tenantId,
           verdict.findingId,
@@ -149,9 +155,28 @@ export async function validateStatedInsights(tenantId: string, runId: string): P
           JSON.stringify(verdict.statisticalChecks),
           verdict.corroborationLevel,
           JSON.stringify(verdict.dueCare),
+          verdict.verificationBasis,
         ]
       );
+      // A claim the check found in direct conflict with other evidence gets
+      // that conflict recorded against each piece of conflicting evidence,
+      // so the UI and the report can say what contradicted it, and so the
+      // downgrade survives the verdict row being rewritten later.
+      for (const contradictor of verdict.contradictedBy) {
+        await recordContradiction(client, {
+          tenantId,
+          runId,
+          originalFindingId: verdict.findingId,
+          kind: "finding",
+          contradictorId: contradictor.id,
+          rationale: verdict.rationale,
+          detectedBy: "chain_trace",
+        });
+      }
     }
+    // Also re-applies any contradiction recorded earlier (by the synthesis
+    // check) to a claim whose verdict was just rewritten.
+    await applyRecordedContradictions(client, tenantId, runId);
   });
 }
 
@@ -167,7 +192,7 @@ async function chainCheckOneClaim(
 
   const evidencePool = await withTenant(tenantId, async (client) => {
     const result = await client.query<EvidenceRow>(
-      `select f.id, f.finding_text, f.finding_kind, f.theme, v.verdict_tier
+      `select f.id, f.origin, f.finding_text, f.finding_kind, f.theme, v.verdict_tier
        from findings f
        join verdicts v on v.finding_id = f.id
        where f.run_id = $1 and f.finding_kind != 'stated_insight' and f.status != 'rejected'
@@ -218,7 +243,9 @@ async function chainCheckOneClaim(
       "- contradicted: something in the evidence conflicts with the claim.\n" +
       "- unsupported: nothing in the evidence given actually addresses this claim either way.\n\n" +
       "Give relied_indices: the indices of the evidence items you actually used to reach your judgment " +
-      "(can be empty for 'unsupported'). Give a specific rationale naming what the evidence does or " +
+      "(can be empty for 'unsupported'). When, and only when, the outcome is 'contradicted', also give " +
+      "contradicting_indices: the indices of the evidence items that directly conflict with the claim " +
+      "(leave it empty for every other outcome). Give a specific rationale naming what the evidence does or " +
       "doesn't establish, not a restatement of the category definition. Do not treat the claim as " +
       "correct just because it is stated confidently or because the report itself cited support for it; " +
       "cited support still has to actually hold up.",
@@ -233,8 +260,9 @@ async function chainCheckOneClaim(
             outcome: { type: "string", enum: ["supported", "overreach", "contradicted", "unsupported"] },
             rationale: { type: "string" },
             relied_indices: { type: "array", items: { type: "integer" } },
+            contradicting_indices: { type: "array", items: { type: "integer" } },
           },
-          required: ["outcome", "rationale", "relied_indices"],
+          required: ["outcome", "rationale", "relied_indices", "contradicting_indices"],
         },
       },
     ],
@@ -251,7 +279,12 @@ async function chainCheckOneClaim(
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") return null;
 
-  const raw = toolUse.input as { outcome?: unknown; rationale?: unknown; relied_indices?: unknown };
+  const raw = toolUse.input as {
+    outcome?: unknown;
+    rationale?: unknown;
+    relied_indices?: unknown;
+    contradicting_indices?: unknown;
+  };
   const outcome = typeof raw.outcome === "string" ? raw.outcome : null;
   const rationale = typeof raw.rationale === "string" && raw.rationale.trim() ? raw.rationale.trim() : null;
   if (!outcome || !TIER_FROM_CHAIN_OUTCOME[outcome] || !rationale) return null;
@@ -262,6 +295,17 @@ async function chainCheckOneClaim(
       )
     : [];
   const reliedIds = [...new Set(reliedIndices.map((i) => evidencePool[i].id))];
+
+  // Only a "contradicted" outcome carries conflicting evidence; any
+  // contradicting_indices the model volunteers alongside another outcome is
+  // ignored rather than trusted, since that combination is incoherent.
+  const contradictingIndices =
+    outcome === "contradicted" && Array.isArray(raw.contradicting_indices)
+      ? raw.contradicting_indices.filter(
+          (v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < evidencePool.length
+        )
+      : [];
+  const contradictedBy = [...new Set(contradictingIndices.map((i) => evidencePool[i].id))].map((id) => ({ id }));
 
   const verdictTier = TIER_FROM_CHAIN_OUTCOME[outcome];
   const corroborationLevel: PreparedVerdict["corroborationLevel"] =
@@ -278,7 +322,19 @@ async function chainCheckOneClaim(
       evidence_pool_size: evidencePool.length,
       cited_finding_ids: citedIds,
       relied_finding_ids: reliedIds,
+      ...(contradictedBy.length > 0 ? { contradicting_finding_ids: contradictedBy.map((c) => c.id) } : {}),
     },
+    // data_backed only when the check actually leaned on a computed finding;
+    // a chain traced purely against other report claims is still the
+    // report's own wording checking itself.
+    verificationBasis: verificationBasisFor({
+      origin: "stated",
+      groundedByComputedFinding: false,
+      reliedOnComputedEvidence: [...reliedIds, ...contradictedBy.map((c) => c.id)].some(
+        (id) => evidencePool.find((row) => row.id === id)?.origin === "generated"
+      ),
+    }),
+    contradictedBy,
   };
 }
 

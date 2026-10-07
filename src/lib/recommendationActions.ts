@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateRecommendations, generateSynthesizedRecommendations } from "./recommendationAgent";
+import { refreshRecommendationQuality } from "./recommendationQualityScorer";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -93,6 +94,23 @@ export async function updateAndAcceptRecommendation(
       ]
     );
   });
+  // An edited recommendation's old score no longer describes it. Separate
+  // from the update above so editing keeps working before migration 0045.
+  try {
+    await withTenant(TENANT_ID, async (client) => {
+      await client.query(
+        `update recommendations
+         set rec_actionability_score = null, rec_feasibility_score = null, rec_evidence_score = null,
+             rec_impact_score = null, rec_quality_score = null, rec_quality_tier = null,
+             rec_quality_rationale = null
+         where id = $1 and run_id = $2`,
+        [recommendationId, runId]
+      );
+    });
+  } catch {
+    // Quality columns not there yet.
+  }
+  await refreshRecommendationQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -199,6 +217,7 @@ export async function addOwnSynthesizedRecommendation(
       ]
     );
   });
+  await refreshRecommendationQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 

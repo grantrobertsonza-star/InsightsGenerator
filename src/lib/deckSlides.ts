@@ -60,18 +60,28 @@ type PriorityTier = "high" | "medium" | "low";
  * never relies on color alone to be read correctly, including by someone
  * viewing a black-and-white printout.
  */
-export const CONFIDENCE_BADGES: Record<string, { glyph: string; label: string; color: string }> = {
+export const CONFIDENCE_BADGES: Record<
+  string,
+  { glyph: string; label: string; color: string }
+> = {
   strong: { glyph: "●", label: "STRONG", color: COLORS.strong }, // ●
   moderate: { glyph: "▲", label: "MODERATE", color: COLORS.moderate }, // ▲
   exploratory: { glyph: "–", label: "EXPLORATORY", color: COLORS.exploratory }, // –
 };
-export const NOT_TRIANGULATED_BADGE = { glyph: "?", label: "NOT YET TRIANGULATED", color: COLORS.notTriangulated };
+export const NOT_TRIANGULATED_BADGE = {
+  glyph: "?",
+  label: "NOT YET TRIANGULATED",
+  color: COLORS.notTriangulated,
+};
 
 export function confidenceBadgeFor(tier: ConfidenceTier) {
   return (tier && CONFIDENCE_BADGES[tier]) || NOT_TRIANGULATED_BADGE;
 }
 
-export const PRIORITY_BADGES: Record<PriorityTier, { glyph: string; label: string; color: string }> = {
+export const PRIORITY_BADGES: Record<
+  PriorityTier,
+  { glyph: string; label: string; color: string }
+> = {
   high: { glyph: "▲", label: "HIGH PRIORITY", color: COLORS.high }, // ▲
   medium: { glyph: "▶", label: "MEDIUM PRIORITY", color: COLORS.medium }, // ▶
   low: { glyph: "●", label: "LOW PRIORITY", color: COLORS.low }, // ●
@@ -86,7 +96,10 @@ type ValidationStatus = "resolved" | "partial" | "gap";
  * red: an honestly-named gap is a normal, useful research finding, not a
  * failure the deck should visually alarm the reader about.
  */
-export const VALIDATION_BADGES: Record<ValidationStatus, { glyph: string; label: string; color: string }> = {
+export const VALIDATION_BADGES: Record<
+  ValidationStatus,
+  { glyph: string; label: string; color: string }
+> = {
   resolved: { glyph: "●", label: "RESOLVED", color: COLORS.strong },
   partial: { glyph: "▲", label: "PARTIAL", color: COLORS.moderate },
   gap: { glyph: "?", label: "GAP", color: COLORS.exploratory },
@@ -110,7 +123,14 @@ export function addDotCluster(
     cols = 4,
     spacing = 0.26,
     colors = [COLORS.accent, COLORS.teal, COLORS.gold],
-  }: { x: number; y: number; rows?: number; cols?: number; spacing?: number; colors?: string[] }
+  }: {
+    x: number;
+    y: number;
+    rows?: number;
+    cols?: number;
+    spacing?: number;
+    colors?: string[];
+  },
 ) {
   const sizes = [0.05, 0.09, 0.14, 0.19];
   let i = 0;
@@ -154,14 +174,26 @@ export function addTitleSlide(
     decisionStatement,
     showDecisionLine,
     audience,
-  }: { title: string; decisionStatement: string | null; showDecisionLine: boolean; audience: string | null }
+  }: {
+    title: string;
+    decisionStatement: string | null;
+    showDecisionLine: boolean;
+    audience: string | null;
+  },
 ) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.ink };
 
   addDotCluster(slide, { x: 8.55, y: -0.3, rows: 9, cols: 4, spacing: 0.27 });
 
-  slide.addShape("rect", { x: 0, y: 0.95, w: 10, h: 0.02, fill: { color: COLORS.accent }, line: { type: "none" } });
+  slide.addShape("rect", {
+    x: 0,
+    y: 0.95,
+    w: 10,
+    h: 0.02,
+    fill: { color: COLORS.accent },
+    line: { type: "none" },
+  });
 
   slide.addText("INSIGHTS REPORT", {
     x: 0.6,
@@ -175,7 +207,12 @@ export function addTitleSlide(
     charSpacing: 3,
   });
 
-  const fittedTitle = fitParagraph(humanizeTitle(title), { fontSize: 34, widthIn: 7.6, heightIn: 1.6, minFontScale: 0.65 });
+  const fittedTitle = fitParagraph(humanizeTitle(title), {
+    fontSize: 34,
+    widthIn: 7.6,
+    heightIn: 1.6,
+    minFontScale: 0.65,
+  });
   slide.addText(fittedTitle.text, {
     x: 0.6,
     y: 1.75,
@@ -210,7 +247,14 @@ export function addTitleSlide(
     }
   }
 
-  slide.addShape("rect", { x: 0, y: 4.75, w: 10, h: 0.01, fill: { color: COLORS.ruleOnDark }, line: { type: "none" } });
+  slide.addShape("rect", {
+    x: 0,
+    y: 4.75,
+    w: 10,
+    h: 0.01,
+    fill: { color: COLORS.ruleOnDark },
+    line: { type: "none" },
+  });
 
   if (audience) {
     slide.addText(`PREPARED FOR: ${audience.toUpperCase()}`, {
@@ -239,7 +283,11 @@ export function addTitleSlide(
  */
 export function addSectionDivider(
   pptx: PptxGenJS,
-  { eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string | null }
+  {
+    eyebrow,
+    title,
+    subtitle,
+  }: { eyebrow: string; title: string; subtitle?: string | null },
 ) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.ink };
@@ -256,7 +304,12 @@ export function addSectionDivider(
     color: COLORS.accentOnDark,
     charSpacing: 3,
   });
-  const fittedDividerTitle = fitParagraph(title, { fontSize: 30, widthIn: 8.6, heightIn: 1.4, minFontScale: 0.6 });
+  const fittedDividerTitle = fitParagraph(title, {
+    fontSize: 30,
+    widthIn: 8.6,
+    heightIn: 1.4,
+    minFontScale: 0.6,
+  });
   slide.addText(fittedDividerTitle.text, {
     x: 0.7,
     y: 2.35,
@@ -269,7 +322,12 @@ export function addSectionDivider(
     valign: "top",
   });
   if (subtitle) {
-    const fittedDividerSubtitle = fitParagraph(subtitle, { fontSize: 14, widthIn: 8.2, heightIn: 0.8, minFontScale: 0.65 });
+    const fittedDividerSubtitle = fitParagraph(subtitle, {
+      fontSize: 14,
+      widthIn: 8.2,
+      heightIn: 0.8,
+      minFontScale: 0.65,
+    });
     slide.addText(fittedDividerSubtitle.text, {
       x: 0.7,
       y: 3.55,
@@ -286,8 +344,19 @@ export function addSectionDivider(
 }
 
 /** Small page footer used on every content slide across the deck exports. */
-export function addFooter(slide: PptxGenJS.PresSlide, deckTitle: string, pageLabel: string) {
-  slide.addShape("rect", { x: 0.5, y: 5.22, w: 9, h: 0.008, fill: { color: COLORS.rule }, line: { type: "none" } });
+export function addFooter(
+  slide: PptxGenJS.PresSlide,
+  deckTitle: string,
+  pageLabel: string,
+) {
+  slide.addShape("rect", {
+    x: 0.5,
+    y: 5.22,
+    w: 9,
+    h: 0.008,
+    fill: { color: COLORS.rule },
+    line: { type: "none" },
+  });
   slide.addText(humanizeTitle(deckTitle).toUpperCase(), {
     x: 0.5,
     y: 5.3,
@@ -355,7 +424,11 @@ export function humanizeTitle(raw: string): string {
   return spaced
     .split(" ")
     .filter(Boolean)
-    .map((word) => (word === word.toUpperCase() && word.length <= 4 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .map((word) =>
+      word === word.toUpperCase() && word.length <= 4
+        ? word
+        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
     .join(" ");
 }
 
@@ -365,7 +438,11 @@ export function titleCaseAudience(raw: string): string {
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .map((word) => (word === word.toUpperCase() && word.length <= 4 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .map((word) =>
+      word === word.toUpperCase() && word.length <= 4
+        ? word
+        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
     .join(" ");
 }
 
@@ -391,7 +468,11 @@ function estimateCharsPerLine(widthIn: number, fontSizePt: number): number {
   return Math.max(4, Math.floor(widthIn / avgCharWidthIn));
 }
 
-function estimateLineCount(text: string, widthIn: number, fontSizePt: number): number {
+function estimateLineCount(
+  text: string,
+  widthIn: number,
+  fontSizePt: number,
+): number {
   const charsPerLine = estimateCharsPerLine(widthIn, fontSizePt);
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length === 0) return 1;
@@ -426,10 +507,22 @@ function truncateToChars(text: string, maxChars: number): string {
  */
 export function fitParagraph(
   text: string,
-  { fontSize, widthIn, heightIn, minFontScale = 0.6 }: { fontSize: number; widthIn: number; heightIn: number; minFontScale?: number }
+  {
+    fontSize,
+    widthIn,
+    heightIn,
+    minFontScale = 0.6,
+  }: {
+    fontSize: number;
+    widthIn: number;
+    heightIn: number;
+    minFontScale?: number;
+  },
 ): { text: string; fontSize: number } {
   const lineHeightFactor = 1.22;
-  const fits = (t: string, fs: number) => (estimateLineCount(t, widthIn, fs) * fs * lineHeightFactor) / 72 <= heightIn;
+  const fits = (t: string, fs: number) =>
+    (estimateLineCount(t, widthIn, fs) * fs * lineHeightFactor) / 72 <=
+    heightIn;
 
   let scale = 1;
   let size = fontSize;
@@ -441,7 +534,10 @@ export function fitParagraph(
   let working = text;
   let guard = 0;
   while (!fits(working, size) && guard < 25) {
-    working = truncateToChars(working, Math.max(40, Math.floor(working.length * 0.9)));
+    working = truncateToChars(
+      working,
+      Math.max(40, Math.floor(working.length * 0.9)),
+    );
     guard++;
   }
 
@@ -458,7 +554,7 @@ function fitLinesToBox<T extends { text: string; fontSize: number }>(
   lines: T[],
   boxWidthIn: number,
   boxHeightIn: number,
-  minFontScale = 0.72
+  minFontScale = 0.72,
 ): T[] {
   const lineHeightFactor = 1.22;
   const estimateHeight = (candidate: T[]) =>
@@ -470,15 +566,27 @@ function fitLinesToBox<T extends { text: string; fontSize: number }>(
 
   let scale = 1;
   let working = lines.map((line) => ({ ...line }));
-  for (let step = 0; step < 4 && estimateHeight(working) > boxHeightIn; step++) {
+  for (
+    let step = 0;
+    step < 4 && estimateHeight(working) > boxHeightIn;
+    step++
+  ) {
     scale = Math.max(minFontScale, scale - 0.08);
-    working = lines.map((line) => ({ ...line, fontSize: Math.round(line.fontSize * scale * 10) / 10 }));
+    working = lines.map((line) => ({
+      ...line,
+      fontSize: Math.round(line.fontSize * scale * 10) / 10,
+    }));
   }
 
   let guard = 0;
   while (estimateHeight(working) > boxHeightIn && guard < 20) {
-    const longest = working.reduce((a, b) => (b.text.length > a.text.length ? b : a));
-    longest.text = truncateToChars(longest.text, Math.max(20, Math.floor(longest.text.length * 0.85)));
+    const longest = working.reduce((a, b) =>
+      b.text.length > a.text.length ? b : a,
+    );
+    longest.text = truncateToChars(
+      longest.text,
+      Math.max(20, Math.floor(longest.text.length * 0.85)),
+    );
     guard++;
   }
 
@@ -497,11 +605,26 @@ function fitLinesToBox<T extends { text: string; fontSize: number }>(
  */
 export function fitBulletList(
   items: string[],
-  { fontSize, widthIn, heightIn, minFontScale = 0.65 }: { fontSize: number; widthIn: number; heightIn: number; minFontScale?: number }
+  {
+    fontSize,
+    widthIn,
+    heightIn,
+    minFontScale = 0.65,
+  }: {
+    fontSize: number;
+    widthIn: number;
+    heightIn: number;
+    minFontScale?: number;
+  },
 ): { items: string[]; fontSize: number } {
   const lineHeightFactor = 1.3; // a little extra for inter-bullet spacing
   const estimateHeight = (candidateItems: string[], fs: number) =>
-    candidateItems.reduce((sum, item) => sum + (estimateLineCount(item, widthIn, fs) * fs * lineHeightFactor) / 72, 0);
+    candidateItems.reduce(
+      (sum, item) =>
+        sum +
+        (estimateLineCount(item, widthIn, fs) * fs * lineHeightFactor) / 72,
+      0,
+    );
 
   let scale = 1;
   let size = fontSize;
@@ -514,10 +637,14 @@ export function fitBulletList(
   let guard = 0;
   while (estimateHeight(working, size) > heightIn && guard < 30) {
     const longestIndex = working.reduce(
-      (bestIdx, item, idx) => (item.length > working[bestIdx].length ? idx : bestIdx),
-      0
+      (bestIdx, item, idx) =>
+        item.length > working[bestIdx].length ? idx : bestIdx,
+      0,
     );
-    working[longestIndex] = truncateToChars(working[longestIndex], Math.max(20, Math.floor(working[longestIndex].length * 0.85)));
+    working[longestIndex] = truncateToChars(
+      working[longestIndex],
+      Math.max(20, Math.floor(working[longestIndex].length * 0.85)),
+    );
     guard++;
   }
 
@@ -535,11 +662,22 @@ export function fitBulletList(
  */
 export function addLabeledTextSlide(
   pptx: PptxGenJS,
-  { label, body, labelColor = COLORS.accent }: { label: string; body: string; labelColor?: string }
+  {
+    label,
+    body,
+    labelColor = COLORS.accent,
+  }: { label: string; body: string; labelColor?: string },
 ) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.paper };
-  addDotCluster(slide, { x: 9.0, y: 3.7, rows: 5, cols: 3, spacing: 0.2, colors: [COLORS.accent, COLORS.teal] });
+  addDotCluster(slide, {
+    x: 9.0,
+    y: 3.7,
+    rows: 5,
+    cols: 3,
+    spacing: 0.2,
+    colors: [COLORS.accent, COLORS.teal],
+  });
 
   slide.addText(label.toUpperCase(), {
     x: 0.7,
@@ -552,8 +690,20 @@ export function addLabeledTextSlide(
     color: labelColor,
     charSpacing: 3,
   });
-  slide.addShape("rect", { x: 0.7, y: 1.12, w: 0.6, h: 0.03, fill: { color: labelColor }, line: { type: "none" } });
-  const fittedBody = fitParagraph(body, { fontSize: 20, widthIn: 8.0, heightIn: 3.4, minFontScale: 0.55 });
+  slide.addShape("rect", {
+    x: 0.7,
+    y: 1.12,
+    w: 0.6,
+    h: 0.03,
+    fill: { color: labelColor },
+    line: { type: "none" },
+  });
+  const fittedBody = fitParagraph(body, {
+    fontSize: 20,
+    widthIn: 8.0,
+    heightIn: 3.4,
+    minFontScale: 0.55,
+  });
   slide.addText(fittedBody.text, {
     x: 0.7,
     y: 1.5,
@@ -571,8 +721,22 @@ export function addLabeledTextSlide(
 // off-brand rainbow -- enough distinct, legible colors to tell neighboring
 // chevrons apart without introducing a hue that doesn't appear anywhere
 // else in the deck.
-const ARGUMENT_FLOW_COLORS = [COLORS.accent, COLORS.teal, COLORS.gold, COLORS.accentDeep, COLORS.strong, COLORS.high];
-const ROADMAP_COLORS = [COLORS.ink, COLORS.teal, COLORS.gold, COLORS.accentDeep, COLORS.strong, COLORS.accent];
+const ARGUMENT_FLOW_COLORS = [
+  COLORS.accent,
+  COLORS.teal,
+  COLORS.gold,
+  COLORS.accentDeep,
+  COLORS.strong,
+  COLORS.high,
+];
+const ROADMAP_COLORS = [
+  COLORS.ink,
+  COLORS.teal,
+  COLORS.gold,
+  COLORS.accentDeep,
+  COLORS.strong,
+  COLORS.accent,
+];
 
 /**
  * The deck's own table of contents: a chevron-ribbon roadmap of its actual
@@ -584,26 +748,64 @@ const ROADMAP_COLORS = [COLORS.ink, COLORS.teal, COLORS.gold, COLORS.accentDeep,
  * straight from the argument to recommendations), so the roadmap never
  * promises a section the deck doesn't have.
  */
-export function addDeckRoadmapSlide(pptx: PptxGenJS, { hasObjectives }: { hasObjectives: boolean }) {
+export function addDeckRoadmapSlide(
+  pptx: PptxGenJS,
+  { hasObjectives }: { hasObjectives: boolean },
+) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.paper };
 
   slide.addText("HOW THIS REPORT IS BUILT", {
-    x: 0.5, y: 0.4, w: 9, h: 0.35, fontSize: 12, bold: true, fontFace: FONT.body, color: COLORS.accent, charSpacing: 2.5,
+    x: 0.5,
+    y: 0.4,
+    w: 9,
+    h: 0.35,
+    fontSize: 12,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.accent,
+    charSpacing: 2.5,
   });
   slide.addText("A roadmap before the detail.", {
-    x: 0.5, y: 0.72, w: 9, h: 0.45, fontSize: 20, bold: true, fontFace: FONT.body, color: COLORS.ink,
+    x: 0.5,
+    y: 0.72,
+    w: 9,
+    h: 0.45,
+    fontSize: 20,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.ink,
   });
 
   const segments = [
-    { label: "EXECUTIVE SUMMARY", snippet: "The headline answer, before the build-up that justifies it." },
-    { label: "THE CASE", snippet: "What's true, what it collides with, and what to do next." },
+    {
+      label: "EXECUTIVE SUMMARY",
+      snippet: "The headline answer, before the build-up that justifies it.",
+    },
+    {
+      label: "THE CASE",
+      snippet: "What's true, what it collides with, and what to do next.",
+    },
     ...(hasObjectives
-      ? [{ label: "OBJECTIVES & DECISIONS", snippet: "Checked against what this project set out to answer." }]
+      ? [
+          {
+            label: "OBJECTIVES & DECISIONS",
+            snippet: "Checked against what this project set out to answer.",
+          },
+        ]
       : []),
-    { label: "THE ARGUMENT", snippet: "The evidence, pillar by pillar, that proves the answer." },
-    { label: "RECOMMENDED ACTIONS", snippet: "What to do next, and who owns it." },
-    { label: "CAVEATS & SCOPE", snippet: "What this evidence can't yet tell you." },
+    {
+      label: "THE ARGUMENT",
+      snippet: "The evidence, pillar by pillar, that proves the answer.",
+    },
+    {
+      label: "RECOMMENDED ACTIONS",
+      snippet: "What to do next, and who owns it.",
+    },
+    {
+      label: "CAVEATS & SCOPE",
+      snippet: "What this evidence can't yet tell you.",
+    },
   ];
 
   const left = 0.5;
@@ -626,7 +828,12 @@ export function addDeckRoadmapSlide(pptx: PptxGenJS, { hasObjectives }: { hasObj
     // text box is pushed in past the notch instead of starting at x.
     const notchPad = index === 0 ? 0.08 : 0.3;
     slide.addShape(index === 0 ? "rect" : "chevron", {
-      x, y: bannerY, w: segW, h: bannerH, fill: { color }, line: { type: "none" },
+      x,
+      y: bannerY,
+      w: segW,
+      h: bannerH,
+      fill: { color },
+      line: { type: "none" },
     });
     slide.addText(segment.label, {
       x: x + notchPad,
@@ -642,7 +849,8 @@ export function addDeckRoadmapSlide(pptx: PptxGenJS, { hasObjectives }: { hasObj
       charSpacing: 0.3,
     });
 
-    const colX = left + index * (segW - overlap) + (index === 0 ? 0 : overlap * 0.4);
+    const colX =
+      left + index * (segW - overlap) + (index === 0 ? 0 : overlap * 0.4);
     const colW = segW - (index === 0 ? overlap * 0.6 : overlap * 0.8);
     const fittedSnippet = fitParagraph(segment.snippet, {
       fontSize: 9.5,
@@ -660,7 +868,14 @@ export function addDeckRoadmapSlide(pptx: PptxGenJS, { hasObjectives }: { hasObj
       color: COLORS.body,
       valign: "top",
     });
-    slide.addShape("rect", { x: colX, y: contentY - 0.06, w: colW, h: 0.02, fill: { color }, line: { type: "none" } });
+    slide.addShape("rect", {
+      x: colX,
+      y: contentY - 0.06,
+      w: colW,
+      h: 0.02,
+      fill: { color },
+      line: { type: "none" },
+    });
   });
 
   return slide;
@@ -677,16 +892,41 @@ export function addDeckRoadmapSlide(pptx: PptxGenJS, { hasObjectives }: { hasObj
  */
 export function addVisualSCQASlide(
   pptx: PptxGenJS,
-  { situation, complication, question, answer }: { situation: string; complication: string; question: string; answer: string }
+  {
+    situation,
+    complication,
+    question,
+    answer,
+  }: {
+    situation: string;
+    complication: string;
+    question: string;
+    answer: string;
+  },
 ) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.paper };
 
   slide.addText("HOW THIS REPORT BUILDS ITS CASE", {
-    x: 0.5, y: 0.4, w: 9, h: 0.35, fontSize: 12, bold: true, fontFace: FONT.body, color: COLORS.accent, charSpacing: 2.5,
+    x: 0.5,
+    y: 0.4,
+    w: 9,
+    h: 0.35,
+    fontSize: 12,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.accent,
+    charSpacing: 2.5,
   });
   slide.addText("Situation, complication, question, answer.", {
-    x: 0.5, y: 0.72, w: 9, h: 0.45, fontSize: 20, bold: true, fontFace: FONT.body, color: COLORS.ink,
+    x: 0.5,
+    y: 0.72,
+    w: 9,
+    h: 0.45,
+    fontSize: 20,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.ink,
   });
 
   const steps = [
@@ -703,12 +943,34 @@ export function addVisualSCQASlide(
   const cardH = 3.3;
   steps.forEach((step, i) => {
     const x = startX + i * (cardW + gap);
-    slide.addShape("rect", { x, y: top, w: cardW, h: cardH, fill: { color: step.color }, line: { type: "none" } });
+    slide.addShape("rect", {
+      x,
+      y: top,
+      w: cardW,
+      h: cardH,
+      fill: { color: step.color },
+      line: { type: "none" },
+    });
     slide.addText(step.tag, {
-      x: x + 0.15, y: top + 0.12, w: cardW - 0.3, h: 0.6, fontSize: 30, bold: true, fontFace: FONT.display, color: "FFFFFF",
+      x: x + 0.15,
+      y: top + 0.12,
+      w: cardW - 0.3,
+      h: 0.6,
+      fontSize: 30,
+      bold: true,
+      fontFace: FONT.display,
+      color: "FFFFFF",
     });
     slide.addText(step.label, {
-      x: x + 0.15, y: top + 0.78, w: cardW - 0.3, h: 0.3, fontSize: 10.5, bold: true, fontFace: FONT.body, color: "FFFFFF", charSpacing: 1,
+      x: x + 0.15,
+      y: top + 0.78,
+      w: cardW - 0.3,
+      h: 0.3,
+      fontSize: 10.5,
+      bold: true,
+      fontFace: FONT.body,
+      color: "FFFFFF",
+      charSpacing: 1,
     });
     const fittedText = fitParagraph(step.text, {
       fontSize: 11,
@@ -729,7 +991,15 @@ export function addVisualSCQASlide(
     });
     if (i < steps.length - 1) {
       slide.addText("→", {
-        x: x + cardW, y: top + cardH / 2 - 0.25, w: gap, h: 0.5, fontSize: 16, bold: true, color: COLORS.muted, align: "center", valign: "middle",
+        x: x + cardW,
+        y: top + cardH / 2 - 0.25,
+        w: gap,
+        h: 0.5,
+        fontSize: 16,
+        bold: true,
+        color: COLORS.muted,
+        align: "center",
+        valign: "middle",
       });
     }
   });
@@ -753,16 +1023,34 @@ export function addVisualSCQASlide(
  */
 export function addArgumentMapSlide(
   pptx: PptxGenJS,
-  { governingThought, pillars }: { governingThought: string; pillars: { headline: string }[] }
+  {
+    governingThought,
+    pillars,
+  }: { governingThought: string; pillars: { headline: string }[] },
 ) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.paper };
 
   slide.addText("THE SHAPE OF THIS ARGUMENT", {
-    x: 0.5, y: 0.4, w: 9, h: 0.35, fontSize: 12, bold: true, fontFace: FONT.body, color: COLORS.accent, charSpacing: 2.5,
+    x: 0.5,
+    y: 0.4,
+    w: 9,
+    h: 0.35,
+    fontSize: 12,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.accent,
+    charSpacing: 2.5,
   });
   slide.addText("How the evidence breaks down.", {
-    x: 0.5, y: 0.72, w: 9, h: 0.45, fontSize: 20, bold: true, fontFace: FONT.body, color: COLORS.ink,
+    x: 0.5,
+    y: 0.72,
+    w: 9,
+    h: 0.45,
+    fontSize: 20,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.ink,
   });
 
   // segments[0] is the governing thought; segments[1..] are the pillars.
@@ -814,7 +1102,8 @@ export function addArgumentMapSlide(
       charSpacing: 0.5,
     });
 
-    const colX = left + index * (segW - overlap) + (index === 0 ? 0 : overlap * 0.4);
+    const colX =
+      left + index * (segW - overlap) + (index === 0 ? 0 : overlap * 0.4);
     const colW = segW - (index === 0 ? overlap * 0.6 : overlap * 0.8);
     const fittedSnippet = fitParagraph(segment.snippet, {
       fontSize: 10.5,
@@ -833,7 +1122,12 @@ export function addArgumentMapSlide(
       valign: "top",
     });
     slide.addShape("rect", {
-      x: colX, y: contentY - 0.06, w: colW, h: 0.025, fill: { color: segment.color }, line: { type: "none" },
+      x: colX,
+      y: contentY - 0.06,
+      w: colW,
+      h: 0.025,
+      fill: { color: segment.color },
+      line: { type: "none" },
     });
   });
 
@@ -849,7 +1143,11 @@ export function addArgumentMapSlide(
  */
 export function addBigStatementSlide(
   pptx: PptxGenJS,
-  { eyebrow, statement, subtext }: { eyebrow: string; statement: string; subtext?: string | null }
+  {
+    eyebrow,
+    statement,
+    subtext,
+  }: { eyebrow: string; statement: string; subtext?: string | null },
 ) {
   const slide = pptx.addSlide();
   slide.background = { color: COLORS.ink };
@@ -881,7 +1179,12 @@ export function addBigStatementSlide(
     color: COLORS.accentDeep,
   });
 
-  const fittedStatement = fitParagraph(statement, { fontSize: 27, widthIn: 8.3, heightIn: 2.1, minFontScale: 0.55 });
+  const fittedStatement = fitParagraph(statement, {
+    fontSize: 27,
+    widthIn: 8.3,
+    heightIn: 2.1,
+    minFontScale: 0.55,
+  });
   slide.addText(fittedStatement.text, {
     x: 0.75,
     y: 2.15,
@@ -895,8 +1198,20 @@ export function addBigStatementSlide(
   });
 
   if (subtext) {
-    slide.addShape("rect", { x: 0.75, y: 4.35, w: 0.5, h: 0.025, fill: { color: COLORS.accentOnDark }, line: { type: "none" } });
-    const fittedSubtext = fitParagraph(subtext, { fontSize: 13, widthIn: 8.1, heightIn: 0.7, minFontScale: 0.7 });
+    slide.addShape("rect", {
+      x: 0.75,
+      y: 4.35,
+      w: 0.5,
+      h: 0.025,
+      fill: { color: COLORS.accentOnDark },
+      line: { type: "none" },
+    });
+    const fittedSubtext = fitParagraph(subtext, {
+      fontSize: 13,
+      widthIn: 8.1,
+      heightIn: 0.7,
+      minFontScale: 0.7,
+    });
     slide.addText(fittedSubtext.text, {
       x: 0.75,
       y: 4.5,
@@ -935,8 +1250,14 @@ export function addEvidenceCard(
     w: number;
     h: number;
     badge: { glyph: string; label: string; color: string };
-    lines: Array<{ text: string; fontSize: number; bold?: boolean; italic?: boolean; color?: string }>;
-  }
+    lines: Array<{
+      text: string;
+      fontSize: number;
+      bold?: boolean;
+      italic?: boolean;
+      color?: string;
+    }>;
+  },
 ) {
   slide.addShape("roundRect", {
     x,
@@ -1001,6 +1322,100 @@ export function addEvidenceCard(
       w: textW,
       h: textH,
       valign: "top",
-    }
+    },
   );
+}
+
+// One slide per chart-eligible theme in the "Evidence charts" section the
+// deck export route adds between the objectives/decisions pages and the
+// pillar slides -- the same server-rendered PNG (renderChartImage.ts) the
+// docx report's Findings section embeds, so the deck and the Word report
+// never show two different pictures of the same theme's evidence.
+export function addChartSlide(
+  pptx: PptxGenJS,
+  {
+    eyebrow,
+    title,
+    image,
+    caption,
+  }: {
+    eyebrow: string;
+    title: string;
+    image: { png: Buffer; width: number; height: number };
+    caption: string;
+  },
+) {
+  const slide = pptx.addSlide();
+  slide.background = { color: COLORS.paper };
+
+  slide.addText(eyebrow.toUpperCase(), {
+    x: 0.6,
+    y: 0.4,
+    w: 8.8,
+    h: 0.3,
+    fontSize: 11,
+    bold: true,
+    fontFace: FONT.body,
+    color: COLORS.accent,
+    charSpacing: 1.5,
+  });
+
+  const fittedTitle = fitParagraph(title, {
+    fontSize: 18,
+    widthIn: 8.8,
+    heightIn: 0.5,
+    minFontScale: 0.7,
+  });
+  slide.addText(fittedTitle.text, {
+    x: 0.6,
+    y: 0.68,
+    w: 8.8,
+    h: 0.5,
+    fontSize: fittedTitle.fontSize,
+    bold: true,
+    fontFace: FONT.display,
+    color: COLORS.ink,
+  });
+
+  // Fit the image into a box below the title and above the caption,
+  // preserving its aspect ratio rather than stretching it.
+  const maxW = 8.6;
+  const maxH = 3.5;
+  const aspect = image.width / image.height;
+  let w = maxW;
+  let h = w / aspect;
+  if (h > maxH) {
+    h = maxH;
+    w = h * aspect;
+  }
+  const x = 0.6 + (maxW - w) / 2;
+  const y = 1.3;
+
+  slide.addImage({
+    data: `image/png;base64,${image.png.toString("base64")}`,
+    x,
+    y,
+    w,
+    h,
+  });
+
+  const fittedCaption = fitParagraph(caption, {
+    fontSize: 11,
+    widthIn: 8.8,
+    heightIn: 0.5,
+    minFontScale: 0.75,
+  });
+  slide.addText(fittedCaption.text, {
+    x: 0.6,
+    y: y + h + 0.12,
+    w: 8.8,
+    h: 0.5,
+    fontSize: fittedCaption.fontSize,
+    italic: true,
+    fontFace: FONT.body,
+    color: COLORS.muted,
+    valign: "top",
+  });
+
+  return slide;
 }

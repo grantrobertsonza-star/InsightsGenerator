@@ -5,27 +5,37 @@ import {
   TextRun,
   HeadingLevel,
   BorderStyle,
+  ImageRun,
 } from "docx";
+import type { DiscoveryReportData } from "./discoveryReport";
 
 // Shared with the deck's own humanizeTitle/safeFileStem helpers in
 // deckSlides.ts, kept as a plain local copy rather than an import so this
 // report's text formatting never silently drifts if the slide deck's own
 // helpers change shape for a slide-specific reason.
 export function humanizeTitle(raw: string): string {
-  const looksLikeSlug = /^[a-z0-9]+([A-Z][a-z0-9]*)*$/.test(raw) && /[A-Z]/.test(raw) && !raw.includes(" ");
+  const looksLikeSlug =
+    /^[a-z0-9]+([A-Z][a-z0-9]*)*$/.test(raw) &&
+    /[A-Z]/.test(raw) &&
+    !raw.includes(" ");
   if (!looksLikeSlug) return raw;
   return raw
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-export function safeFileStem(raw: string | null | undefined, fallback: string): string {
+export function safeFileStem(
+  raw: string | null | undefined,
+  fallback: string,
+): string {
   const base = (raw ?? "").trim() || fallback;
-  return base
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || fallback;
+  return (
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || fallback
+  );
 }
 
 const INK = "1A1A1A";
@@ -36,7 +46,10 @@ const ACCENT = "1E2761";
 const BODY_FONT = "Calibri";
 const DISPLAY_FONT = "Cambria";
 
-function heading(text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) {
+function heading(
+  text: string,
+  level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1,
+) {
   return new Paragraph({
     text,
     heading: level,
@@ -86,8 +99,37 @@ function bullet(text: string, color: string = INK) {
 function rule() {
   return new Paragraph({
     text: "",
-    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE, space: 1 } },
+    border: {
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE, space: 1 },
+    },
     spacing: { after: 240 },
+  });
+}
+
+// Page content inside default margins is roughly 624px wide at 96dpi (6.5in);
+// 600 leaves a little breathing room on each side. renderChartImage.ts
+// renders well past this (it upscales for crispness -- see its own
+// RENDER_DENSITY comment), so displaying at this width, not the image's
+// full pixel size, is what actually makes the extra resolution pay off as
+// sharpness rather than an oversized picture.
+const CHART_IMAGE_DISPLAY_WIDTH = 600;
+
+function chartImageParagraph(image: {
+  png: Buffer;
+  width: number;
+  height: number;
+}) {
+  const displayWidth = Math.min(CHART_IMAGE_DISPLAY_WIDTH, image.width);
+  const displayHeight = Math.round(image.height * (displayWidth / image.width));
+  return new Paragraph({
+    children: [
+      new ImageRun({
+        data: image.png,
+        transformation: { width: displayWidth, height: displayHeight },
+        type: "png",
+      }),
+    ],
+    spacing: { after: 80 },
   });
 }
 
@@ -123,6 +165,16 @@ export type NarrativeReportFinding = {
   verdict_tier: "robust" | "use_with_caution" | null;
 };
 
+// A chart rendered server-side (renderChartImage.ts) for one theme's worth
+// of chart-eligible findings -- structurally the same shape
+// buildChartImagesByTheme (exportChartImages.ts) already returns, so a
+// caller can pass that result straight through without remapping it.
+export type NarrativeReportChartImage = {
+  theme: string;
+  caption: string;
+  image: { png: Buffer; width: number; height: number };
+};
+
 export type NarrativeReportInput = {
   title: string;
   decisionStatement: string | null;
@@ -138,6 +190,10 @@ export type NarrativeReportInput = {
   governingThought: string;
   documents: NarrativeReportDocument[];
   findings: NarrativeReportFinding[];
+  // Keyed implicitly by theme (see NarrativeReportChartImage.theme) rather
+  // than pre-grouped, since the Findings section below groups `findings`
+  // by theme itself and just looks each one up as it goes.
+  chartImagesByTheme: NarrativeReportChartImage[];
   objectiveItems: NarrativeReportObjectiveItem[];
   unmappedInsightHeadlines: string[];
   pillars: NarrativeReportPillar[];
@@ -145,6 +201,10 @@ export type NarrativeReportInput = {
   recommendations: NarrativeReportRecommendation[];
   caveats: string[];
   generatedAt: string;
+  // The validated / net-new split (see discoveryClassification.ts). Optional
+  // so a caller that has not loaded it still produces the same report as
+  // before; the section below simply does not appear.
+  discovery?: DiscoveryReportData;
 };
 
 const statusLabel: Record<NarrativeReportObjectiveItem["status"], string> = {
@@ -153,11 +213,12 @@ const statusLabel: Record<NarrativeReportObjectiveItem["status"], string> = {
   gap: "Gap",
 };
 
-const priorityLabel: Record<NarrativeReportRecommendation["priority"], string> = {
-  high: "High priority",
-  medium: "Medium priority",
-  low: "Lower priority",
-};
+const priorityLabel: Record<NarrativeReportRecommendation["priority"], string> =
+  {
+    high: "High priority",
+    medium: "Medium priority",
+    low: "Lower priority",
+  };
 
 const documentKindLabel: Record<NarrativeReportDocument["kind"], string> = {
   report: "report or document",
@@ -171,6 +232,158 @@ const verdictTierLabel: Record<string, string> = {
   use_with_caution: "usable with caution",
 };
 
+const qualityTierLabel: Record<string, string> = {
+  qualified: "Qualified insight",
+  partial: "Partial insight",
+  finding: "Finding level",
+};
+
+/**
+ * The section that lists, separately, what this analysis added beyond what
+ * the original report said: new insights, new findings mined from the data,
+ * and any place the evidence contradicts a claim the report made. Empty
+ * (returns no paragraphs) when there is nothing to say and nothing the
+ * reader needs to be warned about, so a run with no net-new content does not
+ * grow a hollow heading.
+ */
+function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
+  const hasContent =
+    d.netNewInsights.length > 0 ||
+    d.netNewFindings.length > 0 ||
+    d.contradictions.length > 0;
+  if (!hasContent && !d.verificationNote) return [];
+
+  const out: Paragraph[] = [];
+  out.push(rule());
+  out.push(heading("New insights beyond the report", HeadingLevel.HEADING_1));
+  out.push(
+    body(
+      "Everything in the sections above that traces back to a claim the original material made is validated: " +
+        "it was checked, not originated, here. What follows is different. It only exists because this analysis " +
+        "surfaced it, so it is listed on its own.",
+      { italic: true, color: MUTED },
+    ),
+  );
+  if (d.verificationNote) {
+    out.push(label("How far this could be checked", "B45309"));
+    out.push(
+      body(
+        `${d.verificationNote} Insight quality was still assessed, because that is a read of each claim's own ` +
+          "reasoning and needs no underlying data. Treat every verdict in this report accordingly.",
+      ),
+    );
+  }
+
+  if (d.netNewInsights.length > 0) {
+    out.push(heading("New insights", HeadingLevel.HEADING_2));
+    for (const insight of d.netNewInsights) {
+      out.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: insight.headline,
+              bold: true,
+              font: BODY_FONT,
+              size: 21,
+            }),
+            ...(insight.qualityTier
+              ? [
+                  new TextRun({
+                    text: `  [${qualityTierLabel[insight.qualityTier] ?? insight.qualityTier}]`,
+                    font: BODY_FONT,
+                    size: 18,
+                    color: ACCENT,
+                  }),
+                ]
+              : []),
+          ],
+          spacing: { before: 140, after: 40 },
+        }),
+      );
+      out.push(
+        body(`“${insight.implication}”`, { italic: true, color: MUTED }),
+      );
+      out.push(body(insight.provenanceCaption, { color: MUTED }));
+    }
+  }
+
+  if (d.netNewFindings.length > 0) {
+    out.push(heading("New findings from the data", HeadingLevel.HEADING_2));
+    out.push(
+      body(
+        "Patterns computed directly from the supplied tables that no claim in the original report points at.",
+        { color: MUTED },
+      ),
+    );
+    for (const finding of d.netNewFindings) {
+      out.push(
+        bullet(
+          `${finding.theme ? `${finding.theme}: ` : ""}${finding.text} (${verdictTierLabel[finding.verdictTier] ?? finding.verdictTier})`,
+        ),
+      );
+    }
+    if (d.netNewFindingsOmitted > 0) {
+      out.push(
+        body(
+          `${pluralize(d.netNewFindingsOmitted, "further net-new finding")} passed verification and appear in the ` +
+            "Findings section above.",
+          { color: MUTED },
+        ),
+      );
+    }
+  }
+
+  if (d.contradictions.length > 0) {
+    out.push(
+      heading(
+        "Where the evidence contradicts the report",
+        HeadingLevel.HEADING_2,
+      ),
+    );
+    out.push(
+      body(
+        "These are corrections, not additions. Each claim below was rated as not supported because of what is " +
+          "set against it, whatever else it had going for it.",
+        { color: MUTED },
+      ),
+    );
+    for (const c of d.contradictions) {
+      const by =
+        c.contradictedBy === "net_new_finding"
+          ? "a new finding from the data"
+          : c.contradictedBy === "net_new_insight"
+            ? "a new insight"
+            : "another claim in the same report";
+      out.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "The report said: ",
+              bold: true,
+              font: BODY_FONT,
+              size: 21,
+            }),
+            new TextRun({
+              text: `“${c.originalText}”`,
+              font: BODY_FONT,
+              size: 21,
+            }),
+          ],
+          spacing: { before: 160, after: 40 },
+        }),
+      );
+      out.push(
+        body(
+          `Contradicted by ${by}: “${c.contradictingText}”. ${c.rationale}`,
+          { color: MUTED },
+        ),
+      );
+    }
+  }
+
+  return out;
+}
+
 function pluralize(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
@@ -180,7 +393,10 @@ function pluralize(count: number, noun: string): string {
  * group findings by theme and documents by kind without pulling in a
  * dependency for something this small.
  */
-function groupBy<T, K extends string>(items: T[], keyOf: (item: T) => K): Map<K, T[]> {
+function groupBy<T, K extends string>(
+  items: T[],
+  keyOf: (item: T) => K,
+): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const item of items) {
     const key = keyOf(item);
@@ -208,43 +424,78 @@ function groupBy<T, K extends string>(items: T[], keyOf: (item: T) => K): Map<K,
  * reviewed, accepted material appears, nothing here is restated or invented
  * by the model.
  */
-export async function buildNarrativeReportDocx(input: NarrativeReportInput): Promise<Buffer> {
+export async function buildNarrativeReportDocx(
+  input: NarrativeReportInput,
+): Promise<Buffer> {
   const children: Paragraph[] = [];
 
-  const generatedLabel = new Date(input.generatedAt).toLocaleDateString("en-ZA", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const generatedLabel = new Date(input.generatedAt).toLocaleDateString(
+    "en-ZA",
+    {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    },
+  );
 
   // --- Title block ---------------------------------------------------
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: input.title, font: DISPLAY_FONT, size: 40, bold: true, color: INK })],
+      children: [
+        new TextRun({
+          text: input.title,
+          font: DISPLAY_FONT,
+          size: 40,
+          bold: true,
+          color: INK,
+        }),
+      ],
       spacing: { after: 120 },
-    })
+    }),
   );
   if (input.decisionStatement) {
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: input.decisionStatement, font: BODY_FONT, size: 22, italics: true, color: MUTED })],
+        children: [
+          new TextRun({
+            text: input.decisionStatement,
+            font: BODY_FONT,
+            size: 22,
+            italics: true,
+            color: MUTED,
+          }),
+        ],
         spacing: { after: 80 },
-      })
+      }),
     );
   }
   if (input.audience) {
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: `Prepared for: ${input.audience}`, font: BODY_FONT, size: 20, color: MUTED })],
+        children: [
+          new TextRun({
+            text: `Prepared for: ${input.audience}`,
+            font: BODY_FONT,
+            size: 20,
+            color: MUTED,
+          }),
+        ],
         spacing: { after: 80 },
-      })
+      }),
     );
   }
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: `Generated ${generatedLabel}`, font: BODY_FONT, size: 18, color: MUTED })],
+      children: [
+        new TextRun({
+          text: `Generated ${generatedLabel}`,
+          font: BODY_FONT,
+          size: 18,
+          color: MUTED,
+        }),
+      ],
       spacing: { after: 320 },
-    })
+    }),
   );
   children.push(rule());
 
@@ -267,7 +518,8 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
   if (input.situation || input.complication) {
     children.push(label("Background"));
     if (input.situation) children.push(body(input.situation));
-    if (input.complication) children.push(body(input.complication, { color: MUTED }));
+    if (input.complication)
+      children.push(body(input.complication, { color: MUTED }));
   }
   if (input.question) {
     children.push(label("Key question"));
@@ -292,8 +544,8 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
       body(
         "No research methodology was stated in the uploaded brief, proposal, or report. How the underlying " +
           "evidence was gathered -- sampling, data collection, instruments, participants, timeframe -- is not " +
-          "documented in the source material supplied for this project."
-      )
+          "documented in the source material supplied for this project.",
+      ),
     );
   }
   if (input.documents.length > 0) {
@@ -302,7 +554,9 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
       .map(([kind, docs]) => pluralize(docs.length, documentKindLabel[kind]))
       .join(", ");
     children.push(label("Source documents", MUTED));
-    children.push(body(`This analysis draws on ${inventoryLine}:`, { color: MUTED }));
+    children.push(
+      body(`This analysis draws on ${inventoryLine}:`, { color: MUTED }),
+    );
     for (const [, docs] of documentsByKind) {
       for (const doc of docs) {
         children.push(bullet(doc.source_filename, MUTED));
@@ -314,13 +568,31 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
   children.push(rule());
   children.push(heading("Findings", HeadingLevel.HEADING_1));
   if (input.findings.length === 0) {
-    children.push(body("No verified findings are recorded against this project yet."));
+    children.push(
+      body("No verified findings are recorded against this project yet."),
+    );
   } else {
-    const findingsByTheme = groupBy(input.findings, (f) => f.theme ?? "Uncategorized");
+    const chartImageByTheme = new Map(
+      input.chartImagesByTheme.map((c) => [c.theme, c]),
+    );
+    const findingsByTheme = groupBy(
+      input.findings,
+      (f) => f.theme ?? "Uncategorized",
+    );
     for (const [theme, items] of findingsByTheme) {
       children.push(label(theme, MUTED));
+      const chartImage = chartImageByTheme.get(theme);
+      if (chartImage) {
+        children.push(chartImageParagraph(chartImage.image));
+        children.push(body(chartImage.caption, { italic: true, color: MUTED }));
+        children.push(
+          body("Individual comparisons behind this chart:", { color: MUTED }),
+        );
+      }
       for (const finding of items) {
-        const tierSuffix = finding.verdict_tier ? ` (${verdictTierLabel[finding.verdict_tier]})` : "";
+        const tierSuffix = finding.verdict_tier
+          ? ` (${verdictTierLabel[finding.verdict_tier]})`
+          : "";
         children.push(bullet(`${finding.finding_text}${tierSuffix}`));
       }
     }
@@ -330,18 +602,31 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
   children.push(rule());
   children.push(heading("Insights", HeadingLevel.HEADING_1));
   if (input.governingThought) {
-    children.push(body(input.governingThought, { italic: true, color: ACCENT }));
+    children.push(
+      body(input.governingThought, { italic: true, color: ACCENT }),
+    );
   }
 
   input.pillars.forEach((pillar, index) => {
     children.push(
       new Paragraph({
         children: [
-          new TextRun({ text: `Theme ${index + 1} of ${input.pillars.length} — `, font: BODY_FONT, size: 21, color: ACCENT }),
-          new TextRun({ text: pillar.headline, font: DISPLAY_FONT, size: 26, bold: true, color: INK }),
+          new TextRun({
+            text: `Theme ${index + 1} of ${input.pillars.length} — `,
+            font: BODY_FONT,
+            size: 21,
+            color: ACCENT,
+          }),
+          new TextRun({
+            text: pillar.headline,
+            font: DISPLAY_FONT,
+            size: 26,
+            bold: true,
+            color: INK,
+          }),
         ],
         spacing: { before: 320, after: 80 },
-      })
+      }),
     );
     if (pillar.so_what) {
       children.push(body(pillar.so_what, { italic: true, color: MUTED }));
@@ -349,17 +634,28 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
     for (const insight of pillar.insights) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: insight.headline, bold: true, font: BODY_FONT, size: 21 })],
+          children: [
+            new TextRun({
+              text: insight.headline,
+              bold: true,
+              font: BODY_FONT,
+              size: 21,
+            }),
+          ],
           spacing: { before: 140, after: 40 },
-        })
+        }),
       );
       children.push(body(insight.observation));
-      children.push(body(`“${insight.implication}”`, { italic: true, color: MUTED }));
+      children.push(
+        body(`“${insight.implication}”`, { italic: true, color: MUTED }),
+      );
     }
   });
 
   if (input.objectiveItems.length > 0) {
-    children.push(heading("What this means for what you asked", HeadingLevel.HEADING_2));
+    children.push(
+      heading("What this means for what you asked", HeadingLevel.HEADING_2),
+    );
     for (const item of input.objectiveItems) {
       children.push(
         new Paragraph({
@@ -369,7 +665,12 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
               bold: true,
               font: BODY_FONT,
               size: 21,
-              color: item.status === "resolved" ? "15803D" : item.status === "partial" ? "B45309" : MUTED,
+              color:
+                item.status === "resolved"
+                  ? "15803D"
+                  : item.status === "partial"
+                    ? "B45309"
+                    : MUTED,
             }),
             new TextRun({
               text: `${item.item_kind === "objective" ? "Objective" : "Decision"}: ${item.item_text}`,
@@ -379,7 +680,7 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
             }),
           ],
           spacing: { before: 160, after: 40 },
-        })
+        }),
       );
       children.push(body(item.conclusion, { color: MUTED }));
     }
@@ -390,17 +691,24 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
         body(
           `The evidence also surfaced ${input.unmappedInsightHeadlines.length} accepted insight` +
             `${input.unmappedInsightHeadlines.length === 1 ? "" : "s"} that none of the objectives or decisions ` +
-            `above asked about: ${input.unmappedInsightHeadlines.join("; ")}.`
-        )
+            `above asked about: ${input.unmappedInsightHeadlines.join("; ")}.`,
+        ),
       );
     }
+  }
+
+  // --- New beyond the report: the net-new half of the validated/net-new split
+  if (input.discovery) {
+    children.push(...buildDiscoverySection(input.discovery));
   }
 
   // --- Recommendations -----------------------------------------------
   children.push(rule());
   children.push(heading("Recommendations", HeadingLevel.HEADING_1));
   if (input.recommendationsIntro) {
-    children.push(body(input.recommendationsIntro, { italic: true, color: MUTED }));
+    children.push(
+      body(input.recommendationsIntro, { italic: true, color: MUTED }),
+    );
   }
   if (input.recommendations.length === 0) {
     children.push(body("No recommendations have been accepted yet."));
@@ -409,13 +717,29 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
     children.push(
       new Paragraph({
         children: [
-          new TextRun({ text: `[${priorityLabel[rec.priority]}] `, bold: true, font: BODY_FONT, size: 21, color: ACCENT }),
-          new TextRun({ text: rec.action_text, bold: true, font: BODY_FONT, size: 21 }),
+          new TextRun({
+            text: `[${priorityLabel[rec.priority]}] `,
+            bold: true,
+            font: BODY_FONT,
+            size: 21,
+            color: ACCENT,
+          }),
+          new TextRun({
+            text: rec.action_text,
+            bold: true,
+            font: BODY_FONT,
+            size: 21,
+          }),
         ],
         spacing: { before: 160, after: 40 },
-      })
+      }),
     );
-    children.push(body(`${rec.owner_role} · ${rec.timeline} · Success metric: ${rec.metric}`, { color: MUTED }));
+    children.push(
+      body(
+        `${rec.owner_role} · ${rec.timeline} · Success metric: ${rec.metric}`,
+        { color: MUTED },
+      ),
+    );
   }
 
   // --- Next steps: gaps worth following up, plus scope & limitations -----
@@ -425,22 +749,30 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
   if (gapItems.length > 0 || input.recommendations.length > 0) {
     children.push(
       body(
-        "Beyond acting on the recommendations above, this project points to a few specific places to follow up:"
-      )
+        "Beyond acting on the recommendations above, this project points to a few specific places to follow up:",
+      ),
     );
     for (const item of gapItems) {
       children.push(
         bullet(
           `Further work is needed on the ${item.item_kind === "objective" ? "objective" : "decision"}: "${item.item_text}" ` +
-            `-- the accepted evidence did not resolve it.`
-        )
+            `-- the accepted evidence did not resolve it.`,
+        ),
       );
     }
     if (input.recommendations.some((r) => r.priority === "high")) {
-      children.push(bullet("Prioritise the high-priority recommendations above before the medium- and lower-priority ones."));
+      children.push(
+        bullet(
+          "Prioritise the high-priority recommendations above before the medium- and lower-priority ones.",
+        ),
+      );
     }
   } else {
-    children.push(body("No specific follow-up gaps were identified beyond the recommendations above."));
+    children.push(
+      body(
+        "No specific follow-up gaps were identified beyond the recommendations above.",
+      ),
+    );
   }
 
   if (input.caveats.length > 0) {
@@ -463,8 +795,8 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
         "insight presented above as synthesized reflects agreement across more than one independent piece of " +
         "evidence, not a single observation restated. This describes how this analysis tool processed the " +
         "material, not the original research design -- see Methodology above for that.",
-      { color: MUTED }
-    )
+      { color: MUTED },
+    ),
   );
   children.push(
     new Paragraph({
@@ -480,14 +812,18 @@ export async function buildNarrativeReportDocx(input: NarrativeReportInput): Pro
         }),
       ],
       spacing: { before: 200 },
-    })
+    }),
   );
 
   const doc = new Document({
     styles: {
       default: {
-        heading1: { run: { font: DISPLAY_FONT, size: 30, bold: true, color: INK } },
-        heading2: { run: { font: DISPLAY_FONT, size: 26, bold: true, color: INK } },
+        heading1: {
+          run: { font: DISPLAY_FONT, size: 30, bold: true, color: INK },
+        },
+        heading2: {
+          run: { font: DISPLAY_FONT, size: 26, bold: true, color: INK },
+        },
       },
     },
     sections: [

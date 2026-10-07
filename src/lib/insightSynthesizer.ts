@@ -2,6 +2,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
+import { refreshContradictions } from "./contradictionDetector";
 
 // Same ceiling as generateInsights' MAX_FINDINGS_FOR_INSIGHT: the pool of
 // pre-insights this pass can see at once, kept to one model call's worth
@@ -691,6 +692,13 @@ export async function refreshSynthesizedInsights(tenantId: string, runId: string
       );
     });
   }
+  // Every synthesized insight is net-new by definition (the report never
+  // said it), and a net-new insight that undercuts something the report
+  // claimed is a correction, not an addition. Checking for that belongs
+  // right after synthesis, and putting it here means every existing trigger
+  // point picks it up without each one being edited. It is its own safe
+  // wrapper, so a failure in it can never take synthesis down with it.
+  await refreshContradictions(tenantId, runId);
 }
 
 /**

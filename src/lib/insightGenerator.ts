@@ -225,27 +225,45 @@ async function generateInsightsForChunk(
     await logApiUsage(tenantId, runId, "insight_generator", response.usage);
 
     const toolUse = response.content.find((block) => block.type === "tool_use");
-    const rawInsights =
-      toolUse && toolUse.type === "tool_use" && Array.isArray((toolUse.input as { insights?: unknown }).insights)
-        ? ((toolUse.input as { insights: unknown[] }).insights as Record<string, unknown>[])
-        : [];
+    // The model sometimes returns a large array as a JSON string instead of
+    // an array. Accept that rather than discarding a complete answer.
+    let rawField: unknown = toolUse && toolUse.type === "tool_use" ? (toolUse.input as { insights?: unknown }).insights : undefined;
+    if (typeof rawField === "string") {
+      try {
+        rawField = JSON.parse(rawField);
+      } catch {
+        // left as a string, reported below
+      }
+    }
+    const rawInsights = Array.isArray(rawField) ? (rawField as Record<string, unknown>[]) : [];
 
     const prepared: PreparedInsight[] = [];
+    let skippedIndex = 0;
+    let skippedEmpty = 0;
     for (const raw of rawInsights) {
       const index = typeof raw.index === "number" ? raw.index : null;
       const headline = typeof raw.headline === "string" ? raw.headline.trim() : "";
       const observation = typeof raw.observation === "string" ? raw.observation.trim() : "";
       const tension = typeof raw.tension === "string" ? raw.tension.trim() : "";
       const implication = typeof raw.implication === "string" ? raw.implication.trim() : "";
-      if (index === null || index < 0 || index >= batch.length) continue;
-      if (!headline || !observation || !tension || !implication) continue;
+      if (index === null || index < 0 || index >= batch.length) {
+        skippedIndex += 1;
+        continue;
+      }
+      if (!headline || !observation || !tension || !implication) {
+        skippedEmpty += 1;
+        continue;
+      }
       prepared.push({ findingId: batch[index].id, headline, observation, tension, implication });
     }
 
     if (prepared.length === 0) {
       return {
         written: 0,
-        failure: `${batch.length} finding(s) starting at index ${chunkIndex * INSIGHT_CHUNK_SIZE} (stop reason: ${response.stop_reason ?? "unknown"})`,
+        failure:
+          `${batch.length} finding(s) starting at index ${chunkIndex * INSIGHT_CHUNK_SIZE} ` +
+          `(stop reason: ${response.stop_reason ?? "unknown"}; items returned: ${rawInsights.length}, ` +
+          `bad index: ${skippedIndex}, empty field: ${skippedEmpty}, field type: ${Array.isArray(rawField) ? "array" : typeof rawField})`,
       };
     }
 

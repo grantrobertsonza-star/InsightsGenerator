@@ -1,6 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  verificationCaption,
+  type InputCompleteness,
+  type VerificationBasis,
+} from "@/lib/discoveryClassification";
 
 type VerdictTier = "robust" | "use_with_caution";
 
@@ -14,7 +19,10 @@ type Insight = {
   finding_text: string;
   theme: string | null;
   verdict_tier: VerdictTier;
+  // True when the finding behind this insight traces to something the
+  // original report said; false means the Elevator's own analysis found it.
   from_report: boolean;
+  verification_basis: VerificationBasis;
   caveats: string[];
 };
 
@@ -39,7 +47,11 @@ function caveatLabel(caveat: string): string {
 }
 
 type VerdictSummary = { verdictedCount: number; passedCount: number };
-type FailedVerdictSample = { finding_text: string; verdict_tier: string; rationale: string };
+type FailedVerdictSample = {
+  finding_text: string;
+  verdict_tier: string;
+  rationale: string;
+};
 
 const UNCATEGORIZED = "Uncategorized";
 
@@ -62,12 +74,14 @@ const UNCATEGORIZED = "Uncategorized";
  */
 export default function InsightsReview({
   insights,
+  inputState,
   totalFindings,
   verdictSummary,
   insightError,
   failedVerdictSamples,
 }: {
   insights: Insight[];
+  inputState: InputCompleteness;
   totalFindings: number;
   verdictSummary: VerdictSummary | null;
   insightError: string | null;
@@ -76,7 +90,9 @@ export default function InsightsReview({
   const [tierFilter, setTierFilter] = useState<"all" | VerdictTier>("all");
   const [themeFilter, setThemeFilter] = useState<string>("all");
 
-  const robustCount = insights.filter((i) => i.verdict_tier === "robust").length;
+  const robustCount = insights.filter(
+    (i) => i.verdict_tier === "robust",
+  ).length;
   const cautionCount = insights.length - robustCount;
 
   const themeCounts = useMemo(() => {
@@ -89,8 +105,13 @@ export default function InsightsReview({
   }, [insights]);
 
   const filtered = insights.filter((insight) => {
-    if (tierFilter !== "all" && insight.verdict_tier !== tierFilter) return false;
-    if (themeFilter !== "all" && (insight.theme ?? UNCATEGORIZED) !== themeFilter) return false;
+    if (tierFilter !== "all" && insight.verdict_tier !== tierFilter)
+      return false;
+    if (
+      themeFilter !== "all" &&
+      (insight.theme ?? UNCATEGORIZED) !== themeFilter
+    )
+      return false;
     return true;
   });
 
@@ -98,8 +119,8 @@ export default function InsightsReview({
     return (
       <div className="space-y-1.5 text-sm text-muted">
         <p>
-          None yet. Insights are generated from findings that pass verification, once there are any
-          to read.
+          None yet. Insights are generated from findings that pass verification,
+          once there are any to read.
         </p>
         {verdictSummary && (
           <p>
@@ -108,15 +129,24 @@ export default function InsightsReview({
               : `${verdictSummary.passedCount} of ${verdictSummary.verdictedCount} verified finding(s) passed as robust or use-with-caution, the only tiers insights are generated from.`}
           </p>
         )}
-        {insightError && <p className="text-danger">Last automatic attempt failed: {insightError}</p>}
+        {insightError && (
+          <p className="text-danger">
+            Last automatic attempt failed: {insightError}
+          </p>
+        )}
         {failedVerdictSamples.length > 0 && (
           <div className="mt-2 space-y-2 rounded-lg border border-border bg-white p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               Why some didn&apos;t pass (a sample)
             </p>
             {failedVerdictSamples.map((sample, index) => (
-              <div key={index} className="border-t border-border pt-2 first:border-t-0 first:pt-0">
-                <p className="text-foreground">&ldquo;{sample.finding_text}&rdquo;</p>
+              <div
+                key={index}
+                className="border-t border-border pt-2 first:border-t-0 first:pt-0"
+              >
+                <p className="text-foreground">
+                  &ldquo;{sample.finding_text}&rdquo;
+                </p>
                 <p className="mt-0.5 text-xs">
                   <span className="font-semibold uppercase tracking-wide text-muted">
                     {sample.verdict_tier.replace(/_/g, " ")}:
@@ -134,36 +164,56 @@ export default function InsightsReview({
   return (
     <div className="space-y-4">
       <div>
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Evidence strength</p>
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+          Evidence strength
+        </p>
         <div className="grid grid-cols-3 gap-2 sm:max-w-md">
           <button
             type="button"
             onClick={() => setTierFilter("all")}
             className={`rounded-lg border px-3 py-2 text-left transition ${
-              tierFilter === "all" ? "border-primary bg-primary-light" : "border-border bg-white hover:border-slate-300"
+              tierFilter === "all"
+                ? "border-primary bg-primary-light"
+                : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-foreground">{insights.length}</div>
+            <div className="text-lg font-semibold text-foreground">
+              {insights.length}
+            </div>
             <div className="text-xs text-muted">Total</div>
           </button>
           <button
             type="button"
-            onClick={() => setTierFilter((f) => (f === "robust" ? "all" : "robust"))}
+            onClick={() =>
+              setTierFilter((f) => (f === "robust" ? "all" : "robust"))
+            }
             className={`rounded-lg border px-3 py-2 text-left transition ${
-              tierFilter === "robust" ? "border-success bg-success-light" : "border-border bg-white hover:border-slate-300"
+              tierFilter === "robust"
+                ? "border-success bg-success-light"
+                : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-success">{robustCount}</div>
+            <div className="text-lg font-semibold text-success">
+              {robustCount}
+            </div>
             <div className="text-xs text-muted">Robust</div>
           </button>
           <button
             type="button"
-            onClick={() => setTierFilter((f) => (f === "use_with_caution" ? "all" : "use_with_caution"))}
+            onClick={() =>
+              setTierFilter((f) =>
+                f === "use_with_caution" ? "all" : "use_with_caution",
+              )
+            }
             className={`rounded-lg border px-3 py-2 text-left transition ${
-              tierFilter === "use_with_caution" ? "border-amber-400 bg-amber-50" : "border-border bg-white hover:border-slate-300"
+              tierFilter === "use_with_caution"
+                ? "border-amber-400 bg-amber-50"
+                : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-amber-700">{cautionCount}</div>
+            <div className="text-lg font-semibold text-amber-700">
+              {cautionCount}
+            </div>
             <div className="text-xs text-muted">Use with caution</div>
           </button>
         </div>
@@ -175,7 +225,9 @@ export default function InsightsReview({
             type="button"
             onClick={() => setThemeFilter("all")}
             className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-              themeFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              themeFilter === "all"
+                ? "bg-primary text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
             All themes
@@ -184,9 +236,13 @@ export default function InsightsReview({
             <button
               key={theme}
               type="button"
-              onClick={() => setThemeFilter((f) => (f === theme ? "all" : theme))}
+              onClick={() =>
+                setThemeFilter((f) => (f === theme ? "all" : theme))
+              }
               className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                themeFilter === theme ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                themeFilter === theme
+                  ? "bg-primary text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
               {theme} ({count})
@@ -200,7 +256,10 @@ export default function InsightsReview({
       ) : (
         <div className="space-y-3">
           {filtered.map((insight) => (
-            <div key={insight.id} className="rounded-lg border border-border bg-white p-4">
+            <div
+              key={insight.id}
+              className="rounded-lg border border-border bg-white p-4"
+            >
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span
                   className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
@@ -209,7 +268,9 @@ export default function InsightsReview({
                       : "bg-amber-50 text-amber-700"
                   }`}
                 >
-                  {insight.verdict_tier === "robust" ? "Robust" : "Use with caution"}
+                  {insight.verdict_tier === "robust"
+                    ? "Robust"
+                    : "Use with caution"}
                 </span>
                 {insight.theme && (
                   <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -218,10 +279,14 @@ export default function InsightsReview({
                 )}
                 <span
                   className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                    insight.from_report ? "bg-primary-light text-primary" : "bg-indigo-50 text-indigo-700"
+                    insight.from_report
+                      ? "bg-primary-light text-primary"
+                      : "bg-indigo-50 text-indigo-700"
                   }`}
                 >
-                  {insight.from_report ? "From the report" : "New, found by the Elevator"}
+                  {insight.from_report
+                    ? "From the report"
+                    : "New, found by the Elevator"}
                 </span>
                 {insight.caveats.map((caveat) => (
                   <span
@@ -233,18 +298,31 @@ export default function InsightsReview({
                   </span>
                 ))}
               </div>
-              <div className="mb-2 text-sm font-semibold text-foreground">{insight.headline}</div>
+              {verificationCaption(insight.verification_basis, inputState) && (
+                <p className="mb-1.5 text-xs italic text-slate-500">
+                  {verificationCaption(insight.verification_basis, inputState)}
+                </p>
+              )}
+              <div className="mb-2 text-sm font-semibold text-foreground">
+                {insight.headline}
+              </div>
               <dl className="space-y-1.5 text-sm">
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Observation</dt>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Observation
+                  </dt>
                   <dd className="text-foreground">{insight.observation}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Tension</dt>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Tension
+                  </dt>
                   <dd className="text-foreground">{insight.tension}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Implication</dt>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Implication
+                  </dt>
                   <dd className="text-foreground">{insight.implication}</dd>
                 </div>
               </dl>

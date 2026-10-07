@@ -23,14 +23,37 @@ export default function CollapsibleSection({
   defaultOpen,
   headerRight,
   children,
+  bare = false,
 }: {
   title: string;
   icon: ReactNode;
   defaultOpen: boolean;
   headerRight?: ReactNode;
   children: ReactNode;
+  // Used when this section is rendered as a panel inside RunShell: the
+  // panel's own nav item already carries the title, and the panel is
+  // shown or hidden by RunShell rather than by this component's own
+  // open/closed state, so the card chrome and collapse button would just
+  // be a second, redundant header. headerRight still renders (e.g. the
+  // CSV export link, the per-table process buttons) -- those actions
+  // aren't shown anywhere else -- just above the content instead of
+  // inline with a title that's no longer here.
+  bare?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+
+  if (bare) {
+    return (
+      <div>
+        {headerRight && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {headerRight}
+          </div>
+        )}
+        {children}
+      </div>
+    );
+  }
 
   return (
     <section className="card-surface mb-8 rounded-xl border border-border bg-white p-6">

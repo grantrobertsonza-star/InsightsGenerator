@@ -1,4 +1,7 @@
-import { archiveAndReplaceFindings, type ArchiveReason } from "./findingArchive";
+import {
+  archiveAndReplaceFindings,
+  type ArchiveReason,
+} from "./findingArchive";
 import { withTenant } from "./db";
 import { computeTablePatterns } from "./tableComputation";
 
@@ -33,13 +36,18 @@ export async function generateFindingsFromTable(
   tenantId: string,
   runId: string,
   documentTableId: string,
-  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {}
+  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
 ): Promise<{ kept: number; discarded: number }> {
-  const { onlyReplacePending = false, archiveReason = "manual_reextract" } = options;
+  const { onlyReplacePending = false, archiveReason = "manual_reextract" } =
+    options;
   const documentTable = await withTenant(tenantId, async (client) => {
-    const result = await client.query<{ headers: unknown; rows: unknown; ingestion_type: "raw" | "aggregated" }>(
+    const result = await client.query<{
+      headers: unknown;
+      rows: unknown;
+      ingestion_type: "raw" | "aggregated";
+    }>(
       "select headers, rows, ingestion_type from document_tables where id = $1 and run_id = $2",
-      [documentTableId, runId]
+      [documentTableId, runId],
     );
     return result.rows[0];
   });
@@ -72,7 +80,7 @@ export async function generateFindingsFromTable(
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'table_awaiting_statistical_path', $3)`,
-        [tenantId, runId, JSON.stringify({ documentTableId })]
+        [tenantId, runId, JSON.stringify({ documentTableId })],
       );
     });
     return { kept: 0, discarded: 0 };
@@ -92,17 +100,20 @@ export async function generateFindingsFromTable(
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: documentTableId,
-      onlyPending: onlyReplacePending,
+      onlyRejected: onlyReplacePending,
       archiveReason,
     });
 
     for (const pattern of patterns) {
-      const sourceCells = pattern.rowIndices.length > 0 ? JSON.stringify({ rowIndices: pattern.rowIndices }) : null;
+      const sourceCells =
+        pattern.rowIndices.length > 0
+          ? JSON.stringify({ rowIndices: pattern.rowIndices })
+          : null;
       // See the matching comment in extractFindings.ts: status starts at
-      // 'pending' (the schema default) now, not 'accepted'.
+      // 'accepted', not 'pending'.
       await client.query(
         `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, source_cells, data_type, status)
-         values ($1, $2, 'generated', $3, $4, $5, $6, $7, $8, 'quantitative', 'pending')`,
+         values ($1, $2, 'generated', $3, $4, $5, $6, $7, $8, 'quantitative', 'accepted')`,
         [
           tenantId,
           runId,
@@ -112,7 +123,7 @@ export async function generateFindingsFromTable(
           JSON.stringify(pattern.statedStats),
           documentTableId,
           sourceCells,
-        ]
+        ],
       );
       kept++;
     }

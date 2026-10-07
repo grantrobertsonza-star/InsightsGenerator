@@ -3,6 +3,8 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { checkBaseSize } from "./stats";
 import { mapWithConcurrency } from "./concurrency";
+import { applyRecordedContradictions } from "./contradictionDetector";
+import { verificationBasisFor } from "./discoveryClassification";
 
 // Judged in chunks rather than one call for the whole batch: at 80 findings,
 // each needing a rationale, a single call's output can run past its token
@@ -464,10 +466,21 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
     for (const verdict of prepared) {
       const finding = findingById.get(verdict.findingId);
       if (!finding) continue;
+      // data_backed only when the verdict above really came from computed
+      // statistics: a generated finding's own arithmetic, or a stated claim
+      // tied to one (the grounding path). The model plausibility path is the
+      // report's own wording judged for coherence, so it is report_only,
+      // whether the run has tables or not.
+      const grounding = finding.grounded_by_finding_id ? findingByIdAll.get(finding.grounded_by_finding_id) : undefined;
+      const verificationBasis = verificationBasisFor({
+        origin: finding.origin,
+        groundedByComputedFinding: Boolean(grounding && grounding.stated_stats),
+        reliedOnComputedEvidence: false,
+      });
       await client.query(
         `insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks,
-                                verification_method, corroboration_level, due_care)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                                verification_method, corroboration_level, due_care, verification_basis)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           tenantId,
           verdict.findingId,
@@ -477,9 +490,14 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
           verdict.verificationMethod,
           corroborationFor(finding),
           JSON.stringify(dueCareFor(finding)),
+          verificationBasis,
         ]
       );
     }
+    // A contradiction recorded earlier is a fact about the evidence, not
+    // about one verdict row: if a contradicted claim was just re-verified
+    // from scratch, its downgrade is re-applied here rather than lost.
+    await applyRecordedContradictions(client, tenantId, runId);
   });
 }
 

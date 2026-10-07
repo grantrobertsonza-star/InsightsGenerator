@@ -8,6 +8,7 @@ import {
   addBigStatementSlide,
   addSectionDivider,
   addEvidenceCard,
+  addChartSlide,
   confidenceBadgeFor,
   PRIORITY_BADGES,
   VALIDATION_BADGES,
@@ -23,6 +24,10 @@ import {
   addVisualSCQASlide,
 } from "@/lib/deckSlides";
 import type { DeckPillar } from "@/lib/storyNarrative";
+import { addDiscoverySlides } from "@/lib/discoverySlides";
+import { loadDiscoveryReportData } from "@/lib/discoveryReport";
+import { buildChartImagesByTheme } from "@/lib/exportChartImages";
+import type { ChartableFinding } from "@/lib/findingsChartData";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -64,14 +69,28 @@ type ExportObjectiveValidation = {
 // firing on top of the already-capped text, cutting it again mid-clause.
 // Matching INSIGHT_ROW's H=1.5 / 2-per-slide gives each card the room the
 // capped text actually needs without a second round of truncation.
-const OBJECTIVE_ROW = { H: 1.5, GAP: 0.22, GRID_X: 0.5, GRID_Y: 1.0, W: 9, PER_SLIDE: 2 } as const;
+const OBJECTIVE_ROW = {
+  H: 1.5,
+  GAP: 0.22,
+  GRID_X: 0.5,
+  GRID_Y: 1.0,
+  W: 9,
+  PER_SLIDE: 2,
+} as const;
 
 // PER_SLIDE is 2, not 3: at H=1.5 (the height a three-line evidence card
 // actually needs to stay readable), three stacked cards plus their gaps
 // run past the bottom of a 5.625in LAYOUT_16x9 slide and the third card
 // gets clipped by the footer. Two per slide, with a little more breathing
 // room between them, is what actually fits.
-const INSIGHT_ROW = { H: 1.5, GAP: 0.22, GRID_X: 0.5, GRID_Y: 1.85, W: 9, PER_SLIDE: 2 } as const;
+const INSIGHT_ROW = {
+  H: 1.5,
+  GAP: 0.22,
+  GRID_X: 0.5,
+  GRID_Y: 1.85,
+  W: 9,
+  PER_SLIDE: 2,
+} as const;
 
 /**
  * Exports the unified, client-ready "Insights Report" deck: the single
@@ -99,7 +118,10 @@ const INSIGHT_ROW = { H: 1.5, GAP: 0.22, GRID_X: 0.5, GRID_Y: 1.85, W: 9, PER_SL
  * responsible only for the content and the slide sequence, so a future
  * client-branded palette only means changing deckSlides.ts.
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: runId } = await params;
 
   const result = await withTenant(TENANT_ID, async (client) => {
@@ -107,7 +129,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       project_name: string | null;
       decision_statement: string | null;
       audience: string | null;
-    }>("select project_name, decision_statement, audience from runs where id = $1", [runId]);
+    }>(
+      "select project_name, decision_statement, audience from runs where id = $1",
+      [runId],
+    );
 
     const narrativeResult = await client.query<{
       executive_summary: string;
@@ -123,11 +148,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       `select executive_summary, situation, complication, question, governing_thought, pillars,
               recommendations_intro, caveats, generated_at
        from deck_narratives where run_id = $1`,
-      [runId]
+      [runId],
     );
 
     const narrative = narrativeResult.rows[0];
-    const insightIds = narrative ? Array.from(new Set(narrative.pillars.flatMap((pillar) => pillar.insight_ids))) : [];
+    const insightIds = narrative
+      ? Array.from(
+          new Set(narrative.pillars.flatMap((pillar) => pillar.insight_ids)),
+        )
+      : [];
 
     const insightsResult =
       insightIds.length > 0
@@ -135,7 +164,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
             `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier
              from synthesized_insights si
              where si.id = any($1::uuid[])`,
-            [insightIds]
+            [insightIds],
           )
         : null;
 
@@ -145,16 +174,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
        order by case r.priority when 'high' then 0 when 'medium' then 1 else 2 end, r.created_at`,
-      [runId]
+      [runId],
     );
 
-    const objectiveValidationsResult = await client.query<ExportObjectiveValidation>(
-      `select item_kind, item_text, status, conclusion, synthesized_insight_ids
+    const objectiveValidationsResult =
+      await client.query<ExportObjectiveValidation>(
+        `select item_kind, item_text, status, conclusion, synthesized_insight_ids
        from objective_validations
        where run_id = $1
        order by item_kind, item_order`,
-      [runId]
-    );
+        [runId],
+      );
 
     // An accepted synthesized insight that no objective/decision item's
     // array references at all -- evidence the project turned up that
@@ -169,28 +199,64 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
            select 1 from objective_validations ov
            where ov.run_id = $1 and si.id = any(ov.synthesized_insight_ids)
          )`,
-      [runId]
+      [runId],
     );
+
+    // Same accepted-and-verified scope and chartability columns the docx
+    // export's Findings section uses (see story/export-docx/route.ts) --
+    // the deck's "Evidence charts" section below is built from the exact
+    // same theme-eligible charts, so the two exports never disagree about
+    // which themes got a chart.
+    const findingsResult = await client.query<ChartableFinding>(
+      `select f.id, f.origin, f.pattern_type, f.status, f.stated_stats, f.theme
+       from findings f
+       join verdicts v on v.finding_id = f.id
+       where f.run_id = $1 and f.status = 'accepted' and v.verdict_tier in ('robust', 'use_with_caution')
+       order by f.theme nulls last, f.created_at`,
+      [runId],
+    );
+
+    // The validated / net-new split (see discoveryReport.ts): what this
+    // analysis added beyond what the original report said.
+    const discovery = await loadDiscoveryReportData(client, runId);
 
     return {
       run: runResult.rows[0],
       narrative,
-      insightsById: new Map((insightsResult?.rows ?? []).map((row) => [row.id, row])),
+      insightsById: new Map(
+        (insightsResult?.rows ?? []).map((row) => [row.id, row]),
+      ),
       recommendations: recommendationsResult.rows,
       objectiveValidations: objectiveValidationsResult.rows,
-      unmappedInsightHeadlines: unmappedInsightsResult.rows.map((row) => row.headline),
+      unmappedInsightHeadlines: unmappedInsightsResult.rows.map(
+        (row) => row.headline,
+      ),
+      findings: findingsResult.rows,
+      discovery,
     };
   });
 
-  const { run, narrative, insightsById, recommendations, objectiveValidations, unmappedInsightHeadlines } = result;
+  const {
+    run,
+    narrative,
+    insightsById,
+    recommendations,
+    objectiveValidations,
+    unmappedInsightHeadlines,
+    findings,
+    discovery,
+  } = result;
 
   if (!run) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
   if (!narrative) {
     return NextResponse.json(
-      { error: "No Insights Report has been generated for this project yet. Generate it in the app first." },
-      { status: 404 }
+      {
+        error:
+          "No Insights Report has been generated for this project yet. Generate it in the app first.",
+      },
+      { status: 404 },
     );
   }
 
@@ -201,7 +267,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // see verbatim on the cover and every footer -- humanizeTitle only
   // touches unspaced slugs, so a real decision-statement-based title passes
   // through unchanged.
-  const deckTitle = humanizeTitle(run.project_name ?? run.decision_statement ?? "Insights Elevator");
+  const deckTitle = humanizeTitle(
+    run.project_name ?? run.decision_statement ?? "Insights Elevator",
+  );
 
   addTitleSlide(pptx, {
     title: deckTitle,
@@ -216,7 +284,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // Distinct from addArgumentMapSlide below, which maps the governing
   // thought onto its supporting pillars one level deeper, right before the
   // pillar slides themselves; this is the top-level roadmap.
-  const roadmapSlide = addDeckRoadmapSlide(pptx, { hasObjectives: objectiveValidations.length > 0 });
+  const roadmapSlide = addDeckRoadmapSlide(pptx, {
+    hasObjectives: objectiveValidations.length > 0,
+  });
   addFooter(roadmapSlide, deckTitle, "Deck roadmap");
 
   // The "page one" a consulting deck leads with: a reader who only sees
@@ -243,7 +313,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   });
   addFooter(scqaSlide, deckTitle, "SCQA");
 
-  const situationSlide = addLabeledTextSlide(pptx, { label: "Situation", body: narrative.situation });
+  const situationSlide = addLabeledTextSlide(pptx, {
+    label: "Situation",
+    body: narrative.situation,
+  });
   addFooter(situationSlide, deckTitle, "Situation");
 
   const complicationSlide = addLabeledTextSlide(pptx, {
@@ -275,19 +348,39 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       title: "Checked against the project's own objectives and decisions.",
     });
 
-    const pageCount = Math.max(1, Math.ceil(objectiveValidations.length / OBJECTIVE_ROW.PER_SLIDE));
+    const pageCount = Math.max(
+      1,
+      Math.ceil(objectiveValidations.length / OBJECTIVE_ROW.PER_SLIDE),
+    );
     for (let page = 0; page < pageCount; page++) {
       const slide = pptx.addSlide();
       slide.background = { color: COLORS.paper };
-      const pageItems = objectiveValidations.slice(page * OBJECTIVE_ROW.PER_SLIDE, (page + 1) * OBJECTIVE_ROW.PER_SLIDE);
+      const pageItems = objectiveValidations.slice(
+        page * OBJECTIVE_ROW.PER_SLIDE,
+        (page + 1) * OBJECTIVE_ROW.PER_SLIDE,
+      );
 
       slide.addText(
-        pageCount > 1 ? `OBJECTIVES & DECISIONS · PAGE ${page + 1}/${pageCount}` : "OBJECTIVES & DECISIONS",
-        { x: 0.5, y: 0.4, w: 9, h: 0.4, fontSize: 13, bold: true, fontFace: FONT.body, color: COLORS.accent, charSpacing: 2 }
+        pageCount > 1
+          ? `OBJECTIVES & DECISIONS · PAGE ${page + 1}/${pageCount}`
+          : "OBJECTIVES & DECISIONS",
+        {
+          x: 0.5,
+          y: 0.4,
+          w: 9,
+          h: 0.4,
+          fontSize: 13,
+          bold: true,
+          fontFace: FONT.body,
+          color: COLORS.accent,
+          charSpacing: 2,
+        },
       );
 
       pageItems.forEach((item, rowIndex) => {
-        const y = OBJECTIVE_ROW.GRID_Y + rowIndex * (OBJECTIVE_ROW.H + OBJECTIVE_ROW.GAP);
+        const y =
+          OBJECTIVE_ROW.GRID_Y +
+          rowIndex * (OBJECTIVE_ROW.H + OBJECTIVE_ROW.GAP);
         addEvidenceCard(slide, {
           x: OBJECTIVE_ROW.GRID_X,
           y,
@@ -305,7 +398,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         });
       });
 
-      addFooter(slide, deckTitle, `Objectives & decisions · ${page + 1}/${pageCount}`);
+      addFooter(
+        slide,
+        deckTitle,
+        `Objectives & decisions · ${page + 1}/${pageCount}`,
+      );
     }
 
     // The reverse case: evidence the project turned up that none of its
@@ -326,13 +423,47 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   }
 
+  // Evidence charts: one slide per theme whose findings are all code-computed
+  // banner comparisons with the structured stats to chart (see
+  // findingsChartData.ts) -- the same eligibility rule and the same
+  // server-rendered images (renderChartImage.ts) the docx export's Findings
+  // section embeds, so a reader comparing the two exports sees the same
+  // picture for the same theme. A project with no chartable themes (every
+  // finding report-sourced, or no findings at all) simply skips this section.
+  const chartImagesByTheme = await buildChartImagesByTheme(findings, 640);
+  if (chartImagesByTheme.length > 0) {
+    addSectionDivider(pptx, {
+      eyebrow: "Evidence behind the argument",
+      title: "What the underlying data shows, chart by chart.",
+    });
+    chartImagesByTheme.forEach((chart, index) => {
+      const slide = addChartSlide(pptx, {
+        eyebrow:
+          chartImagesByTheme.length > 1
+            ? `Evidence chart ${index + 1} of ${chartImagesByTheme.length}`
+            : "Evidence chart",
+        title: chart.theme,
+        image: chart.image,
+        caption: chart.caption,
+      });
+      addFooter(slide, deckTitle, `Evidence · ${chart.theme}`);
+    });
+  }
+
+  // New beyond the report: the net-new half of the validated / net-new
+  // split, on its own pages so a reader can tell what the original report
+  // said from what this analysis added (and where it corrects the report).
+  addDiscoverySlides(pptx, discovery, deckTitle);
+
   // The last thing the reader sees before the pillars themselves: a map of
   // how many there are and how each relates to the governing thought just
   // stated, so "PILLAR 1 OF N" isn't the first sign pillars exist at all.
   if (narrative.pillars.length > 0) {
     const mapSlide = addArgumentMapSlide(pptx, {
       governingThought: narrative.governing_thought,
-      pillars: narrative.pillars.map((pillar) => ({ headline: pillar.headline })),
+      pillars: narrative.pillars.map((pillar) => ({
+        headline: pillar.headline,
+      })),
     });
     addFooter(mapSlide, deckTitle, "The shape of this argument");
   }
@@ -341,12 +472,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const insights = pillar.insight_ids
       .map((id) => insightsById.get(id))
       .filter((insight): insight is PillarInsight => Boolean(insight));
-    const pageCount = Math.max(1, Math.ceil(insights.length / INSIGHT_ROW.PER_SLIDE));
+    const pageCount = Math.max(
+      1,
+      Math.ceil(insights.length / INSIGHT_ROW.PER_SLIDE),
+    );
 
     for (let page = 0; page < pageCount; page++) {
       const slide = pptx.addSlide();
       slide.background = { color: COLORS.paper };
-      const pageInsights = insights.slice(page * INSIGHT_ROW.PER_SLIDE, (page + 1) * INSIGHT_ROW.PER_SLIDE);
+      const pageInsights = insights.slice(
+        page * INSIGHT_ROW.PER_SLIDE,
+        (page + 1) * INSIGHT_ROW.PER_SLIDE,
+      );
 
       slide.addText(
         `PILLAR ${pillarIndex + 1} OF ${narrative.pillars.length}${pageCount > 1 ? ` · PAGE ${page + 1}/${pageCount}` : ""}`,
@@ -360,9 +497,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           fontFace: FONT.body,
           color: COLORS.accent,
           charSpacing: 1.5,
-        }
+        },
       );
-      const fittedHeadline = fitParagraph(pillar.headline, { fontSize: 19, widthIn: 8.8, heightIn: 0.55, minFontScale: 0.65 });
+      const fittedHeadline = fitParagraph(pillar.headline, {
+        fontSize: 19,
+        widthIn: 8.8,
+        heightIn: 0.55,
+        minFontScale: 0.65,
+      });
       slide.addText(fittedHeadline.text, {
         x: 0.6,
         y: 0.72,
@@ -374,7 +516,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         color: COLORS.ink,
       });
       if (page === 0 && pillar.so_what) {
-        const fittedSoWhat = fitParagraph(pillar.so_what, { fontSize: 12, widthIn: 8.8, heightIn: 0.45, minFontScale: 0.7 });
+        const fittedSoWhat = fitParagraph(pillar.so_what, {
+          fontSize: 12,
+          widthIn: 8.8,
+          heightIn: 0.45,
+          minFontScale: 0.7,
+        });
         slide.addText(fittedSoWhat.text, {
           x: 0.6,
           y: 1.3,
@@ -388,7 +535,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       }
 
       pageInsights.forEach((insight, rowIndex) => {
-        const y = INSIGHT_ROW.GRID_Y + rowIndex * (INSIGHT_ROW.H + INSIGHT_ROW.GAP);
+        const y =
+          INSIGHT_ROW.GRID_Y + rowIndex * (INSIGHT_ROW.H + INSIGHT_ROW.GAP);
         const badge = confidenceBadgeFor(insight.confidence_tier);
 
         addEvidenceCard(slide, {
@@ -400,12 +548,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           lines: [
             { text: insight.headline, fontSize: 13, bold: true },
             { text: insight.observation, fontSize: 10, color: COLORS.body },
-            { text: `“${insight.implication}”`, fontSize: 9.5, italic: true, color: COLORS.muted },
+            {
+              text: `“${insight.implication}”`,
+              fontSize: 9.5,
+              italic: true,
+              color: COLORS.muted,
+            },
           ],
         });
       });
 
-      addFooter(slide, deckTitle, `Pillar ${pillarIndex + 1} · ${page + 1}/${pageCount}`);
+      addFooter(
+        slide,
+        deckTitle,
+        `Pillar ${pillarIndex + 1} · ${page + 1}/${pageCount}`,
+      );
     }
   });
 
@@ -415,26 +572,45 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     subtitle: narrative.recommendations_intro || undefined,
   });
 
-  const { CARDS_PER_ROW, CARD_W, CARD_H, CARD_GAP_X, CARD_GAP_Y, GRID_X, GRID_Y } = CARD_LAYOUT;
+  const {
+    CARDS_PER_ROW,
+    CARD_W,
+    CARD_H,
+    CARD_GAP_X,
+    CARD_GAP_Y,
+    GRID_X,
+    GRID_Y,
+  } = CARD_LAYOUT;
   const CARDS_PER_SLIDE = CARD_LAYOUT.CARDS_PER_ROW * CARD_LAYOUT.CARDS_PER_COL;
-  const recPageCount = Math.max(1, Math.ceil(recommendations.length / CARDS_PER_SLIDE));
+  const recPageCount = Math.max(
+    1,
+    Math.ceil(recommendations.length / CARDS_PER_SLIDE),
+  );
 
   for (let page = 0; page < recPageCount; page++) {
     const slide = pptx.addSlide();
     slide.background = { color: COLORS.paper };
-    const pageRecs = recommendations.slice(page * CARDS_PER_SLIDE, (page + 1) * CARDS_PER_SLIDE);
+    const pageRecs = recommendations.slice(
+      page * CARDS_PER_SLIDE,
+      (page + 1) * CARDS_PER_SLIDE,
+    );
 
-    slide.addText(recPageCount > 1 ? `RECOMMENDED ACTIONS · ${page + 1}/${recPageCount}` : "RECOMMENDED ACTIONS", {
-      x: 0.5,
-      y: 0.4,
-      w: 9,
-      h: 0.4,
-      fontSize: 13,
-      bold: true,
-      fontFace: FONT.body,
-      color: COLORS.accent,
-      charSpacing: 2,
-    });
+    slide.addText(
+      recPageCount > 1
+        ? `RECOMMENDED ACTIONS · ${page + 1}/${recPageCount}`
+        : "RECOMMENDED ACTIONS",
+      {
+        x: 0.5,
+        y: 0.4,
+        w: 9,
+        h: 0.4,
+        fontSize: 13,
+        bold: true,
+        fontFace: FONT.body,
+        color: COLORS.accent,
+        charSpacing: 2,
+      },
+    );
 
     if (recommendations.length === 0) {
       slide.addText("No recommendations have been accepted yet.", {
@@ -463,12 +639,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         badge,
         lines: [
           { text: rec.action_text, fontSize: 11.5, bold: true },
-          { text: `${rec.owner_role} · ${rec.timeline}`, fontSize: 9.5, italic: true, color: COLORS.muted },
+          {
+            text: `${rec.owner_role} · ${rec.timeline}`,
+            fontSize: 9.5,
+            italic: true,
+            color: COLORS.muted,
+          },
         ],
       });
     });
 
-    addFooter(slide, deckTitle, `Recommended actions · ${page + 1}/${recPageCount}`);
+    addFooter(
+      slide,
+      deckTitle,
+      `Recommended actions · ${page + 1}/${recPageCount}`,
+    );
   }
 
   if (narrative.caveats.length > 0) {
@@ -504,18 +689,41 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         text: caveat,
         options: { bullet: { code: "25AA" }, breakLine: true, color: "FFFFFF" },
       })),
-      { x: 0.7, y: 1.15, w: 8.4, h: 3.35, fontSize: fittedCaveats.fontSize, fontFace: FONT.body, valign: "top" }
+      {
+        x: 0.7,
+        y: 1.15,
+        w: 8.4,
+        h: 3.35,
+        fontSize: fittedCaveats.fontSize,
+        fontFace: FONT.body,
+        valign: "top",
+      },
     );
-    const generatedLabel = new Date(narrative.generated_at).toLocaleDateString("en-ZA", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+    const generatedLabel = new Date(narrative.generated_at).toLocaleDateString(
+      "en-ZA",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      },
+    );
+    slide.addShape("rect", {
+      x: 0.7,
+      y: 4.5,
+      w: 8.4,
+      h: 0.008,
+      fill: { color: COLORS.ruleOnDark },
+      line: { type: "none" },
     });
-    slide.addShape("rect", { x: 0.7, y: 4.5, w: 8.4, h: 0.008, fill: { color: COLORS.ruleOnDark }, line: { type: "none" } });
     const footnoteText =
       `Based only on synthesized insights and recommendations explicitly accepted as of ${generatedLabel}. ` +
       "Confidence tier reflects how well-triangulated each insight's evidence is, not how important it is.";
-    const fittedFootnote = fitParagraph(footnoteText, { fontSize: 10, widthIn: 8.4, heightIn: 0.6, minFontScale: 0.75 });
+    const fittedFootnote = fitParagraph(footnoteText, {
+      fontSize: 10,
+      widthIn: 8.4,
+      heightIn: 0.6,
+      minFontScale: 0.75,
+    });
     slide.addText(fittedFootnote.text, {
       x: 0.7,
       y: 4.62,
@@ -530,11 +738,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
-  const safeName = safeFileStem(run.project_name ?? run.decision_statement ?? "insights-report", "insights-report");
+  const safeName = safeFileStem(
+    run.project_name ?? run.decision_statement ?? "insights-report",
+    "insights-report",
+  );
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "Content-Disposition": `attachment; filename="${safeName}-insights-report-deck.pptx"`,
     },
   });

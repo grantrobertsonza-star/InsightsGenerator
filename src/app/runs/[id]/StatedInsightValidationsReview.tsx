@@ -1,8 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import {
+  verificationCaption,
+  type InputCompleteness,
+  type VerificationBasis,
+} from "@/lib/discoveryClassification";
 
-type ChainTier = "robust" | "use_with_caution" | "not_supported" | "insufficient_information";
+type ChainTier =
+  "robust" | "use_with_caution" | "not_supported" | "insufficient_information";
 
 export type StatedInsightValidation = {
   id: string;
@@ -13,6 +19,24 @@ export type StatedInsightValidation = {
   elevated_insight_id: string | null;
   cited_texts: string[];
   relied_texts: string[];
+  // What this verdict rested on. null until the claim has a verdict.
+  verification_basis: VerificationBasis | null;
+  // What contradicted this claim, if anything. A contradicted claim is
+  // always rated not_supported, whatever else it had going for it.
+  contradicted_by: {
+    text: string;
+    kind: "net_new_finding" | "net_new_insight" | "report_claim";
+    rationale: string;
+  }[];
+};
+
+const CONTRADICTOR_LABEL: Record<
+  StatedInsightValidation["contradicted_by"][number]["kind"],
+  string
+> = {
+  net_new_finding: "a new finding from the data",
+  net_new_insight: "a new insight",
+  report_claim: "another claim in the same report",
 };
 
 const TIER_LABEL: Record<ChainTier, string> = {
@@ -49,27 +73,40 @@ type TierFilter = "all" | ChainTier | "pending";
 export default function StatedInsightValidationsReview({
   validations,
   totalStatedInsights,
+  inputState,
 }: {
   validations: StatedInsightValidation[];
   totalStatedInsights: number;
+  inputState: InputCompleteness;
 }) {
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
 
   if (totalStatedInsights === 0) {
     return (
       <p className="text-sm text-muted">
-        None found. This section only appears once the report or deck being validated contains its own
-        higher-order claims (a ranking, a cross-finding conclusion, a stated takeaway), not just discrete
+        None found. This section only appears once the report or deck being
+        validated contains its own higher-order claims (a ranking, a
+        cross-finding conclusion, a stated takeaway), not just discrete
         findings.
       </p>
     );
   }
 
-  const supportedCount = validations.filter((v) => v.verdict_tier === "robust").length;
-  const overreachCount = validations.filter((v) => v.verdict_tier === "use_with_caution").length;
-  const contradictedCount = validations.filter((v) => v.verdict_tier === "not_supported").length;
-  const unsupportedCount = validations.filter((v) => v.verdict_tier === "insufficient_information").length;
-  const pendingCount = validations.filter((v) => v.verdict_tier === null).length;
+  const supportedCount = validations.filter(
+    (v) => v.verdict_tier === "robust",
+  ).length;
+  const overreachCount = validations.filter(
+    (v) => v.verdict_tier === "use_with_caution",
+  ).length;
+  const contradictedCount = validations.filter(
+    (v) => v.verdict_tier === "not_supported",
+  ).length;
+  const unsupportedCount = validations.filter(
+    (v) => v.verdict_tier === "insufficient_information",
+  ).length;
+  const pendingCount = validations.filter(
+    (v) => v.verdict_tier === null,
+  ).length;
 
   const filtered = validations.filter((v) => {
     if (tierFilter === "all") return true;
@@ -77,15 +114,50 @@ export default function StatedInsightValidationsReview({
     return v.verdict_tier === tierFilter;
   });
 
-  const tiles: { key: TierFilter; count: number; label: string; activeClass: string }[] = [
-    { key: "all", count: validations.length, label: "Claims", activeClass: "border-primary bg-primary-light" },
-    { key: "robust", count: supportedCount, label: "Supported", activeClass: "border-success bg-success-light" },
-    { key: "use_with_caution", count: overreachCount, label: "Overreach", activeClass: "border-amber-400 bg-amber-50" },
-    { key: "not_supported", count: contradictedCount, label: "Contradicted", activeClass: "border-rose-400 bg-rose-50" },
-    { key: "insufficient_information", count: unsupportedCount, label: "Unsupported", activeClass: "border-slate-400 bg-slate-100" },
+  const tiles: {
+    key: TierFilter;
+    count: number;
+    label: string;
+    activeClass: string;
+  }[] = [
+    {
+      key: "all",
+      count: validations.length,
+      label: "Claims",
+      activeClass: "border-primary bg-primary-light",
+    },
+    {
+      key: "robust",
+      count: supportedCount,
+      label: "Supported",
+      activeClass: "border-success bg-success-light",
+    },
+    {
+      key: "use_with_caution",
+      count: overreachCount,
+      label: "Overreach",
+      activeClass: "border-amber-400 bg-amber-50",
+    },
+    {
+      key: "not_supported",
+      count: contradictedCount,
+      label: "Contradicted",
+      activeClass: "border-rose-400 bg-rose-50",
+    },
+    {
+      key: "insufficient_information",
+      count: unsupportedCount,
+      label: "Unsupported",
+      activeClass: "border-slate-400 bg-slate-100",
+    },
   ];
   if (pendingCount > 0) {
-    tiles.push({ key: "pending", count: pendingCount, label: "Awaiting evidence", activeClass: "border-slate-300 bg-slate-50" });
+    tiles.push({
+      key: "pending",
+      count: pendingCount,
+      label: "Awaiting evidence",
+      activeClass: "border-slate-300 bg-slate-50",
+    });
   }
 
   return (
@@ -99,12 +171,18 @@ export default function StatedInsightValidationsReview({
             <button
               key={tile.key}
               type="button"
-              onClick={() => setTierFilter((f) => (f === tile.key ? "all" : tile.key))}
+              onClick={() =>
+                setTierFilter((f) => (f === tile.key ? "all" : tile.key))
+              }
               className={`rounded-lg border px-3 py-2 text-left transition ${
-                tierFilter === tile.key ? tile.activeClass : "border-border bg-white hover:border-slate-300"
+                tierFilter === tile.key
+                  ? tile.activeClass
+                  : "border-border bg-white hover:border-slate-300"
               }`}
             >
-              <div className="text-lg font-semibold text-foreground">{tile.count}</div>
+              <div className="text-lg font-semibold text-foreground">
+                {tile.count}
+              </div>
               <div className="text-xs text-muted">{tile.label}</div>
             </button>
           ))}
@@ -116,14 +194,21 @@ export default function StatedInsightValidationsReview({
       ) : (
         <div className="space-y-3">
           {filtered.map((validation) => (
-            <div key={validation.id} className="rounded-lg border border-border bg-white p-4">
+            <div
+              key={validation.id}
+              className="rounded-lg border border-border bg-white p-4"
+            >
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span
                   className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                    validation.verdict_tier ? TIER_BADGE_CLASS[validation.verdict_tier] : "bg-slate-100 text-slate-500"
+                    validation.verdict_tier
+                      ? TIER_BADGE_CLASS[validation.verdict_tier]
+                      : "bg-slate-100 text-slate-500"
                   }`}
                 >
-                  {validation.verdict_tier ? TIER_LABEL[validation.verdict_tier] : "Awaiting evidence"}
+                  {validation.verdict_tier
+                    ? TIER_LABEL[validation.verdict_tier]
+                    : "Awaiting evidence"}
                 </span>
                 {validation.theme && (
                   <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -136,11 +221,43 @@ export default function StatedInsightValidationsReview({
                   </span>
                 )}
               </div>
-              <p className="text-sm font-medium text-foreground">&ldquo;{validation.finding_text}&rdquo;</p>
+              <p className="text-sm font-medium text-foreground">
+                &ldquo;{validation.finding_text}&rdquo;
+              </p>
               {validation.rationale && (
-                <p className="mt-2 text-sm text-muted">{validation.rationale}</p>
+                <p className="mt-2 text-sm text-muted">
+                  {validation.rationale}
+                </p>
               )}
-              {(validation.cited_texts.length > 0 || validation.relied_texts.length > 0) && (
+              {validation.contradicted_by.length > 0 && (
+                <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">
+                    Contradicted, rated not supported
+                  </p>
+                  <ul className="mt-1 space-y-1 text-xs text-rose-900">
+                    {validation.contradicted_by.map((c, index) => (
+                      <li key={index}>
+                        By {CONTRADICTOR_LABEL[c.kind]}: &ldquo;{c.text}&rdquo;
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {validation.verdict_tier &&
+                validation.verification_basis &&
+                verificationCaption(
+                  validation.verification_basis,
+                  inputState,
+                ) && (
+                  <p className="mt-2 text-xs italic text-slate-500">
+                    {verificationCaption(
+                      validation.verification_basis,
+                      inputState,
+                    )}
+                  </p>
+                )}
+              {(validation.cited_texts.length > 0 ||
+                validation.relied_texts.length > 0) && (
                 <div className="mt-3 space-y-2 border-t border-border pt-2">
                   {validation.cited_texts.length > 0 && (
                     <div>
@@ -170,8 +287,9 @@ export default function StatedInsightValidationsReview({
               )}
               {!validation.verdict_tier && (
                 <p className="mt-2 text-xs text-muted">
-                  Nothing in this run&apos;s evidence yet addresses this claim either way; it will be checked
-                  automatically once more findings are verified.
+                  Nothing in this run&apos;s evidence yet addresses this claim
+                  either way; it will be checked automatically once more
+                  findings are verified.
                 </p>
               )}
             </div>

@@ -1,4 +1,7 @@
-import { archiveAndReplaceFindings, type ArchiveReason } from "./findingArchive";
+import {
+  archiveAndReplaceFindings,
+  type ArchiveReason,
+} from "./findingArchive";
 import { withTenant } from "./db";
 import { computeBannerPlanPatterns } from "./bannerPlanComputation";
 
@@ -19,9 +22,10 @@ export async function generateFindingsFromBannerPlan(
   tenantId: string,
   runId: string,
   documentTableId: string,
-  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {}
+  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
 ): Promise<{ kept: number; discarded: number }> {
-  const { onlyReplacePending = false, archiveReason = "manual_reextract" } = options;
+  const { onlyReplacePending = false, archiveReason = "manual_reextract" } =
+    options;
 
   const documentTable = await withTenant(tenantId, async (client) => {
     const result = await client.query<{
@@ -32,7 +36,7 @@ export async function generateFindingsFromBannerPlan(
       stub_columns: unknown;
     }>(
       "select headers, rows, ingestion_type, banner_columns, stub_columns from document_tables where id = $1 and run_id = $2",
-      [documentTableId, runId]
+      [documentTableId, runId],
     );
     return result.rows[0];
   });
@@ -42,19 +46,27 @@ export async function generateFindingsFromBannerPlan(
   }
 
   if (documentTable.ingestion_type !== "raw") {
-    throw new Error("This table isn't flagged as raw data, so it has no banner plan to compute against.");
+    throw new Error(
+      "This table isn't flagged as raw data, so it has no banner plan to compute against.",
+    );
   }
 
   const rows = documentTable.rows as Record<string, string | number | null>[];
   const bannerColumns = Array.isArray(documentTable.banner_columns)
-    ? (documentTable.banner_columns as unknown[]).filter((c): c is string => typeof c === "string")
+    ? (documentTable.banner_columns as unknown[]).filter(
+        (c): c is string => typeof c === "string",
+      )
     : [];
   const stubColumns = Array.isArray(documentTable.stub_columns)
-    ? (documentTable.stub_columns as unknown[]).filter((c): c is string => typeof c === "string")
+    ? (documentTable.stub_columns as unknown[]).filter(
+        (c): c is string => typeof c === "string",
+      )
     : [];
 
   if (bannerColumns.length === 0 || stubColumns.length === 0) {
-    throw new Error("Save a banner plan (at least one banner column and one stub column) before computing.");
+    throw new Error(
+      "Save a banner plan (at least one banner column and one stub column) before computing.",
+    );
   }
 
   const patterns = computeBannerPlanPatterns(rows, bannerColumns, stubColumns);
@@ -68,15 +80,20 @@ export async function generateFindingsFromBannerPlan(
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: documentTableId,
-      onlyPending: onlyReplacePending,
+      onlyRejected: onlyReplacePending,
       archiveReason,
     });
 
     for (const pattern of patterns) {
-      const sourceCells = pattern.rowIndices.length > 0 ? JSON.stringify({ rowIndices: pattern.rowIndices }) : null;
+      const sourceCells =
+        pattern.rowIndices.length > 0
+          ? JSON.stringify({ rowIndices: pattern.rowIndices })
+          : null;
+      // See the matching comment in extractFindings.ts: status starts at
+      // 'accepted', not 'pending'.
       await client.query(
         `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, source_cells, data_type, status)
-         values ($1, $2, 'generated', $3, $4, $5, $6, $7, $8, 'quantitative', 'pending')`,
+         values ($1, $2, 'generated', $3, $4, $5, $6, $7, $8, 'quantitative', 'accepted')`,
         [
           tenantId,
           runId,
@@ -86,7 +103,7 @@ export async function generateFindingsFromBannerPlan(
           JSON.stringify(pattern.statedStats),
           documentTableId,
           sourceCells,
-        ]
+        ],
       );
       kept++;
     }
