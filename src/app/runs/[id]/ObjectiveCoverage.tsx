@@ -40,6 +40,12 @@ export default function ObjectiveCoverage({
   const accepted = insights.filter((i) => i.review_status === "accepted");
   const byId = new Map(insights.map((i) => [i.id, i.headline]));
   const statedExists = validations.some((v) => !v.inferred);
+  // Stated items first (objectives, then decisions), inferred ones after.
+  const ordered = [...validations].sort(
+    (x, y) =>
+      Number(x.inferred) - Number(y.inferred) ||
+      (x.item_kind === y.item_kind ? x.item_order - y.item_order : x.item_kind === "objective" ? -1 : 1),
+  );
   const covered = new Set(validations.filter((v) => !v.inferred).flatMap((v) => v.synthesized_insight_ids));
   const unmatched = accepted.filter((i) => !covered.has(i.id));
 
@@ -79,7 +85,7 @@ export default function ObjectiveCoverage({
 
       {validations.length > 0 ? (
         <ul className="space-y-3">
-          {validations.map((v) => (
+          {ordered.map((v) => (
             <li key={`${v.item_kind}-${v.item_order}`} className="rounded-lg border border-border p-3">
               <div className="flex items-center gap-2">
                 <span
@@ -120,7 +126,7 @@ export default function ObjectiveCoverage({
         </p>
       )}
 
-      {statedExists || validations.length === 0 ? (
+      {statedExists || (validations.length === 0 && !hasObjectiveOrDecision) ? (
       <div className="border-t border-border pt-4">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -148,6 +154,10 @@ export default function ObjectiveCoverage({
           <p className="mt-3 text-sm text-muted">None. Every accepted insight bears on an objective.</p>
         )}
       </div>
+      ) : validations.length === 0 ? (
+        <p className="border-t border-border pt-4 text-xs text-muted">
+          Evidence without an objective is listed once the check has run.
+        </p>
       ) : (
         <p className="border-t border-border pt-4 text-xs text-muted">
           No objective was stated, so the objectives above were inferred from the evidence and no insight is

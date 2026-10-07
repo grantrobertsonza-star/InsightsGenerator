@@ -56,10 +56,11 @@ export default function RunContextForm({
       </label>
       <label className="block">
         <span className="text-sm font-medium text-foreground">Research objective or hypothesis</span>
-        <span className="ml-1.5 text-xs font-normal text-muted">(optional, what this project sets out to learn)</span>
+        <span className="ml-1.5 text-xs font-normal text-muted">(optional, one per line if you have several)</span>
         <textarea
+          key={objective ?? ""}
           name="researchObjective"
-          rows={2}
+          rows={3}
           defaultValue={objective ?? ""}
           placeholder="e.g. Understand whether price or service is the bigger driver of lapsed renewals."
           className={field}

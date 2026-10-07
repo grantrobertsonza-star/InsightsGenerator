@@ -6,7 +6,6 @@ import { supabaseAdmin } from "./supabaseAdmin";
 import { extractDocumentText } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
-import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 
 const BUCKET = "documents";
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
@@ -88,32 +87,98 @@ export async function saveRunContext(runId: string, formData: FormData) {
       [businessProblem, objective, audience, runId],
     );
 
-    // Replace the previously carried-over text (if it was edited here),
-    // then make sure the current text exists as the researcher's own
-    // accepted candidate.
-    if (prevObjective && prevObjective !== objective) {
-      await client.query(
-        `delete from objective_candidates
-         where run_id = $1 and source = 'researcher_authored' and trim(candidate_text) = $2`,
-        [runId, prevObjective],
-      );
+    // Each line of the objective box is its own stated objective (a leading
+    // number or bullet is ignored). Lines removed or edited here replace the
+    // ones saved before; lines that already exist are left alone.
+    const toLines = (text: string | null) =>
+      (text ?? "")
+        .split(/\r?\n/)
+        .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
+        .filter((l) => l.length > 0);
+    const prevLines = toLines(prevObjective);
+    const newLines = toLines(objective);
+
+    for (const old of prevLines) {
+      if (!newLines.includes(old)) {
+        await client.query(
+          `delete from objective_candidates
+           where run_id = $1 and source = 'researcher_authored' and trim(candidate_text) = $2`,
+          [runId, old],
+        );
+      }
     }
-    if (objective) {
+    for (const line of newLines) {
       const exists = await client.query(
         "select 1 from objective_candidates where run_id = $1 and trim(candidate_text) = $2",
-        [runId, objective],
+        [runId, line],
       );
       if (exists.rows.length === 0) {
         await client.query(
           `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
            values ($1, $2, $3, 'Written or imported at project set-up.', 'researcher_authored', 'accepted')`,
-          [TENANT_ID, runId, objective],
+          [TENANT_ID, runId, line],
         );
       }
     }
     await syncResearchObjective(client, runId);
   });
 
-  if (objective) await refreshObjectiveQuality(TENANT_ID, runId);
+  // Setup only records objectives. Scoring and checking against the insights
+  // happen later, in Objective review, once there is data to judge them by.
+  revalidatePath(`/runs/${runId}`);
+}
+
+const splitObjectiveLines = (text: string | null) =>
+  (text ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, "").trim())
+    .filter((l) => l.length > 0);
+
+/**
+ * Edits or removes one stated objective (pass newText = null to remove it).
+ * Keeps the project's starting-objective text and the objective list in step.
+ */
+export async function editStatedObjective(runId: string, oldText: string, newText: string | null) {
+  const next = newText?.trim() ? newText.trim() : null;
+  await withTenant(TENANT_ID, async (client) => {
+    const r = await client.query<{ initial_research_objective: string | null }>(
+      "select initial_research_objective from runs where id = $1",
+      [runId],
+    );
+    const lines = splitObjectiveLines(r.rows[0]?.initial_research_objective ?? null);
+    const idx = lines.indexOf(oldText.trim());
+    if (idx >= 0) {
+      if (next) lines[idx] = next;
+      else lines.splice(idx, 1);
+    } else if (next) {
+      lines.push(next);
+    }
+    await client.query("update runs set initial_research_objective = $1, updated_at = now() where id = $2", [
+      lines.length > 0 ? lines.join("\n") : null,
+      runId,
+    ]);
+
+    if (next) {
+      const updated = await client.query(
+        `update objective_candidates set candidate_text = $1, edited = true
+         where run_id = $2 and source = 'researcher_authored' and trim(candidate_text) = $3`,
+        [next, runId, oldText.trim()],
+      );
+      if (updated.rowCount === 0) {
+        await client.query(
+          `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+           values ($1, $2, $3, 'Written or imported at project set-up.', 'researcher_authored', 'accepted')`,
+          [TENANT_ID, runId, next],
+        );
+      }
+    } else {
+      await client.query(
+        `delete from objective_candidates
+         where run_id = $1 and source = 'researcher_authored' and trim(candidate_text) = $2`,
+        [runId, oldText.trim()],
+      );
+    }
+    await syncResearchObjective(client, runId);
+  });
   revalidatePath(`/runs/${runId}`);
 }

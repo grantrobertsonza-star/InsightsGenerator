@@ -22,7 +22,7 @@ import type { PoolClient } from "pg";
  */
 export async function syncResearchObjective(client: PoolClient, runId: string) {
   const result = await client.query<{ candidate_text: string }>(
-    "select candidate_text from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
+    "select candidate_text from objective_candidates where run_id = $1 and status = 'accepted' order by (source = 'ai_suggested'), created_at",
     [runId]
   );
   const texts = result.rows.map((r) => r.candidate_text);

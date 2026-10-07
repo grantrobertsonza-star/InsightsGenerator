@@ -46,8 +46,9 @@ import {
 } from "@/lib/discoveryClassification";
 import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
-import ObjectiveBriefReview from "./ObjectiveBriefReview";
+import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
+import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
 import ObjectiveCoverage from "./ObjectiveCoverage";
@@ -88,10 +89,6 @@ import {
   getTranscriptSetups,
   SETUP_NEEDED_MESSAGE,
 } from "@/lib/transcriptSetup";
-import ObjectiveQualityPanel, {
-  type ObjectiveQualityRow,
-} from "./ObjectiveQualityPanel";
-import { parseNumberedItems } from "@/lib/text";
 import {
   crossTranscriptThemes,
   getCodingAnalysis,
@@ -155,7 +152,6 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 // minutes", which is enough to self-heal a transient failure without
 // quietly burning a full pass's worth of Claude calls on every reload a
 // genuinely stuck insight can no longer benefit from anyway.
-const objectiveRefreshesInFlight = new Set<string>();
 const decisionRefreshesInFlight = new Set<string>();
 const recommendationRefreshesInFlight = new Set<string>();
 const refreshCooldownUntil = new Map<string, number>();
@@ -1506,7 +1502,14 @@ async function refreshObjectiveValidation(runId: string) {
   }
 }
 
+// Early trigger points (after extraction, verification and so on) no longer
+// touch objectives. Setup records the researcher's own objectives; inferred
+// ones are generated later, after the insights exist (refreshInferredObjectives).
 async function refreshObjectiveCandidates(runId: string) {
+  void runId;
+}
+
+async function refreshInferredObjectives(runId: string) {
   // Objectives are optional. When the researcher stated none (typed or
   // imported from a brief), objectives are inferred from the findings and
   // accepted automatically, marked as inferred so reports can flag that
@@ -2384,6 +2387,8 @@ async function processRunAction(
       await stage("synthesis", async () => {
         await refreshSynthesizedInsights(TENANT_ID, runId);
         await refreshSynthesizedInsightQuality(TENANT_ID, runId);
+        await refreshInferredObjectives(runId);
+        await refreshObjectiveQuality(TENANT_ID, runId);
         await refreshObjectiveValidation(runId);
       });
       await stage("recommendations", () =>
@@ -2829,15 +2834,6 @@ export default async function RunPage({
   // the "Get suggestions" button in the decision brief section gives the
   // researcher an explicit way to retry rather than needing a fresh
   // document upload (or another page load) to re-trigger it.
-  if (findings.length > 0 && objectiveCandidates.length === 0) {
-    refreshInBackground(
-      id,
-      objectiveRefreshesInFlight,
-      () => refreshObjectiveCandidates(id),
-      `objective:${id}`,
-    );
-  }
-
   if (findings.length > 0 && decisionCandidates.length === 0) {
     refreshInBackground(
       id,
@@ -3441,65 +3437,39 @@ export default async function RunPage({
   // Decision (in validate mode only; in generate mode Decision has its own
   // hard dependency on Insights, unrelated to this).
   const objectiveQuality = await getObjectiveQuality(id);
-  const objectiveQualityRows: ObjectiveQualityRow[] = parseNumberedItems(
-    run.research_objective,
-  ).map((text, order) => {
-    const stored = objectiveQuality.rows.find(
-      (r) => r.item_order === order && r.item_text === text,
-    );
-    return {
-      order,
-      text,
-      scores: stored
-        ? {
-            specific: stored.specific_score,
-            measurable: stored.measurable_score,
-            answerable: stored.answerable_score,
-            relevant: stored.relevant_score,
-            total: stored.quality_score,
-            tier: stored.quality_tier,
-            rationale: stored.rationale,
-            suggestion: stored.suggestion,
-          }
-        : null,
-    };
-  });
-
-  const objectiveSection = (
-    <CollapsibleSection
-      key={`objective-${objectiveReached}-${objectiveDone}`}
-      title="Objective setting"
-      bare
-      icon={<ListIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={objectiveReached && !objectiveDone}
-    >
-      <WorkingDataTabs
-        tabs={[
-          {
-            id: "objectives",
-            label: "Objectives",
-            content: (
-              <ObjectiveBriefReview
-                runId={id}
-                candidates={objectiveCandidates}
-                hasFindings={findings.length > 0}
-              />
-            ),
-          },
-          {
-            id: "objective-quality",
-            label: "Quality scores",
-            content: (
-              <ObjectiveQualityPanel
-                runId={id}
-                rows={objectiveQualityRows}
-                missingMigration={objectiveQuality.missing}
-              />
-            ),
-          },
-        ]}
-      />
-    </CollapsibleSection>
+  const qualityByText = new Map(
+    objectiveQuality.rows.map((r) => [r.item_text.trim(), r] as const),
+  );
+  const objectiveReviewList = (
+    <ObjectiveReviewTable
+      runId={id}
+      hasFindings={findings.length > 0}
+      missingMigration={objectiveQuality.missing}
+      rows={objectiveCandidates.map((c): ObjectiveRow => {
+        const q = qualityByText.get(c.candidate_text.trim());
+        return {
+          id: c.id,
+          text: c.candidate_text,
+          rationale: c.rationale,
+          source: c.source,
+          status: c.status,
+          edited: c.edited,
+          scores:
+            q && c.status === "accepted"
+              ? {
+                  specific: q.specific_score,
+                  measurable: q.measurable_score,
+                  answerable: q.answerable_score,
+                  relevant: q.relevant_score,
+                  total: q.quality_score,
+                  tier: q.quality_tier,
+                  rationale: q.rationale,
+                  suggestion: q.suggestion,
+                }
+              : null,
+        };
+      })}
+    />
   );
 
   const objectiveKnownUpfront = Boolean(
@@ -3657,6 +3627,7 @@ export default async function RunPage({
       label: "Insights",
       badge: synthesizedInsights.length,
     },
+    { id: "objective-review", group: "Decisions", label: "Objective review" },
     { id: "decisions", group: decisionGroup, label: "Business decisions" },
     {
       id: "recommendations",
@@ -3975,10 +3946,10 @@ export default async function RunPage({
             <h2 className="mb-2 text-xl font-semibold text-foreground">
               Objective and context
             </h2>
-            <p className="mb-5 text-sm text-muted">
-              {run.research_objective && run.research_objective.trim().length > 0
-                ? "Optional. Each objective is checked against the insights after every analysis run, and evidence that matches none is listed for you."
-                : "Optional. No objective set, so the analysis runs without one and nothing is judged against an assumed objective. You can add your own, or ask for suggestions once there are findings."}
+            <p className="mb-5 max-w-3xl text-sm text-muted">
+              Optional. Add the business problem and your own objective if you have them, or import them from a
+              brief or proposal. Your objectives are scored for quality here. After the insights are built, the
+              Objective review step checks them against the evidence, and if you gave none it proposes some.
             </p>
             <RunContextForm
               runId={id}
@@ -3986,6 +3957,24 @@ export default async function RunPage({
               objective={run.initial_research_objective}
               audience={run.audience}
             />
+            <StatedObjectivesList
+              runId={id}
+              lines={(run.initial_research_objective ?? "")
+                .split(/\r?\n/)
+                .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
+                .filter((l) => l.length > 0)}
+            />
+          </SectionPanel>
+
+          <SectionPanel id="objective-review">
+            <h2 className="mb-2 text-xl font-semibold text-foreground">
+              Objective review
+            </h2>
+            <p className="mb-5 max-w-3xl text-sm text-muted">
+              Checks what you set out to learn against what the evidence shows. Stated objectives get a
+              verdict. If you gave none, objectives are inferred from the evidence and flagged as such, with no
+              verdict, because checking them against the same evidence would be circular.
+            </p>
             <ObjectiveCoverage
               runId={id}
               validations={objectiveValidations}
@@ -3999,7 +3988,7 @@ export default async function RunPage({
                   (run.decision_statement && run.decision_statement.trim()),
               )}
             />
-            {objectiveSection}
+            {objectiveReviewList}
           </SectionPanel>
 
           <SectionPanel id="findings">

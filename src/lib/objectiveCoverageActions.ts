@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
-import { generateObjectiveValidation } from "./objectiveValidator";
+import { generateObjectiveValidation, refreshObjectiveValidationQuietly } from "./objectiveValidator";
 import { generateObjectiveCandidates } from "./objectiveFramer";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 
@@ -59,6 +59,7 @@ export async function suggestObjectivesFromUnmatched(runId: string): Promise<Res
     }
     await generateObjectiveCandidates(TENANT_ID, runId, headlines);
     await refreshObjectiveQuality(TENANT_ID, runId);
+    await refreshObjectiveValidationQuietly(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
   } catch (error) {

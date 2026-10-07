@@ -59,7 +59,7 @@ type RawItem = { kind: "objective" | "decision"; order: number; text: string; in
  * conclusion rather than one blended verdict standing in for all of them.
  */
 export async function generateObjectiveValidation(tenantId: string, runId: string): Promise<ObjectiveValidation[]> {
-  const { run, insights, candidates } = await withTenant(tenantId, async (client) => {
+  const { run, insights, candidates, decisionCandidates } = await withTenant(tenantId, async (client) => {
     const runResult = await client.query<{
       research_objective: string | null;
       decision_statement: string | null;
@@ -78,7 +78,17 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       [runId]
     );
 
-    return { run: runResult.rows[0], insights: insightsResult.rows, candidates: candidatesResult.rows };
+    const decisionCandidatesResult = await client.query<{ candidate_text: string; source: string }>(
+      "select candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
+      [runId]
+    );
+
+    return {
+      run: runResult.rows[0],
+      insights: insightsResult.rows,
+      candidates: candidatesResult.rows,
+      decisionCandidates: decisionCandidatesResult.rows,
+    };
   });
 
   if (!run) {
@@ -93,7 +103,17 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
 
   // Per accepted candidate when there are any, so inferred objectives can be
   // told apart from stated ones; otherwise fall back to the run's own text.
-  const decisionItems = parseNumberedItems(run.decision_statement);
+  // Decisions the app proposed from this project's own evidence are inferred
+  // in exactly the same sense as inferred objectives: checking them against
+  // that evidence is circular, so they get no verdict.
+  const decisionRaw: RawItem[] =
+    decisionCandidates.length > 0
+      ? decisionCandidates.map(
+          (c, order): RawItem => ({ kind: "decision", order, text: c.candidate_text, inferred: c.source === "ai_suggested" })
+        )
+      : parseNumberedItems(run.decision_statement).map(
+          (text, order): RawItem => ({ kind: "decision", order, text, inferred: false })
+        );
   const objectiveRaw: RawItem[] =
     candidates.length > 0
       ? candidates.map(
@@ -104,7 +124,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
         );
   const items: RawItem[] = [
     ...objectiveRaw,
-    ...decisionItems.map((text, order): RawItem => ({ kind: "decision", order, text })),
+    ...decisionRaw,
   ];
 
   if (items.length === 0) {
@@ -256,4 +276,35 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   });
 
   return validations;
+}
+
+/**
+ * Automatic trigger point: re-checks coverage after objectives change. Does
+ * nothing when there are no objectives/decisions or no accepted insights yet,
+ * and logs (never throws) on failure, so it cannot block the step that
+ * triggered it.
+ */
+export async function refreshObjectiveValidationQuietly(tenantId: string, runId: string): Promise<void> {
+  try {
+    const ready = await withTenant(tenantId, async (client) => {
+      const r = await client.query<{ ok: boolean }>(
+        `select (
+           (coalesce(trim(r.research_objective), '') <> '' or coalesce(trim(r.decision_statement), '') <> '')
+           and exists (select 1 from synthesized_insights si where si.run_id = r.id and si.review_status = 'accepted')
+         ) as ok
+         from runs r where r.id = $1`,
+        [runId]
+      );
+      return r.rows[0]?.ok === true;
+    });
+    if (!ready) return;
+    await generateObjectiveValidation(tenantId, runId);
+  } catch (error) {
+    await withTenant(tenantId, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        [tenantId, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
+      );
+    }).catch(() => {});
+  }
 }

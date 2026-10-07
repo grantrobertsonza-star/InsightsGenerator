@@ -5,6 +5,7 @@ import { withTenant } from "./db";
 import { generateObjectiveCandidates } from "./objectiveFramer";
 import { syncResearchObjective } from "./runSync";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
+import { refreshObjectiveValidationQuietly } from "./objectiveValidator";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -29,6 +30,7 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
   });
 
   await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -45,6 +47,7 @@ export async function acceptAllObjectiveCandidates(runId: string) {
     await syncResearchObjective(client, runId);
   });
   await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -86,6 +89,7 @@ export async function restoreObjectiveCandidate(runId: string, candidateId: stri
     await syncResearchObjective(client, runId);
   });
   await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -109,6 +113,7 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
   });
 
   await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -131,6 +136,7 @@ export async function regenerateObjectiveCandidates(
   try {
     await generateObjectiveCandidates(TENANT_ID, runId);
     await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
   } catch (error) {
