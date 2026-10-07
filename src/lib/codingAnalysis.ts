@@ -36,6 +36,13 @@ import {
   sessionOfSpeaker,
 } from "./qualAnalysis";
 import type { CellValue } from "./dataQuality";
+import {
+  countKeyword,
+  loadCodeMetaForDocuments,
+  loadTurnNotes,
+  splitKeywords,
+  type CodeMeta,
+} from "./codingMeta";
 
 /**
  * The checks that sit on top of a coded transcript, in two halves.
@@ -79,10 +86,33 @@ export type NegativeCaseView = {
   assignedToCode: boolean;
 };
 
+export type KeywordCount = {
+  term: string;
+  mentions: number; // occurrences in participant turns
+  turns: number; // participant turns that contain it
+  speakers: number | null; // distinct speakers who used it, null without labels
+};
+
+// A theme that groups several codes (Theme > Sub-theme / code), with the
+// counts for the theme as a whole: a turn or speaker is counted once even if
+// it carries several of the theme's codes.
+export type ThemeRollup = {
+  theme: string;
+  codeIds: string[];
+  codeNames: string[];
+  stats: CodeStats;
+  note: string;
+};
+
 export type CodeAnalysis = {
   id: string;
   name: string;
   number: number;
+  // The broader theme this code sits under, when the researcher gave one.
+  theme: string | null;
+  note: string;
+  keywords: string;
+  keywordCounts: KeywordCount[];
   stats: CodeStats;
   // Focus groups only: groups in this run where a code of the same name
   // was applied, out of all focus groups coded.
@@ -144,6 +174,7 @@ export type VerbatimView = {
   text: string;
   codeIds: string[];
   researcherCodeIds: string[]; // the subset a researcher added by hand
+  note: string; // the researcher's own note on this turn
 };
 
 export type OverrideView = {
@@ -162,6 +193,9 @@ export type CodingAnalysisView = {
   version: number;
   sessionType: "individual" | "focus_group";
   codes: CodeAnalysis[];
+  // Roll-ups for themes that hold more than one code. Empty when no theme
+  // has been given to any code.
+  themes: ThemeRollup[];
   calibration: {
     drawn: number;
     reviewed: number;
@@ -597,8 +631,28 @@ export async function getCodingAnalysis(
     }
   }
 
+  // Themes, notes and keywords per code (migration 0055); empty until applied.
+  let metaByDoc = new Map<string, Map<string, CodeMeta>>();
+  try {
+    metaByDoc = await loadCodeMetaForDocuments(
+      tenantId,
+      books.map((b) => b.document_id),
+    );
+  } catch {
+    // migration 0055 not applied
+  }
+
   for (const book of books) {
     const meaningChecks = await loadMeaningChecks(tenantId, book.document_id);
+    let turnNotes = new Map<number, string>();
+    try {
+      turnNotes = await loadTurnNotes(tenantId, book.document_id);
+    } catch {
+      // migration 0055 not applied
+    }
+    const docMeta = metaByDoc.get(book.document_id) ?? new Map<string, CodeMeta>();
+    const metaOf = (name: string): CodeMeta | undefined =>
+      docMeta.get(normName(name));
     const bookCodes = codesByBook.get(book.id) ?? [];
     const segments = segsByDoc.get(book.document_id) ?? [];
     const setting = sessionByDoc.get(book.document_id);
@@ -740,10 +794,36 @@ export async function getCodingAnalysis(
             names: [...withGroups].map((g) => groupLabel.get(g) ?? g),
           }
         : null;
+      const meta = metaOf(c.name);
+      const terms = splitKeywords(meta?.keywords ?? "");
+      const keywordCounts: KeywordCount[] = terms.map((term) => {
+        let mentions = 0;
+        let turnsWith = 0;
+        const who = new Set<string>();
+        for (const sg of segments) {
+          if (sg.role === "moderator") continue;
+          const n = countKeyword(sg.text, term);
+          if (n === 0) continue;
+          mentions += n;
+          turnsWith += 1;
+          if (sg.speaker) who.add(sg.speaker);
+        }
+        const labelled = segments.some((sg) => sg.speaker);
+        return {
+          term,
+          mentions,
+          turns: turnsWith,
+          speakers: labelled ? who.size : null,
+        };
+      });
       return {
         id: c.id,
         name: c.name,
         number: i + 1,
+        theme: meta?.theme ? meta.theme : null,
+        note: meta?.note ?? "",
+        keywords: meta?.keywords ?? "",
+        keywordCounts,
         stats: stats[i],
         groups,
         agreement: counts
@@ -775,6 +855,42 @@ export async function getCodingAnalysis(
           .filter((n): n is NegativeCaseView => n !== null),
       };
     });
+
+    // Theme roll-ups: re-run the same counting with every code of a theme
+    // standing for the theme, so a turn or speaker is counted once.
+    const themeNames: string[] = [];
+    for (const cv of codeViews)
+      if (cv.theme && !themeNames.includes(cv.theme)) themeNames.push(cv.theme);
+    let themeRollups: ThemeRollup[] = [];
+    if (themeNames.length > 0) {
+      const themeIndex = new Map(themeNames.map((t, k) => [t, k + 1]));
+      const themeAssign = new Map<string, number[]>();
+      for (const [segId, nums] of assignBySeg) {
+        const mapped = new Set<number>();
+        for (const n of nums) {
+          const t = codeViews[n - 1]?.theme;
+          const idx = t ? themeIndex.get(t) : undefined;
+          if (idx) mapped.add(idx);
+        }
+        if (mapped.size > 0) themeAssign.set(segId, [...mapped]);
+      }
+      const themeStats = computeCodeStats({
+        segments,
+        assignments: themeAssign,
+        codeCount: themeNames.length,
+        focusGroup,
+      });
+      themeRollups = themeNames.map((t, k) => {
+        const members = codeViews.filter((cv) => cv.theme === t);
+        return {
+          theme: t,
+          codeIds: members.map((m) => m.id),
+          codeNames: members.map((m) => m.name),
+          stats: themeStats[k],
+          note: metaOf(t)?.note ?? "",
+        };
+      });
+    }
 
     const readingRow = readingByDoc.get(book.document_id);
     const moderatorLabels = readingRow?.moderator_labels ?? [];
@@ -815,6 +931,7 @@ export async function getCodingAnalysis(
       version: book.version,
       sessionType: focusGroup ? "focus_group" : "individual",
       codes: codeViews,
+      themes: themeRollups,
       calibration:
         turns.length > 0
           ? {
@@ -859,6 +976,7 @@ export async function getCodingAnalysis(
             researcherCodeIds: ids.filter((cid) =>
               researcherPairs.has(`${sg.id}|${cid}`),
             ),
+            note: turnNotes.get(sg.segment_index) ?? "",
           };
         }),
       overrides: overrideRows
@@ -904,6 +1022,16 @@ export type FindingCodingCounts = {
   echoTurns: number;
   groupsWith: number | null;
   groupsTotal: number | null;
+  // The code behind the finding and the theme it sits under, when it has one.
+  codeName: string;
+  theme: string | null;
+  // The theme as a whole, within this transcript, when the code sits under one.
+  themeRollup: {
+    codes: number;
+    turns: number;
+    speakersWith: number | null;
+    speakersTotal: number | null;
+  } | null;
 };
 
 export async function getFindingCodingCounts(
@@ -914,8 +1042,12 @@ export async function getFindingCodingCounts(
   const out = new Map<string, FindingCodingCounts>();
   if (analysis.size === 0) return out;
   const byCodeId = new Map<string, CodeAnalysis>();
-  for (const view of analysis.values())
+  const rollupByCodeId = new Map<string, ThemeRollup>();
+  for (const view of analysis.values()) {
     for (const c of view.codes) byCodeId.set(c.id, c);
+    for (const t of view.themes)
+      for (const id of t.codeIds) rollupByCodeId.set(id, t);
+  }
   try {
     const rows = await withTenantRead(tenantId, async (client) => {
       const r = await client.query<{ id: string; coding_code_id: string }>(
@@ -936,6 +1068,19 @@ export async function getFindingCodingCounts(
         echoTurns: c.stats.echoTurns,
         groupsWith: c.groups?.with ?? null,
         groupsTotal: c.groups?.total ?? null,
+        codeName: c.name,
+        theme: c.theme,
+        themeRollup: (() => {
+          const t = rollupByCodeId.get(row.coding_code_id);
+          return t && t.codeIds.length >= 1
+            ? {
+                codes: t.codeIds.length,
+                turns: t.stats.turns,
+                speakersWith: t.stats.speakersWith,
+                speakersTotal: t.stats.speakersTotal,
+              }
+            : null;
+        })(),
       });
     }
   } catch {
@@ -1543,4 +1688,101 @@ export async function setNegativeCaseStatus(
       [runId, id, status],
     );
   });
+}
+
+// --- Across transcripts -----------------------------------------------------
+
+export type CrossThemeRow = {
+  theme: string;
+  // Codes that sit under the theme in at least one transcript. Empty for a
+  // stand-alone code.
+  codes: string[];
+  perDocument: {
+    documentId: string;
+    present: boolean;
+    turns: number;
+    speakersWith: number | null;
+    speakersTotal: number | null;
+  }[];
+  documentsWith: number;
+  documentsTotal: number;
+  // Participants who raised it, summed over transcripts. Null when a
+  // transcript has no speaker labels, because the sum would then understate.
+  speakersWith: number | null;
+  speakersTotal: number | null;
+  turns: number;
+};
+
+/**
+ * One row per theme (or stand-alone code) across all coded transcripts of a
+ * run, matched by name. Participants are counted per transcript and added up,
+ * so the same person in two files would count twice: the table says "people
+ * in files", which is the honest unit when files are not linked.
+ */
+export function crossTranscriptThemes(
+  analysis: Map<string, CodingAnalysisView>,
+): CrossThemeRow[] {
+  const docIds = [...analysis.keys()];
+  const rows = new Map<string, CrossThemeRow>();
+  const ensure = (name: string): CrossThemeRow => {
+    const key = name.trim().toLowerCase();
+    let row = rows.get(key);
+    if (!row) {
+      row = {
+        theme: name,
+        codes: [],
+        perDocument: [],
+        documentsWith: 0,
+        documentsTotal: docIds.length,
+        speakersWith: 0,
+        speakersTotal: 0,
+        turns: 0,
+      };
+      rows.set(key, row);
+    }
+    return row;
+  };
+  for (const [documentId, view] of analysis) {
+    const seen = new Set<string>();
+    const add = (
+      name: string,
+      codes: string[],
+      stats: CodeStats,
+    ) => {
+      const row = ensure(name);
+      seen.add(name.trim().toLowerCase());
+      for (const c of codes)
+        if (c.toLowerCase() !== name.toLowerCase() && !row.codes.includes(c))
+          row.codes.push(c);
+      const present = stats.turns > 0;
+      row.perDocument.push({
+        documentId,
+        present,
+        turns: stats.turns,
+        speakersWith: stats.speakersWith,
+        speakersTotal: stats.speakersTotal,
+      });
+      if (present) row.documentsWith += 1;
+      row.turns += stats.turns;
+      row.speakersWith =
+        row.speakersWith === null || stats.speakersWith === null
+          ? null
+          : row.speakersWith + stats.speakersWith;
+      row.speakersTotal =
+        row.speakersTotal === null || stats.speakersTotal === null
+          ? null
+          : row.speakersTotal + stats.speakersTotal;
+    };
+    for (const t of view.themes) add(t.theme, t.codeNames, t.stats);
+    for (const c of view.codes) {
+      if (c.theme) continue;
+      add(c.name, [], c.stats);
+    }
+  }
+  return [...rows.values()].sort(
+    (a, b) =>
+      b.documentsWith - a.documentsWith ||
+      (b.speakersWith ?? 0) - (a.speakersWith ?? 0) ||
+      a.theme.localeCompare(b.theme),
+  );
 }

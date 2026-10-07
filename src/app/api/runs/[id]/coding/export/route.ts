@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
-import { getCodingAnalysis } from "@/lib/codingAnalysis";
+import { crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
 import {
   cooccurrence,
   themesByAttribute,
@@ -115,6 +115,7 @@ export async function GET(
   for (const b of data.books) {
     const view = analysis.get(b.document_id);
     const stats = new Map(view?.codes.map((c) => [c.id, c.stats]));
+    const codeView = new Map(view?.codes.map((c) => [c.id, c]));
     data.codes
       .filter((c) => c.codebook_id === b.id)
       .forEach((c, i) => {
@@ -125,8 +126,11 @@ export async function GET(
             ? "Added by researcher"
             : b.source === "edited"
               ? "Edited by researcher"
-              : "Induced by model",
+              : b.source === "imported"
+                ? "Imported from your coding file"
+                : "Induced by model",
           i + 1,
+          codeView.get(c.id)?.theme ?? null,
           c.name,
           c.definition,
           c.inclusion_criteria,
@@ -135,6 +139,8 @@ export async function GET(
             ? `${c.reproduced_runs ?? 0} of ${c.total_runs} passes`
             : null,
           stats.get(c.id)?.turns ?? null,
+          codeView.get(c.id)?.keywords || null,
+          codeView.get(c.id)?.note || null,
         ]);
       });
   }
@@ -153,6 +159,8 @@ export async function GET(
   const attrCrossRows: Cell[][] = [];
   const coocRows: Cell[][] = [];
   const saturationRows: Cell[][] = [];
+  const themeRows: Cell[][] = [];
+  const keywordRows: Cell[][] = [];
   const attrNames = new Set<string>();
   for (const v of analysis.values())
     for (const r of v.respondents)
@@ -171,6 +179,7 @@ export async function GET(
       const s = c.stats;
       countRows.push([
         file,
+        c.theme,
         c.name,
         s.turns,
         s.participantTurns,
@@ -231,6 +240,33 @@ export async function GET(
     for (const c of v.codes)
       if (!codeHeaders.includes(c.name)) codeHeaders.push(c.name);
 
+    for (const t of v.themes) {
+      themeRows.push([
+        file,
+        t.theme,
+        t.codeNames.join("; "),
+        t.stats.turns,
+        t.stats.participantTurns,
+        t.stats.speakersWith,
+        t.stats.speakersTotal,
+        t.stats.episodes,
+        t.note || null,
+      ]);
+    }
+    for (const c of v.codes) {
+      for (const k of c.keywordCounts) {
+        keywordRows.push([
+          file,
+          c.theme,
+          c.name,
+          k.term,
+          k.mentions,
+          k.turns,
+          k.speakers,
+        ]);
+      }
+    }
+
     for (const l of v.links) {
       linkRows.push([
         file,
@@ -270,6 +306,8 @@ export async function GET(
             .join("; ") || null,
           vb.researcherCodeIds.includes(cid) ? "Researcher" : "Model",
           `v${v.version}`,
+          v.codes.find((x) => x.id === cid)?.theme ?? null,
+          vb.note || null,
         ]);
       }
     }
@@ -505,15 +543,18 @@ export async function GET(
         "Version",
         "Source",
         "Code no.",
+        "Theme (parent of the code)",
         "Code",
         "Definition",
         "Code when",
         "Do not code when",
         "Found in",
         "Turns coded",
+        "Keywords",
+        "Researcher note",
       ],
       codebookRows,
-      [28, 8, 20, 8, 34, 60, 60, 60, 16, 12],
+      [28, 8, 20, 8, 28, 34, 60, 60, 60, 16, 12, 30, 60],
     ),
   );
   add(
@@ -521,6 +562,7 @@ export async function GET(
     sheet(
       [
         "Transcript",
+        "Theme (parent of the code)",
         "Code",
         "Turns with code",
         "All participant turns",
@@ -533,9 +575,82 @@ export async function GET(
         "Groups coded",
       ],
       countRows,
-      [28, 34, 12, 14, 14, 12, 10, 18, 14, 12, 12],
+      [28, 28, 34, 12, 14, 14, 12, 10, 18, 14, 12, 12],
     ),
   );
+  if (themeRows.length > 0) {
+    add(
+      "Themes",
+      sheet(
+        [
+          "Transcript",
+          "Theme",
+          "Sub-themes (codes)",
+          "Turns with any of them",
+          "All participant turns",
+          "Participants with any of them",
+          "All participants",
+          "Episodes",
+          "Researcher note",
+        ],
+        themeRows,
+        [28, 34, 60, 14, 14, 14, 12, 10, 60],
+      ),
+    );
+  }
+  {
+    const names = new Map(data.docs.map((d) => [d.id, d.source_filename]));
+    const cross = crossTranscriptThemes(analysis);
+    if (data.books.length > 1) {
+      add(
+        "Themes across transcripts",
+        sheet(
+          [
+            "Theme",
+            "Sub-themes",
+            "Files with it",
+            "Files coded",
+            "Participants (summed over files)",
+            "Participants in those files",
+            "Turns",
+            "Files where it came up",
+          ],
+          cross.map((r) => [
+            r.theme,
+            r.codes.join("; ") || null,
+            r.documentsWith,
+            r.documentsTotal,
+            r.speakersWith,
+            r.speakersTotal,
+            r.turns,
+            r.perDocument
+              .filter((d) => d.present)
+              .map((d) => names.get(d.documentId) ?? d.documentId)
+              .join("; ") || null,
+          ]),
+          [34, 50, 10, 10, 16, 16, 10, 80],
+        ),
+      );
+    }
+  }
+  if (keywordRows.length > 0) {
+    add(
+      "Keyword counts",
+      sheet(
+        [
+          "Transcript",
+          "Theme (parent of the code)",
+          "Code",
+          "Keyword",
+          "Mentions",
+          "Turns containing it",
+          "Participants using it",
+        ],
+        keywordRows,
+        [28, 28, 34, 24, 10, 14, 14],
+      ),
+    );
+  }
   add(
     "Agreement",
     sheet(
@@ -660,9 +775,11 @@ export async function GET(
         "Also coded as",
         "Assigned by",
         "Codebook version",
+        "Theme (parent of the code)",
+        "Researcher note on this turn",
       ],
       verbatimRows,
-      [28, 34, 18, 22, 8, 8, 100, 40, 12, 10],
+      [28, 34, 18, 22, 8, 8, 100, 40, 12, 10, 28, 60],
     ),
   );
   add(

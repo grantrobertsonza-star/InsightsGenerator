@@ -9,10 +9,12 @@ import { processTableDocument } from "@/lib/documentTables";
 import { generateFindingsFromBannerPlan } from "@/lib/generateFindingsFromBannerPlan";
 import {
   extractThemesFromTranscript,
+  importCodedTranscript,
   reapplyCodebook,
   type CodebookEdit,
 } from "@/lib/extractThemes";
 import { detectDuplicateFindings } from "@/lib/dedupe";
+import { readCodingFile } from "@/lib/codedImportFile";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { deleteDocument } from "@/lib/documentActions";
 import { storeUploadedDocument } from "@/lib/documentUpload";
@@ -88,9 +90,11 @@ import ObjectiveQualityPanel, {
 } from "./ObjectiveQualityPanel";
 import { parseNumberedItems } from "@/lib/text";
 import {
+  crossTranscriptThemes,
   getCodingAnalysis,
   getFindingCodingCounts,
 } from "@/lib/codingAnalysis";
+import AcrossTranscripts from "./AcrossTranscripts";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
 import ResearchAssistantCard, {
@@ -350,7 +354,7 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
         id: string;
         document_id: string;
         version: number;
-        source: "induced" | "edited";
+        source: "induced" | "edited" | "imported";
         created_at: string;
       }>(
         `select distinct on (document_id) id, document_id, version, source, created_at::text as created_at
@@ -368,7 +372,7 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
         id: string;
         document_id: string;
         version: number;
-        source: "induced" | "edited";
+        source: "induced" | "edited" | "imported";
         created_at: string;
       }>(
         `select id, document_id, version, source, created_at::text as created_at
@@ -444,6 +448,34 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
            and m.document_id = any($1::uuid[])`,
         [docIds],
       );
+
+      // Themes, notes and keywords (migration 0055), by transcript and code name.
+      const metaRows = new Map<
+        string,
+        { theme: string; note: string; keywords: string }
+      >();
+      try {
+        const exists = await client.query(
+          "select to_regclass('public.coding_code_meta') is not null as ok",
+        );
+        if (exists.rows[0]?.ok === true) {
+          const m = await client.query<{
+            document_id: string;
+            code_key: string;
+            theme: string;
+            note: string;
+            keywords: string;
+          }>(
+            `select document_id, code_key, theme, note, keywords
+             from coding_code_meta where document_id = any($1::uuid[])`,
+            [docIds],
+          );
+          for (const row of m.rows)
+            metaRows.set(`${row.document_id}|${row.code_key}`, row);
+        }
+      } catch {
+        // 0055 not applied
+      }
 
       for (const book of books.rows) {
         const t = turns.rows.find((r) => r.document_id === book.document_id);
@@ -528,7 +560,17 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
           createdAt: book.created_at,
           codes: codes.rows
             .filter((c) => c.codebook_id === book.id)
-            .map(({ codebook_id: _codebookId, ...c }) => c),
+            .map(({ codebook_id: _codebookId, ...c }) => {
+              const meta = metaRows.get(
+                `${book.document_id}|${c.name.trim().toLowerCase().replace(/\s+/g, " ")}`,
+              );
+              return {
+                ...c,
+                theme: meta?.theme ?? "",
+                note: meta?.note ?? "",
+                keywords: meta?.keywords ?? "",
+              };
+            }),
           participantTurns: t?.participant_turns ?? 0,
           codedTurns: t?.coded_turns ?? 0,
           passes,
@@ -658,7 +700,13 @@ async function getInsights(runId: string): Promise<InsightRow[]> {
               coalesce(v.statistical_checks->'caveats', '[]'::jsonb) as caveats
        from insights i
        join findings f on f.id = i.finding_id
-       join verdicts v on v.finding_id = f.id
+       join lateral (
+         select vv.verdict_tier, vv.verification_basis, vv.statistical_checks
+           from verdicts vv
+          where vv.finding_id = f.id
+          order by vv.created_at desc
+          limit 1
+       ) v on true
        where i.run_id = $1
        order by f.theme nulls last, i.created_at`,
       [runId],
@@ -1750,6 +1798,15 @@ async function codeThemesAction(runId: string, documentId: string) {
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
   }
+  await refreshAfterCoding(runId);
+}
+
+/**
+ * Everything that follows once a transcript's coded findings exist, whether
+ * the model coded it or the researcher imported their own coding: duplicate
+ * detection, verification, insights, objectives, decisions, recommendations.
+ */
+async function refreshAfterCoding(runId: string) {
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
   // insights, so it has nothing to wait for here; running it alongside the
@@ -1783,6 +1840,101 @@ async function codeThemesAction(runId: string, documentId: string) {
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
   await refreshRecommendations(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
+}
+
+/**
+ * Brings in a transcript the researcher already coded elsewhere. The coding
+ * file (spreadsheet or Word table) is read, every quote is matched to a turn
+ * of the transcript, and the normal counts, quotes and findings follow. No
+ * model coding pass runs.
+ */
+async function importCodingAction(
+  runId: string,
+  documentId: string,
+  formData: FormData,
+) {
+  "use server";
+  await stampSingleDocumentBatch(runId, "single_document");
+  const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
+  if (waiting.some((w) => w.id === documentId)) {
+    await recordSingleDocumentError(
+      runId,
+      documentId,
+      new Error(SETUP_NEEDED_MESSAGE),
+    );
+    revalidatePath(`/runs/${runId}`);
+    return;
+  }
+  try {
+    const file = formData.get("codingFile");
+    if (!(file instanceof File) || file.size === 0) {
+      throw new Error("Choose a coding file first.");
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("That coding file is over 10 MB.");
+    }
+    const parsed = await readCodingFile(
+      Buffer.from(await file.arrayBuffer()),
+      file.name,
+    );
+    if (parsed.entries.length === 0) {
+      throw new Error(
+        `No codes could be read from "${file.name}". It needs a column of codes or themes, usually next to a column of quotes (a table in a Word file works too).`,
+      );
+    }
+    const result = await importCodedTranscript(
+      TENANT_ID,
+      runId,
+      documentId,
+      parsed,
+    );
+    const notes: string[] = [];
+    if (result.quotesMatched < result.quotesTotal) {
+      const missed = result.quotesTotal - result.quotesMatched;
+      notes.push(
+        `${missed} of ${result.quotesTotal} quotes could not be found in the transcript` +
+          (result.inModeratorTurns > 0
+            ? ` (${result.inModeratorTurns} sit in interviewer turns)`
+            : "") +
+          (result.unmatchedSamples.length > 0
+            ? `, for example: "${result.unmatchedSamples[0]}"`
+            : ""),
+      );
+    }
+    if (result.codesWithoutQuotes.length > 0) {
+      notes.push(
+        `${result.codesWithoutQuotes.length} code${result.codesWithoutQuotes.length === 1 ? "" : "s"} had no quote that could be matched and ${result.codesWithoutQuotes.length === 1 ? "is" : "are"} not counted: ${result.codesWithoutQuotes.slice(0, 4).join("; ")}`,
+      );
+    }
+    if (result.codebookOnly) {
+      notes.push(
+        "your file had codes but no quotes, so the codes were applied to the transcript by the model and are not your own coding of it: check the quotes under each theme",
+      );
+    }
+    if (
+      !result.metaSaved &&
+      parsed.codes.some((c) => c.theme || c.keywords)
+    ) {
+      notes.push(
+        "themes and keywords from your file were not saved because migration 0055 has not been applied",
+      );
+    }
+    if (parsed.warnings.length > 0) notes.push(...parsed.warnings);
+    if (notes.length > 0) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          `Coding imported (${result.codes} codes, ${result.findings} findings). Worth a look: ${notes.join(". ")}.`,
+        ),
+      );
+    }
+  } catch (error) {
+    await recordSingleDocumentError(runId, documentId, error);
+    revalidatePath(`/runs/${runId}`);
+    return;
+  }
+  await refreshAfterCoding(runId);
 }
 
 /**
@@ -3510,7 +3662,10 @@ export default async function RunPage({
       : "findings";
 
   return (
-    <RunSectionProvider defaultId={defaultSectionId}>
+    <RunSectionProvider
+      defaultId={defaultSectionId}
+      validIds={navSections.map((s) => s.id)}
+    >
       <main className="flex min-h-0 flex-1 flex-col">
         <div className="mx-auto w-full max-w-[90rem] px-6 pt-8">
           <PipelineStatus runId={id} />
@@ -3723,7 +3878,7 @@ export default async function RunPage({
                       <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
                     }
                     label="Qual data"
-                    caption="Uncoded transcripts"
+                    caption="Coded or uncoded"
                   />
                 </div>
                 <SubmitButton
@@ -3814,6 +3969,17 @@ export default async function RunPage({
                           <p className="text-sm text-muted">
                             Nothing uploaded yet.
                           </p>
+                        )}
+                        {codingAnalysis.size > 1 && (
+                          <div className="mb-4">
+                            <AcrossTranscripts
+                              rows={crossTranscriptThemes(codingAnalysis)}
+                              documentNames={Object.fromEntries(
+                                documents.map((d) => [d.id, d.source_filename]),
+                              )}
+                              runId={id}
+                            />
+                          </div>
                         )}
                         <ul className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
                           {documents.map((doc) => {
@@ -4216,6 +4382,50 @@ export default async function RunPage({
                                         Code themes
                                       </SubmitButton>
                                     </form>
+                                    <details className="rounded-lg border border-border bg-white p-2 text-xs">
+                                      <summary className="cursor-pointer select-none font-medium text-muted">
+                                        Already coded? Import your coding
+                                      </summary>
+                                      <form
+                                        action={importCodingAction.bind(
+                                          null,
+                                          id,
+                                          doc.id,
+                                        )}
+                                        className="mt-2 flex flex-col gap-2"
+                                      >
+                                        <p className="text-muted">
+                                          An Excel, CSV or Word file: a table
+                                          of themes, sub-themes and quotes, one
+                                          row per coded sentence (an ATLAS.ti
+                                          quotation report works), a coding
+                                          matrix, or a themed extract with
+                                          headings and quoted bullets. Quotes
+                                          are matched to this transcript and
+                                          every count is recomputed from it,
+                                          so counts in your file are ignored.
+                                          A file with codes and definitions
+                                          but no quotes is read as a codebook
+                                          and applied to the transcript.
+                                        </p>
+                                        <input
+                                          type="file"
+                                          name="codingFile"
+                                          accept=".xlsx,.xls,.csv,.docx"
+                                          required
+                                          className="text-xs"
+                                        />
+                                        <SubmitButton
+                                          pendingLabel="Importing..."
+                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:opacity-90"
+                                          icon={
+                                            <UploadIcon className="h-3.5 w-3.5" />
+                                          }
+                                        >
+                                          Import coding
+                                        </SubmitButton>
+                                      </form>
+                                    </details>
                                   </CodeGate>
                                 )}
                                 {doc.kind === "transcript" &&
@@ -4229,8 +4439,17 @@ export default async function RunPage({
                                   )}
                                 {doc.kind === "transcript" &&
                                   codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      href={`/api/runs/${id}/coding/extract`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Themed extract for writing up (.docx)
+                                    </a>
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
                                     <CodebookPanel
-                                      key={`codebook-${doc.id}-${codebooksByDocument.get(doc.id)!.version}`}
+                                      key={`codebook-${doc.id}-${codebooksByDocument.get(doc.id)!.version}-${codebooksByDocument.get(doc.id)!.codes.map((c) => `${c.theme}~${c.keywords}~${c.note}`).join("|")}`}
                                       codebook={codebooksByDocument.get(
                                         doc.id,
                                       )!}

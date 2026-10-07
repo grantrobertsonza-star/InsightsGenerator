@@ -500,7 +500,7 @@ export default async function Home({
                   multiple
                   icon={<TranscriptIcon className="h-3.5 w-3.5 text-primary" />}
                   label="Qual data"
-                  caption="Uncoded transcripts"
+                  caption="Coded or uncoded"
                 />
               </div>
             </div>

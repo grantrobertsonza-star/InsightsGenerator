@@ -32,12 +32,39 @@ function useRunSection() {
 
 export function RunSectionProvider({
   defaultId,
+  validIds,
   children,
 }: {
   defaultId: string;
+  // Sections that exist, so a remembered one that no longer does is ignored.
+  validIds?: string[];
   children: ReactNode;
 }) {
-  const [selected, setSelected] = useState(defaultId);
+  const [selected, setSelectedState] = useState(defaultId);
+  const storageKey = () => `run-section:${window.location.pathname}`;
+
+  // Remember the section per run, so a reload (or the refresh after saving)
+  // returns to where you were instead of the default section.
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(storageKey());
+      if (saved && saved !== defaultId && (!validIds || validIds.includes(saved)))
+        setSelectedState(saved);
+    } catch {
+      // storage blocked: stay on the default section
+    }
+    // Only on first load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setSelected = (id: string) => {
+    setSelectedState(id);
+    try {
+      window.sessionStorage.setItem(storageKey(), id);
+    } catch {
+      // storage blocked: the choice just is not remembered
+    }
+  };
   return (
     <RunSectionContext.Provider value={{ selected, setSelected }}>
       {children}

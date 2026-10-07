@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { resegmentTranscript } from "./extractThemes";
+import {
+  integrateThemes,
+  resegmentTranscript,
+  suggestThemes,
+} from "./extractThemes";
 import type { SegmentMode } from "./qualCoding";
 import { checkMeaningSaturation } from "./meaningCheck";
 import {
@@ -9,6 +13,7 @@ import {
   changeTurnCode,
   restoreCodebookVersion,
 } from "./codingOverrides";
+import { saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
 import { saveTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
 import {
   addVariableLink,
@@ -277,5 +282,45 @@ export async function restoreCodebookVersionAction(
       codebookId,
     );
     return `Restored as version ${v}.`;
+  });
+}
+
+export async function saveCodeMetaAction(
+  runId: string,
+  documentId: string,
+  entries: { name: string; theme: string; note: string; keywords: string }[],
+) {
+  return guard(runId, async () => {
+    await saveCodeMeta(TENANT_ID, documentId, entries);
+    await syncFindingThemes(TENANT_ID, documentId);
+    return "Saved.";
+  });
+}
+
+export async function saveTurnNoteAction(
+  runId: string,
+  documentId: string,
+  segmentIndex: number,
+  note: string,
+) {
+  return guard(runId, async () => {
+    await saveTurnNote(TENANT_ID, documentId, segmentIndex, note);
+  });
+}
+
+export async function suggestThemesAction(runId: string, documentId: string) {
+  return guard(runId, async () => {
+    const r = await suggestThemes(TENANT_ID, runId, documentId);
+    return `Grouped ${r.codes} codes into ${r.themes} themes. Review them, then edit as you see fit.`;
+  });
+}
+
+export async function integrateThemesAction(runId: string) {
+  return guard(runId, async () => {
+    const r = await integrateThemes(TENANT_ID, runId);
+    const checks: string[] = [];
+    if (r.merged > 0) checks.push(`${r.merged} overlapping theme${r.merged === 1 ? "" : "s"} merged`);
+    if (r.placed > 0) checks.push(`${r.placed} unplaced code${r.placed === 1 ? "" : "s"} placed`);
+    return `Grouped ${r.codes} codes from ${r.documents} transcripts into ${r.themes} main themes after ${r.rounds} check${r.rounds === 1 ? "" : "s"}${checks.length ? ` (${checks.join(", ")})` : ""}.`;
   });
 }

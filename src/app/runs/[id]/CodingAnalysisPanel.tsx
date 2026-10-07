@@ -418,7 +418,14 @@ function CountsTab({
           <tbody className="divide-y divide-border">
             {view.codes.map((c) => (
               <tr key={c.id}>
-                <td className={`${td} font-medium`}>{c.name}</td>
+                <td className={`${td} font-medium`}>
+                  {c.name}
+                  {c.theme && (
+                    <div className="text-[10px] font-normal text-muted">
+                      Under: {c.theme}
+                    </div>
+                  )}
+                </td>
                 <td className={td}>
                   {formatCount(c.stats.turns, c.stats.participantTurns, "turn")}
                 </td>
@@ -479,6 +486,92 @@ function CountsTab({
           </tbody>
         </table>
       </div>
+      {view.themes.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium text-foreground">
+            Themes (all their sub-themes together)
+          </p>
+          <p className="text-[11px] text-muted">
+            A turn or participant counts once for a theme even when it carries
+            several of that theme&apos;s sub-themes.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border bg-white">
+            <table className="w-full min-w-[520px]">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className={th}>Theme</th>
+                  <th className={th}>Sub-themes</th>
+                  <th className={th}>Turns</th>
+                  <th className={th}>Participants</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {view.themes.map((t) => (
+                  <tr key={t.theme}>
+                    <td className={`${td} font-medium`}>{t.theme}</td>
+                    <td className={td}>{t.codeNames.join("; ")}</td>
+                    <td className={td}>
+                      {formatCount(
+                        t.stats.turns,
+                        t.stats.participantTurns,
+                        "turn",
+                      )}
+                    </td>
+                    <td className={td}>
+                      {t.stats.speakersWith === null ||
+                      t.stats.speakersTotal === null
+                        ? "No speaker labels"
+                        : formatCount(
+                            t.stats.speakersWith,
+                            t.stats.speakersTotal,
+                            "participant",
+                          )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {view.codes.some((c) => c.keywordCounts.length > 0) && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium text-foreground">
+            Keyword counts
+          </p>
+          <p className="text-[11px] text-muted">
+            Whole-word, case-insensitive counts over all participant turns,
+            whether or not the turn was coded. Mentions are occurrences; turns
+            and participants are how many contain the word.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border bg-white">
+            <table className="w-full min-w-[520px]">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className={th}>Theme</th>
+                  <th className={th}>Keyword</th>
+                  <th className={th}>Mentions</th>
+                  <th className={th}>Turns</th>
+                  <th className={th}>Participants</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {view.codes.flatMap((c) =>
+                  c.keywordCounts.map((k) => (
+                    <tr key={`${c.id}-${k.term}`}>
+                      <td className={td}>{c.name}</td>
+                      <td className={`${td} font-medium`}>{k.term}</td>
+                      <td className={td}>{k.mentions}</td>
+                      <td className={td}>{k.turns}</td>
+                      <td className={td}>{k.speakers ?? "n/a"}</td>
+                    </tr>
+                  )),
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       <details className="rounded-lg border border-border bg-white p-3 text-[11px] text-muted">
         <summary className="cursor-pointer font-medium text-foreground">
           What the columns mean

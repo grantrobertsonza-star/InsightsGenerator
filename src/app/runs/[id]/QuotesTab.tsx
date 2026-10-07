@@ -5,6 +5,7 @@ import type { CodingAnalysisView } from "@/lib/codingAnalysis";
 import {
   addResearcherCodeAction,
   changeTurnCodeAction,
+  saveTurnNoteAction,
   type ActionResult,
 } from "@/lib/codingAnalysisActions";
 
@@ -37,6 +38,8 @@ export default function QuotesTab({
   const [editing, setEditing] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newDef, setNewDef] = useState("");
+  // Note drafts by turn. A turn not in here shows the saved note.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const nameOf = useMemo(
     () => new Map(view.codes.map((c) => [c.id, c.name])),
     [view.codes],
@@ -110,7 +113,8 @@ export default function QuotesTab({
           <option value="__none">Turns with no theme</option>
           {view.codes.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.number}. {c.name}
+              {c.number}. {c.theme ? `${c.theme} > ` : ""}
+              {c.name}
             </option>
           ))}
         </select>
@@ -164,11 +168,13 @@ export default function QuotesTab({
                 )}
                 {v.codeIds.map((id) => {
                   const mine = v.researcherCodeIds.includes(id);
+                  const themeOf = view.codes.find((c) => c.id === id)?.theme;
                   return (
                     <span
                       key={id}
                       className="inline-flex items-center gap-1 rounded-full border border-border bg-slate-50 px-2 py-0.5 text-[11px] text-foreground"
                     >
+                      {themeOf ? `${themeOf} > ` : ""}
                       {nameOf.get(id) ?? ""}
                       {mine && <span className="text-purple-700">(you)</span>}
                       {open && (
@@ -186,8 +192,50 @@ export default function QuotesTab({
                   );
                 })}
               </div>
+              {v.note && !open && (
+                <p className="mt-1 text-[11px] italic text-muted">
+                  Your note: {v.note}
+                </p>
+              )}
               {open && (
                 <div className="mt-2 space-y-2 rounded-md bg-slate-50 p-2">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-foreground">
+                      Your note on this turn
+                    </p>
+                    <textarea
+                      className={`${select} w-full`}
+                      rows={2}
+                      placeholder="An analytical note, kept with the quote and included in the exports"
+                      value={noteDrafts[v.segmentId] ?? v.note}
+                      onChange={(e) =>
+                        setNoteDrafts((d) => ({
+                          ...d,
+                          [v.segmentId]: e.target.value,
+                        }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        (noteDrafts[v.segmentId] ?? v.note) === v.note
+                      }
+                      onClick={() =>
+                        run(() =>
+                          saveTurnNoteAction(
+                            runId,
+                            view.documentId,
+                            v.index,
+                            noteDrafts[v.segmentId] ?? "",
+                          ),
+                        )
+                      }
+                      className="rounded-lg border border-border bg-white px-2.5 py-1 text-xs font-medium text-foreground disabled:opacity-50"
+                    >
+                      Save note
+                    </button>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       className={select}

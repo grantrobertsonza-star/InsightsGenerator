@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { restoreCodebookVersionAction } from "@/lib/codingAnalysisActions";
+import { useEffect, useState, useTransition, type CSSProperties } from "react";
+import {
+  restoreCodebookVersionAction,
+  saveCodeMetaAction,
+  suggestThemesAction,
+} from "@/lib/codingAnalysisActions";
 
 // Mirrors CodebookEdit in src/lib/extractThemes.ts. Not imported from there:
 // that file pulls in server-only code this client component must not bundle.
@@ -23,13 +27,17 @@ export type CodebookCode = {
   total_runs: number | null;
   turns: number;
   speakers: number;
+  // Added from migration 0055; empty strings until the researcher fills them.
+  theme: string;
+  note: string;
+  keywords: string;
 };
 
 export type CodebookView = {
   runId: string;
   documentId: string;
   version: number;
-  source: "induced" | "edited";
+  source: "induced" | "edited" | "imported";
   createdAt: string;
   codes: CodebookCode[];
   participantTurns: number;
@@ -38,7 +46,7 @@ export type CodebookView = {
   versions: {
     id: string;
     version: number;
-    source: "induced" | "edited";
+    source: "induced" | "edited" | "imported";
     createdAt: string;
     codes: { name: string; definition: string }[];
   }[];
@@ -73,7 +81,13 @@ type Draft = {
   total_runs: number | null;
   turns: number | null;
   speakers: number | null;
+  theme: string;
+  note: string;
+  keywords: string;
 };
+
+// Boxes grow to fit what is written in them instead of scrolling.
+const autoGrow = { fieldSizing: "content" } as CSSProperties;
 
 const inputClass =
   "w-full rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -126,6 +140,9 @@ export default function CodebookPanel({
     total_runs: c.total_runs,
     turns: c.turns,
     speakers: c.speakers,
+    theme: c.theme ?? "",
+    note: c.note ?? "",
+    keywords: c.keywords ?? "",
   }));
   const [drafts, setDrafts] = useState<Draft[]>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +176,86 @@ export default function CodebookPanel({
         d.exclusion !== o.exclusion
       );
     });
+  const metaChanged = drafts.some((d) => {
+    const o = initial.find((x) => x.id === d.id);
+    return (
+      !o ||
+      d.name !== o.name ||
+      d.theme !== o.theme ||
+      d.note !== o.note ||
+      d.keywords !== o.keywords
+    );
+  });
+  const themeNames = [
+    ...new Set(drafts.map((d) => d.theme.trim()).filter(Boolean)),
+  ];
+  const [saved, setSaved] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  // Saving changes the panel's key, which remounts it. Keep it open and keep
+  // the confirmation message across that remount.
+  const reopenKey = `codebook-reopen-${codebook.documentId}`;
+  useEffect(() => {
+    try {
+      const m = window.sessionStorage.getItem(reopenKey);
+      if (m) {
+        window.sessionStorage.removeItem(reopenKey);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setOpen(true);
+        setSaved(m);
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, [reopenKey]);
+  function rememberReopen(message: string) {
+    try {
+      window.sessionStorage.setItem(reopenKey, message);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  function forgetReopen() {
+    try {
+      window.sessionStorage.removeItem(reopenKey);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  function saveMeta() {
+    setError(null);
+    setSaved(null);
+    rememberReopen("Saved");
+    startTransition(async () => {
+      const r = await saveCodeMetaAction(
+        codebook.runId,
+        codebook.documentId,
+        drafts
+          .filter((d) => d.name.trim())
+          .map((d) => ({
+            name: d.name,
+            theme: d.theme,
+            note: d.note,
+            keywords: d.keywords,
+          })),
+      );
+      if (!r.ok) {
+        forgetReopen();
+        setError(r.error);
+      } else setSaved("Saved");
+    });
+  }
+  function suggest() {
+    setError(null);
+    setSaved(null);
+    rememberReopen("Themes suggested. Check the Theme box on each code below.");
+    startTransition(async () => {
+      const r = await suggestThemesAction(codebook.runId, codebook.documentId);
+      if (!r.ok) {
+        forgetReopen();
+        setError(r.error);
+      } else setSaved(r.message ?? "Themes suggested");
+    });
+  }
   const valid =
     drafts.length > 0 &&
     drafts.every((d) => d.name.trim() && d.definition.trim());
@@ -182,19 +279,48 @@ export default function CodebookPanel({
           exclusion: d.exclusion,
         })),
       );
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // Themes, notes and keywords follow the codes by name; save them for
+      // any code that was renamed or added in this edit.
+      const r = await saveCodeMetaAction(
+        codebook.runId,
+        codebook.documentId,
+        drafts
+          .filter((d) => d.name.trim())
+          .map((d) => ({
+            name: d.name,
+            theme: d.theme,
+            note: d.note,
+            keywords: d.keywords,
+          })),
+      );
+      if (!r.ok) setError(r.error);
     });
   }
 
   const p = codebook.passes;
 
   return (
-    <details className="rounded-lg border border-border bg-slate-50 p-2 text-xs">
+    <details
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      className="rounded-lg border border-border bg-slate-50 p-2 text-xs"
+    >
       <summary className="cursor-pointer select-none font-medium text-muted">
         Codebook, version {codebook.version}
-        {codebook.source === "edited" ? " (edited)" : ""} &middot;{" "}
+        {codebook.source === "edited"
+          ? " (edited)"
+          : codebook.source === "imported"
+            ? " (your coding, imported)"
+            : ""} &middot;{" "}
         {codebook.codes.length} code
         {codebook.codes.length === 1 ? "" : "s"}
+        {themeNames.length > 0
+          ? ` in ${themeNames.length} theme${themeNames.length === 1 ? "" : "s"}`
+          : ""}
       </summary>
 
       <div className="mt-3 space-y-3">
@@ -255,6 +381,11 @@ export default function CodebookPanel({
           )}
         </div>
 
+        <datalist id={`themes-${codebook.documentId}`}>
+          {themeNames.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
         <div className="space-y-3">
           {drafts.map((d, i) => (
             <div
@@ -302,6 +433,7 @@ export default function CodebookPanel({
                 <label className={labelClass}>Definition</label>
                 <textarea
                   rows={2}
+                  style={autoGrow}
                   value={d.definition}
                   disabled={isPending}
                   onChange={(e) =>
@@ -315,6 +447,7 @@ export default function CodebookPanel({
                   <label className={labelClass}>Code when</label>
                   <textarea
                     rows={2}
+                  style={autoGrow}
                     value={d.inclusion}
                     disabled={isPending}
                     onChange={(e) =>
@@ -327,6 +460,7 @@ export default function CodebookPanel({
                   <label className={labelClass}>Do not code when</label>
                   <textarea
                     rows={2}
+                  style={autoGrow}
                     value={d.exclusion}
                     disabled={isPending}
                     onChange={(e) =>
@@ -335,6 +469,46 @@ export default function CodebookPanel({
                     className={`${inputClass} resize-none`}
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>
+                    Theme this code sits under (optional)
+                  </label>
+                  <input
+                    list={`themes-${codebook.documentId}`}
+                    value={d.theme}
+                    disabled={isPending}
+                    onChange={(e) => update(d.key, { theme: e.target.value })}
+                    placeholder="Leave empty if this code is a theme on its own"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>
+                    Keywords to count (optional)
+                  </label>
+                  <input
+                    value={d.keywords}
+                    disabled={isPending}
+                    onChange={(e) =>
+                      update(d.key, { keywords: e.target.value })
+                    }
+                    placeholder='e.g. "team", "colleague"'
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Your note on this code</label>
+                <textarea
+                  rows={2}
+                  style={autoGrow}
+                  value={d.note}
+                  disabled={isPending}
+                  onChange={(e) => update(d.key, { note: e.target.value })}
+                  className={`${inputClass} resize-none`}
+                />
               </div>
               <span className="sr-only">Code {i + 1}</span>
             </div>
@@ -418,6 +592,9 @@ export default function CodebookPanel({
                   total_runs: null,
                   turns: null,
                   speakers: null,
+                  theme: "",
+                  note: "",
+                  keywords: "",
                 },
               ])
             }
@@ -437,11 +614,36 @@ export default function CodebookPanel({
             Replaces this transcript&apos;s coded findings. The previous version
             is kept.
           </span>
+          <button
+            type="button"
+            disabled={isPending || changed || drafts.length < 4}
+            onClick={suggest}
+            title="Asks the model to group these codes under broader themes. This replaces the themes shown here."
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-50"
+          >
+            {isPending ? "Working..." : "Suggest themes"}
+          </button>
+          <button
+            type="button"
+            disabled={isPending || changed || !metaChanged}
+            onClick={saveMeta}
+            title={
+              changed
+                ? "You have edited names or definitions: use Save as new version, which also saves these."
+                : undefined
+            }
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-50"
+          >
+            {isPending ? "Saving..." : "Save themes, keywords and notes"}
+          </button>
+          {saved && (
+            <span className="text-[11px] text-success">{saved}</span>
+          )}
         </div>
 
         {error && (
           <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-3 py-2 text-danger">
-            <span>Couldn&apos;t re-apply the codebook: {error}</span>
+            <span>Couldn&apos;t finish that: {error}</span>
             <button
               onClick={() => setError(null)}
               className="shrink-0 font-medium underline"

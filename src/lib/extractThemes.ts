@@ -13,6 +13,13 @@ import {
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
+import type { ParsedCoding } from "./codedImport";
+import {
+  loadCodeMeta,
+  loadCodeMetaForDocuments,
+  saveCodeMeta,
+  syncFindingThemes,
+} from "./codingMeta";
 import { extractDocumentText } from "./extractFindings";
 import {
   MAX_CODES,
@@ -245,6 +252,15 @@ type OpenRunResult = {
   manifestId: string | null;
 };
 
+// Why each open-coding pass failed, per document, so the error shown to the
+// researcher can say what actually went wrong instead of "try again".
+const openCodingFailures = new Map<string, string[]>();
+function noteOpenCodingFailure(documentId: string, reason: string) {
+  const list = openCodingFailures.get(documentId) ?? [];
+  list.push(reason);
+  openCodingFailures.set(documentId, list);
+}
+
 async function runOpenCoding(
   tenantId: string,
   runId: string,
@@ -268,14 +284,22 @@ async function runOpenCoding(
     await logApiUsage(tenantId, runId, "extract_themes", response.usage);
 
     const toolUse = response.content.find((block) => block.type === "tool_use");
-    if (
-      !toolUse ||
-      toolUse.type !== "tool_use" ||
-      response.stop_reason === "max_tokens"
-    )
+    if (response.stop_reason === "max_tokens") {
+      noteOpenCodingFailure(
+        documentId,
+        "the model ran out of room before finishing its list of themes (the transcript is long)",
+      );
       return null;
+    }
+    if (!toolUse || toolUse.type !== "tool_use") {
+      noteOpenCodingFailure(documentId, "the model did not return a list of themes");
+      return null;
+    }
     const raw = (toolUse.input as { themes?: unknown }).themes;
-    if (!Array.isArray(raw)) return null;
+    if (!Array.isArray(raw)) {
+      noteOpenCodingFailure(documentId, "the model returned themes in an unreadable shape");
+      return null;
+    }
 
     const matches: QuoteMatch[] = [];
     const kept: RunTheme[] = [];
@@ -333,7 +357,11 @@ async function runOpenCoding(
       },
     });
     return { runIndex, themes: kept, tally, dropped, manifestId };
-  } catch {
+  } catch (error) {
+    noteOpenCodingFailure(
+      documentId,
+      error instanceof Error ? error.message : String(error),
+    );
     return null;
   }
 }
@@ -443,6 +471,558 @@ async function consolidate(
     },
   });
   return { codes, manifestId };
+}
+
+// --- Step 2b: grouping codes into themes --------------------------------
+//
+// Coding gives a flat list of codes. The analytical step after it (Braun and
+// Clarke's "generating themes") groups related codes under broader themes, so
+// the result is a tree: Theme > Sub-theme (code). The model proposes the
+// grouping; it is stored as the theme of each code (coding_code_meta) and the
+// researcher can edit it in the codebook panel.
+
+const THEME_SYSTEM =
+  "You are helping with the analysis of a qualitative transcript. You are given a codebook: a numbered list of codes, each with a definition. " +
+  "Group related codes under broader themes, the way a researcher moves from codes to themes. A theme is a shared idea or pattern of meaning that several codes are facets of, " +
+  "not just a topic heading: name it as a short noun phrase (for example 'Cost of unreliable connectivity'). " +
+  "Rules: use between 2 and 7 themes; every theme must hold at least two codes; a code belongs to at most one theme; " +
+  "a code that does not fit with any other should be left out of every theme, because it then stands as a theme of its own. " +
+  "Do not rename, merge or invent codes. Do not make one theme that holds almost everything.";
+
+const THEME_TOOLS = [
+  {
+    name: "record_themes",
+    description: "Records the themes and which codes sit under each.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        themes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              theme: { type: "string", description: "Short theme name." },
+              codes: {
+                type: "array",
+                items: { type: "integer" },
+                description: "Numbers of the codes under this theme.",
+              },
+            },
+            required: ["theme", "codes"],
+          },
+        },
+      },
+      required: ["themes"],
+    },
+  },
+];
+
+/**
+ * Finds the list of themes in a tool response, tolerating the shapes a model
+ * sometimes sends: a JSON string, an object keyed by position, another key
+ * name, or a bare array.
+ */
+export function normaliseThemeList(input: unknown): unknown[] | null {
+  const asList = (v: unknown, depth = 0): unknown[] | null => {
+    if (Array.isArray(v)) return v;
+    if (typeof v === "string" && depth < 2) {
+      try {
+        return asList(JSON.parse(v), depth + 1);
+      } catch {
+        // Not strict JSON (a stray quote, a trailing comma). Read each
+        // theme and its code numbers straight from the text.
+        const found: { theme: string; codes: number[] }[] = [];
+        const re =
+          /"theme"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"codes"\s*:\s*\[([^\]]*)\]/g;
+        for (const m of v.matchAll(re)) {
+          const codes = (m[2].match(/\d+/g) ?? []).map(Number);
+          found.push({ theme: m[1].replace(/\\"/g, '"'), codes });
+        }
+        return found.length > 0 ? found : null;
+      }
+    }
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      for (const k of ["themes", "merges", "placements", "groups", "theme_groups", "groupings"]) {
+        if (k in o) {
+          const found = asList(o[k], depth + 1);
+          if (found) return found;
+        }
+      }
+      const vals = Object.values(o);
+      if (
+        vals.length > 0 &&
+        vals.every((x) => x && typeof x === "object" && !Array.isArray(x))
+      )
+        return vals;
+      // A map of theme name to a list of code numbers.
+      if (vals.length > 0 && vals.every((x) => Array.isArray(x)))
+        return Object.entries(o).map(([theme, codes]) => ({ theme, codes }));
+    }
+    return null;
+  };
+  return asList(input);
+}
+
+/** Keeps only valid, non-overlapping themes of two or more codes. */
+export function validateThemeGrouping(
+  raw: unknown,
+  codeCount: number,
+): { theme: string; codes: number[] }[] {
+  if (!Array.isArray(raw)) return [];
+  const used = new Set<number>();
+  const seenNames = new Set<string>();
+  const out: { theme: string; codes: number[] }[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const t = item as { theme?: unknown; codes?: unknown };
+    const name = typeof t.theme === "string" ? t.theme.trim().slice(0, 120) : "";
+    if (!name || !Array.isArray(t.codes)) continue;
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) continue;
+    const codes: number[] = [];
+    for (const raw of t.codes) {
+      const n =
+        typeof raw === "string" && /^\d+$/.test(raw.trim())
+          ? Number(raw.trim())
+          : raw;
+      if (
+        typeof n === "number" &&
+        Number.isInteger(n) &&
+        n >= 1 &&
+        n <= codeCount &&
+        !used.has(n) &&
+        !codes.includes(n)
+      )
+        codes.push(n);
+    }
+    if (codes.length < 2) continue;
+    codes.forEach((n) => used.add(n));
+    seenNames.add(key);
+    out.push({ theme: name, codes });
+  }
+  return out;
+}
+
+/**
+ * Asks the model to group a codebook's codes into themes and stores the
+ * result as each code's theme. Returns how many themes were made, or why
+ * none were. Never throws: coding must not fail because the grouping did.
+ * A codebook with fewer than four codes is left alone.
+ */
+async function groupCodesIntoThemes(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  codes: { name: string; definition: string }[],
+): Promise<{ themes: number; reason: string | null }> {
+  if (codes.length < 4) return { themes: 0, reason: "fewer than four codes" };
+  try {
+    const input = codes
+      .map((c, i) => `${i + 1}. ${c.name}\n   Definition: ${c.definition}`)
+      .join("\n");
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 4000,
+      system: THEME_SYSTEM,
+      tool_choice: { type: "tool", name: "record_themes" },
+      tools: THEME_TOOLS,
+      messages: [{ role: "user", content: input }],
+    });
+    await logApiUsage(tenantId, runId, "theme_grouping", response.usage);
+    const toolUse = response.content.find((b) => b.type === "tool_use");
+    const toolInput = toolUse && toolUse.type === "tool_use" ? toolUse.input : null;
+    const raw = normaliseThemeList(toolInput);
+    if (!Array.isArray(raw)) {
+      let sample = "";
+      try {
+        sample = JSON.stringify(toolInput ?? null).slice(0, 300);
+      } catch {
+        sample = "unprintable";
+      }
+      return {
+        themes: 0,
+        reason: `the model did not return a list of themes (stop reason: ${response.stop_reason ?? "unknown"}; it sent: ${sample})`,
+      };
+    }
+    const groups = validateThemeGrouping(raw, codes.length);
+    if (groups.length === 0)
+      return {
+        themes: 0,
+        reason: `the model proposed ${raw.length} theme${raw.length === 1 ? "" : "s"} but none held two or more valid codes`,
+      };
+    const entries = codes.map((c, i) => ({
+      name: c.name,
+      theme: groups.find((g) => g.codes.includes(i + 1))?.theme ?? "",
+    }));
+    await saveCodeMeta(tenantId, documentId, entries);
+    return { themes: groups.length, reason: null };
+  } catch (error) {
+    return {
+      themes: 0,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+const INTEGRATE_SYSTEM =
+  "You are a qualitative researcher integrating the coding of several interview transcripts from one study. You are given the codes from every transcript, each marked with the transcript it came from and the theme it currently sits under in that transcript, if any. Group the codes into the main themes of the whole study, working from conceptual similarity: codes that express the same underlying idea belong together even when they are worded differently or come from different transcripts. Each theme needs one clear central idea that you could state in a sentence. Do not set a number of themes in advance: let the codes decide, but make the themes distinct. Before you answer, compare every pair of themes. If two themes share a central idea, or one could be described by the other's name, merge them. Themes that differ only in emphasis, wording or topic detail (for example, pricing clarity and billing clarity) are one theme. Keep two themes apart only when a reader would treat them as different findings. A theme is stronger when its codes come from more than one transcript, but a theme drawn from one transcript is acceptable when its idea is genuinely distinct. Every theme must hold at least two codes. A code belongs to at most one theme. A code that fits nowhere may be left out. Name each theme as a short phrase for the idea, in the participants' terms, not as a question. Call record_themes with a themes array, each item holding the theme name and the code numbers.";
+
+const MERGE_SYSTEM =
+  "You are a qualitative researcher reviewing a first grouping of codes into themes. Each numbered theme is listed with the codes under it. Find themes that overlap: they share a central idea, one could be described by the other's name, or they differ only in wording, emphasis or topic detail. Merge them. Be decisive. Keep two themes apart only when a reader would treat them as different findings. For each set of themes to merge, give a new name that covers the combined idea, in the participants' terms, and the numbers of the themes being merged. Leave out themes that need no merging. Never merge the theme called \"Other (not yet themed)\" with another theme: it holds codes that fit nowhere. If nothing overlaps, return an empty list. Call record_merges.";
+
+const MERGE_TOOLS = [
+  {
+    name: "record_merges",
+    description: "Records which themes to merge and what to call each merged theme.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        merges: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              theme: { type: "string", description: "Name of the merged theme." },
+              codes: {
+                type: "array",
+                items: { type: "integer" },
+                description: "Numbers of the themes being merged (two or more).",
+              },
+            },
+            required: ["theme", "codes"],
+          },
+        },
+      },
+      required: ["merges"],
+    },
+  },
+];
+
+/**
+ * A second look at a grouping: the model merges themes that overlap. Never
+ * throws; on any problem the original grouping is returned unchanged.
+ */
+async function mergeOverlappingThemes(
+  tenantId: string,
+  runId: string,
+  groups: { theme: string; codes: number[] }[],
+  codeNames: string[],
+): Promise<{ theme: string; codes: number[] }[]> {
+  if (groups.length < 3) return groups;
+  try {
+    const listing = groups
+      .map(
+        (g, i) =>
+          `${i + 1}. ${g.theme}\n   Codes: ${g.codes.map((n) => codeNames[n - 1]).join("; ")}`,
+      )
+      .join("\n");
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 3000,
+      system: MERGE_SYSTEM,
+      tool_choice: { type: "tool", name: "record_merges" },
+      tools: MERGE_TOOLS,
+      messages: [{ role: "user", content: listing }],
+    });
+    await logApiUsage(tenantId, runId, "theme_integration_review", response.usage);
+    const toolUse = response.content.find((b) => b.type === "tool_use");
+    const raw = normaliseThemeList(
+      toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
+    );
+    const otherIndex = groups.findIndex((g) => g.theme === OTHER_THEME) + 1;
+    const merges = validateThemeGrouping(raw, groups.length).filter(
+      (m) => otherIndex === 0 || !m.codes.includes(otherIndex),
+    );
+    if (merges.length === 0) return groups;
+    const merged = new Set<number>();
+    const out: { theme: string; codes: number[] }[] = [];
+    for (const m of merges) {
+      const codes = m.codes.flatMap((n) => groups[n - 1].codes);
+      m.codes.forEach((n) => merged.add(n));
+      out.push({ theme: m.theme, codes });
+    }
+    groups.forEach((g, i) => {
+      if (!merged.has(i + 1)) out.push(g);
+    });
+    return out;
+  } catch {
+    return groups;
+  }
+}
+
+/** Holds codes that fit no theme, so the grouping covers every code. */
+const OTHER_THEME = "Other (not yet themed)";
+
+const PLACE_SYSTEM =
+  "You are a qualitative researcher completing a grouping of codes into themes. Some codes were not placed under any theme. For each one, put it under the existing theme whose central idea it shares, giving that theme's number. If it fits none of them, give theme 0 and name a new theme for it; codes that share a new idea take the same new theme name. Place every code listed. Call place_codes.";
+
+const PLACE_TOOLS = [
+  {
+    name: "place_codes",
+    description: "Records where each unplaced code goes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        placements: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              code: { type: "integer", description: "Number of the code." },
+              theme: {
+                type: "integer",
+                description: "Number of the existing theme, or 0 for a new theme.",
+              },
+              new_theme: {
+                type: "string",
+                description: "Name of the new theme, when theme is 0.",
+              },
+            },
+            required: ["code", "theme"],
+          },
+        },
+      },
+      required: ["placements"],
+    },
+  },
+];
+
+/**
+ * Puts codes that no theme took under an existing theme, or under a new one.
+ * Never throws; on any problem the grouping is returned unchanged.
+ */
+async function placeLeftoverCodes(
+  tenantId: string,
+  runId: string,
+  groups: { theme: string; codes: number[] }[],
+  codes: { name: string; definition: string }[],
+  leftover: number[],
+): Promise<{ theme: string; codes: number[] }[]> {
+  if (leftover.length === 0) return groups;
+  try {
+    const themeList = groups
+      .map(
+        (g, i) =>
+          `${i + 1}. ${g.theme}\n   Codes: ${g.codes.map((n) => codes[n - 1].name).join("; ")}`,
+      )
+      .join("\n");
+    const codeList = leftover
+      .map((n) => `${n}. ${codes[n - 1].name}\n   Definition: ${codes[n - 1].definition}`)
+      .join("\n");
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 3000,
+      system: PLACE_SYSTEM,
+      tool_choice: { type: "tool", name: "place_codes" },
+      tools: PLACE_TOOLS,
+      messages: [
+        {
+          role: "user",
+          content: `Themes so far:\n${themeList}\n\nCodes not yet placed:\n${codeList}`,
+        },
+      ],
+    });
+    await logApiUsage(tenantId, runId, "theme_integration_place", response.usage);
+    const toolUse = response.content.find((b) => b.type === "tool_use");
+    const raw = normaliseThemeList(
+      toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
+    );
+    if (!Array.isArray(raw)) return groups;
+    const next = groups.map((g) => ({ theme: g.theme, codes: [...g.codes] }));
+    const seen = new Set<number>();
+    const created = new Map<string, { theme: string; codes: number[] }>();
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const it = item as { code?: unknown; theme?: unknown; new_theme?: unknown };
+      const code = Number(it.code);
+      const th = Number(it.theme);
+      if (!leftover.includes(code) || seen.has(code)) continue;
+      if (Number.isInteger(th) && th >= 1 && th <= next.length) {
+        next[th - 1].codes.push(code);
+        seen.add(code);
+      } else if (typeof it.new_theme === "string" && it.new_theme.trim()) {
+        const key = it.new_theme.trim().toLowerCase();
+        const entry = created.get(key) ?? {
+          theme: it.new_theme.trim().slice(0, 120),
+          codes: [],
+        };
+        entry.codes.push(code);
+        created.set(key, entry);
+        seen.add(code);
+      }
+    }
+    // A new theme needs at least two codes. A lone code goes to the holding
+    // theme instead of becoming a theme of its own.
+    const fresh = [...created.values()];
+    const lone = fresh.filter((e) => e.codes.length < 2).flatMap((e) => e.codes);
+    const kept = fresh.filter((e) => e.codes.length >= 2);
+    if (lone.length > 0) {
+      const holder = next.find((g) => g.theme === OTHER_THEME);
+      if (holder) holder.codes.push(...lone);
+      else kept.push({ theme: OTHER_THEME, codes: lone });
+    }
+    return [...next, ...kept];
+  } catch {
+    return groups;
+  }
+}
+
+/**
+ * Groups the codes of every coded transcript in a run under main themes that
+ * hold across the whole study, and stores each code's main theme in its own
+ * transcript. Codes left out keep the theme they already had. Notes and
+ * keywords are kept.
+ */
+export async function integrateThemes(
+  tenantId: string,
+  runId: string,
+): Promise<{
+  themes: number;
+  codes: number;
+  documents: number;
+  rounds: number;
+  placed: number;
+  merged: number;
+}> {
+  const rows = await withTenant(tenantId, async (client) => {
+    const r = await client.query<{
+      document_id: string;
+      filename: string | null;
+      name: string;
+      definition: string;
+    }>(
+      `select b.document_id, d.filename, c.name, c.definition
+         from coding_codebooks b
+         join documents d on d.id = b.document_id
+         join coding_codes c on c.codebook_id = b.id
+        where b.run_id = $1
+          and b.version = (
+            select max(version) from coding_codebooks
+             where document_id = b.document_id)
+        order by d.filename, b.document_id, c.position`,
+      [runId],
+    );
+    return r.rows;
+  });
+  const documentIds = [...new Set(rows.map((r) => r.document_id))];
+  if (documentIds.length < 2)
+    throw new Error("Integrating needs at least two coded transcripts in this run.");
+  if (rows.length < 4)
+    throw new Error("There are too few codes to group across transcripts.");
+  const metaByDoc = await loadCodeMetaForDocuments(tenantId, documentIds);
+  const listing = rows
+    .map((r, i) => {
+      const now = metaByDoc.get(r.document_id)?.get(codeKey(r.name))?.theme;
+      return `${i + 1}. ${r.name} [transcript: ${r.filename ?? r.document_id}]${now ? ` (now under: ${now})` : ""}\n   Definition: ${r.definition}`;
+    })
+    .join("\n");
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 8000,
+    system: INTEGRATE_SYSTEM,
+    tool_choice: { type: "tool", name: "record_themes" },
+    tools: THEME_TOOLS,
+    messages: [{ role: "user", content: listing }],
+  });
+  await logApiUsage(tenantId, runId, "theme_integration", response.usage);
+  const toolUse = response.content.find((b) => b.type === "tool_use");
+  const raw = normaliseThemeList(
+    toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
+  );
+  const groups = validateThemeGrouping(raw, rows.length);
+  if (groups.length === 0)
+    throw new Error(
+      `No grouping across transcripts could be made (stop reason: ${response.stop_reason ?? "unknown"}). Try again.`,
+    );
+  // Check the grouping and repeat until it settles: every code is under a
+  // theme (exhaustive) and no two themes overlap (mutually exclusive).
+  let finalGroups = groups;
+  let rounds = 0;
+  let placedTotal = 0;
+  let mergedTotal = 0;
+  for (let round = 0; round < 3; round++) {
+    rounds += 1;
+    const used = new Set(finalGroups.flatMap((g) => g.codes));
+    const leftover = rows.map((_, i) => i + 1).filter((n) => !used.has(n));
+    finalGroups = await placeLeftoverCodes(tenantId, runId, finalGroups, rows, leftover);
+    const usedAfter = new Set(finalGroups.flatMap((g) => g.codes));
+    const placed = leftover.filter((n) => usedAfter.has(n)).length;
+    const before = finalGroups.length;
+    finalGroups = await mergeOverlappingThemes(
+      tenantId,
+      runId,
+      finalGroups,
+      rows.map((r) => r.name),
+    );
+    const merged = Math.max(0, before - finalGroups.length);
+    placedTotal += placed;
+    mergedTotal += merged;
+    if (placed === 0 && merged === 0) break;
+  }
+  const themeOf = new Map<number, string>();
+  for (const g of finalGroups) for (const n of g.codes) themeOf.set(n, g.theme);
+  const byDoc = new Map<
+    string,
+    { name: string; theme: string; note: string; keywords: string }[]
+  >();
+  rows.forEach((r, i) => {
+    const old = metaByDoc.get(r.document_id)?.get(codeKey(r.name));
+    const list = byDoc.get(r.document_id) ?? [];
+    list.push({
+      name: r.name,
+      theme: themeOf.get(i + 1) ?? old?.theme ?? "",
+      note: old?.note ?? "",
+      keywords: old?.keywords ?? "",
+    });
+    byDoc.set(r.document_id, list);
+  });
+  for (const [documentId, entries] of byDoc) {
+    await saveCodeMeta(tenantId, documentId, entries);
+    await syncFindingThemes(tenantId, documentId);
+  }
+  return {
+    themes: finalGroups.length,
+    codes: rows.length,
+    documents: documentIds.length,
+    rounds,
+    placed: placedTotal,
+    merged: mergedTotal,
+  };
+}
+
+/**
+ * Regroups the current codebook's codes into themes on request, replacing the
+ * existing grouping, and moves the coded findings under their themes.
+ */
+export async function suggestThemes(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+): Promise<{ themes: number; codes: number }> {
+  const codes = await withTenant(tenantId, async (client) => {
+    const r = await client.query<{ name: string; definition: string }>(
+      `select c.name, c.definition
+         from coding_codes c
+         join coding_codebooks b on b.id = c.codebook_id
+        where b.document_id = $1
+          and b.version = (select max(version) from coding_codebooks where document_id = $1)
+        order by c.position`,
+      [documentId],
+    );
+    return r.rows;
+  });
+  if (codes.length < 4)
+    throw new Error(
+      "Grouping needs at least four codes. With fewer, each code can stand as a theme of its own.",
+    );
+  const made = await groupCodesIntoThemes(tenantId, runId, documentId, codes);
+  if (made.themes === 0)
+    throw new Error(
+      `No grouping could be saved: ${made.reason ?? "unknown reason"}. Try again, or type the themes in by hand.`,
+    );
+  await syncFindingThemes(tenantId, documentId);
+  return { themes: made.themes, codes: codes.length };
 }
 
 // --- Step 3: applying the codebook --------------------------------------
@@ -742,6 +1322,17 @@ async function writeCodebookAndFindings(
     codes,
     turnsByCode,
   );
+  // A code written under a theme groups its finding with that theme's other
+  // codes. Without 0055, or a theme, the finding is grouped by its own name.
+  let themeByKey = new Map<string, string>();
+  try {
+    const meta = await loadCodeMeta(tenantId, documentId);
+    themeByKey = new Map(
+      [...meta].filter(([, m]) => m.theme).map(([k, m]) => [k, m.theme]),
+    );
+  } catch {
+    // migration 0055 not applied
+  }
 
   return withTenant(tenantId, async (client) => {
     const segmentIds: string[] = [];
@@ -815,7 +1406,7 @@ async function writeCodebookAndFindings(
           tenantId,
           runId,
           findingText,
-          code.name,
+          themeByKey.get(codeKey(code.name)) ?? code.name,
           documentId,
           segmentByIndex.get(exemplar.segment.index)?.page ?? null,
           exemplar.quote,
@@ -851,7 +1442,7 @@ async function insertCodebook(
   tenantId: string,
   runId: string,
   documentId: string,
-  source: "induced" | "edited",
+  source: "induced" | "edited" | "imported",
   codes: {
     name: string;
     definition: string;
@@ -1102,11 +1693,17 @@ export async function extractThemesFromTranscript(
   );
   const okRuns = passes.filter((p): p is OpenRunResult => p !== null);
   if (okRuns.length === 0) {
+    const reasons = [...new Set(openCodingFailures.get(documentId) ?? [])];
+    openCodingFailures.delete(documentId);
     throw new Error(
       `None of the ${OPEN_CODING_RUNS} coding passes over "${document.source_filename}" returned usable themes. ` +
-        `This is usually a temporary model problem. Try again.`,
+        (reasons.length > 0
+          ? `Reason: ${reasons.join("; ")}. `
+          : "") +
+        `If the reason is a rate limit, overload or timeout, wait a minute and try again.`,
     );
   }
+  openCodingFailures.delete(documentId);
   const usable = okRuns.filter((p) => p.themes.length > 0);
   if (usable.length === 0) {
     throw new Error(
@@ -1166,6 +1763,20 @@ export async function extractThemesFromTranscript(
     });
   }
 
+  // Step 2b: group the codes into themes (Theme > Sub-theme).
+  const grouping = await groupCodesIntoThemes(
+    tenantId,
+    runId,
+    documentId,
+    book.rows,
+  );
+  if (grouping.themes === 0 && grouping.reason) {
+    await recordTrace(tenantId, runId, "theme_grouping_failed", {
+      documentId,
+      reason: grouping.reason,
+    });
+  }
+
   // Step 3.
   const applied = await applyCodebook(
     tenantId,
@@ -1210,6 +1821,230 @@ export async function extractThemesFromTranscript(
   });
 
   return rows;
+}
+
+export type CodingImportResult = {
+  codes: number;
+  findings: number;
+  quotesTotal: number;
+  quotesMatched: number;
+  unmatchedSamples: string[];
+  inModeratorTurns: number;
+  codesWithoutQuotes: string[];
+  // The file listed codes only (no quotes): the model applied that codebook.
+  codebookOnly: boolean;
+  // Themes, keywords and notes could be stored (migration 0055 is applied).
+  metaSaved: boolean;
+};
+
+const MAX_IMPORTED_CODES = 40;
+
+/**
+ * Brings in a transcript that was already coded elsewhere (by the researcher,
+ * in ATLAS.ti, NVivo, Dedoose or a spreadsheet). No model does the coding:
+ * every quote in the file is looked up in the transcript's own turns, the
+ * turn it sits in gets the code, and the codes become a codebook (version
+ * source "imported"). From there the counts, quotes and findings are built
+ * exactly as for model-coded transcripts, so every number is recounted from
+ * the transcript and can be checked. Counts in the file are never trusted.
+ */
+export async function importCodedTranscript(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  coding: ParsedCoding,
+): Promise<CodingImportResult> {
+  if (coding.codes.length === 0) {
+    throw new Error(
+      "No codes could be read from that file. It needs a column of codes or themes next to a column of quotes.",
+    );
+  }
+  if (coding.codes.length > MAX_IMPORTED_CODES) {
+    throw new Error(
+      `That file has ${coding.codes.length} different codes. Up to ${MAX_IMPORTED_CODES} can be imported for one transcript: merge the smallest ones first.`,
+    );
+  }
+  // A file of codes with no quotes is a codebook: the model applies it to the
+  // transcript instead of the quotes being matched.
+  const codebookOnly = !coding.entries.some((e) => e.quote);
+
+  const document = await withTenant(tenantId, async (client) => {
+    const result = await client.query<{
+      storage_path: string;
+      source_filename: string;
+    }>(
+      "select storage_path, source_filename from documents where id = $1 and run_id = $2",
+      [documentId, runId],
+    );
+    return result.rows[0];
+  });
+  if (!document) throw new Error("Document not found for this run");
+
+  const extracted = await extractDocumentText(
+    document.storage_path,
+    document.source_filename,
+    documentId,
+  );
+  if (extracted.fullText.trim().length < 50) {
+    throw new Error(
+      `Almost no readable text came out of "${document.source_filename}", so the coding cannot be matched to it.`,
+    );
+  }
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      "update documents set extracted_text = $1, preview_storage_path = $2 where id = $3",
+      [extracted.fullText, extracted.previewStoragePath, documentId],
+    );
+  });
+
+  const pageIndex = buildPageIndex(extracted.pages);
+  const chosen = await readSegmentationChoice(tenantId, documentId);
+  const reading = segmentTranscriptDetailed(extracted.fullText, chosen);
+  const parsed = reading.segments.map((s) => ({
+    ...s,
+    page: pageForSegment(s.text, pageIndex),
+  }));
+  if (parsed.filter((s) => s.role !== "moderator").length === 0) {
+    throw new Error(
+      `No participant speech could be found in "${document.source_filename}".`,
+    );
+  }
+
+  // Match every quote to the turn it sits in.
+  const numberByName = new Map(
+    coding.codes.map((c, i) => [c.name.toLowerCase(), i + 1]),
+  );
+  const assignments = new Map<number, number[]>();
+  const quoted = new Set<string>();
+  let quotesTotal = 0;
+  let quotesMatched = 0;
+  let inModeratorTurns = 0;
+  const unmatchedSamples: string[] = [];
+  for (const entry of coding.entries) {
+    if (!entry.quote) continue;
+    quotesTotal += 1;
+    const n = numberByName.get(entry.code.toLowerCase());
+    if (n === undefined) continue;
+    const m = matchQuote(entry.quote, parsed);
+    if (m.segmentIndex !== null && !m.spansTurns && m.match !== "none") {
+      if (m.role === "moderator") {
+        inModeratorTurns += 1;
+        continue;
+      }
+      const list = assignments.get(m.segmentIndex) ?? [];
+      if (!list.includes(n)) list.push(n);
+      assignments.set(m.segmentIndex, list);
+      quoted.add(entry.code.toLowerCase());
+      quotesMatched += 1;
+    } else if (unmatchedSamples.length < 5) {
+      unmatchedSamples.push(
+        entry.quote.length > 120 ? `${entry.quote.slice(0, 117)}...` : entry.quote,
+      );
+    }
+  }
+  if (!codebookOnly && quotesMatched === 0) {
+    throw new Error(
+      `None of the ${quotesTotal} quotes in your file could be found in "${document.source_filename}". ` +
+        `Check that the file belongs to this transcript and that the quotes are copied word for word.`,
+    );
+  }
+
+  const stored = await replaceSegments(tenantId, runId, documentId, parsed);
+  await saveSegmentationState(
+    tenantId,
+    runId,
+    documentId,
+    reading,
+    chosen.moderators ?? [],
+  );
+  const book = await insertCodebook(
+    tenantId,
+    runId,
+    documentId,
+    "imported",
+    coding.codes.map((c) => ({
+      name: c.name,
+      definition:
+        c.definition ??
+        (codebookOnly
+          ? `Applied from your codebook: ${c.name}`
+          : "Imported from your coding file."),
+      inclusion: c.inclusion ?? "",
+      exclusion: c.exclusion ?? "",
+      reproducedRuns: null,
+      totalRuns: null,
+    })),
+  );
+  let metaSaved = false;
+  try {
+    await saveCodeMeta(
+      tenantId,
+      documentId,
+      coding.codes.map((c) => ({
+        name: c.name,
+        theme: c.theme ?? undefined,
+        keywords: c.keywords ?? undefined,
+      })),
+    );
+    metaSaved = true;
+  } catch {
+    // Migration 0055 not applied yet: the coding itself still imports.
+  }
+  let finalAssignments = assignments;
+  if (codebookOnly) {
+    const applied = await applyCodebook(
+      tenantId,
+      runId,
+      documentId,
+      book.codebookId,
+      book.rows,
+      stored,
+    );
+    if (
+      applied.totalBatches > 0 &&
+      applied.failedBatches === applied.totalBatches
+    ) {
+      throw new Error(
+        "Your codebook was read, but it could not be applied to the transcript. Try again.",
+      );
+    }
+    finalAssignments = applied.assignments;
+  }
+  const rows = await writeCodebookAndFindings(
+    tenantId,
+    runId,
+    documentId,
+    book.codebookId,
+    book.rows,
+    stored,
+    finalAssignments,
+    { onlyReplacePending: false, archiveReason: "manual_reextract" },
+  );
+
+  const codesWithoutQuotes = coding.codes
+    .filter((c) => !quoted.has(c.name.toLowerCase()))
+    .map((c) => c.name);
+  await recordTrace(tenantId, runId, "coding_import", {
+    documentId,
+    codes: coding.codes.length,
+    quotes_total: quotesTotal,
+    quotes_matched: quotesMatched,
+    codebook_only: codebookOnly,
+    quotes_in_moderator_turns: inModeratorTurns,
+    codes_without_matched_quotes: codesWithoutQuotes.length,
+    findings: rows.length,
+  });
+  return {
+    codes: coding.codes.length,
+    findings: rows.length,
+    quotesTotal,
+    quotesMatched,
+    unmatchedSamples,
+    inModeratorTurns,
+    codesWithoutQuotes: codebookOnly ? [] : codesWithoutQuotes,
+    codebookOnly,
+    metaSaved,
+  };
 }
 
 /**

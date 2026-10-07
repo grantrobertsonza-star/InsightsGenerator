@@ -2,6 +2,7 @@
 
 import type { FindingCodingCounts } from "@/lib/codingAnalysis";
 import {
+  Fragment,
   useState,
   useTransition,
   useRef,
@@ -1031,6 +1032,12 @@ function FindingCard({
         {isDescriptiveOnly(finding) && <DescriptiveOnlyBadge />}
         {isDuplicate && <DuplicateBadge />}
       </div>
+      {finding.coding_counts?.theme &&
+        finding.coding_counts.codeName !== finding.coding_counts.theme && (
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Sub-theme: {finding.coding_counts.codeName}
+          </div>
+        )}
       <div className="max-w-prose text-sm text-foreground">
         {finding.finding_text}
       </div>
@@ -1054,6 +1061,160 @@ function FindingCard({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Adds up a theme's roll-up across transcripts. Each transcript counts its
+ * own participants and turns once; people in more than one transcript count
+ * once per transcript.
+ */
+function combinedRollup(
+  findings: { source_document_id?: string | null; coding_counts?: FindingCodingCounts | null }[],
+): {
+  codes: number;
+  turns: number;
+  speakersWith: number | null;
+  speakersTotal: number | null;
+  documents: number;
+} | null {
+  const seen = new Map<string, NonNullable<FindingCodingCounts["themeRollup"]>>();
+  findings.forEach((f, i) => {
+    const roll = f.coding_counts?.themeRollup;
+    if (!roll) return;
+    const key = f.source_document_id ?? `none-${i}`;
+    if (!seen.has(key)) seen.set(key, roll);
+  });
+  if (seen.size === 0) return null;
+  let codes = 0;
+  let turns = 0;
+  let sw: number | null = 0;
+  let st: number | null = 0;
+  for (const r of seen.values()) {
+    codes += r.codes;
+    turns += r.turns;
+    sw = sw !== null && r.speakersWith !== null ? sw + r.speakersWith : null;
+    st = st !== null && r.speakersTotal !== null ? st + r.speakersTotal : null;
+  }
+  return { codes, turns, speakersWith: sw, speakersTotal: st, documents: seen.size };
+}
+
+/**
+ * The main card for a theme that groups several codes: the combined reach
+ * (participants who raised any of its sub-themes, counted once), the turns,
+ * and the sub-theme names. Clicking it shows or hides the sub-theme cards.
+ */
+function ThemeSummaryCard({
+  theme,
+  findings,
+  dotClass,
+  active,
+  onClick,
+}: {
+  theme: string;
+  findings: Finding[];
+  dotClass: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const roll = combinedRollup(findings);
+  if (!roll) return null;
+  const hasReach = roll.speakersWith !== null && roll.speakersTotal;
+  const frac = hasReach
+    ? Math.min(1, (roll.speakersWith as number) / (roll.speakersTotal as number))
+    : 0;
+  const pct = Math.round(frac * 100);
+  const r = 24;
+  const circ = 2 * Math.PI * r;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={active}
+      className={`flex flex-col gap-2 rounded-xl border p-3 text-left transition ${
+        active
+          ? "border-primary bg-primary-light"
+          : "border-border bg-white hover:border-slate-400"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        {hasReach && (
+          <div className="relative h-14 w-14 shrink-0">
+            <svg viewBox="0 0 60 60" className="h-full w-full -rotate-90" aria-hidden>
+              <circle cx="30" cy="30" r={r} fill="none" strokeWidth="6" className="stroke-slate-200" />
+              <circle
+                cx="30"
+                cy="30"
+                r={r}
+                fill="none"
+                strokeWidth="6"
+                strokeLinecap="round"
+                strokeDasharray={`${circ * frac} ${circ}`}
+                className="stroke-primary"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-foreground">
+              {pct}%
+            </span>
+          </div>
+        )}
+        <div className="min-w-0">
+          <div className="flex items-start gap-1.5">
+            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+            <span className="text-sm font-semibold leading-snug text-foreground">
+              {theme}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] text-muted">
+            {hasReach
+              ? `${roll.speakersWith} of ${roll.speakersTotal} participants`
+              : `${roll.codes} sub-themes`}
+            {` · ${roll.turns} turns`}
+            {roll.documents > 1 ? ` · ${roll.documents} transcripts` : ""}
+          </p>
+        </div>
+      </div>
+      <ul className="flex flex-col gap-0.5 text-[11px] text-foreground">
+        {findings.map((f) => (
+          <li key={f.id} className="truncate">
+            {f.coding_counts?.codeName ?? f.theme}
+          </li>
+        ))}
+      </ul>
+      <span className="text-[11px] font-medium text-primary">
+        {active ? "Hide sub-themes" : `Show ${findings.length} sub-themes`}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * For a theme that groups several codes: how many sub-themes it holds and
+ * how many participants raised any of them, counted once each. Shown beside
+ * the theme heading. Nothing is rendered for a theme with a single code.
+ */
+function ThemeRollupLine({
+  findings,
+}: {
+  findings: { coding_counts?: FindingCodingCounts | null }[];
+}) {
+  const roll = combinedRollup(
+    findings as { source_document_id?: string | null; coding_counts?: FindingCodingCounts | null }[],
+  );
+  if (!roll) return null;
+  const pct =
+    roll.speakersWith !== null && roll.speakersTotal
+      ? Math.round((roll.speakersWith / roll.speakersTotal) * 100)
+      : null;
+  return (
+    <span className="text-xs text-muted">
+      {roll.codes} sub-themes
+      {roll.speakersWith !== null && roll.speakersTotal !== null
+        ? ` · ${roll.speakersWith} of ${roll.speakersTotal} participants${pct !== null ? ` (${pct}%)` : ""}`
+        : ""}
+      {` · ${roll.turns} turns`}
+      {roll.documents > 1 ? ` · ${roll.documents} transcripts` : ""}
+    </span>
   );
 }
 
@@ -1156,6 +1317,8 @@ export default function FindingsTable({
 
   const [sourceFilter, setSourceFilter] = useState(ALL);
   const [themeFilter, setThemeFilter] = useState(ALL);
+  // Which main theme has its sub-theme cards open ("__all" opens every one).
+  const [openMainTheme, setOpenMainTheme] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState(ALL);
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [dataTypeFilter, setDataTypeFilter] = useState(ALL);
@@ -1295,10 +1458,17 @@ export default function FindingsTable({
     const orderedKeys = [...themes, NO_THEME_LABEL].filter((key) =>
       groups.has(key),
     );
-    const built = orderedKeys.map((theme) => ({
+    const builtAll = orderedKeys.map((theme) => ({
       theme,
       findings: groups.get(theme)!,
     }));
+    // Themes that gather several findings (the high-level themes) come
+    // first, each with its sub-themes beneath; findings that stand alone
+    // follow, together, at the end. The sort is stable.
+    const built = [
+      ...builtAll.filter((g) => g.theme !== NO_THEME_LABEL && g.findings.length > 1),
+      ...builtAll.filter((g) => g.theme === NO_THEME_LABEL || g.findings.length <= 1),
+    ];
     if (!sortByReach) return built;
     // Highest share of participants first: the figure inside each card's
     // ring. Findings without participant counts (stated, computed) sink to
@@ -1366,6 +1536,12 @@ export default function FindingsTable({
     return blocks;
   })();
 
+  const mainThemeBlocks = renderBlocks.filter(
+    (b): b is Extract<RenderBlock, { kind: "group" }> =>
+      b.kind === "group" &&
+      b.findings.some((f) => f.coding_counts?.themeRollup),
+  );
+
   // Counts for the clickable category strip above the list. These deliberately
   // ignore the theme filter itself (but respect the other filters) so every
   // pill keeps showing its true count even while one theme is selected,
@@ -1391,9 +1567,13 @@ export default function FindingsTable({
     }
     return counts;
   })();
-  const pillThemeOrder = [...themes, NO_THEME_LABEL].filter(
-    (key) => (themeCounts.get(key) ?? 0) > 0,
-  );
+  const pillThemeOrder = (() => {
+    const all = [...themes, NO_THEME_LABEL].filter(
+      (key) => (themeCounts.get(key) ?? 0) > 0,
+    );
+    const multi = (k: string) => k !== NO_THEME_LABEL && (themeCounts.get(k) ?? 0) > 1;
+    return [...all.filter(multi), ...all.filter((k) => !multi(k))];
+  })();
 
   function scrollToDuplicates() {
     duplicatesRef.current?.scrollIntoView({
@@ -1416,6 +1596,114 @@ export default function FindingsTable({
   const statedFindingsCount = findings.filter(
     (f) => f.origin === "stated" || f.origin === "coded",
   ).length;
+
+  const renderGroup = (block: Extract<RenderBlock, { kind: "group" }>) => (
+                <div key={block.theme}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${colorFor(block.theme).dot}`}
+                      aria-hidden
+                    />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {block.theme}
+                    </h3>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(block.theme).badge}`}
+                    >
+                      {block.findings.length}
+                    </span>
+                    <ThemeRollupLine findings={block.findings} />
+                    {block.findings.some((c) => c.status !== "accepted") && (
+                      <button
+                        disabled={isPending}
+                        onClick={() =>
+                          acceptAllVisible(block.findings.map((c) => c.id))
+                        }
+                        className="ml-1 flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 text-xs font-medium text-muted transition hover:border-success hover:text-success"
+                      >
+                        <CheckIcon className="h-3 w-3" />
+                        Accept all in theme
+                      </button>
+                    )}
+                    {(() => {
+                      const chartSpec = buildChartForThemeGroup(block.findings);
+                      if (!chartSpec) return null;
+                      const open = chartOpenThemes.has(block.theme);
+                      return (
+                        <button
+                          onClick={() => toggleChartForTheme(block.theme)}
+                          className={`ml-1 flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium transition ${
+                            open
+                              ? "border-primary text-primary"
+                              : "border-border text-muted hover:border-primary hover:text-primary"
+                          }`}
+                        >
+                          <ChartIcon className="h-3 w-3" />
+                          {open ? "Hide chart" : "View as chart"}
+                        </button>
+                      );
+                    })()}
+                  </div>
+                  {(() => {
+                    if (!chartOpenThemes.has(block.theme)) return null;
+                    const chartSpec = buildChartForThemeGroup(block.findings);
+                    if (!chartSpec) return null;
+                    return (
+                      <div className="mb-3">
+                        <FindingsChart spec={chartSpec} />
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const cardsGrid = (
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                        {block.findings.map((finding) => (
+                          <FindingCard
+                            key={finding.id}
+                            finding={finding}
+                            runId={runId}
+                            isPending={isPending}
+                            startTransition={startTransition}
+                            onOptimisticStatus={setOptimisticStatus}
+                            viewerLoadingId={viewerLoadingId}
+                            openPreview={openPreview}
+                            cardBorderClass="border-border"
+                            borderLeftClass={colorFor(block.theme).borderLeft}
+                          />
+                        ))}
+                      </div>
+                    );
+                    // Once the chart is open, the individual pairwise/ANOVA
+                    // cards collapse underneath it by default (per the
+                    // 2026-10-05 decision) -- still there, one click away,
+                    // rather than removed. With the chart closed (the
+                    // default), nothing changes from before this feature.
+                    if (!chartOpenThemes.has(block.theme)) {
+                      const hasRoll = block.findings.some(
+                        (f) => f.coding_counts?.themeRollup,
+                      );
+                      if (!hasRoll) return cardsGrid;
+                      return (
+                        <details className="group/cards" open>
+                          <summary className="mb-2 cursor-pointer text-xs font-medium text-muted hover:text-foreground">
+                            Sub-themes ({block.findings.length}), with their quotes
+                          </summary>
+                          {cardsGrid}
+                        </details>
+                      );
+                    }
+                    return (
+                      <details className="group/cards">
+                        <summary className="mb-2 cursor-pointer text-xs font-medium text-muted hover:text-foreground">
+                          Show the {block.findings.length} individual
+                          comparisons behind this chart
+                        </summary>
+                        {cardsGrid}
+                      </details>
+                    );
+                  })()}
+                </div>
+  );
 
   return (
     <div className="flex items-start gap-4">
@@ -1679,6 +1967,7 @@ export default function FindingsTable({
                     >
                       {group.findings.length}
                     </span>
+                    <ThemeRollupLine findings={group.findings} />
                     {group.findings.some((c) => c.status !== "accepted") && (
                       <button
                         disabled={isPending}
@@ -1735,104 +2024,75 @@ export default function FindingsTable({
           </div>
         ) : viewMode === "cards" ? (
           <div className="flex flex-col gap-7">
-            {renderBlocks.map((block, blockIndex) =>
-              block.kind === "group" ? (
-                <div key={block.theme}>
-                  <div className="mb-3 flex items-center gap-2">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${colorFor(block.theme).dot}`}
-                      aria-hidden
-                    />
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {block.theme}
-                    </h3>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(block.theme).badge}`}
-                    >
-                      {block.findings.length}
-                    </span>
-                    {block.findings.some((c) => c.status !== "accepted") && (
-                      <button
-                        disabled={isPending}
-                        onClick={() =>
-                          acceptAllVisible(block.findings.map((c) => c.id))
-                        }
-                        className="ml-1 flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 text-xs font-medium text-muted transition hover:border-success hover:text-success"
-                      >
-                        <CheckIcon className="h-3 w-3" />
-                        Accept all in theme
-                      </button>
-                    )}
-                    {(() => {
-                      const chartSpec = buildChartForThemeGroup(block.findings);
-                      if (!chartSpec) return null;
-                      const open = chartOpenThemes.has(block.theme);
-                      return (
-                        <button
-                          onClick={() => toggleChartForTheme(block.theme)}
-                          className={`ml-1 flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium transition ${
-                            open
-                              ? "border-primary text-primary"
-                              : "border-border text-muted hover:border-primary hover:text-primary"
-                          }`}
-                        >
-                          <ChartIcon className="h-3 w-3" />
-                          {open ? "Hide chart" : "View as chart"}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                  {(() => {
-                    if (!chartOpenThemes.has(block.theme)) return null;
-                    const chartSpec = buildChartForThemeGroup(block.findings);
-                    if (!chartSpec) return null;
-                    return (
-                      <div className="mb-3">
-                        <FindingsChart spec={chartSpec} />
-                      </div>
-                    );
-                  })()}
-                  {(() => {
-                    const cardsGrid = (
-                      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
-                        {block.findings.map((finding) => (
-                          <FindingCard
-                            key={finding.id}
-                            finding={finding}
-                            runId={runId}
-                            isPending={isPending}
-                            startTransition={startTransition}
-                            onOptimisticStatus={setOptimisticStatus}
-                            viewerLoadingId={viewerLoadingId}
-                            openPreview={openPreview}
-                            cardBorderClass="border-border"
-                            borderLeftClass={colorFor(block.theme).borderLeft}
-                          />
-                        ))}
-                      </div>
-                    );
-                    // Once the chart is open, the individual pairwise/ANOVA
-                    // cards collapse underneath it by default (per the
-                    // 2026-10-05 decision) -- still there, one click away,
-                    // rather than removed. With the chart closed (the
-                    // default), nothing changes from before this feature.
-                    if (!chartOpenThemes.has(block.theme)) return cardsGrid;
-                    return (
-                      <details className="group/cards">
-                        <summary className="mb-2 cursor-pointer text-xs font-medium text-muted hover:text-foreground">
-                          Show the {block.findings.length} individual
-                          comparisons behind this chart
-                        </summary>
-                        {cardsGrid}
-                      </details>
-                    );
-                  })()}
+            {mainThemeBlocks.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Main themes
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenMainTheme(openMainTheme === "__all" ? null : "__all")
+                    }
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {openMainTheme === "__all"
+                      ? "Hide all sub-themes"
+                      : "Show all sub-themes"}
+                  </button>
                 </div>
+                <div className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+                  {mainThemeBlocks.map((block) => {
+                    const isOpen =
+                      openMainTheme === "__all" || openMainTheme === block.theme;
+                    return (
+                      <Fragment key={block.theme}>
+                        <ThemeSummaryCard
+                          theme={block.theme}
+                          findings={block.findings}
+                          dotClass={colorFor(block.theme).dot}
+                          active={isOpen}
+                          onClick={() =>
+                            setOpenMainTheme(
+                              openMainTheme === block.theme ? null : block.theme,
+                            )
+                          }
+                        />
+                        {isOpen && (
+                          <div className="col-span-full rounded-xl border border-primary/30 bg-slate-50/60 p-3">
+                            {renderGroup(block)}
+                          </div>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {renderBlocks
+              .filter(
+                (b) =>
+                  b.kind !== "group" ||
+                  !b.findings.some((f) => f.coding_counts?.themeRollup),
+              )
+              .map((block, blockIndex) =>
+              block.kind === "group" ? (
+                renderGroup(block)
               ) : (
-                <div
-                  key={`single-run-${blockIndex}`}
-                  className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3"
-                >
+                <div key={`single-run-${blockIndex}`}>
+                {(blockIndex > 0 || mainThemeBlocks.length > 0) && (
+                  <div className="mb-3 flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Not grouped under a theme
+                    </h3>
+                    <span className="text-xs text-muted">
+                      Codes that stand alone. Use Suggest themes on the
+                      transcript to group them.
+                    </span>
+                  </div>
+                )}
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
                   {block.groups.map((group) =>
                     group.findings.map((finding) => (
                       <FindingCard
@@ -1853,6 +2113,7 @@ export default function FindingsTable({
                       />
                     )),
                   )}
+                </div>
                 </div>
               ),
             )}
