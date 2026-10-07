@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateObjectiveValidation } from "./objectiveValidator";
 import { generateObjectiveCandidates } from "./objectiveFramer";
+import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -57,6 +58,7 @@ export async function suggestObjectivesFromUnmatched(runId: string): Promise<Res
       return { ok: false, error: "Every accepted insight is already covered by an objective." };
     }
     await generateObjectiveCandidates(TENANT_ID, runId, headlines);
+    await refreshObjectiveQuality(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
   } catch (error) {

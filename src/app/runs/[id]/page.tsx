@@ -49,6 +49,7 @@ import DecisionBriefReview from "./DecisionBriefReview";
 import ObjectiveBriefReview from "./ObjectiveBriefReview";
 import RunContextForm from "./RunContextForm";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
+import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
 import ObjectiveCoverage from "./ObjectiveCoverage";
 import RecommendationsReview from "./RecommendationsReview";
 import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
@@ -1521,6 +1522,7 @@ async function refreshObjectiveCandidates(runId: string) {
     });
     if (hasStated) return;
     await generateObjectiveCandidates(TENANT_ID, runId);
+    await refreshObjectiveQuality(TENANT_ID, runId);
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(

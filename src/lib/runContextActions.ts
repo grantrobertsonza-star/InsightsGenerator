@@ -6,6 +6,7 @@ import { supabaseAdmin } from "./supabaseAdmin";
 import { extractDocumentText } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
+import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 
 const BUCKET = "documents";
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
@@ -113,5 +114,6 @@ export async function saveRunContext(runId: string, formData: FormData) {
     await syncResearchObjective(client, runId);
   });
 
+  if (objective) await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }

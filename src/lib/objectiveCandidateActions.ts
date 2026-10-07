@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateObjectiveCandidates } from "./objectiveFramer";
 import { syncResearchObjective } from "./runSync";
+import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -27,6 +28,7 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
     await syncResearchObjective(client, runId);
   });
 
+  await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -42,6 +44,7 @@ export async function acceptAllObjectiveCandidates(runId: string) {
     ]);
     await syncResearchObjective(client, runId);
   });
+  await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -82,6 +85,7 @@ export async function restoreObjectiveCandidate(runId: string, candidateId: stri
     ]);
     await syncResearchObjective(client, runId);
   });
+  await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -104,6 +108,7 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
     await syncResearchObjective(client, runId);
   });
 
+  await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -125,6 +130,7 @@ export async function regenerateObjectiveCandidates(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await generateObjectiveCandidates(TENANT_ID, runId);
+    await refreshObjectiveQuality(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
   } catch (error) {
@@ -137,4 +143,21 @@ export async function regenerateObjectiveCandidates(
     }).catch(() => {});
     return { ok: false, error: message };
   }
+}
+
+/**
+ * Removes every objective the app suggested or inferred that the researcher
+ * has not edited. Stated objectives (typed or imported) and anything edited
+ * or rejected are left alone.
+ */
+export async function deleteSuggestedObjectives(runId: string) {
+  await withTenant(TENANT_ID, async (client) => {
+    await client.query(
+      `delete from objective_candidates
+       where run_id = $1 and source = 'ai_suggested' and status != 'rejected' and edited = false`,
+      [runId]
+    );
+    await syncResearchObjective(client, runId);
+  });
+  revalidatePath(`/runs/${runId}`);
 }

@@ -10,6 +10,7 @@ import {
   regenerateObjectiveCandidates,
   acceptAllObjectiveCandidates,
   deleteAllObjectiveCandidates,
+  deleteSuggestedObjectives,
 } from "@/lib/objectiveCandidateActions";
 import { TrashIcon } from "@/components/icons";
 
@@ -235,6 +236,21 @@ export default function ObjectiveBriefReview({
           and a project can be organized around more than one. Reject anything that doesn&apos;t belong,
           or edit one in place.
         </p>
+        <div className="flex shrink-0 flex-col gap-2">
+        {hasAnyAiSuggested && (
+          <button
+            disabled={isPending}
+            onClick={() => {
+              if (!confirm("Remove all suggested objectives? Your own and edited ones are kept.")) return;
+              startTransition(async () => {
+                await deleteSuggestedObjectives(runId);
+              });
+            }}
+            className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
+          >
+            Remove suggested
+          </button>
+        )}
         {hasFindings && (
           <button
             disabled={isPending}
@@ -244,6 +260,7 @@ export default function ObjectiveBriefReview({
             {isPending ? regenerateBusyLabel : regenerateLabel}
           </button>
         )}
+        </div>
       </div>
 
       {regenerateError && (
