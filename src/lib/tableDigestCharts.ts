@@ -23,6 +23,11 @@ export type CategoricalDigest = {
   // than silently dropping them, so the bar heights still read as the whole
   // column.
   otherCount: number;
+  // Set for a numeric column with only a few whole-number values (a 0/1 flag,
+  // a 0 to 10 rating). Bars then run in value order, not by frequency, and
+  // the caption can quote the mean, since a histogram of two values (0 and 1)
+  // reads as a continuous measure and is the wrong picture for it.
+  ordered?: { mean: number };
 };
 
 export type NumericDigest = {
@@ -57,6 +62,9 @@ const MAX_CATEGORY_CARDINALITY = 10;
 const MAX_CATEGORIES_SHOWN = 8;
 const MIN_USABLE_VALUES = 3;
 const TARGET_BIN_COUNT = 10;
+// Whole-number columns with at most this many distinct values are charted as
+// ordered bars (flags, 0 to 10 ratings), not as a binned histogram.
+const MAX_ORDERED_VALUES = 11;
 
 function presentValues(rows: Row[], column: string): (string | number)[] {
   return rows
@@ -110,6 +118,33 @@ function digestColumn(rows: Row[], column: string): ColumnDigest {
   }
 
   if (isNumericColumn(values)) {
+    const distinctNumbers = new Set(values as number[]);
+    if (
+      distinctNumbers.size <= MAX_ORDERED_VALUES &&
+      (values as number[]).every((v) => Number.isInteger(v))
+    ) {
+      const nums = values as number[];
+      const tally = new Map<number, number>();
+      for (const v of nums) tally.set(v, (tally.get(v) ?? 0) + 1);
+      const bars = Array.from(tally.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([value, count]) => ({
+          category: String(value),
+          count,
+          percent: Math.round((count / nums.length) * 1000) / 10,
+        }));
+      const mean =
+        Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
+      return {
+        kind: "categorical",
+        column,
+        bars,
+        distinctCount: tally.size,
+        n: nums.length,
+        otherCount: 0,
+        ordered: { mean },
+      };
+    }
     const numbers = (values as number[]).slice().sort((a, b) => a - b);
     const mean =
       Math.round((numbers.reduce((a, b) => a + b, 0) / numbers.length) * 100) /

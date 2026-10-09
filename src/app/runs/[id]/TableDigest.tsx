@@ -118,7 +118,9 @@ function MiniChart({ digest }: { digest: ColumnDigest }) {
       <div ref={containerRef} className="w-full" />
       <p className="px-1 pb-1.5 text-[10px] text-muted">
         {digest.kind === "categorical"
-          ? `${digest.distinctCount} categories, n=${digest.n}`
+          ? digest.ordered
+            ? `${digest.distinctCount} values, n=${digest.n}, mean ${digest.ordered.mean}`
+            : `${digest.distinctCount} categories, n=${digest.n}`
           : `mean ${digest.mean}, median ${digest.median} (n=${digest.n}, range ${digest.min}–${digest.max})`}
       </p>
     </div>

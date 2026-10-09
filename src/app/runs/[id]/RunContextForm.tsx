@@ -20,7 +20,7 @@ export default function RunContextForm({
   return (
     <form
       action={saveRunContext.bind(null, runId)}
-      className="mb-6 flex max-w-3xl flex-col gap-4 rounded-xl border border-border bg-white p-5"
+      className="flex flex-col gap-4 rounded-xl border border-border bg-white p-5"
     >
       <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
         <span className="text-sm font-medium text-foreground">
@@ -55,13 +55,11 @@ export default function RunContextForm({
         />
       </label>
       <label className="block">
-        <span className="text-sm font-medium text-foreground">Research objective or hypothesis</span>
-        <span className="ml-1.5 text-xs font-normal text-muted">(optional, one per line if you have several)</span>
+        <span className="text-sm font-medium text-foreground">Add research objectives or hypotheses</span>
+        <span className="ml-1.5 text-xs font-normal text-muted">(optional, one per line. Saved ones appear on the right)</span>
         <textarea
-          key={objective ?? ""}
           name="researchObjective"
           rows={3}
-          defaultValue={objective ?? ""}
           placeholder="e.g. Understand whether price or service is the bigger driver of lapsed renewals."
           className={field}
         />

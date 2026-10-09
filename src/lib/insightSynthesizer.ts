@@ -744,9 +744,9 @@ function sampleWithDrop<T>(items: T[], dropFraction: number): T[] {
  * failure, which is why this tracks a testable count alongside a
  * reappeared count instead of a flat fraction of STABILITY_RESAMPLE_COUNT.
  * Matching a resample's cluster back to an original insight is membership
- * overlap, not headline similarity: clusterPreInsights runs at
- * temperature 0 specifically so the same pool groups the same way run to
- * run, but a large model keeps some residual drift even then, so a
+ * overlap, not headline similarity: clusterPreInsights runs at the API
+ * default temperature (the current model rejects any other value), so the
+ * same pool can group differently from run to run, and a
  * resample's result is part genuine resampling signal, part ordinary
  * model noise, the two aren't perfectly separable, which is a property of
  * the check worth knowing about rather than a precision this function can

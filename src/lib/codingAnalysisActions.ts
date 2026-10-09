@@ -14,11 +14,15 @@ import {
   restoreCodebookVersion,
 } from "./codingOverrides";
 import { saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
+import { addMemo, deleteMemo, reuseCodebook } from "./codingMemos";
 import { saveTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
 import {
   addVariableLink,
   proposeVariableLinks,
   resetCalibration,
+  resolveStabilityTurn,
+  runStabilityCheck,
+  saveBlindStabilityTurn,
   saveCalibrationTurn,
   searchNegativeCases,
   setCaseMapping,
@@ -64,9 +68,51 @@ export async function startCalibrationAction(
   runId: string,
   documentId: string,
   codebookId: string,
+  options?: { kind?: "targeted" | "audit"; size?: number },
 ) {
   return guard(runId, () =>
-    startCalibration(TENANT_ID, documentId, codebookId),
+    startCalibration(TENANT_ID, documentId, codebookId, options),
+  );
+}
+
+export async function runStabilityCheckAction(
+  runId: string,
+  documentId: string,
+  codebookId: string,
+  reruns: number,
+) {
+  return guard(runId, () =>
+    runStabilityCheck(TENANT_ID, runId, documentId, codebookId, reruns),
+  );
+}
+
+export async function saveBlindStabilityTurnAction(
+  runId: string,
+  codebookId: string,
+  segmentId: string,
+  codeIds: string[],
+) {
+  return guard(runId, () =>
+    saveBlindStabilityTurn(TENANT_ID, codebookId, segmentId, codeIds),
+  );
+}
+
+export async function resolveStabilityTurnAction(
+  runId: string,
+  documentId: string,
+  codebookId: string,
+  segmentId: string,
+  changes: { codeId: string; action: "add" | "remove" }[],
+) {
+  return guard(runId, () =>
+    resolveStabilityTurn(
+      TENANT_ID,
+      runId,
+      documentId,
+      codebookId,
+      segmentId,
+      changes,
+    ),
   );
 }
 
@@ -322,5 +368,31 @@ export async function integrateThemesAction(runId: string) {
     if (r.merged > 0) checks.push(`${r.merged} overlapping theme${r.merged === 1 ? "" : "s"} merged`);
     if (r.placed > 0) checks.push(`${r.placed} unplaced code${r.placed === 1 ? "" : "s"} placed`);
     return `Grouped ${r.codes} codes from ${r.documents} transcripts into ${r.themes} main themes after ${r.rounds} check${r.rounds === 1 ? "" : "s"}${checks.length ? ` (${checks.join(", ")})` : ""}.`;
+  });
+}
+
+export async function addMemoAction(
+  runId: string,
+  documentId: string | null,
+  codeName: string | null,
+  kind: "analytic" | "reflexivity" | "decision",
+  body: string,
+) {
+  return guard(runId, async () => {
+    await addMemo(TENANT_ID, runId, { documentId, codeName, kind, body });
+    return "Memo saved.";
+  });
+}
+
+export async function deleteMemoAction(runId: string, memoId: string) {
+  return guard(runId, async () => {
+    await deleteMemo(TENANT_ID, runId, memoId);
+  });
+}
+
+export async function reuseCodebookAction(runId: string, targetDocumentId: string, sourceDocumentId: string) {
+  return guard(runId, async () => {
+    const r = await reuseCodebook(TENANT_ID, runId, targetDocumentId, sourceDocumentId);
+    return `Applied ${r.codes} codes from the other transcript. Review the counts, then adjust the codebook if this transcript needs a code of its own.`;
   });
 }

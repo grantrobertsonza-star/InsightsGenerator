@@ -71,6 +71,10 @@ export async function rejectObjectiveCandidate(runId: string, candidateId: strin
     ]);
     await syncResearchObjective(client, runId);
   });
+  // Quality and coverage were computed with this objective in play; refresh
+  // them so the panels do not show a stale verdict.
+  await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -127,6 +131,8 @@ export async function deleteObjectiveCandidate(runId: string, candidateId: strin
     await client.query("delete from objective_candidates where id = $1 and run_id = $2", [candidateId, runId]);
     await syncResearchObjective(client, runId);
   });
+  await refreshObjectiveQuality(TENANT_ID, runId);
+  await refreshObjectiveValidationQuietly(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 

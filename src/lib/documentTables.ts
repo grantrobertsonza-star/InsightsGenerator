@@ -7,6 +7,7 @@ import { extractDocumentText } from "./extractFindings";
 import { generateFindingsFromTable } from "./generateFindingsFromTable";
 import { mapWithConcurrency } from "./concurrency";
 import type { ArchiveReason } from "./findingArchive";
+import { loadDataSetup, transposeTable } from "./dataSetup";
 
 type ExtractedTable = {
   label: string | null;
@@ -184,8 +185,23 @@ export async function extractAndStoreDocumentTables(
     // the Python conversion function (api/parse-stats-file.py), which also
     // resolves variable labels and decodes value-labeled codes, so what
     // comes back needs no different handling than a CSV/Excel upload.
-    const { headers, rows } = await parseStatsFile(document.storage_path, document.source_filename);
+    const parsed = await parseStatsFile(document.storage_path, document.source_filename);
+    const { headers, rows } = parsed;
     extracted = [{ label: null, sourcePage: null, headers, rows }];
+    if (parsed.totalVariables && parsed.keptVariables) {
+      // Very wide file: only the usable variables were kept so the table
+      // fits in storage. Recorded so the cut is never silent.
+      await withTenant(tenantId, async (client) => {
+        await client.query(
+          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'wide_file_trimmed', $3)`,
+          [
+            tenantId,
+            runId,
+            JSON.stringify({ documentId, totalVariables: parsed.totalVariables, keptVariables: parsed.keptVariables }),
+          ]
+        );
+      });
+    }
   } else {
     // .docx, .pptx, .pdf: not a spreadsheet, but may contain one or more
     // tables worth finding. extractDocumentText already converts Word and
@@ -200,6 +216,19 @@ export async function extractAndStoreDocumentTables(
       );
     }
     extracted = await detectTablesAcrossPages(tenantId, runId, pages);
+  }
+
+  // A raw file laid out with variables in rows and cases in columns is
+  // flipped once, here, so everything downstream (banner plans, cross-tabs,
+  // digests) reads the usual one-row-per-case shape.
+  if (document.ingestion_type === "raw") {
+    const setup = await loadDataSetup(tenantId, documentId);
+    if (setup.layout === "columns_are_cases") {
+      extracted = extracted.map((t) => {
+        const flipped = transposeTable(t.headers, t.rows);
+        return { ...t, headers: flipped.headers, rows: flipped.rows };
+      });
+    }
   }
 
   if (extracted.length === 0) {

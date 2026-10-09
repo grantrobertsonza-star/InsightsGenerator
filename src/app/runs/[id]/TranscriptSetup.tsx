@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction } from "@/lib/codingAnalysisActions";
+import DeleteDocumentButton from "@/app/DeleteDocumentButton";
+import { readDataFileAction, saveDataSetupAction } from "@/lib/dataSetupActions";
+import {
+  DEFAULT_DATA_SETUP,
+  LAYOUT_LABEL,
+  METHOD_LABEL,
+  UNIT_LABEL,
+  type DataSetup,
+} from "@/lib/dataSetupShared";
 import type { SegmentMode } from "@/lib/qualCoding";
 import type {
   InterviewStyle,
@@ -33,13 +43,43 @@ export const MODE_LABEL: Record<SegmentMode, string> = {
 const select =
   "rounded-md border border-border bg-white px-2 py-1 text-xs text-foreground";
 
+type FilePreview =
+  | {
+      kind: "tables";
+      tables: {
+        label: string;
+        headers: string[];
+        totalColumns: number;
+        rows: Record<string, string | number | null>[];
+        totalRows: number;
+      }[];
+    }
+  | { kind: "text"; excerpt: string; length: number };
+
 type Row = {
   documentId: string;
   filename: string;
+  kind: string;
+  kindLabel: string;
+  kindBadge: string;
+  uploadedAt: string;
+  // For files that are not transcripts: one line saying what the app does
+  // with the file, shown where the transcript set-up choices would be.
+  detail: string | null;
+  // Raw case-level data files get their own set-up choices.
+  isRawData: boolean;
+  dataSetup: DataSetup | null;
+  // What was actually read from the file, for checking the import.
+  preview: FilePreview | null;
+  /** Questionnaires and guides that belong to this file, shown above its quality. */
+  attached?: ReactNode;
+  // Data quality for the imported table(s), prepared on the server.
+  quality?: React.ReactNode;
   initial: TranscriptSetup | null;
   suggestion: SetupSuggestion | null;
   hasCoding: boolean;
   accent: { border: string; dot: string };
+  deleteAction: () => Promise<void>;
 };
 
 type Choice = {
@@ -50,8 +90,308 @@ type Choice = {
 
 const SETUP_EVENT = "transcript-setup-saved";
 
-const GRID =
-  "grid items-start gap-x-3 gap-y-1 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_7rem]";
+const CARD =
+  "flex h-full flex-col gap-3 rounded-xl border border-l-4 border-border bg-white p-4 shadow-sm";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2">
+      <span className="text-[11px] font-medium text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function PreviewPanel({ preview }: { preview: FilePreview | null }) {
+  if (!preview) return null;
+  if (preview.kind === "text") {
+    return (
+      <details className="rounded-lg border border-border bg-slate-50 p-2 text-xs">
+        <summary className="cursor-pointer select-none font-medium text-muted">
+          Preview what was read
+        </summary>
+        {preview.length === 0 ? (
+          <p className="mt-2 text-[11px] text-danger">
+            No text was read from this file. It may be a scan or an unsupported layout.
+          </p>
+        ) : (
+          <>
+            <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] text-foreground">
+              {preview.excerpt}
+            </pre>
+            <p className="mt-1 text-[11px] text-muted">
+              Showing the first {Math.min(preview.excerpt.length, preview.length).toLocaleString()} of{" "}
+              {preview.length.toLocaleString()} characters.
+            </p>
+          </>
+        )}
+      </details>
+    );
+  }
+  if (preview.tables.length === 0) {
+    return (
+      <p className="text-[11px] text-muted">
+        Reading the file now. A large file can take a minute. If nothing appears, it could not be read (check the
+        Tracking panel for the reason).
+      </p>
+    );
+  }
+  return (
+    <details className="rounded-lg border border-border bg-slate-50 p-2 text-xs">
+      <summary className="cursor-pointer select-none font-medium text-muted">
+        Preview what was read{preview.tables.length > 1 ? ` (${preview.tables.length} tables)` : ""}
+      </summary>
+      <div className="mt-2 space-y-3">
+        {preview.tables.map((t, i) => (
+          <div key={i}>
+            <p className="mb-1 text-[11px] font-medium text-foreground">
+              {t.label}: {t.totalRows.toLocaleString()} rows, {t.totalColumns} columns
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-[11px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    {t.headers.map((h) => (
+                      <th key={h} className="whitespace-nowrap py-1 pr-3 font-semibold text-muted">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {t.rows.map((row, ri) => (
+                    <tr key={ri} className="border-b border-border last:border-0">
+                      {t.headers.map((h) => (
+                        <td key={h} className="whitespace-nowrap py-1 pr-3 text-foreground">
+                          {row[h] ?? ""}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-[11px] text-muted">
+              Showing the first {t.rows.length} of {t.totalRows.toLocaleString()} rows
+              {t.totalColumns > t.headers.length ? ` and ${t.headers.length} of ${t.totalColumns} columns` : ""}, as stored.
+            </p>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function CardHeader({ row, status }: { row: Row; status: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <FileCell row={row} />
+      <div className="flex shrink-0 items-center gap-2">
+        {status}
+        <DeleteCell row={row} />
+      </div>
+    </div>
+  );
+}
+
+function FileCell({ row }: { row: Row }) {
+  return (
+    <div className="min-w-0 md:pt-0.5">
+      <p className="truncate text-xs font-medium text-foreground" title={row.filename}>
+        {row.filename}
+      </p>
+      <p className="mt-0.5 text-[11px] text-muted">
+        <span className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${row.kindBadge}`}>
+          {row.kindLabel}
+        </span>
+        {new Date(row.uploadedAt).toLocaleDateString()}
+      </p>
+    </div>
+  );
+}
+
+function DeleteCell({ row }: { row: Row }) {
+  return (
+    <form action={row.deleteAction} className="justify-self-end">
+      <DeleteDocumentButton />
+    </form>
+  );
+}
+
+// A file that needs no set-up choices (report, table, quant data): same row,
+// same colour bar, with a line on what the app does with it.
+function PlainRow({ row }: { row: Row }) {
+  return (
+    <div className={`${CARD} ${row.accent.border}`}>
+      <CardHeader
+        row={row}
+        status={
+          <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">Ready</span>
+        }
+      />
+      <p className="text-[11px] text-muted">{row.detail}</p>
+      <PreviewPanel preview={row.preview} />
+      {row.attached}
+      {row.quality}
+    </div>
+  );
+}
+
+// A raw case-level data file: what a case is, how the file is laid out and
+// how the data was collected. Defaults apply until changed, so nothing blocks
+// the run; changing the layout takes effect the next time the file is read.
+function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
+  const [choice, setChoice] = useState<DataSetup>(row.dataSetup ?? DEFAULT_DATA_SETUP);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [layoutChanged, setLayoutChanged] = useState(false);
+  const [autoAccepted, setAutoAccepted] = useState(false);
+  const router = useRouter();
+  const autoRan = useRef(false);
+  const readRan = useRef(false);
+  const [readError, setReadError] = useState<string | null>(null);
+
+  // A data file is read into its table on import, so the preview and the data
+  // quality appear without another step.
+  const unread = row.isRawData && row.preview?.kind === "tables" && row.preview.tables.length === 0;
+  useEffect(() => {
+    if (!unread || readRan.current) return;
+    readRan.current = true;
+    void readDataFileAction(runId, row.documentId).then((r) => {
+      if (r.ok) router.refresh();
+      else setReadError(r.error);
+    });
+  }, [unread, runId, row.documentId, router]);
+
+  // A file nobody has set up yet is accepted on import with the defaults.
+  // The quality panel stays open to review; changing the structure below asks
+  // for acceptance again.
+  useEffect(() => {
+    if (row.dataSetup !== null || autoRan.current) return;
+    autoRan.current = true;
+    void saveDataSetupAction(runId, row.documentId, { ...DEFAULT_DATA_SETUP, accepted: true }).then((r) => {
+      if (r.ok) {
+        setChoice({ ...DEFAULT_DATA_SETUP, accepted: true });
+        setAutoAccepted(true);
+        router.refresh();
+      }
+    });
+  }, [row.dataSetup, row.documentId, runId, router]);
+
+  // Changing the structure puts the file back to "needs review": what was
+  // checked is no longer what will be read.
+  async function save(next: DataSetup) {
+    const layoutDiffers = next.layout !== choice.layout;
+    if (next.unit !== choice.unit || layoutDiffers || next.method !== choice.method) next = { ...next, accepted: false };
+    setChoice(next);
+    setError(null);
+    setPending(true);
+    const r = await saveDataSetupAction(runId, row.documentId, next);
+    setPending(false);
+    if (r.ok) {
+      if (layoutDiffers) {
+        // The table was built the old way: read it again with the new layout.
+        setLayoutChanged(true);
+        const rr = await readDataFileAction(runId, row.documentId);
+        if (rr.ok) {
+          setLayoutChanged(false);
+          router.refresh();
+        } else setReadError(rr.error);
+      }
+    } else setError(r.error);
+  }
+
+  return (
+    <div className={`${CARD} ${row.accent.border}`}>
+      <CardHeader
+        row={row}
+        status={
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${choice.accepted ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}
+          >
+            {pending ? "Saving..." : choice.accepted ? "Accepted" : "Needs review"}
+          </span>
+        }
+      />
+      <div className="flex flex-col gap-2">
+        <Field label="What a case is">
+        <select
+          aria-label={`What a case is: ${row.filename}`}
+          className={`${select} w-full`}
+          value={choice.unit}
+          onChange={(e) => void save({ ...choice, unit: e.target.value as DataSetup["unit"] })}
+        >
+          {Object.entries(UNIT_LABEL).map(([k, l]) => (
+            <option key={k} value={k}>
+              {l}
+            </option>
+          ))}
+        </select>
+        </Field>
+        <Field label="File layout">
+        <select
+          aria-label={`How the file is laid out: ${row.filename}`}
+          className={`${select} w-full`}
+          value={choice.layout}
+          onChange={(e) => void save({ ...choice, layout: e.target.value as DataSetup["layout"] })}
+        >
+          {Object.entries(LAYOUT_LABEL).map(([k, l]) => (
+            <option key={k} value={k}>
+              {l}
+            </option>
+          ))}
+        </select>
+        </Field>
+        <Field label="How collected">
+        <select
+          aria-label={`How the data was collected: ${row.filename}`}
+          className={`${select} w-full`}
+          value={choice.method}
+          onChange={(e) => void save({ ...choice, method: e.target.value as DataSetup["method"] })}
+        >
+          {Object.entries(METHOD_LABEL).map(([k, l]) => (
+            <option key={k} value={k}>
+              {l}
+            </option>
+          ))}
+        </select>
+        </Field>
+      </div>
+      {row.detail && <p className="text-[11px] text-muted">{row.detail}</p>}
+      <PreviewPanel preview={row.preview} />
+      {row.attached}
+      {row.quality}
+      {layoutChanged && !error && (
+        <p className="text-[11px] text-muted">
+          Layout changed. Reading the file again the new way, then the preview and quality checks update.
+        </p>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <p className="max-w-md text-[11px] text-muted">
+          {choice.accepted
+            ? autoAccepted
+              ? "Accepted on import. Open Analysis, Cross tabs to start building tables. If you change the structure above, you will be asked to accept again."
+              : "Accepted. Open Analysis, Cross tabs to start building tables."
+            : "The set-up changed. Check the structure, the preview and the data quality, then accept the data again."}
+        </p>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => void save({ ...choice, accepted: !choice.accepted })}
+          className={
+            choice.accepted
+              ? "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:border-slate-400 disabled:opacity-50"
+              : "rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+          }
+        >
+          {choice.accepted ? "Undo accept" : "Accept data"}
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-danger">{error}</p>}
+      {readError && <p className="text-[11px] text-danger">Could not read this file: {readError}</p>}
+    </div>
+  );
+}
 
 function SetupRow({ runId, row }: { runId: string; row: Row }) {
   const { initial } = row;
@@ -120,16 +460,21 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
       : null;
 
   return (
-    <div
-      className={`my-2 space-y-1 rounded-lg border border-l-4 border-border bg-slate-50/40 px-3 py-3 ${row.accent.border}`}
-    >
-      <div className={GRID}>
-        <p
-          className="truncate text-xs font-medium text-foreground md:pt-1"
-          title={row.filename}
-        >
-          {row.filename}
-        </p>
+    <div className={`${CARD} ${row.accent.border}`}>
+      <CardHeader
+        row={row}
+        status={
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              confirmed ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {pending ? "Saving..." : confirmed ? "Confirmed" : "Setup needed"}
+          </span>
+        }
+      />
+      <div className="flex flex-col gap-2">
+        <Field label="Who is in each session">
         <select
           aria-label={`Who is in each session: ${row.filename}`}
           className={`${select} w-full`}
@@ -150,6 +495,8 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
             </option>
           ))}
         </select>
+        </Field>
+        <Field label="File layout">
         <select
           aria-label={`How the file is laid out: ${row.filename}`}
           className={`${select} w-full`}
@@ -164,6 +511,8 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
             </option>
           ))}
         </select>
+        </Field>
+        <Field label="Interview style">
         <select
           aria-label={`Interview style: ${row.filename}`}
           className={`${select} w-full`}
@@ -180,16 +529,11 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
             </option>
           ))}
         </select>
-        <span
-          className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-medium md:mt-1 ${
-            confirmed
-              ? "bg-green-50 text-green-700"
-              : "bg-amber-50 text-amber-700"
-          }`}
-        >
-          {pending ? "Saving..." : confirmed ? "Confirmed" : "Setup needed"}
-        </span>
+        </Field>
       </div>
+      <PreviewPanel preview={row.preview} />
+      {row.attached}
+      {row.quality}
       {showSuggestion && sug && (
         <p className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
           Looks like{" "}
@@ -234,35 +578,36 @@ export default function TranscriptSetupTable({
   rows: Row[];
 }) {
   if (rows.length === 0) return null;
-  const waiting = rows.filter((r) => !(r.initial?.confirmed ?? false)).length;
+  const transcriptRows = rows.filter((r) => r.kind === "transcript");
+  const waiting = transcriptRows.filter((r) => !(r.initial?.confirmed ?? false)).length;
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-xl font-semibold text-foreground">
-          Before coding: transcript setup
+          Your files ({rows.length})
         </h2>
         <span className="text-xs text-muted">
-          {waiting === 0
-            ? "All transcripts are set up."
-            : `${waiting} of ${rows.length} still need setup and are skipped until then.`}
+          {transcriptRows.length === 0
+            ? ""
+            : waiting === 0
+              ? "All transcripts are set up."
+              : `${waiting} of ${transcriptRows.length} transcripts still need setup and are skipped until then.`}
         </span>
       </div>
-      <div className="rounded-xl border border-border bg-white px-4">
-        <div
-          className={`${GRID} hidden border-b border-border py-2 text-[11px] font-medium text-muted md:grid`}
-        >
-          <span>Transcript</span>
-          <span>Who is in each session</span>
-          <span>How the file is laid out</span>
-          <span>Interview style (optional)</span>
-          <span>Status</span>
-        </div>
-        {rows.map((r) => (
-          <SetupRow key={r.documentId} runId={runId} row={r} />
-        ))}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {rows.map((r) =>
+          r.kind === "transcript" ? (
+            <SetupRow key={r.documentId} runId={runId} row={r} />
+          ) : r.isRawData ? (
+            <DataSetupRow key={r.documentId} runId={runId} row={r} />
+          ) : (
+            <PlainRow key={r.documentId} row={r} />
+          ),
+        )}
       </div>
       <p className="mt-2 text-[11px] text-muted">
-        If unsure about the layout, leave it on automatic.
+        The colour bar on each card matches each file&apos;s card under Analysis (Cross tabs, Coding or Reports and decks). For transcripts, if
+        unsure about the layout, leave it on automatic.
       </p>
     </div>
   );

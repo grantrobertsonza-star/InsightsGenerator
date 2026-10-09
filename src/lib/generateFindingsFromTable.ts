@@ -4,6 +4,7 @@ import {
 } from "./findingArchive";
 import { withTenant } from "./db";
 import { computeTablePatterns } from "./tableComputation";
+import { generateFindingsFromBannerPlan } from "./generateFindingsFromBannerPlan";
 
 /**
  * Agent 0, per Section 7 of the engineering brief: runs only against a
@@ -77,13 +78,41 @@ export async function generateFindingsFromTable(
   // nothing found" -- the trace row below is what tells those two states
   // apart.
   if (documentTable.ingestion_type === "raw") {
+    // Raw data never runs the open scan, and no default plan is proposed
+    // any more: case-level data is tabulated in the cross tab tool, where
+    // the researcher chooses what to compare. A banner plan saved earlier
+    // is still honoured; without one, the table waits for the tool.
+    const saved = await withTenant(tenantId, async (client) => {
+      const r = await client.query<{ banner_columns: unknown; stub_columns: unknown }>(
+        "select banner_columns, stub_columns from document_tables where id = $1",
+        [documentTableId],
+      );
+      return r.rows[0];
+    });
+    const asList = (v: unknown) =>
+      Array.isArray(v) ? v.filter((c): c is string => typeof c === "string") : [];
+    const hasPlan = asList(saved?.banner_columns).length > 0 && asList(saved?.stub_columns).length > 0;
+    const autoPlan = false;
+    if (!hasPlan) {
+      await withTenant(tenantId, async (client) => {
+        await client.query(
+          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'table_awaiting_cross_tab_tool', $3)`,
+          [tenantId, runId, JSON.stringify({ documentTableId, reason: "use_cross_tab_tool" })],
+        );
+      });
+      return { kept: 0, discarded: 0 };
+    }
+    const result = await generateFindingsFromBannerPlan(tenantId, runId, documentTableId, {
+      onlyReplacePending,
+      archiveReason,
+    });
     await withTenant(tenantId, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'table_awaiting_statistical_path', $3)`,
-        [tenantId, runId, JSON.stringify({ documentTableId })],
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'banner_plan_computed', $3)`,
+        [tenantId, runId, JSON.stringify({ documentTableId, autoPlan, findings: result.kept })],
       );
     });
-    return { kept: 0, discarded: 0 };
+    return result;
   }
 
   // Runs against every row the table actually has, not a model-eyeballed

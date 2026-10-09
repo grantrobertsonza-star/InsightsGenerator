@@ -3,7 +3,9 @@ import { supabaseAdmin } from "./supabaseAdmin";
 
 const BUCKET = "documents";
 
-export const UPLOAD_KINDS = ["report", "table", "transcript"] as const;
+export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument"] as const;
+export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide"] as const;
+export type InstrumentTypeChoice = (typeof INSTRUMENT_TYPES)[number];
 export type UploadKind = (typeof UPLOAD_KINDS)[number];
 
 export const TABLE_INGESTION_TYPES = ["raw", "aggregated"] as const;
@@ -47,7 +49,8 @@ export async function storeUploadedDocument(
   runId: string,
   kind: UploadKind,
   file: File,
-  ingestionType?: TableIngestionType
+  ingestionType?: TableIngestionType,
+  instrumentType?: InstrumentTypeChoice,
 ): Promise<string> {
   // The DB constraint (0038_table_ingestion_type.sql) would catch a missing
   // value here too, but failing before the file is even uploaded to storage
@@ -78,12 +81,23 @@ export async function storeUploadedDocument(
   }
 
   return withTenant(tenantId, async (client) => {
-    const result = await client.query<{ id: string }>(
-      `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, ingestion_type)
-       values ($1, $2, $3, $4, $5, $6)
-       returning id`,
-      [tenantId, runId, kind, file.name, storagePath, kind === "table" ? ingestionType : null]
-    );
+    // The instrument column only exists once migration 0060 is applied, so
+    // it is only named for instrument uploads and every other upload is
+    // unaffected until then.
+    const result =
+      kind === "instrument"
+        ? await client.query<{ id: string }>(
+            `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, instrument_type)
+             values ($1, $2, $3, $4, $5, $6)
+             returning id`,
+            [tenantId, runId, kind, file.name, storagePath, instrumentType ?? "questionnaire"]
+          )
+        : await client.query<{ id: string }>(
+            `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, ingestion_type)
+             values ($1, $2, $3, $4, $5, $6)
+             returning id`,
+            [tenantId, runId, kind, file.name, storagePath, kind === "table" ? ingestionType : null]
+          );
     return result.rows[0].id;
   });
 }

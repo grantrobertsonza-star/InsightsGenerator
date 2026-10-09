@@ -92,7 +92,7 @@ export async function generateDecisionCandidates(
         `select i.headline, i.observation, i.tension, i.implication, f.theme
          from insights i
          join findings f on f.id = i.finding_id
-         where i.run_id = $1
+         where i.run_id = $1 and f.status != 'rejected'
          order by f.theme nulls last, i.created_at
          limit $2`,
         [runId, MAX_INSIGHTS_FOR_PROMPT]
@@ -116,7 +116,7 @@ export async function generateDecisionCandidates(
   } else {
     const findings = await withTenant(tenantId, async (client) => {
       const result = await client.query<{ finding_text: string; theme: string | null }>(
-        "select finding_text, theme from findings where run_id = $1 order by theme nulls last limit $2",
+        "select finding_text, theme from findings where run_id = $1 and status != 'rejected' order by theme nulls last limit $2",
         [runId, MAX_FINDINGS_FOR_PROMPT]
       );
       return result.rows;

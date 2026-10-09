@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GridIcon, ChartIcon, BookIcon } from "./icons";
+import { GridIcon, ChartIcon, BookIcon, LibraryIcon } from "./icons";
 import type { ComponentType } from "react";
 
 type NavItem = {
@@ -26,6 +26,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Programs",
     icon: ChartIcon,
     isActive: (pathname) => pathname.startsWith("/programs"),
+  },
+  {
+    href: "/knowledge",
+    label: "Knowledge base",
+    icon: LibraryIcon,
+    isActive: (pathname) => pathname.startsWith("/knowledge"),
   },
   {
     href: "/manual",

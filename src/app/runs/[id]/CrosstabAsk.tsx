@@ -1,0 +1,109 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { askCrosstabAction } from "@/lib/crosstabActions";
+import type { AskPlan } from "@/lib/crosstabAsk";
+import type { VariableDictionary } from "@/lib/parseStatsFile";
+import { filterText } from "./CrosstabFilters";
+
+/**
+ * Ask for a table in plain English. The answer is a setup to read and confirm, never a table that
+ * runs by itself: the researcher sees which variables, which filters and what was assumed first.
+ */
+export default function CrosstabAsk({
+  runId,
+  documentId,
+  dict,
+  busy,
+  onUse,
+}: {
+  runId: string;
+  documentId: string;
+  dict: VariableDictionary;
+  busy: boolean;
+  onUse: (plan: AskPlan, run: boolean) => void;
+}) {
+  const [text, setText] = useState("");
+  const [plan, setPlan] = useState<AskPlan | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function ask() {
+    setError(null);
+    setPlan(null);
+    start(async () => {
+      const r = await askCrosstabAction(runId, documentId, text);
+      if (r.ok) setPlan(r.plan);
+      else setError(r.error);
+    });
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-3 text-xs">
+      <p className="text-base font-semibold text-foreground">Ask for a table in plain English</p>
+      <div className="flex flex-col gap-2">
+        <textarea
+          value={text}
+          rows={4}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && text.trim().length >= 5 && !pending) {
+              e.preventDefault();
+              ask();
+            }
+          }}
+          placeholder={"What to measure, who to compare, and who to include. For example:\n\n  income by gender for people aged 24 to 36\n  main source of money by province, women only\n  how satisfied people are with their bank, by age group"}
+          maxLength={600}
+          className="min-h-[7rem] w-full resize-y rounded-lg border border-border bg-white px-3 py-2.5 text-base leading-relaxed"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={ask}
+            disabled={pending || text.trim().length < 5}
+            className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+          >
+            {pending ? "Reading..." : "Set it up"}
+          </button>
+          <span className="text-muted">Enter sends, Shift+Enter adds a line.</span>
+        </div>
+        <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-muted">
+          <li>Name what to measure (the rows) and, after &quot;by&quot;, who to compare (the columns).</li>
+          <li>Limit the people in plain terms: &quot;aged 24 to 36&quot;, &quot;women only&quot;, &quot;in Gauteng&quot;.</li>
+          <li>Use the wording of the question or variable if you know it. Ask for one table at a time.</li>
+          <li>You always get a setup to check first. Nothing runs until you press Add table.</li>
+        </ul>
+      </div>
+      {error && <p className="text-danger">{error}</p>}
+      {plan && (
+        <div className="space-y-2 rounded border border-border bg-white p-2">
+          <p className="text-foreground">{plan.summary}</p>
+          <dl className="grid grid-cols-[5rem_1fr] gap-y-1">
+            <dt className="text-muted">Rows</dt>
+            <dd>{plan.rows.length ? plan.rows.map((r) => r.label).join("; ") : "none (describing the columns on their own)"}</dd>
+            <dt className="text-muted">Columns</dt>
+            <dd>{plan.columns.length ? plan.columns.map((c) => c.label).join("; ") : "everyone (no split)"}</dd>
+            <dt className="text-muted">Filters</dt>
+            <dd>{plan.filters.length ? plan.filters.map((f) => filterText(f, dict)).join("; ") : "none"}</dd>
+          </dl>
+          {plan.unclear.length > 0 && (
+            <ul className="list-disc space-y-0.5 pl-5 text-amber-700">
+              {plan.unclear.map((u, i) => (
+                <li key={i}>{u}</li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={() => onUse(plan, false)} className="rounded border border-border px-3 py-1 font-medium disabled:opacity-50">
+              Put this in the workspace
+            </button>
+            <button type="button" disabled={busy} onClick={() => onUse(plan, true)} className="rounded bg-primary px-3 py-1 font-medium text-white disabled:opacity-50">
+              Add table now
+            </button>
+          </div>
+          <p className="text-[11px] text-muted">Check the variables and filters before you rely on the table. Weight, tests and corrections are set below as usual.</p>
+        </div>
+      )}
+    </div>
+  );
+}

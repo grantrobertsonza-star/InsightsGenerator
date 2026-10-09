@@ -38,6 +38,12 @@ const CAVEAT_LABELS: Record<string, string> = {
   base_size_unknown: "Base size unknown",
   std_unknown: "Spread unknown",
   uncorrected_multiple_comparisons: "Multiple comparisons",
+  fdr_controlled_within_table: "False discovery controlled (table)",
+  fdr_controlled_within_row: "False discovery controlled (row)",
+  bonferroni_controlled_within_row: "Bonferroni corrected (row)",
+  weighted_effective_base: "Weighted, effective base",
+  survey_design_not_modelled: "Survey design not modelled",
+  survey_design_modelled: "Survey design modelled (Taylor series)",
   post_hoc_after_significant_anova: "Post-hoc (after significant ANOVA)",
   insufficient_n_for_test: "Too little data to test",
 };

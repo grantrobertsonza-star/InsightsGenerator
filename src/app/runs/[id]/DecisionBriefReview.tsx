@@ -5,6 +5,7 @@ import {
   acceptDecisionCandidate,
   rejectDecisionCandidate,
   restoreDecisionCandidate,
+  unacceptDecisionCandidate,
   deleteDecisionCandidate,
   addOwnDecisionCandidate,
   regenerateDecisionCandidates,
@@ -161,7 +162,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
             {isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => restoreDecisionCandidate(runId, candidate.id))}
+                onClick={() => startTransition(() => unacceptDecisionCandidate(runId, candidate.id))}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
               >
                 Unaccept

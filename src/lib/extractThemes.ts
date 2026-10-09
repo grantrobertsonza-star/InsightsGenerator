@@ -1,3 +1,4 @@
+import { getGuideHintsForRun } from "./guides";
 import type { PoolClient } from "pg";
 import {
   applyOverrides,
@@ -80,9 +81,9 @@ const OPEN_CODING_MAX_CHARS = 60000;
 const MIN_SEGMENTS_FOR_FINDING = 2;
 const MODEL_CONCURRENCY = 3;
 
-type StoredSegment = TranscriptSegment & { id: string; page: number | null };
+export type StoredSegment = TranscriptSegment & { id: string; page: number | null };
 
-type CodeRow = {
+export type CodeRow = {
   id: string;
   position: number;
   name: string;
@@ -107,7 +108,8 @@ export type ManifestStage =
   | "apply"
   | "summary"
   | "link_proposal"
-  | "negative_case_search";
+  | "negative_case_search"
+  | "stability_rerun";
 
 export async function recordManifest(
   tenantId: string,
@@ -150,7 +152,7 @@ export async function recordManifest(
   }
 }
 
-async function recordTrace(
+export async function recordTrace(
   tenantId: string,
   runId: string,
   event: string,
@@ -261,6 +263,17 @@ function noteOpenCodingFailure(documentId: string, reason: string) {
   openCodingFailures.set(documentId, list);
 }
 
+/** Topics the discussion guide meant to cover. Hints only: a theme still needs support in the transcript. */
+function hintBlock(hints: string[]): string {
+  if (hints.length === 0) return "";
+  return (
+    "The discussion guide for this study covered these topics:\n" +
+    hints.map((h) => `- ${h}`).join("\n") +
+    "\nUse them only as a prompt for where to look. Do not create a theme for a topic the participants did not " +
+    "actually talk about, and do not let the guide hide themes it did not anticipate.\n\n"
+  );
+}
+
 async function runOpenCoding(
   tenantId: string,
   runId: string,
@@ -269,6 +282,7 @@ async function runOpenCoding(
   excerpt: string,
   runIndex: number,
   truncated: boolean,
+  hints: string[] = [],
 ): Promise<OpenRunResult | null> {
   try {
     const response = await anthropic.messages.create({
@@ -278,7 +292,7 @@ async function runOpenCoding(
       tool_choice: { type: "tool", name: "record_themes" },
       tools: OPEN_TOOLS,
       messages: [
-        { role: "user", content: `Here is the transcript text:\n\n${excerpt}` },
+        { role: "user", content: `${hintBlock(hints)}Here is the transcript text:\n\n${excerpt}` },
       ],
     });
     await logApiUsage(tenantId, runId, "extract_themes", response.usage);
@@ -346,7 +360,7 @@ async function runOpenCoding(
       stage: "open_coding",
       runIndex,
       promptHash: sha256(OPEN_SYSTEM + JSON.stringify(OPEN_TOOLS)),
-      inputHash: sha256(excerpt),
+      inputHash: sha256(hintBlock(hints) + excerpt),
       detail: {
         themes_returned: matches.length,
         themes_kept: kept.length,
@@ -1072,13 +1086,14 @@ function codebookBlock(codes: CodeRow[]): string {
     .join("\n");
 }
 
-async function applyCodebook(
+export async function applyCodebook(
   tenantId: string,
   runId: string,
   documentId: string,
   codebookId: string,
   codes: CodeRow[],
   segments: StoredSegment[],
+  stage: ManifestStage = "apply",
 ): Promise<{
   assignments: Map<number, number[]>;
   failedBatches: number;
@@ -1114,8 +1129,17 @@ async function applyCodebook(
           !toolUse ||
           toolUse.type !== "tool_use" ||
           response.stop_reason === "max_tokens"
-        )
+        ) {
+          await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
+            document_id: documentId,
+            batch: batchIndex,
+            reason:
+              response.stop_reason === "max_tokens"
+                ? "max_tokens"
+                : "no_tool_use",
+          });
           return null;
+        }
         const parsed = parseAssignments(
           (toolUse.input as { assignments?: unknown }).assignments,
           new Set(batch.items.map((i) => i.index)),
@@ -1123,14 +1147,19 @@ async function applyCodebook(
         );
         await recordManifest(tenantId, runId, documentId, {
           codebookId,
-          stage: "apply",
+          stage,
           runIndex: batchIndex,
           promptHash: sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS)),
           inputHash: sha256(user),
           detail: { turns: batch.items.length, turns_coded: parsed.size },
         });
         return parsed;
-      } catch {
+      } catch (error) {
+        await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
+          document_id: documentId,
+          batch: batchIndex,
+          reason: error instanceof Error ? error.message.slice(0, 300) : "error",
+        });
         return null;
       }
     },
@@ -1677,6 +1706,7 @@ export async function extractThemesFromTranscript(
 
   // Step 1.
   const { text: excerpt, truncated } = buildOpenExcerpt(parsed);
+  const guideTopics = await getGuideHintsForRun(tenantId, runId);
   const passes = await mapWithConcurrency(
     Array.from({ length: OPEN_CODING_RUNS }, (_, i) => i + 1),
     MODEL_CONCURRENCY,
@@ -1689,6 +1719,7 @@ export async function extractThemesFromTranscript(
         excerpt,
         runIndex,
         truncated,
+        guideTopics,
       ),
   );
   const okRuns = passes.filter((p): p is OpenRunResult => p !== null);
@@ -2160,6 +2191,13 @@ export async function reapplyCodebook(
     applied.totalBatches > 0 &&
     applied.failedBatches === applied.totalBatches
   ) {
+    // Remove the empty new version so the latest codebook is still the one
+    // the existing findings and checks were built on.
+    await withTenant(tenantId, async (client) => {
+      await client.query("delete from coding_codebooks where id = $1", [
+        book.codebookId,
+      ]);
+    });
     throw new Error(
       "The edited codebook could not be applied to the transcript. Try again.",
     );

@@ -1,3 +1,4 @@
+import type { StatedRouting } from "@/lib/statedRouting";
 import {
   computeTableQuality,
   type VariableType,
@@ -13,6 +14,10 @@ export type ImportQualityTable = {
   headers: string[];
   rows: Record<string, CellValue>[];
   ingestionType: "raw" | "aggregated";
+  /** Set when the file was too wide to store whole and only usable variables were kept. */
+  trimmed?: { total: number; kept: number } | null;
+  /** Skip instructions read off a confirmed questionnaire. */
+  stated?: StatedRouting[];
 };
 
 const typeLabel: Record<VariableType, string> = {
@@ -94,6 +99,7 @@ export default function ImportQualityPanel({
           table.headers,
           table.rows,
           table.ingestionType,
+          table.stated ?? [],
         );
         const title = `${table.documentName}${table.label ? `: ${table.label}` : table.tableIndex > 0 ? `: table ${table.tableIndex + 1}` : ""}`;
         const caseLabel = q.kind === "raw" ? "Cases" : "Rows";
@@ -118,17 +124,41 @@ export default function ImportQualityPanel({
               <StatusPill status={q.status} />
             </div>
 
+            {table.trimmed ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                The file holds {table.trimmed.total.toLocaleString()} variables in total. It is too wide to store whole, so
+                only {table.trimmed.kept.toLocaleString()} were kept for this preview and these checks: those with
+                enough answers to compare, in file order. The cross tab tool still reads every variable in the
+                original file, so tables are not limited to this subset. The figures below, including missing
+                values, describe the kept variables only.
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat value={q.cases.toLocaleString()} label={caseLabel} />
               <Stat
                 value={q.variables.toLocaleString()}
-                label={variableLabel}
+                label={
+                  table.trimmed
+                    ? `${variableLabel} kept (of ${table.trimmed.total.toLocaleString()})`
+                    : variableLabel
+                }
               />
               <Stat
                 value={q.missingCells.toLocaleString()}
-                label="Missing values"
+                label={
+                  q.routedVariables > 0
+                    ? "Missing values (includes planned skips)"
+                    : "Missing values"
+                }
               />
-              <Stat value={`${q.missingPct}%`} label="Of all cells empty" />
+              <Stat
+                value={`${q.missingPct}%`}
+                label={
+                  q.routedVariables > 0
+                    ? `Of all cells empty (${q.unexplainedMissingPct}% once ${q.routedVariables} routed question${q.routedVariables === 1 ? "" : "s"} are set aside)`
+                    : "Of all cells empty"
+                }
+              />
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-border">
@@ -264,6 +294,11 @@ export default function ImportQualityPanel({
                           <td className="py-1 pr-3 text-right">{v.distinct}</td>
                           <td className="py-1 text-muted">
                             {[
+                              v.routedBy
+                                ? v.routedSource === "questionnaire"
+                                  ? `skip logic from questionnaire (gate: ${v.routedBy}), ${v.missingAsked ?? 0} of ${v.askedCount ?? 0} asked are empty`
+                                  : `routed by ${v.routedBy}`
+                                : null,
                               v.constant ? "single value" : null,
                               v.unlabelled ? "no label" : null,
                             ]

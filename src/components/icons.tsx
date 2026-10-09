@@ -208,6 +208,18 @@ export function BookIcon({ className }: IconProps) {
   );
 }
 
+export function LibraryIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 4v16" />
+      <path d="M9 4v16" />
+      <path d="M14 5l4.5 14.5" />
+      <path d="M19 4l-3 .9" />
+      <path d="M3 20h12" />
+    </svg>
+  );
+}
+
 export function InfoIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

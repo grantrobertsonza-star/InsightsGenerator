@@ -81,32 +81,23 @@ export async function saveRunContext(runId: string, formData: FormData) {
     );
     const prevObjective = prev.rows[0]?.initial_research_objective?.trim() ?? null;
 
-    await client.query(
-      `update runs set business_problem = $1, initial_research_objective = $2,
-              audience = $3, updated_at = now() where id = $4`,
-      [businessProblem, objective, audience, runId],
-    );
-
-    // Each line of the objective box is its own stated objective (a leading
-    // number or bullet is ignored). Lines removed or edited here replace the
-    // ones saved before; lines that already exist are left alone.
+    // The objective box only adds. Saved objectives live in the list beside
+    // the form, where they are edited or deleted one by one.
     const toLines = (text: string | null) =>
       (text ?? "")
         .split(/\r?\n/)
         .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
         .filter((l) => l.length > 0);
     const prevLines = toLines(prevObjective);
-    const newLines = toLines(objective);
+    const newLines = toLines(objective).filter((l) => !prevLines.includes(l));
+    const merged = [...prevLines, ...newLines].join("\n") || null;
 
-    for (const old of prevLines) {
-      if (!newLines.includes(old)) {
-        await client.query(
-          `delete from objective_candidates
-           where run_id = $1 and source = 'researcher_authored' and trim(candidate_text) = $2`,
-          [runId, old],
-        );
-      }
-    }
+    await client.query(
+      `update runs set business_problem = $1, initial_research_objective = $2,
+              audience = $3, updated_at = now() where id = $4`,
+      [businessProblem, merged, audience, runId],
+    );
+
     for (const line of newLines) {
       const exists = await client.query(
         "select 1 from objective_candidates where run_id = $1 and trim(candidate_text) = $2",

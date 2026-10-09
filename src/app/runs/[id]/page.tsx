@@ -17,7 +17,6 @@ import { detectDuplicateFindings } from "@/lib/dedupe";
 import { readCodingFile } from "@/lib/codedImportFile";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { deleteDocument } from "@/lib/documentActions";
-import { storeUploadedDocument } from "@/lib/documentUpload";
 import { generateDecisionCandidates } from "@/lib/decisionFramer";
 import { refreshVerdicts, reverifyFindings } from "@/lib/verifyFindings";
 import { refreshStatedInsightValidations } from "@/lib/validateStatedInsights";
@@ -48,6 +47,7 @@ import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
+import UploadForm from "./UploadForm";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
@@ -67,6 +67,7 @@ import {
   RunNav,
   SectionPanel,
   type RunNavSection,
+  GoToSection,
 } from "./RunShell";
 import type { FindingKind } from "@/lib/findingActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
@@ -75,8 +76,22 @@ import ProcessProgress from "./ProcessProgress";
 import PipelineStatus from "./PipelineStatus";
 import WorkingDataTabs from "./WorkingDataTabs";
 import ImportQualityPanel from "./ImportQualityPanel";
+import DataAuditPanel from "./DataAuditPanel";
+import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
+import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
+import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
+import { getInstrumentSummaries, getConfirmedItemsForData } from "@/lib/instruments";
+import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
+import { loadVariableDictionary } from "@/lib/crosstabs";
+import InstrumentCard from "./InstrumentCard";
+import AttachedInstruments from "./AttachedInstruments";
+import AcceptDataButton from "./AcceptDataButton";
+import OutputSetCard from "./OutputSetCard";
+import RelatedOutputSets from "./RelatedOutputSets";
+import { getOutputSets } from "@/lib/outputSets";
 import TranscriptQualityPanel from "./TranscriptQualityPanel";
 import CodebookPanel, { type CodebookView } from "./CodebookPanel";
+import CodingExtras from "./CodingExtras";
 import CodingAnalysisPanel from "./CodingAnalysisPanel";
 import TranscriptSetupTable, {
   CodeGate,
@@ -89,38 +104,34 @@ import {
   getTranscriptSetups,
   SETUP_NEEDED_MESSAGE,
 } from "@/lib/transcriptSetup";
+import { loadDataSetups } from "@/lib/dataSetup";
 import {
   crossTranscriptThemes,
   getCodingAnalysis,
   getFindingCodingCounts,
 } from "@/lib/codingAnalysis";
 import AcrossTranscripts from "./AcrossTranscripts";
+import CrosstabBuilder from "./CrosstabBuilder";
+import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
 import ResearchAssistantCard, {
   type AssistantChatMessage,
 } from "./ResearchAssistantCard";
 import {
-  ArrowLeftIcon,
   UploadIcon,
   BoltIcon,
   DocumentIcon,
   ChartIcon,
-  GridIcon,
   DownloadIcon,
   PresentationIcon,
-  TranscriptIcon,
   ListIcon,
   SparkleIcon,
   TargetIcon,
   CheckIcon,
   ChatIcon,
-  BookIcon,
-  InfoIcon,
 } from "@/components/icons";
-import FileInput from "@/components/FileInput";
 import {
-  computeCrossTabPreview,
   type CrossTabPreviewTable,
 } from "@/lib/crossTabPreview";
 
@@ -192,7 +203,7 @@ type Run = {
 
 type Document = {
   id: string;
-  kind: "report" | "table" | "evidence" | "transcript";
+  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output";
   source_filename: string;
   uploaded_at: string;
   ingestion_type: "raw" | "aggregated" | null;
@@ -336,6 +347,31 @@ async function getDocumentTablePreviews(
     });
   } catch {
     return [];
+  }
+}
+
+/**
+ * The opening of each report or transcript's extracted text, so a researcher
+ * can check on the Import page that the file was read properly. Only the
+ * first characters are fetched, never the whole text.
+ */
+async function getDocumentExcerpts(
+  runId: string,
+): Promise<Map<string, { excerpt: string; length: number }>> {
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ id: string; excerpt: string | null; length: number }>(
+        `select id, substring(extracted_text from 1 for 2500) as excerpt,
+                coalesce(length(extracted_text), 0)::int as length
+         from documents where run_id = $1 and kind <> 'table'`,
+        [runId],
+      );
+      return new Map(
+        r.rows.map((row) => [row.id, { excerpt: row.excerpt ?? "", length: row.length }] as const),
+      );
+    });
+  } catch {
+    return new Map();
   }
 }
 
@@ -559,6 +595,7 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
           createdAt: book.created_at,
           codes: codes.rows
             .filter((c) => c.codebook_id === book.id)
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             .map(({ codebook_id: _codebookId, ...c }) => {
               const meta = metaRows.get(
                 `${book.document_id}|${c.name.trim().toLowerCase().replace(/\s+/g, " ")}`,
@@ -938,6 +975,39 @@ async function getStatedInsightValidations(
             },
       ),
   }));
+}
+
+/**
+ * Files too wide to store whole are cut down to their usable variables on
+ * import (a 'wide_file_trimmed' trace row records by how much). Read here so
+ * the Import screen can say "185 of 3,776 variables kept" instead of
+ * quietly reporting the smaller number as if it were the whole file.
+ */
+async function getTrimmedFiles(
+  runId: string,
+): Promise<Map<string, { total: number; kept: number }>> {
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ detail: unknown }>(
+      `select detail from trace where run_id = $1 and event = 'wide_file_trimmed' order by occurred_at asc`,
+      [runId],
+    );
+    const out = new Map<string, { total: number; kept: number }>();
+    for (const row of result.rows) {
+      let d: unknown = row.detail;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          continue;
+        }
+      }
+      const o = d as { documentId?: unknown; totalVariables?: unknown; keptVariables?: unknown } | null;
+      if (o && typeof o.documentId === "string" && typeof o.totalVariables === "number" && typeof o.keptVariables === "number") {
+        out.set(o.documentId, { total: o.totalVariables, kept: o.keptVariables });
+      }
+    }
+    return out;
+  });
 }
 
 async function getLatestTraceMessage(
@@ -1647,66 +1717,6 @@ async function extractFindingsAction(runId: string, documentId: string) {
   revalidatePath(`/runs/${runId}`);
 }
 
-/**
- * Captures the banner plan for one raw document_tables row: which columns
- * are the banner (segmenting/breaking variables, e.g. Gender, Age band)
- * and which are the stub (outcome measures), picked from that table's own
- * headers rather than typed freehand, so there's no mismatch between what
- * was named and what the table actually contains. Per the 2026-10-04
- * decision, every category within a named banner column is compared
- * against every other by default once the dedicated statistical path
- * reads this, naming a column is the only discipline needed, not naming
- * individual comparison pairs within it.
- *
- * Schema-only consumer for now: nothing downstream reads banner_columns or
- * stub_columns yet, since the banner-plan-driven statistical service
- * itself hasn't been built. This just gives a raw table's plan somewhere
- * real to live, and a visible confirmation that it was captured, while
- * that table sits in the table_awaiting_statistical_path state (see
- * generateFindingsFromTable.ts).
- */
-async function saveBannerPlanAction(
-  runId: string,
-  documentTableId: string,
-  formData: FormData,
-) {
-  "use server";
-  const bannerColumns = formData
-    .getAll("bannerColumns")
-    .map(String)
-    .filter(Boolean);
-  const stubColumns = formData
-    .getAll("stubColumns")
-    .map(String)
-    .filter(Boolean);
-  const strataColumn = String(formData.get("strataColumn") ?? "").trim();
-  const weightColumn = String(formData.get("weightColumn") ?? "").trim();
-  const samplingDesign =
-    strataColumn || weightColumn
-      ? {
-          strataColumn: strataColumn || null,
-          weightColumn: weightColumn || null,
-        }
-      : null;
-
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query(
-      `update document_tables
-       set banner_columns = $1, stub_columns = $2, sampling_design = $3
-       where id = $4 and run_id = $5`,
-      [
-        JSON.stringify(bannerColumns),
-        JSON.stringify(stubColumns),
-        JSON.stringify(samplingDesign),
-        documentTableId,
-        runId,
-      ],
-    );
-  });
-
-  revalidatePath(`/runs/${runId}`);
-}
-
 async function generateFindingsAction(runId: string, documentId: string) {
   "use server";
   await stampSingleDocumentBatch(runId, "single_document");
@@ -1743,38 +1753,6 @@ async function generateFindingsAction(runId: string, documentId: string) {
   // finding already has an insight from the pass above), and for
   // "validate" mode it's the first real chance generateInsights has had to
   // run now that a decision exists.
-  await refreshInsights(TENANT_ID, runId);
-  await refreshSynthesizedInsights(TENANT_ID, runId);
-  await refreshSynthesizedInsightQuality(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-  revalidatePath(`/runs/${runId}`);
-}
-
-/**
- * The raw-table counterpart to generateFindingsAction: runs the
- * pre-specified banner x stub comparisons (generateFindingsFromBannerPlan,
- * bannerPlanComputation.ts) against a raw document_tables row instead of
- * processTableDocument's exploratory scan, then feeds whatever findings
- * come out through the same verify -> insight -> decision chain every
- * other generation path uses, so a banner-plan finding is reviewed,
- * verified, and synthesized exactly like any other.
- */
-async function computeBannerPlanAction(runId: string, documentTableId: string) {
-  "use server";
-  await stampSingleDocumentBatch(runId, "single_document");
-  try {
-    await generateFindingsFromBannerPlan(TENANT_ID, runId, documentTableId);
-  } catch (error) {
-    await recordSingleDocumentError(runId, documentTableId, error);
-  }
-  await detectDuplicateFindings(TENANT_ID, runId);
-  await Promise.all([
-    refreshVerdicts(TENANT_ID, runId)
-      .then(() => refreshStatedInsightValidations(TENANT_ID, runId))
-      .then(() => refreshInsights(TENANT_ID, runId)),
-    refreshObjectiveCandidates(runId),
-  ]);
-  await refreshDecisionCandidates(runId);
   await refreshInsights(TENANT_ID, runId);
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
@@ -2170,6 +2148,11 @@ const DOC_KIND_STYLE: Record<
     badge: "bg-amber-50 text-amber-700",
     label: "Evidence",
   },
+  instrument: {
+    border: "border-l-cyan-500",
+    badge: "bg-cyan-50 text-cyan-700",
+    label: "Questionnaire or guide",
+  },
 };
 
 /**
@@ -2404,244 +2387,6 @@ async function processRunAction(
   revalidatePath(`/runs/${runId}`);
 }
 
-async function uploadDocument(runId: string, formData: FormData) {
-  "use server";
-  const reportFiles = (formData.getAll("reportFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const tableFiles = (formData.getAll("tableFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const rawTableFiles = (formData.getAll("rawTableFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const transcriptFiles = (formData.getAll("transcriptFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-
-  if (
-    reportFiles.length +
-      tableFiles.length +
-      rawTableFiles.length +
-      transcriptFiles.length ===
-    0
-  ) {
-    return;
-  }
-
-  await Promise.all([
-    ...reportFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "report", file),
-    ),
-    ...tableFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "table", file, "aggregated"),
-    ),
-    ...rawTableFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "table", file, "raw"),
-    ),
-    ...transcriptFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "transcript", file),
-    ),
-  ]);
-
-  revalidatePath(`/runs/${runId}`);
-}
-
-/**
- * A quick, non-statistical look at a saved banner plan's shape, rendered
- * right below it once both sides have at least one column (see
- * computeCrossTabPreview for why a continuous stub gets a group-summary
- * table here instead of a frequency grid). This is purely descriptive --
- * nothing here runs a significance test or writes a finding -- so a
- * degenerate column choice (a near-unique continuous measure ticked as a
- * banner, say) is visible before "Compute banner comparisons" turns it
- * into hundreds of meaningless findings.
- */
-function CrossTabPreviewSection({
-  tables,
-}: {
-  tables: CrossTabPreviewTable[];
-}) {
-  if (tables.length === 0) return null;
-  return (
-    <details
-      open
-      className="mt-2 rounded-lg border border-border bg-white p-2 text-[11px]"
-    >
-      <summary className="cursor-pointer select-none font-medium text-foreground">
-        Preview cross-tabs ({tables.length})
-      </summary>
-      <p className="mt-1 text-muted">
-        Every banner x stub pairing in this plan, counts and averages only, no
-        significance testing. Check this before computing: a banner or stub
-        column that looks sparse or near-unique here will produce the same kind
-        of noise once comparisons actually run.
-      </p>
-      <div className="mt-2 space-y-4">
-        {tables.map((table) => {
-          const bannerIsTooGranular = table.bannerTruncated;
-          return (
-            <div key={`${table.bannerColumn}__${table.stubColumn}`}>
-              <p className="mb-1 font-medium text-foreground">
-                {table.bannerColumn} &times; {table.stubColumn}
-              </p>
-              {table.kind === "categorical" && table.bannerIsContinuous && (
-                <p className="mb-1 rounded border border-red-200 bg-red-50 px-1.5 py-1 text-red-800">
-                  {table.bannerColumn} looks like a continuous measurement
-                  rather than a set of categories (more than{" "}
-                  {table.bannerCategories.length} distinct values), so it&apos;s
-                  excluded as a banner: comparing individual readings against
-                  each other row by row isn&apos;t meaningful. If you want a
-                  mean {table.bannerColumn} per {table.stubColumn}, swap them:
-                  make {table.stubColumn} the banner and {table.bannerColumn}{" "}
-                  the stub instead. (Compute banner comparisons already skips
-                  this column as a banner for the same reason, nothing will
-                  actually be generated from it.)
-                </p>
-              )}
-              {bannerIsTooGranular &&
-                !(table.kind === "categorical" && table.bannerIsContinuous) && (
-                  <p className="mb-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-amber-800">
-                    {table.bannerColumn} has more than{" "}
-                    {table.bannerCategories.length} distinct values; only the
-                    first {table.bannerCategories.length} are shown below. A
-                    column this granular is closer to an ID than a segment, and
-                    usually makes a poor banner.
-                  </p>
-                )}
-              {table.kind === "categorical" &&
-              table.bannerIsContinuous ? null : table.kind === "categorical" ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          {table.bannerColumn}
-                        </th>
-                        {table.stubCategories.map((stubCategory) => (
-                          <th
-                            key={stubCategory}
-                            className="py-1 pr-3 font-semibold text-muted"
-                          >
-                            {stubCategory}
-                          </th>
-                        ))}
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          n
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.bannerCategories.map((bannerCategory, i) => (
-                        <tr
-                          key={bannerCategory}
-                          className="border-b border-border last:border-0"
-                        >
-                          <td className="py-1 pr-3 text-foreground">
-                            {bannerCategory}
-                          </td>
-                          {table.counts[i].map((count, j) => (
-                            <td
-                              key={table.stubCategories[j]}
-                              className="py-1 pr-3 text-foreground"
-                            >
-                              {count}
-                              {table.rowTotals[i] > 0 && (
-                                <span className="text-muted">
-                                  {" "}
-                                  (
-                                  {Math.round(
-                                    (count / table.rowTotals[i]) * 1000,
-                                  ) / 10}
-                                  %)
-                                </span>
-                              )}
-                            </td>
-                          ))}
-                          <td className="py-1 pr-3 text-muted">
-                            {table.rowTotals[i]}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {table.stubTruncated && (
-                    <p className="mt-1 text-muted">
-                      Showing first {table.stubCategories.length} categories of{" "}
-                      {table.stubColumn}.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  {table.anova && (
-                    <p
-                      className={`mb-1 inline-block rounded px-1.5 py-0.5 ${
-                        table.anova.significant
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-50 text-slate-500"
-                      }`}
-                    >
-                      One-way ANOVA across {table.bannerCategories.length}{" "}
-                      groups:{" "}
-                      {table.anova.fStat !== null && table.anova.pValue !== null
-                        ? `F=${table.anova.fStat}, p=${table.anova.pValue}`
-                        : "not enough data per group"}
-                      {table.anova.significant
-                        ? " -- significant overall"
-                        : " -- not significant overall"}
-                    </p>
-                  )}
-                  <table className="w-full border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          {table.bannerColumn}
-                        </th>
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          n
-                        </th>
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          Mean {table.stubColumn}
-                        </th>
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          Std dev
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.bannerCategories.map((bannerCategory, i) => (
-                        <tr
-                          key={bannerCategory}
-                          className="border-b border-border last:border-0"
-                        >
-                          <td className="py-1 pr-3 text-foreground">
-                            {bannerCategory}
-                          </td>
-                          <td className="py-1 pr-3 text-foreground">
-                            {table.n[i]}
-                          </td>
-                          <td className="py-1 pr-3 text-foreground">
-                            {table.mean[i] ?? "--"}
-                          </td>
-                          <td className="py-1 pr-3 text-muted">
-                            {table.stdDev[i] ??
-                              (table.n[i] < 2 ? "n too small" : "--")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </details>
-  );
-}
-
 /**
  * Times each loader on the run page. Logs one line per page load in
  * development (or when PROFILE_RUN_PAGE=1) listing the slowest loaders, so
@@ -2689,6 +2434,8 @@ export default async function RunPage({
     rawFindings,
     codingAnalysis,
     transcriptSetups,
+    dataSetups,
+    documentExcerpts,
     setupSuggestions,
     latestProcessErrors,
     documentTablePreviews,
@@ -2710,12 +2457,18 @@ export default async function RunPage({
     assistantMessages,
     programs,
     apiUsageBatches,
+    trimmedFiles,
+    transcriptQuality,
+    instrumentSummaries,
+    outputSets,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
     timing("findings", getFindings(id)),
     timing("codingAnalysis", getCodingAnalysis(TENANT_ID, id)),
     timing("transcriptSetups", getTranscriptSetups(TENANT_ID, id)),
+    timing("dataSetups", loadDataSetups(TENANT_ID, id)),
+    timing("documentExcerpts", getDocumentExcerpts(id)),
     timing("setupSuggestions", getSetupSuggestions(TENANT_ID, id)),
     timing("latestProcessErrors", getLatestProcessErrors(id)),
     timing("documentTablePreviews", getDocumentTablePreviews(id)),
@@ -2737,6 +2490,10 @@ export default async function RunPage({
     timing("assistantMessages", getAssistantMessages(id)),
     timing("programs", getPrograms()),
     timing("apiUsageBatches", getApiUsageBatches(id)),
+    timing("trimmedFiles", getTrimmedFiles(id)),
+    timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
+    timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
+    timing("outputSets", getOutputSets(TENANT_ID, id)),
   ]);
   if (!run) {
     notFound();
@@ -2790,11 +2547,6 @@ export default async function RunPage({
   // findings each run, see archiveAndReplaceFindings), but its label read
   // as a one-shot "do this once" action even once results already existed,
   // which is what prompted the mislabeling question.
-  const tableIdsWithFindings = new Set(
-    findings
-      .map((f) => f.source_table_id)
-      .filter((tableId): tableId is string => tableId !== null),
-  );
   const reapplyForRun = reapplyCodebookAction.bind(null, id);
   const documentTablesByDocument = new Map<string, DocumentTablePreview[]>();
   for (const preview of documentTablePreviews) {
@@ -2809,16 +2561,37 @@ export default async function RunPage({
   const documentNameById = new Map(
     documents.map((d) => [d.id, d.source_filename]),
   );
+  // Skip logic from a confirmed questionnaire, per raw data file. Best
+  // effort: without a questionnaire the detected routing is used.
+  const statedRoutingByDoc = new Map<string, StatedRouting[]>();
+  await Promise.all(
+    documents
+      .filter((d) => d.kind === "table" && d.ingestion_type === "raw")
+      .filter((d) => [...instrumentSummaries.values()].some((s) => s.forDocumentId === d.id && s.links.confirmed > 0))
+      .map(async (d) => {
+        try {
+          const items = await getConfirmedItemsForData(TENANT_ID, id, d.id);
+          if (!items.some((i) => i.routing)) return;
+          const dict = await loadVariableDictionary(TENANT_ID, id, d.id);
+          statedRoutingByDoc.set(d.id, buildStatedRouting(items, dict.variables));
+        } catch {
+          // fall back to detected routing
+        }
+      }),
+  );
   const importQualityTables = documentTablePreviews
-    .filter((t) => t.headers.length > 0)
+    .filter((t) => t.headers.length > 0 && t.table_index < 100)
     .map((t) => ({
       id: t.id,
+      documentId: t.document_id,
       documentName: documentNameById.get(t.document_id) ?? "Table",
       label: t.label,
       tableIndex: t.table_index,
       headers: t.headers,
       rows: t.rows,
       ingestionType: t.ingestion_type,
+      trimmed: trimmedFiles.get(t.document_id) ?? null,
+      stated: statedRoutingByDoc.get(t.document_id) ?? [],
     }));
 
   // The framer is meant to run automatically once there's evidence to read,
@@ -2877,7 +2650,6 @@ export default async function RunPage({
     ? (programs.find((program) => program.id === run.program_id) ?? null)
     : null;
 
-  const uploadWithRunId = uploadDocument.bind(null, id);
   const processRunWithId = processRunAction.bind(null, id, "new");
   const regenerateUnreviewedWithId = processRunAction.bind(
     null,
@@ -2918,14 +2690,48 @@ export default async function RunPage({
   // worth glancing back at the same way findings do.
   const generateMode = run.entry_point === "generate";
 
+  // Questionnaires and guides sit inside the card of the file they belong to,
+  // above its data quality. One with nowhere to go yet keeps its own card.
+  const rawDataDocs = documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw");
+  const transcriptDocs = documents.filter((x) => x.kind === "transcript");
+  const instrumentHome = new Map<string, string>(); // instrument id to host document id, "*" for every transcript
+  for (const x of documents) {
+    if (x.kind !== "instrument") continue;
+    const sm = instrumentSummaries.get(x.id);
+    if (!sm) continue;
+    if (sm.type === "interview_guide" || sm.type === "focus_group_guide") {
+      if (transcriptDocs.length > 0) instrumentHome.set(x.id, "*");
+    } else if (rawDataDocs.length > 0) {
+      instrumentHome.set(x.id, rawDataDocs.find((r) => r.id === sm.forDocumentId)?.id ?? rawDataDocs[0].id);
+    }
+  }
+  const attachedFor = (d: (typeof documents)[number]): React.ReactNode => {
+    const hosted = documents.filter((x) => {
+      const h = instrumentHome.get(x.id);
+      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
+    });
+    if (hosted.length === 0) return null;
+    return (
+        <AttachedInstruments
+          key={`attached-${d.id}`}
+          runId={id}
+          instruments={hosted.map((x) => ({
+            documentId: x.id,
+            filename: x.source_filename,
+            summary: instrumentSummaries.get(x.id)!,
+            deleteAction: deleteDocument.bind(null, id, x.id),
+          }))}
+          targetId={d.kind === "table" ? d.id : undefined}
+          dataDocs={d.kind === "table" ? rawDataDocs.map((r) => ({ id: r.id, name: r.source_filename })) : undefined}
+          autoStart={d.kind === "table" || transcriptDocs[0]?.id === d.id}
+          onlyTranscript={d.kind === "transcript" ? d.id : undefined}
+        />
+    );
+  };
   const uploadDone = documents.length > 0;
-  const documentsReached = uploadDone;
-  const documentsDone = findings.length > 0;
-  const objectiveReached = findings.length > 0;
   const objectiveDone = Boolean(run.research_objective);
   const decisionReached = generateMode ? insights.length > 0 : objectiveDone;
   const decisionDone = Boolean(run.decision_statement);
-  const insightsReached = generateMode ? objectiveDone : decisionDone;
   const recommendationsReached = Boolean(run.decision_statement);
 
   const startingPointLabel =
@@ -3472,10 +3278,6 @@ export default async function RunPage({
     />
   );
 
-  const objectiveKnownUpfront = Boolean(
-    run.initial_research_objective &&
-    run.initial_research_objective.trim().length > 0,
-  );
 
   // Decision's nav placement follows the same hard data dependency this
   // comment used to explain for the old scroll-order build: in generate
@@ -3612,18 +3414,437 @@ export default async function RunPage({
   // so a run with no upfront objective still showed it ahead of Findings,
   // the same regression objectiveKnownUpfront already fixed for the content
   // order (RunPage) but never for this list.
+  // Per-document cards, one list per kind of document, so Cross tabs (tables),
+  // Coding (transcripts) and Reports each show only their own.
+  const documentCards = (kind: "table" | "transcript" | "report") => (
+                        <ul className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+                          {documents
+                            .filter((d) => d.kind === kind)
+                            .map((doc) => {
+                            const extractAction = extractFindingsAction.bind(
+                              null,
+                              id,
+                              doc.id,
+                            );
+                            const generateAction = generateFindingsAction.bind(
+                              null,
+                              id,
+                              doc.id,
+                            );
+                            const codeAction = codeThemesAction.bind(
+                              null,
+                              id,
+                              doc.id,
+                            );
+                            const deleteAction = deleteDocument.bind(
+                              null,
+                              id,
+                              doc.id,
+                            );
+                            return (
+                              <li
+                                key={doc.id}
+                                className={`flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div
+                                      className="truncate text-sm font-medium text-foreground"
+                                      title={doc.source_filename}
+                                    >
+                                      {doc.source_filename}
+                                    </div>
+                                    <div className="text-xs text-muted">
+                                      <span
+                                        className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${DOC_KIND_STYLE[doc.kind]?.badge ?? ""}`}
+                                      >
+                                        {DOC_KIND_STYLE[doc.kind]?.label ??
+                                          doc.kind}
+                                      </span>{" "}
+                                      {new Date(
+                                        doc.uploaded_at,
+                                      ).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                  <form
+                                    action={deleteAction}
+                                    className="shrink-0"
+                                  >
+                                    <DeleteDocumentButton />
+                                  </form>
+                                </div>
+                                {doc.kind === "report" && (
+                                  <form action={extractAction}>
+                                    <SubmitButton
+                                      pendingLabel="Extracting..."
+                                      className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                                      icon={
+                                        <DocumentIcon className="h-3.5 w-3.5" />
+                                      }
+                                    >
+                                      Extract findings
+                                    </SubmitButton>
+                                  </form>
+                                )}
+                                {doc.kind === "table" &&
+                                  doc.ingestion_type !== "raw" && (
+                                    <form action={generateAction}>
+                                      <SubmitButton
+                                        pendingLabel="Generating..."
+                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-success px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                                        icon={
+                                          <ChartIcon className="h-3.5 w-3.5" />
+                                        }
+                                      >
+                                        Generate findings
+                                      </SubmitButton>
+                                    </form>
+                                  )}
+                                {doc.kind === "table" &&
+                                  doc.ingestion_type === "raw" && (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                                      Case-level data. Nothing is compared automatically.
+                                      Build tables with the cross tab tool below, or start
+                                      from a set of suggested tables, and keep the ones
+                                      worth keeping. Committed tables become findings.
+                                      Every comparison is flagged as uncorrected for
+                                      multiple comparisons and assumes simple random
+                                      sampling; complex survey designs are not applied yet.
+                                    </div>
+                                  )}
+                                {doc.kind === "table" &&
+                                  (isStatsFileName(doc.source_filename) ||
+                                    (doc.ingestion_type === "raw" &&
+                                      isCaseTableFileName(doc.source_filename))) &&
+                                  (!dataSetups.has(doc.id) || dataSetups.get(doc.id)?.accepted ? (
+                                    <CrosstabBuilder
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                      saved={(
+                                        documentTablesByDocument.get(doc.id) ?? []
+                                      )
+                                        .filter((t) => t.table_index >= 100)
+                                        .map((t) => ({
+                                          id: t.id,
+                                          label: t.label ?? "Crosstab",
+                                        }))}
+                                    />
+                                  ) : (
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                      <span>
+                                        The set-up for this file changed, or acceptance was undone. Accept it to carry on, or review it
+                                        under Import data first.
+                                      </span>
+                                      <span className="flex flex-wrap items-center gap-2">
+                                        <GoToSection id="upload">Review in Import data</GoToSection>
+                                        <AcceptDataButton runId={id} documentId={doc.id} setup={dataSetups.get(doc.id)!} />
+                                      </span>
+                                    </div>
+                                  ))}
+                                {doc.kind === "table" &&
+                                  doc.ingestion_type !== "raw" &&
+                                  (() => {
+                                    const tables = (
+                                      documentTablesByDocument.get(doc.id) ?? []
+                                    ).filter(
+                                      (t) =>
+                                        t.headers.length > 0 &&
+                                        t.rows.length > 0,
+                                    );
+                                    if (tables.length === 0) return null;
+                                    return (
+                                      <details className="rounded-lg border border-border bg-slate-50 p-2 text-xs">
+                                        <summary className="cursor-pointer select-none font-medium text-muted">
+                                          Preview extracted table
+                                          {tables.length > 1
+                                            ? `s (${tables.length})`
+                                            : ""}
+                                        </summary>
+                                        <div className="mt-2 space-y-4">
+                                          {tables.map((t) => {
+                                            const previewRows = t.rows.slice(
+                                              0,
+                                              10,
+                                            );
+                                            return (
+                                              <div key={t.id}>
+                                                <p className="mb-1 text-[11px] font-medium text-foreground">
+                                                  {t.label ??
+                                                    `Table ${t.table_index + 1}`}
+                                                  {t.source_page
+                                                    ? ` (page ${t.source_page})`
+                                                    : ""}
+                                                </p>
+                                                <div className="overflow-x-auto">
+                                                  <table className="w-full border-collapse text-left text-[11px]">
+                                                    <thead>
+                                                      <tr className="border-b border-border">
+                                                        {t.headers.map((h) => (
+                                                          <th
+                                                            key={h}
+                                                            className="py-1 pr-3 font-semibold text-muted"
+                                                          >
+                                                            {h}
+                                                          </th>
+                                                        ))}
+                                                      </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                      {previewRows.map(
+                                                        (row, rowIndex) => (
+                                                          <tr
+                                                            key={rowIndex}
+                                                            className="border-b border-border last:border-0"
+                                                          >
+                                                            {t.headers.map(
+                                                              (h) => (
+                                                                <td
+                                                                  key={h}
+                                                                  className="py-1 pr-3 text-foreground"
+                                                                >
+                                                                  {row[h] ?? ""}
+                                                                </td>
+                                                              ),
+                                                            )}
+                                                          </tr>
+                                                        ),
+                                                      )}
+                                                    </tbody>
+                                                  </table>
+                                                </div>
+                                                {t.rows.length >
+                                                  previewRows.length && (
+                                                  <p className="mt-1 text-[11px] text-muted">
+                                                    Showing first{" "}
+                                                    {previewRows.length} of{" "}
+                                                    {t.rows.length} rows.
+                                                  </p>
+                                                )}
+                                                {t.table_index < 100 && (
+                                                  <TableDigest
+                                                    headers={t.headers}
+                                                    rows={t.rows}
+                                                  />
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </details>
+                                    );
+                                  })()}
+                                {doc.kind === "transcript" && (
+                                  <CodeGate
+                                    documentId={doc.id}
+                                    initialReady={
+                                      transcriptSetups.get(doc.id)?.confirmed ??
+                                      false
+                                    }
+                                    initialSummary={(() => {
+                                      const setup = transcriptSetups.get(
+                                        doc.id,
+                                      );
+                                      if (!setup) return null;
+                                      // Transcripts confirmed by migration 0051 have no
+                                      // session type stored, so name only what exists.
+                                      const parts = [
+                                        SESSION_LABEL[setup.sessionType],
+                                        MODE_LABEL[setup.mode],
+                                      ].filter(Boolean);
+                                      return parts.length > 0
+                                        ? parts.join("; ")
+                                        : "confirmed";
+                                    })()}
+                                  >
+                                    <form action={codeAction}>
+                                      <SubmitButton
+                                        pendingLabel="Coding..."
+                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                                        icon={
+                                          <DocumentIcon className="h-3.5 w-3.5" />
+                                        }
+                                      >
+                                        Code themes
+                                      </SubmitButton>
+                                    </form>
+                                    <details className="rounded-lg border border-border bg-white p-2 text-xs">
+                                      <summary className="cursor-pointer select-none font-medium text-muted">
+                                        Already coded? Import your coding
+                                      </summary>
+                                      <form
+                                        action={importCodingAction.bind(
+                                          null,
+                                          id,
+                                          doc.id,
+                                        )}
+                                        className="mt-2 flex flex-col gap-2"
+                                      >
+                                        <p className="text-muted">
+                                          An Excel, CSV or Word file: a table
+                                          of themes, sub-themes and quotes, one
+                                          row per coded sentence (an ATLAS.ti
+                                          quotation report works), a coding
+                                          matrix, or a themed extract with
+                                          headings and quoted bullets. Quotes
+                                          are matched to this transcript and
+                                          every count is recomputed from it,
+                                          so counts in your file are ignored.
+                                          A file with codes and definitions
+                                          but no quotes is read as a codebook
+                                          and applied to the transcript.
+                                        </p>
+                                        <input
+                                          type="file"
+                                          name="codingFile"
+                                          accept=".xlsx,.xls,.csv,.docx"
+                                          required
+                                          className="text-xs"
+                                        />
+                                        <SubmitButton
+                                          pendingLabel="Importing..."
+                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:opacity-90"
+                                          icon={
+                                            <UploadIcon className="h-3.5 w-3.5" />
+                                          }
+                                        >
+                                          Import coding
+                                        </SubmitButton>
+                                      </form>
+                                    </details>
+                                  </CodeGate>
+                                )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <CodebookPanel
+                                      key={`codebook-${doc.id}-${codebooksByDocument.get(doc.id)!.version}-${codebooksByDocument.get(doc.id)!.codes.map((c) => `${c.theme}~${c.keywords}~${c.note}`).join("|")}`}
+                                      codebook={codebooksByDocument.get(
+                                        doc.id,
+                                      )!}
+                                      reapply={reapplyForRun}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codingAnalysis.has(doc.id) && (
+                                    <CodingAnalysisPanel
+                                      key={`coding-analysis-${doc.id}-${codingAnalysis.get(doc.id)!.version}`}
+                                      runId={id}
+                                      view={codingAnalysis.get(doc.id)!}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <CodingExtras
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codingAnalysis.has(doc.id) && (
+                                    <TranscriptQualityPanel
+                                      key={`coding-quality-${doc.id}-${codingAnalysis.get(doc.id)!.version}`}
+                                      runId={id}
+                                      title="Quality control"
+                                      items={[
+                                        {
+                                          documentId: doc.id,
+                                          filename: doc.source_filename,
+                                          view: codingAnalysis.get(doc.id)!,
+                                        },
+                                      ]}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      href={`/api/runs/${id}/coding/export`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Export codebook and coding checks (.xlsx)
+                                    </a>
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      href={`/api/runs/${id}/coding/extract`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Themed extract for writing up (.docx)
+                                    </a>
+                                  )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+  );
+  const documentsToolbar =
+    documents.length > 0 ? (
+<div className="flex flex-wrap items-center gap-2">
+                    <form action={processRunWithId}>
+                      <SubmitButton
+                        pendingLabel="Running..."
+                        title="Reads the reports, tables and raw data, codes any transcripts, checks the findings and writes the insights. Qual and quant files are analysed together."
+                        className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                        icon={<BoltIcon className="h-4 w-4" />}
+                      >
+                        Run analysis
+                      </SubmitButton>
+                      <ProcessProgress runId={id} />
+                    </form>
+                    <form action={regenerateUnreviewedWithId}>
+                      <SubmitButton
+                        pendingLabel="Regenerating..."
+                        title="Redo every document's extraction, but only replace findings you've rejected -- accepted findings (and everything built on them) are left alone"
+                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
+                      >
+                        Regenerate rejected
+                      </SubmitButton>
+                      <ProcessProgress runId={id} />
+                    </form>
+                    <form action={reprocessAllWithId}>
+                      <SubmitButton
+                        pendingLabel="Reprocessing..."
+                        title="Delete and redo every document's extraction from scratch, including findings you've already accepted or rejected"
+                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
+                      >
+                        Reprocess all documents
+                      </SubmitButton>
+                      <ProcessProgress runId={id} />
+                    </form>
+                  </div>
+    ) : null;
+
   const navSections: RunNavSection[] = [
     { id: "objective", group: "Setup", label: "Objective and context" },
     { id: "upload", group: "Setup", label: "Import data" },
     {
-      id: "findings",
+      id: "crosstabs",
       group: "Analysis",
+      label: "Cross tabs",
+      badge: documents.filter((d) => d.kind === "table").length,
+    },
+    {
+      id: "coding",
+      group: "Analysis",
+      label: "Coding",
+      badge: documents.filter((d) => d.kind === "transcript").length,
+    },
+    {
+      id: "reports",
+      group: "Analysis",
+      label: "Reports and decks",
+      badge: documents.filter((d) => d.kind === "report").length,
+    },
+    {
+      id: "findings",
+      group: "Findings",
       label: "Findings",
       badge: findings.length,
     },
     {
       id: "synthesized",
-      group: "Analysis",
+      group: "Findings",
       label: "Insights",
       badge: synthesizedInsights.length,
     },
@@ -3685,7 +3906,7 @@ export default async function RunPage({
               {run.business_problem}
             </p>
           )}
-          <div className="mb-10 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+          <div className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
             <span>Audience: {run.audience}</span>
             <span className="text-border">&middot;</span>
             <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
@@ -3729,7 +3950,7 @@ export default async function RunPage({
 
         <RunNav sections={navSections} />
 
-        <div className="px-8 py-8">
+        <div className="px-8 pb-8 pt-4">
           <SectionPanel id="upload">
             <h2 className="mb-5 text-xl font-semibold text-foreground">
               Import data
@@ -3741,70 +3962,138 @@ export default async function RunPage({
               icon={<UploadIcon className="h-4 w-4 text-primary" />}
               defaultOpen={!uploadDone}
             >
-              <form
-                action={uploadWithRunId}
-                className="flex max-w-xl flex-col gap-3"
-              >
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <FileInput
-                    name="reportFiles"
-                    multiple
-                    icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Reports"
-                  />
-                  <FileInput
-                    name="tableFiles"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                    icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Tables"
-                    caption="Already aggregated"
-                  />
-                  <FileInput
-                    name="rawTableFiles"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                    icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Quant data"
-                    caption="One row per respondent"
-                  />
-                  <FileInput
-                    name="transcriptFiles"
-                    multiple
-                    icon={
-                      <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
-                    }
-                    label="Qual data"
-                    caption="Coded or uncoded"
-                  />
-                </div>
-                <SubmitButton
-                  pendingLabel="Uploading..."
-                  className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                  icon={<UploadIcon className="h-4 w-4" />}
-                >
-                  Upload
-                </SubmitButton>
-              </form>
+              <UploadForm runId={id} />
             </CollapsibleSection>
           </SectionPanel>
 
-          {documents.some((d) => d.kind === "transcript") && (
+          {outputSets.length > 0 && (
             <SectionPanel id="upload">
-              <TranscriptSetupTable
+              <div className="mt-8 space-y-3">
+                <h2 className="text-xl font-semibold text-foreground">
+                  Statistical output ({outputSets.length} {outputSets.length === 1 ? "set" : "sets"})
+                </h2>
+                {outputSets.map((set) => (
+                  <OutputSetCard key={set.id} runId={id} set={set} />
+                ))}
+                {outputSets.length > 1 && <RelatedOutputSets runId={id} sets={outputSets} />}
+              </div>
+            </SectionPanel>
+          )}
+
+          {documents.some((d) => d.kind !== "output") && (
+            <SectionPanel id="upload">
+              <div className="mt-8">
+                <TranscriptSetupTable
                   runId={id}
-                  rows={documents
-                    .filter((d) => d.kind === "transcript")
-                    .map((d) => ({
-                      documentId: d.id,
-                      filename: d.source_filename,
-                      initial: transcriptSetups.get(d.id) ?? null,
-                      suggestion: setupSuggestions.get(d.id) ?? null,
-                      hasCoding: codebooksByDocument.has(d.id),
-                      accent:
-                        DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
-                    }))}
+                  rows={documents.filter((d) => !instrumentHome.has(d.id) && d.kind !== "output").map((d) => ({
+                    documentId: d.id,
+                    filename: d.source_filename,
+                    kind: d.kind,
+                    kindLabel: DOC_KIND_STYLE[d.kind]?.label ?? d.kind,
+                    kindBadge: DOC_KIND_STYLE[d.kind]?.badge ?? "",
+                    uploadedAt: d.uploaded_at,
+                    isRawData: d.kind === "table" && d.ingestion_type === "raw",
+                    dataSetup: dataSetups.get(d.id) ?? null,
+                    preview:
+                      d.kind === "instrument"
+                        ? null
+                        : d.kind === "table"
+                        ? {
+                            kind: "tables" as const,
+                            tables: (documentTablesByDocument.get(d.id) ?? [])
+                              .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.rows.length > 0)
+                              .map((t) => ({
+                                label: t.label ?? `Table ${t.table_index + 1}`,
+                                headers: t.headers.slice(0, 12),
+                                totalColumns: t.headers.length,
+                                rows: t.rows.slice(0, 8),
+                                totalRows: t.rows.length,
+                              })),
+                          }
+                        : documentExcerpts.has(d.id)
+                          ? {
+                              kind: "text" as const,
+                              excerpt: documentExcerpts.get(d.id)!.excerpt,
+                              length: documentExcerpts.get(d.id)!.length,
+                            }
+                          : null,
+                    attached: attachedFor(d),
+                    quality:
+                      d.kind === "instrument" && instrumentSummaries.has(d.id) ? (
+                        <InstrumentCard
+                          key="instrument"
+                          runId={id}
+                          documentId={d.id}
+                          summary={instrumentSummaries.get(d.id)!}
+                          dataDocs={
+                            instrumentSummaries.get(d.id)!.type === "questionnaire" ||
+                            instrumentSummaries.get(d.id)!.type === null
+                              ? documents
+                                  .filter((x) => x.kind === "table" && x.ingestion_type === "raw")
+                                  .map((x) => ({ id: x.id, name: x.source_filename }))
+                              : []
+                          }
+                        />
+                      ) : d.kind === "transcript" && transcriptQuality.has(d.id) ? (
+                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
+                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                            Data quality
+                          </summary>
+                          <div className="mt-3">
+                            <TranscriptImportQualityPanel q={transcriptQuality.get(d.id)!} />
+                          </div>
+                        </details>
+                      ) : d.kind === "table" &&
+                        d.ingestion_type !== "raw" &&
+                        (documentTablesByDocument.get(d.id) ?? []).length > 0 ? (
+                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
+                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                            Data quality
+                          </summary>
+                          <div className="mt-3">
+                            <AggregatedQualityPanel
+                              q={computeAggregatedQuality(
+                                (documentTablesByDocument.get(d.id) ?? [])
+                                  .filter((t) => t.table_index < 100)
+                                  .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
+                              )}
+                            />
+                          </div>
+                        </details>
+                      ) : d.kind === "table" &&
+                        importQualityTables.some((t) => t.documentId === d.id) ? (
+                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
+                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                            Data quality
+                          </summary>
+                          <div className="mt-3">
+                            <ImportQualityPanel
+                              tables={importQualityTables.filter((t) => t.documentId === d.id)}
+                              hasReportOnly={false}
+                            />
+                            {d.ingestion_type === "raw" && <DataAuditPanel runId={id} documentId={d.id} />}
+                          </div>
+                        </details>
+                      ) : null,
+                    detail:
+                      d.kind === "instrument"
+                        ? "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
+                        : d.kind === "table"
+                        ? d.ingestion_type === "raw"
+                          ? "Case-level data. Tables are built in Analysis, Cross tabs once you accept it here."
+                          : "Already-aggregated table, read as it is."
+                        : d.kind === "report"
+                          ? "Report, read for the findings it states."
+                          : "Context for the project, not mined for findings.",
+                    initial: transcriptSetups.get(d.id) ?? null,
+                    suggestion: setupSuggestions.get(d.id) ?? null,
+                    hasCoding: codebooksByDocument.has(d.id),
+                    accent:
+                      DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
+                    deleteAction: deleteDocument.bind(null, id, d.id),
+                  }))}
                 />
+              </div>
             </SectionPanel>
           )}
 
@@ -3918,25 +4207,14 @@ export default async function RunPage({
 
           {documents.length > 0 && (
             <SectionPanel id="upload">
-              <div className="mt-8 rounded-lg border border-border bg-white p-4">
-                <div className="mb-1 text-sm font-semibold text-foreground">
-                  Run analysis
-                </div>
-                <p className="mb-3 text-xs text-muted">
-                  Reads the files, codes the transcripts, checks the findings
-                  and writes the insights. Everything is accepted by default;
-                  you can review or change any of it afterwards.
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white p-4">
+                <p className="max-w-2xl text-xs text-muted">
+                  Files are read and accepted as they arrive. Next, build tables in Analysis, Cross tabs, code
+                  transcripts under Coding, or run the full analysis from Findings.
                 </p>
-                <form action={processRunWithId} className="flex flex-col gap-2">
-                  <SubmitButton
-                    pendingLabel="Running..."
-                    className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                    icon={<BoltIcon className="h-4 w-4" />}
-                  >
-                    Run analysis
-                  </SubmitButton>
-                  <ProcessProgress runId={id} />
-                </form>
+                <div className="flex flex-wrap items-center gap-2">
+                  <GoToSection id="crosstabs">Open Analysis</GoToSection>
+                </div>
               </div>
             </SectionPanel>
           )}
@@ -3951,19 +4229,23 @@ export default async function RunPage({
               brief or proposal. Your objectives are scored for quality here. After the insights are built, the
               Objective review step checks them against the evidence, and if you gave none it proposes some.
             </p>
-            <RunContextForm
-              runId={id}
-              businessProblem={run.business_problem}
-              objective={run.initial_research_objective}
-              audience={run.audience}
-            />
-            <StatedObjectivesList
-              runId={id}
-              lines={(run.initial_research_objective ?? "")
-                .split(/\r?\n/)
-                .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
-                .filter((l) => l.length > 0)}
-            />
+            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+              <RunContextForm
+                runId={id}
+                businessProblem={run.business_problem}
+                objective={run.initial_research_objective}
+                audience={run.audience}
+              />
+              <div className="lg:sticky lg:top-4">
+                <StatedObjectivesList
+                  runId={id}
+                  lines={(run.initial_research_objective ?? "")
+                    .split(/\r?\n/)
+                    .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
+                    .filter((l) => l.length > 0)}
+                />
+              </div>
+            </div>
           </SectionPanel>
 
           <SectionPanel id="objective-review">
@@ -3991,10 +4273,79 @@ export default async function RunPage({
             {objectiveReviewList}
           </SectionPanel>
 
+          <SectionPanel id="crosstabs">
+            <h2 className="mb-1 text-xl font-semibold text-foreground">
+              Cross tabs
+            </h2>
+            <p className="mb-5 max-w-3xl text-sm text-muted">
+              Survey and other numeric data. Build tables here, commit the ones worth keeping, and
+              their comparisons flow into Findings.
+            </p>
+            {!documents.some((d) => d.kind === "table") ? (
+              <p className="text-sm text-muted">
+                No data files yet. Add a survey data file or a table under Import data.
+              </p>
+            ) : (
+              documentCards("table")
+            )}
+          </SectionPanel>
+
+          <SectionPanel id="coding">
+            <h2 className="mb-1 text-xl font-semibold text-foreground">
+              Coding
+            </h2>
+            <p className="mb-5 max-w-3xl text-sm text-muted">
+              Interviews and group discussions. Code the themes here, review the codebook and the
+              checks, and the coded themes flow into Findings.
+            </p>
+            {!documents.some((d) => d.kind === "transcript") ? (
+              <p className="text-sm text-muted">
+                No transcripts yet. Add one under Import data.
+              </p>
+            ) : (
+              <>
+                {documentCards("transcript")}
+                {codingAnalysis.size > 1 && (
+                  <div className="mt-6">
+                    <AcrossTranscripts
+                      rows={crossTranscriptThemes(codingAnalysis)}
+                      documentNames={Object.fromEntries(
+                        documents.map((d) => [d.id, d.source_filename]),
+                      )}
+                      runId={id}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </SectionPanel>
+
+          <SectionPanel id="reports">
+            <h2 className="mb-1 text-xl font-semibold text-foreground">
+              Reports and decks
+            </h2>
+            <p className="mb-5 max-w-3xl text-sm text-muted">
+              Written reports and presentations. Extract the claims they make, which are then
+              checked in Findings.
+            </p>
+            {!documents.some((d) => d.kind === "report") ? (
+              <p className="text-sm text-muted">
+                No reports yet. Add one under Import data.
+              </p>
+            ) : (
+              documentCards("report")
+            )}
+          </SectionPanel>
+
           <SectionPanel id="findings">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-1 text-xl font-semibold text-foreground">
               Findings
             </h2>
+            <p className="mb-4 max-w-3xl text-sm text-muted">
+              Every claim in one place: comparisons from committed tables, themes from coding, and
+              claims extracted from reports.
+            </p>
+            {documentsToolbar && <div className="mb-4">{documentsToolbar}</div>}
             <WorkingDataTabs
               tabs={[
                 {
@@ -4006,597 +4357,6 @@ export default async function RunPage({
                   id: "report-claims",
                   label: `Report claims${statedInsightValidations.length > 0 ? ` (${statedInsightValidations.length})` : ""}`,
                   content: statedInsightValidationsSection,
-                },
-                {
-                  id: "files",
-                  label: `Files and evidence (${documents.length})`,
-                  content: (
-                    <>
-            <CollapsibleSection
-              key={`documents-${documentsReached}-${documentsDone}`}
-              title="Documents"
-              bare
-              icon={<DocumentIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={documentsReached && !documentsDone}
-              headerRight={
-                documents.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <form action={regenerateUnreviewedWithId}>
-                      <SubmitButton
-                        pendingLabel="Regenerating..."
-                        title="Redo every document's extraction, but only replace findings you've rejected -- accepted findings (and everything built on them) are left alone"
-                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
-                      >
-                        Regenerate rejected
-                      </SubmitButton>
-                      <ProcessProgress runId={id} />
-                    </form>
-                    <form action={reprocessAllWithId}>
-                      <SubmitButton
-                        pendingLabel="Reprocessing..."
-                        title="Delete and redo every document's extraction from scratch, including findings you've already accepted or rejected"
-                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
-                      >
-                        Reprocess all documents
-                      </SubmitButton>
-                      <ProcessProgress runId={id} />
-                    </form>
-                  </div>
-                ) : undefined
-              }
-            >
-              <WorkingDataTabs
-                tabs={[
-                  {
-                    id: "files",
-                    label: "Files",
-                    content: (
-                      <>
-                        {documents.length === 0 && (
-                          <p className="text-sm text-muted">
-                            Nothing uploaded yet.
-                          </p>
-                        )}
-                        {codingAnalysis.size > 1 && (
-                          <div className="mb-4">
-                            <AcrossTranscripts
-                              rows={crossTranscriptThemes(codingAnalysis)}
-                              documentNames={Object.fromEntries(
-                                documents.map((d) => [d.id, d.source_filename]),
-                              )}
-                              runId={id}
-                            />
-                          </div>
-                        )}
-                        <ul className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-                          {documents.map((doc) => {
-                            const extractAction = extractFindingsAction.bind(
-                              null,
-                              id,
-                              doc.id,
-                            );
-                            const generateAction = generateFindingsAction.bind(
-                              null,
-                              id,
-                              doc.id,
-                            );
-                            const codeAction = codeThemesAction.bind(
-                              null,
-                              id,
-                              doc.id,
-                            );
-                            const deleteAction = deleteDocument.bind(
-                              null,
-                              id,
-                              doc.id,
-                            );
-                            return (
-                              <li
-                                key={doc.id}
-                                className={`flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div
-                                      className="truncate text-sm font-medium text-foreground"
-                                      title={doc.source_filename}
-                                    >
-                                      {doc.source_filename}
-                                    </div>
-                                    <div className="text-xs text-muted">
-                                      <span
-                                        className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${DOC_KIND_STYLE[doc.kind]?.badge ?? ""}`}
-                                      >
-                                        {DOC_KIND_STYLE[doc.kind]?.label ??
-                                          doc.kind}
-                                      </span>{" "}
-                                      {new Date(
-                                        doc.uploaded_at,
-                                      ).toLocaleDateString()}
-                                    </div>
-                                  </div>
-                                  <form
-                                    action={deleteAction}
-                                    className="shrink-0"
-                                  >
-                                    <DeleteDocumentButton />
-                                  </form>
-                                </div>
-                                {doc.kind === "report" && (
-                                  <form action={extractAction}>
-                                    <SubmitButton
-                                      pendingLabel="Extracting..."
-                                      className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                                      icon={
-                                        <DocumentIcon className="h-3.5 w-3.5" />
-                                      }
-                                    >
-                                      Extract findings
-                                    </SubmitButton>
-                                  </form>
-                                )}
-                                {doc.kind === "table" &&
-                                  doc.ingestion_type !== "raw" && (
-                                    <form action={generateAction}>
-                                      <SubmitButton
-                                        pendingLabel="Generating..."
-                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-success px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                                        icon={
-                                          <ChartIcon className="h-3.5 w-3.5" />
-                                        }
-                                      >
-                                        Generate findings
-                                      </SubmitButton>
-                                    </form>
-                                  )}
-                                {doc.kind === "table" &&
-                                  doc.ingestion_type === "raw" && (
-                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
-                                      Flagged as raw data. This skips the
-                                      automatic scan used for aggregated tables,
-                                      since an open search over case-level data
-                                      risks far more uncorrected comparisons.
-                                      Name a banner plan below (which columns to
-                                      compare), then compute it directly.
-                                      Stratified survey designs (strata/weight
-                                      columns) aren&apos;t applied yet,
-                                      that&apos;s later work, every comparison
-                                      here assumes quota or simple-random
-                                      sampling.
-                                    </div>
-                                  )}
-                                {doc.kind === "table" &&
-                                  (() => {
-                                    const tables = (
-                                      documentTablesByDocument.get(doc.id) ?? []
-                                    ).filter(
-                                      (t) =>
-                                        t.headers.length > 0 &&
-                                        t.rows.length > 0,
-                                    );
-                                    if (tables.length === 0) return null;
-                                    return (
-                                      <details className="rounded-lg border border-border bg-slate-50 p-2 text-xs">
-                                        <summary className="cursor-pointer select-none font-medium text-muted">
-                                          Preview extracted table
-                                          {tables.length > 1
-                                            ? `s (${tables.length})`
-                                            : ""}
-                                        </summary>
-                                        <div className="mt-2 space-y-4">
-                                          {tables.map((t) => {
-                                            const previewRows = t.rows.slice(
-                                              0,
-                                              10,
-                                            );
-                                            return (
-                                              <div key={t.id}>
-                                                <p className="mb-1 text-[11px] font-medium text-foreground">
-                                                  {t.label ??
-                                                    `Table ${t.table_index + 1}`}
-                                                  {t.source_page
-                                                    ? ` (page ${t.source_page})`
-                                                    : ""}
-                                                </p>
-                                                <div className="overflow-x-auto">
-                                                  <table className="w-full border-collapse text-left text-[11px]">
-                                                    <thead>
-                                                      <tr className="border-b border-border">
-                                                        {t.headers.map((h) => (
-                                                          <th
-                                                            key={h}
-                                                            className="py-1 pr-3 font-semibold text-muted"
-                                                          >
-                                                            {h}
-                                                          </th>
-                                                        ))}
-                                                      </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                      {previewRows.map(
-                                                        (row, rowIndex) => (
-                                                          <tr
-                                                            key={rowIndex}
-                                                            className="border-b border-border last:border-0"
-                                                          >
-                                                            {t.headers.map(
-                                                              (h) => (
-                                                                <td
-                                                                  key={h}
-                                                                  className="py-1 pr-3 text-foreground"
-                                                                >
-                                                                  {row[h] ?? ""}
-                                                                </td>
-                                                              ),
-                                                            )}
-                                                          </tr>
-                                                        ),
-                                                      )}
-                                                    </tbody>
-                                                  </table>
-                                                </div>
-                                                {t.rows.length >
-                                                  previewRows.length && (
-                                                  <p className="mt-1 text-[11px] text-muted">
-                                                    Showing first{" "}
-                                                    {previewRows.length} of{" "}
-                                                    {t.rows.length} rows.
-                                                  </p>
-                                                )}
-                                                <TableDigest
-                                                  headers={t.headers}
-                                                  rows={t.rows}
-                                                />
-                                                {t.ingestion_type === "raw" && (
-                                                  <form
-                                                    action={saveBannerPlanAction.bind(
-                                                      null,
-                                                      id,
-                                                      t.id,
-                                                    )}
-                                                    className="mt-2 rounded-lg border border-border bg-white p-2"
-                                                  >
-                                                    <p className="mb-1 text-[11px] font-medium text-foreground">
-                                                      Banner plan{" "}
-                                                      <span className="font-normal text-muted">
-                                                        (which columns to
-                                                        compare once the
-                                                        statistical path exists)
-                                                      </span>
-                                                    </p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                      <div>
-                                                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                                          Banner (segmenting
-                                                          columns)
-                                                        </p>
-                                                        <div className="max-h-28 space-y-0.5 overflow-y-auto">
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <label
-                                                                key={h}
-                                                                className="flex items-center gap-1 text-[11px] text-foreground"
-                                                              >
-                                                                <input
-                                                                  type="checkbox"
-                                                                  name="bannerColumns"
-                                                                  value={h}
-                                                                  defaultChecked={
-                                                                    t.banner_columns?.includes(
-                                                                      h,
-                                                                    ) ?? false
-                                                                  }
-                                                                  className="h-3 w-3"
-                                                                />
-                                                                {h}
-                                                              </label>
-                                                            ),
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                      <div>
-                                                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                                          Stub (outcome columns)
-                                                        </p>
-                                                        <div className="max-h-28 space-y-0.5 overflow-y-auto">
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <label
-                                                                key={h}
-                                                                className="flex items-center gap-1 text-[11px] text-foreground"
-                                                              >
-                                                                <input
-                                                                  type="checkbox"
-                                                                  name="stubColumns"
-                                                                  value={h}
-                                                                  defaultChecked={
-                                                                    t.stub_columns?.includes(
-                                                                      h,
-                                                                    ) ?? false
-                                                                  }
-                                                                  className="h-3 w-3"
-                                                                />
-                                                                {h}
-                                                              </label>
-                                                            ),
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                    <p className="mb-0.5 mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                                      Stratified design (leave
-                                                      blank for
-                                                      quota/simple-random)
-                                                    </p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                      <label className="block">
-                                                        <span
-                                                          className="inline-flex items-center gap-1 text-[10px] text-muted"
-                                                          title="Name the column that records which stratum (named sub-group) each respondent was drawn from, only if your sample was deliberately split into groups sampled at different rates (e.g. a province oversampled to get enough responses there). Leave on None for an ordinary simple-random or quota sample, the common case."
-                                                        >
-                                                          Strata column
-                                                          <InfoIcon className="h-3 w-3 shrink-0" />
-                                                        </span>
-                                                        <select
-                                                          name="strataColumn"
-                                                          defaultValue=""
-                                                          className="mt-0.5 block w-full rounded border border-border px-1.5 py-1 text-[11px]"
-                                                        >
-                                                          <option value="">
-                                                            None
-                                                          </option>
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <option
-                                                                key={h}
-                                                                value={h}
-                                                              >
-                                                                {h}
-                                                              </option>
-                                                            ),
-                                                          )}
-                                                        </select>
-                                                      </label>
-                                                      <label className="block">
-                                                        <span
-                                                          className="inline-flex items-center gap-1 text-[10px] text-muted"
-                                                          title="Name the numeric column that already holds each respondent's survey weight (a correction factor for being over- or under-represented in the raw sample), if your data has one. Leave on None if respondents should all count equally."
-                                                        >
-                                                          Weight column
-                                                          <InfoIcon className="h-3 w-3 shrink-0" />
-                                                        </span>
-                                                        <select
-                                                          name="weightColumn"
-                                                          defaultValue=""
-                                                          className="mt-0.5 block w-full rounded border border-border px-1.5 py-1 text-[11px]"
-                                                        >
-                                                          <option value="">
-                                                            None
-                                                          </option>
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <option
-                                                                key={h}
-                                                                value={h}
-                                                              >
-                                                                {h}
-                                                              </option>
-                                                            ),
-                                                          )}
-                                                        </select>
-                                                      </label>
-                                                    </div>
-                                                    <SubmitButton
-                                                      pendingLabel="Saving..."
-                                                      className="mt-2 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-white shadow-sm transition hover:bg-primary-hover"
-                                                    >
-                                                      Save banner plan
-                                                    </SubmitButton>
-                                                  </form>
-                                                )}
-                                                {t.ingestion_type === "raw" &&
-                                                  (t.banner_columns?.length ??
-                                                    0) > 0 &&
-                                                  (t.stub_columns?.length ??
-                                                    0) > 0 && (
-                                                    <CrossTabPreviewSection
-                                                      tables={computeCrossTabPreview(
-                                                        t.rows,
-                                                        t.banner_columns ?? [],
-                                                        t.stub_columns ?? [],
-                                                      )}
-                                                    />
-                                                  )}
-                                                {t.ingestion_type === "raw" &&
-                                                  (t.banner_columns?.length ??
-                                                    0) > 0 &&
-                                                  (t.stub_columns?.length ??
-                                                    0) > 0 && (
-                                                    <form
-                                                      action={computeBannerPlanAction.bind(
-                                                        null,
-                                                        id,
-                                                        t.id,
-                                                      )}
-                                                      className="mt-1.5"
-                                                    >
-                                                      <SubmitButton
-                                                        pendingLabel="Computing..."
-                                                        className="flex items-center gap-1.5 rounded-lg bg-success px-2.5 py-1 text-[11px] font-medium text-white shadow-sm transition hover:opacity-90"
-                                                        icon={
-                                                          <ChartIcon className="h-3 w-3" />
-                                                        }
-                                                      >
-                                                        {tableIdsWithFindings.has(
-                                                          t.id,
-                                                        )
-                                                          ? "Recompute banner comparisons"
-                                                          : "Compute banner comparisons"}
-                                                      </SubmitButton>
-                                                    </form>
-                                                  )}
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </details>
-                                    );
-                                  })()}
-                                {doc.kind === "transcript" && (
-                                  <CodeGate
-                                    documentId={doc.id}
-                                    initialReady={
-                                      transcriptSetups.get(doc.id)?.confirmed ??
-                                      false
-                                    }
-                                    initialSummary={(() => {
-                                      const setup = transcriptSetups.get(
-                                        doc.id,
-                                      );
-                                      return setup
-                                        ? `${SESSION_LABEL[setup.sessionType]}; ${MODE_LABEL[setup.mode]}`
-                                        : null;
-                                    })()}
-                                  >
-                                    <form action={codeAction}>
-                                      <SubmitButton
-                                        pendingLabel="Coding..."
-                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                                        icon={
-                                          <DocumentIcon className="h-3.5 w-3.5" />
-                                        }
-                                      >
-                                        Code themes
-                                      </SubmitButton>
-                                    </form>
-                                    <details className="rounded-lg border border-border bg-white p-2 text-xs">
-                                      <summary className="cursor-pointer select-none font-medium text-muted">
-                                        Already coded? Import your coding
-                                      </summary>
-                                      <form
-                                        action={importCodingAction.bind(
-                                          null,
-                                          id,
-                                          doc.id,
-                                        )}
-                                        className="mt-2 flex flex-col gap-2"
-                                      >
-                                        <p className="text-muted">
-                                          An Excel, CSV or Word file: a table
-                                          of themes, sub-themes and quotes, one
-                                          row per coded sentence (an ATLAS.ti
-                                          quotation report works), a coding
-                                          matrix, or a themed extract with
-                                          headings and quoted bullets. Quotes
-                                          are matched to this transcript and
-                                          every count is recomputed from it,
-                                          so counts in your file are ignored.
-                                          A file with codes and definitions
-                                          but no quotes is read as a codebook
-                                          and applied to the transcript.
-                                        </p>
-                                        <input
-                                          type="file"
-                                          name="codingFile"
-                                          accept=".xlsx,.xls,.csv,.docx"
-                                          required
-                                          className="text-xs"
-                                        />
-                                        <SubmitButton
-                                          pendingLabel="Importing..."
-                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:opacity-90"
-                                          icon={
-                                            <UploadIcon className="h-3.5 w-3.5" />
-                                          }
-                                        >
-                                          Import coding
-                                        </SubmitButton>
-                                      </form>
-                                    </details>
-                                  </CodeGate>
-                                )}
-                                {doc.kind === "transcript" &&
-                                  codebooksByDocument.has(doc.id) && (
-                                    <a
-                                      href={`/api/runs/${id}/coding/export`}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
-                                    >
-                                      Export codebook and coding checks (.xlsx)
-                                    </a>
-                                  )}
-                                {doc.kind === "transcript" &&
-                                  codebooksByDocument.has(doc.id) && (
-                                    <a
-                                      href={`/api/runs/${id}/coding/extract`}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
-                                    >
-                                      Themed extract for writing up (.docx)
-                                    </a>
-                                  )}
-                                {doc.kind === "transcript" &&
-                                  codebooksByDocument.has(doc.id) && (
-                                    <CodebookPanel
-                                      key={`codebook-${doc.id}-${codebooksByDocument.get(doc.id)!.version}-${codebooksByDocument.get(doc.id)!.codes.map((c) => `${c.theme}~${c.keywords}~${c.note}`).join("|")}`}
-                                      codebook={codebooksByDocument.get(
-                                        doc.id,
-                                      )!}
-                                      reapply={reapplyForRun}
-                                    />
-                                  )}
-                                {doc.kind === "transcript" &&
-                                  codingAnalysis.has(doc.id) && (
-                                    <CodingAnalysisPanel
-                                      key={`coding-analysis-${doc.id}-${codingAnalysis.get(doc.id)!.version}`}
-                                      runId={id}
-                                      view={codingAnalysis.get(doc.id)!}
-                                    />
-                                  )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </>
-                    ),
-                  },
-                  {
-                    id: "import-quality",
-                    label: "Data quality",
-                    content: (() => {
-                      const codedTranscripts = documents.filter(
-                        (d) =>
-                          d.kind === "transcript" && codingAnalysis.has(d.id),
-                      );
-                      return (
-                        <div className="space-y-8">
-                          {(importQualityTables.length > 0 ||
-                            codedTranscripts.length === 0) && (
-                            <ImportQualityPanel
-                              tables={importQualityTables}
-                              hasReportOnly={
-                                importQualityTables.length === 0 &&
-                                documents.length > 0
-                              }
-                            />
-                          )}
-                          {codedTranscripts.length > 0 && (
-                            <TranscriptQualityPanel
-                              runId={id}
-                              items={codedTranscripts.map((d) => ({
-                                documentId: d.id,
-                                filename: d.source_filename,
-                                view: codingAnalysis.get(d.id)!,
-                              }))}
-                            />
-                          )}
-                        </div>
-                      );
-                    })(),
-                  },
-                ]}
-              />
-            </CollapsibleSection>
-                    </>
-                  ),
                 },
               ]}
             />

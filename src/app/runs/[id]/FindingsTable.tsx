@@ -650,6 +650,46 @@ function SourceInfo({
   );
 }
 
+type AssuranceNote = { severity: "issue" | "caution" | "info" | "pass"; text: string; fileName?: string };
+
+/** Notes that travel with a finding made from statistical output: what the diagnostics, checks and design say about how far to trust it. */
+function AssuranceNotes({ finding }: { finding: Finding }) {
+  const raw = (finding.stated_stats as { assurance?: unknown } | null)?.assurance;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const notes = raw.filter((n): n is AssuranceNote => !!n && typeof (n as AssuranceNote).text === "string");
+  const loud = notes.filter((n) => n.severity === "issue" || n.severity === "caution");
+  const quiet = notes.filter((n) => n.severity === "info" || n.severity === "pass");
+  return (
+    <div className="space-y-1">
+      {loud.map((n, i) => (
+        <div
+          key={`${i}-${n.text}`}
+          title={n.fileName ? `From ${n.fileName}` : undefined}
+          className={`rounded-md px-2 py-1.5 text-xs ${n.severity === "issue" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800"}`}
+        >
+          <span className="font-medium">{n.severity === "issue" ? "Check: " : "Caution: "}</span>
+          {n.text}
+        </div>
+      ))}
+      {quiet.length > 0 && (
+        <details className="text-[11px] text-muted">
+          <summary className="cursor-pointer select-none">
+            {quiet.length} further assurance note{quiet.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {quiet.map((n, i) => (
+              <li key={`${i}-${n.text}`} title={n.fileName ? `From ${n.fileName}` : undefined}>
+                {n.severity === "pass" ? "Passed: " : ""}
+                {n.text}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(finding.researcher_note ?? "");
@@ -1042,6 +1082,7 @@ function FindingCard({
         {finding.finding_text}
       </div>
       {hasReachSummary && <CodedReachSummary finding={finding} />}
+      <AssuranceNotes finding={finding} />
       <NoteField runId={runId} finding={finding} />
       <div className="mt-auto flex items-start justify-between gap-3 border-t border-border pt-2.5">
         <div className="min-w-0 flex-1">
@@ -2169,6 +2210,8 @@ export default function FindingsTable({
             {groupedByTheme.length === 0 && duplicateGroups.length === 0 && (
               <p className="text-sm text-muted">
                 No findings match these filters.
+                {dataTypeFilter === "quantitative" &&
+                  " Quantitative findings come from tables you commit under Analysis, Cross tabs, or from a banner plan on a raw table."}
               </p>
             )}
           </div>

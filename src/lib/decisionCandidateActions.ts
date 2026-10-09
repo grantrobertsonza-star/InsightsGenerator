@@ -92,15 +92,11 @@ export async function rejectDecisionCandidate(runId: string, candidateId: string
     ]);
     await syncDecisionStatement(client, runId);
   });
+  await refreshInsights(TENANT_ID, runId);
+  await refreshRecommendations(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
-/**
- * Puts a rejected candidate, or a candidate an acceptance elsewhere
- * superseded, back into play. Distinct from adding a brand new candidate,
- * this is for a researcher who changes their mind rather than one who
- * thinks of something new.
- */
 /**
  * Puts a rejected candidate back into play. Restores it straight to
  * accepted, not to a pending state someone then has to accept again: since
@@ -110,6 +106,26 @@ export async function rejectDecisionCandidate(runId: string, candidateId: string
 export async function restoreDecisionCandidate(runId: string, candidateId: string) {
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update decision_candidates set status = 'accepted' where id = $1 and run_id = $2", [
+      candidateId,
+      runId,
+    ]);
+    await syncDecisionStatement(client, runId);
+  });
+
+  await refreshInsights(TENANT_ID, runId);
+  await refreshRecommendations(TENANT_ID, runId);
+
+  revalidatePath(`/runs/${runId}`);
+}
+
+/**
+ * Takes an accepted candidate out of play without rejecting it: it goes back
+ * to pending, so it can be accepted again or rejected later. The decision
+ * statement and everything built on it are refreshed.
+ */
+export async function unacceptDecisionCandidate(runId: string, candidateId: string) {
+  await withTenant(TENANT_ID, async (client) => {
+    await client.query("update decision_candidates set status = 'pending' where id = $1 and run_id = $2", [
       candidateId,
       runId,
     ]);
@@ -161,15 +177,17 @@ export async function deleteDecisionCandidate(runId: string, candidateId: string
     await client.query("delete from decision_candidates where id = $1 and run_id = $2", [candidateId, runId]);
     await syncDecisionStatement(client, runId);
   });
+  await refreshInsights(TENANT_ID, runId);
+  await refreshRecommendations(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
 /**
  * Re-runs the framer, e.g. after the researcher has added more upfront
  * context on the run and wants a fresh pass rather than the first set of
- * suggestions. The framer only clears out its own pending, ai_suggested
- * rows before writing new ones, so anything already accepted or rejected by
- * the researcher survives this untouched.
+ * suggestions. The framer replaces its own ai_suggested rows that the
+ * researcher has not touched (pending or accepted, never edited), so a
+ * candidate the researcher edited, wrote or rejected survives this untouched.
  *
  * Unlike refreshDecisionCandidates in page.tsx, which runs automatically
  * after extraction and swallows a failure so it never blocks the action the
