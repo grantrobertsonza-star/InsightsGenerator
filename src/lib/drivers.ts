@@ -1,0 +1,277 @@
+import { withTenant } from "./db";
+import { runStatsTool } from "./parseStatsFile";
+import { loadDocumentFile, overlayFor } from "./crosstabs";
+import { driverAnalysis, type DriverResult } from "./driverAnalysis";
+
+export type DriverRequest = {
+  outcome: string;
+  outcomeType: "continuous" | "binary";
+  /** Binary only: the lowest answer code that counts as the top box. Blank means the top two codes. */
+  topBoxMin?: number | null;
+  predictors: string[];
+  weightVar?: string | null;
+  bootstrap?: number;
+  /** Optional: for a predictor, the survey question that asked how important it is. Draws the derived against stated importance chart. */
+  statedImportance?: Record<string, string>;
+};
+
+export type DriverPerformance = { name: string; mean: number | null; topTwo: number | null };
+
+/** What respondents said about how important a predictor is, keyed by the predictor's display name. */
+export type DriverStated = { name: string; variable: string; mean: number | null; topTwo: number | null };
+
+export type DriverReport = {
+  request: DriverRequest;
+  outcomeLabel: string;
+  outcomeNote: string;
+  casesInFile: number;
+  weighted: boolean;
+  skipped: { variable: string; reason: string }[];
+  result: DriverResult;
+  /** Where each predictor stands today, for the importance against performance view. Keyed by display name. */
+  performance: DriverPerformance[];
+  /** Stated importance for the predictors that had an importance question paired with them. */
+  stated?: DriverStated[];
+  createdAt?: string;
+};
+
+type Columns = {
+  outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string> };
+  predictors: { name: string; label: string; min: number; max: number; distinct: number }[];
+  y: (number | null)[];
+  x: (number | null)[][];
+  weights: (number | null)[] | null;
+  n: number;
+  skipped: { variable: string; reason: string }[];
+};
+
+function wMean(values: number[], w: number[]): number {
+  let s = 0;
+  let sw = 0;
+  for (let i = 0; i < values.length; i++) {
+    s += values[i] * w[i];
+    sw += w[i];
+  }
+  return sw > 0 ? s / sw : NaN;
+}
+
+/** Reads the chosen columns from the data file and runs the driver analysis on them. */
+export async function runDriverAnalysisFor(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  request: DriverRequest,
+): Promise<DriverReport> {
+  if (request.predictors.length < 2) throw new Error("Choose at least two predictors.");
+  if (request.predictors.includes(request.outcome)) throw new Error("The outcome cannot also be a predictor.");
+  const doc = await loadDocumentFile(tenantId, runId, documentId);
+  const overlay = await overlayFor(tenantId, runId, documentId);
+  const cols = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
+    outcome: request.outcome,
+    predictors: request.predictors,
+    weightVar: request.weightVar ?? null,
+    overlay,
+  });
+
+  const nan = (v: number | null) => (v === null ? NaN : v);
+  let y = cols.y.map(nan);
+  const x = cols.x.map((row) => row.map(nan));
+  const weights = cols.weights ? cols.weights.map(nan) : undefined;
+  // A case with no usable weight cannot be counted.
+  if (weights) weights.forEach((w, i) => { if (!Number.isFinite(w)) y[i] = NaN; });
+
+  let outcomeNote = `Score on ${cols.outcome.label}, treated as a number.`;
+  if (request.outcomeType === "binary") {
+    const o = cols.outcome;
+    const min = request.topBoxMin ?? (o.distinct === 2 ? o.max : o.max - 1);
+    if (!(min > o.min)) throw new Error("The top box must start above the lowest answer code.");
+    y = y.map((v) => (Number.isFinite(v) ? (v >= min ? 1 : 0) : NaN));
+    outcomeNote = `Top box on ${o.label}: answers from ${min} up to ${o.max}, against everyone else who answered.`;
+  }
+
+  // Display names must be unique and readable; the code stays in brackets when two labels clash.
+  const seen = new Map<string, number>();
+  const names = cols.predictors.map((p) => {
+    const base = (p.label || p.name).trim();
+    const k = (seen.get(base) ?? 0) + 1;
+    seen.set(base, k);
+    return k === 1 ? base : `${base} (${p.name})`;
+  });
+
+  const result = driverAnalysis({
+    y,
+    x,
+    names,
+    outcome: request.outcomeType,
+    weights,
+    bootstrap: request.bootstrap,
+  });
+  if ("error" in result) throw new Error(result.error);
+
+  const performance: DriverPerformance[] = cols.predictors.map((p, j) => {
+    const vals: number[] = [];
+    const ws: number[] = [];
+    cols.x.forEach((row, i) => {
+      const v = row[j];
+      if (v === null || !Number.isFinite(y[i])) return;
+      vals.push(v);
+      ws.push(weights ? (Number.isFinite(weights[i]) ? weights[i] : 0) : 1);
+    });
+    const smallScale = p.distinct >= 3 && p.distinct <= 11;
+    const topTwo = smallScale && vals.length > 0
+      ? (() => {
+          const cut = p.max - 1;
+          const sw = ws.reduce((a, b) => a + b, 0);
+          return sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
+        })()
+      : null;
+    const mean = vals.length > 0 ? wMean(vals, ws) : NaN;
+    return { name: names[j], mean: Number.isFinite(mean) ? mean : null, topTwo };
+  });
+
+  let stated: DriverStated[] | undefined;
+  const pairs = Object.entries(request.statedImportance ?? {}).filter(
+    ([pred, imp]) => imp && imp !== request.outcome && request.predictors.includes(pred),
+  );
+  if (pairs.length > 0) {
+    const impVars = [...new Set(pairs.map(([, imp]) => imp))];
+    const c2 = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
+      outcome: request.outcome,
+      predictors: impVars,
+      weightVar: request.weightVar ?? null,
+      overlay,
+    });
+    const w2 = c2.weights ? c2.weights.map(nan) : null;
+    stated = [];
+    for (const [pred, imp] of pairs) {
+      const j = c2.predictors.findIndex((p) => p.name === imp);
+      const k = cols.predictors.findIndex((p) => p.name === pred);
+      if (j < 0 || k < 0) continue;
+      const meta = c2.predictors[j];
+      const vals: number[] = [];
+      const ws: number[] = [];
+      c2.x.forEach((row, i) => {
+        const v = row[j];
+        const wi = w2 ? w2[i] : 1;
+        if (v === null || !Number.isFinite(v) || !Number.isFinite(wi)) return;
+        vals.push(v);
+        ws.push(wi);
+      });
+      if (vals.length === 0) continue;
+      const sw = ws.reduce((a, b) => a + b, 0);
+      const smallScale = meta.distinct >= 3 && meta.distinct <= 11;
+      const cut = meta.max - 1;
+      const topTwo = smallScale && sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
+      const mean = wMean(vals, ws);
+      stated.push({ name: names[k], variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
+    }
+  }
+
+  return {
+    request,
+    stated,
+    outcomeLabel: cols.outcome.label,
+    outcomeNote,
+    casesInFile: cols.n,
+    weighted: Boolean(weights),
+    skipped: cols.skipped,
+    result,
+    performance,
+  };
+}
+
+export type SavedDriverAnalysis = { id: string; title: string; createdAt: string; report: DriverReport };
+
+export async function saveDriverAnalysis(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  title: string,
+  report: DriverReport,
+): Promise<string> {
+  return withTenant(tenantId, async (client) => {
+    const r = await client.query<{ id: string }>(
+      `insert into driver_analyses (tenant_id, run_id, document_id, title, request, report)
+       values ($1, $2, $3, $4, $5, $6) returning id`,
+      [tenantId, runId, documentId, title.trim() || "Driver analysis", JSON.stringify(report.request), JSON.stringify(report)],
+    );
+    return r.rows[0].id;
+  });
+}
+
+export async function listDriverAnalyses(tenantId: string, runId: string, documentId: string): Promise<SavedDriverAnalysis[]> {
+  try {
+    return await withTenant(tenantId, async (client) => {
+      const r = await client.query<{ id: string; title: string; created_at: Date; report: DriverReport }>(
+        `select id, title, created_at, report from driver_analyses
+          where run_id = $1 and document_id = $2 order by created_at desc`,
+        [runId, documentId],
+      );
+      return r.rows.map((row) => ({ id: row.id, title: row.title, createdAt: new Date(row.created_at).toISOString(), report: row.report }));
+    });
+  } catch {
+    return []; // table not migrated yet (0072)
+  }
+}
+
+export async function deleteDriverAnalysis(tenantId: string, runId: string, id: string): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    await client.query("delete from driver_analyses where id = $1 and run_id = $2", [id, runId]);
+  });
+}
+
+/** Adds a saved analysis to the project's findings, once. Returns how many were added (0 if already added). */
+export async function addDriverFindings(tenantId: string, runId: string, analysisId: string): Promise<number> {
+  const { driverFindings } = await import("./driverFindings");
+  return withTenant(tenantId, async (client) => {
+    const saved = await client.query<{ report: DriverReport }>(
+      "select report from driver_analyses where id = $1 and run_id = $2",
+      [analysisId, runId],
+    );
+    if (!saved.rows[0]) throw new Error("That analysis was not found.");
+    const existing = await client.query<{ n: number }>(
+      "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status <> 'rejected'",
+      [runId, analysisId],
+    );
+    if ((existing.rows[0]?.n ?? 0) > 0) return 0;
+    const revived = await client.query(
+      "update findings set status = 'accepted' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status = 'rejected'",
+      [runId, analysisId],
+    );
+    if ((revived.rowCount ?? 0) > 0) return revived.rowCount ?? 0;
+    const drafts = driverFindings(saved.rows[0].report, analysisId);
+    for (const f of drafts) {
+      await client.query(
+        `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, data_type, status)
+         values ($1, $2, 'generated', $3, $4, 'driver', $5, 'quantitative', 'accepted')`,
+        [tenantId, runId, f.text, f.theme, JSON.stringify(f.stats)],
+      );
+    }
+    return drafts.length;
+  });
+}
+
+/** Takes the findings a driver analysis added out of use (rejected, not deleted, so adding them again restores them). */
+export async function removeDriverFindings(tenantId: string, runId: string, analysisId: string): Promise<number> {
+  return withTenant(tenantId, async (client) => {
+    const r = await client.query(
+      "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status <> 'rejected'",
+      [runId, analysisId],
+    );
+    return r.rowCount ?? 0;
+  });
+}
+
+export async function driverFindingCounts(tenantId: string, runId: string): Promise<Map<string, number>> {
+  try {
+    return await withTenant(tenantId, async (client) => {
+      const r = await client.query<{ id: string; n: number }>(
+        "select stated_stats->>'analysisId' as id, count(*)::int as n from findings where run_id = $1 and pattern_type = 'driver' and status <> 'rejected' group by 1",
+        [runId],
+      );
+      return new Map(r.rows.map((row) => [row.id, row.n] as const));
+    });
+  } catch {
+    return new Map();
+  }
+}

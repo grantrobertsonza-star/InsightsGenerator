@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { extractDocumentText } from "./extractFindings";
+import { readContextDocument } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
 
@@ -53,8 +53,13 @@ export async function saveRunContext(runId: string, formData: FormData) {
           );
           return r.rows[0].id;
         });
-        const { fullText } = await extractDocumentText(storagePath, file.name, documentId);
-        return fullText;
+        // Reads and stores the text (with a direct .docx fallback) so the file previews and later steps can use it.
+        await readContextDocument(TENANT_ID, runId, documentId);
+        const stored = await withTenant(TENANT_ID, async (client) => {
+          const r = await client.query<{ extracted_text: string | null }>("select extracted_text from documents where id = $1", [documentId]);
+          return r.rows[0]?.extracted_text ?? "";
+        });
+        return stored;
       };
       const [briefText, proposalText] = await Promise.all([
         briefFile ? storeAndExtractText(briefFile) : Promise.resolve(null),

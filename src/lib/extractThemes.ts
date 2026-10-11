@@ -6,6 +6,7 @@ import {
   codeKey,
   loadOverrides,
 } from "./codingOverrides";
+import { beginCodingWork, clearCodingLabel, endCodingWork, labelFor, relabelCodingWork, tickCodingWork } from "./codingProgress";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import {
   archiveAndReplaceFindings,
@@ -29,6 +30,7 @@ import {
   matchQuote,
   pageForSegment,
   parseAssignments,
+  parseUnitDecisions,
   pickExemplar,
   segmentTranscriptDetailed,
   type SegmentMode,
@@ -391,10 +393,15 @@ const CONSOLIDATE_SYSTEM =
   "- definition: one or two sentences that stand alone, so someone who has not seen the transcript " +
   "could decide whether a given remark belongs to the code.\n" +
   "- inclusion_criteria: when a remark should be coded here.\n" +
-  "- exclusion_criteria: what looks similar but should not be coded here, naming the nearest other " +
-  "code where there is one.\n" +
+  "- exclusion_criteria: what looks similar but should not be coded here. Name the nearest other code and " +
+  "give a rule that tells the two apart, so two readers would put the same remark under the same one. " +
+  "A code with no near neighbour says so.\n" +
   "- members: every theme that was merged into the code, as { run, theme } using the 1-based run and " +
   "theme numbers shown. Every theme should appear in exactly one code.\n\n" +
+  "Keep the codes apart. Before you finish, check each pair of codes: if you cannot write a rule that " +
+  "separates them, or a single remark would often fit both, merge them into one code. A code so broad " +
+  "that it could fit most remarks should be narrowed or split. Fewer, clearly separate codes are better " +
+  "than many that overlap.\n\n" +
   `Produce at most ${MAX_CODES} codes.`;
 
 const CONSOLIDATE_TOOLS = [
@@ -1042,38 +1049,44 @@ export async function suggestThemes(
 // --- Step 3: applying the codebook --------------------------------------
 
 const APPLY_SYSTEM =
-  "You apply a codebook to the turns of a qualitative transcript. For each numbered turn, list the " +
-  "codes it clearly expresses, using the code numbers. A turn may fit more than one code or none. " +
-  'Judge only what the participant actually said in that turn. A short reply such as "yes" or ' +
-  '"same for me" is coded only if the question shown as context makes its meaning clear, and an ' +
-  "exclusion criterion always wins over an inclusion criterion. Leave out turns that fit no code.";
+  "You decide, for ONE code from a qualitative codebook, which units of a transcript meet it. Each turn is shown " +
+  "split into numbered units (sentences), such as 54.1, 54.2. Give a decision for every unit listed.\n" +
+  "- Answer yes only when the unit's own words meet the code's definition. The other units of the turn and the " +
+  "question asked are context for what \"it\" or \"that\" refers to, not evidence for the code.\n" +
+  "- Do not answer yes only because the turn as a whole is about the topic. The unit itself must state the idea.\n" +
+  "- For each unit write a short \"why\" first (under 15 words, the words that meet or fail the definition), then " +
+  "the decision. If you cannot point to words in the unit that meet the definition, the answer is no.\n" +
+  "- A short reply such as \"yes\" or \"same for me\" counts only if the question shown makes its meaning clear.\n" +
+  "- A passing mention, a background detail or a remark that things are fine counts only if the definition " +
+  "explicitly covers it. Code what the unit is about, not every topic it touches.\n" +
+  "- An exclusion criterion always wins over an inclusion criterion.";
 
 const APPLY_TOOLS = [
   {
-    name: "record_assignments",
-    description: "Records which codes apply to which turns.",
+    name: "record_decisions",
+    description: "Records, for every unit shown, whether it meets the code.",
     input_schema: {
       type: "object" as const,
       properties: {
-        assignments: {
+        decisions: {
           type: "array",
           items: {
             type: "object",
             properties: {
-              index: {
-                type: "integer",
-                description: "The turn number as shown.",
-              },
-              codes: { type: "array", items: { type: "integer" } },
+              id: { type: "string", description: "The unit id as shown, such as 54.2." },
+              why: { type: "string", description: "Under 15 words, written before the decision." },
+              meets: { type: "boolean", description: "True only if the unit's own words meet the definition." },
             },
-            required: ["index", "codes"],
+            required: ["id", "why", "meets"],
           },
         },
       },
-      required: ["assignments"],
+      required: ["decisions"],
     },
   },
 ];
+
+export const APPLY_PROMPT_HASH = sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS));
 
 function codebookBlock(codes: CodeRow[]): string {
   return codes
@@ -1086,6 +1099,13 @@ function codebookBlock(codes: CodeRow[]): string {
     .join("\n");
 }
 
+/**
+ * Applies the codebook one code at a time. Each call asks a single yes/no question per unit ("does this
+ * unit meet this code?"), because a repeated binary judgement is far steadier than choosing among ten
+ * codes at once. The units of a batch are the shared first part of every call so it can be cached. A turn
+ * carries a code when any of its units does. A batch counts as failed if any of its code questions failed,
+ * so a half-coded batch is never kept.
+ */
 export async function applyCodebook(
   tenantId: string,
   runId: string,
@@ -1096,89 +1116,138 @@ export async function applyCodebook(
   stage: ManifestStage = "apply",
 ): Promise<{
   assignments: Map<number, number[]>;
+  unitCodes: Map<number, { unit: number; codes: number[] }[]>;
   failedBatches: number;
   totalBatches: number;
 }> {
-  const batches = buildApplyBatches(segments);
-  const block = codebookBlock(codes);
-  const results = await mapWithConcurrency(
-    batches,
-    MODEL_CONCURRENCY,
-    async (batch, batchIndex) => {
-      try {
-        const turns = batch.items
-          .map(
-            (item) =>
-              `[${item.index}] ` +
-              (item.context ? `(question asked: "${item.context}") ` : "") +
-              item.text,
-          )
-          .join("\n");
-        const user = `Codebook:\n${block}\n\nTurns:\n${turns}`;
-        const response = await anthropic.messages.create({
-          model: CLAUDE_MODEL,
-          max_tokens: 8000,
-          system: APPLY_SYSTEM,
-          tool_choice: { type: "tool", name: "record_assignments" },
-          tools: APPLY_TOOLS,
-          messages: [{ role: "user", content: user }],
-        });
-        await logApiUsage(tenantId, runId, "codebook_apply", response.usage);
-        const toolUse = response.content.find((b) => b.type === "tool_use");
-        if (
-          !toolUse ||
-          toolUse.type !== "tool_use" ||
-          response.stop_reason === "max_tokens"
-        ) {
-          await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
-            document_id: documentId,
-            batch: batchIndex,
-            reason:
-              response.stop_reason === "max_tokens"
-                ? "max_tokens"
-                : "no_tool_use",
-          });
-          return null;
-        }
-        const parsed = parseAssignments(
-          (toolUse.input as { assignments?: unknown }).assignments,
-          new Set(batch.items.map((i) => i.index)),
-          codes.length,
-        );
-        await recordManifest(tenantId, runId, documentId, {
-          codebookId,
-          stage,
-          runIndex: batchIndex,
-          promptHash: sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS)),
-          inputHash: sha256(user),
-          detail: { turns: batch.items.length, turns_coded: parsed.size },
-        });
-        return parsed;
-      } catch (error) {
+  const batches = buildApplyBatches(segments, { maxItems: 30, maxChars: 9000 });
+  const unitsOf = (item: { text: string; units: string[] }) => (item.units.length > 0 ? item.units : [item.text]);
+  const tasks = batches.flatMap((batch, batchIndex) => codes.map((_, k) => ({ batch, batchIndex, code: k + 1 })));
+  beginCodingWork(runId, documentId, labelFor(documentId, "Coding the transcript"), tasks.length);
+  let creditOut = false;
+  const codeOne = async (task: (typeof tasks)[number]) => {
+    const { batch, batchIndex, code } = task;
+    if (creditOut) return { batchIndex, code, hits: null as Map<number, number[]> | null };
+    try {
+      const turns = batch.items
+        .map(
+          (item) =>
+            `[turn ${item.index}] ` +
+            (item.context ? `(question asked: "${item.context}")` : "") +
+            "\n" +
+            unitsOf(item).map((u, k) => `   ${item.index}.${k + 1} ${u}`).join("\n"),
+        )
+        .join("\n");
+      const question =
+        `Code ${code}:\n${codebookBlock([codes[code - 1]]).replace(/^1\./, `${code}.`)}\n\n` +
+        `For every unit above, decide whether it meets this code.`;
+      const response = await anthropic.messages.create({
+        // Set CODING_APPLY_MODEL to try a cheaper model for these yes/no calls; unset keeps the usual one.
+        model: process.env.CODING_APPLY_MODEL || CLAUDE_MODEL,
+        max_tokens: 8000,
+        system: APPLY_SYSTEM,
+        tool_choice: { type: "tool", name: "record_decisions" },
+        tools: APPLY_TOOLS,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: `Turns:\n${turns}`, cache_control: { type: "ephemeral" } },
+              { type: "text", text: question },
+            ],
+          },
+        ],
+      });
+      await logApiUsage(tenantId, runId, "codebook_apply", response.usage);
+      const toolUse = response.content.find((b) => b.type === "tool_use");
+      if (!toolUse || toolUse.type !== "tool_use" || response.stop_reason === "max_tokens") {
         await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
           document_id: documentId,
           batch: batchIndex,
-          reason: error instanceof Error ? error.message.slice(0, 300) : "error",
+          code,
+          reason: response.stop_reason === "max_tokens" ? "max_tokens" : "no_tool_use",
         });
-        return null;
+        return { batchIndex, code, hits: null as Map<number, number[]> | null };
       }
-    },
-  );
-
-  const merged = new Map<number, number[]>();
-  let failed = 0;
-  for (const result of results) {
-    if (!result) {
-      failed += 1;
-      continue;
+      const hits = parseUnitDecisions(
+        (toolUse.input as { decisions?: unknown }).decisions,
+        new Map(batch.items.map((i) => [i.index, unitsOf(i).length])),
+      );
+      await recordManifest(tenantId, runId, documentId, {
+        codebookId,
+        stage,
+        runIndex: batchIndex * 1000 + code,
+        promptHash: APPLY_PROMPT_HASH,
+        inputHash: sha256(turns + question),
+        detail: { code, turns: batch.items.length, units_meeting: [...hits.values()].reduce((a, u) => a + u.length, 0) },
+      });
+      return { batchIndex, code, hits };
+    } catch (error) {
+      // Out of credit: every remaining call would fail the same way and cost a retry each, so stop here.
+      if (error instanceof Error && /credit balance|billing|insufficient/i.test(error.message)) creditOut = true;
+      await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
+        document_id: documentId,
+        batch: batchIndex,
+        code,
+        reason: error instanceof Error ? error.message.slice(0, 300) : "error",
+      });
+      return { batchIndex, code, hits: null as Map<number, number[]> | null };
     }
-    for (const [index, assigned] of result) merged.set(index, assigned);
-  }
-  return {
-    assignments: merged,
-    failedBatches: failed,
-    totalBatches: batches.length,
   };
+  let results: Awaited<ReturnType<typeof codeOne>>[];
+  try {
+    // The transcript chunk is the cached part of every call. Calls started together cannot read a cache that
+    // the first of them is still writing, so the first code of each chunk goes first and the rest follow once
+    // the cache is warm: the same answers for much less input cost.
+    const run = async (task: (typeof tasks)[number]) => {
+      const out = await codeOne(task);
+      tickCodingWork(documentId);
+      return out;
+    };
+    const first = tasks.filter((t) => t.code === 1);
+    const rest = tasks.filter((t) => t.code !== 1);
+    const firstResults = await mapWithConcurrency(first, 6, run);
+    const restResults = await mapWithConcurrency(rest, 6, run);
+    results = [...firstResults, ...restResults];
+  } finally {
+    endCodingWork(documentId);
+  }
+  if (creditOut)
+    throw new Error(
+      "The AI service has run out of credit, so coding stopped and nothing was saved. Add credit, then run this step again.",
+    );
+
+  const failedSet = new Set<number>();
+  for (const r of results) if (!r.hits) failedSet.add(r.batchIndex);
+  const perUnit = new Map<number, Map<number, Set<number>>>(); // turn -> unit -> codes
+  for (const r of results) {
+    if (!r.hits || failedSet.has(r.batchIndex)) continue;
+    for (const [turn, unitList] of r.hits) {
+      const units = perUnit.get(turn) ?? new Map<number, Set<number>>();
+      for (const u of unitList) {
+        const set = units.get(u) ?? new Set<number>();
+        set.add(r.code);
+        units.set(u, set);
+      }
+      perUnit.set(turn, units);
+    }
+  }
+  const merged = new Map<number, number[]>();
+  const unitCodes = new Map<number, { unit: number; codes: number[] }[]>();
+  for (const [turn, units] of perUnit) {
+    const all = new Set<number>();
+    const list = [...units.entries()]
+      .sort((x, y) => x[0] - y[0])
+      .map(([unit, set]) => {
+        for (const c of set) all.add(c);
+        return { unit, codes: [...set].sort((x, y) => x - y) };
+      });
+    if (all.size > 0) {
+      merged.set(turn, [...all].sort((x, y) => x - y));
+      unitCodes.set(turn, list);
+    }
+  }
+  return { assignments: merged, unitCodes, failedBatches: failedSet.size, totalBatches: batches.length };
 }
 
 // --- Step 4: findings ---------------------------------------------------
@@ -1642,7 +1711,30 @@ async function saveSegmentationState(
 
 // --- Entry points ---------------------------------------------------------
 
+// The coding pipeline reports its stage to the progress bar, so a long run shows which step it is on.
+const CODING_STAGES = 5;
+function codingStage(runId: string, documentId: string, n: number, text: string, total = 1): void {
+  beginCodingWork(runId, documentId, `Step ${n} of ${CODING_STAGES}: ${text}`, total);
+}
+function codingStageDone(documentId: string): void {
+  tickCodingWork(documentId);
+}
+
 export async function extractThemesFromTranscript(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
+): Promise<{ id: string; finding_text: string }[]> {
+  try {
+    return await extractThemesFromTranscriptInner(tenantId, runId, documentId, options);
+  } finally {
+    endCodingWork(documentId);
+    clearCodingLabel(documentId);
+  }
+}
+
+async function extractThemesFromTranscriptInner(
   tenantId: string,
   runId: string,
   documentId: string,
@@ -1707,11 +1799,12 @@ export async function extractThemesFromTranscript(
   // Step 1.
   const { text: excerpt, truncated } = buildOpenExcerpt(parsed);
   const guideTopics = await getGuideHintsForRun(tenantId, runId);
+  codingStage(runId, documentId, 1, "Reading the transcript to find themes", OPEN_CODING_RUNS);
   const passes = await mapWithConcurrency(
     Array.from({ length: OPEN_CODING_RUNS }, (_, i) => i + 1),
     MODEL_CONCURRENCY,
-    (runIndex) =>
-      runOpenCoding(
+    async (runIndex) => {
+      const result = await runOpenCoding(
         tenantId,
         runId,
         documentId,
@@ -1720,7 +1813,10 @@ export async function extractThemesFromTranscript(
         runIndex,
         truncated,
         guideTopics,
-      ),
+      );
+      codingStageDone(documentId);
+      return result;
+    },
   );
   const okRuns = passes.filter((p): p is OpenRunResult => p !== null);
   if (okRuns.length === 0) {
@@ -1745,12 +1841,14 @@ export async function extractThemesFromTranscript(
 
   // Step 2. Reproduction is out of the passes that returned at all, so a
   // pass whose themes were all dropped counts against every theme.
+  codingStage(runId, documentId, 2, "Merging the findings into one codebook");
   const { codes: consolidated, manifestId } = await consolidate(
     tenantId,
     runId,
     documentId,
     usable,
   );
+  codingStageDone(documentId);
   if (consolidated.length === 0) {
     throw new Error(
       `The coding passes over "${document.source_filename}" could not be merged into a codebook.`,
@@ -1795,6 +1893,7 @@ export async function extractThemesFromTranscript(
   }
 
   // Step 2b: group the codes into themes (Theme > Sub-theme).
+  codingStage(runId, documentId, 3, "Grouping the codes into themes");
   const grouping = await groupCodesIntoThemes(
     tenantId,
     runId,
@@ -1809,6 +1908,8 @@ export async function extractThemesFromTranscript(
   }
 
   // Step 3.
+  codingStageDone(documentId);
+  relabelCodingWork(documentId, `Step 4 of ${CODING_STAGES}: Coding every turn against each theme`);
   const applied = await applyCodebook(
     tenantId,
     runId,
@@ -1817,6 +1918,7 @@ export async function extractThemesFromTranscript(
     book.rows,
     stored,
   );
+  clearCodingLabel(documentId);
   if (
     applied.totalBatches > 0 &&
     applied.failedBatches === applied.totalBatches
@@ -1828,6 +1930,7 @@ export async function extractThemesFromTranscript(
   }
 
   // Step 4.
+  codingStage(runId, documentId, 5, "Saving the codes, counts and findings");
   const rows = await writeCodebookAndFindings(
     tenantId,
     runId,

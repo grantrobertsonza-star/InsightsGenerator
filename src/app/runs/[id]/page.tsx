@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { withTenant, withTenantRead } from "@/lib/db";
-import { extractFindingsFromDocument } from "@/lib/extractFindings";
+import { extractFindingsFromDocument, readContextDocument } from "@/lib/extractFindings";
 import { processTableDocument } from "@/lib/documentTables";
 import { generateFindingsFromBannerPlan } from "@/lib/generateFindingsFromBannerPlan";
 import {
@@ -52,6 +52,8 @@ import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
 import ObjectiveCoverage from "./ObjectiveCoverage";
+import ObjectiveEvidence from "./ObjectiveEvidence";
+import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
 import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
 import InsightsReview from "./InsightsReview";
@@ -72,7 +74,10 @@ import {
 import type { FindingKind } from "@/lib/findingActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
 import SubmitButton from "@/components/SubmitButton";
+import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
+import CodingFormProgress from "./CodingFormProgress";
+import ReportReadSummary, { type ReportReadStats } from "./ReportReadSummary";
 import PipelineStatus from "./PipelineStatus";
 import WorkingDataTabs from "./WorkingDataTabs";
 import ImportQualityPanel from "./ImportQualityPanel";
@@ -112,6 +117,7 @@ import {
 } from "@/lib/codingAnalysis";
 import AcrossTranscripts from "./AcrossTranscripts";
 import CrosstabBuilder from "./CrosstabBuilder";
+import AnalyticsBuilder from "./AnalyticsBuilder";
 import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
@@ -297,6 +303,31 @@ async function getProgramWaves(
   });
 }
 
+async function getReportReadStats(runId: string): Promise<Map<string, NonNullable<ReportReadStats>>> {
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ detail: Record<string, unknown>; ran_at: string | null }>(
+      `select distinct on (detail->>'documentId') detail, occurred_at::text as ran_at
+         from trace
+        where run_id = $1 and event = 'extract_findings_summary'
+        order by detail->>'documentId', occurred_at desc`,
+      [runId],
+    );
+    const out = new Map<string, NonNullable<ReportReadStats>>();
+    for (const r of result.rows) {
+      const d = r.detail;
+      if (typeof d.documentId !== "string") continue;
+      out.set(d.documentId, {
+        pages: Number(d.pages) || 0,
+        characters: Number(d.characters) || 0,
+        parts: Number(d.parts) || 0,
+        failedParts: Number(d.failedParts) || 0,
+        ranAt: r.ran_at,
+      });
+    }
+    return out;
+  });
+}
+
 async function getDocuments(runId: string): Promise<Document[]> {
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<Document>(
@@ -339,7 +370,7 @@ async function getDocumentTablePreviews(
         `select id, document_id, table_index, label, source_page, headers, rows,
                 ingestion_type, banner_columns, stub_columns
          from document_tables
-         where run_id = $1
+         where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
          order by document_id, table_index`,
         [runId],
       );
@@ -644,7 +675,8 @@ async function getFindings(runId: string): Promise<Finding[]> {
               exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report
        from findings c
        left join documents d1 on d1.id = c.source_document_id
-       left join documents d2 on d2.id = c.source_table_id
+       left join document_tables dt2 on dt2.id = c.source_table_id
+       left join documents d2 on d2.id = dt2.document_id
        where c.run_id = $1
        order by c.created_at`,
       [runId],
@@ -2192,7 +2224,7 @@ async function processRunAction(
       `select d.id, d.kind,
               exists (
                 select 1 from findings f
-                where (d.kind = 'table' and f.source_table_id = d.id)
+                where (d.kind = 'table' and f.source_table_id in (select t.id from document_tables t where t.document_id = d.id))
                    or (d.kind != 'table' and f.source_document_id = d.id)
               ) as has_findings
        from documents d
@@ -2278,8 +2310,18 @@ async function processRunAction(
             onlyReplacePending,
             archiveReason,
           });
+        } else if (doc.kind === "evidence") {
+          // Context documents are not mined for findings, but their text is read and kept
+          // so they preview and the brief and methodology steps can use them.
+          const has = await withTenant(TENANT_ID, async (client) => {
+            const r = await client.query<{ n: number }>(
+              "select coalesce(length(extracted_text), 0)::int as n from documents where id = $1",
+              [doc.id],
+            );
+            return (r.rows[0]?.n ?? 0) > 0;
+          });
+          if (!has) await readContextDocument(TENANT_ID, runId, doc.id);
         }
-        // "evidence" documents are not processed by either agent yet.
       } catch (error) {
         errors.push(
           `${doc.id}: ${error instanceof Error ? error.message : String(error)}`,
@@ -2461,6 +2503,7 @@ export default async function RunPage({
     transcriptQuality,
     instrumentSummaries,
     outputSets,
+    reportReadStats,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -2494,6 +2537,7 @@ export default async function RunPage({
     timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
     timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
     timing("outputSets", getOutputSets(TENANT_ID, id)),
+    timing("reportReadStats", getReportReadStats(id)),
   ]);
   if (!run) {
     notFound();
@@ -3475,16 +3519,49 @@ export default async function RunPage({
                                 </div>
                                 {doc.kind === "report" && (
                                   <form action={extractAction}>
-                                    <SubmitButton
-                                      pendingLabel="Extracting..."
-                                      className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                                      icon={
-                                        <DocumentIcon className="h-3.5 w-3.5" />
+                                    {(() => {
+                                      const docFindings = rawFindings.filter(
+                                        (f) => f.source_document_id === doc.id,
+                                      );
+                                      const ranAt = reportReadStats.get(doc.id)?.ranAt;
+                                      if (docFindings.length === 0 && !ranAt) {
+                                        return (
+                                          <SubmitButton
+                                            pendingLabel="Extracting..."
+                                            className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                                            icon={<DocumentIcon className="h-3.5 w-3.5" />}
+                                          >
+                                            Extract findings
+                                          </SubmitButton>
+                                        );
                                       }
-                                    >
-                                      Extract findings
-                                    </SubmitButton>
+                                      const when = ranAt
+                                        ? new Date(ranAt.replace(" ", "T").replace(/\+00$/, "Z")).toLocaleString("en-ZA", {
+                                            dateStyle: "medium",
+                                            timeStyle: "short",
+                                          })
+                                        : null;
+                                      return (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="min-w-0 text-xs text-muted">
+                                            <span className="font-medium text-emerald-700">Extracted</span>
+                                            {when && !when.includes("Invalid") ? ` ${when}` : ""}
+                                            {`, ${docFindings.length} ${docFindings.length === 1 ? "finding" : "findings"}`}
+                                          </span>
+                                          <RerunExtractButton />
+                                        </div>
+                                      );
+                                    })()}
+                                    <CodingFormProgress runId={id} />
                                   </form>
+                                )}
+                                {doc.kind === "report" && (
+                                  <ReportReadSummary
+                                    stats={reportReadStats.get(doc.id) ?? null}
+                                    findings={rawFindings.filter(
+                                      (f) => f.source_document_id === doc.id,
+                                    )}
+                                  />
                                 )}
                                 {doc.kind === "table" &&
                                   doc.ingestion_type !== "raw" && (
@@ -3517,6 +3594,7 @@ export default async function RunPage({
                                     (doc.ingestion_type === "raw" &&
                                       isCaseTableFileName(doc.source_filename))) &&
                                   (!dataSetups.has(doc.id) || dataSetups.get(doc.id)?.accepted ? (
+                                    <>
                                     <CrosstabBuilder
                                       runId={id}
                                       documentId={doc.id}
@@ -3530,6 +3608,12 @@ export default async function RunPage({
                                           label: t.label ?? "Crosstab",
                                         }))}
                                     />
+                                    <AnalyticsBuilder
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                    />
+                                    </>
                                   ) : (
                                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                                       <span>
@@ -3667,6 +3751,7 @@ export default async function RunPage({
                                       >
                                         Code themes
                                       </SubmitButton>
+                                      <CodingFormProgress runId={id} />
                                     </form>
                                     <details className="rounded-lg border border-border bg-white p-2 text-xs">
                                       <summary className="cursor-pointer select-none font-medium text-muted">
@@ -3900,12 +3985,6 @@ export default async function RunPage({
               run.business_problem ??
               "Untitled project"}
           </h1>
-          {run.project_name && run.business_problem && (
-            <p className="mb-3 text-sm text-foreground">
-              <span className="font-medium text-muted">Business problem: </span>
-              {run.business_problem}
-            </p>
-          )}
           <div className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
             <span>Audience: {run.audience}</span>
             <span className="text-border">&middot;</span>
@@ -4270,6 +4349,21 @@ export default async function RunPage({
                   (run.decision_statement && run.decision_statement.trim()),
               )}
             />
+            <ObjectiveEvidence
+              runId={id}
+              dataFiles={documents
+                .filter(
+                  (d) =>
+                    d.kind === "table" &&
+                    (isStatsFileName(d.source_filename) ||
+                      (d.ingestion_type === "raw" && isCaseTableFileName(d.source_filename))),
+                )
+                .map((d) => ({ id: d.id, name: d.source_filename }))}
+              hasObjectiveOrDecision={Boolean(
+                (run.research_objective && run.research_objective.trim()) ||
+                  (run.decision_statement && run.decision_statement.trim()),
+              )}
+            />
             {objectiveReviewList}
           </SectionPanel>
 
@@ -4356,7 +4450,12 @@ export default async function RunPage({
                 {
                   id: "report-claims",
                   label: `Report claims${statedInsightValidations.length > 0 ? ` (${statedInsightValidations.length})` : ""}`,
-                  content: statedInsightValidationsSection,
+                  content: (
+                    <>
+                      {statedInsightValidationsSection}
+                      <ClaimTableChecks runId={id} />
+                    </>
+                  ),
                 },
               ]}
             />
@@ -4599,6 +4698,7 @@ const findingHistoryReasonLabel: Record<string, string> = {
   regenerate_unreviewed: "Regenerate rejected",
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
+  wave_recompare: "Wave comparison re-run",
 };
 
 const findingHistoryStatusLabel: Record<string, string> = {

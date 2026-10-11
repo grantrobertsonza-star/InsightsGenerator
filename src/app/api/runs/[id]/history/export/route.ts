@@ -18,6 +18,7 @@ const reasonLabel: Record<string, string> = {
   regenerate_unreviewed: "Regenerate unreviewed",
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
+  wave_recompare: "Wave comparison re-run",
 };
 
 const statusLabel: Record<string, string> = {

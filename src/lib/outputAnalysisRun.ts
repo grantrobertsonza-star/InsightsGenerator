@@ -171,8 +171,8 @@ export async function generateOutputFindings(tenantId: string, runId: string, se
 /**
  * Compares two sets as waves: the same model terms and segments in both, asking
  * whether each change is larger than sampling error allows. Replaces the findings
- * from an earlier comparison of the same pair. Those findings are fully
- * reproducible from the two sets, so they are deleted without an archive copy.
+ * from an earlier comparison of the same pair, after archiving them so any
+ * review the researcher did on them is kept in history.
  */
 export async function compareOutputSets(
   tenantId: string,
@@ -196,7 +196,8 @@ export async function compareOutputSets(
   const { findings, notes } = compareWaves({ id: earlierId, label: label(a), files: fa }, { id: laterId, label: label(b), files: fb });
   const pair = `${earlierId}:${laterId}`;
   await withTenant(tenantId, async (client) => {
-    await client.query("delete from findings where run_id = $1 and origin = 'generated' and stated_stats->>'wavePair' = $2", [runId, pair]);
+    // The earlier comparison's findings are archived first (review status, notes, verdicts and what was built on them), then replaced.
+    await archiveAndReplaceFindings(client, { documentColumn: "wave_pair", documentId: runId, wavePair: pair, onlyRejected: false, archiveReason: "wave_recompare" });
     for (const f of findings) {
       const assurance = f.caveats.map((c) => ({ severity: c.severity, text: c.text, fileName: c.fileName }));
       await client.query(

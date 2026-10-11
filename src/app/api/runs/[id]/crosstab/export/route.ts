@@ -248,7 +248,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (run.rows.length === 0) return null;
     const tables = await client.query<{ id: string; label: string | null; crosstab: (CrosstabResult & { version?: number }) | null }>(
       `select id, label, crosstab from document_tables
-       where run_id = $1 and crosstab is not null ${tableId ? "and id = $2" : ""}
+       where run_id = $1 and crosstab is not null and coalesce(crosstab_status, 'committed') <> 'evidence' ${tableId ? "and id = $2" : ""}
        order by document_id, table_index`,
       tableId ? [runId, tableId] : [runId],
     );

@@ -3,6 +3,7 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { capWords, parseNumberedItems } from "./text";
 import type { ConfidenceTier, QualityTier } from "./tiers";
+import { evidenceDigest } from "./objectiveEvidence";
 
 type EvidenceInsight = {
   id: string;
@@ -134,8 +135,14 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     );
   }
 
+  // Direct evidence from the data file (objectiveEvidence.ts), when that lane has run:
+  // a conclusion can then cite what the numbers show, not only what insights say.
+  const digest = await evidenceDigest(tenantId, runId);
   const itemsBlock = items
-    .map((item, index) => `${index}. [${item.kind}] ${item.text}`)
+    .map((item, index) => {
+      const direct = digest.get(`${item.kind}:${item.order}`);
+      return `${index}. [${item.kind}] ${item.text}${direct ? `\n   ${direct}` : ""}`;
+    })
     .join("\n");
 
   const insightsBlock = insights
@@ -165,6 +172,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       "speaks to it yet). Also give the indices of every insight that genuinely bears on this item -- an " +
       "insight can support more than one item, and some items will have none. Do not stretch a tenuous " +
       "connection just to avoid a gap; an honest gap is more useful to a stakeholder than a padded answer.\n\n" +
+      "Some items carry a line of direct data evidence (supports / against / mixed / inconclusive / silent). Cite it in the conclusion when present; 'judged' stances are the model's reading, say so. An item with direct evidence but no insight is partial at most. " +
       "Judge only against the items and insights given below; don't invent evidence or items beyond what's " +
       "listed.\n\n" +
       `Objectives and decisions:\n${itemsBlock}\n\n` +

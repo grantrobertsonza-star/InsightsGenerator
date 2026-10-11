@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import CodingProgressBar from "./CodingProgressBar";
 
 type ProgressPayload = {
   phase: "extracting" | "finishing" | "done";
@@ -72,13 +73,18 @@ export default function ProcessProgress({ runId }: { runId: string }) {
     };
   }, [pending, runId]);
 
-  if (!pending || !progress || progress.phase === "done") return null;
+  if (!pending) return null;
+  const bar = <CodingProgressBar runId={runId} active={pending} />;
+  if (!progress || progress.phase === "done") return bar;
 
   if (progress.phase === "finishing") {
     return (
-      <p className="mt-1.5 text-xs text-muted">
-        Finishing up (verifying and synthesizing)...
-      </p>
+      <>
+        <p className="mt-1.5 text-xs text-muted">
+          Finishing up (verifying and synthesizing)...
+        </p>
+        {bar}
+      </>
     );
   }
 
@@ -88,8 +94,11 @@ export default function ProcessProgress({ runId }: { runId: string }) {
       : "";
 
   return (
-    <p className="mt-1.5 text-xs text-muted">
-      {progress.done} of {progress.total} documents processed{etaText}
-    </p>
+    <>
+      <p className="mt-1.5 text-xs text-muted">
+        {progress.done} of {progress.total} documents processed{etaText}
+      </p>
+      {bar}
+    </>
   );
 }

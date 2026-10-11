@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { verifyAfterGenerate } from "./verifyAfterGenerate";
 import {
   buildCrosstab,
   commitCrosstabs,
@@ -82,6 +84,7 @@ export async function commitCrosstabsAction(
 ): Promise<{ ok: true; tables: number; findings: number } | Fail> {
   try {
     const r = await commitCrosstabs(TENANT_ID, runId, documentId);
+    if (r.findings > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
     revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
   } catch (error) {

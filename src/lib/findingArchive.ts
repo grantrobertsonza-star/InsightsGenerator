@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 
 export type ArchiveReason =
-  "regenerate_unreviewed" | "full_reprocess" | "manual_reextract";
+  "regenerate_unreviewed" | "full_reprocess" | "manual_reextract" | "wave_recompare";
 
 /**
  * Before any delete that would remove findings (and, by cascade, their
@@ -41,8 +41,11 @@ export type ArchiveReason =
 export async function archiveAndReplaceFindings(
   client: PoolClient,
   params: {
-    documentColumn: "source_document_id" | "source_table_id";
+    documentColumn: "source_document_id" | "source_table_id" | "wave_pair";
+    /** For "wave_pair": the run id. Otherwise the document or table id. */
     documentId: string;
+    /** Only with "wave_pair": `${earlierSetId}:${laterSetId}`. */
+    wavePair?: string;
     onlyRejected: boolean;
     archiveReason: ArchiveReason;
   },
@@ -50,19 +53,30 @@ export async function archiveAndReplaceFindings(
   const { documentColumn, documentId, onlyRejected, archiveReason } = params;
   const statusClause = onlyRejected ? "and status = 'rejected'" : "";
   const statusClauseAliased = onlyRejected ? "and f.status = 'rejected'" : "";
+  // What "this document's findings" means. A wave comparison has no source file of its own:
+  // its findings are the generated ones tagged with the pair of sets compared.
+  let scopeArgs: unknown[] = [documentId];
+  let scope = (a: string) => `${a}${documentColumn} = $1`;
+  if (documentColumn === "wave_pair") {
+    if (!params.wavePair) throw new Error("wave_pair needs wavePair");
+    scopeArgs = [documentId, params.wavePair];
+    scope = (a: string) => `${a}run_id = $1 and ${a}origin = 'generated' and ${a}stated_stats->>'wavePair' = $2`;
+  }
+  const reasonIx = scopeArgs.length + 1;
 
   await client.query(
     `insert into finding_history (
        tenant_id, run_id, original_finding_id, origin, finding_text, finding_kind, theme, status,
        source_document_id, source_table_id, source_page, source_quote, data_type, original_created_at,
-       archived_reason
+       archived_reason, pattern_type, stated_stats, quote_verified, extraction_caveats
      )
      select tenant_id, run_id, id, origin, finding_text, finding_kind, theme, status,
-            source_document_id, source_table_id, source_page, source_quote, data_type, created_at, $2
+            source_document_id, source_table_id, source_page, source_quote, data_type, created_at, $${reasonIx},
+            pattern_type, stated_stats, quote_verified, extraction_caveats
      from findings
-     where ${documentColumn} = $1 ${statusClause}
+     where ${scope("")} ${statusClause}
      on conflict (original_finding_id) do nothing`,
-    [documentId, archiveReason],
+    [...scopeArgs, archiveReason],
   );
 
   await client.query(
@@ -74,8 +88,8 @@ export async function archiveAndReplaceFindings(
             v.verification_method, v.corroboration_level, v.created_at
      from verdicts v
      join findings f on f.id = v.finding_id
-     where f.${documentColumn} = $1 ${statusClauseAliased}`,
-    [documentId],
+     where ${scope("f.")} ${statusClauseAliased}`,
+    scopeArgs,
   );
 
   await client.query(
@@ -85,7 +99,7 @@ export async function archiveAndReplaceFindings(
          i.implication, i.decision_context, i.quality_score, i.quality_tier, i.quality_rationale, i.created_at
        from insights i
        join findings f on f.id = i.finding_id
-       where f.${documentColumn} = $1 ${statusClauseAliased}
+       where ${scope("f.")} ${statusClauseAliased}
        order by i.finding_id, i.created_at asc, i.id asc
      )
      insert into insight_history (
@@ -96,7 +110,7 @@ export async function archiveAndReplaceFindings(
             implication, decision_context, quality_score, quality_tier, quality_rationale, created_at
      from picked_insights
      on conflict (original_finding_id) do nothing`,
-    [documentId],
+    scopeArgs,
   );
 
   await client.query(
@@ -104,7 +118,7 @@ export async function archiveAndReplaceFindings(
        select distinct on (i.finding_id) i.id as insight_id
        from insights i
        join findings f on f.id = i.finding_id
-       where f.${documentColumn} = $1 ${statusClauseAliased}
+       where ${scope("f.")} ${statusClauseAliased}
        order by i.finding_id, i.created_at asc, i.id asc
      )
      insert into recommendation_history (
@@ -115,11 +129,11 @@ export async function archiveAndReplaceFindings(
             r.timeline, r.metric, r.priority, r.status, r.created_at
      from recommendations r
      join picked_insights pi on pi.insight_id = r.insight_id`,
-    [documentId],
+    scopeArgs,
   );
 
   await client.query(
-    `delete from findings where ${documentColumn} = $1 ${statusClause}`,
-    [documentId],
+    `delete from findings where ${scope("")} ${statusClause}`,
+    scopeArgs,
   );
 }

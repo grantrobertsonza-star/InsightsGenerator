@@ -182,3 +182,44 @@ describe("attentionCheck", () => {
     expect(attentionCheck(ev)!.medianSeconds).toBeCloseTo(5);
   });
 });
+
+import { yesNoKappa, codeKappas, MIN_TURNS_TO_JUDGE } from "../qualAudit";
+
+describe("yesNoKappa and codeKappas", () => {
+  it("is 1 for identical codings and 0 for chance-level agreement", () => {
+    expect(yesNoKappa([true, false, true, false], [true, false, true, false])).toBe(1);
+    expect(yesNoKappa([true, true, false, false], [true, false, true, false])).toBeCloseTo(0);
+  });
+  it("is undefined when neither coder ever varies", () => {
+    expect(yesNoKappa([false, false], [false, false])).toBeNull();
+  });
+  it("averages pairwise kappa over runs per code", () => {
+    // 4 turns, 3 runs, code 1 coded identically in all, code 2 differs in run 3
+    const turns = [
+      [[1], [1], [1, 2]],
+      [[], [], [2]],
+      [[1, 2], [1, 2], [1]],
+      [[], [], []],
+    ];
+    const k = codeKappas(turns, 2);
+    expect(k[0].kappa).toBeCloseTo(1);
+    expect(k[1].kappa).not.toBeNull();
+    expect(k[1].kappa as number).toBeLessThan(1);
+  });
+  it("exposes the small-theme threshold", () => {
+    expect(MIN_TURNS_TO_JUDGE).toBe(10);
+  });
+});
+
+import { kappaBand } from "../qualAudit";
+
+describe("kappaBand", () => {
+  it("labels kappa by the usual cut-offs and flags small themes", () => {
+    expect(kappaBand(0.86, false)).toBe("Strong");
+    expect(kappaBand(0.8, false)).toBe("Strong");
+    expect(kappaBand(0.65, false)).toBe("Moderate");
+    expect(kappaBand(0.59, false)).toBe("Weak");
+    expect(kappaBand(null, false)).toBe("Not available");
+    expect(kappaBand(0.9, true)).toBe("Too few turns to judge");
+  });
+});

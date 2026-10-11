@@ -794,6 +794,82 @@ def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=N
     }
 
 
+def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
+    """The chosen outcome and predictor columns as numbers, case by case, for driver analysis.
+    args: outcome, predictors [names], weightVar. Codes whose label means "no usable answer"
+    (don't know, refused, not applicable) become missing, as they do in a crosstab mean. A
+    variable whose answers are text rather than numbers is skipped with the reason."""
+    import numpy as np
+    import pandas as pd
+
+    outcome = args["outcome"]
+    predictors = [v for v in args.get("predictors", []) if v != outcome]
+    weight_var = args.get("weightVar") or None
+    wanted = list(dict.fromkeys([outcome] + predictors + ([weight_var] if weight_var else [])))
+    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"))
+    labels = meta.column_names_to_labels or {}
+    vlabels = meta.variable_value_labels or {}
+    n_rows = len(df)
+
+    def numeric(var):
+        raw = df[var]
+        s = pd.to_numeric(raw, errors="coerce").to_numpy(dtype=float)
+        answered = int(raw.notna().sum())
+        if answered > 0 and int(np.isfinite(s).sum()) < 0.5 * answered:
+            return None, "the answers are text, not numbers"
+        dk = [k for k, v in (vlabels.get(var) or {}).items() if _DK_RE.match(str(v).strip())]
+        if dk:
+            s = np.where(np.isin(s, np.array([float(k) for k in dk])), np.nan, s)
+        if not np.isfinite(s).any():
+            return None, "no usable answers"
+        return s, None
+
+    def describe(var, arr):
+        finite = arr[np.isfinite(arr)]
+        codes = sorted(set(float(v) for v in finite))
+        vl = vlabels.get(var) or {}
+        shown = {}
+        if len(codes) <= 12:
+            for c in codes:
+                lab = vl.get(c) if c in vl else vl.get(int(c)) if float(c).is_integer() else None
+                if lab is not None:
+                    shown[str(int(c)) if float(c).is_integer() else str(c)] = str(lab)
+        return {"name": var, "label": labels.get(var) or var, "min": float(finite.min()), "max": float(finite.max()),
+                "distinct": len(codes), "valueLabels": shown}
+
+    skipped = []
+    y_arr, why = numeric(outcome)
+    if y_arr is None:
+        raise ValueError(f"The outcome {labels.get(outcome) or outcome} cannot be used: {why}.")
+    used, cols = [], []
+    for v in predictors:
+        arr, why = numeric(v)
+        if arr is None:
+            skipped.append({"variable": v, "reason": why})
+            continue
+        used.append(describe(v, arr))
+        cols.append(arr)
+    if weight_var:
+        w = pd.to_numeric(df[weight_var], errors="coerce").to_numpy(dtype=float)
+        w = np.where(np.isfinite(w) & (w > 0), w, np.nan)
+    else:
+        w = None
+
+    def clean(arr):
+        return [None if not math.isfinite(float(v)) else float(v) for v in arr]
+
+    x = np.column_stack(cols) if cols else np.empty((n_rows, 0))
+    return {
+        "outcome": describe(outcome, y_arr),
+        "predictors": used,
+        "y": clean(y_arr),
+        "x": [clean(r) for r in x],
+        "weights": clean(w) if w is not None else None,
+        "n": n_rows,
+        "skipped": skipped,
+    }
+
+
 def _chi2_sf(x, df):
     """Upper tail of the chi-square distribution (regularised upper incomplete gamma)."""
     if x <= 0 or df <= 0:
@@ -1872,6 +1948,9 @@ class handler(BaseHTTPRequestHandler):
                 return
             if action == "categories":
                 self._send_json(200, {"result": categories(file_bytes, source_filename, (body.get("args") or {})["variable"], (body.get("args") or {}).get("overlay"))})
+                return
+            if action == "columns":
+                self._send_json(200, {"result": driver_columns(file_bytes, source_filename, body.get("args") or {})})
                 return
             if action == "crosstab":
                 self._send_json(200, {"result": crosstab(file_bytes, source_filename, body.get("args") or {})})

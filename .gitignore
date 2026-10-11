@@ -46,3 +46,6 @@ supabase/.branches
 
 # Backups hold client data: never commit
 /backups/
+
+# timing log written by the report extraction step
+extract-timing.log

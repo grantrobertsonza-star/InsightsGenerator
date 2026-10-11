@@ -2,6 +2,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
+import { BASIS_LABEL, findingBasis } from "./findingBasis";
 
 const MAX_FINDINGS_FOR_INSIGHT = 60;
 
@@ -25,6 +26,9 @@ type VerifiedFinding = {
   theme: string | null;
   verdict_tier: "robust" | "use_with_caution";
   verdict_rationale: string;
+  origin?: "stated" | "generated" | "coded";
+  pattern_type?: string | null;
+  stated_stats?: Record<string, unknown> | null;
 };
 
 type PreparedInsight = {
@@ -61,7 +65,7 @@ type PreparedInsight = {
  * substitute the objective or problem in decision_context's place, since
  * that would blur the two modes rather than keep them distinct.
  */
-export async function generateInsights(tenantId: string, runId: string): Promise<void> {
+export async function generateInsights(tenantId: string, runId: string): Promise<boolean> {
   const run = await withTenant(tenantId, async (client) => {
     const result = await client.query<{
       entry_point: "generate" | "validate" | null;
@@ -75,7 +79,7 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     return result.rows[0];
   });
 
-  if (!run) return;
+  if (!run) return false;
 
   const decisionContext = run.decision_statement;
   if (run.entry_point === "validate" && !decisionContext) {
@@ -83,12 +87,13 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     // confirmed a decision on the Decision brief screen. This isn't an
     // error, insight generation will pick up again automatically (via the
     // same trigger acceptDecisionCandidate calls) once one is accepted.
-    return;
+    return false;
   }
 
   const eligible = await withTenant(tenantId, async (client) => {
     const result = await client.query<VerifiedFinding>(
-      `select f.id, f.finding_text, f.theme, v.verdict_tier, v.rationale as verdict_rationale
+      `select f.id, f.finding_text, f.theme, v.verdict_tier, v.rationale as verdict_rationale,
+              f.origin, f.pattern_type, f.stated_stats
        from findings f
        join verdicts v on v.finding_id = f.id
        where f.run_id = $1
@@ -97,12 +102,15 @@ export async function generateInsights(tenantId: string, runId: string): Promise
          and not exists (select 1 from insights i where i.finding_id = f.id)
        order by f.theme nulls last, f.created_at
        limit $2`,
-      [runId, MAX_FINDINGS_FOR_INSIGHT]
+      [runId, MAX_FINDINGS_FOR_INSIGHT + 1]
     );
     return result.rows;
   });
 
-  if (eligible.length === 0) return;
+  // More than one pass worth: write this pass's share and tell the caller to come back for the rest.
+  const hasMore = eligible.length > MAX_FINDINGS_FOR_INSIGHT;
+  if (hasMore) eligible.length = MAX_FINDINGS_FOR_INSIGHT;
+  if (eligible.length === 0) return false;
 
   const framingBlock =
     run.entry_point === "validate"
@@ -159,6 +167,7 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     const detail = chunkFailures.length > 0 ? ` (${chunkFailures.join("; ")})` : "";
     throw new Error(`No usable insights came back this time${detail}. Nothing was changed, try again.`);
   }
+  return hasMore;
 }
 
 async function generateInsightsForChunk(
@@ -172,7 +181,9 @@ async function generateInsightsForChunk(
   const findingsBlock = batch
       .map(
         (f, index) =>
-          `${index}. [${f.theme ?? "Uncategorized"} · verdict: ${f.verdict_tier}] ${f.finding_text}\n` +
+          `${index}. [${f.theme ?? "Uncategorized"} · verdict: ${f.verdict_tier}${
+            f.origin ? ` · basis: ${BASIS_LABEL[findingBasis({ origin: f.origin, pattern_type: f.pattern_type, stated_stats: f.stated_stats })]}` : ""
+          }] ${f.finding_text}\n` +
           `   Verification note: ${f.verdict_rationale}`
       )
       .join("\n");
@@ -190,6 +201,14 @@ async function generateInsightsForChunk(
         "rather than inventing a tension that isn't there.\n" +
         "- implication: what follows from this, stated as a consequence, not a restatement of the tension.\n\n" +
         framingBlock +
+        "Each finding carries a basis. Word the insight to match it: a 'Reading, with interval' states a level " +
+        "(a share, top-two box, NPS or average) and never a difference between groups; a 'Tested, no difference' " +
+        "means no reliable difference was found, so say the groups look alike on this measure without claiming " +
+        "they are equal, and treat that as a result worth acting on (for example, one approach will do for all " +
+        "groups); a 'Modelled, driver analysis' finding says what goes with the outcome in this survey and ranks " +
+        "questions by their share of the explained variation, never claims one question causes the outcome, and " +
+        "must respect any unstable rank or weak fit in the finding; a 'Tested, significant' finding may be described as a difference. Where a finding is routine " +
+        "and says little, say so in the tension rather than inventing drama.\n" +
         "Cover every finding listed below by its index. Keep each part to one or two sentences; this is a " +
         "component of a larger brief, not a standalone essay.",
       tool_choice: { type: "tool", name: "record_insights" },
@@ -305,7 +324,11 @@ async function generateInsightsForChunk(
  */
 export async function refreshInsights(tenantId: string, runId: string): Promise<void> {
   try {
-    await generateInsights(tenantId, runId);
+    // Wide findings can run past one pass; keep going until nothing is left (at most 8 passes).
+    for (let pass = 0; pass < 8; pass++) {
+      const more = await generateInsights(tenantId, runId);
+      if (!more) break;
+    }
   } catch (error) {
     await withTenant(tenantId, async (client) => {
       await client.query(

@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { verifyAfterGenerate } from "./verifyAfterGenerate";
 import { withTenant } from "./db";
 import { deleteDocument } from "./documentActions";
 import { checkOutputSet, compareOutputSets, generateOutputFindings, mergeOutputSets, type StoredChecks } from "./outputAnalysisRun";
@@ -70,6 +72,7 @@ export async function checkOutputSetAction(runId: string, setId: string): Promis
 export async function generateOutputFindingsAction(runId: string, setId: string): Promise<CheckResult> {
   try {
     const { checks } = await generateOutputFindings(TENANT_ID, runId, setId);
+    after(() => verifyAfterGenerate(TENANT_ID, runId));
     revalidatePath(`/runs/${runId}`);
     return { ok: true, checks };
   } catch (e) {
@@ -82,6 +85,7 @@ export async function generateOutputFindingsAction(runId: string, setId: string)
 export async function compareWavesAction(runId: string, earlierId: string, laterId: string): Promise<{ ok: true; findings: number; notes: string[] } | { ok: false; error: string }> {
   try {
     const r = await compareOutputSets(TENANT_ID, runId, earlierId, laterId);
+    if (r.findings > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
     revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
   } catch (e) {

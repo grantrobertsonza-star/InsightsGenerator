@@ -107,7 +107,7 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
-  action: "convert" | "dictionary" | "crosstab" | "categories",
+  action: "convert" | "dictionary" | "crosstab" | "categories" | "columns",
   args: unknown = {},
 ): Promise<T> {
   const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
@@ -436,7 +436,7 @@ export type CrosstabResult = {
  * the Python function; otherwise it runs the same code with local Python.
  */
 export async function runStatsTool<T>(
-  action: "dictionary" | "crosstab" | "categories",
+  action: "dictionary" | "crosstab" | "categories" | "columns",
   storagePath: string,
   sourceFilename: string,
   args: unknown = {},

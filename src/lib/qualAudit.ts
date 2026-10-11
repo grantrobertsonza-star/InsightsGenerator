@@ -340,6 +340,80 @@ export function codeStability(
   return out;
 }
 
+/**
+ * Fewest turns a theme must come up in before its agreement figure is
+ * treated as informative. Below this, one flipped turn moves the percentage
+ * by ten points or more, so the figure is noise.
+ */
+export const MIN_TURNS_TO_JUDGE = 10;
+
+/**
+ * Cohen's kappa for two yes/no codings of the same turns: agreement beyond
+ * what the two coders' own rates of saying yes would produce by chance.
+ * null when chance agreement is already total (nobody ever varied), where
+ * kappa is undefined.
+ */
+export function yesNoKappa(a: boolean[], b: boolean[]): number | null {
+  const n = Math.min(a.length, b.length);
+  if (n === 0) return null;
+  let both = 0;
+  let neither = 0;
+  let aYes = 0;
+  let bYes = 0;
+  for (let i = 0; i < n; i++) {
+    if (a[i] && b[i]) both += 1;
+    if (!a[i] && !b[i]) neither += 1;
+    if (a[i]) aYes += 1;
+    if (b[i]) bYes += 1;
+  }
+  const po = (both + neither) / n;
+  const pe = (aYes / n) * (bYes / n) + ((n - aYes) / n) * ((n - bYes) / n);
+  if (pe >= 1) return null;
+  return (po - pe) / (1 - pe);
+}
+
+/**
+ * Per code: the average pairwise Cohen's kappa over every pair of runs
+ * (original included), taken over all the turns, so turns where no run gave
+ * the code count as agreement, as they should for a chance-corrected figure.
+ * `runs` holds, per turn, the codes each run gave.
+ */
+export function codeKappas(
+  turns: number[][][],
+  codeCount: number,
+): { code: number; kappa: number | null }[] {
+  const out: { code: number; kappa: number | null }[] = [];
+  const runCount = turns.reduce((m, t) => Math.max(m, t.length), 0);
+  for (let code = 1; code <= codeCount; code++) {
+    const series: boolean[][] = [];
+    for (let r = 0; r < runCount; r++)
+      series.push(turns.map((t) => (t[r] ?? []).includes(code)));
+    const ks: number[] = [];
+    for (let i = 0; i < series.length; i++)
+      for (let j = i + 1; j < series.length; j++) {
+        const k = yesNoKappa(series[i], series[j]);
+        if (k !== null) ks.push(k);
+      }
+    out.push({
+      code,
+      kappa: ks.length === 0 ? null : ks.reduce((x, y) => x + y, 0) / ks.length,
+    });
+  }
+  return out;
+}
+
+/**
+ * A plain label for a run-to-run kappa, so a reader does not have to know the scale. The cut-offs are
+ * the commonly used ones (0.80 and above strong, 0.60 to 0.79 moderate); they are a convention, not a law.
+ */
+export function kappaBand(kappa: number | null, tooFew: boolean): string {
+  if (tooFew) return "Too few turns to judge";
+  if (kappa === null) return "Not available";
+  if (kappa >= 0.8) return "Strong";
+  if (kappa >= 0.6) return "Moderate";
+  return "Weak";
+}
+
 // --- Reviewer attention ---------------------------------------------------
 
 export type AttentionEvent = { at: number; changed: boolean };

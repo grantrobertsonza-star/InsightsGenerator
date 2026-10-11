@@ -5,6 +5,9 @@ import { checkBaseSize } from "./stats";
 import { mapWithConcurrency } from "./concurrency";
 import { applyRecordedContradictions } from "./contradictionDetector";
 import { verificationBasisFor } from "./discoveryClassification";
+import { codeVerdict, findingBasis } from "./findingBasis";
+import { checkEvidenceFor } from "./claimTableChecks";
+import { getTableGroundingDigest } from "./tableComputation";
 
 // Judged in chunks rather than one call for the whole batch: at 80 findings,
 // each needing a rationale, a single call's output can run past its token
@@ -32,8 +35,12 @@ type FindingRow = {
   source_document_id: string | null;
   source_table_id: string | null;
   stated_stats: Record<string, unknown> | null;
+  pattern_type: string | null;
   grounded_by_finding_id: string | null;
   extraction_caveats: unknown;
+  source_quote: string | null;
+  supporting_segments: number | null;
+  supporting_speakers: number | null;
 };
 
 /** Caveat tags extractFindings.ts attached to this finding itself (see
@@ -157,12 +164,12 @@ type CorroborationLevel = "cross_source_corroborated" | "single_source" | "contr
  * by the existing near-duplicate detector) or from grounded_by_finding_id,
  * never left to a model's impression of "this seems corroborated."
  */
-export async function verifyFindings(tenantId: string, runId: string): Promise<void> {
+export async function verifyFindings(tenantId: string, runId: string): Promise<number> {
   const allFindings = await withTenant(tenantId, async (client) => {
     const result = await client.query<FindingRow>(
       `select id, origin, finding_text, finding_kind, theme, duplicate_group_id,
-              source_document_id, source_table_id, stated_stats, grounded_by_finding_id,
-              extraction_caveats
+              source_document_id, source_table_id, stated_stats, pattern_type, grounded_by_finding_id,
+              extraction_caveats, source_quote, supporting_segments, supporting_speakers
        from findings
        where run_id = $1 and status != 'rejected'`,
       [runId]
@@ -188,7 +195,7 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
   // verification_method, so everything downstream still just reads a
   // verdict_tier the usual way.
   const unverified = allFindings.filter((f) => !alreadyVerified.has(f.id) && f.finding_kind !== "stated_insight");
-  if (unverified.length === 0) return;
+  if (unverified.length === 0) return 0;
 
   // A finding corroborates across sources when it shares a duplicate group
   // with at least one other finding pulled from a different document. Built
@@ -242,33 +249,18 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
     if (finding.origin === "generated" && finding.stated_stats) {
       const { checks, cautions, caveats } = baseSizeCautionsFor(finding.stated_stats);
       const allCaveats = [...new Set([...caveats, ...extractionCaveatsFor(finding)])];
-      // A banner-comparison pattern that didn't reach significance is still
-      // surfaced as a finding (bannerPlanComputation.ts tags it rather than
-      // discarding it), but it isn't a real pattern the pipeline can stand
-      // behind. not_supported keeps it out of insight/recommendation
-      // generation (insightGenerator.ts only picks up robust/use_with_caution
-      // verdicts), while it still shows up here, badged, for review.
-      const notSignificant = allCaveats.includes("not_significant");
-      // A descriptive_summary pattern (bannerPlanComputation.ts, emitted
-      // when there's too little within-group data to run any test at all --
-      // typically one reading per category) never claimed a difference in
-      // the first place, so it gets its own rationale rather than being
-      // described as "tested but not significant", which would misstate
-      // what happened.
-      const insufficientData = allCaveats.includes("insufficient_n_for_test");
+      // What the finding actually rests on decides the verdict (findingBasis.ts):
+      // a passed test, a result that did not pass, statistics read from an
+      // uploaded output, or a description / rule of thumb with no test at all.
+      // Untested patterns are never described as statistically significant, and
+      // results that say nothing was significant never rate as robust.
+      const basis = findingBasis({ origin: finding.origin, pattern_type: finding.pattern_type, stated_stats: finding.stated_stats });
+      const verdict = codeVerdict(basis, cautions, allCaveats);
       prepared.push({
         findingId: finding.id,
-        verdictTier: notSignificant || insufficientData ? "not_supported" : cautions.length > 0 ? "use_with_caution" : "robust",
-        rationale: insufficientData
-          ? "This is a single-group reading, not a tested comparison -- there wasn't enough data within the " +
-            "group to test it against anything, so it's descriptive only."
-          : notSignificant
-            ? `This comparison was computed by the pipeline but did not reach statistical significance, so the ` +
-              `apparent difference isn't a reliable pattern.${cautions.length > 0 ? ` ${cautions.join(" ")}` : ""}`
-            : cautions.length > 0
-              ? `Statistically significant as computed by the pipeline. ${cautions.join(" ")}`
-              : "Statistically significant as computed by the pipeline's own arithmetic, with no base-size caution.",
-        statisticalChecks: { ...checks, caveats: allCaveats },
+        verdictTier: verdict.tier,
+        rationale: verdict.rationale,
+        statisticalChecks: { ...checks, caveats: allCaveats, basis },
         verificationMethod: "single_pass",
       });
       continue;
@@ -281,25 +273,27 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
     if (groundingFinding && groundingFinding.stated_stats) {
       // Same code path as a generated finding's own self-check, run against
       // the computed fact this prose claim was tied to, rather than a
-      // model's plausibility judgment -- the claim isn't resting on the
-      // report's own wording anymore. Still folds in this stated finding's
-      // OWN extraction caveats (not the grounding finding's), since those
-      // describe how the prose itself was written, which the grounding
-      // lookup doesn't change.
+      // model's plausibility judgment. The grounding finding's basis counts:
+      // a claim tied to a result that did not pass its test, or to a
+      // description with no test, cannot come out robust. Still folds in this
+      // stated finding's OWN extraction caveats, since those describe how the
+      // prose itself was written.
       const { checks, cautions, caveats } = baseSizeCautionsFor(groundingFinding.stated_stats);
       const allCaveats = [...new Set([...caveats, ...extractionCaveatsFor(finding)])];
+      const basis = findingBasis({
+        origin: groundingFinding.origin,
+        pattern_type: groundingFinding.pattern_type,
+        stated_stats: groundingFinding.stated_stats,
+      });
+      const verdict = codeVerdict(basis, cautions, allCaveats);
       prepared.push({
         findingId: finding.id,
-        verdictTier: cautions.length > 0 ? "use_with_caution" : "robust",
+        verdictTier: verdict.tier,
         rationale:
-          (cautions.length > 0
-            ? `This claim restates a pattern independently computed and verified from table data in this ` +
-              `same run ("${groundingFinding.finding_text}"). ${cautions.join(" ")}`
-            : `This claim restates a pattern independently computed and verified from table data in this ` +
-              `same run ("${groundingFinding.finding_text}"), with no base-size caution.`) +
-          " Judged against that computed data rather than for plausibility alone, since it's no longer " +
-          "resting on the report's own wording.",
-        statisticalChecks: { groundedByFindingId: groundingFinding.id, ...checks, caveats: allCaveats },
+          `This claim restates a pattern computed from data in this same run ("${groundingFinding.finding_text}"). ` +
+          verdict.rationale +
+          " Judged against that computed data rather than for plausibility alone.",
+        statisticalChecks: { groundedByFindingId: groundingFinding.id, ...checks, caveats: allCaveats, basis },
         verificationMethod: "single_pass",
       });
       continue;
@@ -311,6 +305,44 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
   const validTiers = new Set(["robust", "use_with_caution", "not_supported", "insufficient_information"]);
 
   const toJudgeThisPass = needsJudgment.slice(0, MAX_FINDINGS_FOR_JUDGMENT);
+
+  // Evidence the model may weigh besides the sentence itself: what the project's tables said about
+  // each claim (checked in code, claimTableChecks.ts), how many segments and speakers back a coded
+  // theme, and the strongest computed results to test a claim against. Without these a stated or
+  // coded finding could only be judged for plausibility, and "contradicted by another finding"
+  // could only mean another finding in the same batch of 20.
+  const tableEvidence = await checkEvidenceFor(
+    tenantId,
+    runId,
+    toJudgeThisPass.map((f) => f.id),
+  );
+  const computedReference = (await getTableGroundingDigest(tenantId, runId, 25).catch(() => []))
+    .map((d) => `- ${d.text.slice(0, 220)}`)
+    .join("\n");
+  const otherClaims = allFindings
+    .filter((f) => f.origin !== "generated" && !toJudgeThisPass.some((j) => j.id === f.id))
+    .slice(0, 40)
+    .map((f) => `- ${f.finding_text.slice(0, 160)}`)
+    .join("\n");
+  const relianceById = new Map<string, boolean>();
+  for (const f of toJudgeThisPass) {
+    const ev = tableEvidence.get(f.id);
+    relianceById.set(f.id, Boolean(ev && ev.stance !== "silent" && ev.stance !== "inconclusive"));
+  }
+  const evidenceLines = (f: FindingRow): string => {
+    const parts: string[] = [];
+    if (f.origin === "stated" && f.source_quote) parts.push(`   Source quote: "${f.source_quote.slice(0, 220)}"`);
+    if (f.origin === "coded" && f.supporting_segments !== null) {
+      parts.push(
+        `   Coded theme: ${f.supporting_segments} participant segment(s)` +
+          (f.supporting_speakers !== null ? ` from ${f.supporting_speakers} speaker(s)${f.supporting_speakers <= 1 ? " (a single voice)" : ""}` : "") +
+          ".",
+      );
+    }
+    const ev = tableEvidence.get(f.id);
+    if (ev) parts.push(`   Checked against the project's tables (${ev.stance}): ${ev.lines.join(" | ")}`);
+    return parts.length ? `\n${parts.join("\n")}` : "";
+  };
 
   const chunks: FindingRow[][] = [];
   for (let start = 0; start < toJudgeThisPass.length; start += JUDGMENT_CHUNK_SIZE) {
@@ -325,7 +357,7 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
     const findingsBlock = batch
       .map(
         (f, index) =>
-          `${index}. [${f.theme ?? "Uncategorized"}${f.finding_kind ? ` · ${f.finding_kind}` : ""}] ${f.finding_text}`
+          `${index}. [${f.theme ?? "Uncategorized"}${f.finding_kind ? ` · ${f.finding_kind}` : ""}] ${f.finding_text}${evidenceLines(f)}`
       )
       .join("\n");
 
@@ -349,7 +381,15 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
         "- insufficient_information: too vague or incomplete to assess at all.\n\n" +
         "Give a short rationale for each naming the specific reason, not a generic restatement of the " +
         "tier definition. Judge each finding on its own merits; do not assume a report's own stated " +
-        "insight is correct just because it states it confidently.",
+        "insight is correct just because it states it confidently.\n\n" +
+        "Some findings carry evidence lines. 'Checked against the project's tables' is computed in code from " +
+        "the data tables: if it says against, the claim cannot be robust, and the rationale should quote the " +
+        "figures; if it says supports, say what was matched. A claim no table speaks to is not thereby wrong. " +
+        "A coded theme backed by a single speaker or very few segments should not be called robust. " +
+        "Where a finding conflicts with a computed result or another claim in the reference lists below, " +
+        "say which one and mark it not_supported or use_with_caution.\n\n" +
+        (computedReference ? `Computed results in this project (reference):\n${computedReference}\n\n` : "") +
+        (otherClaims ? `Other claims in this project (reference, not to be judged now):\n${otherClaims}` : ""),
       tool_choice: { type: "tool", name: "record_verdicts" },
       tools: [
         {
@@ -402,7 +442,10 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
         findingId: batch[index].id,
         verdictTier: verdictTier as VerdictTier,
         rationale,
-        statisticalChecks: extractionCaveats.length > 0 ? { caveats: extractionCaveats } : {},
+        statisticalChecks: {
+          ...(extractionCaveats.length > 0 ? { caveats: extractionCaveats } : {}),
+          ...(tableEvidence.has(batch[index].id) ? { tableChecks: tableEvidence.get(batch[index].id) } : {}),
+        },
         verificationMethod: "single_pass",
       });
     }
@@ -475,7 +518,7 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
       const verificationBasis = verificationBasisFor({
         origin: finding.origin,
         groundedByComputedFinding: Boolean(grounding && grounding.stated_stats),
-        reliedOnComputedEvidence: false,
+        reliedOnComputedEvidence: relianceById.get(finding.id) ?? false,
       });
       await client.query(
         `insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks,
@@ -499,6 +542,8 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
     // from scratch, its downgrade is re-applied here rather than lost.
     await applyRecordedContradictions(client, tenantId, runId);
   });
+  // Findings past the per-pass cap wait for another pass; the caller can loop on this.
+  return needsJudgment.length - toJudgeThisPass.length;
 }
 
 /**
@@ -507,9 +552,9 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<v
  * step the researcher actually clicked, so it's logged to trace and
  * swallowed here instead of thrown.
  */
-export async function refreshVerdicts(tenantId: string, runId: string): Promise<void> {
+export async function refreshVerdicts(tenantId: string, runId: string): Promise<number> {
   try {
-    await verifyFindings(tenantId, runId);
+    return await verifyFindings(tenantId, runId);
   } catch (error) {
     await withTenant(tenantId, async (client) => {
       await client.query(
@@ -518,6 +563,7 @@ export async function refreshVerdicts(tenantId: string, runId: string): Promise<
       );
     });
   }
+  return 0;
 }
 
 /**

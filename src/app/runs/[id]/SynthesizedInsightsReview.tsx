@@ -695,6 +695,8 @@ function SynthesizedInsightCard({
   insight: SynthesizedInsightRow;
 }) {
   const [isPending, startTransition] = useTransition();
+  // Rolled up by default: the headline and badges stay visible, the story and evidence open on request.
+  const [open, setOpen] = useState(false);
   const isRejected = insight.review_status === "rejected";
 
   function handleDelete() {
@@ -835,6 +837,8 @@ function SynthesizedInsightCard({
         </div>
       )}
 
+      {open && (
+        <>
       <div className="h-px bg-border" />
 
       {/* Laid out like a slide: the story on the left, why to trust it on
@@ -946,8 +950,19 @@ function SynthesizedInsightCard({
           </div>
         </div>
       </div>
+        </>
+      )}
 
-      <div className="-mt-1 flex flex-wrap justify-end gap-1.5">
+      <div className="-mt-1 flex flex-wrap items-center justify-between gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="rounded-lg px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/5"
+        >
+          {open ? "Hide the story and evidence" : "Show the story and evidence"}
+        </button>
+        <div className="flex flex-wrap gap-1.5">
         {isRejected ? (
           <button
             disabled={isPending}
@@ -969,6 +984,7 @@ function SynthesizedInsightCard({
             Reject
           </button>
         )}
+        </div>
       </div>
     </div>
   );

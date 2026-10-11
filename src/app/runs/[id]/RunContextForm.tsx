@@ -48,10 +48,10 @@ export default function RunContextForm({
         <span className="ml-1.5 text-xs font-normal text-muted">(optional, why this project exists)</span>
         <textarea
           name="businessProblem"
-          rows={2}
+          rows={10}
           defaultValue={businessProblem ?? ""}
           placeholder="e.g. Renewal among lapsed members has dropped 12% year on year and we don't know why."
-          className={field}
+          className={`${field} min-h-48 resize-y`}
         />
       </label>
       <label className="block">

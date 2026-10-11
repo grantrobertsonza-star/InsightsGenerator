@@ -17,6 +17,7 @@ import { saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
 import { addMemo, deleteMemo, reuseCodebook } from "./codingMemos";
 import { saveTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
 import {
+  applyMajorityCoding,
   addVariableLink,
   proposeVariableLinks,
   resetCalibration,
@@ -84,6 +85,18 @@ export async function runStabilityCheckAction(
   return guard(runId, () =>
     runStabilityCheck(TENANT_ID, runId, documentId, codebookId, reruns),
   );
+}
+
+export async function applyMajorityCodingAction(
+  runId: string,
+  documentId: string,
+  codebookId: string,
+) {
+  return guard(runId, async () => {
+    const message = await applyMajorityCoding(TENANT_ID, runId, documentId, codebookId);
+    await syncFindingThemes(TENANT_ID, documentId);
+    return message;
+  });
 }
 
 export async function saveBlindStabilityTurnAction(

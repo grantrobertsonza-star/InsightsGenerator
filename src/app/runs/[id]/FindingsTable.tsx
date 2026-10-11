@@ -29,6 +29,7 @@ import {
 } from "@/components/icons";
 import { buildChartForThemeGroup } from "@/lib/findingsChartData";
 import { classifyFindingDiscovery } from "@/lib/discoveryClassification";
+import { BASIS_LABEL, findingBasis, provenanceNotes } from "@/lib/findingBasis";
 import FindingsChart from "./FindingsChart";
 
 type Finding = {
@@ -438,11 +439,14 @@ function DiscoveryBadges({
     | "corroborates_report_claim"
     | "is_contradicted"
     | "contradicts_report"
+    | "pattern_type"
+    | "stated_stats"
   >;
 }) {
   const discovery = classifyFindingDiscovery({
     origin: finding.origin,
     corroboratesReportClaim: finding.corroborates_report_claim,
+    readFromUploadedOutput: finding.origin === "generated" && findingBasis(finding) === "reported_statistics",
   });
   const base =
     "inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset";
@@ -450,10 +454,14 @@ function DiscoveryBadges({
     <>
       {finding.origin === "generated" && discovery.type === "net_new" && (
         <span
-          title="Computed from the data by the Elevator. No claim in the original report points at it."
+          title={
+            discovery.source === "uploaded_output"
+              ? "Read from an uploaded output file and not recomputed here. No claim in the original report points at it."
+              : "Computed from the data by the Elevator. No claim in the original report points at it."
+          }
           className={`${base} bg-indigo-50 text-indigo-700 ring-indigo-200`}
         >
-          New, not in the report
+          {discovery.source === "uploaded_output" ? "New, from an uploaded output" : "New, not in the report"}
         </span>
       )}
       {finding.origin === "generated" && discovery.type === "validated" && (
@@ -498,7 +506,7 @@ function DataTypeBadge({
           : "bg-sky-50 text-sky-600 ring-sky-200"
       }`}
     >
-      {dataType === "qualitative" ? "Qual" : "Quant"}
+      {dataType === "qualitative" ? "From words" : "From numbers"}
     </span>
   );
 }
@@ -514,46 +522,30 @@ function DuplicateBadge() {
   );
 }
 
-function isNotSignificantComparison(
-  finding: Pick<Finding, "pattern_type" | "stated_stats">,
-): boolean {
-  if (finding.pattern_type !== "banner_comparison") return false;
-  const caveats = (finding.stated_stats as { caveats?: unknown } | null)
-    ?.caveats;
-  return Array.isArray(caveats) && caveats.includes("not_significant");
-}
+const BASIS_STYLE: Record<string, string> = {
+  tested_significant: "text-green-700 ring-green-200 bg-green-50",
+  tested_not_significant: "text-slate-500 ring-slate-200 bg-slate-50",
+  reported_statistics: "text-sky-700 ring-sky-200 bg-sky-50",
+  reading: "text-indigo-700 ring-indigo-200 bg-indigo-50",
+  null_result: "text-slate-600 ring-slate-200 bg-slate-50",
+  modelled: "text-violet-700 ring-violet-200 bg-violet-50",
+  descriptive: "text-amber-700 ring-amber-200 bg-amber-50",
+  heuristic: "text-amber-700 ring-amber-200 bg-amber-50",
+  unknown: "text-slate-500 ring-slate-200 bg-slate-50",
+};
 
-function NotSignificantBadge() {
+// How a generated finding was established: a passed test, a failed one, statistics read from an
+// uploaded output, or a description with no test. Worked out from what is stored (findingBasis.ts).
+function BasisBadge({ finding }: { finding: Pick<Finding, "origin" | "pattern_type" | "stated_stats"> }) {
+  const basis = findingBasis(finding);
+  if (basis === "stated" || basis === "coded") return null;
+  const notes = provenanceNotes(finding);
   return (
     <span
-      title="This banner comparison was computed and tested, but the difference did not reach statistical significance. It's shown for completeness, not treated as a real pattern, and won't be carried into insights or recommendations."
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-200 bg-slate-50"
+      title={notes.join(" ")}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${BASIS_STYLE[basis] ?? BASIS_STYLE.unknown}`}
     >
-      not significant
-    </span>
-  );
-}
-
-// A descriptive_summary pattern (bannerPlanComputation.ts) never ran a test
-// at all -- typically one reading per banner category, with nothing to test
-// it against -- so it earns its own badge rather than being lumped in with
-// "tested but not significant", which would overstate how much happened.
-function isDescriptiveOnly(
-  finding: Pick<Finding, "pattern_type" | "stated_stats">,
-): boolean {
-  if (finding.pattern_type !== "banner_comparison") return false;
-  const caveats = (finding.stated_stats as { caveats?: unknown } | null)
-    ?.caveats;
-  return Array.isArray(caveats) && caveats.includes("insufficient_n_for_test");
-}
-
-function DescriptiveOnlyBadge() {
-  return (
-    <span
-      title="There wasn't enough data in this group to test it against anything -- this is just its own value, shown for reference, not a tested comparison."
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-200 bg-slate-50"
-    >
-      descriptive only
+      {BASIS_LABEL[basis]}
     </span>
   );
 }
@@ -1068,8 +1060,7 @@ function FindingCard({
         <DiscoveryBadges finding={finding} />
         {!hasReachSummary && <CodingBadges finding={finding} />}
         <DataTypeBadge dataType={finding.data_type} />
-        {isNotSignificantComparison(finding) && <NotSignificantBadge />}
-        {isDescriptiveOnly(finding) && <DescriptiveOnlyBadge />}
+        <BasisBadge finding={finding} />
         {isDuplicate && <DuplicateBadge />}
       </div>
       {finding.coding_counts?.theme &&
@@ -1844,8 +1835,8 @@ export default function FindingsTable({
           {(
             [
               [ALL, "All evidence"],
-              ["qualitative", "Qualitative"],
-              ["quantitative", "Quantitative"],
+              ["qualitative", "From words"],
+              ["quantitative", "From numbers"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -2211,7 +2202,7 @@ export default function FindingsTable({
               <p className="text-sm text-muted">
                 No findings match these filters.
                 {dataTypeFilter === "quantitative" &&
-                  " Quantitative findings come from tables you commit under Analysis, Cross tabs, or from a banner plan on a raw table."}
+                  " Findings from numbers come from tables you commit under Analysis, Cross tabs, or from a banner plan on a raw table."}
               </p>
             )}
           </div>
@@ -2242,12 +2233,7 @@ export default function FindingsTable({
                           <DiscoveryBadges finding={finding} />
                           <CodingBadges finding={finding} />
                           <DataTypeBadge dataType={finding.data_type} />
-                          {isNotSignificantComparison(finding) && (
-                            <NotSignificantBadge />
-                          )}
-                          {isDescriptiveOnly(finding) && (
-                            <DescriptiveOnlyBadge />
-                          )}
+                          <BasisBadge finding={finding} />
                           {finding.duplicate_group_id && <DuplicateBadge />}
                         </div>
                         <div className="text-foreground">

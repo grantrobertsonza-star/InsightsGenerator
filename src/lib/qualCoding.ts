@@ -744,7 +744,105 @@ export function validateConsolidation(
 
 // --- Applying a codebook ----------------------------------------------
 
-export type ApplyItem = { index: number; text: string; context: string | null };
+export type ApplyItem = {
+  index: number;
+  text: string;
+  context: string | null;
+  /** The turn split into its separate statements, in order. One entry for a short turn. */
+  units: string[];
+};
+
+const ABBREVIATIONS = /\b(e\.g|i\.e|etc|vs|mr|mrs|ms|dr|prof|no|approx|st)\.$/i;
+const MIN_UNIT_CHARS = 25;
+
+/**
+ * Splits a participant turn into its separate statements (sentences), so each can be coded on its own
+ * words. The split is deterministic, so every run and every re-application sees the same units and
+ * disagreement between runs can only be about the coding, not about where one idea ends. A fragment
+ * under 25 characters is joined to the sentence before it (or after it when it opens the turn), so
+ * "Yes. Because of the fees." keeps its answer and its reason together enough to read.
+ */
+export function splitSentences(flat: string): string[] {
+  const raw: string[] = [];
+  let start = 0;
+  const re = /[.!?]+["')\]]*\s+(?=[A-Z0-9"'(\[])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(flat)) !== null) {
+    const end = m.index + m[0].length;
+    const piece = flat.slice(start, end).trim();
+    // Not a boundary: an abbreviation, or a number such as "3. " inside a list of one word.
+    if (ABBREVIATIONS.test(piece.replace(/\s+$/, "")) || /\b\d+\.$/.test(piece)) continue;
+    raw.push(piece);
+    start = end;
+  }
+  const tail = flat.slice(start).trim();
+  if (tail) raw.push(tail);
+  return raw;
+}
+
+export function splitIntoUnits(text: string): string[] {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (!flat) return [];
+  const raw = splitSentences(flat);
+  const units: string[] = [];
+  for (const piece of raw) {
+    if (units.length > 0 && piece.length < MIN_UNIT_CHARS) units[units.length - 1] += ` ${piece}`;
+    else units.push(piece);
+  }
+  // A short opener has nothing before it: fold it into the unit after.
+  if (units.length > 1 && units[0].length < MIN_UNIT_CHARS) {
+    units[1] = `${units[0]} ${units[1]}`;
+    units.shift();
+  }
+  return units;
+}
+
+const FOOTER_MIN_CHARS = 20;
+const FOOTER_MIN_TURNS = 3;
+
+/**
+ * Finds text that ends several turns word for word, such as a page footer or a disclaimer that the
+ * transcript file repeats ("Synthetic interviews. All respondents and dialogue are fictional."). It is not
+ * speech, so it must not be coded. A run of one to three closing sentences counts when at least three
+ * turns end with exactly the same words. Longest first, so a two-sentence footer is removed whole.
+ */
+export function findRepeatedFooters(texts: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const t of texts) {
+    const sentences = splitSentences(t.replace(/\s+/g, " ").trim());
+    const seen = new Set<string>();
+    for (let k = 1; k <= Math.min(3, sentences.length); k++) {
+      const suffix = sentences.slice(-k).join(" ");
+      if (suffix.length >= FOOTER_MIN_CHARS) seen.add(suffix);
+    }
+    for (const x of seen) counts.set(x, (counts.get(x) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, n]) => n >= FOOTER_MIN_TURNS)
+    .map(([x]) => x)
+    .sort((a, b) => b.length - a.length);
+}
+
+/** Removes the footers from the end of a turn, however many times they were repeated there. */
+export function stripFooters(text: string, footers: string[]): string {
+  if (footers.length === 0) return text;
+  let out = text.replace(/\s+/g, " ").trim();
+  let changed = true;
+  let removed = false;
+  while (changed) {
+    changed = false;
+    for (const f of footers) {
+      if (out.endsWith(f)) {
+        out = out.slice(0, out.length - f.length).trim();
+        changed = true;
+        removed = true;
+        // Start again from the longest footer, so a repeated two-sentence footer is not cut in half.
+        break;
+      }
+    }
+  }
+  return removed ? out : text;
+}
 
 export type ApplyBatch = { items: ApplyItem[] };
 
@@ -766,16 +864,23 @@ export function buildApplyBatches(
   let current: ApplyItem[] = [];
   let used = 0;
   let lastModerator: string | null = null;
+  const footers = findRepeatedFooters(segments.map((x) => x.text));
   for (const segment of segments) {
+    const segmentText = stripFooters(segment.text, footers);
     if (segment.role === "moderator") {
-      lastModerator = segment.text;
+      lastModerator = segmentText;
+      continue;
+    }
+    // A turn that was only a footer has nothing to code.
+    if (!segmentText.trim()) {
+      lastModerator = null;
       continue;
     }
     const context = lastModerator
       ? lastModerator.slice(0, CONTEXT_CHARS)
       : null;
     lastModerator = null;
-    const cost = segment.text.length + (context?.length ?? 0) + 20;
+    const cost = segmentText.length + (context?.length ?? 0) + 20;
     if (
       current.length > 0 &&
       (used + cost > maxChars || current.length >= maxItems)
@@ -784,7 +889,7 @@ export function buildApplyBatches(
       current = [];
       used = 0;
     }
-    current.push({ index: segment.index, text: segment.text, context });
+    current.push({ index: segment.index, text: segmentText, context, units: splitIntoUnits(segmentText) });
     used += cost;
   }
   if (current.length > 0) batches.push({ items: current });
@@ -819,6 +924,68 @@ export function parseAssignments(
       ),
     ];
     if (codes.length > 0) out.set(item.index, codes);
+  }
+  return out;
+}
+
+/**
+ * Reads the unit-level apply output: [{ index, units: [{ unit, codes }] }]. A turn's codes are the union of
+ * the codes its units carry. A turn or unit number outside the batch, a code outside the codebook, and
+ * a unit with no codes are ignored. `unitCodes` keeps which unit carried which code.
+ */
+export function parseUnitAssignments(
+  raw: unknown,
+  unitCounts: Map<number, number>,
+  codeCount: number,
+): { assignments: Map<number, number[]>; unitCodes: Map<number, { unit: number; codes: number[] }[]> } {
+  const assignments = new Map<number, number[]>();
+  const unitCodes = new Map<number, { unit: number; codes: number[] }[]>();
+  if (!Array.isArray(raw)) return { assignments, unitCodes };
+  for (const item of raw as { index?: unknown; units?: unknown }[]) {
+    if (typeof item?.index !== "number" || !unitCounts.has(item.index)) continue;
+    if (!Array.isArray(item.units)) continue;
+    const max = unitCounts.get(item.index) as number;
+    const perUnit = new Map<number, Set<number>>();
+    for (const u of item.units as { unit?: unknown; codes?: unknown }[]) {
+      if (typeof u?.unit !== "number" || !Number.isInteger(u.unit) || u.unit < 1 || u.unit > max) continue;
+      if (!Array.isArray(u.codes)) continue;
+      const set = perUnit.get(u.unit) ?? new Set<number>();
+      for (const c of u.codes as unknown[]) {
+        if (typeof c === "number" && Number.isInteger(c) && c >= 1 && c <= codeCount) set.add(c);
+      }
+      if (set.size > 0) perUnit.set(u.unit, set);
+    }
+    if (perUnit.size === 0) continue;
+    const all = new Set<number>();
+    for (const set of perUnit.values()) for (const c of set) all.add(c);
+    assignments.set(item.index, [...all].sort((a, b) => a - b));
+    unitCodes.set(
+      item.index,
+      [...perUnit.entries()].sort((a, b) => a[0] - b[0]).map(([unit, set]) => ({ unit, codes: [...set].sort((a, b) => a - b) })),
+    );
+  }
+  return { assignments, unitCodes };
+}
+
+/**
+ * Reads one code's yes/no decisions: [{ id: "54.2", why, meets }]. Returns, per turn, the unit numbers
+ * that meet the code. An id that is malformed, belongs to a turn outside the batch or names a unit the
+ * turn does not have is ignored; a unit with no decision counts as not meeting the code.
+ */
+export function parseUnitDecisions(raw: unknown, unitCounts: Map<number, number>): Map<number, number[]> {
+  const out = new Map<number, number[]>();
+  if (!Array.isArray(raw)) return out;
+  const seen = new Set<string>();
+  for (const d of raw as { id?: unknown; meets?: unknown }[]) {
+    if (typeof d?.id !== "string" || d.meets !== true) continue;
+    const m = /^\s*(\d+)\.(\d+)\s*$/.exec(d.id);
+    if (!m) continue;
+    const turn = Number(m[1]);
+    const unit = Number(m[2]);
+    const max = unitCounts.get(turn);
+    if (max === undefined || unit < 1 || unit > max || seen.has(`${turn}.${unit}`)) continue;
+    seen.add(`${turn}.${unit}`);
+    out.set(turn, [...(out.get(turn) ?? []), unit].sort((x, y) => x - y));
   }
   return out;
 }

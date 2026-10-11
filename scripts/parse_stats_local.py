@@ -4,7 +4,7 @@ plain `next dev`. Reuses that file's convert() so results are identical.
 
 Usage: python scripts/parse_stats_local.py <input> <source_filename> <output.json> [action] [args.json]
 
-action is convert (default), dictionary or crosstab.
+action is convert (default), dictionary, categories, columns or crosstab.
 """
 import importlib.util
 import json
@@ -33,6 +33,8 @@ def main() -> int:
         result = mod.dictionary(data, source_filename)
     elif action == "categories":
         result = mod.categories(data, source_filename, args["variable"], args.get("overlay"))
+    elif action == "columns":
+        result = mod.driver_columns(data, source_filename, args)
     elif action == "crosstab":
         result = mod.crosstab(data, source_filename, args)
     else:

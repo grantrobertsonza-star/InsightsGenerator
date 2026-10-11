@@ -32,7 +32,7 @@ export type DiscoveryType = "validated" | "net_new";
  * stored value or a future producer has a name to use.
  */
 export type DiscoverySource =
-  "raw_data_mining" | "synthesis" | "evidence_memory";
+  "raw_data_mining" | "uploaded_output" | "synthesis" | "evidence_memory";
 
 export type FindingOrigin = "stated" | "generated" | "coded";
 
@@ -46,6 +46,12 @@ export function classifyFindingDiscovery(input: {
   origin: FindingOrigin;
   /** True when some stated finding's grounded_by_finding_id points at this one. */
   corroboratesReportClaim: boolean;
+  /**
+   * True when the statistics were read from an uploaded model output (an
+   * SPSS or R export, say) and not computed here from raw data. Such a
+   * finding is still new to the report, but it was not mined from raw data.
+   */
+  readFromUploadedOutput?: boolean;
 }): FindingDiscovery {
   if (input.origin === "stated" || input.origin === "coded") {
     return { type: "validated", source: null };
@@ -53,6 +59,7 @@ export function classifyFindingDiscovery(input: {
   if (input.corroboratesReportClaim) {
     return { type: "validated", source: null };
   }
+  if (input.readFromUploadedOutput) return { type: "net_new", source: "uploaded_output" };
   return { type: "net_new", source: "raw_data_mining" };
 }
 

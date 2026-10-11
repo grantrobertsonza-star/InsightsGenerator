@@ -3,9 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { ingestOutputFiles } from "./outputIngest";
+import { readContextDocument } from "./extractFindings";
 import { INSTRUMENT_TYPES, storeUploadedDocument, type InstrumentTypeChoice } from "./documentUpload";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+
+/**
+ * Stores a report or transcript and reads its text straight away, so the preview on the Import page
+ * shows what was read instead of an empty panel until the project is processed. Reading is best
+ * effort: if it fails the upload still stands and processing reads the file again and reports why.
+ */
+async function storeAndRead(runId: string, kind: "report" | "transcript", file: File): Promise<string> {
+  const id = await storeUploadedDocument(TENANT_ID, runId, kind, file);
+  try {
+    await readContextDocument(TENANT_ID, runId, id);
+  } catch {
+    /* processing will try again and say why */
+  }
+  return id;
+}
 
 export type UploadResult = { ok: true; added: string[] } | { ok: false; error: string };
 
@@ -34,10 +50,10 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   const added: string[] = [];
   const failed: string[] = [];
   const jobs: [File, () => Promise<string>][] = [
-    ...reports.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "report", f)]),
+    ...reports.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "report", f)]),
     ...tables.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "table", f, "aggregated")]),
     ...raw.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "table", f, "raw")]),
-    ...transcripts.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "transcript", f)]),
+    ...transcripts.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "transcript", f)]),
     ...instruments.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "instrument", f, undefined, instrumentType)]),
   ];
   for (const [file, run] of jobs) {

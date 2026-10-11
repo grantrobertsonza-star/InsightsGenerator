@@ -133,7 +133,15 @@ export async function generateFindingsFromTable(
       archiveReason,
     });
 
+    // After a partial regenerate the accepted findings are still there: do not add a second copy of each.
+    const existing = new Set<string>();
+    if (onlyReplacePending) {
+      const r = await client.query<{ finding_text: string }>("select finding_text from findings where source_table_id = $1", [documentTableId]);
+      for (const row of r.rows) existing.add(row.finding_text);
+    }
+
     for (const pattern of patterns) {
+      if (existing.has(pattern.description)) continue;
       const sourceCells =
         pattern.rowIndices.length > 0
           ? JSON.stringify({ rowIndices: pattern.rowIndices })

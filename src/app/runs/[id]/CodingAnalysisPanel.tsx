@@ -1,5 +1,7 @@
 "use client";
 
+import CodingProgressBar from "./CodingProgressBar";
+import { kappaBand } from "@/lib/qualAudit";
 import { useState, useTransition } from "react";
 import {
   addLinkAction,
@@ -8,6 +10,7 @@ import {
   resetCalibrationAction,
   resolveStabilityTurnAction,
   runStabilityCheckAction,
+  applyMajorityCodingAction,
   saveBlindStabilityTurnAction,
   saveCalibrationTurnAction,
   searchNegativeCasesAction,
@@ -1085,6 +1088,9 @@ function StabilityTab({
       >
         {busy ? "Working..." : st ? "Run again" : "Run the check"}
       </button>
+      <div className="basis-full">
+        <CodingProgressBar runId={runId} active={busy} />
+      </div>
     </div>
   );
   if (!st) {
@@ -1109,16 +1115,69 @@ function StabilityTab({
       {controls}
       <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">
         <span className="font-semibold">
-          {s.share === null ? "n/a" : pct(s.share)}
+          {st.codeAgreement === null ? "n/a" : pct(st.codeAgreement)}
         </span>{" "}
-        of {s.turns} participant turns were coded the same way in all {st.runs}{" "}
-        runs. {s.medium} came out differently in one run, {s.low} in most.
+        average agreement per theme across {st.runs} runs. For each theme, that
+        is the share of the turns it came up in where every run gave it. Themes
+        that came up in fewer than 10 turns are left out of this figure.
+        {st.kappaAverage !== null && (
+          <p className="mt-1 text-[11px] text-muted">
+            Chance-corrected: average kappa {st.kappaAverage.toFixed(2)}. Kappa
+            discounts the agreement you would get by luck, so it is the figure
+            to compare with research benchmarks, where 0.80 or above is usually
+            read as strong. The percentage above is not on that scale.
+          </p>
+        )}
+        <p className="mt-1 text-[11px] text-muted">
+          Read this theme by theme. A low overall figure does not mean all of
+          the coding is unreliable: it is an average, and a few fuzzy themes
+          can pull it down while the rest are solid. Report strong themes with
+          confidence and weak ones as tentative. These figures show
+          consistency, not correctness; your audit sample is the check on that.
+        </p>
+        <p className="mt-1 text-[11px] text-muted">
+          Stricter whole-turn check: {s.share === null ? "n/a" : pct(s.share)}{" "}
+          of {s.turns} participant turns got exactly the same set of themes in
+          every run. {s.medium} came out differently in one run, {s.low} in
+          most.
+        </p>
         <p className="mt-1 text-[11px] text-muted">
           Agreement between runs flags turns worth a second look. It does not
           show that a stable turn is right: runs share the same blind spots,
           so a turn the model gets wrong the same way every time looks stable.
           Your own audit above is the check on that.
         </p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs">
+        <p className="font-medium text-foreground">Settle by majority of runs</p>
+        <p className="mt-0.5 text-[11px] text-muted">
+          A theme stays on a turn, or is added to it, when more than half of the runs gave it. This steadies the coding
+          without more checking from you and costs nothing extra, because the runs are already done. Turns you have settled
+          and themes you changed by hand are left alone.
+        </p>
+        {st.majority.available ? (
+          <button
+            type="button"
+            className={`${primaryButton} mt-1.5`}
+            disabled={busy}
+            onClick={() => run(() => applyMajorityCodingAction(runId, view.documentId, view.codebookId))}
+          >
+            {st.majority.applied ? "Settle by majority again" : "Settle by majority"}
+          </button>
+        ) : (
+          <p className="mt-1 text-[11px] text-amber-700">
+            {st.runs < 3
+              ? "Needs at least three runs: the original and two more. Run the check with 2 more times."
+              : "Run the check again so each run is kept (needs database migration 0074)."}
+          </p>
+        )}
+        {st.majority.applied && (
+          <p className="mt-1 text-[11px] text-emerald-700">
+            Majority coding has been applied. The list below now shows turns where the runs disagreed; reviewing them is
+            optional.
+          </p>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
@@ -1128,6 +1187,7 @@ function StabilityTab({
               <th className={th}>Theme</th>
               <th className={th}>Turns it came up in</th>
               <th className={th}>Same in every run</th>
+              <th className={th}>Kappa</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -1139,12 +1199,24 @@ function StabilityTab({
                   {c.usedTurns === 0
                     ? "n/a"
                     : `${c.consistent} (${pct(c.consistent / c.usedTurns)})`}
-                  {c.usedTurns >= 5 && c.consistent / c.usedTurns < 0.6 && (
-                    <span className="ml-1 text-amber-700">
-                      Read differently from run to run; the definition may need
-                      tightening.
+                  {c.tooFew ? (
+                    <span className="ml-1 text-muted">
+                      Too few turns to judge.
                     </span>
+                  ) : (
+                    c.usedTurns >= 5 &&
+                    c.consistent / c.usedTurns < 0.6 && (
+                      <span className="ml-1 text-amber-700">
+                        Read differently from run to run; the definition may
+                        need tightening.
+                      </span>
+                    )
                   )}
+                </td>
+                <td className={td}>
+                  {c.kappa === null
+                    ? "n/a"
+                    : `${c.kappa.toFixed(2)}${c.tooFew ? "" : ` (${kappaBand(c.kappa, false).toLowerCase()})`}`}
                 </td>
               </tr>
             ))}

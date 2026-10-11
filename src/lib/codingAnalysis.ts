@@ -1,10 +1,12 @@
 import { computeDataQuality, type DataQuality } from "./qualQuality";
+import { clearCodingLabel, relabelCodingWork } from "./codingProgress";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant, withTenantRead } from "./db";
 import {
   applyCodebook,
+  APPLY_PROMPT_HASH,
   recordManifest,
   recordTrace,
   type CodeRow,
@@ -42,11 +44,13 @@ import {
   sessionOfSpeaker,
 } from "./qualAnalysis";
 import type { CellValue } from "./dataQuality";
-import { changeTurnCode } from "./codingOverrides";
+import { changeTurnCode, codeKey } from "./codingOverrides";
 import {
   attentionCheck,
   auditSampleSize,
   compareRuns,
+  codeKappas,
+  MIN_TURNS_TO_JUDGE,
   estimateAudit,
   extendedAgreement,
   selectAuditSample,
@@ -121,7 +125,23 @@ export type StabilityTurn = {
 export type StabilityView = {
   runs: number;
   summary: StabilitySummary;
-  perCode: { codeId: string; name: string; usedTurns: number; consistent: number }[];
+  perCode: {
+    codeId: string;
+    name: string;
+    usedTurns: number;
+    consistent: number;
+    // Average pairwise Cohen's kappa over the runs; null when it cannot be worked out (older checks that did not keep each run).
+    kappa: number | null;
+    // Came up in too few turns for its agreement figure to mean much.
+    tooFew: boolean;
+  }[];
+  // Average kappa over the themes that came up in enough turns; null when not available.
+  kappaAverage: number | null;
+  // Headline figure: the average, over themes that came up at all, of the share of their turns that
+  // every run agreed on. null when no theme came up.
+  codeAgreement: number | null;
+  // Settling by majority of runs: possible once the check kept each run (migration 0074) with 3 or more runs.
+  majority: { available: boolean; applied: boolean };
   // Turns the runs did not agree on, least agreed first.
   queue: StabilityTurn[];
   // Pattern of the researcher's decisions, to catch rubber-stamping.
@@ -428,6 +448,9 @@ export async function getCodingAnalysis(
     dropped_codes: number[];
     resolved_at: string | null;
   }[] = [];
+  // Migration 0074, read on its own for the same reason.
+  const majorityExt = new Map<string, { withRuns: number; applied: number }>();
+  const runCodesExt = new Map<string, number[][]>();
   const researcherPairs = new Set<string>();
   const researcherCodes = new Set<string>();
   let overrideRows: {
@@ -629,6 +652,24 @@ export async function getCodingAnalysis(
             });
         } catch {
           // migration 0065 not applied
+        }
+        try {
+          const mj = await client.query<{ codebook_id: string; with_runs: number; applied: number }>(
+            `select codebook_id,
+                    count(*) filter (where run_codes is not null)::int as with_runs,
+                    count(*) filter (where consensus_at is not null)::int as applied
+               from coding_turn_stability where codebook_id = any($1::uuid[]) group by codebook_id`,
+            [bookIds],
+          );
+          for (const r of mj.rows) majorityExt.set(r.codebook_id, { withRuns: r.with_runs, applied: r.applied });
+          const rc = await client.query<{ codebook_id: string; segment_id: string; run_codes: number[][] | null }>(
+            `select codebook_id, segment_id, run_codes from coding_turn_stability
+              where codebook_id = any($1::uuid[]) and run_codes is not null`,
+            [bookIds],
+          );
+          for (const r of rc.rows) if (r.run_codes) runCodesExt.set(`${r.codebook_id}|${r.segment_id}`, r.run_codes);
+        } catch {
+          // migration 0074 not applied
         }
       });
     } catch {
@@ -925,15 +966,49 @@ export async function getCodingAnalysis(
           a.agree / a.runs - b.agree / b.runs ||
           a.index - b.index,
       );
+      const kappaByCode: (number | null)[] = (() => {
+        const haveAll = bookStability.every((r) => runCodesExt.has(`${book.id}|${r.segment_id}`));
+        if (!haveAll) return [];
+        const perTurn = bookStability.map((r) => [
+          r.orig_codes,
+          ...(runCodesExt.get(`${book.id}|${r.segment_id}`) ?? []),
+        ]);
+        const ks = codeKappas(perTurn, bookCodes.length);
+        return ks.map((x) => x.kappa);
+      })();
       stabilityView = {
         runs: Math.max(...bookStability.map((r) => r.runs)),
         summary: summariseStability(bookStability),
+        majority: (() => {
+          const m = majorityExt.get(book.id);
+          const runsHere = Math.max(...bookStability.map((r) => r.runs));
+          return {
+            available: !!m && m.withRuns === bookStability.length && runsHere >= 3,
+            applied: !!m && m.applied > 0,
+          };
+        })(),
+        codeAgreement: (() => {
+          const used = perCodeUse.filter((u) => u.used > 0);
+          const enough = used.filter((u) => u.used >= MIN_TURNS_TO_JUDGE);
+          // Themes with very few turns are left out of the headline; if that leaves nothing, use all.
+          const pool = enough.length > 0 ? enough : used;
+          return pool.length === 0 ? null : pool.reduce((a, u) => a + u.consistent / u.used, 0) / pool.length;
+        })(),
         perCode: bookCodes.map((c, i) => ({
           codeId: c.id,
           name: c.name,
           usedTurns: perCodeUse[i].used,
           consistent: perCodeUse[i].consistent,
+          kappa: kappaByCode[i] ?? null,
+          tooFew: perCodeUse[i].used > 0 && perCodeUse[i].used < MIN_TURNS_TO_JUDGE,
         })),
+        kappaAverage: (() => {
+          const ks = bookCodes
+            .map((_, i) => ({ k: kappaByCode[i] ?? null, used: perCodeUse[i].used }))
+            .filter((x) => x.k !== null && x.used >= MIN_TURNS_TO_JUDGE)
+            .map((x) => x.k as number);
+          return ks.length === 0 ? null : ks.reduce((a, b) => a + b, 0) / ks.length;
+        })(),
         queue,
         attention: attentionCheck(
           bookStability
@@ -1573,7 +1648,7 @@ export async function saveCalibrationTurn(
 export async function saveStability(
   tenantId: string,
   codebookId: string,
-  rows: { segmentId: string; stability: TurnStability; original: number[] }[],
+  rows: { segmentId: string; stability: TurnStability; original: number[]; runCodes?: number[][] }[],
 ) {
   await withTenant(tenantId, async (client) => {
     await client.query(
@@ -1581,22 +1656,157 @@ export async function saveStability(
       [codebookId],
     );
     if (rows.length === 0) return;
+    const base = [
+      tenantId,
+      codebookId,
+      rows.map((r) => r.segmentId),
+      rows.map((r) => r.stability.runs),
+      rows.map((r) => r.stability.agree),
+      rows.map((r) => `{${r.original.join(",")}}`),
+      rows.map((r) => `{${r.stability.altCodes.join(",")}}`),
+      rows.map((r) => `{${r.stability.droppedCodes.join(",")}}`),
+    ];
+    // Migration 0074 keeps what each re-run gave, so the coding can be settled by majority.
+    const hasColumn = await client.query(
+      `select 1 from information_schema.columns
+        where table_name = 'coding_turn_stability' and column_name = 'run_codes'`,
+    );
+    if (hasColumn.rows.length > 0) {
+      await client.query(
+        `insert into coding_turn_stability
+           (tenant_id, codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes, run_codes)
+         select $1, $2, t.s, t.r, t.a, t.o::int[], t.al::int[], t.d::int[], t.rc::jsonb
+         from unnest($3::uuid[], $4::int[], $5::int[], $6::text[], $7::text[], $8::text[], $9::text[])
+           as t(s, r, a, o, al, d, rc)`,
+        [...base, rows.map((r) => JSON.stringify(r.runCodes ?? []))],
+      );
+      return;
+    }
     await client.query(
       `insert into coding_turn_stability
          (tenant_id, codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes)
        select $1, $2, t.s, t.r, t.a, t.o::int[], t.al::int[], t.d::int[]
        from unnest($3::uuid[], $4::int[], $5::int[], $6::text[], $7::text[], $8::text[])
          as t(s, r, a, o, al, d)`,
-      [
-        tenantId,
-        codebookId,
-        rows.map((r) => r.segmentId),
-        rows.map((r) => r.stability.runs),
-        rows.map((r) => r.stability.agree),
-        rows.map((r) => `{${r.original.join(",")}}`),
-        rows.map((r) => `{${r.stability.altCodes.join(",")}}`),
-        rows.map((r) => `{${r.stability.droppedCodes.join(",")}}`),
-      ],
+      base,
+    );
+  });
+}
+
+/**
+ * Settles the coding by the majority of runs: a theme stays on a turn, or is added to it, when more than
+ * half of the runs (the original included) gave it. This uses runs already paid for, so it adds no cost, and
+ * it removes the one-run flips that make a single application unsteady. Turns the researcher has settled,
+ * and any theme the researcher added or removed by hand, are left as they are.
+ */
+export async function applyMajorityCoding(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  codebookId: string,
+): Promise<string> {
+  void runId;
+  void documentId;
+  return withTenant(tenantId, async (client) => {
+    const hasColumn = await client.query(
+      `select 1 from information_schema.columns
+        where table_name = 'coding_turn_stability' and column_name = 'run_codes'`,
+    );
+    if (hasColumn.rows.length === 0)
+      throw new Error("Settling by majority needs database migration 0074. Run it, then run the stability check again.");
+    const rows = (
+      await client.query<{
+        segment_id: string;
+        runs: number;
+        orig_codes: number[];
+        run_codes: number[][] | null;
+        resolved_at: string | null;
+      }>(
+        `select segment_id, runs, orig_codes, run_codes, resolved_at::text as resolved_at
+           from coding_turn_stability where codebook_id = $1`,
+        [codebookId],
+      )
+    ).rows;
+    if (rows.length === 0) throw new Error("Run the stability check first.");
+    if (rows.some((r) => !r.run_codes))
+      throw new Error("That check was run before each run was kept. Run it again with 2 more times, then settle by majority.");
+    const runs = rows[0].runs;
+    if (runs < 3)
+      throw new Error("A majority needs at least three runs: the original and two more. Run the check with 2 more times.");
+
+    const codes = (
+      await client.query<{ id: string; name: string }>(
+        "select id, name from coding_codes where codebook_id = $1 order by position",
+        [codebookId],
+      )
+    ).rows;
+    const current = await client.query<{ segment_id: string; code_id: string; source: string }>(
+      `select a.segment_id, a.code_id, a.source from coding_assignments a
+         join coding_codes cc on cc.id = a.code_id where cc.codebook_id = $1`,
+      [codebookId],
+    );
+    const have = new Map<string, Map<string, string>>();
+    for (const a of current.rows) {
+      const m = have.get(a.segment_id) ?? new Map<string, string>();
+      m.set(a.code_id, a.source);
+      have.set(a.segment_id, m);
+    }
+    // Themes the researcher added or removed by hand stay as they decided.
+    const decided = new Set<string>();
+    const overridesTable = await client.query("select to_regclass('coding_assignment_overrides') as t");
+    if (overridesTable.rows[0]?.t) {
+      const ov = await client.query<{ segment_id: string; code_key: string }>(
+        `select o.segment_id, o.code_key from coding_assignment_overrides o
+           join coding_segments sg on sg.id = o.segment_id where sg.document_id = $1`,
+        [documentId],
+      );
+      for (const o of ov.rows) decided.add(`${o.segment_id}|${o.code_key}`);
+    }
+
+    const addSeg: string[] = [];
+    const addCode: string[] = [];
+    const delSeg: string[] = [];
+    const delCode: string[] = [];
+    const changedTurns = new Set<string>();
+    for (const r of rows) {
+      if (r.resolved_at) continue;
+      const tally = new Map<number, number>();
+      for (const c of new Set(r.orig_codes)) tally.set(c, (tally.get(c) ?? 0) + 1);
+      for (const run of r.run_codes ?? []) for (const c of new Set(run)) tally.set(c, (tally.get(c) ?? 0) + 1);
+      const mine = have.get(r.segment_id) ?? new Map<string, string>();
+      for (let n = 1; n <= codes.length; n++) {
+        const code = codes[n - 1];
+        if (decided.has(`${r.segment_id}|${codeKey(code.name)}`)) continue;
+        const keep = (tally.get(n) ?? 0) * 2 > runs;
+        const has = mine.has(code.id);
+        if (keep && !has) {
+          addSeg.push(r.segment_id);
+          addCode.push(code.id);
+          changedTurns.add(r.segment_id);
+        } else if (!keep && has && mine.get(code.id) === "model") {
+          delSeg.push(r.segment_id);
+          delCode.push(code.id);
+          changedTurns.add(r.segment_id);
+        }
+      }
+    }
+    if (delSeg.length > 0)
+      await client.query(
+        `delete from coding_assignments
+          where (segment_id, code_id) in (select * from unnest($1::uuid[], $2::uuid[]))`,
+        [delSeg, delCode],
+      );
+    if (addSeg.length > 0)
+      await client.query(
+        `insert into coding_assignments (segment_id, code_id, tenant_id, source)
+         select s, c, $3, 'model' from unnest($1::uuid[], $2::uuid[]) as t(s, c)
+         on conflict do nothing`,
+        [addSeg, addCode, tenantId],
+      );
+    await client.query("update coding_turn_stability set consensus_at = now() where codebook_id = $1", [codebookId]);
+    return (
+      `Coding settled by the majority of ${runs} runs: ${addSeg.length} theme${addSeg.length === 1 ? "" : "s"} added ` +
+      `and ${delSeg.length} removed across ${changedTurns.size} turn${changedTurns.size === 1 ? "" : "s"}.`
     );
   });
 }
@@ -1655,6 +1865,20 @@ export async function runStabilityCheck(
   );
   if (codes.length === 0 || segments.length === 0)
     throw new Error("This transcript has no stored coding to check.");
+  // The stored coding is run 1. If it was made by an older version of the coding step, every difference
+  // the check finds would come from the update, not from the model's consistency.
+  const lastApply = await withTenant(tenantId, async (client) => {
+    const r = await client.query<{ prompt_hash: string }>(
+      `select prompt_hash from coding_run_manifest
+        where codebook_id = $1 and stage = 'apply' order by created_at desc limit 1`,
+      [codebookId],
+    );
+    return r.rows[0]?.prompt_hash ?? null;
+  }).catch(() => null);
+  if (lastApply && lastApply !== APPLY_PROMPT_HASH)
+    throw new Error(
+      "This coding was made by an earlier version of the coding step. Apply the codebook again first, then check stability, otherwise the differences found come from the update and not from the model.",
+    );
   const codeRows: CodeRow[] = codes.map((c) => ({
     id: c.id,
     position: c.position,
@@ -1685,16 +1909,30 @@ export async function runStabilityCheck(
 
   const results: Map<number, number[]>[] = [];
   let failedAny = 0;
+  let creditStopAt = 0;
   for (let i = 0; i < count; i++) {
-    const applied = await applyCodebook(
-      tenantId,
-      runId,
-      documentId,
-      codebookId,
-      codeRows,
-      stored,
-      "stability_rerun",
-    );
+    relabelCodingWork(documentId, `Stability check, pass ${i + 1} of ${count}`);
+    let applied: Awaited<ReturnType<typeof applyCodebook>>;
+    try {
+      applied = await applyCodebook(
+        tenantId,
+        runId,
+        documentId,
+        codebookId,
+        codeRows,
+        stored,
+        "stability_rerun",
+      );
+    } catch (error) {
+      // Out of credit part-way: keep the passes that finished instead of throwing away the money already spent.
+      if (error instanceof Error && /run out of credit/i.test(error.message) && results.length > 0) {
+        creditStopAt = i + 1;
+        clearCodingLabel(documentId);
+        break;
+      }
+      throw error;
+    }
+    if (i === count - 1) clearCodingLabel(documentId);
     // A re-run with failed batches would read as disagreement. Drop it.
     if (applied.failedBatches > 0) {
       failedAny += 1;
@@ -1721,6 +1959,7 @@ export async function runStabilityCheck(
       segmentId: idByIndex.get(st.index)!,
       stability: st,
       original: originalByIndex.get(st.index) ?? [],
+      runCodes: results.map((res) => res.get(st.index) ?? []),
     })),
   );
   const summary = summariseStability(stability);
@@ -1729,6 +1968,9 @@ export async function runStabilityCheck(
     `${summary.stable} of ${summary.turns} turns came out the same every time.` +
     (failedAny > 0
       ? ` ${failedAny} re-run${failedAny === 1 ? "" : "s"} failed and ${failedAny === 1 ? "was" : "were"} left out.`
+      : "") +
+    (creditStopAt > 0
+      ? ` The AI service ran out of credit during pass ${creditStopAt} of ${count}, so this uses the ${results.length} pass${results.length === 1 ? "" : "es"} that finished.`
       : "")
   );
 }

@@ -7,7 +7,12 @@ import {
 import { logApiUsage } from "./apiUsage";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { withTenant } from "./db";
+import mammoth from "mammoth";
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
 import { convertOfficeDocToPdf } from "./convertToPdf";
+import { mapWithConcurrency } from "./concurrency";
+import { beginCodingWork, endCodingWork, tickCodingWork } from "./codingProgress";
 import {
   getTableGroundingDigest,
   type TableGroundingDigestEntry,
@@ -103,6 +108,49 @@ export async function extractDocumentText(
 }
 
 /**
+ * Reads a context document (a brief or proposal, kind 'evidence') and stores its text so it can be
+ * previewed and used by the brief and methodology steps. No findings are mined from it. A Word file
+ * is read through LibreOffice like every other document; if that is not installed or fails, the
+ * text is read straight from the .docx instead, so a missing converter never leaves the document blank.
+ */
+export async function readContextDocument(tenantId: string, runId: string, documentId: string): Promise<{ length: number }> {
+  const doc = await withTenant(tenantId, async (client) => {
+    const r = await client.query<{ storage_path: string; source_filename: string }>(
+      "select storage_path, source_filename from documents where id = $1 and run_id = $2",
+      [documentId, runId],
+    );
+    return r.rows[0];
+  });
+  if (!doc) throw new Error("Document not found for this run");
+  let extracted: ExtractedDocument | null = null;
+  let firstError: unknown = null;
+  try {
+    extracted = await extractDocumentText(doc.storage_path, doc.source_filename, documentId);
+  } catch (error) {
+    firstError = error;
+  }
+  if ((!extracted || extracted.fullText.trim().length === 0) && doc.source_filename.toLowerCase().endsWith(".docx")) {
+    const { data } = await supabaseAdmin.storage.from(BUCKET).download(doc.storage_path);
+    if (data) {
+      const raw = await mammoth.extractRawText({ buffer: Buffer.from(await data.arrayBuffer()) });
+      if (raw.value.trim().length > 0) extracted = { fullText: raw.value, pages: [], previewStoragePath: null };
+    }
+  }
+  if (!extracted || extracted.fullText.trim().length === 0) {
+    if (firstError) throw firstError;
+    throw new Error(`No text could be read from "${doc.source_filename}". It may be a scan or an unsupported layout.`);
+  }
+  await withTenant(tenantId, async (client) => {
+    await client.query("update documents set extracted_text = $1, preview_storage_path = $2 where id = $3", [
+      extracted!.fullText,
+      extracted!.previewStoragePath,
+      documentId,
+    ]);
+  });
+  return { length: extracted.fullText.length };
+}
+
+/**
  * Loose match used to check whether a claimed quote really appears in the
  * source text. Normalizes away things that are extraction artifacts, not
  * real differences: curly quotes vs straight ones, en/em dashes, ligatures,
@@ -138,7 +186,24 @@ export function quoteAppearsIn(quote: string, sourceText: string): boolean {
 // that fits in one chunk is extracted exactly as before (same cost, same
 // single call), and a longer one is walked chunk by chunk so every page
 // actually gets read, see buildChunks below.
-const CHUNK_CHARS = 60000;
+
+// Timing lines for the slow report step: printed, and also appended to extract-timing.log in the app folder,
+// because the terminal is flooded by progress polling.
+function logExtract(message: string): void {
+  const line = `${new Date().toISOString()} [extract] ${message}`;
+  console.log(line);
+  try {
+    appendFileSync(join(process.cwd(), "extract-timing.log"), line + "\n");
+  } catch {
+    // Logging must never break extraction.
+  }
+}
+
+// Kept small enough that a finding-dense part still fits in one answer: a 58,000 character part of a 100 page report
+// hit the 16,000 token output limit and was lost, so parts are about 25,000 characters.
+const CHUNK_CHARS = 25000;
+// Parts of one report read at the same time.
+const REPORT_CHUNK_CONCURRENCY = 3;
 
 type DocumentChunk = {
   // 0-based position of this chunk among the document's chunks.
@@ -260,6 +325,10 @@ type ValidatedFinding = {
  * right here, rather than waiting on the rest of the document: the model
  * never saw other chunks, so it cannot have cited anything in them.
  */
+function normaliseQuote(q: string): string {
+  return q.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 async function extractFindingsFromChunk(
   tenantId: string,
   runId: string,
@@ -268,6 +337,8 @@ async function extractFindingsFromChunk(
   extracted: ExtractedDocument,
   chunk: DocumentChunk,
   groundingDigest: TableGroundingDigestEntry[] = [],
+  /** Normalised source quotes of findings that survived a partial regenerate: a fresh finding on the same quote is a twin, not new. */
+  skipQuotes: Set<string> = new Set(),
 ): Promise<{ id: string; finding_text: string }[]> {
   const pageInstruction = chunk.hasPages
     ? 'The text is divided into pages marked like "[[PAGE 3]]". For every finding, report the page ' +
@@ -302,6 +373,8 @@ async function extractFindingsFromChunk(
         "every other finding, including one that is only related or in the same theme.\n\n"
       : "";
 
+  const startedAt = Date.now();
+  logExtract(`${document.source_filename}: part ${chunk.index + 1} of ${chunk.total} sent, ${chunk.excerpt.length} characters`);
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 16000,
@@ -346,9 +419,16 @@ async function extractFindingsFromChunk(
       "identically, for every finding that belongs together, so findings can be grouped by it. Aim for " +
       "roughly four to eight themes total, not one per finding.\n\n" +
       "Also classify each finding's data_type as either:\n" +
-      "- quantitative: a number, statistic, percentage, count, or measurement.\n" +
-      "- qualitative: a verbatim or paraphrased participant response, an open-ended comment, a theme " +
-      "from interviews or focus groups, or any non-numeric observation.\n" +
+      "- quantitative: the evidence is numeric data that was counted, measured or analysed statistically. " +
+      "That covers a number, statistic, percentage, count or measurement, and also a conclusion drawn from " +
+      "such analysis even when the sentence itself states no number (for example that no difference was " +
+      "found between groups, that one factor was the most consistent predictor, or that a model fitted " +
+      "better).\n" +
+      "- qualitative: ONLY when the evidence is what people said or did, taken from interviews, focus " +
+      "groups, open-ended answers or observation, or a theme drawn from that material. A sentence with no " +
+      "number is not qualitative for that reason alone. A recommendation or method note from a study that " +
+      "analysed numeric data is quantitative. If the report contains no interview, focus group or " +
+      "open-ended material, every finding from it is quantitative.\n" +
       "A single report can state both kinds of findings; classify each finding by its own evidence, not " +
       "by the report as a whole.\n\n" +
       "If, and only if, a finding states a mean or average value, also set mean_without_spread to true " +
@@ -455,6 +535,10 @@ async function extractFindingsFromChunk(
   });
 
   await logApiUsage(tenantId, runId, "extract_findings", response.usage);
+  logExtract(
+    `${document.source_filename}: part ${chunk.index + 1} of ${chunk.total} came back in ${Math.round((Date.now() - startedAt) / 1000)}s, ` +
+      `${response.usage.output_tokens} output tokens, stop: ${response.stop_reason}`,
+  );
 
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") {
@@ -558,6 +642,7 @@ async function extractFindingsFromChunk(
     const pendingSupport: { insightId: string; rawIndices: number[] }[] = [];
 
     for (const finding of validFindings) {
+      if (skipQuotes.size > 0 && skipQuotes.has(normaliseQuote(finding.source_quote))) continue;
       const pageNumber =
         typeof finding.page_number === "number" &&
         pageTextByNumber.has(finding.page_number)
@@ -755,6 +840,7 @@ export async function extractFindingsFromDocument(
   }
 
   const chunks = buildChunks(extracted);
+  logExtract(`${document.source_filename}: ${extracted.fullText.length} characters, ${chunks.length} part${chunks.length === 1 ? "" : "s"}, up to ${REPORT_CHUNK_CONCURRENCY} at a time`);
 
   // Cross-document grounding context: real, code-computed facts from table
   // documents elsewhere in this same run, fetched once up front rather than
@@ -778,42 +864,91 @@ export async function extractFindingsFromDocument(
     });
   });
 
+  // When only rejected findings were replaced, the accepted ones are still there. Remember
+  // their quotes so the fresh pass does not add a second copy of each.
+  const skipQuotes = new Set<string>();
+  if (onlyReplacePending) {
+    const kept = await withTenant(tenantId, async (client) => {
+      const r = await client.query<{ source_quote: string | null }>(
+        "select source_quote from findings where source_document_id = $1 and source_quote is not null",
+        [documentId],
+      );
+      return r.rows;
+    });
+    for (const k of kept) if (k.source_quote) skipQuotes.add(normaliseQuote(k.source_quote));
+  }
+
   const allRows: { id: string; finding_text: string }[] = [];
   const chunkErrors: string[] = [];
 
-  for (const chunk of chunks) {
-    try {
-      const rows = await extractFindingsFromChunk(
+  // Parts of a long report are independent (each finding is tied to its own part), so they are read a few
+  // at a time instead of one after another. Each call can write a long answer, so reading them in turn is
+  // what made long reports slow. The bar counts parts as they finish.
+  beginCodingWork(runId, documentId, `Reading ${document.source_filename}`, chunks.length);
+  let chunkResults: { rows: { id: string; finding_text: string }[]; error: string | null }[];
+  try {
+    chunkResults = await mapWithConcurrency(chunks, REPORT_CHUNK_CONCURRENCY, async (chunk) => {
+      try {
+        const rows = await extractFindingsFromChunk(
+          tenantId,
+          runId,
+          documentId,
+          document,
+          extracted,
+          chunk,
+          groundingDigest,
+          skipQuotes,
+        );
+        return { rows, error: null as string | null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await withTenant(tenantId, async (client) => {
+          await client.query(
+            `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_chunk_error', $3)`,
+            [
+              tenantId,
+              runId,
+              JSON.stringify({
+                documentId,
+                filename: document.source_filename,
+                chunk: chunk.index,
+                totalChunks: chunk.total,
+                message,
+              }),
+            ],
+          );
+        }).catch(() => {});
+        return { rows: [] as { id: string; finding_text: string }[], error: message };
+      } finally {
+        tickCodingWork(documentId);
+      }
+    });
+  } finally {
+    endCodingWork(documentId);
+  }
+  for (const r of chunkResults) {
+    allRows.push(...r.rows);
+    if (r.error) chunkErrors.push(r.error);
+  }
+
+  // What was read, for the report card on the run page. Best effort: never blocks extraction.
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_summary', $3)`,
+      [
         tenantId,
         runId,
-        documentId,
-        document,
-        extracted,
-        chunk,
-        groundingDigest,
-      );
-      allRows.push(...rows);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      chunkErrors.push(message);
-      await withTenant(tenantId, async (client) => {
-        await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_chunk_error', $3)`,
-          [
-            tenantId,
-            runId,
-            JSON.stringify({
-              documentId,
-              filename: document.source_filename,
-              chunk: chunk.index,
-              totalChunks: chunk.total,
-              message,
-            }),
-          ],
-        );
-      }).catch(() => {});
-    }
-  }
+        JSON.stringify({
+          documentId,
+          pages: extracted.pages.length,
+          characters: extracted.fullText.length,
+          parts: chunks.length,
+          failedParts: chunkErrors.length,
+          findings: allRows.length,
+        }),
+      ],
+    );
+  }).catch(() => {});
 
   // A single-chunk document (the common case) behaves exactly as before: if
   // its one chunk failed, this throws with that same chunk's own message

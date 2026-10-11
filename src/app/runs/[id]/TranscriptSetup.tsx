@@ -102,7 +102,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function PreviewPanel({ preview }: { preview: FilePreview | null }) {
+function PreviewPanel({ preview, docKind }: { preview: FilePreview | null; docKind?: string }) {
   if (!preview) return null;
   if (preview.kind === "text") {
     return (
@@ -111,9 +111,15 @@ function PreviewPanel({ preview }: { preview: FilePreview | null }) {
           Preview what was read
         </summary>
         {preview.length === 0 ? (
-          <p className="mt-2 text-[11px] text-danger">
-            No text was read from this file. It may be a scan or an unsupported layout.
-          </p>
+          docKind === "evidence" ? (
+            <p className="mt-2 text-[11px] text-muted">
+              The text of this context file has not been read yet. It is read when you process the project.
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] text-danger">
+              No text was read from this file. It may be a scan or an unsupported layout.
+            </p>
+          )
         ) : (
           <>
             <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] text-foreground">
@@ -230,7 +236,7 @@ function PlainRow({ row }: { row: Row }) {
         }
       />
       <p className="text-[11px] text-muted">{row.detail}</p>
-      <PreviewPanel preview={row.preview} />
+      <PreviewPanel preview={row.preview} docKind={row.kind} />
       {row.attached}
       {row.quality}
     </div>
@@ -358,7 +364,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
         </Field>
       </div>
       {row.detail && <p className="text-[11px] text-muted">{row.detail}</p>}
-      <PreviewPanel preview={row.preview} />
+      <PreviewPanel preview={row.preview} docKind={row.kind} />
       {row.attached}
       {row.quality}
       {layoutChanged && !error && (
@@ -531,7 +537,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
         </select>
         </Field>
       </div>
-      <PreviewPanel preview={row.preview} />
+      <PreviewPanel preview={row.preview} docKind={row.kind} />
       {row.attached}
       {row.quality}
       {showSuggestion && sug && (

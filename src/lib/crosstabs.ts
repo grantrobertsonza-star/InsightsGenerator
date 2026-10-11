@@ -1,3 +1,4 @@
+import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
 import { withTenant } from "./db";
 import { enrichDictionary } from "./labelOverlay";
 import { archiveAndReplaceFindings } from "./findingArchive";
@@ -26,7 +27,7 @@ export type CrosstabListItem = {
 
 type DocumentFile = { storage_path: string; source_filename: string };
 
-async function loadDocumentFile(tenantId: string, runId: string, documentId: string): Promise<DocumentFile> {
+export async function loadDocumentFile(tenantId: string, runId: string, documentId: string): Promise<DocumentFile> {
   const doc = await withTenant(tenantId, async (client) => {
     const r = await client.query<DocumentFile>(
       "select storage_path, source_filename from documents where id = $1 and run_id = $2",
@@ -39,7 +40,7 @@ async function loadDocumentFile(tenantId: string, runId: string, documentId: str
 }
 
 /** Confirmed questionnaire wording for a data file. Loaded lazily: instruments.ts imports this module. */
-async function overlayFor(tenantId: string, runId: string, documentId: string) {
+export async function overlayFor(tenantId: string, runId: string, documentId: string) {
   try {
     const { getLabelOverlay } = await import("./instruments");
     return await getLabelOverlay(tenantId, runId, documentId);
@@ -166,7 +167,7 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
                 ? `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${row.isMean ? "" : " points"}) than overall (${total}${row.isMean ? "" : " points"})`
                 : `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${unit}) than overall (${total}${unit})`;
         candidates.push({
-          text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); z-test${result.notes?.designUsed ? " with Taylor series variance" : ""} against all other cases in the same banner variable, p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])}` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)}` : ""}.`,
+          text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); z-test${result.notes?.designUsed ? " with Taylor series variance" : ""} of this group against all other cases in the same banner variable (not against the overall figure), ${row.pAdj?.[k] != null || qv !== null ? "unadjusted " : ""}p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])} (corrected across the banner columns of this row)` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)} (across every cell tested in this table; inclusion was decided on q, not on p)` : ""}.`,
           theme: `${q.label} by ${col.blockLabel}`,
           gap: Math.abs(value - total),
           stats: {
@@ -187,13 +188,15 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
             correction: result.notes?.correction ?? "none",
             ...(row.pAdj?.[k] !== undefined && row.pAdj[k] !== null ? { pAdjusted: row.pAdj[k] } : {}),
             caveats: [
-              qv !== null
-                ? "fdr_controlled_within_table"
-                : result.notes?.correction === "fdr"
-                  ? "fdr_controlled_within_row"
-                  : result.notes?.correction === "bonferroni"
-                    ? "bonferroni_controlled_within_row"
-                    : "uncorrected_multiple_comparisons",
+              // The table-wide control and the row-level correction are separate steps; both are recorded when both ran.
+              ...(qv !== null ? ["fdr_controlled_within_table"] : []),
+              ...(result.notes?.correction === "fdr"
+                ? ["fdr_controlled_within_row"]
+                : result.notes?.correction === "bonferroni"
+                  ? ["bonferroni_controlled_within_row"]
+                  : qv !== null
+                    ? []
+                    : ["uncorrected_multiple_comparisons"]),
               "weighted_effective_base",
               ...(result.notes?.designUsed ? ["survey_design_modelled"] : ["survey_design_not_modelled", "sampling_assumed_random"]),
             ],
@@ -204,7 +207,20 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
     candidates.sort((a, b) => b.gap - a.gap);
     out.push(...candidates.slice(0, MAX_FINDINGS_PER_QUESTION));
   }
-  return out.slice(0, MAX_FINDINGS_PER_TABLE);
+  if (out.length <= MAX_FINDINGS_PER_TABLE) return out;
+  // Over the cap: keep the strongest evidence (smallest p, then largest gap), not
+  // whichever questions happen to come first, and keep the table's question order.
+  const strength = (f: CrosstabFinding & { gap?: number }) => {
+    const st = f.stats as { qValue?: number | null; pAdjusted?: number | null; pValue?: number | null };
+    return Number(st.qValue ?? st.pAdjusted ?? st.pValue ?? 1);
+  };
+  const gapOf = (f: CrosstabFinding & { gap?: number }) => f.gap ?? 0;
+  return out
+    .map((f, i) => ({ f, i }))
+    .sort((x, y) => strength(x.f) - strength(y.f) || gapOf(y.f) - gapOf(x.f) || x.i - y.i)
+    .slice(0, MAX_FINDINGS_PER_TABLE)
+    .sort((x, y) => x.i - y.i)
+    .map((x) => x.f);
 }
 
 /** Adds one table to the draft set. No findings are made until the set is committed. */
@@ -213,6 +229,8 @@ export async function buildCrosstab(
   runId: string,
   documentId: string,
   request: CrosstabRequest,
+  /** "evidence": built only to answer an objective evidence question, kept out of the draft set so it cannot be committed into findings. */
+  options: { status?: "draft" | "evidence" } = {},
 ): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
   if (request.rowItems.length === 0) throw new Error("Choose at least one row variable.");
@@ -273,7 +291,7 @@ export async function buildCrosstab(
     );
     const inserted = await client.query<{ id: string }>(
       `insert into document_tables (tenant_id, run_id, document_id, table_index, label, headers, rows, ingestion_type, crosstab, crosstab_status)
-       values ($1, $2, $3, $4, $5, $6, $7, 'aggregated', $8, 'draft') returning id`,
+       values ($1, $2, $3, $4, $5, $6, $7, 'aggregated', $8, $9) returning id`,
       [
         tenantId,
         runId,
@@ -283,6 +301,7 @@ export async function buildCrosstab(
         JSON.stringify(headers),
         JSON.stringify(rows),
         JSON.stringify(stored),
+        options.status ?? "draft",
       ],
     );
     return inserted.rows[0].id;
@@ -321,6 +340,7 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
               dt.crosstab->>'source' as source
        from document_tables dt
        where dt.run_id = $1 and dt.document_id = $2 and dt.table_index >= $3 and dt.crosstab is not null
+         and coalesce(dt.crosstab_status, 'committed') <> 'evidence'
        order by dt.table_index`,
       [runId, documentId, FIRST_CROSSTAB_INDEX],
     );
@@ -358,9 +378,50 @@ export async function commitCrosstabs(
         );
         findings++;
       }
+      // Wide funnel: every committed table also gives direct readings (shares, top-two box, NPS,
+      // averages) and "no difference" results, whether or not anything in it is significant.
+      // Nothing is dropped here for lack of significance; the insight step grades them.
+      const wide = [...levelFindings(draft.crosstab), ...noDifferenceFindings(draft.crosstab)];
+      for (const f of wide) {
+        await client.query(
+          `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, data_type, status)
+           values ($1, $2, 'generated', $3, $4, $5, $6, $7, 'quantitative', 'accepted')`,
+          [tenantId, runId, f.text, f.theme, f.patternType, JSON.stringify(f.stats), draft.id],
+        );
+        findings++;
+      }
       await client.query("update document_tables set crosstab_status = 'committed' where id = $1", [draft.id]);
     }
     return { tables: drafts.rows.length, findings };
+  });
+}
+
+/**
+ * Tables committed before wide findings existed have only their significant cells as findings.
+ * Adds the direct readings and no-difference results to any committed table that has none yet.
+ * Safe to repeat: a table that already has either kind is left alone.
+ */
+export async function addWideFindingsToCommitted(tenantId: string, runId: string): Promise<number> {
+  return withTenant(tenantId, async (client) => {
+    const tables = await client.query<{ id: string; crosstab: CrosstabResult }>(
+      `select dt.id, dt.crosstab from document_tables dt
+        where dt.run_id = $1 and dt.crosstab is not null and (dt.crosstab->>'version')::int = 2
+          and coalesce(dt.crosstab_status, 'committed') = 'committed'
+          and not exists (select 1 from findings f where f.source_table_id = dt.id and f.pattern_type in ('level', 'no_difference'))`,
+      [runId],
+    );
+    let added = 0;
+    for (const t of tables.rows) {
+      for (const f of [...levelFindings(t.crosstab), ...noDifferenceFindings(t.crosstab)]) {
+        await client.query(
+          `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, data_type, status)
+           values ($1, $2, 'generated', $3, $4, $5, $6, $7, 'quantitative', 'accepted')`,
+          [tenantId, runId, f.text, f.theme, f.patternType, JSON.stringify(f.stats), t.id],
+        );
+        added++;
+      }
+    }
+    return added;
   });
 }
 

@@ -120,4 +120,26 @@ describe("archiveAndReplaceFindings", () => {
       expect(call.text).not.toMatch(/status = 'rejected'/i);
     }
   });
+
+  it("scopes a wave comparison's findings by run and wave pair, and archives them before deleting", async () => {
+    const { client, calls } = createMockClient();
+
+    await archiveAndReplaceFindings(client, {
+      documentColumn: "wave_pair",
+      documentId: "run-1",
+      wavePair: "set-a:set-b",
+      onlyRejected: false,
+      archiveReason: "wave_recompare",
+    });
+
+    expect(calls).toHaveLength(5);
+    for (const call of calls) {
+      expect(call.text).toMatch(/stated_stats->>'wavePair' = \$2/);
+      expect(call.params.slice(0, 2)).toEqual(["run-1", "set-a:set-b"]);
+    }
+    // The reason is the third parameter of the first insert, and the delete comes last.
+    expect(calls[0].params[2]).toBe("wave_recompare");
+    expect(calls[0].text).toMatch(/\$3/);
+    expect(calls[4].text).toMatch(/delete from findings/i);
+  });
 });
