@@ -17,8 +17,8 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  */
 export async function acceptDecisionCandidate(runId: string, candidateId: string, editedText?: string) {
   await withTenant(TENANT_ID, async (client) => {
-    const result = await client.query<{ candidate_text: string }>(
-      "select candidate_text from decision_candidates where id = $1 and run_id = $2",
+    const result = await client.query<{ candidate_text: string; edited: boolean }>(
+      "select candidate_text, edited from decision_candidates where id = $1 and run_id = $2",
       [candidateId, runId]
     );
     const candidate = result.rows[0];
@@ -26,7 +26,18 @@ export async function acceptDecisionCandidate(runId: string, candidateId: string
 
     const trimmedEdit = editedText?.trim();
     const finalText = trimmedEdit || candidate.candidate_text;
-    const wasEdited = Boolean(trimmedEdit && trimmedEdit !== candidate.candidate_text);
+    const editedThisCall = Boolean(trimmedEdit && trimmedEdit !== candidate.candidate_text);
+    // Overnight queue, package 5 (DEC-001): `edited` is what decisionFramer.ts's regenerate
+    // step reads to decide which AI-suggested candidates are safe to delete - `edited = false`
+    // means "never touched by a human," and only that is cleared out when the framer re-runs.
+    // Re-accepting an ALREADY-edited candidate with no new wording (editedText omitted, or
+    // typed back to match what's already stored) previously computed wasEdited from nothing
+    // but this one call's own trimmedEdit, so it reset the flag straight back to false - making
+    // a researcher's own prior wording newly eligible for deletion on the next regenerate, even
+    // though nothing about that wording was actually reverted. edited, once true, must stay
+    // true: it is provenance ("has a human ever touched this"), not a description of this one
+    // call's own action.
+    const wasEdited = candidate.edited || editedThisCall;
 
     await client.query(
       "update decision_candidates set status = 'accepted', candidate_text = $1, edited = $2 where id = $3",

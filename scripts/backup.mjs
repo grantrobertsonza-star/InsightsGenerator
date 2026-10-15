@@ -35,12 +35,19 @@ function run(args) {
 
 async function listAll(storage, prefix = "") {
   const out = [];
-  const { data, error } = await storage.list(prefix, { limit: 1000 });
-  if (error) throw error;
-  for (const item of data ?? []) {
-    const full = prefix ? `${prefix}/${item.name}` : item.name;
-    if (item.id === null) out.push(...(await listAll(storage, full)));
-    else out.push(full);
+  const limit = 1000;
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await storage.list(prefix, { limit, offset });
+    if (error) throw error;
+    const page = data ?? [];
+    for (const item of page) {
+      const full = prefix ? `${prefix}/${item.name}` : item.name;
+      if (item.id === null) out.push(...(await listAll(storage, full)));
+      else out.push(full);
+    }
+    if (page.length < limit) break;
+    offset += limit;
   }
   return out;
 }

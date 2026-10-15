@@ -484,7 +484,7 @@ describe("parseUnitAssignments", () => {
 
 describe("parseUnitDecisions", () => {
   it("keeps only units that meet the code, per turn, in order", () => {
-    const r = parseUnitDecisions(
+    const { hits } = parseUnitDecisions(
       [
         { id: "54.3", why: "x", meets: true },
         { id: "54.1", why: "x", meets: true },
@@ -493,12 +493,12 @@ describe("parseUnitDecisions", () => {
       ],
       new Map([[54, 3], [60, 1]]),
     );
-    expect(r.get(54)).toEqual([1, 3]);
-    expect(r.get(60)).toEqual([1]);
+    expect(hits.get(54)).toEqual([1, 3]);
+    expect(hits.get(60)).toEqual([1]);
   });
 
   it("ignores malformed ids, other turns, out-of-range units and duplicates", () => {
-    const r = parseUnitDecisions(
+    const { hits } = parseUnitDecisions(
       [
         { id: "abc", meets: true },
         { id: "99.1", meets: true },
@@ -509,12 +509,32 @@ describe("parseUnitDecisions", () => {
       ],
       new Map([[5, 2]]),
     );
-    expect(r.get(5)).toEqual([1]);
-    expect(r.size).toBe(1);
+    expect(hits.get(5)).toEqual([1]);
+    expect(hits.size).toBe(1);
   });
 
-  it("returns an empty map for malformed output", () => {
-    expect(parseUnitDecisions(null, new Map()).size).toBe(0);
+  it("returns an empty result for malformed output", () => {
+    const r = parseUnitDecisions(null, new Map());
+    expect(r.hits.size).toBe(0);
+    expect(r.decided.size).toBe(0);
+  });
+
+  // ANA-QUAL-001: an explicit "no" and an omitted decision must be distinguishable. Both leave a
+  // unit out of `hits`, but only a unit the model actually ruled on (true or false) appears in
+  // `decided` - the caller compares `decided` against how many units a turn actually has to find
+  // the units the model never mentioned at all.
+  it("tracks decided units separately from hits, so an explicit false and an omitted unit can be told apart", () => {
+    const { hits, decided } = parseUnitDecisions(
+      [
+        { id: "5.1", why: "x", meets: true },
+        { id: "5.2", why: "x", meets: false },
+        // unit 5.3 is never mentioned at all - omitted, not decided
+      ],
+      new Map([[5, 3]]),
+    );
+    expect(hits.get(5)).toEqual([1]);
+    expect(decided.get(5)).toEqual(new Set([1, 2]));
+    expect(decided.get(5)?.has(3)).toBe(false);
   });
 });
 

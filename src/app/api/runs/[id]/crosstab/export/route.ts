@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
+import { convertOfficeDocToPdf } from "@/lib/convertToPdf";
 import type { CrosstabResult, CrosstabRow } from "@/lib/parseStatsFile";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
@@ -16,8 +18,8 @@ function sheetName(label: string, used: Set<string>): string {
   return name;
 }
 
-type ExportOpts = { measures: ("col" | "row" | "n" | "count" | "letters" | "resp")[]; net: boolean };
-const MEASURE_NAME = { col: "% within column", row: "% within row", n: "n", count: "Weighted count", resp: "% of responses", letters: "Significantly higher than" } as const;
+type ExportOpts = { measures: ("col" | "row" | "n" | "count" | "letters" | "resp" | "residual")[]; net: boolean };
+const MEASURE_NAME = { col: "% within column", row: "% within row", n: "n", count: "Weighted count", resp: "% of responses", letters: "Significantly higher than", residual: "Standardized residual" } as const;
 
 /**
  * One worksheet per saved crosstab. It mirrors the screen: the measures that are
@@ -113,17 +115,18 @@ function tableSheet(label: string, r: CrosstabResult, opts: ExportOpts): XLSX.Wo
       const rowAsPct = asPct && !row.isScore;
       const cellOf = (e: Entry) => {
         if (e.kind === "col") {
-          return { pct: row.pct[e.j], rowPct: row.rowPct?.[e.j], count: row.count[e.j], nCell: row.nCell?.[e.j], resp: row.respPct?.[e.j], letters: row.letters?.[e.j] };
+          return { pct: row.pct[e.j], rowPct: row.rowPct?.[e.j], count: row.count[e.j], nCell: row.nCell?.[e.j], resp: row.respPct?.[e.j], letters: row.letters?.[e.j], residual: row.residual?.[e.j] };
         }
         const nt = row.net?.find((x) => x.block === e.block);
-        return nt ? { pct: nt.pct, rowPct: nt.rowPct, count: nt.count, nCell: nt.nCell, resp: nt.respPct, letters: undefined } : null;
+        return nt ? { pct: nt.pct, rowPct: nt.rowPct, count: nt.count, nCell: nt.nCell, resp: nt.respPct, letters: undefined, residual: undefined } : null;
       };
       const wanted = opts.measures.filter((m) => {
-        if (r.overall && (m === "row" || m === "letters")) return false;
+        if (r.overall && (m === "row" || m === "letters" || m === "residual")) return false;
         if (!rowAsPct) return m === "col" || m === "letters";
         if (m === "resp") return row.respPct !== undefined;
         if (m === "n") return row.nCell !== undefined;
         if (m === "count") return weighted;
+        if (m === "residual") return row.residual !== undefined;
         return true;
       });
       for (const m of wanted.length > 0 ? wanted : (["col"] as const)) {
@@ -146,10 +149,10 @@ function tableSheet(label: string, r: CrosstabResult, opts: ExportOpts): XLSX.Wo
         };
         layout.forEach((e, k) => {
           const cd = cellOf(e);
-          const v = !cd ? null : m === "col" ? cd.pct : m === "row" ? cd.rowPct : m === "n" ? cd.nCell : m === "resp" ? cd.resp : cd.count;
+          const v = !cd ? null : m === "col" ? cd.pct : m === "row" ? cd.rowPct : m === "n" ? cd.nCell : m === "resp" ? cd.resp : m === "residual" ? cd.residual : cd.count;
           put(v, false, FIRST + k);
         });
-        const tot = m === "col" ? row.total.pct : m === "row" ? (rowAsPct ? 100 : null) : m === "n" ? (row.total.nCell ?? null) : m === "resp" ? (row.total.respPct ?? null) : row.total.count;
+        const tot = m === "col" ? row.total.pct : m === "row" ? (rowAsPct ? 100 : null) : m === "n" ? (row.total.nCell ?? null) : m === "resp" ? (row.total.respPct ?? null) : m === "residual" ? null : row.total.count;
         put(tot, true, FIRST + layout.length);
         aoa.push(line);
       }
@@ -230,12 +233,100 @@ function tableSheet(label: string, r: CrosstabResult, opts: ExportOpts): XLSX.Wo
   return ws;
 }
 
+const ROWS_PER_SLIDE = 14;
+
+/**
+ * One table as one or more slides: a title, the primary figure (column % for a question tabulated
+ * as percentages, the mean for an average) in a native PowerPoint table so it stays editable, a
+ * base row, and a footer with the whole-table test and the source note. A table with more answer
+ * rows than fit on one slide continues onto further slides headed "(continued)", each repeating
+ * the banner header row. This is a plain working table, not the branded narrative deck findings
+ * get (deckSlides.ts): the point here is the numbers, laid out exactly as the workspace shows them.
+ */
+function tableSlides(pptx: PptxGenJS, label: string, r: CrosstabResult): void {
+  const cols = r.columns;
+  const header = ["Answer", ...cols.map((c) => (c.letter ? `${c.letter}: ${c.name}` : c.name)), "Total"];
+  type Line = { label: string; cells: string[]; bold?: boolean; italic?: boolean };
+  const lines: Line[] = [];
+  const baseRow = r.questions[0]?.rows.find((x) => x.isBase);
+  for (const q of r.questions) {
+    lines.push({ label: q.label, cells: header.slice(1).map(() => ""), bold: true });
+    const tt = q.tableTests?.[0];
+    if (tt) {
+      lines.push({
+        label: `Whole-table test: ${tt.label} ${tt.p < 0.001 ? "p<0.001" : `p=${tt.p}`} (chi-square ${tt.chi2}, df ${tt.df})`,
+        cells: header.slice(1).map(() => ""),
+        italic: true,
+      });
+    }
+    const asPct = q.kind === "single" || q.kind === "multi";
+    for (const row of q.rows) {
+      if (row.isBase) {
+        if (row.isEffBase) continue; // one base row per question is enough on a slide
+        lines.push({
+          label: row.label,
+          cells: [...cols.map((_c, j) => String(row.count[j] ?? "")), String(row.total.count ?? "")],
+          italic: true,
+        });
+        continue;
+      }
+      const rowAsPct = asPct && !row.isScore;
+      const fmt = (v: number | null | undefined): string => {
+        if (v === null || v === undefined) return "-";
+        if (!rowAsPct) return row.isMean ? v.toFixed(2) : `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
+        return `${v}%`;
+      };
+      lines.push({
+        label: row.label,
+        cells: [...cols.map((_c, j) => fmt(row.pct[j])), fmt(row.total.pct)],
+      });
+    }
+  }
+
+  const rowsOf = (chunk: Line[]): PptxGenJS.TableRow[] => [
+    header.map((h) => ({ text: h, options: { bold: true, fill: { color: "EEF2FF" }, color: "1E2761" } })),
+    ...chunk.map((ln) => [
+      { text: ln.label, options: { bold: !!ln.bold, italic: !!ln.italic, align: "left" as const } },
+      ...ln.cells.map((c) => ({ text: c, options: { italic: !!ln.italic, align: "right" as const } })),
+    ]),
+  ];
+  const colW = [3.4, ...cols.map(() => 9.4 / Math.max(cols.length, 1)), 1.0];
+
+  for (let start = 0; start < lines.length; start += ROWS_PER_SLIDE) {
+    const chunk = lines.slice(start, start + ROWS_PER_SLIDE);
+    const slide = pptx.addSlide();
+    slide.addText(start === 0 ? label : `${label} (continued)`, {
+      x: 0.4, y: 0.25, w: 12.5, h: 0.6, fontSize: 18, bold: true, color: "1E2761", fontFace: "Calibri",
+    });
+    slide.addTable(rowsOf(chunk), {
+      x: 0.4,
+      y: 0.95,
+      w: 12.5,
+      colW,
+      fontSize: 9,
+      fontFace: "Calibri",
+      border: { type: "solid", color: "CBD5E1", pt: 0.5 },
+      autoPage: false,
+    });
+    if (start + ROWS_PER_SLIDE >= lines.length) {
+      const note = [
+        r.weightVar ? `Weighted by ${r.weightLabel ?? r.weightVar}` : "Unweighted",
+        baseRow ? `base ${baseRow.total.count ?? "?"}` : "",
+        r.provenance?.sourceFile ? `source: ${r.provenance.sourceFile}` : "",
+      ].filter(Boolean).join(" · ");
+      if (note) {
+        slide.addText(note, { x: 0.4, y: 7.05, w: 12.5, h: 0.3, fontSize: 8, color: "64748B", fontFace: "Calibri" });
+      }
+    }
+  }
+}
+
 /** All saved crosstabs for a run (or one, with ?tableId=) as an Excel workbook. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: runId } = await params;
   const sp = new URL(request.url).searchParams;
   const tableId = sp.get("tableId");
-  const allowed = ["col", "row", "n", "count", "letters", "resp"] as const;
+  const allowed = ["col", "row", "n", "count", "letters", "resp", "residual"] as const;
   const asked = (sp.get("measures") ?? "col,n,letters").split(",").filter((m): m is (typeof allowed)[number] => (allowed as readonly string[]).includes(m));
   const opts: ExportOpts = { measures: asked.length > 0 ? asked : ["col"], net: sp.get("net") !== "0" };
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -257,6 +348,40 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!data) return NextResponse.json({ error: "Run not found" }, { status: 404 });
   const usable = data.tables.filter((t) => t.crosstab?.version === 2);
   if (usable.length === 0) return NextResponse.json({ error: "No saved crosstabs to export." }, { status: 404 });
+  const stem = (data.name ?? "project").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  const format = (sp.get("format") ?? "xlsx").toLowerCase();
+
+  if (format === "pptx" || format === "pdf") {
+    const pptx = new PptxGenJS();
+    pptx.layout = "LAYOUT_WIDE";
+    for (const t of usable) {
+      tableSlides(pptx, t.label ?? "Crosstab", t.crosstab as CrosstabResult);
+    }
+    const pptxBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+    if (format === "pptx") {
+      return new NextResponse(new Uint8Array(pptxBuffer), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "Content-Disposition": `attachment; filename="${stem || "project"}-crosstabs.pptx"`,
+        },
+      });
+    }
+    let pdfBuffer: Buffer;
+    try {
+      pdfBuffer = await convertOfficeDocToPdf(pptxBuffer, "crosstabs.pptx");
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Could not convert the tables to PDF." },
+        { status: 500 },
+      );
+    }
+    return new NextResponse(new Uint8Array(pdfBuffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${stem || "project"}-crosstabs.pdf"`,
+      },
+    });
+  }
 
   const wb = XLSX.utils.book_new();
   const used = new Set<string>();
@@ -264,7 +389,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     XLSX.utils.book_append_sheet(wb, tableSheet(t.label ?? "Crosstab", t.crosstab as CrosstabResult, opts), sheetName(t.label ?? "Crosstab", used));
   }
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-  const stem = (data.name ?? "project").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

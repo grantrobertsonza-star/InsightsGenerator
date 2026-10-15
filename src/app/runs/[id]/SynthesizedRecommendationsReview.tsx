@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptRecommendation,
   rejectRecommendation,
@@ -675,28 +676,8 @@ export default function SynthesizedRecommendationsReview({
     });
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <p className="max-w-2xl text-sm text-muted">
-          One recommended action per synthesized insight: a named owner, a timeline, and a metric to judge
-          it by. Every one proposed here is already accepted, so the run finishes without a review step; a
-          genuine insight can support several actions side by side, so more than one is accepted at once.
-          Reject anything that doesn&apos;t belong, edit one in place, or add your own tied to a specific
-          insight.
-        </p>
-        {hasDecision && hasInsights && (
-          <button
-            disabled={isPending}
-            onClick={handleRegenerate}
-            className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
-          >
-            {isPending ? "Working..." : "Generate for new insights"}
-          </button>
-        )}
-      </div>
-
-      <div className="flex gap-1 rounded-lg bg-slate-50 p-1 sm:w-fit">
+  const tabsBar = (
+      <div className="flex gap-1 rounded-lg bg-slate-50 p-1 w-fit">
         {(
           [
             ["recommendations", "Recommendations", live.length],
@@ -727,43 +708,39 @@ export default function SynthesizedRecommendationsReview({
         ))}
       </div>
 
-      {activeTab === "scores" && <RecommendationScoresTable runId={runId} recommendations={recommendations} />}
+  );
 
-      {activeTab === "recommendations" && (
-        <>
-      {regenerateError && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
-          <span>Couldn&apos;t generate recommendations right now: {regenerateError}</span>
-          <button onClick={() => setRegenerateError(null)} className="shrink-0 font-medium underline">
-            Dismiss
+  if (activeTab === "scores") {
+    return (
+      <div className="space-y-4">
+        {tabsBar}
+        <RecommendationScoresTable runId={runId} recommendations={recommendations} />
+      </div>
+    );
+  }
+
+  return (
+    <ThreePane
+      left={
+        <Pane side="left" title="Filters and actions">
+        <p className="text-xs text-muted">
+          One recommended action per synthesized insight: a named owner, a timeline, and a metric to judge
+          it by. Every one proposed here is already accepted, so the run finishes without a review step; a
+          genuine insight can support several actions side by side, so more than one is accepted at once.
+          Reject anything that doesn&apos;t belong, edit one in place, or add your own tied to a specific
+          insight.
+        </p>
+        {hasDecision && hasInsights && (
+          <button
+            disabled={isPending}
+            onClick={handleRegenerate}
+            className="whitespace-nowrap self-start rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
+          >
+            {isPending ? "Working..." : "Generate for new insights"}
           </button>
-        </div>
-      )}
-
-      {!hasDecision && (
-        <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
-          Waiting on a confirmed decision. Actions are judged against a specific decision, in both starting
-          points, so this fills in automatically once one is accepted on the decision brief above.
-        </div>
-      )}
-
-      {hasDecision && !hasInsights && (
-        <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
-          No accepted synthesized insights yet to turn into actions. Once insights are clustered and
-          accepted, recommendations are proposed automatically.
-        </div>
-      )}
-
-      {hasDecision && hasInsights && recommendations.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
-          We tried to generate recommendations automatically and it didn&apos;t come back with anything,
-          most likely a temporary issue. Click &quot;Generate for new insights&quot; above to try again, or
-          add your own below.
-        </div>
-      )}
-
+        )}
       {live.length > 0 && (
-        <div className="grid grid-cols-4 gap-2 sm:max-w-lg">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setPriorityFilter("all")}
@@ -807,27 +784,6 @@ export default function SynthesizedRecommendationsReview({
         </div>
       )}
 
-      {isFiltering && accepted.length === 0 && pending.length === 0 && (
-        <p className="text-sm text-muted">No recommendations match this filter.</p>
-      )}
-
-      {accepted.length > 0 && (
-        <div className="space-y-3">
-          {accepted.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
-          ))}
-        </div>
-      )}
-
-      {pending.length > 0 && (
-        <div className="space-y-3">
-          {accepted.length > 0 && <div className="text-xs font-semibold uppercase tracking-wide text-muted">Other recommendations</div>}
-          {pending.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
-          ))}
-        </div>
-      )}
-
       {insightOptions.length > 0 && (
         <form
           onSubmit={(e) => {
@@ -859,6 +815,80 @@ export default function SynthesizedRecommendationsReview({
         </form>
       )}
 
+        </Pane>
+      }
+      middle={
+        <Pane
+          side="middle"
+          title="Recommendations"
+          badge={
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
+              {accepted.length + pending.length} shown
+            </span>
+          }
+        >
+          {tabsBar}
+      {regenerateError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
+          <span>Couldn&apos;t generate recommendations right now: {regenerateError}</span>
+          <button onClick={() => setRegenerateError(null)} className="shrink-0 font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {!hasDecision && (
+        <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
+          Waiting on a confirmed decision. Actions are judged against a specific decision, in both starting
+          points, so this fills in automatically once one is accepted on the decision brief above.
+        </div>
+      )}
+
+      {hasDecision && !hasInsights && (
+        <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
+          No accepted synthesized insights yet to turn into actions. Once insights are clustered and
+          accepted, recommendations are proposed automatically.
+        </div>
+      )}
+
+      {hasDecision && hasInsights && recommendations.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
+          We tried to generate recommendations automatically and it didn&apos;t come back with anything,
+          most likely a temporary issue. Click &quot;Generate for new insights&quot; above to try again, or
+          add your own below.
+        </div>
+      )}
+
+      {isFiltering && accepted.length === 0 && pending.length === 0 && (
+        <p className="text-sm text-muted">No recommendations match this filter.</p>
+      )}
+
+      {accepted.length > 0 && (
+        <div className="space-y-3">
+          {accepted.map((rec) => (
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+          ))}
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="space-y-3">
+          {accepted.length > 0 && <div className="text-xs font-semibold uppercase tracking-wide text-muted">Other recommendations</div>}
+          {pending.map((rec) => (
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+          ))}
+        </div>
+      )}
+
+        </Pane>
+      }
+      right={
+        <Pane side="right" title="Rejected and reserve">
+          {rejected.length === 0 && parkedInsights.length === 0 && (
+            <p className="text-sm text-muted">
+              Rejected recommendations and accepted insights still waiting for an action show here.
+            </p>
+          )}
       {rejected.length > 0 && (
         <div className="rounded-lg border border-dashed border-border p-3">
           <button
@@ -913,8 +943,8 @@ export default function SynthesizedRecommendationsReview({
           )}
         </div>
       )}
-        </>
-      )}
-    </div>
+        </Pane>
+      }
+    />
   );
 }

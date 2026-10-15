@@ -80,7 +80,11 @@ export async function extractBriefFields(
       "picking one document over the other outright.\n\n" +
       "Do not extract either document's methodology, timeline, budget, team, or literature review, those " +
       "aren't part of either field. If there's more than one distinct objective, number them (1., 2., " +
-      "...) rather than running them together into one sentence. Quote or closely paraphrase the " +
+      "...) rather than running them together into one sentence. Put each objective on its own line and make " +
+      "every line one complete, stand-alone objective (for example \"To identify...\"). Never output a section " +
+      "heading or group title as a line of its own, such as \"Primary objective:\" or \"Secondary objectives:\"; " +
+      "fold the objectives under it into the list instead. If the document labels an objective (main question, " +
+      "primary, secondary), keep the label as a short prefix on the same line, separated with a dash. Quote or closely paraphrase the " +
       "documents' own framing rather than writing a fresh summary. If neither document clearly states " +
       "one of these two things, return null for it rather than guessing or inventing one from context.",
     tool_choice: { type: "tool", name: "record_brief_fields" },

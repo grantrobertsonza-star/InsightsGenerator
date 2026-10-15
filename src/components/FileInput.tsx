@@ -38,9 +38,17 @@ export default function FileInput({
 
   return (
     <label htmlFor={id} className="block cursor-pointer">
-      <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-        {icon}
-        {label}
+      <span className="flex items-center justify-between gap-2">
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            {icon}
+            {label}
+          </span>
+          {caption ? <span className="block text-[11px] leading-tight text-muted">{caption}</span> : null}
+        </span>
+        <span className="shrink-0 rounded-lg bg-primary-light px-2.5 py-1 text-xs font-medium text-primary hover:bg-blue-100">
+          Choose files
+        </span>
       </span>
       <input
         id={id}
@@ -51,10 +59,6 @@ export default function FileInput({
         onChange={(event) => setFileNames(Array.from(event.target.files ?? []).map((file) => file.name))}
         className="sr-only"
       />
-      <span className="mt-1 inline-block rounded-lg bg-primary-light px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-blue-100">
-        Choose files
-      </span>
-      {caption ? <span className="mt-1 block text-[11px] text-muted">{caption}</span> : null}
       {fileNames.length > 0 ? (
         <ul className="mt-1 space-y-0.5">
           {fileNames.map((fileName) => (

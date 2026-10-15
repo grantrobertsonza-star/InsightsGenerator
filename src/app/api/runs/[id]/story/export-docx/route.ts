@@ -14,11 +14,19 @@ import { loadDiscoveryReportData } from "@/lib/discoveryReport";
 import { buildChartImagesByTheme } from "@/lib/exportChartImages";
 import type { ChartableFinding } from "@/lib/findingsChartData";
 import type { DeckPillar } from "@/lib/storyNarrative";
+import { exportCaveatLabels } from "@/lib/caveatLabels";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
 type ConfidenceTier = "strong" | "moderate" | "exploratory" | null;
 type QualityTier = "finding" | "partial" | "qualified" | null;
+
+/** Local to this route: the row shape the SQL query above actually returns, before
+ * caveat_tags is narrowed down to NarrativeReportRecommendation['caveats'] (humanised,
+ * allow-listed labels) just before the docx renderer is called. */
+type RawRecommendation = Omit<NarrativeReportRecommendation, "caveats"> & {
+  caveat_tags: string[] | null;
+};
 
 type PillarInsight = {
   id: string;
@@ -28,6 +36,11 @@ type PillarInsight = {
   implication: string;
   confidence_tier: ConfidenceTier;
   quality_tier: QualityTier;
+  /** FND-001/REP-OUT-001 (second counter-review): raw caveat tags aggregated, live, from every
+   * still-eligible (non-rejected) finding this insight was built from. Narrowed to the short,
+   * humanised, export-worthy subset via exportCaveatLabels() before this reaches docxReport.ts -
+   * see caveatLabels.ts for why only a narrow allow-list of tags is exported at all. */
+  caveat_tags: string[] | null;
 };
 
 /**
@@ -84,36 +97,121 @@ export async function GET(
         )
       : [];
 
+    // FND-001 / REP-OUT-001: a synthesized insight (or any pre-insight it draws on) can be
+    // rejected, or its own finding rejected, AFTER this run's narrative was last generated -
+    // `deck_narratives.pillars[].insight_ids` is a point-in-time snapshot of ids, not a live
+    // reference. Without `si.review_status = 'accepted'` and `si.run_id = $2` here, a now-
+    // rejected insight (or one belonging to a different run entirely) still rendered in every
+    // export of a narrative that referenced it before the rejection. The `not exists` clause
+    // closes the same gap one layer further down: an insight that is itself still "accepted"
+    // but was built from a pre-insight whose underlying finding has SINCE been rejected is
+    // excluded too, rather than only checking the insight's own status.
     const insightsResult =
       insightIds.length > 0
         ? await client.query<PillarInsight>(
-            `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier
+            `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier,
+                    (
+                      select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
+                      from synthesized_insight_sources s2
+                      join insights i2 on i2.id = s2.pre_insight_id
+                      join findings f2 on f2.id = i2.finding_id
+                      cross join lateral jsonb_array_elements_text(coalesce(f2.stated_stats->'caveats', '[]'::jsonb)) as tag
+                      where s2.synthesized_insight_id = si.id and f2.status <> 'rejected'
+                    ) as caveat_tags
              from synthesized_insights si
-             where si.id = any($1::uuid[])`,
-            [insightIds],
+             where si.id = any($1::uuid[])
+               and si.run_id = $2
+               and si.review_status = 'accepted'
+               -- FND-001/REP-OUT-001 (second counter-review): replaces the old 'not exists
+               -- (... f.status = rejected)' check. That check could only ever see a source row
+               -- that STILL EXISTS - but synthesized_insight_sources.pre_insight_id and
+               -- insights.claim_id (the finding link) both cascade on delete (0027/0005), so a hard
+               -- deletion (deleteDocument removing a document's findings outright, or a
+               -- regenerate/reprocess pass that deletes and re-creates findings with new ids -
+               -- 0021_finding_history.sql) makes the join row vanish with no status to find at all,
+               -- not rejected. triangulation_count (insightSynthesizer.ts) is the exact number of
+               -- sources this insight was built from, persisted once and never updated - comparing
+               -- the LIVE count of still-linked, non-rejected sources against it catches a rejected
+               -- source (excluded by status, same as before) AND a deleted/regenerated one (simply
+               -- missing from the join, so the count itself comes up short) in one measure, with no
+               -- new column or migration needed.
+               and (
+                 select count(*) from synthesized_insight_sources s
+                 join insights i on i.id = s.pre_insight_id
+                 join findings f on f.id = i.finding_id
+                 where s.synthesized_insight_id = si.id and f.status <> 'rejected'
+               ) >= si.triangulation_count`,
+            [insightIds, runId],
           )
         : null;
 
+    // Same freshness contract as insightsResult above, applied to recommendations: a
+    // recommendation can stay "accepted" while the synthesized insight it is anchored to has
+    // since been rejected (or had a dependent finding rejected) - neither was checked before,
+    // only the recommendation's own status.
     const recommendationsResult =
-      await client.query<NarrativeReportRecommendation>(
-        `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority
+      await client.query<RawRecommendation>(
+        `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority,
+              (
+                select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
+                from synthesized_insight_sources s2
+                join insights i2 on i2.id = s2.pre_insight_id
+                join findings f2 on f2.id = i2.finding_id
+                cross join lateral jsonb_array_elements_text(coalesce(f2.stated_stats->'caveats', '[]'::jsonb)) as tag
+                where s2.synthesized_insight_id = si.id and f2.status <> 'rejected'
+              ) as caveat_tags
        from recommendations r
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
+         and si.review_status = 'accepted'
+         -- FND-001/REP-OUT-001 (second counter-review): same live-count-vs-triangulation_count
+         -- comparison as insightsResult above - see its comment for why a bare 'not exists
+         -- (... rejected)' check cannot see a source whose link row was removed by cascading
+         -- deletion rather than marked rejected.
+         and (
+           select count(*) from synthesized_insight_sources s
+           join insights i on i.id = s.pre_insight_id
+           join findings f on f.id = i.finding_id
+           where s.synthesized_insight_id = si.id and f.status <> 'rejected'
+         ) >= si.triangulation_count
        order by case r.priority when 'high' then 0 when 'medium' then 1 else 2 end, r.created_at`,
         [runId],
       );
 
-    const objectiveValidationsResult =
-      await client.query<NarrativeReportObjectiveItem>(
-        `select item_kind, item_text,
-              case when inferred then 'inferred' else status end as status,
-              case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion
-       from objective_validations
-       where run_id = $1
-       order by item_kind, item_order`,
-        [runId],
-      );
+    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a catalog
+    // probe, same technique and same reasoning as page.tsx's own getObjectiveValidations - a
+    // failed SELECT on a pre-migration database would abort the rest of this transaction. Both
+    // export routes used to omit this column entirely, so a degraded conclusion (generated while
+    // direct data-evidence retrieval was failing) reached DOCX/PPTX with no qualification at all,
+    // even though the live app already flags it. Folded into the same `conclusion` string the
+    // existing "inferred" wrapper already builds, rather than a new field, so every renderer that
+    // already prints `conclusion` picks this up with no further change.
+    const evidenceDigestDegradedColExists = await client.query<{ exists: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
+       ) as "exists"`,
+    );
+    const objectiveValidationsResult = evidenceDigestDegradedColExists.rows[0]?.exists === true
+      ? await client.query<NarrativeReportObjectiveItem>(
+          `select item_kind, item_text,
+                case when inferred then 'inferred' else status end as status,
+                (case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end)
+                  || (case when evidence_digest_degraded then ' (Evidence check degraded: generated while data-evidence retrieval was failing - may be missing evidence a working check would have cited.)' else '' end) as conclusion
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+          [runId],
+        )
+      : await client.query<NarrativeReportObjectiveItem>(
+          `select item_kind, item_text,
+                case when inferred then 'inferred' else status end as status,
+                case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+          [runId],
+        );
 
     const unmappedInsightsResult = await client.query<{ headline: string }>(
       `select si.headline
@@ -169,7 +267,14 @@ export async function GET(
       insightsById: new Map(
         (insightsResult?.rows ?? []).map((row) => [row.id, row]),
       ),
-      recommendations: recommendationsResult.rows,
+      recommendations: recommendationsResult.rows.map((r) => ({
+        action_text: r.action_text,
+        owner_role: r.owner_role,
+        timeline: r.timeline,
+        metric: r.metric,
+        priority: r.priority,
+        caveats: exportCaveatLabels(r.caveat_tags),
+      })),
       objectiveValidations: objectiveValidationsResult.rows,
       unmappedInsightHeadlines: unmappedInsightsResult.rows.map(
         (row) => row.headline,
@@ -205,18 +310,28 @@ export async function GET(
     );
   }
 
-  const pillars: NarrativeReportPillar[] = narrative.pillars.map((pillar) => ({
-    headline: pillar.headline,
-    so_what: pillar.so_what,
-    insights: pillar.insight_ids
+  // REP-OUT-001: track what the eligibility filter in insightsResult's own query actually
+  // left out, rather than silently dropping an unresolved id - see NarrativeReportPillar's own
+  // field comment for why this is surfaced to the reader instead of just shrinking the pillar.
+  let anyPillarStale = false;
+  const pillars: NarrativeReportPillar[] = narrative.pillars.map((pillar) => {
+    const resolved = pillar.insight_ids
       .map((id) => insightsById.get(id))
-      .filter((insight): insight is PillarInsight => Boolean(insight))
-      .map((insight) => ({
+      .filter((insight): insight is PillarInsight => Boolean(insight));
+    const omittedInsightCount = pillar.insight_ids.length - resolved.length;
+    if (omittedInsightCount > 0) anyPillarStale = true;
+    return {
+      headline: pillar.headline,
+      so_what: pillar.so_what,
+      insights: resolved.map((insight) => ({
         headline: insight.headline,
         observation: insight.observation,
         implication: insight.implication,
+        caveats: exportCaveatLabels(insight.caveat_tags),
       })),
-  }));
+      omittedInsightCount,
+    };
+  });
 
   const deckTitle = humanizeTitle(
     run.project_name ?? run.decision_statement ?? "Insights Elevator",
@@ -231,6 +346,7 @@ export async function GET(
 
   const buffer = await buildNarrativeReportDocx({
     title: deckTitle,
+    narrativeMayBeStale: anyPillarStale,
     decisionStatement: narrative.question || run.decision_statement,
     audience: run.audience,
     businessProblem: run.business_problem,

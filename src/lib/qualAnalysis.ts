@@ -30,8 +30,12 @@ export type AgreementCounts = {
 /**
  * Cohen's kappa for one code over the turns a researcher has judged. Each
  * pair is "did the model apply the code" against "does the researcher say it
- * applies". Kappa is null when it cannot be defined: no turns, or one side
- * said the same thing on every turn so chance agreement is already total.
+ * applies". Kappa is null when it cannot be defined: no turns, or expected
+ * (chance) agreement has reached exactly 1 - which only happens when BOTH
+ * sides gave the same single answer on every turn, in the same direction
+ * (both always yes, or both always no). One side being constant while the
+ * other still varies does not make expected agreement reach 1, so that case
+ * still returns a defined kappa (see the "one constant coder" test below).
  */
 export function cohenKappa(
   pairs: { model: boolean; researcher: boolean }[],

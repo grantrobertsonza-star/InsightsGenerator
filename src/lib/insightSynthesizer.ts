@@ -159,11 +159,20 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
   // log, from one that genuinely only had a small pool to begin with: the
   // capped query alone can't distinguish "60 pre-insights total" from
   // "200 pre-insights, only the first 60 considered this pass."
+  // FND-001: a pre-insight's own finding can be rejected (or recalculated away) AFTER the
+  // pre-insight row was written - insightGenerator.ts only checks `status != 'rejected'` at the
+  // moment it creates a pre-insight, it never gets asked again. Without `f.status != 'rejected'`
+  // here too, a finding rejected after its pre-insight existed stayed eligible for clustering
+  // into a brand-new synthesized insight, which is exactly how rejected evidence could keep
+  // entering new synthesis through an existing pre-insight. Both queries below now agree with
+  // each other and with insightGenerator.ts's own eligibility rule.
   const totalEligibleCount = await withTenant(tenantId, async (client) => {
     const result = await client.query<{ count: string }>(
       `select count(*)::text as count
        from insights i
+       join findings f on f.id = i.finding_id
        where i.run_id = $1
+         and f.status != 'rejected'
          and not exists (
            select 1 from synthesized_insight_sources s where s.pre_insight_id = i.id
          )`,
@@ -178,6 +187,7 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
        from insights i
        join findings f on f.id = i.finding_id
        where i.run_id = $1
+         and f.status != 'rejected'
          and not exists (
            select 1 from synthesized_insight_sources s where s.pre_insight_id = i.id
          )

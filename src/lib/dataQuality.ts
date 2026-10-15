@@ -313,11 +313,8 @@ export function computeTableQuality(
   }
 
   const routed = perVariable.filter((v) => v.routedBy);
-  const askedPct = (v: VariableQuality) =>
-    v.askedCount !== undefined ? pct(v.missingAsked ?? 0, v.askedCount) : v.missingPct;
   // A variable whose gaps are fully explained is set aside; one with stated
   // routing is judged on the cases that were actually asked.
-  const explained = (v: VariableQuality) => !!v.routedBy && v.askedCount === undefined;
   const unroutedCells = perVariable.reduce(
     (sum, v) => sum + (v.askedCount !== undefined ? v.askedCount : v.routedBy ? 0 : cases),
     0,
@@ -327,6 +324,41 @@ export function computeTableQuality(
     0,
   );
   const unexplainedMissingPct = pct(unroutedMissing, unroutedCells);
+
+  return finalizeQuality(perVariable, cases, kind, duplicateCases, routed, unexplainedMissingPct);
+}
+
+/**
+ * Turns a finished per-variable breakdown into the checks, counts and status
+ * that both the row-by-row path above and the uncapped, dictionary-based path
+ * below report. Pulled out so the two paths can't quietly drift apart.
+ */
+function finalizeQuality(
+  perVariable: VariableQuality[],
+  cases: number,
+  kind: "raw" | "aggregated",
+  duplicateCases: number,
+  routed: VariableQuality[],
+  unexplainedMissingPct: number,
+): TableQuality {
+  const variables = perVariable.length;
+  const cells = cases * variables;
+
+  const typeCounts: Record<VariableType, number> = {
+    categorical: 0,
+    discrete: 0,
+    continuous: 0,
+  };
+  for (const v of perVariable) typeCounts[v.type] += 1;
+
+  const missingCells = perVariable.reduce((sum, v) => sum + v.missing, 0);
+  const missingPct = pct(missingCells, cells);
+
+  const askedPct = (v: VariableQuality) =>
+    v.askedCount !== undefined ? pct(v.missingAsked ?? 0, v.askedCount) : v.missingPct;
+  // A variable whose gaps are fully explained is set aside; one with stated
+  // routing is judged on the cases that were actually asked.
+  const explained = (v: VariableQuality) => !!v.routedBy && v.askedCount === undefined;
 
   const constantVariables = perVariable.filter((v) => v.constant).length;
   const unlabelledVariables = perVariable.filter((v) => v.unlabelled).length;
@@ -452,4 +484,72 @@ export function computeTableQuality(
     checks,
     status,
   };
+}
+
+/**
+ * The same quality breakdown as computeTableQuality, but over every variable
+ * in the original file rather than the subset kept in document_tables for a
+ * file too wide to store whole. Built from the variable dictionary, which is
+ * already read from the full file with no column cap (the same read the
+ * cross tab tool uses), so nothing here is left out for width.
+ *
+ * Routing-pattern detection is the one check that still can't cover the full
+ * file this way: spotting a skip pattern means comparing every variable's
+ * answers against every other variable's, case by case, which needs the full
+ * row-level matrix in memory, not just per-variable summaries. So a variable
+ * already flagged as routed in the kept subset keeps that flag here (matched
+ * by name); a variable outside the kept subset is never marked as routed,
+ * even if a skip pattern would explain its gaps.
+ */
+export function computeFullTableQuality(
+  dict: { nCases: number; variables: { name: string; label: string; numeric: boolean; nValid: number; nDistinct: number }[]; duplicateCases?: number },
+  capped: TableQuality,
+): TableQuality {
+  const cases = dict.nCases;
+  const cappedByName = new Map(capped.variableDetails.map((v) => [v.name, v]));
+
+  const perVariable: VariableQuality[] = dict.variables.map((v) => {
+    const missing = Math.max(0, cases - v.nValid);
+    const fromCapped = cappedByName.get(v.name);
+    const type: VariableType = !v.numeric
+      ? "categorical"
+      : v.nDistinct <= 2
+        ? "categorical"
+        : v.nDistinct <= 10
+          ? "discrete"
+          : "continuous";
+    return {
+      name: v.name,
+      type,
+      missing,
+      missingPct: pct(missing, cases),
+      distinct: v.nDistinct,
+      constant: cases > 1 && v.nDistinct <= 1,
+      unlabelled: isUnlabelledHeader(v.label || v.name),
+      routedBy: fromCapped?.routedBy ?? null,
+      routedSource: fromCapped?.routedSource,
+      askedCount: fromCapped?.askedCount,
+      missingAsked: fromCapped?.missingAsked,
+    };
+  });
+
+  const routed = perVariable.filter((v) => v.routedBy);
+  const unroutedCells = perVariable.reduce(
+    (sum, v) => sum + (v.askedCount !== undefined ? v.askedCount : v.routedBy ? 0 : cases),
+    0,
+  );
+  const unroutedMissing = perVariable.reduce(
+    (sum, v) => sum + (v.askedCount !== undefined ? (v.missingAsked ?? 0) : v.routedBy ? 0 : v.missing),
+    0,
+  );
+  const unexplainedMissingPct = pct(unroutedMissing, unroutedCells);
+
+  return finalizeQuality(
+    perVariable,
+    cases,
+    "raw",
+    dict.duplicateCases ?? capped.duplicateCases,
+    routed,
+    unexplainedMissingPct,
+  );
 }

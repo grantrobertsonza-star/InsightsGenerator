@@ -2,9 +2,9 @@ import SubmitButton from "@/components/SubmitButton";
 import { saveRunContext } from "@/lib/runContextActions";
 
 const field =
-  "mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
+  "mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 const fileField =
-  "mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100";
+  "block min-w-0 max-w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100";
 
 export default function RunContextForm({
   runId,
@@ -20,7 +20,7 @@ export default function RunContextForm({
   return (
     <form
       action={saveRunContext.bind(null, runId)}
-      className="flex flex-col gap-4 rounded-xl border border-border bg-white p-5"
+      className="flex flex-col gap-4"
     >
       <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
         <span className="text-sm font-medium text-foreground">
@@ -32,12 +32,12 @@ export default function RunContextForm({
           supplier&apos;s proposal reflects both back. Upload either or both and we will fill in
           whichever fields below you leave blank. Text you type yourself always wins.
         </p>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="block">
+        <div className="mt-2 grid grid-cols-1 gap-2">
+          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="text-xs font-medium text-foreground">Brief (from the client)</span>
             <input type="file" name="briefFile" accept=".pdf,.docx,.pptx,.txt" className={fileField} />
           </label>
-          <label className="block">
+          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="text-xs font-medium text-foreground">Proposal (your response)</span>
             <input type="file" name="proposalFile" accept=".pdf,.docx,.pptx,.txt" className={fileField} />
           </label>
@@ -45,7 +45,7 @@ export default function RunContextForm({
       </div>
       <label className="block">
         <span className="text-sm font-medium text-foreground">Business problem</span>
-        <span className="ml-1.5 text-xs font-normal text-muted">(optional, why this project exists)</span>
+        <span className="ml-1.5 text-xs font-normal text-muted">(optional)</span>
         <textarea
           name="businessProblem"
           rows={10}

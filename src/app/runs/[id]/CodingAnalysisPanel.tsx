@@ -1141,6 +1141,28 @@ function StabilityTab({
           every run. {s.medium} came out differently in one run, {s.low} in
           most.
         </p>
+        {st.looser && (st.looser.themeShare !== null || st.looser.overlap !== null) && (
+          <p className="mt-1 text-[11px] text-muted">
+            Looser readings of the same runs.
+            {st.looser.themeShare !== null && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{pct(st.looser.themeShare)}</span> of turns got the same
+                broader themes (the groups your codes sit under) in every run.
+              </>
+            )}
+            {st.looser.overlap !== null && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{pct(st.looser.overlap)}</span> average overlap: on a turn,
+                two runs share this much of the codes they gave between them, so three of four shared counts as 75%, not
+                as a miss.
+              </>
+            )}{" "}
+            A gap between the strict figure and these two means the runs mostly disagree over neighbouring codes, not
+            over what a turn is about.
+          </p>
+        )}
         <p className="mt-1 text-[11px] text-muted">
           Agreement between runs flags turns worth a second look. It does not
           show that a stable turn is right: runs share the same blind spots,

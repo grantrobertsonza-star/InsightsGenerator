@@ -3,7 +3,7 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { capWords, parseNumberedItems } from "./text";
 import type { ConfidenceTier, QualityTier } from "./tiers";
-import { evidenceDigest } from "./objectiveEvidence";
+import { currentItemKey, evidenceDigest } from "./objectiveEvidence";
 
 type EvidenceInsight = {
   id: string;
@@ -26,9 +26,30 @@ export type ObjectiveValidation = {
   synthesized_insight_ids: string[];
   /** True for objectives the app inferred from this project's own evidence. */
   inferred: boolean;
+  /** OBJ-REV-012: true when this conclusion was generated while evidenceDigest() reported a
+   * real connection/permission failure reading objective_evidence (not the harmless "lane
+   * hasn't run yet" case) - a durable, persisted record of degraded evidence retrieval, not
+   * just the transient flag passed into that one generation call's own prompt. Always false
+   * on a pre-migration-0087 database. */
+  evidence_digest_degraded: boolean;
 };
 
-type RawItem = { kind: "objective" | "decision"; order: number; text: string; inferred?: boolean };
+type RawItem = { kind: "objective" | "decision"; order: number; text: string; inferred?: boolean; candidateId: string | null };
+
+// OBJ-REV-001/002 Rule B: evidenceDigest's map is keyed by the shared identity rule in
+// objectiveEvidence.ts (evidenceIdentity / currentItemKey), so this lookup uses that same exported
+// rule rather than a second copy that could drift: a candidate's evidence is found by its own id,
+// a free-text line only by an explicitly free-text-origin row with the same kind, position and
+// wording, and deleted-candidate or unknown-origin evidence by nothing.
+
+/** Clears this run's objective_validations rows outright, used only when the actual
+ * prerequisite they were assessed against (accepted insights, or any objective/decision
+ * at all) has gone away - see the two call sites in generateObjectiveValidation. */
+export async function clearObjectiveValidations(tenantId: string, runId: string): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    await client.query("delete from objective_validations where run_id = $1", [runId]);
+  });
+}
 
 /**
  * Standard market-research reporting practice: every research objective and
@@ -74,13 +95,13 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       [runId]
     );
 
-    const candidatesResult = await client.query<{ candidate_text: string; source: string }>(
-      "select candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
+    const candidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
+      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
       [runId]
     );
 
-    const decisionCandidatesResult = await client.query<{ candidate_text: string; source: string }>(
-      "select candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
+    const decisionCandidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
+      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
       [runId]
     );
 
@@ -96,6 +117,13 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     throw new Error("Project not found");
   }
   if (insights.length === 0) {
+    // The prerequisite this lane assesses against is genuinely gone (every insight was
+    // un-accepted, or none ever existed), not a transient failure - so the coverage from a
+    // past, now-stale prerequisite must not keep being shown as if it were still current
+    // (OBJ-REV-007: "missing prerequisites leave old coverage intact"). A model or
+    // network failure further down this function leaves these rows alone; only the two
+    // genuine prerequisite-gone cases here clear them.
+    await clearObjectiveValidations(tenantId, runId);
     throw new Error(
       "No accepted synthesized insights yet. Run synthesis and accept at least one synthesized insight " +
         "before validating against the project's objectives and decisions."
@@ -110,18 +138,18 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   const decisionRaw: RawItem[] =
     decisionCandidates.length > 0
       ? decisionCandidates.map(
-          (c, order): RawItem => ({ kind: "decision", order, text: c.candidate_text, inferred: c.source === "ai_suggested" })
+          (c, order): RawItem => ({ kind: "decision", order, text: c.candidate_text, inferred: c.source === "ai_suggested", candidateId: c.id })
         )
       : parseNumberedItems(run.decision_statement).map(
-          (text, order): RawItem => ({ kind: "decision", order, text, inferred: false })
+          (text, order): RawItem => ({ kind: "decision", order, text, inferred: false, candidateId: null })
         );
   const objectiveRaw: RawItem[] =
     candidates.length > 0
       ? candidates.map(
-          (c, order): RawItem => ({ kind: "objective", order, text: c.candidate_text, inferred: c.source === "ai_suggested" })
+          (c, order): RawItem => ({ kind: "objective", order, text: c.candidate_text, inferred: c.source === "ai_suggested", candidateId: c.id })
         )
       : parseNumberedItems(run.research_objective).map(
-          (text, order): RawItem => ({ kind: "objective", order, text, inferred: false })
+          (text, order): RawItem => ({ kind: "objective", order, text, inferred: false, candidateId: null })
         );
   const items: RawItem[] = [
     ...objectiveRaw,
@@ -129,6 +157,9 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   ];
 
   if (items.length === 0) {
+    // Same reasoning as the insights check above: the objectives/decisions this run's old
+    // coverage was assessed against no longer exist, so that coverage is stale, not current.
+    await clearObjectiveValidations(tenantId, runId);
     throw new Error(
       "This project has no research objective or confirmed decision recorded yet, there's nothing to " +
         "validate the insights against."
@@ -137,10 +168,10 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
 
   // Direct evidence from the data file (objectiveEvidence.ts), when that lane has run:
   // a conclusion can then cite what the numbers show, not only what insights say.
-  const digest = await evidenceDigest(tenantId, runId);
+  const { items: digest, degraded: evidenceDigestDegraded } = await evidenceDigest(tenantId, runId);
   const itemsBlock = items
     .map((item, index) => {
-      const direct = digest.get(`${item.kind}:${item.order}`);
+      const direct = digest.get(currentItemKey(item));
       return `${index}. [${item.kind}] ${item.text}${direct ? `\n   ${direct}` : ""}`;
     })
     .join("\n");
@@ -173,6 +204,8 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       "insight can support more than one item, and some items will have none. Do not stretch a tenuous " +
       "connection just to avoid a gap; an honest gap is more useful to a stakeholder than a padded answer.\n\n" +
       "Some items carry a line of direct data evidence (supports / against / mixed / inconclusive / silent). Cite it in the conclusion when present; 'judged' stances are the model's reading, say so. An item with direct evidence but no insight is partial at most. " +
+      (evidenceDigestDegraded
+        ? "Direct data-evidence retrieval failed for this run (a connection or permission error, not a migration gap), so no item below carries a data-evidence line even where one might otherwise exist. Do not read that absence as 'the data was checked and found silent' -- treat it as unknown, and do not let it push an item toward gap on its own. " : "") +
       "Judge only against the items and insights given below; don't invent evidence or items beyond what's " +
       "listed.\n\n" +
       `Objectives and decisions:\n${itemsBlock}\n\n` +
@@ -217,7 +250,16 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
 
   const byIndex = new Map<number, { status: ValidationStatus; conclusion: string; insightIds: string[] }>();
   for (const raw of rawValidations) {
-    const itemIndex = typeof raw.item_index === "number" ? raw.item_index : null;
+    // OBJ-REV-008: a fractional index (0.5, 1.5) used to pass this check - `typeof === "number"`
+    // is true for any float - and then survive as its own distinct Map key, never colliding
+    // with (or ever satisfying) the real integer index it was presumably meant to name. The
+    // completeness check below used to count Map SIZE, so two fractional keys could make a
+    // 2-item response look like it covered both items while actually covering neither,
+    // letting the items.map() fallback below silently write hardcoded "gap" records over
+    // whatever was there before. Requiring an actual integer here, not just a number, is
+    // what makes an out-of-range or malformed index "not a valid reference", same as it
+    // already was for a non-string conclusion or an unrecognised status.
+    const itemIndex = typeof raw.item_index === "number" && Number.isInteger(raw.item_index) ? raw.item_index : null;
     const status: ValidationStatus | null =
       raw.status === "resolved" || raw.status === "partial" || raw.status === "gap" ? raw.status : null;
     const conclusion = typeof raw.conclusion === "string" ? raw.conclusion.trim() : "";
@@ -228,6 +270,13 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       : [];
 
     if (itemIndex === null || itemIndex < 0 || itemIndex >= items.length || !status || !conclusion) continue;
+    // A "resolved" or "partial" verdict asserts the accepted evidence settles (or partly
+    // settles) this item, which only means something if it names what settled it - a
+    // "resolved" with zero cited insights is not a usable result for this item, just a
+    // confident-looking label with nothing behind it (OBJ-REV-008: "partial model response
+    // yields resolved without links for A"). "gap" is the one status that legitimately has
+    // no insights to cite (that's what a gap IS), so only resolved/partial are held to this.
+    if (status !== "gap" && insightIndices.length === 0) continue;
     byIndex.set(itemIndex, {
       status,
       conclusion,
@@ -237,6 +286,27 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
 
   if (byIndex.size === 0) {
     throw new Error("Claude did not return a usable validation for any objective or decision; try again.");
+  }
+  // A response that only covers SOME items is not a safe basis for a full rebuild: items
+  // map() below fills in anything missing from byIndex with a hardcoded "gap" status,
+  // which would otherwise silently record "the evidence does not answer this" for an item
+  // the model simply never got to - a truncated response, say - rather than what actually
+  // happened, that it was never assessed this round (OBJ-REV-008: "gap for omitted B").
+  // Throwing here leaves the previous objective_validations rows in place (the delete-and-
+  // rebuild below never runs) rather than overwriting good data with a wrong "gap".
+  // OBJ-REV-008: a plain size comparison is a proxy for "every requested index is covered",
+  // not the thing itself - it happened to coincide as long as every valid item_index was
+  // also a genuine integer in range, but that was only true because nothing before this
+  // point rejected a fractional index. Checking the actual requested index set directly
+  // (every i in [0, items.length) present in byIndex) is what "exact coverage" in the
+  // acceptance criteria means, and does not depend on byIndex never picking up a stray key
+  // that happens to make the size line up by coincidence.
+  const missingIndices = Array.from({ length: items.length }, (_, i) => i).filter((i) => !byIndex.has(i));
+  if (missingIndices.length > 0) {
+    throw new Error(
+      `Claude's response only covered ${items.length - missingIndices.length} of ${items.length} objectives and decisions - ` +
+        "incomplete, not a finding that the rest are unanswered. Try again."
+    );
   }
 
   // item_text and conclusion are capped here, the same way storyNarrative.ts
@@ -258,28 +328,65 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       ),
       synthesized_insight_ids: result?.insightIds ?? [],
       inferred: item.inferred === true,
+      evidence_digest_degraded: evidenceDigestDegraded,
     };
   });
 
+  // OBJ-REV-012: evidence_digest_degraded (migration 0087) is written once for this whole
+  // batch, the same evidenceDigestDegraded value already computed above and used in this
+  // generation's own prompt - a durable record of whether evidence retrieval was degraded
+  // when these conclusions were made, not just a flag that lived inside this one call.
+  // Migration-guarded, but NOT with a per-row try/catch: a failed INSERT aborts the rest of
+  // the transaction, and this runs inside a loop, so catching and falling back on every row
+  // would need a savepoint around every single insert. Instead the column's existence is
+  // checked ONCE, with a catalog query that cannot itself fail the transaction, and that one
+  // answer picks which insert shape the whole loop uses.
   await withTenant(tenantId, async (client) => {
+    const colCheck = await client.query<{ exists: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
+       ) as "exists"`,
+    );
+    const hasDegradedColumn = colCheck.rows[0]?.exists === true;
     await client.query("delete from objective_validations where run_id = $1", [runId]);
     for (const validation of validations) {
-      await client.query(
-        `insert into objective_validations
-           (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
-        [
-          tenantId,
-          runId,
-          validation.item_kind,
-          validation.item_order,
-          validation.item_text,
-          validation.status,
-          validation.conclusion,
-          validation.synthesized_insight_ids,
-          validation.inferred,
-        ]
-      );
+      if (hasDegradedColumn) {
+        await client.query(
+          `insert into objective_validations
+             (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at, evidence_digest_degraded)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), $10)`,
+          [
+            tenantId,
+            runId,
+            validation.item_kind,
+            validation.item_order,
+            validation.item_text,
+            validation.status,
+            validation.conclusion,
+            validation.synthesized_insight_ids,
+            validation.inferred,
+            evidenceDigestDegraded,
+          ]
+        );
+      } else {
+        await client.query(
+          `insert into objective_validations
+             (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
+          [
+            tenantId,
+            runId,
+            validation.item_kind,
+            validation.item_order,
+            validation.item_text,
+            validation.status,
+            validation.conclusion,
+            validation.synthesized_insight_ids,
+            validation.inferred,
+          ]
+        );
+      }
     }
   });
 
@@ -305,7 +412,20 @@ export async function refreshObjectiveValidationQuietly(tenantId: string, runId:
       );
       return r.rows[0]?.ok === true;
     });
-    if (!ready) return;
+    if (!ready) {
+      // OBJ-REV-007 (freshness gap, separate from the atomic-write race fixed in
+      // objectiveEvidence.ts): this quick check exists so the expensive
+      // generateObjectiveValidation call isn't run on every candidate accept/reject/delete
+      // when there's obviously nothing to validate yet - but returning here used to skip
+      // clearing, too. generateObjectiveValidation's OWN prerequisite checks clear stale
+      // coverage before throwing, but this early return never reached them, so coverage
+      // computed against a prerequisite that has since disappeared (the last accepted
+      // candidate rejected, the last accepted insight un-accepted) kept being shown as
+      // current. Deleting here is a no-op when there's nothing to clear, so it's safe to
+      // run unconditionally on this path.
+      await clearObjectiveValidations(tenantId, runId);
+      return;
+    }
     await generateObjectiveValidation(tenantId, runId);
   } catch (error) {
     await withTenant(tenantId, async (client) => {

@@ -71,6 +71,13 @@ export default function ImportGuide() {
         2010).
       </P>
       <P>
+        How well a file reads depends a good deal on how it is laid out. The{" "}
+        <a href="/knowledge/preparing-files" className="text-primary hover:underline">
+          guide to preparing your files
+        </a>{" "}
+        gives layout tips for each kind.
+      </P>
+      <P>
         Import does not decide whether the evidence is good enough. It reports what it found, with the figures, and
         leaves the judgement to you.
       </P>
@@ -98,6 +105,14 @@ export default function ImportGuide() {
         the structure choices (which variable is the weight, which identify respondents, which are multiple response
         sets). You do not have to press anything for this to happen. The file is also accepted automatically, so the
         cross tab tool opens without a trip back to Import.
+      </P>
+      <P>
+        Transcripts follow the same rule. A transcript nobody has set up yet is accepted on import with the
+        app&apos;s best reading of it (individual interviews when it cannot tell), and the dropdowns stay open to
+        change it. Every file card now shows one of two badges: <em>Accepted</em> or <em>Needs review</em>. Raw
+        case-level files are labelled <em>Raw data</em> on the card and in the upload list. The upload list puts each
+        file picker on the same line as its type to save space, and a note under it says that you should upload
+        only files that the owner has cleared for analysis, since the app does not scan for personal information.
       </P>
       <P>
         Acceptance is a record that the structure was looked at, not a verdict on the data. If you change a structure

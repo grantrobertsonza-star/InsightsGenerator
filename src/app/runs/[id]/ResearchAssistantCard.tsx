@@ -1,5 +1,6 @@
 "use client";
 
+import { Pane, ThreePane } from "./ThreePane";
 import { useRef, useState, useTransition } from "react";
 import { sendAssistantMessage, uploadAssistantDocument } from "@/lib/researchAssistantActions";
 import { SendIcon, UploadIcon } from "@/components/icons";
@@ -97,8 +98,10 @@ export default function ResearchAssistantCard({
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted">
+    <ThreePane
+      left={
+        <Pane side="left" title="About this assistant">
+      <p className="text-xs text-muted">
         Ask about this project&apos;s evidence or generated report, or ask for a specific change to it (&ldquo;shorten
         the executive summary&rdquo;, &ldquo;tighten pillar 2&apos;s headline&rdquo;). You can also drop in a slide
         deck or other document here, it&apos;s processed the same way as anything uploaded above and folded into this
@@ -133,7 +136,11 @@ export default function ResearchAssistantCard({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900">{uploadError}</div>
       )}
 
-      <div className="max-h-96 space-y-3 overflow-y-auto rounded-lg border border-border bg-slate-50 px-4 py-3">
+        </Pane>
+      }
+      middle={
+        <Pane side="middle" title="Conversation">
+      <div className="min-h-64 space-y-3 overflow-y-auto rounded-lg border border-border bg-slate-50 px-4 py-3">
         {messages.length === 0 ? (
           <p className="text-sm text-muted">No messages yet. Ask something about this project to get started.</p>
         ) : (
@@ -178,6 +185,23 @@ export default function ResearchAssistantCard({
           Send
         </button>
       </div>
-    </div>
+        </Pane>
+      }
+      right={
+        <Pane side="right" title="Try asking">
+          <ul className="space-y-2 text-sm text-muted">
+            <li>Which findings contradict the report&apos;s main claim?</li>
+            <li>What is the weakest evidence behind the top insight?</li>
+            <li>Shorten the executive summary.</li>
+            <li>Tighten pillar 2&apos;s headline.</li>
+          </ul>
+          <p className="text-xs text-muted">
+            {hasReport
+              ? "An Insights Report exists, so you can ask for changes to it."
+              : "No Insights Report yet, so there is nothing to revise until you generate one."}
+          </p>
+        </Pane>
+      }
+    />
   );
 }

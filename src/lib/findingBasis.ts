@@ -164,6 +164,19 @@ export function codeVerdict(basis: FindingBasis, cautions: string[], caveats: st
   }
 }
 
+// ANA-BRAND-001: every caveat tag this function explicitly recognises and turns into its own
+// sentence above. Used only to decide what counts as "already covered" below - the actual text
+// for each of these stays in the branches above, not here.
+const _PROVENANCE_NOTES_HANDLED = new Set([
+  "fdr_controlled_within_table",
+  "fdr_controlled_within_row",
+  "bonferroni_controlled_within_row",
+  "uncorrected_multiple_comparisons",
+  "survey_design_modelled",
+  "survey_design_not_modelled",
+  "weighted_effective_base",
+]);
+
 /** Plain-language notes on how a generated finding was made, for a badge tooltip. Reads only what is stored on the finding. */
 export function provenanceNotes(f: { origin: string; pattern_type?: string | null; stated_stats?: Stats }): string[] {
   if (f.origin !== "generated" || !f.stated_stats) return [];
@@ -188,6 +201,31 @@ export function provenanceNotes(f: { origin: string; pattern_type?: string | nul
   if (caveats.includes("survey_design_modelled")) notes.push("Survey design modelled in the variance.");
   else if (caveats.includes("survey_design_not_modelled")) notes.push("Assumes simple random sampling; the survey design is not modelled.");
   if (caveats.includes("weighted_effective_base")) notes.push("Weighted, with an effective base.");
+  // ANA-NPS-003: two more design-related caveats a finding can carry alongside
+  // survey_design_modelled - a design that WAS applied but only to some cases (or none,
+  // see api/parse-stats-file.py's degenerate-design guard), and an auto-detected design the
+  // heuristic couldn't resolve between several candidates. Each gets its own sentence rather
+  // than falling through to the generic fallback below, since both materially qualify how much
+  // the "survey design modelled" note above can be trusted.
+  if (caveats.includes("survey_design_missing_for_some_cases")) {
+    notes.push("Some or all cases were missing the design (cluster/strata) information, so the design-based correction may understate uncertainty for part of the sample.");
+  }
+  if (caveats.includes("survey_design_candidates_ambiguous")) {
+    notes.push("More than one variable looked like a design (PSU/strata) candidate; none was applied automatically, so this reading may not reflect the intended survey design.");
+  }
+  // ANA-BRAND-001: stage_ratio_population_comparability_unverified used to be silently dropped
+  // here - this consumer only ever recognised a fixed caveat whitelist, so a tag outside it (this
+  // one, or any future one) vanished between the finding's own stated_stats and this tooltip, with
+  // no sign anything had been qualified at all. Every caveat now either gets its own sentence
+  // above or, for anything this function doesn't specifically know about (_PROVENANCE_NOTES_HANDLED
+  // doesn't include it), a readable fallback below - never silence.
+  if (caveats.includes("stage_ratio_population_comparability_unverified")) {
+    notes.push("Stage-to-stage ratio: the two stages are not established as measuring an equivalent population.");
+  }
+  for (const c of caveats) {
+    if (_PROVENANCE_NOTES_HANDLED.has(c) || c === "stage_ratio_population_comparability_unverified" || c === "descriptive_reading") continue;
+    notes.push(`Additional caveat recorded: ${c.replace(/_/g, " ")}.`);
+  }
   notes.push("Found by scanning the data, not tied to an objective.");
   return notes;
 }

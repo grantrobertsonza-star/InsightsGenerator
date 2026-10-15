@@ -57,6 +57,45 @@ export async function withTenant<T>(
   }
 }
 
+/**
+ * OBJ-REV-009 (fourth pass): like withTenant, but opens the transaction at REPEATABLE READ
+ * instead of the default READ COMMITTED. Default READ COMMITTED gives each individual
+ * statement its own fresh snapshot, so two reads inside the same withTenant transaction can
+ * still see two different committed states if something else commits in between them -
+ * placing them in one transaction is not, by itself, "one snapshot." REPEATABLE READ takes
+ * its snapshot once, at the first statement after BEGIN, and holds that same snapshot for
+ * every later statement in the transaction, so multiple reads here are guaranteed to describe
+ * the exact same committed state, however much else commits concurrently while this
+ * transaction is open. Use this only for read-only work that genuinely needs that guarantee
+ * (objectiveEvidence.ts's loadObjectiveEvidenceWithCoverage is the first caller); a read-only
+ * REPEATABLE READ transaction cannot itself produce a Postgres serialization failure (those
+ * are a write-write conflict concern), so no caller needs a retry loop around this.
+ */
+export async function withTenantRepeatableRead<T>(
+  tenantId: string,
+  callback: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    if (UUID.test(tenantId)) {
+      await client.query(
+        `begin isolation level repeatable read; select set_config('app.current_tenant_id', '${tenantId}', true)`,
+      );
+    } else {
+      await client.query("begin isolation level repeatable read");
+      await client.query("select set_config('app.current_tenant_id', $1, true)", [tenantId]);
+    }
+    const result = await callback(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // The tenant each pooled connection was last set to for reads, so a read
 // only pays for the set_config round trip the first time a connection is used.
 const readTenantOfClient = new WeakMap<PoolClient, string>();

@@ -9,7 +9,14 @@ import {
   parseObjectiveScores,
 } from "./qualityRubrics";
 
-// A research objective list is a handful of lines, so one call covers a run.
+// A research objective list is usually a handful of lines, so one call
+// covers a run in the common case (OBJ-REV-M04) - but this is a real cap,
+// not a guarantee: parseNumberedItems(...).slice(0, MAX_ITEMS) below
+// silently drops anything past the 20th item rather than scoring it in a
+// second call, so a project with more than 20 stated objectives/decisions
+// has some left unscored. scoreObjectiveQuality's `truncated` return flag
+// is how a caller finds out that happened; scoreObjectivesAction surfaces
+// it to the researcher.
 const MAX_ITEMS = 20;
 const MAX_VARIABLES_LISTED = 60;
 
@@ -152,7 +159,7 @@ export async function scoreObjectiveQuality(
   tenantId: string,
   runId: string,
   options: { force?: boolean } = {},
-): Promise<{ scored: number; skipped: boolean }> {
+): Promise<{ scored: number; skipped: boolean; truncated: boolean }> {
   const context = await withTenant(tenantId, async (client) => {
     const r = await client.query<RunContext>(
       "select research_objective, decision_statement, business_problem from runs where id = $1",
@@ -160,12 +167,11 @@ export async function scoreObjectiveQuality(
     );
     return r.rows[0] ?? null;
   });
-  if (!context) return { scored: 0, skipped: true };
-  const items = parseNumberedItems(context.research_objective).slice(
-    0,
-    MAX_ITEMS,
-  );
-  if (items.length === 0) return { scored: 0, skipped: true };
+  if (!context) return { scored: 0, skipped: true, truncated: false };
+  const allItems = parseNumberedItems(context.research_objective);
+  const truncated = allItems.length > MAX_ITEMS;
+  const items = allItems.slice(0, MAX_ITEMS);
+  if (items.length === 0) return { scored: 0, skipped: true, truncated: false };
 
   if (!options.force) {
     const stored = await withTenant(tenantId, async (client) => {
@@ -176,7 +182,7 @@ export async function scoreObjectiveQuality(
       return r.rows;
     });
     if (objectiveScoresCurrent(items, stored))
-      return { scored: 0, skipped: true };
+      return { scored: 0, skipped: true, truncated };
   }
 
   const inventory = await evidenceInventory(tenantId, runId);
@@ -240,7 +246,7 @@ export async function scoreObjectiveQuality(
       );
     }
   });
-  return { scored: scores.length, skipped: false };
+  return { scored: scores.length, skipped: false, truncated };
 }
 
 export { OBJECTIVE_MAX };

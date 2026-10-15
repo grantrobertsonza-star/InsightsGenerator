@@ -467,3 +467,57 @@ export function attentionCheck(events: AttentionEvent[]): AttentionCheck | null 
     reasons,
   };
 }
+
+
+/**
+ * Two looser readings of the same stability runs, shown beside the strict
+ * whole-turn check. `perTurn` holds, for each turn, the code numbers each run
+ * gave. `themeOf` maps a code number to the broader theme it sits under, or
+ * null when it has none.
+ *
+ * - themeShare: the share of turns where every run gave the same set of
+ *   broader themes (a code with no theme stands for itself). null when no code
+ *   that appears has a theme, because then it would only repeat the strict figure.
+ * - overlap: for each turn, the average overlap (shared codes over all codes
+ *   given) between every pair of runs, then averaged over turns. Two runs that
+ *   share three of four codes score 0.75 instead of counting as a miss.
+ */
+export function looserAgreement(
+  perTurn: number[][][],
+  themeOf: (code: number) => string | null,
+): { themeShare: number | null; overlap: number | null; themed: boolean } {
+  if (perTurn.length === 0) return { themeShare: null, overlap: null, themed: false };
+  let themed = false;
+  let themeSame = 0;
+  let overlapSum = 0;
+  for (const runs of perTurn) {
+    const groupSets = runs.map((codes) => {
+      const out = new Set<string>();
+      for (const c of codes) {
+        const t = themeOf(c);
+        if (t) themed = true;
+        out.add(t ? `t:${t}` : `c:${c}`);
+      }
+      return out;
+    });
+    if (groupSets.every((g) => g.size === groupSets[0].size && [...g].every((x) => groupSets[0].has(x)))) themeSame += 1;
+    let pairs = 0;
+    let sum = 0;
+    for (let i = 0; i < runs.length; i++) {
+      for (let j = i + 1; j < runs.length; j++) {
+        const a = new Set(runs[i]);
+        const b = new Set(runs[j]);
+        const union = new Set([...a, ...b]).size;
+        const inter = [...a].filter((x) => b.has(x)).length;
+        sum += union === 0 ? 1 : inter / union;
+        pairs += 1;
+      }
+    }
+    overlapSum += pairs === 0 ? 1 : sum / pairs;
+  }
+  return {
+    themeShare: themed ? themeSame / perTurn.length : null,
+    overlap: overlapSum / perTurn.length,
+    themed,
+  };
+}

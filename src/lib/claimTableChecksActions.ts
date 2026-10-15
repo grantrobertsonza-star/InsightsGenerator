@@ -8,7 +8,7 @@ type Fail = { ok: false; error: string };
 
 function explain(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
-  return /claim_table_checks/.test(m) && /(does not exist|relation)/.test(m) ? "This needs migration 0068 applied first (npx.cmd supabase migration up)." : m;
+  return /claim_table_checks/.test(m) && /does not exist/.test(m) ? "This needs migration 0068 applied first (npx.cmd supabase migration up)." : m;
 }
 
 export async function loadClaimChecksAction(runId: string): Promise<{ ok: true; claims: ClaimChecked[] } | Fail> {

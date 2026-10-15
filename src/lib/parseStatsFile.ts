@@ -1,5 +1,6 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -70,7 +71,13 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
 
   const response = await fetch(`${base}/api/parse-stats-file`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    // The secret here must match PARSE_STATS_SHARED_SECRET on the Python function's own side
+    // (api/parse-stats-file.py). The Python side now refuses every request when its own copy
+    // of the secret is unset, so this env var is no longer optional in a deployed environment:
+    // leaving it unset here, or configuring a different value than the Python function has,
+    // makes every parse request fail with a 401, surfaced below as an actionable message rather
+    // than a generic parsing failure.
+    headers: { "content-type": "application/json", "x-parse-stats-secret": process.env.PARSE_STATS_SHARED_SECRET ?? "" },
     body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
   });
 
@@ -81,6 +88,12 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
       message = (JSON.parse(detail) as { error?: string }).error ?? detail;
     } catch {
       // detail wasn't JSON; use it as-is
+    }
+    if (response.status === 401) {
+      throw new Error(
+        "The conversion service rejected this request as unauthorized. PARSE_STATS_SHARED_SECRET must be set to the " +
+          "same value in both this app's environment and the parse-stats-file function's own environment.",
+      );
     }
     throw new Error(
       `Couldn't read this as SPSS/Stata/SAS data (${response.status}). ${message || "The conversion step failed."}`
@@ -104,21 +117,173 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
   return parsed;
 }
 
+// --- Local worker -------------------------------------------------------
+// Under plain `next dev` the Python engine runs on this machine. Starting a
+// new Python process, importing pandas and re-reading the data file for every
+// table is slow, so one worker (scripts/parse_stats_worker.py) is kept alive
+// and keeps the last files it read in memory. If it cannot start, or dies, the
+// one-shot runner below is used instead, exactly as before.
+
+type WorkerReply = { id?: number; result?: unknown; error?: string; ready?: boolean };
+type LocalWorker = {
+  proc: ChildProcess;
+  pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>;
+  nextId: number;
+};
+
+const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+// Kept on globalThis so a hot reload does not leave an orphan worker behind.
+const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean };
+
+function startWorker(): Promise<LocalWorker | null> {
+  return new Promise((resolve) => {
+    const script = path.join(process.cwd(), "scripts", "parse_stats_worker.py");
+    const candidates = process.platform === "win32" ? ["python", "py", "python3"] : ["python3", "python"];
+    const tryNext = (k: number) => {
+      if (k >= candidates.length) return resolve(null);
+      let settled = false;
+      const proc = spawn(candidates[k], ["-u", script], {
+        stdio: ["pipe", "pipe", "ignore"],
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+      });
+      const worker: LocalWorker = { proc, pending: new Map(), nextId: 1 };
+      proc.stdin!.on("error", () => {}); // a dead worker is reported through "exit"
+      const fail = (message: string) => {
+        for (const p of worker.pending.values()) {
+          clearTimeout(p.timer);
+          p.reject(new Error(message));
+        }
+        worker.pending.clear();
+        workerHolder.__statsWorker = undefined; // next call starts a fresh one
+      };
+      const startupTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        proc.kill();
+        resolve(null);
+      }, 60_000);
+      let buffer = "";
+      proc.stdout!.setEncoding("utf8");
+      proc.stdout!.on("data", (chunk: string) => {
+        buffer += chunk;
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          let msg: WorkerReply;
+          try {
+            msg = JSON.parse(line) as WorkerReply;
+          } catch {
+            continue;
+          }
+          if (msg.ready) {
+            if (!settled) {
+              settled = true;
+              clearTimeout(startupTimer);
+              resolve(worker);
+            }
+            continue;
+          }
+          const p = msg.id !== undefined ? worker.pending.get(msg.id) : undefined;
+          if (!p) continue;
+          worker.pending.delete(msg.id as number);
+          clearTimeout(p.timer);
+          if (msg.error !== undefined) p.reject(new Error(msg.error));
+          else p.resolve(msg.result);
+        }
+      });
+      proc.on("error", (e: NodeJS.ErrnoException) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(startupTimer);
+          if (e.code === "ENOENT") tryNext(k + 1); // this interpreter name is not installed
+          else resolve(null);
+          return;
+        }
+        fail("The statistics worker stopped. Try again.");
+      });
+      proc.on("exit", () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(startupTimer);
+          resolve(null); // could not load (for example pyreadstat missing): fall back to one-shot
+          return;
+        }
+        fail("The statistics worker stopped. Try again.");
+      });
+    };
+    tryNext(0);
+  });
+}
+
+async function callWorker<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
+  if (workerHolder.__statsWorkerOff) return { ok: false, unavailable: true };
+  if (!workerHolder.__statsWorker) workerHolder.__statsWorker = startWorker();
+  const worker = await workerHolder.__statsWorker;
+  if (!worker) {
+    workerHolder.__statsWorker = undefined;
+    workerHolder.__statsWorkerOff = true; // do not retry a worker that cannot start this session
+    return { ok: false, unavailable: true };
+  }
+  return new Promise((resolve, reject) => {
+    const id = worker.nextId++;
+    const timer = setTimeout(() => {
+      worker.pending.delete(id);
+      worker.proc.kill(); // a stuck request: drop the worker, the next call starts a new one
+      workerHolder.__statsWorker = undefined;
+      reject(new Error("The statistics worker took too long and was restarted. Try again."));
+    }, WORKER_REQUEST_TIMEOUT_MS);
+    worker.pending.set(id, {
+      resolve: (v) => resolve({ ok: true, value: v as T }),
+      reject,
+      timer,
+    });
+    const ok = worker.proc.stdin!.write(JSON.stringify({ id, src: srcPath, sourceFilename, action, args }) + "\n");
+    void ok;
+  });
+}
+
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
   action: "convert" | "dictionary" | "crosstab" | "categories" | "columns",
   args: unknown = {},
 ): Promise<T> {
-  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
-  if (error || !data) {
-    throw new Error(`Couldn't download the file from storage to read it: ${error?.message}`);
+  // The same data file is read many times in a session (every table built,
+  // every variable list), so the download is kept on disk for a few minutes
+  // instead of being fetched again each time.
+  const cached = path.join(tmpdir(), `stats-src-${createHash("sha1").update(storagePath).digest("hex")}`);
+  let bytes: Buffer | null = null;
+  try {
+    const info = await stat(cached);
+    if (Date.now() - info.mtimeMs < 10 * 60 * 1000) bytes = await readFile(cached);
+  } catch {
+    // not cached yet
+  }
+  if (!bytes) {
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
+    if (error || !data) {
+      throw new Error(`Couldn't download the file from storage to read it: ${error?.message}`);
+    }
+    bytes = Buffer.from(await data.arrayBuffer());
+    // Written under a temporary name and renamed, so the worker never reads half a file.
+    const part = `${cached}.${process.pid}.${Date.now()}.part`;
+    await writeFile(part, bytes).then(() => rename(part, cached)).catch(() => rm(part, { force: true }).catch(() => {}));
+  }
+  const cachedOk = await stat(cached).then(() => true, () => false);
+  try {
+    const viaWorker = cachedOk ? await callWorker<T>(cached, sourceFilename, action, args ?? {}) : null;
+    if (viaWorker?.ok) return viaWorker.value;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    throw new Error(/worker/i.test(message) ? message : `Couldn't read this as SPSS/Stata/SAS data. ${message}`);
   }
   const dir = await mkdtemp(path.join(tmpdir(), "stats-"));
   try {
     const input = path.join(dir, "input.bin");
     const output = path.join(dir, "out.json");
-    await writeFile(input, Buffer.from(await data.arrayBuffer()));
+    await writeFile(input, bytes);
     const argsFile = path.join(dir, "args.json");
     await writeFile(argsFile, JSON.stringify(args ?? {}));
     const script = path.join(process.cwd(), "scripts", "parse_stats_local.py");
@@ -212,6 +377,29 @@ export type VariableDictionary = {
   audit?: DataAudit | null;
   /** Excel workbooks: the sheets the data and the labels were read from. */
   sheets?: { data?: string; variables?: string | null; values?: string | null };
+  /** IMP-SHIP-002 (Codex round 2): id-like columns whose Excel cell format Python could
+   * not faithfully reproduce (a custom numeric format other than plain text or zero-
+   * padding) - the "or explicitly report unsupported formatting" half of the identifier
+   * contract. Absent or empty means every id-like column is either safe or not Excel. */
+  unsupportedIdentifierColumns?: string[];
+  /** Exact duplicate cases across every variable in the file (version 6+). */
+  duplicateCases?: number;
+  /** The document's layout setting (rows_are_cases/columns_are_cases) in effect when this
+   * dictionary was computed, so a cached copy can be told apart from a stale one read under
+   * a different orientation. Absent on dictionaries cached before this was tracked. */
+  layout?: string | null;
+  /** An Excel workbook whose label sheets (or codebook) declared two different labels for the
+   * same variable or the same value code: which one was kept, which was discarded, and where
+   * each came from. Present only when such a conflict was found; capped at 50 entries. */
+  labelConflicts?: {
+    variable: string;
+    kind: "variable_label" | "value_label";
+    value?: string | number;
+    keptSheet?: string | null;
+    kept?: unknown;
+    discardedSheet?: string | null;
+    discarded?: unknown;
+  }[];
 };
 
 export type CrosstabNet = { label: string; vars: string[] };
@@ -257,14 +445,27 @@ export type CrosstabRequest = {
   starter?: boolean;
   /** How the many column tests in a table are corrected. Defaults to false discovery rate. */
   correction?: Correction;
-  /** Survey design for Taylor series variance: PSU variable, optional strata variable. */
-  design?: { psu: string; strata: string | null };
+  /** Survey design for Taylor series variance: PSU variable, optional strata variable. ANA-NPS-003
+   * (second counter-review): `psu` is nullable because a strata-only design (clustering variable
+   * absent, stratification variable present) is a supported, distinct design from "no design at
+   * all" - the engine already treats each case as its own primary sampling unit within its stratum
+   * in that case (api/parse-stats-file.py's _Design.build). A `design` object with both fields
+   * null/absent is equivalent to omitting `design`. */
+  design?: { psu: string | null; strata: string | null };
   /** Leave don't know, refused and not applicable out of percentage bases. Defaults to true. */
   excludeDk?: boolean;
   /** Restrict the whole table to one category of a filter variable. */
   filters?: CrosstabFilter[];
   /** Extra percentiles (0 to 100) to report for averages. */
   percentiles?: number[];
+  /** Set when this table is one panel of a layered set (SPSS-style layers: one subtable per
+   * category of a layer variable, built as N separate requests sharing a layerGroup id). Metadata
+   * only, not read by the Python engine; buildCrosstab stores it alongside the result so the saved
+   * tables can be grouped and labelled in the list. */
+  layerGroup?: string;
+  layerVariable?: string;
+  layerLabel?: string;
+  layerCategory?: string;
 };
 export type Correction = "none" | "bonferroni" | "fdr";
 export type CategoryList = { variable: string; label: string; categories: { label: string; n: number }[] };
@@ -312,6 +513,11 @@ export type CrosstabNetCell = {
 };
 export type CrosstabRow = {
   label: string;
+  /** The answer's underlying code (or, for a variable with no value labels, the category text
+   * itself), stable across a value-label wording change in a way `label` is not - a codebook
+   * relabelling code 4 from "Good" to "Excellent" between waves keeps the same rawCode. Present
+   * on single-choice category rows; absent on base/net/mean/score rows, which have no one code. */
+  rawCode?: string;
   variable?: string;
   /** A base row: the unweighted n of valid answers in each column. */
   isBase?: boolean;
@@ -342,6 +548,11 @@ export type CrosstabRow = {
   se?: (number | null)[];
   /** Letters of the columns this cell is significantly higher than (column-pair test). */
   letters?: string[];
+  /** Standardized residual (observed minus expected, over the square root of expected), one per column.
+   * Only present on single-choice questions with a banner variable, the same table the chi-square test runs on. */
+  residual?: (number | null)[];
+  /** Adjusted residual: the standardized residual divided by its own standard error, so it reads like a z-score. */
+  adjResidual?: (number | null)[];
   base: CellBase[];
   total: { count: number | null; nCell?: number | null; pct: number | null; respPct?: number | null; base: CellBase };
 };
@@ -354,7 +565,9 @@ export type CrosstabProvenance = {
   cases: number | null;
   weightVar: string | null;
   correction: Correction;
-  design?: { psu: string; strata: string | null } | null;
+  /** ANA-NPS-003 (second counter-review): see the matching comment on CrosstabRequest.design -
+   * `psu` is nullable to record a strata-only design distinctly from no design at all. */
+  design?: { psu: string | null; strata: string | null } | null;
   columnVars: string[];
   rowKeys: string[];
   rowItems?: { key: string; label: string | null; kind?: string; vars: string[] }[];
@@ -363,6 +576,12 @@ export type CrosstabProvenance = {
   columnGroups: Record<string, string[]>;
   questionnaireLabels: boolean;
   starter: boolean;
+  /** Engineering brief round 4 (criterion 4, "persist the authoritative sheet explicitly
+   * in calculation provenance"): which sheet was actually authoritative when this table
+   * was built - null for a CSV/stats file, which has no sheet concept. Previously this
+   * provenance recorded sourceFile/sourceDocumentId but nothing naming which sheet of a
+   * multi-sheet workbook the saved numbers came from. */
+  selectedSheet?: string | null;
 };
 /** Whole-table association test of one question against one banner variable (first-order Rao-Scott). */
 /** Whole-table test of one answer against one banner variable, with association measures from the weighted table. */
@@ -393,6 +612,10 @@ export type TableTest = {
 export type CrosstabResult = {
   version: 2;
   engine?: string;
+  /** Engineering brief round 4 (criterion 4): the sheet this exact read actually used
+   * (api/parse-stats-file.py's meta.sheets["data"]). Absent/null for a CSV or a stats
+   * file, which has no sheet concept. */
+  selectedSheet?: string | null;
   provenance?: CrosstabProvenance;
   weightVar: string | null;
   weightLabel: string | null;
@@ -407,7 +630,17 @@ export type CrosstabResult = {
   /** Base of the NET column of each banner variable. Absent on tables saved before 9 October 2026. */
   nets?: { block: number; blockLabel: string; n: number; w: number; nEff: number }[];
   total: CellBase;
-  questions: { key: string; label: string; kind: "single" | "multi" | "numeric" | "grid"; rows: CrosstabRow[]; tableTests?: TableTest[]; /** Mean, spread and range of the codes of a coded single choice question. */ desc?: CrosstabDesc }[];
+  questions: { key: string; label: string; kind: "single" | "multi" | "numeric" | "grid"; rows: CrosstabRow[]; tableTests?: TableTest[]; /** Mean, spread and range of the codes of a coded single choice question. */ desc?: CrosstabDesc;
+    /** ANA-NPS-003: present only when this question is an 11-point 0-10 NPS scale and a sampling
+     * design was supplied. The actual Taylor-linearised standard error (percentage points) of the
+     * promoters-minus-detractors contrast itself, computed server-side from the per-case d_i =
+     * +1/-1/0 indicator via the same dsg.totals/var_totals machinery as every other design-based
+     * figure in this table - not an approximation from individual categories' own design effects.
+     * `total` is the Total column's reading; `columns[i]` matches `columns[i]` above. computeNps()
+     * in descriptiveFindings.ts prefers this over its own SRS/avg-design-effect fallback whenever
+     * it's available. */
+    npsContrastSe?: { total: number | null; columns: (number | null)[] };
+  }[];
   notes?: {
     test: string;
     correction?: Correction;
@@ -419,6 +652,20 @@ export type CrosstabResult = {
     overlap?: string;
     tableTest?: string;
     designUsed?: { psu: string; strata: string | null; nPsu: number; nStrata: number; pooledPsus: number; casesMissingDesign: number } | null;
+    /** ANA-NPS-003 (second counter-review): true only when a sampling design was actually applied
+     * to compute this table's design-aware figures (server-side dsg is not None) - as opposed to
+     * `designUsed` being non-null merely because a design was REQUESTED (designUsed also carries
+     * the degenerate "requested but every case was missing" case). Every row's own `se` falls back
+     * to a plain SRS/Kish formula whenever a design was not actually applied, including that
+     * degenerate case, and that SRS fallback SE is not distinguishable from a genuine design-based
+     * category SE just by looking at it. Consumers must not treat the presence of a row's `se` as
+     * proof a design correction applied; they must check this flag (or prefer `npsContrastSe`,
+     * which is only ever populated when this is true). */
+    designApplied?: boolean;
+    /** ANA-NPS-003: the confidence-interval method actually used for every design-based and
+     * SRS/Kish standard error in this table, persisted as explicit output metadata (see
+     * api/parse-stats-file.py) rather than only living in that file's own comments. */
+    intervalMethod?: string;
     minBase: number;
     minReliable?: number;
     lowBase: number;
@@ -449,7 +696,10 @@ export async function runStatsTool<T>(
     : process.env.PARSE_STATS_FILE_URL ?? "http://127.0.0.1:3000";
   const response = await fetch(`${base}/api/parse-stats-file`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    // See the comment on the equivalent header in convert() above: this secret must match
+    // PARSE_STATS_SHARED_SECRET on the Python side, which now refuses every request if its
+    // own copy is unset.
+    headers: { "content-type": "application/json", "x-parse-stats-secret": process.env.PARSE_STATS_SHARED_SECRET ?? "" },
     body: JSON.stringify({ action, args, storagePath, sourceFilename, bucket: BUCKET }),
   });
   if (!response.ok) {
@@ -459,6 +709,12 @@ export async function runStatsTool<T>(
       message = (JSON.parse(detail) as { error?: string }).error ?? detail;
     } catch {
       // not JSON
+    }
+    if (response.status === 401) {
+      throw new Error(
+        "The conversion service rejected this request as unauthorized. PARSE_STATS_SHARED_SECRET must be set to the " +
+          "same value in both this app's environment and the parse-stats-file function's own environment.",
+      );
     }
     throw new Error(message || `The ${action} step failed (${response.status}).`);
   }

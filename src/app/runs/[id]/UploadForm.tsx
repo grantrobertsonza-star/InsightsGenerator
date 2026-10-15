@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import FileInput from "@/components/FileInput";
 import { ChartIcon, DocumentIcon, GridIcon, TranscriptIcon, UploadIcon } from "@/components/icons";
 import { uploadDocumentsAction } from "@/lib/documentUploadActions";
@@ -13,7 +14,7 @@ export default function UploadForm({ runId }: { runId: string }) {
 
   return (
     <form
-      className="flex max-w-3xl flex-col gap-3"
+      className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
@@ -23,14 +24,25 @@ export default function UploadForm({ runId }: { runId: string }) {
           const result = await uploadDocumentsAction(runId, data);
           if (result.ok) {
             setMessage(`Added ${result.added.length} file${result.added.length === 1 ? "" : "s"}: ${result.added.join(", ")}`);
-            setRound((n) => n + 1); // remount the pickers so they are empty again
           } else {
-            setError(result.error);
+            // Files named in `added` are already stored, even though the overall result is an
+            // error - said so here, and not just in the one case the batch fully succeeded, so
+            // re-submitting after a partial failure doesn't mean re-picking (and re-storing) the
+            // ones that already went through. The form's own file pickers are cleared below in
+            // both cases for the same reason: whatever is still sitting in them after this submit
+            // either already succeeded, or needs to be deliberately re-chosen, never silently
+            // resent as-is.
+            setError(
+              result.added.length > 0
+                ? `${result.error} (Already added: ${result.added.join(", ")}.)`
+                : result.error,
+            );
           }
+          setRound((n) => n + 1); // remount the pickers so they are empty again, success or not
         });
       }}
     >
-      <div key={round} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
+      <div key={round} className="grid grid-cols-1 gap-2">
         <FileInput name="reportFiles" multiple icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Reports" caption="PDF, Word or PowerPoint" />
         <FileInput
           name="tableFiles"
@@ -45,7 +57,7 @@ export default function UploadForm({ runId }: { runId: string }) {
           multiple
           accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
           icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
-          label="Quant data"
+          label="Raw data"
           caption="Row by column data"
         />
         <FileInput
@@ -59,7 +71,7 @@ export default function UploadForm({ runId }: { runId: string }) {
         <FileInput name="transcriptFiles" multiple icon={<TranscriptIcon className="h-3.5 w-3.5 text-primary" />} label="Qual data" caption="Coded or uncoded" />
         <FileInput name="instrumentFiles" multiple accept=".pdf,.docx" icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Questionnaire or guide" caption="Links to your data or transcripts" />
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted">
+      <label className="flex flex-col gap-1 text-xs text-muted">
         If you add a questionnaire or guide, it is a
         <select name="instrumentType" defaultValue="questionnaire" className="rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground">
           <option value="questionnaire">survey questionnaire</option>
@@ -67,9 +79,9 @@ export default function UploadForm({ runId }: { runId: string }) {
           <option value="focus_group_guide">focus group guide</option>
         </select>
       </label>
-      <label className="flex items-center gap-2 text-xs text-muted">
+      <label className="flex flex-col gap-1 text-xs text-muted">
         If you add statistical output, label the wave or study
-        <input name="outputWave" placeholder="optional, for example Wave 1" className="w-52 rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground" />
+        <input name="outputWave" placeholder="optional, for example Wave 1" className="w-full rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground" />
       </label>
       <button
         type="submit"
@@ -80,8 +92,16 @@ export default function UploadForm({ runId }: { runId: string }) {
         {pending ? "Uploading..." : "Upload"}
       </button>
       <p className="max-w-3xl text-[11px] text-muted">
-        Data handling: files are expected to be cleared for analysis by their owner, with consent in place and any personal information removed or
-        permitted for this use (for example under POPIA). Insights Elevator does not detect or remove personal information.
+        Not sure how to lay a file out?{" "}
+        <Link href="/knowledge/preparing-files" target="_blank" className="font-medium text-primary hover:underline">
+          Read how to prepare your files
+        </Link>
+        .
+      </p>
+      <p className="max-w-3xl text-[11px] text-muted">
+        Data handling: upload only files the owner has cleared for analysis. Consent should already be in place, and personal
+        information should be removed or covered for this use (under POPIA, for example). The app does not scan for personal
+        information or strip it out, so that check stays with you.
       </p>
       {message && <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">{message}</div>}
       {error && <div className="rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">{error}</div>}

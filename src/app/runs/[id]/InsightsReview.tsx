@@ -6,6 +6,7 @@ import {
   type InputCompleteness,
   type VerificationBasis,
 } from "@/lib/discoveryClassification";
+import { CAVEAT_LABELS, caveatLabel } from "@/lib/caveatLabels";
 
 type VerdictTier = "robust" | "use_with_caution";
 
@@ -31,26 +32,11 @@ type Insight = {
 // caveat this map doesn't recognize still renders, just with its raw name
 // (underscores swapped for spaces) rather than disappearing silently, so a
 // future caveat type is never invisible while this map catches up.
-const CAVEAT_LABELS: Record<string, string> = {
-  sampling_assumed_random: "Random sampling assumed",
-  base_size_small: "Small base",
-  base_size_borderline: "Borderline base",
-  base_size_unknown: "Base size unknown",
-  std_unknown: "Spread unknown",
-  uncorrected_multiple_comparisons: "Multiple comparisons",
-  fdr_controlled_within_table: "False discovery controlled (table)",
-  fdr_controlled_within_row: "False discovery controlled (row)",
-  bonferroni_controlled_within_row: "Bonferroni corrected (row)",
-  weighted_effective_base: "Weighted, effective base",
-  survey_design_not_modelled: "Survey design not modelled",
-  survey_design_modelled: "Survey design modelled (Taylor series)",
-  post_hoc_after_significant_anova: "Post-hoc (after significant ANOVA)",
-  insufficient_n_for_test: "Too little data to test",
-};
-
-function caveatLabel(caveat: string): string {
-  return CAVEAT_LABELS[caveat] ?? caveat.replace(/_/g, " ");
-}
+//
+// FND-001/REP-OUT-001 (second counter-review): moved to src/lib/caveatLabels.ts so the DOCX/
+// PPTX export routes can render the same label for the same tag, rather than keeping a second,
+// independently-drifting copy here. No behaviour change - same map, same fallback, imported
+// instead of declared inline.
 
 type VerdictSummary = { verdictedCount: number; passedCount: number };
 type FailedVerdictSample = {

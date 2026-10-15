@@ -5,6 +5,7 @@
 // rest of the app keeps working.
 import type { PoolClient } from "pg";
 import { withTenant } from "./db";
+import { findingProvenanceAvailable } from "./findingProvenance";
 
 export const codeKey = (name: string) =>
   name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -203,6 +204,9 @@ export async function syncFindingThemes(
 ): Promise<void> {
   await withTenant(tenantId, async (client) => {
     if (!(await metaAvailable(client))) return;
+    // REP-IN-002: a theme a researcher set by hand on a coded finding is not overwritten by the
+    // codebook. Before migration 0094 there is no edit record, so this cannot be checked.
+    const provenance = await findingProvenanceAvailable(client);
     await client.query(
       `update findings f
           set theme = coalesce(nullif(m.theme, ''), c.name)
@@ -215,7 +219,8 @@ export async function syncFindingThemes(
           and f.source_document_id = $1
           and f.origin = 'coded'
           and b.version = (select max(version) from coding_codebooks where document_id = $1)
-          and f.theme is distinct from coalesce(nullif(m.theme, ''), c.name)`,
+          and f.theme is distinct from coalesce(nullif(m.theme, ''), c.name)
+          ${provenance ? "and not (f.human_edited_fields @> array['theme'])" : ""}`,
       [documentId],
     );
   });

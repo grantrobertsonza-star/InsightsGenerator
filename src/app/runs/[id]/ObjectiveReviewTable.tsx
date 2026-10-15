@@ -2,10 +2,6 @@
 
 import { useState, useTransition } from "react";
 import {
-  acceptObjectiveCandidate,
-  rejectObjectiveCandidate,
-  restoreObjectiveCandidate,
-  deleteObjectiveCandidate,
   addOwnObjectiveCandidate,
   regenerateObjectiveCandidates,
   acceptAllObjectiveCandidates,
@@ -13,6 +9,8 @@ import {
 } from "@/lib/objectiveCandidateActions";
 import { scoreObjectivesAction } from "@/lib/qualityActions";
 import { TrashIcon } from "@/components/icons";
+import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
+import { useObjectiveRowActions } from "./useObjectiveRowActions";
 
 export type ObjectiveScores = {
   specific: number;
@@ -35,19 +33,19 @@ export type ObjectiveRow = {
   scores: ObjectiveScores | null;
 };
 
-const scoreCellClass: Record<number, string> = {
+export const scoreCellClass: Record<number, string> = {
   1: "bg-slate-100 text-slate-600",
   3: "bg-amber-50 text-amber-700",
   5: "bg-indigo-50 text-indigo-700",
 };
-const tierClass = {
+export const tierClass = {
   strong: "bg-indigo-50 text-indigo-700",
   workable: "bg-amber-50 text-amber-700",
   weak: "bg-slate-100 text-slate-600",
 } as const;
-const tierLabel = { strong: "Strong", workable: "Workable", weak: "Needs work" } as const;
+export const tierLabel = { strong: "Strong", workable: "Workable", weak: "Needs work" } as const;
 
-const COLUMNS: ["specific" | "measurable" | "answerable" | "relevant", string, string][] = [
+export const COLUMNS: ["specific" | "measurable" | "answerable" | "relevant", string, string][] = [
   ["specific", "Specific", "Names who, which behaviour or attitude and in what context, so two researchers would read it the same way."],
   ["measurable", "Measurable", "Implies a clear measure or comparison, and what result would count as an answer."],
   ["answerable", "Answerable", "Judged against the documents, findings and variables uploaded when it was scored: does the data in hand speak to it?"],
@@ -56,27 +54,24 @@ const COLUMNS: ["specific" | "measurable" | "answerable" | "relevant", string, s
 
 const btn =
   "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60";
-const miniBtn =
+export const miniBtn =
   "rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-50";
-const textareaClass =
-  "w-full resize-none rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
+export const textareaClass =
+  "w-full resize-none rounded-lg border border-border px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 
-function tagFor(row: ObjectiveRow) {
+export function tagFor(row: ObjectiveRow) {
   if (row.source === "researcher_authored") return { label: "Stated", cls: "bg-slate-100 text-slate-600" };
   if (row.status === "accepted") return { label: "Inferred", cls: "bg-primary-light text-primary" };
   return { label: "Suggested", cls: "bg-amber-50 text-amber-700" };
 }
 
 function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
-  const [isPending, start] = useTransition();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(row.text);
+  const a = useObjectiveRowActions(runId, row);
   const tag = tagFor(row);
-  const accepted = row.status === "accepted";
-  const rejected = row.status === "rejected";
+  const { selected, select } = useObjectiveSelection();
 
   return (
-    <tr className={`border-b border-border align-top last:border-0 ${rejected ? "opacity-50" : ""}`}>
+    <tr onClick={() => { if (!a.editing && a.accepted) select({ id: row.id, text: row.text }); }} className={`border-b border-border align-top last:border-0 ${a.accepted ? "cursor-pointer" : ""} ${sameObjective(selected, { id: row.id, text: row.text }) ? "bg-primary-light/40" : ""} ${a.rejected ? "opacity-50" : ""}`}>
       <td className="max-w-md px-3 py-2 text-foreground">
         <span className={`mb-1 mr-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tag.cls}`}>
           {tag.label}
@@ -86,17 +81,17 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             Edited
           </span>
         )}
-        {editing ? (
-          <textarea autoFocus rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} className={`${textareaClass} mt-1`} />
+        {a.editing ? (
+          <textarea autoFocus rows={2} value={a.draft} onChange={(e) => a.setDraft(e.target.value)} className={`${textareaClass} mt-1`} />
         ) : (
           <div>{row.text}</div>
         )}
-        {row.scores?.suggestion && !editing && (
+        {row.scores?.suggestion && !a.editing && (
           <div className="mt-1 text-[11px] text-muted">
             <span className="font-medium">To sharpen it:</span> {row.scores.suggestion}
           </div>
         )}
-        {row.source === "ai_suggested" && row.rationale && !editing && (
+        {row.source === "ai_suggested" && row.rationale && !a.editing && (
           <div className="mt-1 text-[11px] text-muted">{row.rationale}</div>
         )}
       </td>
@@ -107,7 +102,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             {v === null ? (
               <span className="text-muted">-</span>
             ) : (
-              <span className={`inline-block min-w-6 rounded px-1.5 py-0.5 font-semibold ${scoreCellClass[v] ?? scoreCellClass[1]}`}>{v}</span>
+              <span className={`inline-block min-w-6 rounded px-1.5 py-0.5 text-[10px] font-semibold ${scoreCellClass[v] ?? scoreCellClass[1]}`}>{v}</span>
             )}
           </td>
         );
@@ -117,7 +112,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
         {row.scores ? (
           <span
             title={row.scores.rationale}
-            className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${tierClass[row.scores.tier]}`}
+            className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${tierClass[row.scores.tier]}`}
           >
             {tierLabel[row.scores.tier]}
           </span>
@@ -127,50 +122,35 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1">
-          {editing ? (
+          {a.editing ? (
             <>
-              <button
-                className={miniBtn}
-                disabled={isPending || !draft.trim()}
-                onClick={() =>
-                  start(async () => {
-                    await acceptObjectiveCandidate(runId, row.id, draft.trim());
-                    setEditing(false);
-                  })
-                }
-              >
+              <button className={miniBtn} disabled={a.isPending || !a.draft.trim()} onClick={a.save}>
                 Save
               </button>
-              <button
-                className={miniBtn}
-                onClick={() => {
-                  setDraft(row.text);
-                  setEditing(false);
-                }}
-              >
+              <button className={miniBtn} onClick={a.cancelEdit}>
                 Cancel
               </button>
             </>
-          ) : rejected ? (
-            <button className={miniBtn} disabled={isPending} onClick={() => start(() => restoreObjectiveCandidate(runId, row.id))}>
+          ) : a.rejected ? (
+            <button className={miniBtn} disabled={a.isPending} onClick={a.restore}>
               Restore
             </button>
           ) : (
             <>
-              {!accepted && (
-                <button className={miniBtn} disabled={isPending} onClick={() => start(() => acceptObjectiveCandidate(runId, row.id))}>
+              {!a.accepted && (
+                <button className={miniBtn} disabled={a.isPending} onClick={a.accept}>
                   Accept
                 </button>
               )}
-              <button className={miniBtn} disabled={isPending} onClick={() => setEditing(true)}>
+              <button className={miniBtn} disabled={a.isPending} onClick={a.beginEdit}>
                 Edit
               </button>
-              {accepted ? (
-                <button className={miniBtn} disabled={isPending} onClick={() => start(() => restoreObjectiveCandidate(runId, row.id))}>
+              {a.accepted ? (
+                <button className={miniBtn} disabled={a.isPending} onClick={a.unaccept}>
                   Unaccept
                 </button>
               ) : (
-                <button className={miniBtn} disabled={isPending} onClick={() => start(() => rejectObjectiveCandidate(runId, row.id))}>
+                <button className={miniBtn} disabled={a.isPending} onClick={a.reject}>
                   Reject
                 </button>
               )}
@@ -179,11 +159,8 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           <button
             aria-label="Delete objective"
             title="Delete objective"
-            disabled={isPending}
-            onClick={() => {
-              if (!confirm("Delete this objective? This can't be undone.")) return;
-              start(() => deleteObjectiveCandidate(runId, row.id));
-            }}
+            disabled={a.isPending}
+            onClick={a.remove}
             className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-danger-light hover:text-danger"
           >
             <TrashIcon className="h-3 w-3" />
@@ -305,7 +282,7 @@ export default function ObjectiveReviewTable({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-white">
-          <table className="w-full min-w-[860px] text-left text-xs">
+          <table className="w-full min-w-[860px] text-left text-[11px]">
             <thead>
               <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
                 <th className="px-3 py-2">Objective</th>
@@ -369,7 +346,7 @@ export default function ObjectiveReviewTable({
           </button>
           {rejectedOpen && (
             <div className="mt-3 overflow-x-auto rounded-xl border border-border bg-white">
-              <table className="w-full min-w-[860px] text-left text-xs">
+              <table className="w-full min-w-[860px] text-left text-[11px]">
                 <tbody>
                   {rejected.map((row) => (
                     <Row key={row.id} runId={runId} row={row} />

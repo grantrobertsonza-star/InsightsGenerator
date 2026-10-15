@@ -1,0 +1,96 @@
+{
+  "head": "955a4eccef132956520b3e3c4ba78378d6748885",
+  "stableBeforeAfter": true,
+  "hashes": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "35FCFA9ADC43221DF5574E80DCD834F133AAD961012F347B3D92C026159581C6",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\chartActions.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "A23D5CC92CAD86B918C14A69E04EC08F428B6509ADCDF51FD601BE2C7E68A41D",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\npsActions.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "F7968646CA31C8E61A69CB1681333CBC924689834BB9744466CDF656E2C07C15",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\objectiveEvidence.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7BD7E5E26612B3E6E55079F6BD7D81CF42C54CB38A8CB71745EF4136AE5C6121",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\dataSetupShared.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7E7C0C1B14F566B34F4ADE55196FF94459A9F28F6E220CB436EDB90E2727EF56",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\crosstabs.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "D746EB5A826B75F1167E48004A9B13A85DB1D535F6FAA702F3AEA869E6873942",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\app\\runs\\[id]\\page.tsx"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "C5B2BD7EAF41D01972E99DAB48DDB3EF81AFE43E77470D86CBEF6D5415A750B4",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\app\\runs\\[id]\\FindingsTable.tsx"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "31771A4ACC54B874CDE64C9B77CA286A87D7B76A374918D714932DF03A8DD92B",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\app\\runs\\[id]\\CrosstabWorkspace.tsx"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7267A365B390A13B41724A4B9292D275DD7D7FAA3FE4BAA8669DF5DCB2483D70",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\saveResponseOrdering.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "2A354427BBF21F822BE2BD3BBA50AB8D389D434E0B4A717CEB2BD0E32EAF6CD8",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\designLookupFailureSurfacing.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "3588563166E263BBFCF4379634F15DD10E3A3044312A59773A517F768AF36F5F",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\saveResponseOrdering.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "6658665F55F27AF3D968955B499612EC9277691C95BC7EF7504F2714379DA4C7",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\designPickerState.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "43C2A9005D976502CAA4FAD9954CCB570551E8139D11195743C72F67AC070C4D",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\designSnapshotStaleness.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "B026E3D87F6231168395211135C478E19418AB6F125796943013C4BDDF00A40E",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\saveReconciliation.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "13A29C5EE40642675E4EB950167160E9AA402A90D9D91A2F23B7DC6627CCB2C0",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\dataSetup.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "DB54818ACB330DA2B9F56B8131E0FB54B3E275EFEA9634D9F78E40F28840A47E",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\parseStatsFile.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "5BDBBF7D1C95CC31F39EEC7F3341530F22D31C66ADEC27E54114F9C50FA31BA2",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\buildCrosstabStrictSetup.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "07F91BD4A4EDC04A9746752F1392EC2FA34012B3315D1CA022894148EE12E6EE",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\callerToBuilderStrictSetup.test.ts"
+    }
+  ]
+}

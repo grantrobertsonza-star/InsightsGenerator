@@ -844,6 +844,48 @@ export function stripFooters(text: string, footers: string[]): string {
   return removed ? out : text;
 }
 
+/**
+ * ANA-QUAL-002 (exact coded-passage provenance): reconstructs the exact text of one coded
+ * unit purely from a document's STORED segment texts - coding_segments.text, as inserted by
+ * replaceSegments in extractThemes.ts - by deterministically retracing the same two steps
+ * buildApplyBatches applied before the model ever saw this transcript: find the repeated
+ * footers across every turn, strip them from the target turn, then split what is left into
+ * units the same way splitIntoUnits always has. This only works because none of those steps
+ * read anything but the segments' own text, so given the same full set of stored segment
+ * texts, it reproduces the exact units the model was asked to decide on - including the
+ * fallback applyCodebook's own `unitsOf` uses (unitsOf(item) falls back to [item.text] when
+ * splitIntoUnits returns nothing), so a short turn stored as its own single whole-turn
+ * "unit 1" (coding_unit_assignments' own comment on the same case) still resolves correctly
+ * here.
+ *
+ * Counter-review fixture this was written against: a transcript whose turns end with a
+ * repeated disclaimer ("Synthetic interviews. All respondents and dialogue are fictional.").
+ * Re-splitting a turn's STORED (footer-still-attached) text directly - what a naive reader
+ * would do - merges that disclaimer into the turn's last unit, producing a unit the model was
+ * never actually shown (it only ever saw the footer-stripped text). This function strips the
+ * footer first, the same way the original coding pass did, so the two agree.
+ *
+ * Returns null when the segment cannot be found among `allSegmentTexts`, or when the
+ * requested unit number is out of range for what this segment's (re-derived) units are -
+ * both mean the stored transcript has moved on since the code was applied (a resegmentation,
+ * or the segment was deleted), not that the passage exists but could not be read.
+ */
+export function reconstructCodedUnitText(
+  allSegmentTexts: { index: number; text: string }[],
+  targetIndex: number,
+  unit: number,
+): string | null {
+  const target = allSegmentTexts.find((s) => s.index === targetIndex);
+  if (!target) return null;
+  const footers = findRepeatedFooters(allSegmentTexts.map((s) => s.text));
+  const stripped = stripFooters(target.text, footers);
+  const flat = stripped.replace(/\s+/g, " ").trim();
+  if (!flat) return null;
+  const units = splitIntoUnits(flat);
+  const list = units.length > 0 ? units : [flat];
+  return list[unit - 1] ?? null;
+}
+
 export type ApplyBatch = { items: ApplyItem[] };
 
 const CONTEXT_CHARS = 240;
@@ -969,15 +1011,27 @@ export function parseUnitAssignments(
 
 /**
  * Reads one code's yes/no decisions: [{ id: "54.2", why, meets }]. Returns, per turn, the unit numbers
- * that meet the code. An id that is malformed, belongs to a turn outside the batch or names a unit the
- * turn does not have is ignored; a unit with no decision counts as not meeting the code.
+ * that meet the code (`hits`), and separately, per turn, exactly which unit numbers the model actually
+ * gave ANY explicit decision for, true or false (`decided`). An id that is malformed, belongs to a turn
+ * outside the batch or names a unit the turn does not have is ignored, same as before.
+ *
+ * ANA-QUAL-001: `decided` exists because "this unit isn't in hits" used to be read as "the model said
+ * this unit doesn't meet the code" - which is exactly what an omitted decision (the model's tool call
+ * simply didn't mention that unit) also looks like once only `hits` is kept. A genuine explicit "no"
+ * and "the model never said" are not the same claim, and only the caller comparing `decided` against
+ * how many units a turn actually has can tell them apart and disclose the difference, instead of both
+ * silently becoming "uncoded".
  */
-export function parseUnitDecisions(raw: unknown, unitCounts: Map<number, number>): Map<number, number[]> {
-  const out = new Map<number, number[]>();
-  if (!Array.isArray(raw)) return out;
+export function parseUnitDecisions(
+  raw: unknown,
+  unitCounts: Map<number, number>,
+): { hits: Map<number, number[]>; decided: Map<number, Set<number>> } {
+  const hits = new Map<number, number[]>();
+  const decided = new Map<number, Set<number>>();
+  if (!Array.isArray(raw)) return { hits, decided };
   const seen = new Set<string>();
   for (const d of raw as { id?: unknown; meets?: unknown }[]) {
-    if (typeof d?.id !== "string" || d.meets !== true) continue;
+    if (typeof d?.id !== "string" || (d.meets !== true && d.meets !== false)) continue;
     const m = /^\s*(\d+)\.(\d+)\s*$/.exec(d.id);
     if (!m) continue;
     const turn = Number(m[1]);
@@ -985,9 +1039,12 @@ export function parseUnitDecisions(raw: unknown, unitCounts: Map<number, number>
     const max = unitCounts.get(turn);
     if (max === undefined || unit < 1 || unit > max || seen.has(`${turn}.${unit}`)) continue;
     seen.add(`${turn}.${unit}`);
-    out.set(turn, [...(out.get(turn) ?? []), unit].sort((x, y) => x - y));
+    const dset = decided.get(turn) ?? new Set<number>();
+    dset.add(unit);
+    decided.set(turn, dset);
+    if (d.meets === true) hits.set(turn, [...(hits.get(turn) ?? []), unit].sort((x, y) => x - y));
   }
-  return out;
+  return { hits, decided };
 }
 
 const EXEMPLAR_TARGET = 220;

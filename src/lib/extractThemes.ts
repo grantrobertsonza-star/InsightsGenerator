@@ -14,6 +14,7 @@ import {
 } from "./findingArchive";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
+import { markDocumentProcessingStatus } from "./documentUpload";
 import { mapWithConcurrency } from "./concurrency";
 import type { ParsedCoding } from "./codedImport";
 import {
@@ -32,6 +33,7 @@ import {
   parseAssignments,
   parseUnitDecisions,
   pickExemplar,
+  reconstructCodedUnitText,
   segmentTranscriptDetailed,
   type SegmentMode,
   type SegmentationResult,
@@ -124,6 +126,13 @@ export async function recordManifest(
     inputHash: string;
     detail: Record<string, unknown>;
     codebookId?: string | null;
+    // Coding-quality finding alongside ANA-QUAL-001: this used to be hardcoded to CLAUDE_MODEL
+    // below regardless of which model the call this manifest row describes actually used - a real
+    // provenance mismatch (not just a stale comment) whenever CODING_APPLY_MODEL overrides the
+    // model for the apply stage's yes/no calls. Each call site now says which model it actually
+    // used; omitting it keeps the previous default (CLAUDE_MODEL), unchanged for every call site
+    // that never had an override to begin with.
+    model?: string;
   },
 ): Promise<string | null> {
   try {
@@ -140,7 +149,7 @@ export async function recordManifest(
           row.codebookId ?? null,
           row.stage,
           row.runIndex,
-          CLAUDE_MODEL,
+          row.model ?? CLAUDE_MODEL,
           row.promptHash,
           row.inputHash,
           JSON.stringify(row.detail),
@@ -180,6 +189,11 @@ const OPEN_SYSTEM =
   "stated as a finding, so your job is to read it the way a qualitative researcher would: first " +
   "notice the recurring ideas, reactions, and concerns that come up (open coding), then group those " +
   "into a small number of coherent themes (axial coding).\n\n" +
+  "This is one of several independent coding passes over the same transcript; the passes are later " +
+  "reconciled into one shared codebook, so name each theme as a discrete, definable category someone " +
+  "else could apply consistently to new text, not as a one-off interpretive narrative thread. Two " +
+  "different readers should be able to look at your theme name and finding_text and agree on what " +
+  "would or would not count as an instance of it.\n\n" +
   "Lines may start with a speaker label. Moderator or interviewer turns are context only: a theme " +
   "must come from what participants said, and its quote must be a participant's words.\n\n" +
   "For each theme, write:\n" +
@@ -394,8 +408,10 @@ const CONSOLIDATE_SYSTEM =
   "could decide whether a given remark belongs to the code.\n" +
   "- inclusion_criteria: when a remark should be coded here.\n" +
   "- exclusion_criteria: what looks similar but should not be coded here. Name the nearest other code and " +
-  "give a rule that tells the two apart, so two readers would put the same remark under the same one. " +
-  "A code with no near neighbour says so.\n" +
+  "give a rule that tells the two apart, so two readers would put the same remark under the same one. Then give " +
+  "one worked near-miss example: a short invented remark that looks like it belongs to this code but does not, " +
+  "and the one-line reason it fails, e.g. \"Near miss: 'I might look at other networks one day' \u2014 a hypothetical, " +
+  "not a reported switch, so it stays out.\" A code with no near neighbour says so and skips the example.\n" +
   "- members: every theme that was merged into the code, as { run, theme } using the 1-based run and " +
   "theme numbers shown. Every theme should appear in exactly one code.\n\n" +
   "Keep the codes apart. Before you finish, check each pair of codes: if you cannot write a rule that " +
@@ -1050,16 +1066,32 @@ export async function suggestThemes(
 
 const APPLY_SYSTEM =
   "You decide, for ONE code from a qualitative codebook, which units of a transcript meet it. Each turn is shown " +
-  "split into numbered units (sentences), such as 54.1, 54.2. Give a decision for every unit listed.\n" +
-  "- Answer yes only when the unit's own words meet the code's definition. The other units of the turn and the " +
-  "question asked are context for what \"it\" or \"that\" refers to, not evidence for the code.\n" +
+  "split into numbered units (sentences), such as 54.1, 54.2. Give a decision for every unit listed, in a fixed " +
+  "order, so the same reasoning runs every time: first classify the unit, then decide.\n" +
+  "1. account_type: is the unit the speaker's own experience (personal), someone else's that they are reporting " +
+  "(others), something they imagine or might do (hypothetical), or a general opinion with no particular instance " +
+  "(general)?\n" +
+  "2. stance: does the unit affirm the idea, deny it, hold it with a condition (\"if X, then...\"), mix affirming and " +
+  "denying, or is it genuinely unclear which?\n" +
+  "3. why: under 15 words, the words that meet or fail the definition, written before the decision.\n" +
+  "4. status: clear if the text plainly settles it either way; context_dependent if the preceding turn (shown as " +
+  "context) is what makes the meaning clear, such as a short \"yes\" that only means something next to the question " +
+  "asked; ambiguous if, having classified account_type and stance, you still cannot tell from the words themselves. " +
+  "Use ambiguous honestly rather than forcing a guess into clear.\n" +
+  "5. meets: true only when the unit's own words meet the code's definition, given the classification above. The " +
+  "other units of the turn and the question asked are context for what \"it\" or \"that\" refers to, not evidence " +
+  "for the code.\n\n" +
+  "Further rules:\n" +
   "- Do not answer yes only because the turn as a whole is about the topic. The unit itself must state the idea.\n" +
-  "- For each unit write a short \"why\" first (under 15 words, the words that meet or fail the definition), then " +
-  "the decision. If you cannot point to words in the unit that meet the definition, the answer is no.\n" +
-  "- A short reply such as \"yes\" or \"same for me\" counts only if the question shown makes its meaning clear.\n" +
+  "- A hypothetical (\"I might switch\") does not meet a code defined as something the speaker did or experienced, " +
+  "unless the code's own definition covers hypotheticals.\n" +
   "- A passing mention, a background detail or a remark that things are fine counts only if the definition " +
   "explicitly covers it. Code what the unit is about, not every topic it touches.\n" +
-  "- An exclusion criterion always wins over an inclusion criterion.";
+  "- This code may have a named nearest neighbour in its \"Do not code when\" rule. When the unit could fit either, " +
+  "give the unit to whichever one the rule points to, even if this code's own definition is not literally wrong. " +
+  "An exclusion criterion always wins over an inclusion criterion.\n" +
+  "- status is a record of how sure you are, not a third answer: still give a definite true or false for meets " +
+  "even when status is ambiguous.";
 
 const APPLY_TOOLS = [
   {
@@ -1074,10 +1106,25 @@ const APPLY_TOOLS = [
             type: "object",
             properties: {
               id: { type: "string", description: "The unit id as shown, such as 54.2." },
+              account_type: {
+                type: "string",
+                enum: ["personal", "others", "hypothetical", "general"],
+                description: "Classified before deciding whether the unit meets the code.",
+              },
+              stance: {
+                type: "string",
+                enum: ["affirmed", "denied", "conditional", "mixed", "unclear"],
+                description: "Classified before deciding whether the unit meets the code.",
+              },
               why: { type: "string", description: "Under 15 words, written before the decision." },
+              status: {
+                type: "string",
+                enum: ["clear", "context_dependent", "ambiguous"],
+                description: "How settled the decision is. Not a third answer: meets is still true or false.",
+              },
               meets: { type: "boolean", description: "True only if the unit's own words meet the definition." },
             },
-            required: ["id", "why", "meets"],
+            required: ["id", "account_type", "stance", "why", "status", "meets"],
           },
         },
       },
@@ -1086,7 +1133,10 @@ const APPLY_TOOLS = [
   },
 ];
 
-export const APPLY_PROMPT_HASH = sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS));
+// Bump when the way turns are prepared for coding changes (footer stripping, unit splitting), since that
+// changes the model's input without changing the prompt. It makes the stability check ask for a fresh apply.
+const APPLY_INPUT_VERSION = "structured-decisions-v1";
+export const APPLY_PROMPT_HASH = sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS) + APPLY_INPUT_VERSION);
 
 function codebookBlock(codes: CodeRow[]): string {
   return codes
@@ -1117,17 +1167,34 @@ export async function applyCodebook(
 ): Promise<{
   assignments: Map<number, number[]>;
   unitCodes: Map<number, { unit: number; codes: number[] }[]>;
+  /** ANA-QUAL-002: the exact (footer-stripped) text of every unit this run actually showed the
+   * model, keyed by turn index - the same unitsOf(item) output used to build the apply prompt
+   * itself, captured here so writeCodebookAndFindings can snapshot it into coding_unit_assignments
+   * rather than leaving the stored row to be re-derived (and possibly drift) later. */
+  unitTexts: Map<number, string[]>;
   failedBatches: number;
   totalBatches: number;
+  /** ANA-QUAL-001: batches that DID return a usable tool call (so not in failedBatches) but left at
+   * least one requested unit with no explicit decision for that code - a coverage gap, not a failure,
+   * and counted separately so it is never conflated with either "coded as not meeting" or "the call
+   * failed outright". */
+  incompleteBatches: number;
 }> {
   const batches = buildApplyBatches(segments, { maxItems: 30, maxChars: 9000 });
   const unitsOf = (item: { text: string; units: string[] }) => (item.units.length > 0 ? item.units : [item.text]);
+  // ANA-QUAL-002: captured once, from the same batches the apply calls below actually read from,
+  // before any model call - so this always reflects exactly what was shown, never a later
+  // re-derivation that could disagree with it (see the type's own comment above).
+  const unitTexts = new Map<number, string[]>();
+  for (const batch of batches) {
+    for (const item of batch.items) unitTexts.set(item.index, unitsOf(item));
+  }
   const tasks = batches.flatMap((batch, batchIndex) => codes.map((_, k) => ({ batch, batchIndex, code: k + 1 })));
   beginCodingWork(runId, documentId, labelFor(documentId, "Coding the transcript"), tasks.length);
   let creditOut = false;
   const codeOne = async (task: (typeof tasks)[number]) => {
     const { batch, batchIndex, code } = task;
-    if (creditOut) return { batchIndex, code, hits: null as Map<number, number[]> | null };
+    if (creditOut) return { batchIndex, code, hits: null as Map<number, number[]> | null, incomplete: false };
     try {
       const turns = batch.items
         .map(
@@ -1157,7 +1224,10 @@ export async function applyCodebook(
             ],
           },
         ],
-      });
+      },
+      // A yes/no call for one code over one chunk normally returns in seconds. Without a limit, one stalled
+      // connection holds a worker for the SDK default of 10 minutes per attempt, and the bar looks frozen.
+      { timeout: 120_000, maxRetries: 2 });
       await logApiUsage(tenantId, runId, "codebook_apply", response.usage);
       const toolUse = response.content.find((b) => b.type === "tool_use");
       if (!toolUse || toolUse.type !== "tool_use" || response.stop_reason === "max_tokens") {
@@ -1167,21 +1237,44 @@ export async function applyCodebook(
           code,
           reason: response.stop_reason === "max_tokens" ? "max_tokens" : "no_tool_use",
         });
-        return { batchIndex, code, hits: null as Map<number, number[]> | null };
+        return { batchIndex, code, hits: null as Map<number, number[]> | null, incomplete: false };
       }
-      const hits = parseUnitDecisions(
-        (toolUse.input as { decisions?: unknown }).decisions,
-        new Map(batch.items.map((i) => [i.index, unitsOf(i).length])),
-      );
+      const rawDecisions = (toolUse.input as { decisions?: unknown }).decisions;
+      const unitCounts = new Map(batch.items.map((i) => [i.index, unitsOf(i).length]));
+      const { hits, decided } = parseUnitDecisions(rawDecisions, unitCounts);
+      // Diagnostic only: how often the model called a decision ambiguous rather than clear, which is a
+      // directly comparable count across the per-code calls. Nothing downstream reads it yet.
+      const ambiguous = Array.isArray(rawDecisions)
+        ? (rawDecisions as { status?: unknown }[]).filter((d) => d?.status === "ambiguous").length
+        : 0;
+      // ANA-QUAL-001: units requested for this code vs units the model actually gave an explicit
+      // decision for. A gap here means some units were silently skipped by the model's own tool call,
+      // which the hits map alone cannot distinguish from a genuine "doesn't meet the code" - persisted
+      // on the manifest (this call's own audit record) rather than discarded, so coverage is always
+      // reconstructable from what was actually asked and answered, not inferred after the fact.
+      const unitsRequested = [...unitCounts.values()].reduce((a, c) => a + c, 0);
+      const unitsDecided = [...decided.values()].reduce((a, s) => a + s.size, 0);
+      const incomplete = unitsDecided < unitsRequested;
       await recordManifest(tenantId, runId, documentId, {
         codebookId,
         stage,
         runIndex: batchIndex * 1000 + code,
         promptHash: APPLY_PROMPT_HASH,
         inputHash: sha256(turns + question),
-        detail: { code, turns: batch.items.length, units_meeting: [...hits.values()].reduce((a, u) => a + u.length, 0) },
+        // The actual model this call used, not always CLAUDE_MODEL - see the CODING_APPLY_MODEL
+        // comment on the request above.
+        model: process.env.CODING_APPLY_MODEL || CLAUDE_MODEL,
+        detail: {
+          code,
+          turns: batch.items.length,
+          units_meeting: [...hits.values()].reduce((a, u) => a + u.length, 0),
+          units_ambiguous: ambiguous,
+          units_requested: unitsRequested,
+          units_decided: unitsDecided,
+          units_missing_decision: unitsRequested - unitsDecided,
+        },
       });
-      return { batchIndex, code, hits };
+      return { batchIndex, code, hits, incomplete };
     } catch (error) {
       // Out of credit: every remaining call would fail the same way and cost a retry each, so stop here.
       if (error instanceof Error && /credit balance|billing|insufficient/i.test(error.message)) creditOut = true;
@@ -1191,7 +1284,7 @@ export async function applyCodebook(
         code,
         reason: error instanceof Error ? error.message.slice(0, 300) : "error",
       });
-      return { batchIndex, code, hits: null as Map<number, number[]> | null };
+      return { batchIndex, code, hits: null as Map<number, number[]> | null, incomplete: false };
     }
   };
   let results: Awaited<ReturnType<typeof codeOne>>[];
@@ -1219,6 +1312,16 @@ export async function applyCodebook(
 
   const failedSet = new Set<number>();
   for (const r of results) if (!r.hits) failedSet.add(r.batchIndex);
+  // ANA-QUAL-001: a batch can return a perfectly usable tool call (so it is not in failedSet) and
+  // still leave some units undecided for this code - counted separately so that gap is disclosed
+  // rather than silently read the same as "the model said no" or "the call failed". Counted as
+  // distinct BATCH indices with at least one incomplete code, not (batch, code) task entries -
+  // `results` has one entry per code evaluated against each batch (see `tasks`, above: one batch
+  // of turns is asked about separately for every code in the codebook), so counting entries would
+  // inflate this whenever the same batch of turns is incomplete for more than one code at once
+  // (a five-code codebook with one genuinely problematic batch would have reported 5, not 1).
+  const incompleteBatchIndices = new Set(results.filter((r) => r.hits && r.incomplete).map((r) => r.batchIndex));
+  const incompleteBatches = incompleteBatchIndices.size;
   const perUnit = new Map<number, Map<number, Set<number>>>(); // turn -> unit -> codes
   for (const r of results) {
     if (!r.hits || failedSet.has(r.batchIndex)) continue;
@@ -1247,7 +1350,7 @@ export async function applyCodebook(
       unitCodes.set(turn, list);
     }
   }
-  return { assignments: merged, unitCodes, failedBatches: failedSet.size, totalBatches: batches.length };
+  return { assignments: merged, unitCodes, unitTexts, failedBatches: failedSet.size, totalBatches: batches.length, incompleteBatches };
 }
 
 // --- Step 4: findings ---------------------------------------------------
@@ -1363,6 +1466,24 @@ async function summarise(
   return out;
 }
 
+/**
+ * Counter-review on ANA-QUAL-001: a batch that failed outright (no usable tool call at
+ * all - a bad response, a timeout, an out-of-credit stop) used to be invisible to the
+ * ready/incomplete decision at every one of applyCodebook's three call sites, which only
+ * looked at incompleteBatches (a batch that DID return a usable call but left some units
+ * undecided). The counter-review's own reproduction: one of three batches failed outright
+ * (failedBatches: 1, incompleteBatches: 0) and every caller still picked "ready" - a
+ * document whose transcript was only two-thirds actually coded looked indistinguishable
+ * from a complete run. A failed batch's assignments are already correctly excluded from
+ * the merged results (perUnit/merged skip failedSet entries), so the FINDINGS themselves
+ * were never wrong - only the status claiming they were complete was. An explicit no-code
+ * decision (hits is an empty but non-null map, incomplete: false) is not a gap at all and
+ * must not trip this - that case already falls through to false here, same as before.
+ */
+function codingHasGap(applied: { failedBatches: number; incompleteBatches: number }): boolean {
+  return applied.failedBatches > 0 || applied.incompleteBatches > 0;
+}
+
 async function writeCodebookAndFindings(
   tenantId: string,
   runId: string,
@@ -1372,6 +1493,18 @@ async function writeCodebookAndFindings(
   segments: StoredSegment[],
   assignments: Map<number, number[]>,
   options: { onlyReplacePending: boolean; archiveReason: ArchiveReason },
+  // ANA-QUAL-002: the model's own unit-level (sentence-span) output for each turn/code pair, when
+  // the caller has it (applyCodebook's own unitCodes) - optional, and ignored entirely by a
+  // pre-migration database (see coding_unit_assignments' insert below), so a caller that has no
+  // unit-level output (eg the codebook-only import path, which reads a researcher-supplied
+  // codebook rather than asking the model which units met it) can simply omit it.
+  unitCodes?: Map<number, { unit: number; codes: number[] }[]>,
+  // ANA-QUAL-002: the exact text behind each entry of unitCodes above (applyCodebook's own
+  // unitTexts), so the unit-level insert below can snapshot the passage as it actually was at
+  // coding time rather than leaving every future read to re-derive it from whatever
+  // coding_segments.text holds then. Optional for the same reason unitCodes is: a caller with no
+  // unit-level codes has nothing to snapshot either.
+  unitTexts?: Map<number, string[]>,
 ): Promise<{ id: string; finding_text: string }[]> {
   const segmentByIndex = new Map(segments.map((s) => [s.index, s]));
   // Findings and their turn counts follow what the researcher has changed by
@@ -1450,6 +1583,79 @@ async function writeCodebookAndFindings(
          on conflict do nothing`,
         [tenantId, segmentIds, codeIds],
       );
+    }
+    // ANA-QUAL-002: the same assignments, but at the unit (sentence-span) level the model actually
+    // decided on, so the exact passage behind a code is retrievable later (splitIntoUnits of the
+    // turn's own stored text, deterministic, re-derived on read rather than duplicated here).
+    // Best-effort: a database that hasn't had migration 0085 applied yet simply keeps turn-level
+    // assignments only, same as before this fix.
+    if (unitCodes && unitCodes.size > 0) {
+      const unitSegmentIds: string[] = [];
+      const unitCodeIds: string[] = [];
+      const units: number[] = [];
+      // ANA-QUAL-002: the exact passage text for each row above, same order, null when this
+      // caller had no unitTexts map at all (pre-existing behaviour) or the specific unit's text
+      // could not be found (should not happen - unitCodes and unitTexts are built from the same
+      // batches in the same run - but a mismatch here degrades to "no snapshot" rather than
+      // throwing, since a missing snapshot is still strictly better than failing the whole save).
+      const unitTextSnapshots: (string | null)[] = [];
+      for (const [segIndex, list] of unitCodes) {
+        const segment = segmentByIndex.get(segIndex);
+        if (!segment) continue;
+        for (const { unit, codes: codeNumbers } of list) {
+          for (const n of codeNumbers) {
+            if (n < 1 || n > codes.length) continue;
+            unitSegmentIds.push(segment.id);
+            unitCodeIds.push(codes[n - 1].id);
+            units.push(unit);
+            unitTextSnapshots.push(unitTexts?.get(segIndex)?.[unit - 1] ?? null);
+          }
+        }
+      }
+      if (unitSegmentIds.length > 0) {
+        // Counter-review on ANA-QUAL-002: catching the missing-table error here was not enough -
+        // once ANY statement fails inside a Postgres transaction, the whole transaction is marked
+        // aborted, and every later statement on this same client (applyOverrides below, and
+        // anything after it still inside this same withTenant callback) fails with "current
+        // transaction is aborted, commands ignored until end of transaction block", regardless of
+        // whether the JS catch here looks like it handled the error. A SAVEPOINT gives the missing-
+        // table case somewhere valid to roll back to, so the rest of this run's work (which does
+        // not depend on migration 0085) can still complete and commit.
+        await client.query("savepoint coding_unit_assignments_insert");
+        try {
+          // ANA-QUAL-002: tries the migration-0090 shape (with the unit_text snapshot) first, and
+          // only falls back to the pre-0090 shape on the specific "column does not exist" error -
+          // a nested savepoint so that one failed statement doesn't also abort the outer
+          // savepoint's transaction state, exactly the same reasoning as the outer catch below.
+          await client.query("savepoint coding_unit_assignments_insert_unit_text");
+          try {
+            await client.query(
+              `insert into coding_unit_assignments (tenant_id, segment_id, code_id, unit, unit_text)
+               select $1, s, c, u, t from unnest($2::uuid[], $3::uuid[], $4::smallint[], $5::text[]) as x(s, c, u, t)
+               on conflict do nothing`,
+              [tenantId, unitSegmentIds, unitCodeIds, units, unitTextSnapshots],
+            );
+            await client.query("release savepoint coding_unit_assignments_insert_unit_text");
+          } catch (e2) {
+            if (!/column .*unit_text.* does not exist/i.test(e2 instanceof Error ? e2.message : String(e2))) throw e2;
+            // migration 0090 not applied yet: the table exists (0085) but has no unit_text column.
+            await client.query("rollback to savepoint coding_unit_assignments_insert_unit_text");
+            await client.query(
+              `insert into coding_unit_assignments (tenant_id, segment_id, code_id, unit)
+               select $1, s, c, u from unnest($2::uuid[], $3::uuid[], $4::smallint[]) as t(s, c, u)
+               on conflict do nothing`,
+              [tenantId, unitSegmentIds, unitCodeIds, units],
+            );
+          }
+          await client.query("release savepoint coding_unit_assignments_insert");
+        } catch (e) {
+          if (!/relation .*coding_unit_assignments.* does not exist/i.test(e instanceof Error ? e.message : String(e))) throw e;
+          // migration 0085 not applied yet: unit-level identity just isn't persisted this run.
+          // Rolling back to the savepoint restores this transaction to a usable state so
+          // everything after it (applyOverrides, the surrounding commit) still runs normally.
+          await client.query("rollback to savepoint coding_unit_assignments_insert");
+        }
+      }
     }
     // Lay the researcher's own changes back over the model's assignments.
     await applyOverrides(
@@ -1627,6 +1833,122 @@ async function replaceSegments(
   });
 }
 
+export type CodedUnitPassage = {
+  segmentIndex: number;
+  codeId: string;
+  codeName: string;
+  unit: number;
+  /** The exact passage the model was shown when this code was assigned (migration 0090
+   * snapshot, captured in applyCodebook/writeCodebookAndFindings at coding time). Null only for
+   * a row written before 0090 shipped, when no snapshot was ever taken - currentText below is
+   * the only passage available for it. */
+  textAsCoded: string | null;
+  /** The passage as reconstructCodedUnitText reads it from the document's CURRENT stored
+   * segment texts, same re-derivation this function has always done. Null when the stored
+   * transcript has moved on since the code was applied (resegmented, or the unit no longer
+   * exists) - see reconstructCodedUnitText's own comment. */
+  currentText: string | null;
+  /** True when a snapshot exists and no longer matches the current re-derivation - the
+   * transcript has visibly changed since this code was assigned (ANA-QUAL-002). Advisory only:
+   * `text` below always shows the historical passage regardless of this flag, it is never
+   * silently swapped for whatever currentText happens to read now. False (not stale) when there
+   * is no snapshot to compare - a pre-0090 row has nothing to be caught drifting from. */
+  stale: boolean;
+  /** The passage to show by default: the immutable snapshot when one was taken, otherwise the
+   * live re-derivation (pre-0090 rows only, where that re-derivation is all there has ever
+   * been). Never resolves a snapshotted assignment to different current text. */
+  text: string | null;
+};
+
+/**
+ * ANA-QUAL-002 (exact coded-passage provenance): reads coding_unit_assignments (migrations
+ * 0085, 0090) for one document and resolves every row to its passage text and, where a
+ * migration-0090 snapshot exists, to whether that snapshot still matches a live re-derivation
+ * from the document's current stored segment texts - see CodedUnitPassage's own field comments
+ * for exactly what each one means and when it can be null or stale.
+ *
+ * Effective coding (counter-review: "define how researcher overrides affect effective coding"):
+ * joined against coding_assignments, the same turn-level table applyOverrides
+ * (codingOverrides.ts) edits directly, so a code a researcher has REMOVED from a turn (deleting
+ * its coding_assignments row) no longer surfaces a passage here either, even though its original
+ * coding_unit_assignments row is left in place (that row is history - which unit the model once
+ * pointed to - not a second, independently-maintained copy of what is currently in force). A
+ * code a researcher has ADDED has no unit-level row at all (overrides are turn-level only, with
+ * no sentence-span of their own to point to) and so has no passage to show here; that is the
+ * defined, correct behaviour for an addition, not a bug this function can close.
+ *
+ * Migration-guarded the same way loadCodeMeta (codingMeta.ts) is: a to_regclass check rather
+ * than a savepoint-guarded try/catch, since this is a read with nothing to roll back - a
+ * pre-0085 database simply never persisted anything at the unit level, so there is nothing
+ * to return, not an error to recover from. The 0090 unit_text column is checked the same way,
+ * via information_schema rather than to_regclass (a column, not a relation).
+ *
+ * Before this function, nothing in the application read coding_unit_assignments back at
+ * all - the counter-review's own finding ("no application reader for the new table was
+ * found") - so migration 0085's data had been write-only since it shipped. This closes that
+ * specific gap. Surfacing it in the researcher-facing UI (an "exact passage" affordance next
+ * to a coded finding) is a separate, UI-level follow-up this fix does not include - this
+ * sandbox has no live browser to verify new UI wiring against, and the specific affordance
+ * (inline on the finding, a side panel, a tooltip) is a design choice, not a correctness fix.
+ */
+export async function getCodedUnitPassages(
+  tenantId: string,
+  documentId: string,
+): Promise<CodedUnitPassage[]> {
+  return withTenant(tenantId, async (client) => {
+    const avail = await client.query<{ ok: boolean }>(
+      "select to_regclass('public.coding_unit_assignments') is not null as ok",
+    );
+    if (avail.rows[0]?.ok !== true) return [];
+    const colAvail = await client.query<{ ok: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'coding_unit_assignments' and column_name = 'unit_text'
+       ) as ok`,
+    );
+    const hasUnitText = colAvail.rows[0]?.ok === true;
+    const segRows = await client.query<{ id: string; segment_index: number; text: string }>(
+      "select id, segment_index, text from coding_segments where document_id = $1 order by segment_index",
+      [documentId],
+    );
+    if (segRows.rows.length === 0) return [];
+    const allSegmentTexts = segRows.rows.map((r) => ({ index: r.segment_index, text: r.text }));
+    const indexById = new Map(segRows.rows.map((r) => [r.id, r.segment_index]));
+    // ANA-QUAL-002: inner-joined against coding_assignments (not just coding_segments/coding_codes)
+    // so a code the researcher has since REMOVED from this turn - deleting its coding_assignments
+    // row via applyOverrides - no longer surfaces a passage here, even though the historical
+    // coding_unit_assignments row is left untouched. This is what "effective coding" means for
+    // this reader: coding_assignments is the single source of truth every other part of the app
+    // already reads for whether a code is currently in force on a turn.
+    const assigned = await client.query<{ segment_id: string; code_id: string; code_name: string; unit: number; unit_text: string | null }>(
+      hasUnitText
+        ? `select cua.segment_id, cua.code_id, cc.name as code_name, cua.unit, cua.unit_text
+           from coding_unit_assignments cua
+           join coding_segments cs on cs.id = cua.segment_id
+           join coding_codes cc on cc.id = cua.code_id
+           join coding_assignments ca on ca.segment_id = cua.segment_id and ca.code_id = cua.code_id
+           where cs.document_id = $1
+           order by cs.segment_index, cua.unit`
+        : `select cua.segment_id, cua.code_id, cc.name as code_name, cua.unit, null as unit_text
+           from coding_unit_assignments cua
+           join coding_segments cs on cs.id = cua.segment_id
+           join coding_codes cc on cc.id = cua.code_id
+           join coding_assignments ca on ca.segment_id = cua.segment_id and ca.code_id = cua.code_id
+           where cs.document_id = $1
+           order by cs.segment_index, cua.unit`,
+      [documentId],
+    );
+    return assigned.rows.map((r) => {
+      const segmentIndex = indexById.get(r.segment_id) ?? -1;
+      const currentText = segmentIndex >= 0 ? reconstructCodedUnitText(allSegmentTexts, segmentIndex, r.unit) : null;
+      const textAsCoded = r.unit_text ?? null;
+      const stale = textAsCoded !== null && currentText !== textAsCoded;
+      const text = textAsCoded ?? currentText;
+      return { segmentIndex, codeId: r.code_id, codeName: r.code_name, unit: r.unit, textAsCoded, currentText, stale, text };
+    });
+  });
+}
+
 // --- How a transcript was read (migration 0046) ------------------------------
 
 async function readSegmentationChoice(
@@ -1720,12 +2042,22 @@ function codingStageDone(documentId: string): void {
   tickCodingWork(documentId);
 }
 
+export type CodingRunResult = {
+  findings: { id: string; finding_text: string }[];
+  /** ANA-QUAL-001: false means the researcher-visible completion status (ready/incomplete)
+   * could NOT actually be written back - the database rejected it (pre-0088, or pre-0079 -
+   * see markDocumentProcessingStatus) - so whatever status this document is showing is
+   * stale, not a confirmation that today's run's real coverage was recorded. Callers
+   * surface this rather than letting a stale "ready" stand uncorrected. */
+  statusPersisted: boolean;
+};
+
 export async function extractThemesFromTranscript(
   tenantId: string,
   runId: string,
   documentId: string,
   options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
-): Promise<{ id: string; finding_text: string }[]> {
+): Promise<CodingRunResult> {
   try {
     return await extractThemesFromTranscriptInner(tenantId, runId, documentId, options);
   } finally {
@@ -1739,7 +2071,7 @@ async function extractThemesFromTranscriptInner(
   runId: string,
   documentId: string,
   options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
-): Promise<{ id: string; finding_text: string }[]> {
+): Promise<CodingRunResult> {
   const { onlyReplacePending = false, archiveReason = "manual_reextract" } =
     options;
   const document = await withTenant(tenantId, async (client) => {
@@ -1940,6 +2272,8 @@ async function extractThemesFromTranscriptInner(
     stored,
     applied.assignments,
     { onlyReplacePending, archiveReason },
+    applied.unitCodes,
+    applied.unitTexts,
   );
 
   await recordTrace(tenantId, runId, "coding_summary", {
@@ -1952,9 +2286,25 @@ async function extractThemesFromTranscriptInner(
     input_truncated: truncated,
     apply_batches_failed: applied.failedBatches,
     apply_batches_total: applied.totalBatches,
+    apply_batches_incomplete: applied.incompleteBatches,
   });
+  // ANA-QUAL-001: this is the one researcher-visible place batch coverage travels to -
+  // previously it only reached the trace above, which nothing in the UI reads. Set here
+  // (rather than left to the caller) so every caller of this function gets it for free,
+  // and so a caller that still unconditionally stamps "ready" afterward would be the bug,
+  // not this function forgetting to report it. codeThemesAction/the batch-processing loop
+  // in page.tsx have been updated to not do that for a transcript document. Uses
+  // codingHasGap (failedBatches OR incompleteBatches), not incompleteBatches alone - a
+  // batch that failed outright is just as much a reason this is not a clean "ready" as one
+  // that came back incomplete (counter-review: a fully-failed batch used to still read as
+  // "ready" whenever no OTHER batch was merely incomplete).
+  const statusPersisted = await markDocumentProcessingStatus(
+    tenantId,
+    documentId,
+    codingHasGap(applied) ? "incomplete" : "ready",
+  );
 
-  return rows;
+  return { findings: rows, statusPersisted };
 }
 
 export type CodingImportResult = {
@@ -1969,6 +2319,11 @@ export type CodingImportResult = {
   codebookOnly: boolean;
   // Themes, keywords and notes could be stored (migration 0055 is applied).
   metaSaved: boolean;
+  // ANA-QUAL-001: see CodingRunResult's own comment - same meaning here. This function now
+  // sets the document's processing_status itself in both branches (previously the
+  // non-codebookOnly branch left that to the page.tsx caller, which could not tell a real
+  // "ready" from a silently-failed write either).
+  statusPersisted: boolean;
 };
 
 const MAX_IMPORTED_CODES = 40;
@@ -2125,6 +2480,12 @@ export async function importCodedTranscript(
     // Migration 0055 not applied yet: the coding itself still imports.
   }
   let finalAssignments = assignments;
+  let finalUnitCodes: Map<number, { unit: number; codes: number[] }[]> | undefined;
+  let finalUnitTexts: Map<number, string[]> | undefined;
+  // ANA-QUAL-001: set below in either branch - true by default since a plain researcher-
+  // coded import (codebookOnly false) always writes "ready" unconditionally further down,
+  // and that write's own result overwrites this default.
+  let statusPersisted = true;
   if (codebookOnly) {
     const applied = await applyCodebook(
       tenantId,
@@ -2142,7 +2503,27 @@ export async function importCodedTranscript(
         "Your codebook was read, but it could not be applied to the transcript. Try again.",
       );
     }
+    // ANA-QUAL-001: persisted here too, same as the other two apply-codebook call sites, so a
+    // partial failure or an incomplete per-unit decision count on this import path is also
+    // disclosed afterward rather than only on the two other pipelines.
+    await recordTrace(tenantId, runId, "coding_apply_summary", {
+      documentId,
+      apply_batches_failed: applied.failedBatches,
+      apply_batches_total: applied.totalBatches,
+      apply_batches_incomplete: applied.incompleteBatches,
+    });
+    // ANA-QUAL-001: same as extractThemesFromTranscriptInner's own note - this path also
+    // asks the model to apply a codebook (codebookOnly: the file had codes but no quotes),
+    // so its coverage can be just as partial. Uses codingHasGap, not incompleteBatches
+    // alone - see that helper's own comment.
+    statusPersisted = await markDocumentProcessingStatus(
+      tenantId,
+      documentId,
+      codingHasGap(applied) ? "incomplete" : "ready",
+    );
     finalAssignments = applied.assignments;
+    finalUnitCodes = applied.unitCodes;
+    finalUnitTexts = applied.unitTexts;
   }
   const rows = await writeCodebookAndFindings(
     tenantId,
@@ -2153,6 +2534,8 @@ export async function importCodedTranscript(
     stored,
     finalAssignments,
     { onlyReplacePending: false, archiveReason: "manual_reextract" },
+    finalUnitCodes,
+    finalUnitTexts,
   );
 
   const codesWithoutQuotes = coding.codes
@@ -2168,6 +2551,15 @@ export async function importCodedTranscript(
     codes_without_matched_quotes: codesWithoutQuotes.length,
     findings: rows.length,
   });
+  // ANA-QUAL-001: a plain researcher-coded import (codebookOnly false) never asked a model
+  // to decide anything, so there is no coverage question to report - "ready" is
+  // unconditionally correct here, same as before this fix. This used to be the page.tsx
+  // caller's job; moved in here so both branches of this function set their own status and
+  // report whether that write actually took effect, the same way the codebookOnly branch
+  // already does above.
+  if (!codebookOnly) {
+    statusPersisted = await markDocumentProcessingStatus(tenantId, documentId, "ready");
+  }
   return {
     codes: coding.codes.length,
     findings: rows.length,
@@ -2178,6 +2570,7 @@ export async function importCodedTranscript(
     codesWithoutQuotes: codebookOnly ? [] : codesWithoutQuotes,
     codebookOnly,
     metaSaved,
+    statusPersisted,
   };
 }
 
@@ -2194,7 +2587,7 @@ export async function reapplyCodebook(
   runId: string,
   documentId: string,
   edits: CodebookEdit[],
-): Promise<{ id: string; finding_text: string }[]> {
+): Promise<CodingRunResult> {
   const cleaned = edits
     .map((e) => ({
       id: e.id,
@@ -2314,6 +2707,8 @@ export async function reapplyCodebook(
     stored,
     applied.assignments,
     { onlyReplacePending: false, archiveReason: "manual_reextract" },
+    applied.unitCodes,
+    applied.unitTexts,
   );
   await recordTrace(tenantId, runId, "coding_summary", {
     documentId,
@@ -2323,8 +2718,15 @@ export async function reapplyCodebook(
     findings: rows.length,
     apply_batches_failed: applied.failedBatches,
     apply_batches_total: applied.totalBatches,
+    apply_batches_incomplete: applied.incompleteBatches,
   });
-  return rows;
+  // ANA-QUAL-001: see extractThemesFromTranscriptInner's own comment on this same call.
+  const statusPersisted = await markDocumentProcessingStatus(
+    tenantId,
+    documentId,
+    codingHasGap(applied) ? "incomplete" : "ready",
+  );
+  return { findings: rows, statusPersisted };
 }
 
 /**
@@ -2340,7 +2742,7 @@ export async function resegmentTranscript(
   documentId: string,
   mode: SegmentMode,
   moderators: string[],
-): Promise<{ id: string; finding_text: string }[]> {
+): Promise<CodingRunResult> {
   const cleanedModerators = moderators.map((m) => m.trim()).filter(Boolean);
   const { text, codes } = await withTenant(tenantId, async (client) => {
     const doc = await client.query<{ extracted_text: string | null }>(

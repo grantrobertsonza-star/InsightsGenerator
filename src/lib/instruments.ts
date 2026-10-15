@@ -85,8 +85,8 @@ function splitText(text: string): { pageNumber: number; text: string }[] {
   return out;
 }
 
-function cleanOptions(raw: unknown): ItemOption[] {
-  if (!Array.isArray(raw)) return [];
+function cleanOptions(raw: unknown): { options: ItemOption[]; truncated: boolean } {
+  if (!Array.isArray(raw)) return { options: [], truncated: false };
   const out: ItemOption[] = [];
   for (const o of raw) {
     const r = o as { code?: unknown; label?: unknown; goto?: unknown };
@@ -95,10 +95,31 @@ function cleanOptions(raw: unknown): ItemOption[] {
     const goto = typeof r?.goto === "string" && r.goto.trim() ? r.goto.trim() : null;
     if (label) out.push(goto ? { code, label, goto } : { code, label });
   }
-  return out.slice(0, 80);
+  // IMP-012: used to cap silently at 80 with no signal that anything was lost. A dropped
+  // option is exactly the kind of truncation the read's `complete` flag exists to catch -
+  // the same reasoning as a chunk the model never saw - so the caller is told rather than
+  // quietly handed a short list that looks like the whole thing.
+  return { options: out.slice(0, 80), truncated: out.length > 80 };
 }
 
-export async function readInstrumentItems(tenantId: string, runId: string, documentId: string): Promise<number> {
+export type InstrumentReadResult = {
+  /** Items now on file for this document (after the merge below), not just the ones this read produced. */
+  count: number;
+  /** False when one or more chunks of the document could not be read (a model-call failure, a bad
+   * response shape): some items may be missing or stale, and a reread is worth trying again. */
+  complete: boolean;
+  /** How many of the document's chunks failed to read, when not complete. */
+  failedChunks: number;
+  /** IMP-012: an item or a chunk can each independently make a read incomplete - a chunk failing
+   * outright (counted above), an item's `text` coming back unusable, or an item's option list
+   * being cut off at the 80 cap. `failedChunks` alone used to be the only number the caller had,
+   * so a read made incomplete purely by an invalid item or truncated options (failedChunks: 0)
+   * displayed as "0 parts of the document could not be read" - true of chunks specifically, but
+   * read by anyone as "nothing went wrong", concealing the actual reason this read is incomplete. */
+  incompleteItems: number;
+};
+
+export async function readInstrumentItems(tenantId: string, runId: string, documentId: string): Promise<InstrumentReadResult> {
   const doc = await withTenantRead(tenantId, async (client) => {
     const r = await client.query<{ storage_path: string; source_filename: string }>(
       "select storage_path, source_filename from documents where id = $1 and run_id = $2 and kind = 'instrument'",
@@ -110,9 +131,15 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
 
   const extracted = await extractDocumentText(doc.storage_path, doc.source_filename, documentId);
   const pages = extracted.pages.length > 0 ? extracted.pages : splitText(extracted.fullText);
-  const chunks = chunkPages(pages).slice(0, MAX_CHUNKS);
+  const allChunks = chunkPages(pages);
+  const chunks = allChunks.slice(0, MAX_CHUNKS);
   if (chunks.length === 0) throw new Error("No text could be read from this file. A scanned PDF may need to be converted to text first.");
 
+  // IMP-012: a document with more than MAX_CHUNKS chunks used to have the extra ones simply
+  // never requested, with nothing distinguishing that from a shorter document that was read
+  // in full - the same silent-truncation shape as a chunk whose model call actually failed,
+  // so it is counted the same way here, not as a separate, unreported kind of gap.
+  let failedChunks = Math.max(0, allChunks.length - MAX_CHUNKS);
   const found = await mapWithConcurrency(chunks, 3, async (chunk) => {
     try {
       const response = await anthropic.messages.create({
@@ -156,17 +183,45 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
         messages: [{ role: "user", content: `Document part:\n\n${chunk.text}` }],
       });
       await logApiUsage(tenantId, runId, "instrument_reader", response.usage);
+      // A response cut off by the token budget can still leave a well-formed-looking tool call
+      // if the cut happened to land on an array boundary - the JSON parses, but the chunk's
+      // true content past that point was never generated at all. Treated as failed here, the
+      // same as a missing or malformed tool call, rather than as a legitimately complete read
+      // that simply stopped a little short.
+      if (response.stop_reason === "max_tokens") {
+        failedChunks += 1;
+        return [] as (RawItem & { page: number })[];
+      }
       const tool = response.content.find((b) => b.type === "tool_use");
-      if (!tool || tool.type !== "tool_use") return [] as (RawItem & { page: number })[];
-      const items = (tool.input as { items?: RawItem[] }).items ?? [];
+      // A missing tool_use block, or one whose `items` field isn't the array the schema
+      // requires, is not the same thing as the model genuinely finding zero items in this
+      // chunk (that case still comes back as a present, empty `items` array and is a real
+      // result). Either one used to fall through to the same empty array a legitimate "no
+      // items here" produces, with nothing to tell them apart - so a chunk that failed to
+      // return usable output could make its items look like they were read and found absent,
+      // rather than simply not read. Counting it as a failed chunk here is what keeps
+      // `complete` honest, which is what the deletion below relies on to be safe.
+      if (!tool || tool.type !== "tool_use" || !Array.isArray((tool.input as { items?: unknown }).items)) {
+        failedChunks += 1;
+        return [] as (RawItem & { page: number })[];
+      }
+      const items = (tool.input as { items: RawItem[] }).items;
       return items.map((i) => ({ ...i, page: chunk.page }));
     } catch {
+      failedChunks += 1;
       return [] as (RawItem & { page: number })[];
     }
   });
-
   // Flatten, tidy and drop repeats at chunk boundaries.
   const seen = new Set<string>();
+  // IMP-012: a tool call can come back well-formed (a real `items` array, not the missing/
+  // malformed shape already caught above) while one element inside it is individually
+  // unusable - most often a `text` the model sent as something other than a string, despite
+  // the schema. That element used to be dropped the same way a legitimate duplicate or an
+  // empty slot is, with no record that anything was lost - exactly the kind of gap `complete`
+  // exists to surface, so it is tracked the same way a failed chunk is.
+  let invalidItems = 0;
+  let truncatedOptionItems = 0;
   const rows: {
     section: string | null;
     code: string | null;
@@ -175,28 +230,42 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
     routingText: string | null;
     routing: Routing | null;
     page: number;
+    /** IMP-012: this row's own options list was truncated - see the write loop below, which
+     * uses it to avoid overwriting an existing, previously-complete item with this partial one. */
+    truncated: boolean;
   }[] = [];
   for (const chunk of found) {
     for (const i of chunk) {
       const text = typeof i.text === "string" ? i.text.replace(/\s+/g, " ").trim() : "";
-      if (!text) continue;
+      if (!text) {
+        invalidItems += 1;
+        continue;
+      }
       const code = typeof i.code === "string" && i.code.trim() ? i.code.trim().replace(/[.:)]+$/, "") : null;
       const key = `${(code ?? "").toLowerCase()}|${text.toLowerCase().slice(0, 80)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const routingText = typeof i.routing_text === "string" && i.routing_text.trim() ? i.routing_text.trim() : null;
+      const { options, truncated } = cleanOptions(i.options);
+      if (truncated) truncatedOptionItems += 1;
       rows.push({
         section: typeof i.section === "string" && i.section.trim() ? i.section.trim() : null,
         code,
         text,
-        options: cleanOptions(i.options),
+        options,
         routingText,
         routing: parseRouting(routingText),
         page: (i as { page: number }).page,
+        truncated,
       });
     }
   }
   if (rows.length === 0) throw new Error("No question items were found in this file.");
+  // An invalid item or a truncated option list means something the model actually reported
+  // was lost or cut short, not that the document legitimately has no more to give - the same
+  // "better a stale item than a silently destroyed confirmed link" reasoning the chunk-level
+  // failure already gets, so it folds into the same `complete` flag the deletion below relies on.
+  const complete = failedChunks === 0 && invalidItems === 0 && truncatedOptionItems === 0;
 
   // Jumps printed on answer options ("No: GO TO Q10") skip the items between.
   const derived = deriveGotoRouting(rows.map((r) => ({ code: r.code, routing: r.routing, options: r.options })));
@@ -204,18 +273,69 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
     r.routing = derived[i];
   });
 
-  await withTenant(tenantId, async (client) => {
-    await client.query("delete from instrument_items where document_id = $1", [documentId]);
+  const itemKey = (code: string | null, text: string) => `${(code ?? "").toLowerCase()}|${text.toLowerCase().slice(0, 80)}`;
+
+  const count = await withTenant(tenantId, async (client) => {
+    // Matched by the same (code, text-prefix) key the read itself dedupes
+    // chunk boundaries with, so an item that still appears keeps its
+    // database identity - and so keeps every instrument_links row pointing
+    // at it (those cascade-delete with their item) - instead of a blind
+    // delete-then-reinsert handing every item a fresh id on every reread.
+    const existing = await client.query<{ id: string; code: string | null; item_text: string }>(
+      "select id, code, item_text from instrument_items where document_id = $1",
+      [documentId],
+    );
+    const existingByKey = new Map(existing.rows.map((r) => [itemKey(r.code, r.item_text), r.id] as const));
+    const matchedIds = new Set<string>();
+
     for (let n = 0; n < rows.length; n++) {
       const r = rows[n];
-      await client.query(
-        `insert into instrument_items (tenant_id, run_id, document_id, item_order, section, code, item_text, response_options, routing_text, routing, page)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [tenantId, runId, documentId, n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page],
-      );
+      const existingId = existingByKey.get(itemKey(r.code, r.text));
+      if (existingId) {
+        matchedIds.add(existingId);
+        // IMP-012: an item this row matches was already on file, and this row's OWN
+        // options list was truncated (the 80-option cap) - overwriting it would replace
+        // whatever this item previously had (which may well have been a complete, untruncated
+        // read from an earlier pass) with this pass's cut-short version. "Stale item beats
+        // destroyed link" already governs the deletion below for an item missing from `rows`
+        // entirely; staging nothing here is the same reasoning for an item that IS in `rows`
+        // but in a degraded form - the existing row's full data is preserved instead of
+        // being replaced by a partial one.
+        if (r.truncated) continue;
+        await client.query(
+          `update instrument_items
+           set item_order = $1, section = $2, code = $3, item_text = $4, response_options = $5,
+               routing_text = $6, routing = $7, page = $8
+           where id = $9`,
+          [n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page, existingId],
+        );
+      } else {
+        await client.query(
+          `insert into instrument_items (tenant_id, run_id, document_id, item_order, section, code, item_text, response_options, routing_text, routing, page)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [tenantId, runId, documentId, n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page],
+        );
+      }
     }
+
+    // An item that genuinely dropped out of the document (the researcher
+    // replaced the file, or trimmed a section) is removed, along with its
+    // links, same as before. But when this read is incomplete - one or more
+    // chunks failed - an item missing from `rows` might just be one that
+    // failed to come back this time, not one that actually disappeared, so
+    // nothing is deleted on an incomplete read: better a stale item than a
+    // silently destroyed confirmed link.
+    if (complete) {
+      const stale = existing.rows.filter((r) => !matchedIds.has(r.id)).map((r) => r.id);
+      if (stale.length > 0) {
+        await client.query("delete from instrument_items where id = any($1::uuid[])", [stale]);
+      }
+    }
+
+    const r = await client.query<{ n: string }>("select count(*)::text as n from instrument_items where document_id = $1", [documentId]);
+    return Number(r.rows[0]?.n ?? rows.length);
   });
-  return rows.length;
+  return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems };
 }
 
 /** Suggests links between an instrument's items and a data file's variables. Confirmed and rejected links are kept. */

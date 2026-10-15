@@ -2,6 +2,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { parseTableDocument } from "./parseTable";
+import { resolveAuthoritativeSheet } from "./crosstabs";
 import { parseStatsFile, isStatsFileName } from "./parseStatsFile";
 import { extractDocumentText } from "./extractFindings";
 import { generateFindingsFromTable } from "./generateFindingsFromTable";
@@ -152,8 +153,9 @@ export async function extractAndStoreDocumentTables(
       storage_path: string;
       source_filename: string;
       ingestion_type: "raw" | "aggregated" | null;
+      selected_sheet: string | null;
     }>(
-      "select storage_path, source_filename, ingestion_type from documents where id = $1 and run_id = $2",
+      "select storage_path, source_filename, ingestion_type, selected_sheet from documents where id = $1 and run_id = $2",
       [documentId, runId]
     );
     return result.rows[0];
@@ -178,8 +180,44 @@ export async function extractAndStoreDocumentTables(
   let extracted: ExtractedTable[];
 
   if (lowerName.endsWith(".csv") || lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
-    const { headers, rows } = await parseTableDocument(document.storage_path);
-    extracted = [{ label: null, sourcePage: null, headers, rows }];
+    let parsed = await parseTableDocument(document.storage_path, document.selected_sheet);
+    // IMP-SHIP-001 (Codex round 2, "a losing publisher must adopt that choice and reparse
+    // before returning, caching or saving data"): find out which sheet is ACTUALLY
+    // authoritative after attempting to persist this read's own choice. If a dictionary
+    // load (or another extraction) won the race for this document between our own read of
+    // document.selected_sheet above and now, re-parse against the sheet that actually won
+    // before storing anything - otherwise this could save findings extracted from a sheet
+    // nothing else agrees is the document's data sheet.
+    const authoritative = await resolveAuthoritativeSheet(
+      tenantId,
+      documentId,
+      document.selected_sheet,
+      parsed.sheetName,
+    );
+    if (authoritative !== parsed.sheetName) {
+      parsed = await parseTableDocument(document.storage_path, authoritative);
+    }
+    extracted = [{ label: null, sourcePage: null, headers: parsed.headers, rows: parsed.rows }];
+    // Codex round 3, "preserve the qualification through extraction": parseTableDocument
+    // already detects an id-like column whose Excel format this pipeline can't guarantee
+    // matches between preview and calculation (see parseTable.ts's
+    // unsupportedIdentifierColumns). Extraction used to just read .headers/.rows off
+    // `parsed` and drop this flag on the floor, so nothing downstream of this function
+    // ever learned about it. Recorded the same way wide_file_trimmed already is, so the
+    // Import screen can show a recovery message instead of silently importing a column
+    // whose identifier values aren't cross-reader-verified.
+    if (parsed.unsupportedIdentifierColumns.length > 0) {
+      await withTenant(tenantId, async (client) => {
+        await client.query(
+          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'unsupported_identifier_format', $3)`,
+          [
+            tenantId,
+            runId,
+            JSON.stringify({ documentId, columns: parsed.unsupportedIdentifierColumns }),
+          ]
+        );
+      });
+    }
   } else if (isStatsFileName(lowerName)) {
     // SPSS/Stata/SAS: no JS reader exists for these, so this hands off to
     // the Python conversion function (api/parse-stats-file.py), which also
@@ -231,10 +269,20 @@ export async function extractAndStoreDocumentTables(
     }
   }
 
+  // A CSV/Excel/SPSS-Stata-SAS read always pushes exactly one table object, even when the
+  // source file turned out to have no columns and no data at all - a genuinely empty upload
+  // used to still "succeed" here, inserting a table with empty headers and empty rows that
+  // every downstream step (dictionary, crosstab, findings) would then have to treat as a
+  // special case instead of this step simply refusing it. A table with neither headers nor
+  // rows carries nothing to extract, so it is dropped before the found-nothing check below,
+  // which then reports the same clear error a .docx/.pptx/.pdf with no tables already gets.
+  extracted = extracted.filter((t) => t.headers.length > 0 || t.rows.length > 0);
+
   if (extracted.length === 0) {
     throw new Error(
       "No tables were found in this document. If it's a Word or PDF file, check that it actually " +
-        "contains a data table rather than only narrative text, a bulleted list, or a scanned image."
+        "contains a data table rather than only narrative text, a bulleted list, or a scanned image. " +
+        "If it's a CSV, Excel or SPSS/Stata/SAS file, check that it isn't empty."
     );
   }
 

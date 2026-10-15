@@ -31,6 +31,12 @@ import { buildChartForThemeGroup } from "@/lib/findingsChartData";
 import { classifyFindingDiscovery } from "@/lib/discoveryClassification";
 import { BASIS_LABEL, findingBasis, provenanceNotes } from "@/lib/findingBasis";
 import FindingsChart from "./FindingsChart";
+import { createContext, useContext } from "react";
+
+const SelectionContext = createContext<{ selectedId: string | null; select: (id: string) => void }>({
+  selectedId: null,
+  select: () => {},
+});
 
 type Finding = {
   id: string;
@@ -61,6 +67,13 @@ type Finding = {
   // Live counts with denominators, merged in by the page (see getFindingCodingCounts).
   coding_counts?: FindingCodingCounts | null;
   quote_match: "exact" | "near" | "none" | null;
+  // Codex re-review, package 4 (cross-tab handover repair); Brief 37 repair: "current"/"stale"
+  // when this finding's source table's design snapshot could be compared against the document's
+  // current one; "unknown" when it has a source table but the comparison itself could not be
+  // made (a legacy snapshot never recorded, or the current lookup failing); null when there is
+  // no source table at all. Never touches finding_text - a visibility signal only, rendered in
+  // SourceInfo below.
+  designFreshness: "current" | "stale" | "unknown" | null;
 };
 
 type Viewer =
@@ -624,6 +637,26 @@ function SourceInfo({
           {viewerLoadingId === finding.id ? "Opening..." : "View source"}
         </button>
       )}
+      {finding.designFreshness === "stale" && (
+        <div
+          title="This finding's table was built under a different survey-design setting than the one this document now has. The finding's own wording is unchanged; the reading behind it may no longer match what a fresh table would show. Rebuild the table in Cross tabs to check."
+          className="mt-1 flex items-center gap-1 text-amber-700"
+        >
+          <span className="font-medium">Design setting changed since this was built</span>
+        </div>
+      )}
+      {/* Brief 37 repair: distinct from "stale" - this could not be checked at all (a legacy
+          finding predating this check, or the document's current set-up couldn't be read just
+          now), which is not the same as a confirmed match. Previously showed nothing, exactly
+          like a genuine match would. */}
+      {finding.designFreshness === "unknown" && (
+        <div
+          title="Whether this finding's table still matches the document's current survey-design setting could not be verified - either it predates this check, or the document's set-up couldn't be read just now. Reload the page to check again; if it keeps failing, review the file's saved set-up in Cross tabs."
+          className="mt-1 flex items-center gap-1 text-slate-500"
+        >
+          <span className="font-medium">Design freshness could not be verified</span>
+        </div>
+      )}
       {finding.quote_verified === false && (
         <div
           title="The quoted sentence for this finding could not be found verbatim in the source text. Worth a manual check."
@@ -1028,11 +1061,13 @@ function FindingCard({
     finding.coding_counts.speakersWith !== null &&
     finding.coding_counts.speakersTotal !== null &&
     finding.coding_counts.speakersTotal > 0;
+  const { selectedId, select } = useContext(SelectionContext);
   return (
     <div
-      className={`card-surface flex flex-col gap-2.5 rounded-xl border border-l-4 bg-white p-4 ${cardBorderClass} ${borderLeftClass} ${
+      onClick={() => select(finding.id)}
+      className={`card-surface flex cursor-pointer flex-col gap-2.5 rounded-xl border border-l-4 bg-white p-4 ${cardBorderClass} ${borderLeftClass} ${
         finding.status === "rejected" ? "opacity-50" : ""
-      }`}
+      } ${selectedId === finding.id ? "ring-2 ring-primary/40" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         {themeLabel ? (
@@ -1261,6 +1296,7 @@ export default function FindingsTable({
   const [extraThemes, setExtraThemes] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [sortByReach, setSortByReach] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   // Findings-page charting, tier 1 (2026-10-05 decision): an opt-in layer on
   // top of the existing theme groups, not a replacement for them -- a theme
   // only ever gets a chart toggle when every finding in it is a
@@ -1738,42 +1774,90 @@ export default function FindingsTable({
   );
 
   return (
-    <div className="flex items-start gap-4">
-      <div ref={topRef} className="min-w-0 flex-1">
-        <div className="mb-3 inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+    <SelectionContext.Provider value={{ selectedId, select: setSelectedId }}>
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_24rem]">
+      <aside className="flex flex-col gap-4 rounded-xl border-2 border-sky-200 bg-sky-50 p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+        <div className="text-sm font-semibold text-foreground">Filters</div>
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">How it was drawn</div>
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
           {(
             [
-              ["all", "All findings", findings.length],
-              ["charts", "Chart findings", chartableFindingsCount],
-              ["stated", "Stated findings", statedFindingsCount],
+              [ALL, "All evidence"],
+              ["qualitative", "From words"],
+              ["quantitative", "From numbers"],
             ] as const
-          ).map(([value, label, count]) => (
+          ).map(([value, label]) => (
             <button
               key={value}
-              onClick={() => setActiveTab(value)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                activeTab === value
+              onClick={() => setDataTypeFilter(value)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                dataTypeFilter === value
                   ? "bg-primary-light text-primary"
                   : "text-muted hover:text-foreground"
               }`}
             >
               {label}
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                  activeTab === value
-                    ? "bg-white text-primary"
-                    : "bg-slate-100 text-muted"
-                }`}
-              >
-                {count}
-              </span>
             </button>
           ))}
+        </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Narrow down</div>
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className={`${selectClass} w-full`}
+          >
+            <option value={ALL}>All sources</option>
+            {sources.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
+          </select>
+          <select
+            value={themeFilter}
+            onChange={(e) => setThemeFilter(e.target.value)}
+            className={`${selectClass} w-full`}
+          >
+            <option value={ALL}>All themes</option>
+            {themes.map((theme) => (
+              <option key={theme} value={theme}>
+                {theme}
+              </option>
+            ))}
+          </select>
+          <select
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            className={`${selectClass} w-full`}
+          >
+            <option value={ALL}>All kinds</option>
+            {kindOrder.map((kind) => (
+              <option key={kind} value={kind}>
+                {kindLabel[kind]}
+              </option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`${selectClass} w-full`}
+          >
+            <option value={ALL}>All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <span className="text-xs text-muted">
+            Showing {filteredFindings.length} of {visibleFindings.length}
+          </span>
         </div>
         {(pillThemeOrder.length > 0 ||
           pillDuplicateCount > 0 ||
           filtersActive) && (
-          <div className="mb-3 grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
+          <div className="flex flex-col gap-1.5">
             {filtersActive && (
               <button
                 onClick={() => {
@@ -1831,77 +1915,39 @@ export default function FindingsTable({
             )}
           </div>
         )}
+      </aside>
+      <div ref={topRef} className="min-w-0">
         <div className="mb-3 inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
           {(
             [
-              [ALL, "All evidence"],
-              ["qualitative", "From words"],
-              ["quantitative", "From numbers"],
+              ["all", "All findings", findings.length],
+              ["charts", "Chart findings", chartableFindingsCount],
+              ["stated", "Stated findings", statedFindingsCount],
             ] as const
-          ).map(([value, label]) => (
+          ).map(([value, label, count]) => (
             <button
               key={value}
-              onClick={() => setDataTypeFilter(value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                dataTypeFilter === value
+              onClick={() => setActiveTab(value)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                activeTab === value
                   ? "bg-primary-light text-primary"
                   : "text-muted hover:text-foreground"
               }`}
             >
               {label}
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                  activeTab === value
+                    ? "bg-white text-primary"
+                    : "bg-slate-100 text-muted"
+                }`}
+              >
+                {count}
+              </span>
             </button>
           ))}
         </div>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className={selectClass}
-          >
-            <option value={ALL}>All sources</option>
-            {sources.map((source) => (
-              <option key={source} value={source}>
-                {source}
-              </option>
-            ))}
-          </select>
-          <select
-            value={themeFilter}
-            onChange={(e) => setThemeFilter(e.target.value)}
-            className={selectClass}
-          >
-            <option value={ALL}>All themes</option>
-            {themes.map((theme) => (
-              <option key={theme} value={theme}>
-                {theme}
-              </option>
-            ))}
-          </select>
-          <select
-            value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value)}
-            className={selectClass}
-          >
-            <option value={ALL}>All kinds</option>
-            {kindOrder.map((kind) => (
-              <option key={kind} value={kind}>
-                {kindLabel[kind]}
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className={selectClass}
-          >
-            <option value={ALL}>All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="accepted">Accepted</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <span className="text-xs text-muted">
-            Showing {filteredFindings.length} of {visibleFindings.length}
-          </span>
           {filteredFindings.length > 0 && (
             <div className="flex items-center gap-1.5">
               <button
@@ -2325,14 +2371,64 @@ export default function FindingsTable({
         )}
       </div>
 
-      {viewer && (
-        <div className="w-full max-w-[460px] shrink-0">
+      <div className="w-full lg:sticky lg:top-4 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+        {viewer ? (
           <DocumentPreviewPanel
             viewer={viewer}
             onClose={() => setViewer(null)}
           />
-        </div>
-      )}
+        ) : (
+          (() => {
+            const f = findings.find((x) => x.id === selectedId) ?? null;
+            if (!f) {
+              return (
+                <div className="rounded-xl border border-dashed border-border bg-white p-5 text-sm text-muted">
+                  <div className="mb-1 text-sm font-semibold text-foreground">Finding detail</div>
+                  Select a finding to see its full text, where it comes from, its checks and its note here.
+                </div>
+              );
+            }
+            return (
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-foreground">Finding detail</div>
+                  <ReviewButtons
+                    runId={runId}
+                    finding={f}
+                    isPending={isPending}
+                    startTransition={startTransition}
+                    onOptimisticStatus={setOptimisticStatus}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1 [&>*]:whitespace-nowrap">
+                  <OriginBadge origin={f.origin} />
+                  <DiscoveryBadges finding={f} />
+                  <CodingBadges finding={f} />
+                  <DataTypeBadge dataType={f.data_type} />
+                  <BasisBadge finding={f} />
+                </div>
+                <div className="text-sm text-foreground">{f.finding_text}</div>
+                <AssuranceNotes finding={f} />
+                <NoteField runId={runId} finding={f} />
+                <div className="border-t border-border pt-3">
+                  <SourceInfo
+                    finding={f}
+                    viewerLoadingId={viewerLoadingId}
+                    openPreview={openPreview}
+                  />
+                </div>
+                <KindControl
+                  runId={runId}
+                  finding={f}
+                  isPending={isPending}
+                  startTransition={startTransition}
+                />
+              </div>
+            );
+          })()
+        )}
+      </div>
     </div>
+    </SelectionContext.Provider>
   );
 }

@@ -12,12 +12,14 @@ import {
   loadCategories,
   loadCrosstab,
   loadVariableDictionary,
+  replicateCrosstabsToWave,
   setCrosstabText,
   type CrosstabListItem,
 } from "./crosstabs";
 import { planStarterTables } from "./starterTables";
 import { planCrosstabFromText, type AskPlan } from "./crosstabAsk";
 import type { CategoryList, CrosstabRequest, CrosstabResult, VariableDictionary } from "./parseStatsFile";
+import { summarizeCrosstabTable, type CrosstabInsights } from "./crosstabInsights";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -108,6 +110,45 @@ export async function loadCrosstabAction(
 ): Promise<{ ok: true; label: string; result: CrosstabResult | null } | Fail> {
   try {
     return { ok: true, ...(await loadCrosstab(TENANT_ID, runId, tableId)) };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+/**
+ * A plain, descriptive read of a saved crosstab table: what the numbers show,
+ * regenerated fresh each time. Never persisted and never fed into findings or
+ * insights (see crosstabInsights.ts for why).
+ */
+export async function summarizeCrosstabAction(
+  runId: string,
+  tableId: string,
+): Promise<{ ok: true; insights: CrosstabInsights } | Fail> {
+  try {
+    const { result } = await loadCrosstab(TENANT_ID, runId, tableId);
+    if (!result) return { ok: false, error: "This crosstab has no saved result." };
+    const insights = await summarizeCrosstabTable(TENANT_ID, runId, result);
+    return { ok: true, insights };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+/**
+ * Rebuilds every saved table from another document in this run (an earlier or later wave) onto
+ * this one, replaying each table's own banner, rows, filters, weight, design and correction as-is.
+ * The new tables land as drafts in this document's set alongside anything already here, same as
+ * any other table add; review and commit them the normal way.
+ */
+export async function replicateCrosstabsToWaveAction(
+  runId: string,
+  sourceDocumentId: string,
+  targetDocumentId: string,
+): Promise<{ ok: true; built: number; skipped: { label: string; reason: string }[] } | Fail> {
+  try {
+    const r = await replicateCrosstabsToWave(TENANT_ID, runId, sourceDocumentId, targetDocumentId);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }

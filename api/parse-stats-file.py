@@ -30,6 +30,8 @@ already has, which has no such limit since that's an ordinary storage
 download, not a function invocation payload.
 """
 
+import csv
+import hashlib
 import json
 import math
 import os
@@ -136,7 +138,13 @@ def _build_headers(raw_names, variable_labels):
     else its raw SPSS/Stata/SAS variable name. Two variables sharing a
     label (uncommon, but labels aren't required to be unique the way
     variable names are) get the raw name appended to disambiguate, so two
-    columns never collide into one.
+    columns never collide into one. The disambiguated form is itself
+    checked against what has already been used - appending the raw name
+    once was not enough when that exact "label (raw_name)" combination was
+    itself already taken by an earlier column (for example labels
+    "Shared (b)", "Shared", "Shared" over raw names a, c, b all resolve to
+    "Shared (b)" without this second check) - so a still-colliding result
+    keeps counting up (", #2", ", #3", ...) until it is actually unique.
     """
     headers = []
     seen = set()
@@ -144,6 +152,11 @@ def _build_headers(raw_names, variable_labels):
         label = variable_labels.get(raw_name) or raw_name
         if label in seen:
             label = f"{label} ({raw_name})"
+        n = 2
+        base = label
+        while label in seen:
+            label = f"{base}, #{n}"
+            n += 1
         seen.add(label)
         headers.append(label)
     return headers
@@ -250,7 +263,7 @@ MAX_COLUMN_GROUPS = 15
 MAX_ROW_CATEGORIES = 30
 NUMERIC_AS_CATEGORIES_MAX = 25
 # Bump when the dictionary changes shape, so saved copies are rebuilt.
-DICTIONARY_VERSION = 5
+DICTIONARY_VERSION = 6
 ENGINE_VERSION = "2026.10.09-7"  # bump when a calculation or a rule changes; stored with every table
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
@@ -264,12 +277,34 @@ _WEIGHT_RE = re.compile(r"weight|wgt|\bwt\b", re.IGNORECASE)
 
 class _PlainMeta:
     """Stand-in for pyreadstat metadata on files that carry no labels (CSV, Excel).
-    An Excel workbook can carry them on other sheets; see _excel_labels."""
+    An Excel workbook can carry them on other sheets; see _excel_labels and
+    _excel_codebook."""
 
-    def __init__(self, labels=None, value_labels=None, used=None):
+    def __init__(self, labels=None, value_labels=None, used=None, mr_sets=None, variable_measure=None, missing_ranges=None, label_conflicts=None, unsupported_identifier_columns=None):
         self.column_names_to_labels = labels or {}
         self.variable_value_labels = value_labels or {}
         self.sheets = used or {}
+        # variable name -> the multiple-response question it belongs to, read
+        # straight from a codebook sheet's own "Multiple response set" column
+        # rather than guessed from the variable name.
+        self.mr_sets = mr_sets or {}
+        # Both empty for a CSV/Excel file, which declares neither. For a
+        # pyreadstat-read file carried through _read_raw's cache, these are
+        # the real declared values (see _read_raw below) rather than always
+        # empty, which they silently became on every cache hit before this.
+        self.variable_measure = variable_measure or {}
+        self.missing_ranges = missing_ranges or {}
+        # A later sheet's (or the codebook's) label for the same variable or the same
+        # value code used to silently overwrite an earlier one with no record of which
+        # sheet or row won. Each entry here names the variable, what kind of label
+        # collided, the value that was kept and the one that was discarded, so a
+        # researcher can tell the import got the right one rather than guessing.
+        self.label_conflicts = label_conflicts or []
+        # IMP-SHIP-002 (Codex round 2): id-like columns whose Excel cell format this
+        # pipeline could not faithfully reproduce on this side - see
+        # _apply_zero_padded_id_formats. Empty for CSV (no cell-format concept) and for
+        # any file where every id-like column was plain text, unformatted, or zero-padding.
+        self.unsupported_identifier_columns = unsupported_identifier_columns or []
 
 
 TABLE_EXTS = (".csv", ".tsv", ".xlsx", ".xls")
@@ -309,6 +344,8 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
 
     names = set(data_columns)
     var_labels, value_labels, used = {}, {}, {"variables": None, "values": None}
+    var_label_sheet: dict[str, str] = {}
+    conflicts: list[dict] = []
     for sheet in other_sheets:
         try:
             raw = xl.parse(sheet, header=None, dtype=object)
@@ -339,9 +376,26 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
                 continue
             if pos["label"] is not None and not (has_values and pos["vlabel"] is None):
                 lab = body.loc[idx].iloc[pos["label"]]
-                if not pd.isna(lab) and str(lab).strip() and name not in var_labels:
-                    var_labels[name] = str(lab).strip()
-                    used["variables"] = sheet
+                if not pd.isna(lab) and str(lab).strip():
+                    lab = str(lab).strip()
+                    if name not in var_labels:
+                        var_labels[name] = lab
+                        var_label_sheet[name] = sheet
+                        used["variables"] = sheet
+                    elif var_labels[name] != lab:
+                        # First sheet to declare a label for this variable still wins (unchanged
+                        # behaviour), but a later, different one is now recorded rather than
+                        # dropped with no trace.
+                        conflicts.append(
+                            {
+                                "variable": name,
+                                "kind": "variable_label",
+                                "keptSheet": var_label_sheet.get(name),
+                                "kept": var_labels[name],
+                                "discardedSheet": sheet,
+                                "discarded": lab,
+                            }
+                        )
             if has_values:
                 key = body.loc[idx].iloc[pos["value"]]
                 lab = body.loc[idx].iloc[vl_pos]
@@ -354,25 +408,398 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
                         continue
                 else:
                     key = str(key).strip()
-                value_labels.setdefault(name, {})[key] = str(lab).strip()
+                lab = str(lab).strip()
+                existing = value_labels.setdefault(name, {})
+                if key in existing and existing[key] != lab:
+                    # Here the later sheet/row wins (unchanged behaviour); the earlier
+                    # value is what gets discarded and recorded.
+                    conflicts.append(
+                        {
+                            "variable": name,
+                            "kind": "value_label",
+                            "value": key,
+                            "keptSheet": sheet,
+                            "kept": lab,
+                            "discardedSheet": used.get("values"),
+                            "discarded": existing[key],
+                        }
+                    )
+                existing[key] = lab
                 used["values"] = sheet
-    return var_labels, value_labels, used
+    return var_labels, value_labels, used, conflicts
 
 
 
-def _read_plain(path: str, ext: str, usecols=None):
+_CB_VAR_RE = re.compile(r"variable", re.I)
+_CB_LABEL_RE = re.compile(r"label|question|wording|description", re.I)
+_CB_CODES_RE = re.compile(r"response code|value code|missing value|coded value|value label", re.I)
+_CB_SET_RE = re.compile(r"multiple response|mr ?set|multi.?response|question group", re.I)
+# Finds "N=label" entries in a packed codes cell such as
+# "0=Not selected; 1=Selected" or "0=None of listed brands used. 1=Platō Coffee.
+# 2=Mugg & Bean", splitting on whichever separator (; or .) sits before the
+# next code, so either style of codebook punctuation reads the same way.
+_CODE_ENTRY_RE = re.compile(r"(-?\d+)\s*=\s*(.*?)(?=(?:[;.]\s*[A-Za-z0-9-]+\s*=)|$)")
+
+
+def _parse_code_entries(text):
+    """"0=Not selected; 1=Selected" -> {0.0: "Not selected", 1.0: "Selected"}."""
+    out = {}
+    if text is None:
+        return out
+    for m in _CODE_ENTRY_RE.finditer(str(text)):
+        label = m.group(2).strip(" ;.\u2013-")
+        if not label:
+            continue
+        try:
+            out[float(m.group(1))] = label
+        except ValueError:
+            continue
+    return out
+
+
+def _excel_codebook(xl, other_sheets, data_columns):
+    """A one-row-per-variable codebook sheet: a Variable column, a label
+    column (however titled - "Variable label", "Variable label / question",
+    "Question wording"...), and usually a single column packing every value's
+    code and label together ("Response codes / missing values": "0=No;
+    1=Yes"), rather than one row per value the way _excel_labels expects.
+    Many teams document their own questionnaires this way; a documented
+    "Multiple response set" column, when present, is a stronger signal than
+    guessing a shared question from the variable names, so it is read too and
+    returned separately for the caller to use as an override."""
+    import pandas as pd
+
+    names = set(data_columns)
+    var_labels, value_labels, mr_sets = {}, {}, {}
+    conflicts: list[dict] = []
+    for sheet in other_sheets:
+        try:
+            raw = xl.parse(sheet, header=0, dtype=object)
+        except Exception:
+            continue
+        if raw.empty:
+            continue
+        cols = {str(c).strip().lower(): c for c in raw.columns if not str(c).lower().startswith("unnamed")}
+        # The variable-id column is matched strictly first (the same anchored pattern that
+        # already handles the row-per-value layout: "Variable", "Variable Name", "Var ID"...),
+        # since a loose "contains variable" search also matches compound headers like "Variable
+        # label / question" or "Variable type" and, on some sheets, picks the wrong one. Only a
+        # sheet with no strict match falls back to that loose search, and even then never onto
+        # something that already looks like a label/code/question column.
+        var_col = next((c for k, c in cols.items() if _VAR_COL_RE.match(k)), None)
+        if var_col is None:
+            var_col = next(
+                (c for k, c in cols.items() if _CB_VAR_RE.search(k) and not any(x in k for x in ("label", "code", "question"))),
+                None,
+            )
+        if var_col is None:
+            continue
+        label_col = next((c for k, c in cols.items() if _CB_LABEL_RE.search(k) and "set" not in k and "code" not in k), None)
+        codes_col = next((c for k, c in cols.items() if _CB_CODES_RE.search(k)), None)
+        set_col = next((c for k, c in cols.items() if _CB_SET_RE.search(k)), None)
+        if label_col is None and codes_col is None:
+            continue
+        found_any = False
+        for _, row in raw.iterrows():
+            name = row.get(var_col)
+            if pd.isna(name):
+                continue
+            name = str(name).strip()
+            if name not in names:
+                continue
+            found_any = True
+            if label_col is not None:
+                lab = row.get(label_col)
+                if not pd.isna(lab) and str(lab).strip():
+                    lab = str(lab).strip()
+                    # A duplicate variable row within the same codebook sheet: the last
+                    # row still wins (unchanged behaviour), the earlier one is recorded.
+                    if name in var_labels and var_labels[name] != lab:
+                        conflicts.append(
+                            {
+                                "variable": name,
+                                "kind": "variable_label",
+                                "keptSheet": sheet,
+                                "kept": lab,
+                                "discardedSheet": sheet,
+                                "discarded": var_labels[name],
+                            }
+                        )
+                    var_labels[name] = lab
+            if codes_col is not None:
+                entries = _parse_code_entries(row.get(codes_col))
+                if entries:
+                    if name in value_labels and value_labels[name] != entries:
+                        conflicts.append(
+                            {
+                                "variable": name,
+                                "kind": "value_label",
+                                "keptSheet": sheet,
+                                "kept": entries,
+                                "discardedSheet": sheet,
+                                "discarded": value_labels[name],
+                            }
+                        )
+                    value_labels[name] = entries
+            if set_col is not None:
+                key = row.get(set_col)
+                if not pd.isna(key) and str(key).strip():
+                    mr_sets[name] = str(key).strip()
+        if found_any:
+            break  # one codebook sheet is the normal case; stop once we've read one
+    return var_labels, value_labels, mr_sets, conflicts
+
+
+# pandas' default read_csv/read_excel NA-token matching (pandas.io.parsers.STR_NA_VALUES)
+# does not strip surrounding whitespace before comparing, so a literal "NA " (trailing
+# space) survives as a real string value instead of becoming missing - unlike
+# parseTable.ts's preview path, which strips the cell text before checking the same
+# token list. Keeping a second, stripped pass here after the read keeps both paths
+# producing the same missing cells for the same file.
+_NA_STRING_TOKENS = {
+    "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan",
+    "1.#IND", "1.#QNAN", "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null",
+}
+
+
+def _normalize_na_strings(df):
+    import pandas as pd
+
+    for c in df.columns:
+        if df[c].dtype == object:
+            df[c] = df[c].map(lambda v: None if isinstance(v, str) and v.strip() in _NA_STRING_TOKENS else v)
+    return df
+
+
+# A header naming an identifier ("ID", "Respondent ID", "Case_ID", "RespID", "UUID")
+# is read as text so a leading-zero identifier like "001" keeps its zero, instead of
+# pandas' usual column-wide numeric inference silently reading it as the integer 1.
+# Matched by whole token, not substring, so an ordinary word that happens to end in
+# "id" (Avoid, Valid, Solid, Void) is left to its normal, inferred dtype.
+_ID_HEADER_TOKENS = {"id", "ids", "uuid", "guid"}
+
+
+def _header_tokens(name):
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", str(name))
+    s = re.sub(r"[^A-Za-z0-9]+", " ", s)
+    return [t.lower() for t in s.split() if t]
+
+
+def _is_id_like_header(name):
+    return any(t in _ID_HEADER_TOKENS for t in _header_tokens(name))
+
+
+def _dedupe_header_names(headers: list[str]) -> list[str]:
+    """IMP-003: disambiguates a repeated header ("q, q, q (2)" -> "q", "q (2)", "q (3)"),
+    ported statement-for-statement from src/lib/parseTable.ts's dedupeHeaders() so the two
+    sides can never assign a colliding header a different canonical name.
+
+    MUST run on the raw header text before pandas ever constructs a DataFrame from it:
+    pd.read_csv/pd.ExcelFile.parse unconditionally rename a genuine duplicate column to
+    pandas' own "name", "name.1", "name.2" convention the moment they build the column
+    index (there is no way to opt out of this in current pandas), which silently replaced
+    this function's own job before it ever ran - df.columns.duplicated() downstream always
+    came back empty, because pandas had already resolved every duplicate under a DIFFERENT
+    naming convention than this one, before this function's own loop ever got a chance.
+    Calling this directly on the worksheet's own first row - read with header=None so
+    pandas never gets to name the columns itself - is the only way the two readers can
+    still agree on a collision's resulting name.
+    """
+    if len(set(headers)) == len(headers):
+        return list(headers)
+    used: set[str] = set(headers)
+    counts: dict[str, int] = {}
+    renamed: list[str] = []
+    for h in headers:
+        counts[h] = counts.get(h, 0) + 1
+        if counts[h] == 1:
+            renamed.append(h)
+            continue
+        n = counts[h]
+        candidate = f"{h} ({n})"
+        while candidate in used:
+            n += 1
+            candidate = f"{h} ({n})"
+        counts[h] = n
+        used.add(candidate)
+        renamed.append(candidate)
+    return renamed
+
+
+# IMP-SHIP-002 (Excel-specific residual gap, narrowed rather than eliminated): a numeric
+# cell whose leading zero comes only from a custom Excel number format (e.g. a respondent
+# ID column formatted "0000" so 7 displays as "0007") has no pandas equivalent - pandas
+# reads the underlying numeric value only, never the format code, so forcing dtype=str
+# there just stringifies the raw number ("7"), unlike a cell that stores "0007" as
+# literal text (which dtype=str already preserves exactly, no special handling needed).
+# This covers only the plain all-zero-digit-placeholder case ("0", "00", "0000", ...),
+# which is the realistic shape for a fixed-width ID column; a more elaborate custom
+# number format on an id-like column (thousands separators, conditional sections, text
+# sections) is a disclosed, narrower gap this does not attempt to re-derive.
+_ZERO_PAD_FORMAT_RE = re.compile(r"^0+$")
+GENERAL_FORMAT_RE = re.compile(r"^general$", re.I)
+
+
+# IMP-SHIP-001 (Codex round 2, "a missing selected sheet must produce an explicit
+# recovery state, never automatic substitution"): the Python counterpart of
+# src/lib/parseTable.ts's SheetSelectionLostError. Raised only when `selected_sheet` is a
+# non-empty name that no longer exists in this workbook; a `selected_sheet` of None/""
+# (nothing persisted yet for this document) is not an error and still resolves via the
+# normal ranking rule below.
+class SheetSelectionLostError(ValueError):
+    def __init__(self, document_sheet_name, available_sheets):
+        self.code = "SHEET_SELECTION_LOST"
+        self.document_sheet_name = document_sheet_name
+        self.available_sheets = list(available_sheets)
+        super().__init__(
+            f'This document\'s previously selected sheet "{document_sheet_name}" no longer exists in the '
+            f'workbook (available sheets: {", ".join(available_sheets) or "(none)"}). The file was likely '
+            "re-uploaded with a different layout. Re-confirm which sheet holds this document's data before "
+            "reading it again."
+        )
+
+
+# IMP-SHIP-001 (Codex round 2): counts a sheet's actual DATA rows (any row, after the
+# header row, with at least one non-blank cell) - mirrors src/lib/parseTable.ts's
+# countDataRows() exactly. This replaced ranking candidate sheets by
+# `xl.parse(n, header=None).size` (the parsed dataframe's cell count, which still counts
+# every cell in the sheet's used range whether or not it actually holds a value), which
+# Codex's Sparse/Dense fixture showed could disagree with the TS preview's old
+# `!ref`-extent ranking in the same direction: a sheet formatted out to a large empty
+# range (for example formatting applied across A1:J101 with only one real row of data)
+# inflates its apparent size on EITHER of the old per-side heuristics, independently of
+# the other. Counting only rows that actually contain a value removes the disagreement at
+# its source - both sides now rank by the same real quantity - rather than relying solely
+# on provenance persistence to paper over two different answers.
+def _is_blank_or_na_token(value) -> bool:
+    """Codex round 3: the canonical "missing for ranking purposes" rule, shared with
+    parseTable.ts's `countDataRows`. A plain pandas `.notna()` check is not enough here:
+    it does not strip whitespace before comparing against pandas' own default NA-token
+    list (so "NA " with a trailing space survives as a real string instead of becoming
+    missing), and the TypeScript preview's own ranking path strips the cell text before
+    checking the same token list. Reusing `_NA_STRING_TOKENS` (already applied elsewhere
+    in this file via `_normalize_na_strings`) after a trim keeps both readers counting
+    the same rows as "has data" for the identical file."""
+    try:
+        import pandas as pd
+
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return text == "" or text in _NA_STRING_TOKENS
+
+
+def _count_data_rows(xl, sheet_name) -> int:
+    raw = xl.parse(sheet_name, header=None)
+    if raw.shape[0] <= 1:
+        return 0
+    body = raw.iloc[1:]
+    count = 0
+    for _, row in body.iterrows():
+        if any(not _is_blank_or_na_token(v) for v in row):
+            count += 1
+    return count
+
+
+def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
+    """IMP-SHIP-002: reconstructs a plain zero-padded display value (e.g. "0007" for the
+    stored number 7, formatted "0000") that pandas' own dtype=str forcing cannot - pandas
+    only ever sees the underlying numeric value, never the Excel format code. Also
+    collects, and returns, every id-like column whose cell carries some OTHER non-general
+    numeric format: Codex round 2 asked for "identical canonical IDs, or an explicit
+    unsupported-state response" rather than this pipeline silently guessing at formats
+    it cannot faithfully reproduce (thousands separators, conditional/text sections,
+    non-digit placeholders). Returns the set of such column names; an empty set means
+    every id-like column was either unformatted, zero-padding, or already literal text."""
+    id_positions = [i for i, h in enumerate(headers) if _is_id_like_header(h)]
+    unsupported: set[str] = set()
+    if not id_positions:
+        return unsupported
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb[sheet_name]
+    except Exception:
+        return unsupported  # best effort: a read failure here just leaves the plain numeric string
+    try:
+        for col_idx in id_positions:
+            for row_i in range(len(df)):
+                sheet_row = row_i + 2  # row 1 is the header row this file already consumed
+                cell = ws.cell(row=sheet_row, column=col_idx + 1)
+                fmt = cell.number_format or ""
+                value = cell.value
+                if not isinstance(value, (int, float)) or GENERAL_FORMAT_RE.match(fmt or "General"):
+                    continue
+                if _ZERO_PAD_FORMAT_RE.match(fmt):
+                    try:
+                        as_int = int(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if as_int == value:
+                        df.iat[row_i, col_idx] = str(as_int).zfill(len(fmt))
+                else:
+                    # Codex round 3, "prevent affected identifiers from silently entering
+                    # inconsistent calculations": this pipeline cannot faithfully
+                    # reproduce this cell's Excel display format, so the dtype=str
+                    # forced value sitting in `df` right now (the bare digits, with no
+                    # separators/padding) is not a value this reader can vouch for - it
+                    # may not match what a researcher saw in the preview, or what any
+                    # other consumer of this same file would compute. Rather than leave
+                    # that unverifiable guess in place where a crosstab, join or export
+                    # could silently use it as if it were a confirmed identifier, this
+                    # cell is nulled out: a missing value is an explicit, visible gap
+                    # that downstream code already has to handle, not a wrong answer
+                    # that looks like a right one. `unsupportedIdentifierColumns` (now
+                    # threaded to the UI's import-quality panel) is what explains why.
+                    unsupported.add(headers[col_idx])
+                    df.iat[row_i, col_idx] = None
+    finally:
+        wb.close()
+    return unsupported
+
+
+def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=None):
     """CSV, TSV and Excel case-level files: one row per case, header row of names.
     No variable labels or value labels exist, so names stand in for labels and
     coded answers stay as they are (the dictionary treats a numeric column with
     few distinct values as categories)."""
     import pandas as pd
 
+    unsupported_id_formats: set[str] = set()  # CSV has no cell-format concept; only Excel can populate this
     if ext in (".csv", ".tsv"):
-        sep = "\t" if ext == ".tsv" else ","
+        if ext == ".tsv":
+            sep = "\t"
+        else:
+            # A plain "," default used to mean a semicolon-delimited CSV (the common export
+            # format wherever the system locale uses a comma as the decimal separator) silently
+            # became a single column, with every field crammed into one header. Sniffed instead,
+            # the same way a researcher's own spreadsheet software would read it, from whichever
+            # of the two delimiters is more consistent across the file's first several lines.
+            with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+                sample = "".join(fh.readline() for _ in range(10))
+            try:
+                sep = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+            except csv.Error:
+                sep = ","
         last = None
         for enc in ("utf-8-sig", "latin-1"):
             try:
-                df = pd.read_csv(path, sep=sep, encoding=enc, low_memory=False)
+                # IMP-003: header=None + nrows=1 reads the header row AS DATA, so pandas never
+                # gets a chance to apply its own "name", "name.1", "name.2" mangling to a
+                # duplicate column before this file's own disambiguation runs - see
+                # _dedupe_header_names for why that matters. The real data read below
+                # likewise uses header=None (skipping that same row) so the final column
+                # names are entirely this file's own choice, not pandas'.
+                raw_row = pd.read_csv(path, sep=sep, encoding=enc, header=None, nrows=1).iloc[0].tolist()
+                raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
+                headers = _dedupe_header_names(raw_headers)
+                id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
+                df = pd.read_csv(
+                    path, sep=sep, encoding=enc, low_memory=False, header=None, skiprows=1, dtype=id_dtype
+                )
+                df.columns = headers
                 break
             except UnicodeDecodeError as exc:
                 last = exc
@@ -382,26 +809,190 @@ def _read_plain(path: str, ext: str, usecols=None):
     else:
         xl = pd.ExcelFile(path)
         sheets = list(xl.sheet_names)
-        candidates = [n for n in sheets if not _DICT_SHEET_RE.search(n)] or sheets
-        data_sheet = max(candidates, key=lambda n: xl.parse(n, header=None).size)
-        df = xl.parse(data_sheet)
-    df.columns = [str(c).strip() for c in df.columns]
-    df = df.loc[:, ~df.columns.duplicated()]
+        # IMP-SHIP-001 (Codex round 2): a sheet choice a prior read of this same document
+        # already resolved (persisted on documents.selected_sheet) is used directly rather
+        # than re-derived. If it no longer names a real sheet in this workbook (a
+        # re-uploaded file could have dropped it), this raises SheetSelectionLostError
+        # instead of silently falling back to an independently re-derived sheet - "a
+        # missing selected sheet must produce an explicit recovery state, never automatic
+        # substitution". A selected_sheet of None/"" (nothing persisted for this document
+        # yet) is the legitimate first-ever read and still resolves via the ranking rule.
+        if selected_sheet:
+            if selected_sheet not in sheets:
+                raise SheetSelectionLostError(selected_sheet, sheets)
+            data_sheet = selected_sheet
+        else:
+            candidates = [n for n in sheets if not _DICT_SHEET_RE.search(n)] or sheets
+            data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
+        # IMP-003: same reasoning as the CSV branch above - xl.parse(..., header=0) would let
+        # pandas mangle a duplicate header to its own "name"/"name.1" convention before this
+        # file's own _dedupe_header_names ever ran. header=None + nrows=1 reads the header
+        # row as plain data instead, so this file keeps full control of the resulting name.
+        raw_row = xl.parse(data_sheet, header=None, nrows=1).iloc[0].tolist()
+        raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
+        headers = _dedupe_header_names(raw_headers)
+        id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
+        df = xl.parse(data_sheet, header=None, skiprows=1, dtype=id_dtype)
+        df.columns = headers
+        unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
+    df = _normalize_na_strings(df)
     df = df.dropna(how="all")
-    meta = _PlainMeta()
+    meta = _PlainMeta(unsupported_identifier_columns=sorted(unsupported_id_formats))
     if xl is not None and len(sheets) > 1:
         numeric_cols = {c for c in df.columns if df[c].dtype.kind in "fiu"}
-        labs, vlabs, used = _excel_labels(xl, [n for n in sheets if n != data_sheet], list(df.columns), numeric_cols)
+        other = [n for n in sheets if n != data_sheet]
+        labs, vlabs, used, conflicts = _excel_labels(xl, other, list(df.columns), numeric_cols)
+        # A one-row-per-variable codebook sheet (see _excel_codebook) is a
+        # different shape from the row-per-value layout _excel_labels reads,
+        # so it is tried separately; where both find something for the same
+        # variable the codebook's own column wins, since it is the more
+        # deliberately authored source. That preference is itself a kind of
+        # override, so a difference between the two sources is recorded here
+        # too, not just overwrites within one source.
+        cb_labs, cb_vlabs, mr_sets, cb_conflicts = _excel_codebook(xl, other, list(df.columns))
+        conflicts = conflicts + cb_conflicts
+        if cb_labs:
+            for name, lab in cb_labs.items():
+                if name in labs and labs[name] != lab:
+                    conflicts.append(
+                        {
+                            "variable": name,
+                            "kind": "variable_label",
+                            "keptSheet": "codebook",
+                            "kept": lab,
+                            "discardedSheet": used.get("variables"),
+                            "discarded": labs[name],
+                        }
+                    )
+            labs = {**labs, **cb_labs}
+            used["variables"] = "codebook"
+        if cb_vlabs:
+            for name, entries in cb_vlabs.items():
+                if name in vlabs and vlabs[name] != entries:
+                    conflicts.append(
+                        {
+                            "variable": name,
+                            "kind": "value_label",
+                            "keptSheet": "codebook",
+                            "kept": entries,
+                            "discardedSheet": used.get("values"),
+                            "discarded": vlabs[name],
+                        }
+                    )
+            vlabs = {**vlabs, **cb_vlabs}
+            used["values"] = "codebook"
         used["data"] = data_sheet
-        meta = _PlainMeta(labs, vlabs, used)
+        meta = _PlainMeta(labs, vlabs, used, mr_sets, label_conflicts=conflicts)
     if xl is not None:
         xl.close()  # Windows will not delete a temp file that is still open
+    if layout == "columns_are_cases":
+        # A raw file laid out with variables in rows and cases in columns, flipped here the same
+        # way transposeTable (dataSetup.ts) flips the stored preview table - so the dictionary,
+        # crosstab and driver actions below see the same one-row-per-case shape the preview does,
+        # instead of silently reading the original, unflipped orientation as before this fix.
+        # Any variable/value labels read above came from the ORIGINAL (pre-flip) column names and
+        # are not re-targeted at the new ones; a workbook that both needs this flip and carries a
+        # separate codebook sheet is a narrow enough combination that this is a known, documented
+        # gap rather than a blocker on the much more common single-orientation-mismatch case.
+        key_col = df.columns[0]
+        # Same collision this file's plain-header renamer had (see the `used` set above): counting
+        # occurrences of a base name alone can generate "X (2)" for a second "X" even when a real,
+        # distinct case already used that literal value as its own key. Tracking every name already
+        # claimed, not just a per-base-name count, keeps a generated name from landing on one.
+        used_names: set[str] = set()
+        for v in df[key_col].tolist():
+            base = str(v).strip() if v is not None and str(v).strip() else None
+            if base:
+                used_names.add(base)
+        seen: dict[str, int] = {}
+        names = []
+        for i, v in enumerate(df[key_col].tolist()):
+            base = str(v).strip() if v is not None and str(v).strip() else f"Variable {i + 1}"
+            seen[base] = seen.get(base, 0) + 1
+            if seen[base] == 1:
+                names.append(base)
+                continue
+            n = seen[base]
+            candidate = f"{base} ({n})"
+            while candidate in used_names:
+                n += 1
+                candidate = f"{base} ({n})"
+            seen[base] = n
+            used_names.add(candidate)
+            names.append(candidate)
+        flipped = df.drop(columns=[key_col]).transpose()
+        flipped.columns = names
+        flipped = flipped.reset_index(drop=True)
+        df = flipped
     if usecols:
         df = df[[c for c in usecols if c in df.columns]]
     return df, meta
 
 
-def _read_raw(file_bytes: bytes, source_filename: str, usecols=None):
+# Reading a data file is the slow part of every call. A long-lived process
+# (the local worker, or a warm serverless instance) keeps the last couple of
+# files it read, keyed by their content, so the next table built from the same
+# file starts from memory. Only the labels are copied out per call, because the
+# questionnaire overlay edits them; a column slice is already a copy.
+_READ_CACHE: dict = {}
+_READ_CACHE_FILES = 2
+_READ_CACHE_MAX_MB = 400
+
+
+def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None):
+    ext = os.path.splitext(source_filename.lower())[1]
+    # layout is part of the cache key too: the same bytes read once with no layout set and once
+    # with "columns_are_cases" are two different tables, not the same one served twice.
+    # IMP-SHIP-001: selected_sheet is part of the key for the same reason - a cached read from
+    # before a sheet choice was persisted, or read under a DIFFERENT persisted choice, must never
+    # be served back for a call that now names a sheet, or a stale cache entry could silently
+    # reintroduce the preview/calculation sheet-disagreement this column exists to prevent.
+    key = hashlib.sha1(file_bytes).hexdigest() + ext + (f"|{layout}" if layout else "") + (f"|sheet={selected_sheet}" if selected_sheet else "")
+    hit = _READ_CACHE.get(key)
+    if hit is None:
+        df, meta = _read_raw_uncached(file_bytes, source_filename, None, layout, selected_sheet)
+        size_mb = float(df.memory_usage(deep=False).sum()) / (1024 * 1024)
+        if size_mb > _READ_CACHE_MAX_MB:
+            # Too big to keep: answer this call from the full read and move on.
+            return _slice_read(df, meta, usecols)
+        while len(_READ_CACHE) >= _READ_CACHE_FILES:
+            _READ_CACHE.pop(next(iter(_READ_CACHE)))
+        hit = (
+            df,
+            dict(getattr(meta, "column_names_to_labels", None) or {}),
+            dict(getattr(meta, "variable_value_labels", None) or {}),
+            dict(getattr(meta, "sheets", None) or {}),
+            dict(getattr(meta, "mr_sets", None) or {}),
+            dict(getattr(meta, "variable_measure", None) or {}),
+            dict(getattr(meta, "missing_ranges", None) or {}),
+            # A contradiction between two label sources (two sheets disagreeing on what code 1
+            # means) is itself a finding worth surfacing every time the dictionary is read, not
+            # just the first time this file happens to be read cold. Reconstructing meta from the
+            # cache without it used to mean the very same file, re-read from the warm cache,
+            # silently stopped reporting a conflict it had reported moments before.
+            list(getattr(meta, "label_conflicts", None) or []),
+            list(getattr(meta, "unsupported_identifier_columns", None) or []),
+        )
+        _READ_CACHE[key] = hit
+    df, labels, vlabels, sheets, mr_sets, measure, missing_ranges, label_conflicts, unsupported_identifier_columns = hit
+    return _slice_read(
+        df,
+        _PlainMeta(
+            dict(labels), dict(vlabels), dict(sheets), dict(mr_sets), dict(measure), dict(missing_ranges),
+            label_conflicts=list(label_conflicts),
+            unsupported_identifier_columns=list(unsupported_identifier_columns),
+        ),
+        usecols,
+    )
+
+
+def _slice_read(df, meta, usecols):
+    if usecols:
+        return df[[c for c in usecols if c in df.columns]], meta
+    return df.copy(), meta
+
+
+def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None):
     ext = os.path.splitext(source_filename.lower())[1]
     reader = READERS.get(ext)
     if reader is None and ext in TABLE_EXTS:
@@ -409,11 +1000,27 @@ def _read_raw(file_bytes: bytes, source_filename: str, usecols=None):
             tmp.write(file_bytes)
             tmp_path = tmp.name
         try:
-            return _read_plain(tmp_path, ext, usecols)
+            return _read_plain(tmp_path, ext, usecols, layout, selected_sheet)
         finally:
             _remove_quietly(tmp_path)
     if reader is None:
         raise ValueError(f"Unsupported data file extension: {ext or '(none)'}")
+    if layout == "columns_are_cases":
+        # The flip _read_plain applies for a plain CSV/Excel file assumes a lone key column of
+        # case identifiers and no pre-existing variable/value labels to re-target. An SPSS/Stata/
+        # SAS file already declares its own row-is-a-case structure, with labels and measurement
+        # levels keyed to that structure by pyreadstat - silently reading it unflipped while every
+        # caller (dictionary, crosstab, driver columns) believes the flip happened would make the
+        # reported labels, case counts and calculations disagree with what the file actually holds.
+        # Failing closed here, rather than guessing at a transpose with no labels to carry over, is
+        # the safer gap until this format's own flip (with proper label re-targeting) is built.
+        raise ValueError(
+            "This file's layout is set to \"columns_are_cases\", but that flip is only supported "
+            "for plain CSV/TSV/Excel files, not SPSS (.sav), Stata (.dta) or SAS (.sas7bdat) files, "
+            "which already declare their own case/variable structure. Set the layout back to "
+            "\"rows_are_cases\" for this file, or re-export it as CSV/Excel first if it genuinely "
+            "needs flipping."
+        )
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(file_bytes)
         tmp_path = tmp.name
@@ -466,22 +1073,33 @@ def _apply_overlay(df, meta, overlay):
             vlabels[name] = mapped
 
 
-def _read(file_bytes: bytes, source_filename: str, usecols=None, overlay=None):
-    df, meta = _read_raw(file_bytes, source_filename, usecols)
+def _read(file_bytes: bytes, source_filename: str, usecols=None, overlay=None, layout=None, selected_sheet=None):
+    df, meta = _read_raw(file_bytes, source_filename, usecols, layout, selected_sheet)
     _apply_overlay(df, meta, overlay)
     return df, meta
 
 
 _YES_RE = re.compile(r"^(yes|selected|mentioned|ticked|checked|chosen|true)\b", re.IGNORECASE)
 _NO_RE = re.compile(r"^(no\b|not (selected|mentioned|ticked|checked|chosen)|unchecked|false)", re.IGNORECASE)
-_SET_NAME_RE = re.compile(r"^(.+?)_(\d+)$")
+# A trailing short letter tag before the number (brand trackers commonly
+# suffix a per-brand flag "_b1", "_b2" rather than a bare "_1", "_2") still
+# counts as one option of the same multi-response question.
+_SET_NAME_RE = re.compile(r"^(.+?)_([A-Za-z]{0,3}\d+)$")
 _LEAD_CODE_RE = re.compile(r"^[A-Za-z0-9_]+\.\s*")
 
 
-def _single_valued_code(col, v, labels):
+def _single_valued_code(col, v, labels, trust_domain=False):
     """An option nobody chose (or everybody chose) has only one value in the
     file. It is still an option of its question and must keep its row, at 0%
-    (or 100%), so work out which code means "selected" from the labels."""
+    (or 100%), so work out which code means "selected" from the labels.
+    trust_domain mirrors the flag of the same name on _selected_code: for a
+    variable a codebook already names as part of a multiple-response set, its
+    value labels may use domain-specific wording ("Associated" / "Not
+    associated") rather than the fixed yes/no vocabulary below, so once that
+    text fails to resolve, a plain 0/1 domain is still trusted as meaning
+    "selected"/"not selected" (IMP-011: previously this branch ignored
+    trust_domain entirely and such an option was always reported as None,
+    i.e. dropped from its own declared set)."""
     if labels:
         def lab_of(k):
             lab = labels.get(k)
@@ -489,30 +1107,40 @@ def _single_valued_code(col, v, labels):
                 lab = labels.get(int(k))
             return lab
         lab = lab_of(v)
-        if lab is None:
-            return None
-        if _YES_RE.match(str(lab)):
-            return v
-        if _NO_RE.match(str(lab)):
-            others = [k for k, l in labels.items()
-                      if k != v and not _NO_RE.match(str(l)) and not _DK_RE.match(str(l).strip())]
-            if len(others) == 1:
-                return others[0]
-            yes = [k for k in others if _YES_RE.match(str(labels[k]))]
-            if len(yes) == 1:
-                return yes[0]
+        if lab is not None:
+            if _YES_RE.match(str(lab)):
+                return v
+            if _NO_RE.match(str(lab)):
+                others = [k for k, l in labels.items()
+                          if k != v and not _NO_RE.match(str(l)) and not _DK_RE.match(str(l).strip())]
+                if len(others) == 1:
+                    return others[0]
+                yes = [k for k in others if _YES_RE.match(str(labels[k]))]
+                if len(yes) == 1:
+                    return yes[0]
+        if trust_domain:
+            try:
+                domain = set(float(k) for k in labels.keys())
+            except (TypeError, ValueError):
+                domain = set()
+            if domain == {0.0, 1.0}:
+                return 1 if col.dtype.kind in "iu" else 1.0
         return None
     if col.dtype.kind in "fiu" and float(v) in (0.0, 1.0):
         return 1 if col.dtype.kind in "iu" else 1.0
     return None
 
 
-def _selected_code(col, labels):
+def _selected_code(col, labels, trust_domain=False):
     """The value that means "selected" in a yes/no style option variable, or
-    None when the variable is not a two-value flag."""
+    None when the variable is not a two-value flag. trust_domain is for a
+    variable a codebook already names as part of a multiple-response set: its
+    value labels may not use the fixed yes/no vocabulary ("Associated" /
+    "Not associated", say), so a plain 0/1 domain is trusted outright rather
+    than only when unlabelled."""
     present = [v for v in col.dropna().unique()]
     if len(present) == 1:
-        return _single_valued_code(col, present[0], labels)
+        return _single_valued_code(col, present[0], labels, trust_domain=trust_domain)
     if len(present) != 2:
         return None
     if labels:
@@ -531,7 +1159,8 @@ def _selected_code(col, labels):
                 olab = labels.get(int(other))
             if olab is not None and _NO_RE.match(str(olab)):
                 return v
-        return None
+        if not trust_domain:
+            return None
     if col.dtype.kind in "fiu" and set(float(x) for x in present) == {0.0, 1.0}:
         return 1 if 1 in present else 1.0
     return None
@@ -608,11 +1237,15 @@ def _audit(df, meta, variables, value_labels):
     return out
 
 
-def dictionary(file_bytes: bytes, source_filename: str) -> dict:
-    df, meta = _read(file_bytes, source_filename)
+def dictionary(file_bytes: bytes, source_filename: str, args: dict | None = None) -> dict:
+    df, meta = _read(file_bytes, source_filename, layout=(args or {}).get("layout"), selected_sheet=(args or {}).get("selectedSheet"))
     n = len(df)
     labels = meta.column_names_to_labels or {}
     value_labels = meta.variable_value_labels or {}
+    # A codebook sheet's own "Multiple response set" column, when the file has
+    # one, names each variable's question group directly rather than leaving
+    # it to be guessed from a shared name stem.
+    mr_sets = getattr(meta, "mr_sets", None) or {}
     variables = []
     flags = {}
     for name in df.columns:
@@ -620,7 +1253,7 @@ def dictionary(file_bytes: bytes, source_filename: str) -> dict:
         n_valid = int(col.notna().sum())
         label = labels.get(name) or name
         numeric = col.dtype.kind in "fiu"
-        is_flag = _selected_code(col, value_labels.get(name)) is not None
+        is_flag = _selected_code(col, value_labels.get(name), trust_domain=bool(mr_sets.get(name))) is not None
         flags[name] = is_flag
         m = _SET_NAME_RE.match(name)
         variables.append(
@@ -635,7 +1268,7 @@ def dictionary(file_bytes: bytes, source_filename: str) -> dict:
                 "weightLike": bool(numeric and (_WEIGHT_RE.search(name) or _WEIGHT_RE.search(label))),
                 "isFlag": is_flag,
                 "text": bool(not numeric and not value_labels.get(name)),
-                "setKey": m.group(1) if m else None,
+                "setKey": mr_sets.get(name) or (m.group(1) if m else None),
             }
         )
     # Multiple-response sets: two or more yes/no option variables sharing a
@@ -683,7 +1316,9 @@ def dictionary(file_bytes: bytes, source_filename: str) -> dict:
         if len(members) < 3:
             continue
         stem, _cleaned = _stem([m["label"] for m in members])
-        if len(stem) < 8:
+        # 8 chars excluded short-but-real question stems ("Opinion", "Rating");
+        # 5 still screens out coincidental 1-4 char code-name overlaps.
+        if len(stem) < 5:
             continue
         grid = all(m["numeric"] and not m["labelled"] for m in members)
         for m in members:
@@ -733,13 +1368,34 @@ def dictionary(file_bytes: bytes, source_filename: str) -> dict:
                 "pctValid": max(m["pctValid"] for m in members),
             }
         )
-    out = {"version": DICTIONARY_VERSION, "nCases": n, "variables": variables, "sets": sets}
+    out = {
+        "version": DICTIONARY_VERSION,
+        "nCases": n,
+        "variables": variables,
+        "sets": sets,
+        # Exact duplicate cases across every variable in the file (not just the
+        # kept subset), so the import quality report can report this uncapped
+        # too: pandas' own fast row-hash dedup, same full `df` as above.
+        "duplicateCases": int(df.duplicated(keep="first").sum()),
+    }
     try:
         out["audit"] = _audit(df, meta, variables, value_labels)
     except Exception:  # the audit is a convenience; the dictionary must still load
         out["audit"] = None
     if getattr(meta, "sheets", None):
         out["sheets"] = meta.sheets
+    # Codex round 2, "define supported identifier-format behavior": surfaced so a caller
+    # can report "this identifier column's formatting may not match the preview" instead
+    # of the two sides silently disagreeing with no signal either side was even aware of a risk.
+    if getattr(meta, "unsupported_identifier_columns", None):
+        out["unsupportedIdentifierColumns"] = list(meta.unsupported_identifier_columns)
+    # A label-source workbook with conflicting definitions for the same variable or value,
+    # across sheets or against the codebook, used to just silently pick one with nothing to
+    # show for it. Capped: a badly structured workbook could otherwise produce one entry per
+    # row, and this is a diagnostic, not a full audit trail.
+    conflicts = getattr(meta, "label_conflicts", None)
+    if conflicts:
+        out["labelConflicts"] = conflicts[:50]
     return out
 
 
@@ -759,10 +1415,66 @@ def _decode(series, labels):
     return series.map(f)
 
 
-def _ordered_categories(decoded, labels):
+def _ordered_categories(decoded, labels, include_unobserved=False):
+    """include_unobserved keeps a declared category with zero observed cases in the result (at the
+    end of its default position it would occupy if sample attrition hadn't hidden it). Off by
+    default to avoid widening every crosstab row/column this already feeds (that is a bigger change,
+    reviewed in its own right); on for `categories()`, the group/top-box picker, where a researcher
+    choosing which answers to combine needs to see a scale's full declared domain, not just whichever
+    of its points this particular sample happened to use."""
     present = [c for c in decoded.dropna().unique()]
     if labels:
-        order = [labels[k] for k in sorted(labels) if labels[k] in present]
+        domain = [labels[k] for k in sorted(labels)]
+        if include_unobserved:
+            # Every declared category in its declared domain position, observed or not - a
+            # middle category sample attrition hid (declared order Low/Middle/High, nothing
+            # observed for Middle) used to be filtered out of `order` here and then appended
+            # at the very end ("Low, High, Middle"), rather than left in the slot it would
+            # have occupied ("Low, Middle, High"). Starting from the full domain, instead of
+            # the present-only list filtered against it, keeps that declared order intact.
+            order = list(domain)
+            order += [c for c in present if c not in order]
+            return order
+        order = [c for c in domain if c in present]
+        order += [c for c in present if c not in order]
+        return order
+    try:
+        return sorted(present)
+    except TypeError:
+        return sorted(present, key=str)
+
+
+def _raw_key(v, labels):
+    """The exact key _decode's own lookup would use for v against `labels` - v itself when it
+    (or its integer-valued float form) matches a declared code, otherwise v unchanged. Mirrors
+    _decode's f() branching exactly, so cat in labels here always agrees with whether _decode
+    would have found a label for the same value. Used to build raw-code category identity
+    (ANA-BRAND-002 / IMP-003) alongside _decode's label TEXT, which two distinct codes can share."""
+    if v is None or (isinstance(v, float) and math.isnan(v)):
+        return None
+    if v in labels:
+        return v
+    if isinstance(v, float) and v.is_integer() and int(v) in labels:
+        return int(v)
+    return v
+
+
+def _ordered_categories_raw(ident_valid, labels, include_unobserved=False):
+    """Like _ordered_categories, but category identity is the raw declared/observed CODE (as
+    _raw_key resolves it), not the decoded label text. Two different codes that happen to share
+    the same display label (a codebook with code 1 and code 2 both labelled "Good") stay two
+    distinct categories here instead of silently merging into one - the bug _ordered_categories
+    has when label text is used as identity. include_unobserved mirrors _ordered_categories'
+    own flag: every declared code from `labels`, in declared order, including ones with zero
+    observed cases this sample, is kept rather than only the codes actually present."""
+    present = [c for c in ident_valid.dropna().unique()]
+    if labels:
+        domain = sorted(labels.keys())
+        if include_unobserved:
+            order = list(domain)
+            order += [c for c in present if c not in order]
+            return order
+        order = [c for c in domain if c in present]
         order += [c for c in present if c not in order]
         return order
     try:
@@ -775,17 +1487,85 @@ def _p_two_sided(z: float) -> float:
     return math.erfc(abs(z) / math.sqrt(2))
 
 
+def _betacf(a: float, b: float, x: float) -> float:
+    """Continued fraction for the incomplete beta function (Numerical Recipes, betacf)."""
+    maxit, eps, fpmin = 200, 3e-16, 1e-300
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < fpmin:
+        d = fpmin
+    d = 1.0 / d
+    h = d
+    for m in range(1, maxit + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        d = fpmin if abs(d) < fpmin else d
+        c = 1.0 + aa / c
+        c = fpmin if abs(c) < fpmin else c
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        d = fpmin if abs(d) < fpmin else d
+        c = 1.0 + aa / c
+        c = fpmin if abs(c) < fpmin else c
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < eps:
+            break
+    return h
+
+
+def _betai(a: float, b: float, x: float) -> float:
+    """Regularised incomplete beta function I_x(a, b) (Numerical Recipes, betai)."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    bt = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b) + a * math.log(x) + b * math.log(1.0 - x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return bt * _betacf(a, b, x) / a
+    return 1.0 - bt * _betacf(b, a, 1.0 - x) / b
+
+
+def _p_two_sided_t(t: float, df: float) -> float:
+    """Two-sided p-value of a Student's t statistic with df degrees of freedom, via the
+    identity P(|T| > |t|) = I_{df / (df + t^2)}(df/2, 1/2). Falls back to the normal
+    (z) reference when df is not usable (zero or negative)."""
+    if df is None or df <= 0 or not math.isfinite(t):
+        return _p_two_sided(t)
+    x = df / (df + t * t)
+    return _betai(df / 2.0, 0.5, x)
+
+
+def _p_two_sided_design(z: float, dsg) -> float:
+    """ANA-XTAB-002: a linearised design-based standard error (Taylor series over PSUs,
+    optionally within strata) does not make a z-statistic asymptotically normal the way an
+    i.i.d. sample does - with few PSUs the reference distribution needs fattened tails, the
+    same correction R's survey package and Stata's svy commands apply by using the design
+    degrees of freedom (PSUs minus strata) as a Student's t reference rather than the normal.
+    Used only where the paired standard error itself already came from dsg.var_totals; an
+    unweighted/undesigned comparison keeps the plain normal reference in _p_two_sided."""
+    if dsg is None:
+        return _p_two_sided(z)
+    df = dsg.info.get("nPsu", 0) - dsg.info.get("nStrata", 0)
+    return _p_two_sided_t(z, df)
+
+
 def _se_prop(p, n_eff):
     return math.sqrt(p * (1 - p) / n_eff)
 
 
-def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=None) -> dict:
+def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=None, layout=None, selected_sheet=None) -> dict:
     """Answer categories of one variable (label and unweighted count), in code
     order, for building groups such as top-2 box."""
-    df, meta = _read(file_bytes, source_filename, usecols=[variable], overlay=overlay)
+    df, meta = _read(file_bytes, source_filename, usecols=[variable], overlay=overlay, layout=layout, selected_sheet=selected_sheet)
     vl = (meta.variable_value_labels or {}).get(variable)
     dec = _decode(df[variable], vl)
-    cats = _ordered_categories(dec.dropna(), vl)
+    cats = _ordered_categories(dec.dropna(), vl, include_unobserved=True)
     counts = dec.value_counts()
     return {
         "variable": variable,
@@ -796,17 +1576,22 @@ def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=N
 
 def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     """The chosen outcome and predictor columns as numbers, case by case, for driver analysis.
-    args: outcome, predictors [names], weightVar. Codes whose label means "no usable answer"
-    (don't know, refused, not applicable) become missing, as they do in a crosstab mean. A
-    variable whose answers are text rather than numbers is skipped with the reason."""
+    args: outcome, predictors [names], weightVar, optional groupVar. Codes whose label means "no
+    usable answer" (don't know, refused, not applicable) become missing, as they do in a crosstab
+    mean. A variable whose answers are text rather than numbers is skipped with the reason. When
+    groupVar is given, its decoded category per case is also returned (group/groupValues), so the
+    caller can run the same analysis separately within each category without a second file read."""
     import numpy as np
     import pandas as pd
 
     outcome = args["outcome"]
     predictors = [v for v in args.get("predictors", []) if v != outcome]
     weight_var = args.get("weightVar") or None
-    wanted = list(dict.fromkeys([outcome] + predictors + ([weight_var] if weight_var else [])))
-    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"))
+    group_var = args.get("groupVar") or None
+    if group_var in (outcome, *predictors):
+        group_var = None  # can't segment by the outcome or a predictor itself
+    wanted = list(dict.fromkeys([outcome] + predictors + ([weight_var] if weight_var else []) + ([group_var] if group_var else [])))
+    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
     n_rows = len(df)
@@ -859,6 +1644,16 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         return [None if not math.isfinite(float(v)) else float(v) for v in arr]
 
     x = np.column_stack(cols) if cols else np.empty((n_rows, 0))
+
+    group = None
+    group_values = None
+    if group_var:
+        g_labels = vlabels.get(group_var)
+        dec = _decode(df[group_var], g_labels)
+        cats = _ordered_categories(dec, g_labels)
+        group_values = [None if v is None else str(v) for v in dec.tolist()]
+        group = {"name": group_var, "label": labels.get(group_var) or group_var, "categories": [str(c) for c in cats]}
+
     return {
         "outcome": describe(outcome, y_arr),
         "predictors": used,
@@ -867,6 +1662,8 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         "weights": clean(w) if w is not None else None,
         "n": n_rows,
         "skipped": skipped,
+        "group": group,
+        "groupValues": group_values,
     }
 
 
@@ -930,9 +1727,23 @@ class _Design:
         for _v in (psu_var, strata_var):
             if _v and _v not in df.columns:
                 raise ValueError(f"The survey design variable '{_v}' is not in the data file.")
-        psu = df[psu_var].astype(str).to_numpy()
+        # Counter-review on ANA-XTAB-002: a declared stratification with no separate
+        # clustering variable (an ordinary stratified-random-sample design, no multi-stage
+        # clustering) used to build no design at all, because the caller only invoked this
+        # when a PSU variable was supplied - silently falling back to plain SRS variance and
+        # losing the precision gain (or loss) stratification itself produces, with no warning
+        # that the declared design was never used. The standard treatment when no clustering
+        # variable exists is to treat each case as its own primary sampling unit (the same
+        # default R's survey::svydesign(ids = ~1, strata = ~stratum) takes), which still lets
+        # the Taylor-series machinery below account for the stratification correctly.
+        if psu_var:
+            psu = df[psu_var].astype(str).to_numpy()
+            psu_missing = df[psu_var].isna().to_numpy()
+        else:
+            psu = np.arange(n_rows).astype(str)
+            psu_missing = np.zeros(n_rows, dtype=bool)
         strata = df[strata_var].astype(str).to_numpy() if strata_var else np.array(["all"] * n_rows)
-        missing = df[psu_var].isna().to_numpy() | (df[strata_var].isna().to_numpy() if strata_var else np.zeros(n_rows, dtype=bool))
+        missing = psu_missing | (df[strata_var].isna().to_numpy() if strata_var else np.zeros(n_rows, dtype=bool))
         # A case with no PSU (or no stratum) cannot be placed in a cluster. It is
         # given a PSU of its own, which treats it as unclustered; the count is
         # reported so the interface can warn.
@@ -1107,6 +1918,55 @@ def _tidy_option(lab):
     return t.strip() or lab
 
 
+def _resolve_set_vars(df, meta, set_key):
+    """Finds the member variables of a multiple-response set, by the same grouping
+    rules dictionary() uses to discover sets in the first place (an explicit
+    multi-response-set mapping from the codebook, a shared NAME_1/NAME_2 name stem,
+    or a shared label lead-in such as "Banking institution - ABSA" / "... - Capitec"),
+    scoped to one requested key. Lets a banner or row reference to "set:<key>" be
+    resolved without re-deriving every set in the file. Returns [(variable, label), ...]
+    in column order, or an empty list if the key does not resolve to two or more
+    yes/no option variables."""
+    labels = meta.column_names_to_labels or {}
+    value_labels = meta.variable_value_labels or {}
+    mr_sets = getattr(meta, "mr_sets", None) or {}
+    by_stem: dict = {}
+    for name in df.columns:
+        col = df[name]
+        label = labels.get(name) or name
+        is_flag = _selected_code(col, value_labels.get(name), trust_domain=bool(mr_sets.get(name))) is not None
+        if not is_flag:
+            continue
+        m = _SET_NAME_RE.match(name)
+        key = mr_sets.get(name) or (m.group(1) if m else None)
+        if key:
+            by_stem.setdefault(key, []).append((name, label))
+            continue
+        if "_" in name and len(name.rsplit("_", 1)[0]) >= 4:
+            by_stem.setdefault(name.rsplit("_", 1)[0], []).append((name, label))
+    exact = by_stem.get(set_key) or []
+    if len(exact) >= 2:
+        return exact
+    # Fall back to the label lead-in grouping ("grp:<prefix>" keys, matching dictionary()'s
+    # "Families whose names do not follow a NAME_1, NAME_2 pattern" case).
+    if set_key.startswith("grp:"):
+        prefix = set_key[4:]
+        members = []
+        for name in df.columns:
+            col = df[name]
+            label = labels.get(name) or name
+            if col.dtype.kind not in "fiu":
+                continue
+            if _selected_code(col, value_labels.get(name), trust_domain=bool(mr_sets.get(name))) is None:
+                continue
+            lab = _LEAD_CODE_RE.sub("", label or "")
+            if " - " in lab and lab.split(" - ", 1)[0].strip() == prefix:
+                members.append((name, label))
+        if len(members) >= 2:
+            return members
+    return exact
+
+
 def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     """Weighted crosstab. args: columnVars [names], rowItems [{key,label,vars}],
     weightVar. Several banner variables sit side by side. A row item with more
@@ -1130,6 +1990,11 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     correction = args.get("correction") or "none"
     if correction not in CORRECTIONS:
         raise ValueError(f"Unknown multiple-comparison correction: {correction}")
+    # A researcher's data-type correction (Import screen): variable name -> "categorical" |
+    # "discrete" | "continuous". Only consulted for the single-variable mean-vs-frequency
+    # decision below (`categorical = ...`); it does not affect set/grid/battery detection, which
+    # is a question-type correction's job, not a data-type one's (see variableOverrides.ts).
+    type_overrides = args.get("typeOverrides") or {}
     row_vars = []
     for it in items:
         row_vars.extend(it["vars"])
@@ -1149,8 +2014,23 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         if f.get("op", "in") not in ("in", "notIn", "between"):
             raise ValueError(f"Unknown filter type: {f.get('op')}")
     filter_vars = [f["variable"] for f in filters_arg]
-    wanted = list(dict.fromkeys(column_vars + row_vars + ([weight_var] if weight_var else []) + [v for v in (psu_var, strata_var) if v] + filter_vars))
-    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"))
+    # A banner variable can be a plain categorical column, or ("set:<key>") a multiple-response
+    # set used as the banner: every option of the set becomes its own column, SPSS's Multiple
+    # Response Crosstabs. Resolving a set needs the file's full column list, so when the banner
+    # references one this does an extra read, which the cache makes free (same file already read).
+    set_refs = sorted({v[4:] for v in column_vars if v.startswith("set:")})
+    set_members: dict = {}
+    if set_refs:
+        full_df, full_meta = _read(file_bytes, source_filename, usecols=None, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
+        for key in set_refs:
+            members = _resolve_set_vars(full_df, full_meta, key)
+            if len(members) < 2:
+                raise ValueError(f'Could not find two or more yes/no options for the multiple-response set "{key}".')
+            set_members[key] = members
+    set_wanted = [name for v in column_vars if v.startswith("set:") for name, _ in set_members[v[4:]]]
+    plain_column_vars = [v for v in column_vars if not v.startswith("set:")]
+    wanted = list(dict.fromkeys(plain_column_vars + set_wanted + row_vars + ([weight_var] if weight_var else []) + [v for v in (psu_var, strata_var) if v] + filter_vars))
+    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
     n_rows = len(df)
@@ -1199,7 +2079,24 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         raise ValueError("No cases satisfy all of the filters together.")
     wv = np.where(w_ok, w, 0.0)
 
-    dsg = _Design.build(df, psu_var, strata_var, n_rows) if psu_var else None
+    dsg = _Design.build(df, psu_var, strata_var, n_rows) if (psu_var or strata_var) else None
+    # ANA-NPS-003: _Design.build still succeeds when EVERY case is missing its PSU (and strata,
+    # if given) - each such case is given a one-case PSU of its own precisely so P >= 2 holds and
+    # the Taylor-series machinery below never divides by zero (see the comment on `missing` in
+    # _Design.build). But a "design" built entirely from cases with no real PSU/strata information
+    # carries no genuine clustering signal at all: its Taylor-series SE is statistically
+    # indistinguishable from the plain SRS formula, so reporting it as a validated complex-sample
+    # design - an "exact" design-based interval - would overstate what the data actually support.
+    # The counter-review's fixture (all 160 PSU values missing) is exactly this case: a contrast SE
+    # was returned as if design-based while casesMissingDesign reported every case missing, and
+    # that qualification never reached the caller. design_requested_but_invalid keeps the request's
+    # own psu/strata names and the missing count for the output notes below; dsg itself is set back
+    # to None so every other design-based branch in this function (`dsg is not None`) correctly
+    # falls back to the plain weighted/SRS formula, exactly as if no design had been supplied.
+    design_requested_but_invalid = None
+    if dsg is not None and dsg.info.get("casesMissingDesign", 0) >= n_rows:
+        design_requested_but_invalid = dsg.info
+        dsg = None
 
     # Banner: flat list of columns across all column variables.
     columns, col_masks, blocks = [], [], []
@@ -1211,36 +2108,105 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         columns.append({"block": 0, "blockLabel": "All respondents", "name": "All respondents"})
         col_masks.append(np.ones(n_rows, dtype=bool))
     for bi, cv in enumerate(column_vars):
+        if cv.startswith("set:"):
+            key = cv[4:]
+            members = set_members[key]
+            if len(members) > MAX_COLUMN_GROUPS:
+                raise ValueError(f"The set has {len(members)} options; choose a set with {MAX_COLUMN_GROUPS} or fewer for a banner.")
+            stem, _cleaned = _stem([m_label for _n, m_label in members])
+            set_label = stem.strip("_ ") if len(stem.strip("_ ")) >= 4 else key
+            blocks.append({"var": cv, "label": set_label})
+            for name, mlabel in members:
+                col = df[name]
+                code = _selected_code(col, vlabels.get(name), trust_domain=True)
+                mask = (col == code).to_numpy() if code is not None else np.zeros(n_rows, dtype=bool)
+                clean = _tidy_option(_LEAD_CODE_RE.sub("", mlabel or name)) or name
+                columns.append({"block": bi, "blockLabel": set_label, "name": clean})
+                col_masks.append(mask)
+            continue
         dec = _decode(df[cv], vlabels.get(cv))
         if exclude_dk:
             dk_c = [c for c in dec.dropna().unique() if _DK_RE.match(str(c).strip())]
             if dk_c:
                 dec = dec.where(~dec.isin(dk_c))
-        cats = _ordered_categories(dec, vlabels.get(cv))
+        # Banner columns use raw-code identity (ANA-BRAND-002 / IMP-003), not decoded label
+        # text: two distinct codes sharing one display label must stay two separate columns,
+        # not silently merge into one. Saved column-group config (`columnGroups`) still
+        # matches on label TEXT, same as the NET/score/mean group logic in the row builder -
+        # that is a separate, already-shipped feature keyed on what a researcher sees, not
+        # touched by this fix.
+        cv_labels = vlabels.get(cv) or {}
+        ident = df[cv].map(lambda v: _raw_key(v, cv_labels))
+        # Keep ident in lockstep with dec: a case dec excluded (missing, or a DK response
+        # scrubbed above) must not surface in ident either, or it would wrongly land in a
+        # banner column by raw code even though its decoded value was dropped.
+        ident = ident.where(dec.notna())
+        valid_mask = dec.notna()
+        cats = _ordered_categories_raw(ident[valid_mask], cv_labels)
         if len(cats) < 2:
             raise ValueError(f"{labels.get(cv) or cv} needs at least two groups to compare across.")
         if len(cats) > MAX_COLUMN_GROUPS:
             raise ValueError(f"{labels.get(cv) or cv} has {len(cats)} groups; choose one with {MAX_COLUMN_GROUPS} or fewer.")
         blocks.append({"var": cv, "label": labels.get(cv) or cv})
-        arr = dec.to_numpy(dtype=object)
+        ident_arr = ident.to_numpy(dtype=object)
+
+        def _col_label_of_code(c):
+            if cv_labels and c in cv_labels:
+                return str(cv_labels[c])
+            return str(c)
+
+        # ANA-BRAND-002 / IMP-003: banner column groups (`columnGroups`), like the row NET/
+        # score/mean groups fixed above, are saved as LABEL text the researcher picked in the
+        # crosstab builder UI (the categories picker only ever exposes labels, never raw codes -
+        # src/app/runs/[id]/CrosstabWorkspace.tsx shares the same picker component for rows and
+        # columns). `_col_label_to_codes` resolves each picked label back to the raw code(s) it
+        # actually denotes for this banner variable's own data; a label that denotes more than
+        # one code (two distinct codes sharing one display label) is an ambiguous pick that
+        # cannot be told apart by label alone, so it is rejected outright rather than silently
+        # combined - this closes the same "base of 100 built from separately-coded 40+60 cases"
+        # bug for the banner path that the row-level fix above closed for NET/score/mean rows;
+        # the counter-review's "Picked Good" fixture is the exact case this guards against.
+        # A label with no current match (a stale saved group referencing a category that no
+        # longer exists) resolves to an empty set, same as before this fix - it simply matches
+        # no column, rather than being treated as an error.
+        _col_label_to_codes: dict = {}
+        for _cat in cats:
+            _col_label_to_codes.setdefault(_col_label_of_code(_cat), set()).add(_cat)
+
+        def _resolve_col_group_labels(label_list, g_label):
+            resolved = set()
+            for lbl in label_list:
+                codes_for_label = _col_label_to_codes.get(lbl, set())
+                if len(codes_for_label) > 1:
+                    raise ValueError(
+                        f'In {labels.get(cv) or cv}, "{g_label}" ("{lbl}") matches more than one '
+                        "answer code that shares this label; grouping by label cannot tell them "
+                        "apart, so this banner group cannot be built."
+                    )
+                resolved |= codes_for_label
+            return resolved
+
         groups = (args.get("columnGroups") or {}).get(cv) or []
         member_of = {}
+        group_codes: list = []
         for gi, g in enumerate(groups):
-            for c in g.get("cats", []):
-                if c in member_of:
-                    raise ValueError(f'In {labels.get(cv) or cv}, "{c}" is in more than one group.')
-                member_of[c] = gi
+            resolved_codes = _resolve_col_group_labels(g.get("cats", []), g.get("label") or "")
+            group_codes.append(resolved_codes)
+            for code in resolved_codes:
+                if code in member_of:
+                    raise ValueError(f'In {labels.get(cv) or cv}, "{_col_label_of_code(code)}" is in more than one group.')
+                member_of[code] = gi
         emitted = set()
         for c in cats:
-            gi = member_of.get(str(c))
+            gi = member_of.get(c)
             if gi is None:
-                columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": str(c)})
-                col_masks.append(np.array([x == c for x in arr], dtype=bool))
+                columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": _col_label_of_code(c)})
+                col_masks.append(np.array([x == c for x in ident_arr], dtype=bool))
             elif gi not in emitted:
                 emitted.add(gi)
-                members = set(groups[gi]["cats"])
+                members = group_codes[gi]
                 columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": groups[gi]["label"], "isGroup": True})
-                col_masks.append(np.array([str(x) in members for x in arr], dtype=bool))
+                col_masks.append(np.array([x in members for x in ident_arr], dtype=bool))
     if len(columns) > 60:
         raise ValueError("Too many banner columns in total (limit 60). Use fewer or smaller column variables.")
     K = len(columns)
@@ -1301,7 +2267,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     se = math.sqrt(pj * (1 - pj) / n_eff + pc * (1 - pc) / c_eff)
                 if se > 0:
                     z = (pj - pc) / se
-                    p = _p_two_sided(z)
+                    p = _p_two_sided_design(z, dsg)
                     if p < SIG_LEVEL:
                         sg = 1 if z > 0 else -1
             ps.append(None if p is None else round(p, 4))
@@ -1352,11 +2318,21 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         ]
 
     def table_tests(arr, r_valid, cats):
-        """Whole-table test of the answer against each banner variable: Pearson
-        chi-square on weighted counts rescaled to the effective base, which is the
-        first-order Rao-Scott adjustment using the design effect from the weights
-        only (strata and clusters are not modelled)."""
+        """Whole-table test of the answer against each banner variable: Pearson chi-square on
+        weighted counts rescaled to the effective base, a first-order Rao-Scott adjustment. When a
+        survey design (PSUs, optionally strata) was supplied (dsg is not None), the design effect
+        behind that rescaling - dfull below - is the actual Taylor-linearised design effect
+        averaged over the table's cells, so strata and clusters ARE modelled here, same as the
+        mean/proportion standard errors elsewhere in this file; this corrected an earlier version
+        of this docstring that still said the opposite. With no design supplied, dfull falls back
+        to the weights-only Kish design effect (n / effective n), which genuinely does not know
+        about strata or clusters - see the "designUsed" note in the table's own output for which
+        of the two applies to a given run. Alongside the block-level test, also returns the
+        per-cell standardized and adjusted residuals (SPSS Crosstabs' "Residuals" option), built
+        from the exact same rescaled observed/expected counts so the two always agree with each
+        other."""
         out = []
+        cell_resid: dict = {str(c): {} for c in cats}
         sels = {cat: np.array([x == cat for x in arr], dtype=bool) for cat in cats}
         for b in sorted(set(block_of_col)):
             ks = [k for k in range(K) if block_of_col[k] == b]
@@ -1367,6 +2343,8 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             T = np.array([[wv[mask & col_masks[k] & sels[cat]].sum() for k in ks] for cat in cats], dtype=float)
             U = np.array([[int((mask & col_masks[k] & sels[cat] & w_ok).sum()) for k in ks] for cat in cats], dtype=float)
             rk, ck = T.sum(axis=1) > 0, T.sum(axis=0) > 0
+            cats_kept = [cats[i] for i in range(len(cats)) if rk[i]]
+            ks_kept = [ks[j] for j in range(len(ks)) if ck[j]]
             T = T[rk][:, ck]
             U = U[rk][:, ck]
             if T.shape[0] < 2 or T.shape[1] < 2:
@@ -1402,7 +2380,10 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 T = T * (n_ / T.sum())
             else:
                 T = T * (ne_ / T.sum())
-            E = np.outer(T.sum(axis=1), T.sum(axis=0)) / T.sum()
+            row_tot = T.sum(axis=1)
+            col_tot = T.sum(axis=0)
+            grand = T.sum()
+            E = np.outer(row_tot, col_tot) / grand
             x2 = float(((T - E) ** 2 / E).sum())
             if dfull:
                 x2 = x2 / max(dfull, 1e-9)
@@ -1411,7 +2392,23 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                         "p": round(_chi2_sf(x2, dfree), 4),
                         "nEff": round(n_ / dfull, 1) if dfull else round(ne_, 1),
                         "deff": round(dfull, 2) if dfull else (round(n_ / ne_, 2) if ne_ else None)})
-        return out
+            # Standardized residual: (observed - expected) / sqrt(expected). Adjusted residual
+            # divides that further by sqrt((1 - row share)(1 - column share)), the usual correction
+            # for the margins themselves being estimated from the table (SPSS's "adjusted residual").
+            with np.errstate(divide="ignore", invalid="ignore"):
+                std = (T - E) / np.sqrt(E)
+                rfrac = 1 - row_tot / grand if grand > 0 else np.zeros_like(row_tot)
+                cfrac = 1 - col_tot / grand if grand > 0 else np.zeros_like(col_tot)
+                denom = np.sqrt(np.outer(rfrac, cfrac))
+                adj = np.where(denom > 0, std / denom, np.nan)
+            for i, cat in enumerate(cats_kept):
+                for j, k in enumerate(ks_kept):
+                    sres, ares = std[i, j], adj[i, j]
+                    cell_resid[str(cat)][k] = {
+                        "std": None if not np.isfinite(sres) else round(float(sres), 2),
+                        "adj": None if not np.isfinite(ares) else round(float(ares), 2),
+                    }
+        return out, cell_resid
 
     def describe(x, valid):
         """Descriptive statistics of a numeric variable for the valid cases, weighted.
@@ -1466,10 +2463,26 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 continue
             if 0 < qf < 100:
                 extra_p.append({"p": qf, "v": r3(wq(qf / 100))})
+        # ANA-XTAB-001: the Kish-effective-base SEM above (sd / sqrt(n_eff)) is a simple-random-sample
+        # formula - it has no way to see that a cluster design inflates variance beyond what the
+        # effective base already captures. When a design (PSUs, optionally strata) was supplied for
+        # this run, the mean's standard error is instead linearised the same way mean_row's banner
+        # comparisons are (dsg.totals / dsg.var_totals on the per-case deviation from the mean), which
+        # is sensitive to within-cluster correlation; sem falls back to the SRS figure only when no
+        # design was supplied or the linearisation comes back degenerate.
+        srs_sem = sd / math.sqrt(n_eff) if sd is not None else None
+        design_sem = None
+        if dsg is not None and sd is not None and sw > 0:
+            tk = dsg.totals(np.where(valid, wv * (np.nan_to_num(x) - mean) / sw, 0.0))
+            if tk is not None:
+                dv = dsg.var_totals(tk)
+                if dv is not None and np.isfinite(dv) and dv >= 0:
+                    design_sem = math.sqrt(dv)
         return {"p10": r3(wq(0.10)), "p90": r3(wq(0.90)), "sum": r3(float((wi * xi).sum())), "mode": r3(mode),
                 "skewness": r3(skew), "kurtosis": r3(kurt), "hist": hist, "percentiles": extra_p,
                 "n": n, "nEff": round(n_eff, 1), "mean": r3(mean), "sd": r3(sd), "variance": r3(var),
-                "sem": r3(sd / math.sqrt(n_eff)) if sd is not None else None,
+                "sem": r3(design_sem if design_sem is not None else srs_sem),
+                "semDesignBased": dsg is not None and design_sem is not None,
                 "min": r3(mn), "max": r3(mx), "range": r3(mx - mn),
                 "p25": r3(wq(0.25)), "median": r3(wq(0.5)), "p75": r3(wq(0.75))}
 
@@ -1522,7 +2535,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     se = math.sqrt(var / n_eff + cvar / c_eff)
                 if se > 0:
                     z = (mj - mc) / se
-                    p = _p_two_sided(z)
+                    p = _p_two_sided_design(z, dsg)
                     if p < SIG_LEVEL:
                         sg = 1 if z > 0 else -1
             means.append(round(mj, 2)); sigs.append(sg); ps.append(None if p is None else round(p, 4))
@@ -1605,7 +2618,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 usable = 0
                 for ov in net["vars"]:
                     col = df[ov]
-                    code = _selected_code(col, vlabels.get(ov))
+                    code = _selected_code(col, vlabels.get(ov), trust_domain=True)
                     if code is None:
                         skipped.append({"variable": ov, "reason": "Not a yes/no option variable, so it cannot be netted."})
                         continue
@@ -1651,7 +2664,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             any_valid = np.zeros(n_rows, dtype=bool)
             for ov in vars_:
                 col = df[ov]
-                code = _selected_code(col, vlabels.get(ov))
+                code = _selected_code(col, vlabels.get(ov), trust_domain=True)
                 if code is None:
                     skipped.append({"variable": ov, "reason": "Not a yes/no option variable."})
                     continue
@@ -1681,7 +2694,23 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         r_labels = vlabels.get(rv)
         raw = df[rv]
         distinct = int(raw.nunique(dropna=True))
-        categorical = bool(r_labels) or raw.dtype.kind not in "fiu" or distinct <= NUMERIC_AS_CATEGORIES_MAX
+        numeric_dtype = raw.dtype.kind in "fiu"
+        type_override = type_overrides.get(rv)
+        if type_override == "categorical":
+            # The researcher's correction wins over the heuristic below: tabulate as a
+            # frequency table even for a variable the heuristic would otherwise have called
+            # continuous (a numeric code with many distinct values, e.g. a product SKU).
+            categorical = True
+        elif type_override in ("discrete", "continuous") and numeric_dtype:
+            # The reverse correction: treat this variable purely as a mean, skipping the
+            # frequency breakdown, even where it carries value labels or few distinct values
+            # (a coded Likert scale the researcher wants summarised as an average, not counted
+            # option by option). Only honoured on a numeric column - averaging text answer
+            # codes is not a coherent number, so on a text variable this override is silently
+            # not applied here even though it still shows as saved on the Import screen.
+            categorical = False
+        else:
+            categorical = bool(r_labels) or not numeric_dtype or distinct <= NUMERIC_AS_CATEGORIES_MAX
         if categorical:
             dec = _decode(raw, r_labels)
             if exclude_dk:
@@ -1689,7 +2718,32 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 if dk_r:
                     dec = dec.where(~dec.isin(dk_r))
             r_valid = dec.notna().to_numpy()
-            cats = _ordered_categories(dec[r_valid], r_labels)
+            # IMP-004: a declared category with zero observed cases (sample attrition hid every
+            # "7" on an 0-10 NPS scale, say) used to simply not appear here, because this call
+            # only asked for the categories actually present in the data. That silently shrank a
+            # scale's reported domain to whatever the sample happened to use, with two concrete
+            # downstream failures: computeNps() requires all 11 points of 0-10 to be present
+            # before it will even recognise the question as an NPS scale, so a sparse-but-valid
+            # NPS scale was rejected outright; and a top-box/top-two-box score (csmMetrics.ts'
+            # summarizeSeries, which ranks by declared numeric code) silently promoted the next
+            # category down to fill the missing top slot, overstating the score (a 5-point
+            # satisfaction scale with zero "5"s reported top-two as categories 4+3 instead of the
+            # correct 4+(0% for 5)). Declared categories now always reach this table, each
+            # reported honestly as 0% where sample attrition hid them, rather than omitted.
+            # ANA-BRAND-002 / IMP-003: category identity for this table's own answer rows is
+            # the raw declared/observed CODE (via _raw_key/_ordered_categories_raw), never the
+            # decoded label text _ordered_categories/`dec` use - two distinct codes sharing one
+            # label (a codebook with code 1 and code 2 both labelled "Good") used to collapse
+            # into a single merged row here, silently combining their counts, because `cats` and
+            # `arr` were both built from decoded text and "Good" can only ever be one category
+            # to a plain string comparison. `ident`/`ident_arr` carry the raw code instead; `dec`
+            # and `arr` (decoded text) are kept for the DK filter above and for the NET/score/mean
+            # group logic below, whose group definitions (`g["cats"]`) are saved as the label
+            # text researchers picked in the crosstab builder UI, not raw codes - changing that
+            # feature's own stored-config format is a separate, out-of-scope concern from the
+            # identity bug this fixes.
+            ident = raw.map(lambda v: _raw_key(v, r_labels or {}))
+            cats = _ordered_categories_raw(ident[r_valid], r_labels, include_unobserved=True)
             if len(cats) < 2:
                 skipped.append({"variable": rv, "reason": "Fewer than two answer categories among valid cases."})
                 continue
@@ -1697,34 +2751,86 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 skipped.append({"variable": rv, "reason": f"{len(cats)} answer categories (limit {MAX_ROW_CATEGORIES})."})
                 continue
             arr = dec.to_numpy(dtype=object)
+            ident_arr = ident.to_numpy(dtype=object)
+            table_tests_out, cell_resid = table_tests(ident_arr, r_valid, cats)
+
+            def _label_of_code(c):
+                if r_labels and c in r_labels:
+                    return str(r_labels[c])
+                return str(c)
+
             rows = []
             for cat in cats:
-                sel = np.array([x == cat for x in arr], dtype=bool)
+                sel = np.array([x == cat for x in ident_arr], dtype=bool)
                 row = prop_row(sel, r_valid)
                 add_row_pct(row, block_of_col)
-                row["label"] = str(cat)
+                row["label"] = _label_of_code(cat)
+                row["rawCode"] = str(cat)
+                res = cell_resid.get(str(cat)) or {}
+                if res:
+                    row["residual"] = [res.get(k, {}).get("std") for k in range(K)]
+                    row["adjResidual"] = [res.get(k, {}).get("adj") for k in range(K)]
                 rows.append(row)
             # Subtotals (NET), net scores and mean scores. Each can be placed at the end, or
             # above or below the answers it summarises.
+            #
+            # ANA-BRAND-002 / IMP-003: a group's own `cats`/`minus` are the LABEL text researchers
+            # picked in the crosstab builder UI (the categories picker only ever exposed labels -
+            # see CategoryList above), not raw codes, and the raw-code identity fix a few lines up
+            # (`ident`/`ident_arr`) did not reach this block: NET/score selection below used to
+            # test `str(x) in plus` against `arr`, the DECODED label text, so two distinct raw
+            # codes sharing one label (a codebook with code 1 and code 2 both labelled "Good")
+            # were indistinguishable to that test and got silently counted together as a single
+            # NET - exactly the "base of 100" the counter-review's fixture produced. `_label_to_codes`
+            # resolves each picked label back to the raw code(s) it actually denotes for this
+            # variable's own data; `_resolve_group_labels` below refuses to resolve a label that
+            # denotes more than one code (an ambiguous pick), reporting it as a skip reason - the
+            # same `skipped` list and shape this function already uses elsewhere in this block -
+            # rather than silently combining them. `anchor` stays label-based: it only decides
+            # where the finished NET/score row is inserted next to the matching answer rows
+            # (`rows[i]["label"]`, itself decoded text), a placement nicety, not a count.
+            _label_to_codes: dict = {}
+            for _cat in cats:
+                _label_to_codes.setdefault(_label_of_code(_cat), set()).add(_cat)
+
+            def _resolve_group_labels(label_set, g_label, which):
+                resolved = set()
+                for lbl in label_set:
+                    codes_for_label = _label_to_codes.get(lbl, set())
+                    if len(codes_for_label) > 1:
+                        skipped.append({
+                            "variable": rv,
+                            "reason": f"\"{g_label}\" ({which} \"{lbl}\") matches more than one answer code that shares this label; grouping by label cannot tell them apart, so this group was not built.",
+                        })
+                        return None
+                    resolved |= codes_for_label
+                return resolved
+
             group_rows = []
             for g in it.get("groups") or []:
                 kind = g.get("kind") or "net"
-                plus = set(g.get("cats", []))
-                minus = set(g.get("minus", []))
+                plus_labels = set(g.get("cats", []))
+                minus_labels = set(g.get("minus", []))
+                plus = _resolve_group_labels(plus_labels, g.get("label", ""), "positive answers")
+                if plus is None:
+                    continue
+                minus = _resolve_group_labels(minus_labels, g.get("label", ""), "negative answers") if minus_labels else set()
+                if minus is None:
+                    continue
                 if kind == "net":
-                    sel = np.array([str(x) in plus for x in arr], dtype=bool)
+                    sel = np.array([x in plus for x in ident_arr], dtype=bool)
                     row = prop_row(sel, r_valid)
                     add_row_pct(row, block_of_col)
                     row["label"] = f"NET: {g['label']}"
                     row["isNet"] = True
-                    anchor = plus
+                    anchor = plus_labels
                 elif kind == "score":
                     if not plus or not minus or plus & minus:
                         skipped.append({"variable": rv, "reason": f"Net score {g['label']} needs positive and negative answers that do not overlap."})
                         continue
                     # Net score: share positive minus share negative, in percentage points. It is the mean of
                     # +100 / 0 / -100, so it is tested like an average.
-                    yv = np.array([100.0 if str(x) in plus else (-100.0 if str(x) in minus else 0.0) for x in arr])
+                    yv = np.array([100.0 if x in plus else (-100.0 if x in minus else 0.0) for x in ident_arr])
                     row = mean_row(None, yv, r_valid)
                     if row is None:
                         continue
@@ -1733,7 +2839,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     row["label"] = f"Net score: {g['label']}"
                     row["isNet"] = True
                     row["isScore"] = True
-                    anchor = plus | minus
+                    anchor = plus_labels | minus_labels
                 elif kind == "mean":
                     if raw.dtype.kind not in "fiu":
                         skipped.append({"variable": rv, "reason": f"Mean score {g['label']} needs numeric answer codes."})
@@ -1752,7 +2858,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     row["isNet"] = True
                     row["isScore"] = True
                     row["isMean"] = True
-                    anchor = set(str(c) for c in cats)
+                    anchor = set(_label_of_code(c) for c in cats)
                 else:
                     continue
                 group_rows.append((row, g.get("place") or "end", anchor))
@@ -1766,7 +2872,55 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     rows.append(row)
             rows = base_rows("Base: answered this question", base_src(r_valid)) + rows
             q_single = {"key": it["key"], "label": it["label"], "kind": "single", "rows": rows,
-                        "tableTests": table_tests(arr, r_valid, cats)}
+                        "tableTests": table_tests_out}
+            # ANA-NPS-003: when this question is an 11-point 0-10 NPS scale and a sampling design
+            # was supplied, compute the actual Taylor-linearised standard error of the promoters-
+            # minus-detractors CONTRAST directly, with the same per-case linear-combination trick
+            # used for every other design-based total in this file (dsg.totals/var_totals): the
+            # indicator d_i = +1 for a promoter (9 or 10), -1 for a detractor (0-6), 0 otherwise
+            # (passives 7-8, or anything outside the scale) is itself a linear statistic, so its
+            # design-based variance already captures Var(P)+Var(D)-2*Cov(P,D) in one pass - no
+            # separate covariance term needed, and no averaging over each category's own design
+            # effect (which cannot recover that covariance and is what produced a nonzero interval
+            # on a zero-variance fixture). Only computed when dsg is available; computeNps() in
+            # src/lib/descriptiveFindings.ts falls back to its SRS/avg-design-effect approximation
+            # whenever this is absent, same as before this fix.
+            def _leading_int(label):
+                m = re.match(r"^\s*(-?\d+)(?:\.\d+)?\b", label)
+                return int(m.group(1)) if m else None
+
+            cat_k = {cat: _leading_int(_label_of_code(cat)) for cat in cats}
+            is_nps_scale = (
+                len(cats) >= 11
+                and all(v is not None for v in cat_k.values())
+                and 0 in cat_k.values()
+                and 10 in cat_k.values()
+            )
+            if is_nps_scale and dsg is not None:
+                d = np.zeros(n_rows, dtype=float)
+                for cat, k in cat_k.items():
+                    sel = np.array([x == cat for x in ident_arr], dtype=bool)
+                    if 0 <= k <= 6:
+                        d[sel] = -1.0
+                    elif k in (9, 10):
+                        d[sel] = 1.0
+                contrast_total = None
+                n_t, sw_t, neff_t = base_stats(r_valid)
+                if sw_t > 0:
+                    dt = float((wv[r_valid] * d[r_valid]).sum() / sw_t)
+                    tk_t = dsg.totals(np.where(r_valid, wv * (d - dt) / sw_t, 0.0))
+                    contrast_total = round(math.sqrt(dsg.var_totals(tk_t)) * 100, 2)
+                contrast_cols = []
+                for k_col in range(K):
+                    vm = r_valid & col_masks[k_col]
+                    _, sw_c, _ = base_stats(vm)
+                    if sw_c > 0:
+                        dc = float((wv[vm] * d[vm]).sum() / sw_c)
+                        tk = dsg.totals(np.where(vm, wv * (d - dc) / sw_c, 0.0))
+                        contrast_cols.append(round(math.sqrt(dsg.var_totals(tk)) * 100, 2))
+                    else:
+                        contrast_cols.append(None)
+                q_single["npsContrastSe"] = {"total": contrast_total, "columns": contrast_cols}
             if raw.dtype.kind in "fiu" and _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None)):
                 # A coded scale (for example 1 to 5): mean, spread and range of the codes, don't know excluded.
                 # Not for nominal categories such as gender or province, where a mean of the codes means nothing.
@@ -1785,6 +2939,16 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 skipped.append({"variable": rv, "reason": "No valid weighted cases."})
                 continue
             row["label"] = "Average"
+            # Counter-review on ANA-XTAB-001/OBJ-REV-005: this row's "pct" field holds a mean
+            # (mean_row's gm/means), not a share of respondents, same as the "Mean score: ..."
+            # group rows built elsewhere in this file, which already set isMean for exactly
+            # this reason. Without it, every downstream reader that branches on isMean to tell
+            # a mean apart from a percentage (descriptiveFindings.ts's automatic finding
+            # generation, evidenceStance.ts's measure classification) silently treated a plain
+            # numeric variable's own average as a percentage instead - a mean of 1.5 read back
+            # as "1.5%" - and no automatic "average" finding was ever generated for it, since
+            # that finding path also requires isMean to recognise the row at all.
+            row["isMean"] = True
             questions.append({"key": it["key"], "label": it["label"], "kind": "numeric",
                               "rows": base_rows("Base: answered this question", row) + [row]})
 
@@ -1840,7 +3004,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                             se = math.sqrt(est[ja][1] + est[jb][1])
                         if se > 0:
                             z = (est[ja][0] - est[jb][0]) / se
-                            pairs.append((ja, jb, z, _p_two_sided(z)))
+                            pairs.append((ja, jb, z, _p_two_sided_design(z, dsg)))
                 if not pairs:
                     continue
                 adj = _adjust_p([x[3] for x in pairs], correction) if correction != "none" else [x[3] for x in pairs]
@@ -1881,6 +3045,14 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     return {
         "version": 2,
         "engine": ENGINE_VERSION,
+        # Engineering brief round 4 (criterion 4, "persist the authoritative sheet
+        # explicitly in calculation provenance"): meta.sheets["data"] is the sheet this
+        # exact read actually used (set in _read_plain's used["data"] = data_sheet; absent
+        # for a CSV/stats file, which has no sheet concept). The TS caller (buildCrosstab,
+        # crosstabs.ts) threads this into CrosstabProvenance so a saved table's number can
+        # always be traced back to which sheet actually produced it, not just whichever
+        # sheet documents.selected_sheet happens to hold by the time someone looks.
+        "selectedSheet": meta.sheets.get("data") if meta.sheets else None,
         "weightVar": weight_var,
         "weightLabel": (labels.get(weight_var) or weight_var) if weight_var else None,
         "overall": overall,
@@ -1894,7 +3066,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         "skipped": skipped,
         "notes": {
             "test": "No banner variable was chosen, so this table describes all respondents and has no comparison tests." if overall else "Each column is compared with all other cases in the same banner variable ("
-            + ("z-test on the linearised difference of two domain estimates" if dsg is not None else "two-proportion z-test on effective bases")
+            + ("t-test (design degrees of freedom) on the linearised difference of two domain estimates" if dsg is not None else "two-proportion z-test on effective bases")
             + "; difference of means for averages), 95% level, "
             + {
                 "none": "not corrected for multiple comparisons.",
@@ -1903,19 +3075,53 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             }[correction],
             "correction": correction,
             "design": (
-                f"Standard errors use Taylor series linearisation for a stratified cluster sample: primary sampling units {dsg.info['psu']}"
+                (
+                    f"Standard errors use Taylor series linearisation for a stratified cluster sample: primary sampling units {dsg.info['psu']}"
+                    if dsg.info["psu"] else
+                    "Standard errors use Taylor series linearisation for a stratified sample (no clustering variable given, so each case is its own primary sampling unit)"
+                )
                 + (f" within strata {dsg.info['strata']}" if dsg.info["strata"] else " (no strata given, so the whole sample is one stratum)")
                 + f", {dsg.info['nPsu']:,} units in {dsg.info['nStrata']:,} strata, no finite population correction."
                 + (f" {dsg.info['pooledPsus']} unit(s) in single-unit strata were pooled, which can only widen intervals." if dsg.info["pooledPsus"] else "")
                 + " A banner column is a domain of the full design, so the cluster structure is kept."
-            ) if dsg is not None else "Weights are applied, but the sampling design (strata and clusters) is not modelled. Standard errors use the Kish effective base, so differences can look more certain than they are.",
+            ) if dsg is not None else (
+                f"A survey design was requested (primary sampling unit {design_requested_but_invalid['psu'] or '(none)'}"
+                + (f", strata {design_requested_but_invalid['strata']}" if design_requested_but_invalid["strata"] else "")
+                + ") but every case was missing its design information, so no usable clustering signal exists. "
+                "Standard errors fall back to the plain weighted/Kish effective-base formula, not a validated design-based estimate."
+            ) if design_requested_but_invalid is not None else "Weights are applied, but the sampling design (strata and clusters) is not modelled. Standard errors use the Kish effective base, so differences can look more certain than they are.",
             "associationNote": "Cramer's V, the contingency coefficient and lambda treat both variables as unordered. Gamma, Kendall's tau-b and tau-c and Somers' d assume the answer categories and the banner groups are ordered as shown, so read them only for ordered variables. They are descriptive sizes of association from the weighted table; only the chi-square has a significance test. Eta is the share of the variation in an average that lies between the banner groups.",
             "tableTest": (
                 "The whole-table test is a first-order Rao-Scott chi-square: Pearson chi-square on weighted counts scaled to the sample size, divided by the average design effect of the table cells (Taylor series)."
                 if dsg is not None else
                 "The whole-table test is a Pearson chi-square on weighted counts rescaled to the effective base (first-order Rao-Scott adjustment). The design effect comes from the weights only, so it is optimistic for a clustered, stratified sample."
             ),
-            "designUsed": dsg.info if dsg is not None else None,
+            # ANA-NPS-003: designUsed is the caller's only window into what survey-design
+            # information this table actually had. dsg.info covers the normal, valid-design case;
+            # design_requested_but_invalid covers the degenerate "requested but every case was
+            # missing" case above, so the caller/researcher still learns that a design was asked
+            # for and why it could not be applied, rather than seeing a bare null that looks
+            # identical to "no design was ever requested."
+            "designUsed": dsg.info if dsg is not None else design_requested_but_invalid,
+            # ANA-NPS-003 (second counter-review): designUsed alone cannot tell a consumer whether
+            # THIS table's per-category standard errors (`se` on each row) are design-based or a
+            # plain SRS/Kish fallback, because design_requested_but_invalid carries the same shape
+            # as a genuinely applied design - only nPsu/casesMissingDesign differ, and a caller
+            # would have to re-derive "was it actually applied" from those numbers itself. Every
+            # row's `se` above falls back to math.sqrt(pj*(1-pj)/n_eff) whenever dsg is None,
+            # including the abandoned-design case, so that fallback SE is numerically a plain SRS
+            # SE even though a design was requested. computeNps() in descriptiveFindings.ts used to
+            # treat the mere presence of a category SE as proof a design correction applied (an
+            # SRS SE for every category simply produces an average design effect of 1, never
+            # "no design"), silently mislabelling an abandoned design as design-based. This flag is
+            # the one unambiguous signal: true only when dsg is not None, i.e. a design was
+            # actually used to compute every design-aware figure in this table.
+            "designApplied": dsg is not None,
+            # ANA-NPS-003: the interval method actually used for every design-based and SRS/Kish
+            # standard error in this table - persisted as explicit output metadata rather than
+            # only living in this file's own comments, so a consumer (a saved finding, an export)
+            # can state the basis of its interval without re-deriving it from `design`'s prose.
+            "intervalMethod": "normal_approximation_1.96",
             "overlap": "Columns are compared within their own banner variable only. A respondent belongs to one column of each banner variable, so columns of different banner variables overlap and are not compared with each other. A column is never compared with a total that contains it.",
             "minBase": MIN_BASE_SUPPRESS,
             "minReliable": MIN_BASE_RELIABLE,
@@ -1935,6 +3141,20 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
+            # This function is reachable at a public Vercel URL with no session or login of its
+            # own, and it downloads with the Supabase service-role key, which bypasses row-level
+            # security entirely - so without this check, anyone who can reach this URL at all can
+            # read any tenant's stored file by guessing or observing its storage path.
+            # PARSE_STATS_SHARED_SECRET must be set to the same value the Next.js app sends (see
+            # parseStatsFile.ts), and a request without the matching header is refused before
+            # anything is downloaded. This used to run with no check at all whenever the secret
+            # was left unset, which is exactly the unprotected state an operator who forgot to
+            # configure it would be in - the one case this exists to catch. The secret being
+            # unset is now treated the same as a wrong one: refused, not waved through.
+            secret = os.environ.get("PARSE_STATS_SHARED_SECRET")
+            if not secret or self.headers.get("x-parse-stats-secret") != secret:
+                self._send_json(401, {"error": "Unauthorized"})
+                return
             length = int(self.headers.get("content-length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
             storage_path = body["storagePath"]
@@ -1944,10 +3164,10 @@ class handler(BaseHTTPRequestHandler):
             file_bytes = _storage_download(bucket, storage_path)
             action = body.get("action", "convert")
             if action == "dictionary":
-                self._send_json(200, {"result": dictionary(file_bytes, source_filename)})
+                self._send_json(200, {"result": dictionary(file_bytes, source_filename, body.get("args") or {})})
                 return
             if action == "categories":
-                self._send_json(200, {"result": categories(file_bytes, source_filename, (body.get("args") or {})["variable"], (body.get("args") or {}).get("overlay"))})
+                self._send_json(200, {"result": categories(file_bytes, source_filename, (body.get("args") or {})["variable"], (body.get("args") or {}).get("overlay"), (body.get("args") or {}).get("layout"), (body.get("args") or {}).get("selectedSheet"))})
                 return
             if action == "columns":
                 self._send_json(200, {"result": driver_columns(file_bytes, source_filename, body.get("args") or {})})

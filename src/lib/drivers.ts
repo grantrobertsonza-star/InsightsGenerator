@@ -1,4 +1,6 @@
 import { withTenant } from "./db";
+import { recordHumanReview } from "./findingProvenance";
+import { loadDataSetup } from "./dataSetup";
 import { runStatsTool } from "./parseStatsFile";
 import { loadDocumentFile, overlayFor } from "./crosstabs";
 import { driverAnalysis, type DriverResult } from "./driverAnalysis";
@@ -13,6 +15,22 @@ export type DriverRequest = {
   bootstrap?: number;
   /** Optional: for a predictor, the survey question that asked how important it is. Draws the derived against stated importance chart. */
   statedImportance?: Record<string, string>;
+  /** Optional: run the same analysis again within each category of this variable, such as gender. */
+  groupVar?: string | null;
+};
+
+/** One category of the group variable: the same shares-and-performance analysis as the overall report, on just that slice. */
+export type DriverSegment = {
+  name: string;
+  n: number;
+  weighted: boolean;
+  skipped: boolean;
+  /** Why this segment has no result, when skipped is true. */
+  reason?: string;
+  result?: DriverResult;
+  performance?: DriverPerformance[];
+  /** Stated importance within this segment's own cases, same shape as DriverReport.stated. */
+  stated?: DriverStated[];
 };
 
 export type DriverPerformance = { name: string; mean: number | null; topTwo: number | null };
@@ -32,6 +50,10 @@ export type DriverReport = {
   performance: DriverPerformance[];
   /** Stated importance for the predictors that had an importance question paired with them. */
   stated?: DriverStated[];
+  groupVariable?: string | null;
+  groupLabel?: string | null;
+  /** Same analysis run again within each category of groupVariable, when one was chosen. Stated importance is not re-split by segment. */
+  segments?: DriverSegment[] | null;
   createdAt?: string;
 };
 
@@ -43,7 +65,12 @@ type Columns = {
   weights: (number | null)[] | null;
   n: number;
   skipped: { variable: string; reason: string }[];
+  group: { name: string; label: string; categories: string[] } | null;
+  groupValues: (string | null)[] | null;
 };
+
+/** A segment needs enough complete cases of its own before a driver model on it means anything. */
+const MIN_SEGMENT_CASES = 20;
 
 function wMean(values: number[], w: number[]): number {
   let s = 0;
@@ -64,13 +91,19 @@ export async function runDriverAnalysisFor(
 ): Promise<DriverReport> {
   if (request.predictors.length < 2) throw new Error("Choose at least two predictors.");
   if (request.predictors.includes(request.outcome)) throw new Error("The outcome cannot also be a predictor.");
-  const doc = await loadDocumentFile(tenantId, runId, documentId);
-  const overlay = await overlayFor(tenantId, runId, documentId);
+  const [doc, overlay, setup] = await Promise.all([
+    loadDocumentFile(tenantId, runId, documentId),
+    overlayFor(tenantId, runId, documentId),
+    loadDataSetup(tenantId, documentId),
+  ]);
   const cols = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
     outcome: request.outcome,
     predictors: request.predictors,
     weightVar: request.weightVar ?? null,
+    groupVar: request.groupVar ?? null,
     overlay,
+    layout: setup.layout,
+    selectedSheet: doc.selected_sheet,
   });
 
   const nan = (v: number | null) => (v === null ? NaN : v);
@@ -129,42 +162,106 @@ export async function runDriverAnalysisFor(
     return { name: names[j], mean: Number.isFinite(mean) ? mean : null, topTwo };
   });
 
-  let stated: DriverStated[] | undefined;
+  // Same performance calc as above, restricted to one segment's rows.
+  const performanceFor = (idx: Set<number>): DriverPerformance[] =>
+    cols.predictors.map((p, j) => {
+      const vals: number[] = [];
+      const ws: number[] = [];
+      cols.x.forEach((row, i) => {
+        if (!idx.has(i)) return;
+        const v = row[j];
+        if (v === null || !Number.isFinite(y[i])) return;
+        vals.push(v);
+        ws.push(weights ? (Number.isFinite(weights[i]) ? weights[i] : 0) : 1);
+      });
+      const smallScale = p.distinct >= 3 && p.distinct <= 11;
+      const topTwo = smallScale && vals.length > 0
+        ? (() => {
+            const cut = p.max - 1;
+            const sw = ws.reduce((a, b) => a + b, 0);
+            return sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
+          })()
+        : null;
+      const mean = vals.length > 0 ? wMean(vals, ws) : NaN;
+      return { name: names[j], mean: Number.isFinite(mean) ? mean : null, topTwo };
+    });
+
+  // Stated importance needs a second read (the importance questions themselves aren't in cols), fetched once
+  // and then sliced per segment the same way y/x/weights are, so each segment compares derived against stated
+  // importance using only its own cases rather than the whole file's.
   const pairs = Object.entries(request.statedImportance ?? {}).filter(
     ([pred, imp]) => imp && imp !== request.outcome && request.predictors.includes(pred),
   );
+  let statedForIdx: ((idx: Set<number> | null) => DriverStated[]) | null = null;
   if (pairs.length > 0) {
     const impVars = [...new Set(pairs.map(([, imp]) => imp))];
     const c2 = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
       outcome: request.outcome,
       predictors: impVars,
       weightVar: request.weightVar ?? null,
+      groupVar: request.groupVar ?? null,
       overlay,
+      layout: setup.layout,
+      selectedSheet: doc.selected_sheet,
     });
     const w2 = c2.weights ? c2.weights.map(nan) : null;
-    stated = [];
-    for (const [pred, imp] of pairs) {
-      const j = c2.predictors.findIndex((p) => p.name === imp);
-      const k = cols.predictors.findIndex((p) => p.name === pred);
-      if (j < 0 || k < 0) continue;
-      const meta = c2.predictors[j];
-      const vals: number[] = [];
-      const ws: number[] = [];
-      c2.x.forEach((row, i) => {
-        const v = row[j];
-        const wi = w2 ? w2[i] : 1;
-        if (v === null || !Number.isFinite(v) || !Number.isFinite(wi)) return;
-        vals.push(v);
-        ws.push(wi);
-      });
-      if (vals.length === 0) continue;
-      const sw = ws.reduce((a, b) => a + b, 0);
-      const smallScale = meta.distinct >= 3 && meta.distinct <= 11;
-      const cut = meta.max - 1;
-      const topTwo = smallScale && sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
-      const mean = wMean(vals, ws);
-      stated.push({ name: names[k], variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
-    }
+    statedForIdx = (idx) => {
+      const out: DriverStated[] = [];
+      for (const [pred, imp] of pairs) {
+        const j = c2.predictors.findIndex((p) => p.name === imp);
+        const k = cols.predictors.findIndex((p) => p.name === pred);
+        if (j < 0 || k < 0) continue;
+        const meta = c2.predictors[j];
+        const vals: number[] = [];
+        const ws: number[] = [];
+        c2.x.forEach((row, i) => {
+          if (idx && !idx.has(i)) return;
+          const v = row[j];
+          const wi = w2 ? w2[i] : 1;
+          if (v === null || !Number.isFinite(v) || !Number.isFinite(wi)) return;
+          vals.push(v);
+          ws.push(wi);
+        });
+        if (vals.length === 0) continue;
+        const sw = ws.reduce((a, b) => a + b, 0);
+        const smallScale = meta.distinct >= 3 && meta.distinct <= 11;
+        const cut = meta.max - 1;
+        const topTwo = smallScale && sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
+        const mean = wMean(vals, ws);
+        out.push({ name: names[k], variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
+      }
+      return out;
+    };
+  }
+  const stated = statedForIdx ? statedForIdx(null) : undefined;
+
+  let segments: DriverSegment[] | null = null;
+  if (cols.group && cols.groupValues) {
+    const gv = cols.groupValues;
+    segments = cols.group.categories.map((cat) => {
+      const idx = new Set<number>();
+      for (let i = 0; i < gv.length; i++) if (gv[i] === cat) idx.add(i);
+      const n = idx.size;
+      if (n < MIN_SEGMENT_CASES) {
+        return { name: cat, n, weighted: Boolean(weights), skipped: true, reason: `Fewer than ${MIN_SEGMENT_CASES} cases in this group.` };
+      }
+      const ySeg = [...idx].map((i) => y[i]);
+      const xSeg = [...idx].map((i) => x[i]);
+      const wSeg = weights ? [...idx].map((i) => weights[i]) : undefined;
+      const segResult = driverAnalysis({ y: ySeg, x: xSeg, names, outcome: request.outcomeType, weights: wSeg, bootstrap: request.bootstrap });
+      if ("error" in segResult) {
+        return { name: cat, n, weighted: Boolean(weights), skipped: true, reason: segResult.error };
+      }
+      return {
+        name: cat,
+        n,
+        weighted: Boolean(weights),
+        skipped: false,
+        result: segResult,
+        performance: performanceFor(idx),
+        stated: statedForIdx ? statedForIdx(idx) : undefined,
+      };
+    });
   }
 
   return {
@@ -177,6 +274,9 @@ export async function runDriverAnalysisFor(
     skipped: cols.skipped,
     result,
     performance,
+    groupVariable: cols.group?.name ?? null,
+    groupLabel: cols.group?.label ?? null,
+    segments,
   };
 }
 
@@ -234,18 +334,21 @@ export async function addDriverFindings(tenantId: string, runId: string, analysi
       [runId, analysisId],
     );
     if ((existing.rows[0]?.n ?? 0) > 0) return 0;
-    const revived = await client.query(
-      "update findings set status = 'accepted' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status = 'rejected'",
+    const revived = await client.query<{ id: string }>(
+      "update findings set status = 'accepted' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status = 'rejected' returning id",
       [runId, analysisId],
     );
+    await recordHumanReview(client, revived.rows.map((row) => row.id), "tool_add");
     if ((revived.rowCount ?? 0) > 0) return revived.rowCount ?? 0;
     const drafts = driverFindings(saved.rows[0].report, analysisId);
     for (const f of drafts) {
-      await client.query(
+      const touched = await client.query<{ id: string }>(
         `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, data_type, status)
-         values ($1, $2, 'generated', $3, $4, 'driver', $5, 'quantitative', 'accepted')`,
+         values ($1, $2, 'generated', $3, $4, 'driver', $5, 'quantitative', 'accepted')
+         returning id`,
         [tenantId, runId, f.text, f.theme, JSON.stringify(f.stats)],
       );
+      await recordHumanReview(client, touched.rows.map((row) => row.id), "tool_add");
     }
     return drafts.length;
   });
@@ -254,10 +357,11 @@ export async function addDriverFindings(tenantId: string, runId: string, analysi
 /** Takes the findings a driver analysis added out of use (rejected, not deleted, so adding them again restores them). */
 export async function removeDriverFindings(tenantId: string, runId: string, analysisId: string): Promise<number> {
   return withTenant(tenantId, async (client) => {
-    const r = await client.query(
-      "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status <> 'rejected'",
+    const r = await client.query<{ id: string }>(
+      "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status <> 'rejected' returning id",
       [runId, analysisId],
     );
+    await recordHumanReview(client, r.rows.map((row) => row.id), "tool_remove");
     return r.rowCount ?? 0;
   });
 }

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { ingestOutputFiles } from "./outputIngest";
 import { readContextDocument } from "./extractFindings";
-import { INSTRUMENT_TYPES, storeUploadedDocument, type InstrumentTypeChoice } from "./documentUpload";
+import { INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -17,13 +17,24 @@ async function storeAndRead(runId: string, kind: "report" | "transcript", file: 
   const id = await storeUploadedDocument(TENANT_ID, runId, kind, file);
   try {
     await readContextDocument(TENANT_ID, runId, id);
+    await markDocumentProcessingStatus(TENANT_ID, id, "ready");
   } catch {
-    /* processing will try again and say why */
+    // Upload still stands; a later explicit processing action can retry the read. But the
+    // document's own status reflects this attempt's real outcome right away, instead of
+    // staying unset (indistinguishable from "never processed yet") until the researcher
+    // happens to click something that reads it again.
+    await markDocumentProcessingStatus(TENANT_ID, id, "failed").catch(() => {});
   }
   return id;
 }
 
-export type UploadResult = { ok: true; added: string[] } | { ok: false; error: string };
+export type UploadResult =
+  | { ok: true; added: string[] }
+  // `added` here too: a partial failure already stored some files durably (each is its
+  // own try/catch in the loop below), and the caller needs their names to avoid
+  // resubmitting them - a retry that resends the whole original file list, successes
+  // included, stores each already-added file a second time under a new document row.
+  | { ok: false; error: string; added: string[] };
 
 /**
  * Stores whichever of the five upload slots have files. Returns what was
@@ -45,7 +56,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
       ? (typeRaw as InstrumentTypeChoice)
       : "questionnaire";
   const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...outputs];
-  if (all.length === 0) return { ok: false, error: "Choose at least one file first." };
+  if (all.length === 0) return { ok: false, error: "Choose at least one file first.", added: [] };
 
   const added: string[] = [];
   const failed: string[] = [];
@@ -82,7 +93,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   }
   revalidatePath(`/runs/${runId}`);
   if (failed.length > 0) {
-    return { ok: false, error: `Could not add ${failed.length} file(s). ${failed.join(" | ")}` };
+    return { ok: false, error: `Could not add ${failed.length} file(s). ${failed.join(" | ")}`, added };
   }
   return { ok: true, added };
 }

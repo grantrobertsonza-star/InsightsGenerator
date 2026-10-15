@@ -24,11 +24,14 @@ const explain = (e: unknown) => {
     : m;
 };
 
-export async function readInstrumentAction(runId: string, documentId: string): Promise<Ok<{ items: number }> | Fail> {
+export async function readInstrumentAction(
+  runId: string,
+  documentId: string,
+): Promise<Ok<{ items: number; complete: boolean; failedChunks: number; incompleteItems: number }> | Fail> {
   try {
-    const items = await readInstrumentItems(TENANT_ID, runId, documentId);
+    const r = await readInstrumentItems(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, items };
+    return { ok: true, items: r.count, complete: r.complete, failedChunks: r.failedChunks, incompleteItems: r.incompleteItems };
   } catch (e) {
     return { ok: false, error: explain(e) };
   }

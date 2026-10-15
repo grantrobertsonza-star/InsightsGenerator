@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -14,13 +14,24 @@ import {
   loadCrosstabAction,
   loadVariablesAction,
   setCrosstabTextAction,
+  summarizeCrosstabAction,
+  replicateCrosstabsToWaveAction,
 } from "@/lib/crosstabActions";
+import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
+import type { CrosstabInsights } from "@/lib/crosstabInsights";
 import { QuickChart, Histogram, buildRCode } from "./CrosstabExtras";
 import FilterBuilder from "./CrosstabFilters";
 import CrosstabAsk from "./CrosstabAsk";
 import { planStarterTables } from "@/lib/starterTables";
+import { listEvidenceTablesAction, promoteEvidenceTableAction, type EvidenceTableListing } from "@/lib/objectiveEvidenceActions";
 import CrosstabOptions, { DEFAULT_CELLS, DEFAULT_STATS, STAT_LABELS, type CellPrefs, type StatPrefs } from "./CrosstabOptions";
 import type { CrosstabListItem } from "@/lib/crosstabs";
+import { detectSurveyDesign } from "@/lib/surveyDesign";
+import { loadDataSetupStatusAction, saveDataSetupAction } from "@/lib/dataSetupActions";
+import type { DataSetup, DataDesignChoice } from "@/lib/dataSetupShared";
+import { resolveDesignPickerState } from "@/lib/dataSetupShared";
+import { recordRequestedSave, reconcileSaveResponse } from "@/lib/saveResponseOrdering";
+import type { ExpectedPreviousSetup } from "@/lib/dataSetup";
 import type {
   CategoryList,
   CellBase,
@@ -74,7 +85,7 @@ function varTypeOf(v: VariableInfo, set?: VariableSet): VarType {
 }
 type Stat = "col" | "row" | "count" | "stack";
 /** What one answer row can show in each cell. Several at once in the stacked view. */
-type MeasureKey = "col" | "row" | "n" | "count" | "letters" | "base" | "resp";
+type MeasureKey = "col" | "row" | "n" | "count" | "letters" | "base" | "resp" | "residual";
 const MEASURE_LABEL: Record<MeasureKey, string> = {
   col: "% within column",
   row: "% within row",
@@ -82,6 +93,7 @@ const MEASURE_LABEL: Record<MeasureKey, string> = {
   count: "Weighted count",
   letters: "Column comparisons",
   resp: "% of responses",
+  residual: "Standardized residual",
   base: "",
 };
 /** The figures of one cell, whether it is a banner column or the NET column of a banner variable. */
@@ -94,7 +106,27 @@ type CellData = {
   base: CellBase;
   sig: number;
   letters: string | undefined;
+  residual?: number | null;
 };
+/** The table cell the researcher clicked, shown in the detail pane beside the workspace. */
+type CellSel = {
+  key: string;
+  question: string;
+  row: string;
+  column: string;
+  banner: string;
+  cell: CellData;
+  p: number | null;
+  pAdj: number | null | undefined;
+  totalPct: number | null;
+  thin: boolean;
+  peers: { label: string; pct: number | null; n: number }[];
+};
+const CellSelectContext = createContext<{ sel: CellSel | null; select: (s: CellSel | null) => void }>({
+  sel: null,
+  select: () => {},
+});
+
 type LayoutEntry =
   | { kind: "col"; c: CrosstabResult["columns"][number]; j: number }
   | { kind: "net"; block: number };
@@ -128,7 +160,8 @@ export default function CrosstabWorkspace({
   const [items, setItems] = useState<CrosstabListItem[]>([]);
   const [query, setQuery] = useState("");
   const [fullOnly, setFullOnly] = useState(false);
-  const [entry, setEntry] = useState<"ask" | "build" | "starter" | "all">("build");
+  const [entry, setEntry] = useState<"ask" | "build" | "starter" | "objectives" | "all">("build");
+  const [evidenceTabs, setEvidenceTabs] = useState<EvidenceTableListing[]>([]);
   const [cellPrefs, setCellPrefs] = useState<CellPrefs>(DEFAULT_CELLS);
   const [cellNet, setCellNet] = useState(true);
   const [statPrefs, setStatPrefs] = useState<StatPrefs>(DEFAULT_STATS);
@@ -146,6 +179,10 @@ export default function CrosstabWorkspace({
   const [grouping, setGrouping] = useState<{ variable: string; target: "col" | "row" } | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
   const [collapseAll, setCollapseAll] = useState<{ open: boolean; tick: number }>({ open: true, tick: 0 });
+  const [layerVar, setLayerVar] = useState("");
+  const [waveFiles, setWaveFiles] = useState<WaveFile[]>([]);
+  const [copyFrom, setCopyFrom] = useState("");
+  const [copying, setCopying] = useState(false);
 
   const refreshList = (added?: string) =>
     startTransition(async () => {
@@ -167,35 +204,307 @@ export default function CrosstabWorkspace({
   }, [onClose]);
 
   useEffect(() => {
+    // Overnight queue, package 4 (IMP-014/ANA-NPS-003): a documentId switch (the researcher
+    // picks a different file from the wave selector) previously left the PSU/strata/no-design
+    // picker state exactly as the PREVIOUS document had set it, because this effect only wrote
+    // those setters when the new document's own persisted design matched one of its two known
+    // shapes - so a document with no persisted design at all (the common case) silently kept
+    // showing and would even re-save whatever the prior document's choice was, onto the wrong
+    // document. Every branch below is now unconditional: a design-less document explicitly
+    // clears the picker back to "not yet decided" rather than leaving it untouched. `cancelled`
+    // guards against a late response from a document the researcher has since switched away
+    // from landing after a newer load's response and clobbering it (switching A -> B -> A
+    // quickly could otherwise let B's slow response overwrite A's already-current state).
+    //
+    // Brief 38 repair (Codex re-review of Brief 37, item 1): `cancelled` only protects against
+    // a response arriving after THIS effect instance has been torn down (i.e. the researcher
+    // has since switched to a different document). It does nothing for a SECOND visit to the
+    // SAME document (A -> B -> A) where no new save was issued during the reopened visit - the
+    // stale save response from the FIRST visit to A would still look "current" to the save
+    // effect's own seq-based checks, because no new seq has been recorded for A's reopening.
+    // `visitRef` is a monotonic counter incremented once per effect run (i.e. once per document
+    // transition, including a transition back to a document already visited), and is now bound
+    // into the save effect below so a response is only reconciled when its visit still matches.
+    //
+    // Separately: hydration itself can race a live edit. If the researcher touches the design
+    // picker while THIS load is still in flight, the load resolving afterward must not reset
+    // `designTouchedRef` or overwrite the picker with the (now-stale) loaded value - that would
+    // silently discard an edit already made. `designTouchedRef.current` is reset to false here,
+    // synchronously, at the moment this visit's load BEGINS (not when it resolves), so "has the
+    // researcher edited since loading began" has an unambiguous start point rather than carrying
+    // over a touch from a previous document's visit or losing a touch that happens mid-load.
+    let cancelled = false;
+    visitRef.current += 1;
+    const myVisit = visitRef.current;
+    designTouchedRef.current = false;
     startTransition(async () => {
-      const [v, l] = await Promise.all([loadVariablesAction(runId, documentId), listCrosstabsAction(runId, documentId)]);
+      const [v, l, s] = await Promise.all([
+        loadVariablesAction(runId, documentId),
+        listCrosstabsAction(runId, documentId),
+        loadDataSetupStatusAction(runId, documentId),
+      ]);
+      if (cancelled) return;
       if (v.ok) setDict(v.dictionary);
       else setError(v.error);
       if (l.ok) setItems(l.items);
       else setError(l.error);
+      if (!s.ok) {
+        // Overnight queue, package 4: previously this lookup failure was swallowed inside
+        // loadDataSetup/loadDataSetupAction and indistinguishable from "nothing saved yet,"
+        // so a real failure (missing migration, dropped connection, permission error) showed
+        // as a quiet fallback to defaults rather than a visible problem.
+        setError(`Could not load this file's saved set-up (showing defaults instead): ${s.error}`);
+      }
+      lastSavedSetupRef.current = s.ok ? { documentId, setup: s.setup } : null;
+      setSetup(s.setup);
+      // Brief 38: only apply the loaded design to the live picker - and only treat this visit's
+      // touched flag as still "untouched" - when the researcher has not already edited the
+      // picker since this visit's hydration began (see the reset above). A touch mid-load means
+      // the researcher has already made, or started making, a choice the save effect will
+      // persist; overwriting the picker here would silently discard that choice, and resetting
+      // the touched flag (which only the reset at the top of this effect does now) would be
+      // wrong to repeat here regardless.
+      if (myVisit === visitRef.current && !designTouchedRef.current) {
+        applyDesignPickerState(s.setup.design);
+      }
     });
+    return () => {
+      cancelled = true;
+    };
   }, [runId, documentId]);
 
+  // Other wave files in this run, so a saved table set can be replayed onto a new wave rather
+  // than rebuilt by hand. Silent when the run has no wave-labelled files at all.
+  useEffect(() => {
+    listWaveFilesAction(runId).then((r) => {
+      if (r.ok) setWaveFiles(r.files);
+    });
+  }, [runId]);
+  const otherWaves = waveFiles.filter((w) => w.documentId !== documentId);
+
+  function copyFromWave() {
+    if (!copyFrom) return;
+    setError(null);
+    setMessage(null);
+    setCopying(true);
+    startTransition(async () => {
+      const r = await replicateCrosstabsToWaveAction(runId, copyFrom, documentId);
+      setCopying(false);
+      if (!r.ok) return setError(r.error);
+      const skippedText = r.skipped.length
+        ? ` ${r.skipped.length} could not be rebuilt here: ${r.skipped.map((s) => `${s.label} (${s.reason})`).join("; ")}`
+        : "";
+      setMessage(`Copied ${r.built} table(s) from that wave as drafts.${skippedText}`);
+      refreshList();
+    });
+  }
+
   const byName = useMemo(() => new Map((dict?.variables ?? []).map((v) => [v.name, v])), [dict]);
+  const setByKeyTop = useMemo(() => new Map((dict?.sets ?? []).map((s) => [s.key, s])), [dict]);
+  /** Shows a column-var chip's label, whether it is a plain variable or a "set:<key>" MR banner reference. */
+  const columnVarLabel = (n: string): string =>
+    n.startsWith("set:") ? (setByKeyTop.get(n.slice(4))?.label ?? n.slice(4)) : (byName.get(n)?.label ?? n);
   const weights = useMemo(() => (dict?.variables ?? []).filter((v) => v.weightLike), [dict]);
+  const [cellSel, setCellSel] = useState<CellSel | null>(null);
   const [correction, setCorrection] = useState<Correction>("fdr");
   // Don't know, refused and not applicable stay out of percentage bases unless the researcher asks for them.
   const [excludeDk, setExcludeDk] = useState(true);
   const [filters, setFilters] = useState<CrosstabFilter[]>([]);
-  // Survey design for Taylor series variance. Suggested from the variable names;
-  // switched on by default only when both a PSU and a strata variable are found.
-  const detected = useMemo(() => {
-    const names = (dict?.variables ?? []).map((v) => v.name);
-    return {
-      psu: names.find((n) => /^(ea_?code|ea|psu|cluster|enumeration)/i.test(n)) ?? "",
-      strata: names.find((n) => /(^|_)(strat|stratum|strata)/i.test(n)) ?? "",
-    };
-  }, [dict]);
-  const [psuChoice, setPsuChoice] = useState<string | null>(null);
-  const [strataChoice, setStrataChoice] = useState<string | null>(null);
-  const psuVar = psuChoice ?? (detected.psu && detected.strata ? detected.psu : "");
-  const strataVar = strataChoice ?? (detected.psu && detected.strata ? detected.strata : "");
-  const designOk = psuVar !== "" && byName.has(psuVar) && (strataVar === "" || byName.has(strataVar));
+  // Survey design for Taylor series variance. Suggested from the variable names, via the same
+  // heuristic (./lib/surveyDesign) every automatic caller (NPS, Objectives, brand health, CSM,
+  // wave tracking) now resolves through too - previously this workspace kept its own inline copy
+  // of this regex heuristic, which is the "a parallel path still uses the old behaviour" pattern
+  // the counter-review kept finding. ANA-NPS-003: a PSU found with no strata (or vice versa) is
+  // now suggested on its own - a design with clustering only, or stratification only, has a
+  // defined default here just like one with both; detected.psu/strata are independently null
+  // only when their own role's candidates were absent or ambiguous (detectSurveyDesign never
+  // guesses between several candidates), in which case the field is simply left blank for a
+  // person to fill in rather than defaulted to a possibly-wrong guess.
+  const detected = useMemo(() => detectSurveyDesign({ variables: dict?.variables ?? [] }), [dict]);
+  const [setup, setSetup] = useState<DataSetup | null>(null);
+  const [psuChoiceRaw, setPsuChoiceRaw] = useState<string | null>(null);
+  const [strataChoiceRaw, setStrataChoiceRaw] = useState<string | null>(null);
+  const [noDesignChosen, setNoDesignChosenRaw] = useState(false);
+  // Codex re-review, package 4 (cross-tab handover repair): the one place that writes the three
+  // raw picker setters from a DataSetup.design value - used by BOTH the hydration effect (a new
+  // document's own persisted setting, or nothing) and the save effect's conflict branch (a
+  // concurrent change adopted from elsewhere). Previously each site had its own copy of this
+  // three-way branch, and both copies independently omitted the same third case: when design is
+  // absent, "auto", or any other non-explicit/non-none shape, neither copy reset the picker at
+  // all, leaving whatever the PREVIOUS document (hydration) or the PREVIOUS choice (conflict)
+  // had shown still displayed as if it still applied. All three branches are now unconditional,
+  // and a single shared function means this cannot drift out of sync between the two call sites
+  // again.
+  const applyDesignPickerState = (design: DataDesignChoice | null | undefined) => {
+    const next = resolveDesignPickerState(design);
+    setPsuChoiceRaw(next.psuChoice);
+    setStrataChoiceRaw(next.strataChoice);
+    setNoDesignChosenRaw(next.noDesignChosen);
+  };
+  // ANA-NPS-003 (second counter-review): true only once a person has actually touched one of the
+  // three design controls (or the initial load set them from a persisted choice is excluded by
+  // design - see the loader above, which writes state directly without going through these
+  // wrappers). Gates the persistence effect below so merely opening this workspace never writes
+  // a design setting nobody chose.
+  const designTouchedRef = useRef(false);
+  // Overnight queue, package 4 (IMP-014): what this workspace last saw persisted for THIS
+  // document - either from the hydration load above, or from this workspace's own last
+  // successful save - carried alongside the documentId it belongs to so a save effect that
+  // fires after the researcher has since switched documents never applies its compare-and-
+  // swap `expected` value, or its result, against the wrong document. Null means either
+  // nothing has been loaded yet or the load itself failed (see the hydrate effect), in which
+  // case the save below treats it as "unknown" and does not attempt a save at all rather than
+  // guessing at an `expected` value it never actually saw.
+  const lastSavedSetupRef = useRef<{ documentId: string; setup: DataSetup } | null>(null);
+  // Always the documentId prop as of the most recent render - read inside the save effect's
+  // async callback above to detect a stale (superseded) response after a document switch.
+  const documentIdRef = useRef(documentId);
+  documentIdRef.current = documentId;
+  // Codex re-review, package 4 (cross-tab handover repair): the documentId check alone only
+  // protects against a response arriving after the researcher has switched to a DIFFERENT
+  // document - it does nothing for two save requests issued for the SAME document (the
+  // researcher pauses, edits, pauses again, each pause's own debounce firing its own request),
+  // where a slow network can still let the OLDER request's response land after the NEWER
+  // request's response already applied. saveSeqRef is a monotonic counter shared by every save
+  // this effect schedules; appliedSeqByDocRef records, per document, the highest sequence number
+  // whose response has actually been applied, so an out-of-order late response is recognised and
+  // discarded rather than overwriting state a newer response already set.
+  const saveSeqRef = useRef(0);
+  const appliedSeqByDocRef = useRef<Map<string, number>>(new Map());
+  // IMP-014 (Brief 37 repair): the latest save REQUESTED (scheduled) per document, recorded the
+  // moment a save is scheduled - see reconcileSaveResponse's own comment for why this, not just
+  // appliedSeqByDocRef, is what a response must be checked against.
+  const requestedSeqByDocRef = useRef<Map<string, number>>(new Map());
+  // Brief 38 (IMP-014, Codex re-review of Brief 37, item 1): incremented once per hydration
+  // effect run - i.e. once per document transition, including a transition back to a document
+  // already visited (A -> B -> A). Read fresh by the save effect below at both schedule time
+  // and response time, and by the hydration effect itself, to recognise a response (hydration
+  // or save) that belongs to a visit the researcher has since moved past, even when the
+  // document id itself is unchanged and no new save has been scheduled for the reopened visit.
+  const visitRef = useRef(0);
+  const setPsuChoice = (v: string | null) => {
+    designTouchedRef.current = true;
+    setNoDesignChosenRaw(false);
+    setPsuChoiceRaw(v);
+  };
+  const setStrataChoice = (v: string | null) => {
+    designTouchedRef.current = true;
+    setNoDesignChosenRaw(false);
+    setStrataChoiceRaw(v);
+  };
+  const setNoDesignChosen = (v: boolean) => {
+    designTouchedRef.current = true;
+    setNoDesignChosenRaw(v);
+  };
+  const psuChoice = psuChoiceRaw;
+  const strataChoice = strataChoiceRaw;
+  const psuVar = psuChoice ?? detected.psu ?? "";
+  const strataVar = strataChoice ?? detected.strata ?? "";
+  // ANA-NPS-003 (second counter-review): a strata-only choice (no PSU/clustering variable, a
+  // stratification variable alone) is a real, supported design - the engine treats each case as
+  // its own primary sampling unit within its stratum in that case (_Design.build). Previously this
+  // required a non-empty psuVar, so choosing strata alone silently fell back to "weights only"
+  // with no indication why, even though the researcher had made an explicit, valid choice.
+  const designOk = !noDesignChosen && (psuVar !== "" ? byName.has(psuVar) : strataVar !== "") && (strataVar === "" || byName.has(strataVar));
+
+  // ANA-NPS-003 (second counter-review): persists the researcher's design choice against this
+  // document (DataSetup.design) once they have actually touched one of the three controls, so the
+  // NPS tool, Objectives and the distribution chart - none of which expose a design picker of
+  // their own - pick it up the next time they run (via effectiveDesignChoice, ./surveyDesign)
+  // instead of only ever guessing from variable names. Debounced so every keystroke in the PSU/
+  // strata text inputs doesn't fire its own save; only a complete, valid choice (designOk) or the
+  // explicit "weights only" choice is persisted - an incomplete or invalid in-progress edit is
+  // left unsaved rather than overwriting a previously good setting with garbage.
+  useEffect(() => {
+    if (!designTouchedRef.current || !setup) return;
+    const design: DataDesignChoice | null = noDesignChosen
+      ? { mode: "none", psu: null, strata: null }
+      : designOk
+        ? { mode: "explicit", psu: psuVar || null, strata: strataVar || null }
+        : null;
+    if (!design) return;
+    // Overnight queue, package 4 (IMP-014): "the newer workspace save caller omits
+    // compare-and-swap, ignores save results and can retain an older configuration after
+    // reordered saves." Fixed by: (1) capturing the documentId this save is FOR at the time
+    // it is scheduled, so a response that arrives after the researcher has switched documents
+    // is recognised as stale and discarded rather than applied to whatever document happens to
+    // be open when it lands; (2) passing `expected` from the last value this workspace actually
+    // saw persisted for this same document, turning the write into a real compare-and-swap
+    // instead of an unconditional overwrite that can silently stomp a change that landed from
+    // elsewhere (another tab, another tool) in between; (3) reading and acting on the save's
+    // result instead of discarding it - a conflict adopts the actual current value and surfaces
+    // it, exactly like the established TranscriptSetup/AcceptDataButton pattern this mirrors,
+    // rather than leaving the UI showing a choice that was never actually written.
+    const savingForDocumentId = documentId;
+    const expectedAtScheduling = lastSavedSetupRef.current;
+    const expected: ExpectedPreviousSetup =
+      expectedAtScheduling && expectedAtScheduling.documentId === savingForDocumentId
+        ? { kind: "value", setup: expectedAtScheduling.setup }
+        : { kind: "none" };
+    const nextSetup = { ...setup, design };
+    const mySeq = ++saveSeqRef.current;
+    // Brief 38: the visit this save was scheduled under - captured now, synchronously, exactly
+    // like mySeq - so a response is only reconciled when the workspace is still on this same
+    // visit to this document (see reconcileSaveResponse's own comment for why seq alone cannot
+    // catch a reopened visit).
+    const savingForVisit = visitRef.current;
+    // IMP-014: recorded at SCHEDULE time, not when the network call resolves - a later save
+    // scheduled for this document (even one still debouncing, or still in flight) must be able
+    // to supersede this one's response before that response has even come back.
+    recordRequestedSave(requestedSeqByDocRef.current, savingForDocumentId, mySeq);
+    const t = setTimeout(() => {
+      saveDataSetupAction(runId, savingForDocumentId, nextSetup, expected).then((r) => {
+        const outcome = r.ok
+          ? ({ kind: "success", setup: nextSetup } as const)
+          : r.conflict
+            ? ({ kind: "conflict", current: r.current ?? nextSetup } as const)
+            : ({ kind: "failure", error: r.error } as const);
+        // IMP-014 (Brief 37 repair): one shared gate for every outcome - success, conflict and
+        // failure alike - so "newer success, conflict and failure each reconcile the picker and
+        // saved-state reference consistently" holds by construction rather than by three inline
+        // branches that could drift. See reconcileSaveResponse's own comment for what it checks
+        // and why (document switch, latest-requested, already-applied) and for how this also
+        // covers A -> B -> A document switching without a separate case.
+        const decision = reconcileSaveResponse(
+          { requestedSeqByDoc: requestedSeqByDocRef.current, appliedSeqByDoc: appliedSeqByDocRef.current },
+          {
+            currentDocumentId: documentIdRef.current,
+            savingForDocumentId,
+            seq: mySeq,
+            outcome,
+            currentVisit: visitRef.current,
+            savingForVisit,
+          },
+        );
+        if (decision.action === "ignore") return;
+        if (decision.action === "apply-success") {
+          lastSavedSetupRef.current = { documentId: savingForDocumentId, setup: decision.setup };
+          return;
+        }
+        if (decision.action === "apply-conflict") {
+          // Another save (another tab, or a reordered earlier request from this one) already
+          // changed this document's set-up since the value this save was compared against.
+          // Adopt what is actually persisted rather than silently leaving the UI showing a
+          // design choice that was never written, and don't keep retrying against a value we
+          // now know is stale.
+          lastSavedSetupRef.current = { documentId: savingForDocumentId, setup: decision.setup };
+          setSetup(decision.setup);
+          // Codex re-review, package 4: previously this branch only handled "explicit" and
+          // "none" - a conflict that resolved to no design at all (absent, or "auto") left
+          // whatever the researcher had been looking at still showing in the picker, as if it
+          // still applied. applyDesignPickerState's third branch now covers that case too.
+          applyDesignPickerState(decision.setup.design);
+          setError("This file's survey-design set-up changed elsewhere just now; showing the latest version. Make your change again if it's still needed.");
+          return;
+        }
+        setError(decision.error);
+      });
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [psuChoice, strataChoice, noDesignChosen]);
+
+  const designAmbiguous = psuChoice === null && (detected.psuCandidates.length > 1 || detected.strataCandidates.length > 1);
   const weightVar =
     weightChoice ??
     (weights.find((w) => /bench|person/i.test(`${w.name} ${w.label}`)) ?? weights[0])?.name ??
@@ -336,8 +645,9 @@ export default function CrosstabWorkspace({
     const fl = over?.filters ?? filters;
     let cv = over?.columnVars ?? columnVars;
     let ri = over?.rowItems ?? rowItems;
-    // Only columns chosen: describe each of those variables on its own, as rows.
-    if (ri.length === 0 && nets.length === 0 && cv.length > 0) {
+    // Only columns chosen: describe each of those variables on its own, as rows. Not for a
+    // multiple-response banner set ("set:<key>"): that is a real banner, not a row variable.
+    if (ri.length === 0 && nets.length === 0 && cv.length > 0 && !cv.some((n) => n.startsWith("set:"))) {
       ri = cv.map((n) => ({ key: n, label: byName.get(n)?.label ?? n, vars: [n] }));
       cv = [];
     }
@@ -347,23 +657,62 @@ export default function CrosstabWorkspace({
       const allRows: CrosstabRowItem[] = nets.length
         ? [...ri, { key: `nets-${Date.now()}`, label: "Nets", vars: [], kind: "nets", nets }]
         : ri;
-      const r = await addCrosstabAction(runId, documentId, {
-        source: entry === "ask" ? "ask" : "workspace",
+      const base = {
+        source: (entry === "ask" ? "ask" : "workspace") as "ask" | "workspace",
         columnVars: cv,
         rowItems: allRows,
         weightVar: weightVar || null,
         correction,
         excludeDk,
-        ...(fl.length ? { filters: fl } : {}),
-        ...(designOk ? { design: { psu: psuVar, strata: strataVar || null } } : {}),
+        ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
         columnGroups: Object.fromEntries(Object.entries(colGroups).filter(([k, g]) => cv.includes(k) && g.length)),
-      });
-      if (!r.ok) return setError(r.error);
-      const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => s.variable).join(", ")}.` : "";
-      setMessage(`Added a table with ${r.questions} question(s).${skipped}`);
+      };
+      if (!layerVar) {
+        const r = await addCrosstabAction(runId, documentId, { ...base, ...(fl.length ? { filters: fl } : {}) });
+        if (!r.ok) return setError(r.error);
+        const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => s.variable).join(", ")}.` : "";
+        setMessage(`Added a table with ${r.questions} question(s).${skipped}`);
+        setRowItems([]);
+        setNets([]);
+        refreshList(r.tableId);
+        return;
+      }
+      // Layered: one saved table per category of the layer variable, SPSS-style, sharing a
+      // layerGroup id so the list can show them together.
+      const catsR = await loadCategoriesAction(runId, documentId, layerVar);
+      if (!catsR.ok) return setError(catsR.error);
+      const cats = catsR.list.categories;
+      if (cats.length < 2) return setError(`${catsR.list.label} does not have enough categories to use as a layer.`);
+      const layerLabel = catsR.list.label;
+      const layerGroup = `layer-${Date.now()}`;
+      let lastTableId: string | null = null;
+      let totalQuestions = 0;
+      const allSkipped: { variable: string; reason: string }[] = [];
+      const failures: string[] = [];
+      for (const cat of cats) {
+        const r = await addCrosstabAction(runId, documentId, {
+          ...base,
+          filters: [...fl, { variable: layerVar, op: "in", values: [cat.label] }],
+          layerGroup,
+          layerVariable: layerVar,
+          layerLabel,
+          layerCategory: cat.label,
+        });
+        if (!r.ok) {
+          failures.push(`${cat.label}: ${r.error}`);
+          continue;
+        }
+        lastTableId = r.tableId;
+        totalQuestions += r.questions;
+        allSkipped.push(...r.skipped);
+      }
+      if (!lastTableId) return setError(`No layer category produced a table. ${failures.join(" ")}`);
+      const skippedText = allSkipped.length ? ` Skipped: ${Array.from(new Set(allSkipped.map((s) => s.variable))).join(", ")}.` : "";
+      const failedText = failures.length ? ` ${failures.length} categor${failures.length === 1 ? "y" : "ies"} could not be tabulated.` : "";
+      setMessage(`Added ${cats.length - failures.length} layered table(s) by ${layerLabel}, ${totalQuestions} question(s) in all.${skippedText}${failedText}`);
       setRowItems([]);
       setNets([]);
-      refreshList(r.tableId);
+      refreshList(lastTableId);
     });
   }
 
@@ -387,7 +736,7 @@ export default function CrosstabWorkspace({
         weightVar: weightVar || null,
         correction,
         excludeDk,
-        ...(designOk ? { design: { psu: psuVar, strata: strataVar || null } } : {}),
+        ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
       });
       if (!r.ok) return setError(r.error);
       setMessage(`Added ${r.tables} starter table(s) as drafts, ${r.questions} question(s) each. Review them, delete what you do not need, then commit.`);
@@ -424,8 +773,22 @@ export default function CrosstabWorkspace({
 
   const drafts = items.filter((i) => i.status === "draft" && !i.legacy);
   // Each way of making tables shows only its own tables; "All tables" shows the lot.
-  const visible = entry === "all" ? items : items.filter((i) => i.source === (entry === "build" ? "workspace" : entry));
-  const modeName = { build: "CrossTabs", ask: "SemanticTabs", starter: "StarterTabs", all: "All tables" }[entry];
+  const evidenceIds = new Set(evidenceTabs.filter((t) => t.status !== "evidence").map((t) => t.table_id));
+  const visible =
+    entry === "all"
+      ? items
+      : entry === "objectives"
+        ? items.filter((i) => evidenceIds.has(i.id))
+        : items.filter((i) => i.source === (entry === "build" ? "workspace" : entry));
+  const loadEvidenceTabs = () =>
+    void listEvidenceTablesAction(runId, documentId).then((r) => {
+      if (r.ok) setEvidenceTabs(r.tables);
+    });
+  useEffect(() => {
+    if (entry === "objectives") loadEvidenceTabs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry, runId, documentId]);
+  const modeName = { build: "CrossTabs", ask: "SemanticTabs", starter: "StarterTabs", objectives: "ObjectiveTabs", all: "All tables" }[entry];
   const starterPlan = useMemo(() => (dict ? planStarterTables(dict) : null), [dict]);
   const hasStarter = items.some((i) => i.label.startsWith("Starter:"));
   const arrow = (k: SortKey) => (sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : "");
@@ -433,6 +796,7 @@ export default function CrosstabWorkspace({
     `rounded border px-2 py-0.5 text-[11px] ${on ? "border-primary bg-primary text-white" : "border-border hover:border-slate-400"}`;
 
   const body = (
+    <CellSelectContext.Provider value={{ sel: cellSel, select: setCellSel }}>
     <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
         <div className="min-w-0">
@@ -455,6 +819,7 @@ export default function CrosstabWorkspace({
                 ["build", "CrossTabs", "Build a table: pick columns and rows, add nets and groups"],
                 ["ask", "SemanticTabs", "Ask in plain English and check the setup"],
                 ["starter", "StarterTabs", "Suggested demographic tables"],
+                ["objectives", "ObjectiveTabs", "Tables built from your research objectives"],
                 ["all", `All tables (${items.length})`, "Every table from every mode, and the findings"],
               ] as const
             ).map(([k, title, hint]) => (
@@ -472,6 +837,31 @@ export default function CrosstabWorkspace({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {otherWaves.length > 0 && (
+            <>
+              <select
+                value={copyFrom}
+                onChange={(e) => setCopyFrom(e.target.value)}
+                title="Rebuild this wave's crosstabs from the same banner, rows and filters saved on another wave"
+                className="rounded-lg border border-border px-2 py-1.5 text-xs"
+              >
+                <option value="">Copy tables from...</option>
+                {otherWaves.map((w) => (
+                  <option key={w.documentId} value={w.documentId}>
+                    {w.wave}: {w.filename}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={copyFromWave}
+                disabled={!copyFrom || copying || isPending}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-slate-400 disabled:opacity-50"
+              >
+                {copying ? "Copying..." : "Copy here"}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -482,9 +872,9 @@ export default function CrosstabWorkspace({
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(34rem,48%)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(34rem,48%)_minmax(0,1fr)] xl:grid-cols-[minmax(30rem,38%)_minmax(0,1fr)_22rem]">
         {/* Variable table */}
-        <section className="flex min-h-0 flex-col border-r border-border">
+        <section className="flex min-h-0 flex-col border-r-2 border-sky-200 bg-sky-50">
           <div className="flex flex-wrap items-center gap-3 border-b border-border p-3">
             <div className="relative min-w-0 flex-1">
             <input
@@ -592,6 +982,18 @@ export default function CrosstabWorkspace({
                         <span className="text-right tabular-nums text-muted">{fmtInt(e.s.nValid)}</span>
                         <span className="text-right tabular-nums text-muted">{Math.round(e.s.pctValid)}%</span>
                         <span className="flex items-center justify-center whitespace-nowrap">
+                          {(e.s.kind ?? "multi") === "multi" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setColumnVars((c) => (c.includes(`set:${e.s.key}`) ? c.filter((x) => x !== `set:${e.s.key}`) : [...c, `set:${e.s.key}`]))
+                              }
+                              className={btn(columnVars.includes(`set:${e.s.key}`))}
+                              title="Use every option of this set as its own banner column (a case can fall into more than one, since the options are not exclusive)"
+                            >
+                              Column
+                            </button>
+                          )}
                         </span>
                         <span className="flex items-center justify-center whitespace-nowrap">
                           <button type="button" onClick={() => toggleRow(item)} className={btn(on)}>
@@ -728,19 +1130,29 @@ export default function CrosstabWorkspace({
                 <input
                   list="design-vars"
                   value={psuVar}
+                  disabled={noDesignChosen}
                   onChange={(e) => setPsuChoice(e.target.value.trim())}
                   placeholder="PSU (cluster) variable"
-                  className="w-40 rounded border border-border px-2 py-1 text-xs"
-                  title="The primary sampling unit, for example the enumeration area. Leave empty to use weights only."
+                  className="w-40 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                  title="The primary sampling unit, for example the enumeration area. Leave empty (with strata filled in) for a strata-only design, or leave both empty to use weights only."
                 />
                 <input
                   list="design-vars"
                   value={strataVar}
+                  disabled={noDesignChosen}
                   onChange={(e) => setStrataChoice(e.target.value.trim())}
                   placeholder="Strata variable"
-                  className="w-36 rounded border border-border px-2 py-1 text-xs"
-                  title="Optional. The stratum each case was sampled from."
+                  className="w-36 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                  title="Optional. The stratum each case was sampled from. Can be used alone, with no PSU/clustering variable."
                 />
+                <label className="flex items-center gap-1 text-[11px] text-muted" title="Explicitly record that no survey design applies to this file, distinct from simply never having chosen one - this is persisted and overrides auto-detection for every tool that reads it.">
+                  <input
+                    type="checkbox"
+                    checked={noDesignChosen}
+                    onChange={(e) => setNoDesignChosen(e.target.checked)}
+                  />
+                  No design (weights only)
+                </label>
                 <datalist id="design-vars">
                   {(dict?.variables ?? []).filter((v) => !v.weightLike).slice(0, 4000).map((v) => (
                     <option key={v.name} value={v.name}>
@@ -749,8 +1161,13 @@ export default function CrosstabWorkspace({
                   ))}
                 </datalist>
                 <span className={designOk ? "text-success" : "text-muted"}>
-                  {designOk ? "Taylor series variance" : psuVar ? "Variable not found" : "Weights only"}
+                  {designOk ? "Taylor series variance" : (psuVar || strataVar) ? "Variable not found" : "Weights only"}
                 </span>
+                {designAmbiguous && (
+                  <span className="text-warning" title="More than one variable name looked like a PSU or strata candidate, so none was picked automatically - choose one explicitly.">
+                    Multiple design candidates found - choose explicitly
+                  </span>
+                )}
               </label>
               <label className="flex min-w-0 items-center gap-2 text-xs">
                 <span className="font-medium text-foreground">Non-answers (don&apos;t know, refused, n/a)</span>
@@ -765,6 +1182,44 @@ export default function CrosstabWorkspace({
                 </select>
               </label>
             </div>
+            )}
+            {entry === "objectives" && (
+              <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-3 text-xs">
+                <p className="text-muted">
+                  Tables the evidence check built from your objectives for this file. Add one to your own tables to edit it
+                  and commit it into findings. Until then they stay out of findings.
+                </p>
+                {evidenceTabs.length === 0 ? (
+                  <p className="text-muted">None yet. Open Objectives, Review, and the evidence is gathered there.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {evidenceTabs.map((t) => (
+                      <li key={t.table_id} className="flex items-start justify-between gap-3 rounded-md border border-border bg-white p-2">
+                        <span className="min-w-0">
+                          <span className="block text-foreground">{t.question}</span>
+                          <span className="block text-muted">{t.objective}{t.stance ? ` · ${t.stance}` : ""}</span>
+                        </span>
+                        {t.status === "evidence" ? (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg border border-border px-2.5 py-1 font-medium text-foreground hover:border-slate-400"
+                            onClick={() =>
+                              void promoteEvidenceTableAction(runId, t.table_id).then(() => {
+                                loadEvidenceTabs();
+                                refreshList();
+                              })
+                            }
+                          >
+                            Add to my tables
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-muted">In your tables</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
             {entry === "ask" && dict && <CrosstabAsk runId={runId} documentId={documentId} dict={dict} busy={isPending} onUse={useAsked} />}
             {entry === "starter" && starterPlan && starterPlan.banners.length > 0 && starterPlan.items.length > 0 && !hasStarter && (
@@ -816,16 +1271,19 @@ export default function CrosstabWorkspace({
                         onClick={() => setColumnVars((c) => c.filter((x) => x !== n))}
                         className="min-w-0 flex-1 px-2 py-1 text-left"
                       >
-                        {byName.get(n)?.label ?? n}
+                        {columnVarLabel(n)}
+                        {n.startsWith("set:") ? " (multiple response set, every option as a column)" : ""}
                         {colGroups[n]?.length ? ` (${colGroups[n].length} group${colGroups[n].length > 1 ? "s" : ""})` : ""} ×
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setGrouping({ variable: n, target: "col" })}
-                        className="border-l border-border px-3 py-1 text-xs text-primary hover:underline"
-                      >
-                        Group
-                      </button>
+                      {!n.startsWith("set:") && (
+                        <button
+                          type="button"
+                          onClick={() => setGrouping({ variable: n, target: "col" })}
+                          className="border-l border-border px-3 py-1 text-xs text-primary hover:underline"
+                        >
+                          Group
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -895,6 +1353,8 @@ export default function CrosstabWorkspace({
                 setNet={setCellNet}
                 stats={statPrefs}
                 setStats={setStatPrefs}
+                layerVar={layerVar}
+                setLayerVar={setLayerVar}
               />
             )}
             <button
@@ -903,7 +1363,7 @@ export default function CrosstabWorkspace({
               disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
               className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
             >
-              {isPending ? "Working..." : "Add table to set"}
+              {isPending ? "Working..." : layerVar ? "Add layered tables to set" : "Add table to set"}
             </button>
               </>
             )}
@@ -945,30 +1405,170 @@ export default function CrosstabWorkspace({
                   : `No tables from ${modeName} yet. Tables you make here appear below. Every table is also listed under All tables.`}
               </p>
             )}
-            {visible.map((it) => (
-              <TableCard
-                key={`${entry === "all" ? "all" : "mode"}-${it.id}`}
-                startOpen={false}
-                runId={runId}
-                item={it}
-                collapse={collapseAll}
-                cells={cellPrefs}
-                net={cellNet}
-                stats={statPrefs}
-                scrollTo={lastAdded === it.id}
-                onDelete={() => remove(it)}
-              />
-            ))}
+            {visible.map((it, i) => {
+              const newLayerGroup = !!it.layerGroup && it.layerGroup !== visible[i - 1]?.layerGroup;
+              return (
+                <div key={`${entry === "all" ? "all" : "mode"}-${it.id}`}>
+                  {newLayerGroup && (
+                    <p className="mb-1 mt-2 text-[11px] font-medium text-muted first:mt-0">
+                      Layered by {it.layerLabel ?? "variable"}, one table per category
+                    </p>
+                  )}
+                  <TableCard
+                    startOpen={false}
+                    runId={runId}
+                    item={it}
+                    collapse={collapseAll}
+                    cells={cellPrefs}
+                    net={cellNet}
+                    stats={statPrefs}
+                    scrollTo={lastAdded === it.id}
+                    onDelete={() => remove(it)}
+                    layerBadge={it.layerCategory ?? undefined}
+                  />
+                </div>
+              );
+            })}
           </div>
         </section>
+        <CellDetailPane />
       </div>
     </div>
+    </CellSelectContext.Provider>
   );
 
   return (
     <>
       {createPortal(body, document.body)}
     </>
+  );
+}
+
+/** The third pane: the figures behind the table cell the researcher clicked. Wide screens only. */
+function CellDetailPane() {
+  const { sel } = useContext(CellSelectContext);
+  return (
+    <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 xl:flex">
+      <h3 className="text-sm font-semibold text-foreground">Selected cell</h3>
+      {!sel ? (
+        <p className="text-sm text-muted">
+          Click a figure in a table to see its base, the test behind it and how it compares with the
+          other columns.
+        </p>
+      ) : (
+        <>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">{sel.question}</p>
+            <p className="text-sm font-semibold text-foreground">
+              {sel.row} <span className="font-normal text-muted">in</span> {sel.column}
+            </p>
+            {sel.banner && <p className="text-xs text-muted">{sel.banner}</p>}
+          </div>
+          <div className="flex items-end gap-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Column %</p>
+              <p className="text-3xl font-bold leading-none text-foreground">
+                {sel.cell.pct === null || sel.cell.pct === undefined ? "-" : `${fmtPct(sel.cell.pct)}%`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Base</p>
+              <p className="text-lg font-semibold text-foreground">{fmtInt(sel.cell.base.n)}</p>
+            </div>
+            {sel.cell.nCell !== null && sel.cell.nCell !== undefined && (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Cases</p>
+                <p className="text-lg font-semibold text-foreground">{fmtInt(sel.cell.nCell)}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            {sel.thin && <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">Small base, read with care</span>}
+            {sel.cell.sig > 0 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800">Significantly higher</span>}
+            {sel.cell.sig < 0 && <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-800">Significantly lower</span>}
+            {sel.cell.sig === 0 && !sel.thin && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">No significant difference</span>}
+            {sel.p !== null && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                p {sel.p < 0.001 ? "< 0.001" : `= ${sel.p}`}
+              </span>
+            )}
+            {sel.pAdj !== null && sel.pAdj !== undefined && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                corrected p {sel.pAdj < 0.001 ? "< 0.001" : `= ${sel.pAdj}`}
+              </span>
+            )}
+            {sel.cell.letters && (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800">
+                Higher than {sel.cell.letters}
+              </span>
+            )}
+          </div>
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Compared with</p>
+            <div className="space-y-1.5">
+              {[...sel.peers, { label: "Total", pct: sel.totalPct, n: 0 }].map((x) => (
+                <div key={x.label} className="grid grid-cols-[6rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs">
+                  <span className={`truncate ${x.label === sel.column ? "font-semibold text-foreground" : "text-muted"}`} title={x.label}>
+                    {x.label}
+                  </span>
+                  <span className="h-2 overflow-hidden rounded bg-slate-200">
+                    <span
+                      className={`block h-full rounded ${x.label === sel.column ? "bg-primary" : x.label === "Total" ? "bg-slate-400" : "bg-indigo-300"}`}
+                      style={{ width: `${Math.max(0, Math.min(100, x.pct ?? 0))}%` }}
+                    />
+                  </span>
+                  <span className="text-right tabular-nums text-foreground">{x.pct === null ? "-" : `${fmtPct(x.pct)}%`}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </aside>
+  );
+}
+
+/**
+ * A plain, descriptive read of one table: a one-line headline above a short
+ * row of cards. Regenerated on demand, never saved, never posted to
+ * findings, deliberately separate from the objective-evidence lane.
+ */
+function CrosstabInsightsPanel({
+  insights,
+  error,
+  loading,
+}: {
+  insights: CrosstabInsights | null;
+  error: string | null;
+  loading: boolean;
+}) {
+  return (
+    <div className="mb-3 rounded-lg border border-violet-200 bg-violet-50/60 p-3">
+      {loading && <p className="text-xs text-muted">Reading the table...</p>}
+      {!loading && error && <p className="text-xs text-danger">{error}</p>}
+      {!loading && !error && insights && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <p className="flex-1 text-sm font-semibold text-foreground sm:max-w-xs">{insights.headline}</p>
+          {insights.cards.length > 0 && (
+            <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
+              {insights.cards.map((c, i) => (
+                <div key={i} className="rounded-md border border-violet-200 bg-white p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-foreground">{c.title}</span>
+                    {c.stat && (
+                      <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+                        {c.stat}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted">{c.body}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -982,6 +1582,7 @@ function TableCard({
   stats,
   scrollTo,
   onDelete,
+  layerBadge,
 }: {
   runId: string;
   item: CrosstabListItem;
@@ -992,6 +1593,8 @@ function TableCard({
   stats: StatPrefs;
   scrollTo: boolean;
   onDelete: () => void;
+  /** This table's layer category, shown as a small chip beside its title when it is one panel of a layered set. */
+  layerBadge?: string;
 }) {
   const [open, setOpen] = useState(startOpen);
   const [result, setResult] = useState<CrosstabResult | null | undefined>(undefined);
@@ -1005,6 +1608,10 @@ function TableCard({
   const [draftTitle, setDraftTitle] = useState("");
   const [draftCaption, setDraftCaption] = useState("");
   const [savingText, setSavingText] = useState(false);
+  const [insights, setInsights] = useState<CrosstabInsights | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const [seenTick, setSeenTick] = useState(collapse.tick);
@@ -1046,11 +1653,42 @@ function TableCard({
           <span className="truncate text-sm font-medium text-foreground" title={title}>
             {title}
           </span>
+          {layerBadge && (
+            <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">{layerBadge}</span>
+          )}
           <span
             className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${item.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
           >
             {item.status === "draft" ? "draft" : `${item.findings} findings`}
           </span>
+          {item.stale && (
+            <span
+              className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-800"
+              title="A variable's data type or question type has been corrected since this table was built - its numbers may no longer match the correction. Rebuild it to pick up the change."
+            >
+              may be outdated
+            </span>
+          )}
+          {item.designFreshness === "stale" && (
+            <span
+              className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-800"
+              title="The document's survey-design setting has changed since this table was built - its standard errors and intervals may no longer reflect the design now in effect. Rebuild it to pick up the change. This never happens automatically, to preserve any human review already recorded against this table."
+            >
+              design setting changed
+            </span>
+          )}
+          {/* Brief 37 repair: distinct from "stale" - this table's design freshness genuinely
+              could not be checked (a legacy table built before this was tracked, or the
+              document's current set-up couldn't be read just now), not confirmed to still
+              match. Previously collapsed into the same "nothing shown" as a real match. */}
+          {item.designFreshness === "unknown" && (
+            <span
+              className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+              title="Whether this table's survey-design setting still matches the document's current one could not be verified just now - either it predates this check, or the document's set-up couldn't be read. Reload this workspace to check again; if it keeps failing, the document's saved set-up may need attention."
+            >
+              freshness could not be verified
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -1070,6 +1708,28 @@ function TableCard({
           className="rounded border border-border px-2 py-0.5 text-[11px] hover:border-slate-400"
         >
           Title and caption
+        </button>
+        <button
+          type="button"
+          disabled={loadingInsights}
+          onClick={async () => {
+            setOpen(true);
+            if (showInsights) {
+              setShowInsights(false);
+              return;
+            }
+            setShowInsights(true);
+            if (insights || loadingInsights) return;
+            setLoadingInsights(true);
+            setInsightsError(null);
+            const r = await summarizeCrosstabAction(runId, item.id);
+            setLoadingInsights(false);
+            if (r.ok) setInsights(r.insights);
+            else setInsightsError(r.error);
+          }}
+          className="rounded border border-border px-2 py-0.5 text-[11px] hover:border-slate-400 disabled:opacity-50"
+        >
+          {loadingInsights ? "Reading table..." : showInsights ? "Hide AI Insights" : "AI Insights"}
         </button>
         <button
           type="button"
@@ -1118,6 +1778,9 @@ function TableCard({
             <p className="text-xs text-muted">
               This table was built with an earlier version and cannot be shown. Delete it and add it again.
             </p>
+          )}
+          {showInsights && (
+            <CrosstabInsightsPanel insights={insights} error={insightsError} loading={loadingInsights} />
           )}
           {result && (
             <CrosstabView
@@ -1194,6 +1857,7 @@ function CrosstabView({
   const [hideEmpty, setHideEmpty] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { sel: cellSelected, select: selectCell } = useContext(CellSelectContext);
   const hasResp = result.questions.some((qq) => qq.rows.some((r) => r.respPct !== undefined));
   const stack = stat === "stack";
   const weighted = !!result.weightVar;
@@ -1220,13 +1884,13 @@ function CrosstabView({
   ];
   const cellOf = (r: CrosstabResult["questions"][number]["rows"][number], e: LayoutEntry): CellData | null => {
     if (e.kind === "col") {
-      return { pct: r.pct[e.j], rowPct: r.rowPct[e.j], count: r.count[e.j], nCell: r.nCell?.[e.j], respPct: r.respPct?.[e.j], base: r.base[e.j], sig: r.sig[e.j], letters: r.letters?.[e.j] };
+      return { pct: r.pct[e.j], rowPct: r.rowPct[e.j], count: r.count[e.j], nCell: r.nCell?.[e.j], respPct: r.respPct?.[e.j], base: r.base[e.j], sig: r.sig[e.j], letters: r.letters?.[e.j], residual: r.residual?.[e.j] };
     }
     const nt = r.net?.find((x) => x.block === e.block);
-    return nt ? { pct: nt.pct, rowPct: nt.rowPct, count: nt.count, nCell: nt.nCell, respPct: nt.respPct, base: nt.base, sig: 0, letters: undefined } : null;
+    return nt ? { pct: nt.pct, rowPct: nt.rowPct, count: nt.count, nCell: nt.nCell, respPct: nt.respPct, base: nt.base, sig: 0, letters: undefined, residual: undefined } : null;
   };
   /** Which measures an answer row shows. One in the single views, several in the stacked view. */
-  const measureKeys = (mean: boolean, r: { isBase?: boolean; isEffBase?: boolean; nCell?: unknown; respPct?: unknown }): MeasureKey[] => {
+  const measureKeys = (mean: boolean, r: { isBase?: boolean; isEffBase?: boolean; nCell?: unknown; respPct?: unknown; residual?: unknown }): MeasureKey[] => {
     if (r.isBase) return ["base"];
     if (!stack) return [stat as MeasureKey];
     if (mean) return measures.letters ? ["col", "letters"] : ["col"];
@@ -1237,11 +1901,13 @@ function CrosstabView({
     if (measures.count && weighted) out.push("count");
     if (showResp && r.respPct !== undefined) out.push("resp");
     if (measures.letters && !overall && !lettersBeside) out.push("letters");
+    if (measures.residual && !overall && r.residual !== undefined) out.push("residual");
     return out.length > 0 ? out : ["col"];
   };
   const measureText = (mk: MeasureKey, mean: boolean, r: { isBase?: boolean; isScore?: boolean; isMean?: boolean }, c: CellData): string => {
     if (mk === "base") return c.count === null || c.count === undefined ? "" : fmtInt(c.count);
     if (mk === "letters") return c.letters ? c.letters : c.letters === undefined ? "" : "-";
+    if (mk === "residual") return c.residual === null || c.residual === undefined ? "-" : `${c.residual > 0 ? "+" : ""}${c.residual.toFixed(1)}`;
     const v = mk === "col" ? c.pct : mk === "row" ? c.rowPct : mk === "n" ? c.nCell : mk === "resp" ? c.respPct : c.count;
     if (v === null || v === undefined) return mk === "n" ? "" : "-";
     if (mk === "n" || mk === "count") return fmtInt(v);
@@ -1273,8 +1939,9 @@ function CrosstabView({
                 ["n", "n"],
                 ...(weighted ? ([["count", "Weighted count"]] as const) : []),
                 ["letters", "Comparison letters"],
+                ["residual", "Standardized residual"],
               ] as const
-            ).filter(([k]) => !overall || (k !== "row" && k !== "letters")).map(([k, label]) => (
+            ).filter(([k]) => !overall || (k !== "row" && k !== "letters" && k !== "residual")).map(([k, label]) => (
               <label key={k} className="flex items-center gap-1">
                 <input type="checkbox" checked={measures[k]} onChange={(e) => setMeasures((m) => ({ ...m, [k]: e.target.checked }))} />
                 {label}
@@ -1354,7 +2021,7 @@ function CrosstabView({
             <>
               {" "}
               <span className="text-emerald-700">▲</span>/<span className="text-rose-700">▼</span> differs from all
-              other cases in the same banner variable at 95% ({result.notes?.designUsed ? "z-test with Taylor series variance" : "z-test on effective base, weights only"}; {correctionText(result.notes?.correction)}). Figures in grey italics rest on fewer than {reliableBase} cases: indicative only, not tested. A dash means fewer than {result.notes?.minBase ?? 10} cases, so no figure is shown.
+              other cases in the same banner variable at 95% ({result.notes?.designUsed ? "t-test with design degrees of freedom, Taylor series variance" : "z-test on effective base, weights only"}; {correctionText(result.notes?.correction)}). Figures in grey italics rest on fewer than {reliableBase} cases: indicative only, not tested. A dash means fewer than {result.notes?.minBase ?? 10} cases, so no figure is shown.
               {result.notes?.designUsed && result.notes.designUsed.casesMissingDesign > 0 && (
                 <span className="text-amber-700">
                   {" "}Warning: {result.notes.designUsed.casesMissingDesign} cases have no value for the survey design variables and were treated as unclustered, which can understate the standard errors.
@@ -1364,9 +2031,17 @@ function CrosstabView({
           )}
         </span>
         {exportHref && (
-          <a href={`${exportHref}&measures=${(stack ? (["col", "row", "n", "count", "letters"] as const).filter((k) => measures[k]).concat(showResp && hasResp ? (["resp"] as never[]) : []) : stat === "count" ? ["count"] : stat === "row" ? ["row"] : ["col", "letters"]).join(",") || "col"}&net=${showNet ? 1 : 0}`} className="font-medium text-primary hover:underline">
-            Download Excel
-          </a>
+          <>
+            <a href={`${exportHref}&measures=${(stack ? (["col", "row", "n", "count", "letters", "residual"] as const).filter((k) => measures[k]).concat(showResp && hasResp ? (["resp"] as never[]) : []) : stat === "count" ? ["count"] : stat === "row" ? ["row"] : ["col", "letters"]).join(",") || "col"}&net=${showNet ? 1 : 0}`} className="font-medium text-primary hover:underline">
+              Download Excel
+            </a>
+            <a href={`${exportHref}&format=pptx`} className="font-medium text-primary hover:underline">
+              PowerPoint
+            </a>
+            <a href={`${exportHref}&format=pdf`} className="font-medium text-primary hover:underline" title="Needs LibreOffice installed on this computer">
+              PDF
+            </a>
+          </>
         )}
         {hiddenCount > 0 && (
           <button type="button" onClick={onReset} className="font-medium text-primary hover:underline">
@@ -1394,7 +2069,7 @@ function CrosstabView({
             {result.provenance && (
               <li>
                 Built {new Date(result.provenance.builtAt).toLocaleString("en-ZA")} from {result.provenance.sourceFile} ({result.provenance.cases?.toLocaleString() ?? "?"} cases), engine{" "}
-                {result.provenance.engine ?? "unknown"}, weight {result.provenance.weightVar ?? "none"}, correction {result.provenance.correction}, design {result.provenance.design ? `PSU ${result.provenance.design.psu}${result.provenance.design.strata ? `, strata ${result.provenance.design.strata}` : ""}` : "weights only"}
+                {result.provenance.engine ?? "unknown"}, weight {result.provenance.weightVar ?? "none"}, correction {result.provenance.correction}, design {result.provenance.design ? (result.provenance.design.psu ? `PSU ${result.provenance.design.psu}${result.provenance.design.strata ? `, strata ${result.provenance.design.strata}` : ""}` : `strata ${result.provenance.design.strata} (no clustering variable)`) : "weights only"}
                 {result.provenance.questionnaireLabels ? ", questionnaire labels applied" : ""}.
               </li>
             )}
@@ -1540,10 +2215,35 @@ function CrosstabView({
                                       : "";
                             const showLetters = (!stack || lettersBeside) && colMode && !r.isBase && !!cell.letters;
                             const p = e.kind === "col" ? r.p[e.j] : null;
+                            const selKey = `${q.key}|${key}|${e.kind === "col" ? e.j : `net${e.block}`}`;
+                            const pickCell = () => {
+                              if (r.isBase) return;
+                              const blockIdx = e.kind === "col" ? e.c.block : e.block;
+                              const peers = layout
+                                .filter((x): x is Extract<LayoutEntry, { kind: "col" }> => x.kind === "col" && x.c.block === blockIdx)
+                                .map((x) => {
+                                  const cc = cellOf(r, x);
+                                  return { label: x.c.name, pct: cc?.pct ?? null, n: cc?.base.n ?? 0 };
+                                });
+                              selectCell({
+                                key: selKey,
+                                question: q.label,
+                                row: r.label,
+                                column: e.kind === "col" ? e.c.name : "NET",
+                                banner: e.kind === "col" ? e.c.blockLabel : (result.blocks[e.block]?.label ?? ""),
+                                cell,
+                                p,
+                                pAdj: e.kind === "col" ? r.pAdj?.[e.j] : undefined,
+                                totalPct: r.total.pct,
+                                thin,
+                                peers,
+                              });
+                            };
                             return (
                               <td
                                 key={isNetCol ? `net-${e.block}` : e.j}
-                                className={`${tdBase} ${cls}`}
+                                onClick={pickCell}
+                                className={`${tdBase} ${cls} ${r.isBase ? "" : "cursor-pointer hover:bg-primary-light/40"} ${cellSelected?.key === selKey ? "outline outline-2 -outline-offset-2 outline-primary" : ""}`}
                                 title={
                                   r.isBase
                                     ? undefined

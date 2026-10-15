@@ -1,0 +1,21 @@
+
+const fs=require('fs'),path=require('path'),assert=require('assert/strict'),{Pool}=require('pg'),{connect}=require('./cdp.cjs'),dir=path.resolve('scripts/p2a-integration/runs/authorized'),ids=JSON.parse(fs.readFileSync(path.join(dir,'browser-run.json'))),p=new Pool({connectionString:'postgres://postgres@127.0.0.1:55498/p2a_20261015_main'}),delay=ms=>new Promise(r=>setTimeout(r,ms)),results=[];
+const save=()=>fs.writeFileSync(path.join(dir,'browser-tail-results.json'),JSON.stringify(results,null,2));
+(async()=>{const c=await connect();try{
+await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Analytics')).click()");await delay(400);await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('sparse-dense.xlsx')).click()");await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Crosstabs')).click()");await delay(1800);
+let text=await c.eval('document.body.innerText');fs.writeFileSync(path.join(dir,'G6-workspace-after-missing.txt'),text);await c.shot('G6-workspace-after-missing');results.push({gate:'G6',workspaceShowsMissing:text.includes('Removed'),tail:text.slice(-1000)});save();
+await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Close (Esc)'))?.click()");
+await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText==='Import data').click()");await delay(400);
+const recovery=path.join(dir,'recovered-sparse-dense.xlsx');fs.copyFileSync(path.join(dir,'sparse-dense.xlsx'),recovery);
+const dom=await c.call('DOM.getDocument'),input=await c.call('DOM.querySelector',{nodeId:dom.root.nodeId,selector:'input[name=rawTableFiles]'});await c.call('DOM.setFileInputFiles',{nodeId:input.nodeId,files:[recovery]});await c.eval("document.querySelector('input[name=rawTableFiles]').closest('form').requestSubmit()");await delay(2500);
+await c.eval("[...document.querySelectorAll('p[title]')].find(p=>p.title==='recovered-sparse-dense.xlsx').click()");await delay(500);await c.eval("[...document.querySelectorAll('summary')].filter(s=>['Preview what was read','Data quality'].includes(s.innerText)).forEach(s=>{if(!s.parentElement.open)s.click()})");await delay(1600);
+text=await c.eval('document.body.innerText');assert(text.includes('40 rows'));const recovered=(await p.query("select id,selected_sheet from documents where run_id=$1 and source_filename='recovered-sparse-dense.xlsx'",[ids.run])).rows[0];assert.equal(recovered.selected_sheet,'Dense');fs.writeFileSync(path.join(dir,'G6-supported-reupload.txt'),text);await c.shot('G6-supported-reupload');results.push({gate:'G6',reupload:'passed',document:recovered.id});save();
+// Native CSV calculation is independent of the failed cached-XLSX preview.
+await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Analytics')).click()");await delay(400);await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('cases.csv')).click()");await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Crosstabs')).click()");await delay(1600);
+await c.eval("[...document.querySelectorAll('button')].filter(b=>b.innerText==='Row'&&b.getClientRects().length&&['Q1','Q1 (3)'].some(n=>b.parentElement.parentElement.querySelector('[title]')?.title===n)).forEach(b=>b.click())");
+await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText==='Add table to set').click()");
+const csv=(await p.query("select id from documents where run_id=$1 and source_filename='cases.csv'",[ids.run])).rows[0].id;
+let row;for(let i=0;i<80;i++){row=(await p.query('select id,crosstab from document_tables where document_id=$1 and crosstab is not null limit 1',[csv])).rows[0];if(row)break;await delay(300)}
+assert(row);assert.equal(row.crosstab.questions.length,2);for(const q of row.crosstab.questions)for(const r of q.rows.filter(r=>!r.isBase))assert.equal(r.total.pct,50);
+fs.writeFileSync(path.join(dir,'G7-native-csv-calculation.json'),JSON.stringify(row,null,2));await c.shot('G7-native-csv-calculation');results.push({gate:'G7',nativeCsvCalculation:'passed',table:row.id});save();
+}catch(e){results.push({status:'failure_or_harness_error',error:e.stack});save();console.error(e.stack);process.exitCode=1}finally{c.close();await p.end()}})();

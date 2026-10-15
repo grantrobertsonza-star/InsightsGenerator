@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { Pane, ThreePane } from "./ThreePane";
+
+/** Layout choice: "tabs" is the old horizontal strip (used by Findings); "pane" is a left nav with the content beside it. */
 
 export type WorkingDataTab = {
   id: string;
@@ -21,9 +24,51 @@ export type WorkingDataTab = {
  * same cost the stacked layout already had), this only changes what's
  * visible at once, not what's computed.
  */
-export default function WorkingDataTabs({ tabs }: { tabs: WorkingDataTab[] }) {
+export default function WorkingDataTabs({
+  tabs,
+  layout = "tabs",
+  intro,
+}: {
+  tabs: WorkingDataTab[];
+  layout?: "tabs" | "pane";
+  intro?: ReactNode;
+}) {
   const [activeId, setActiveId] = useState<string>(tabs[0]?.id ?? "");
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
+
+  if (layout === "pane") {
+    return (
+      <ThreePane
+        left={
+          <Pane side="left" title="Working data">
+            {intro}
+            <nav className="flex flex-col gap-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveId(tab.id)}
+                  className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                    tab.id === active?.id
+                      ? "bg-primary-light text-primary"
+                      : "text-muted hover:bg-slate-50 hover:text-foreground"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+            {active?.headerRight}
+          </Pane>
+        }
+        middle={
+          <Pane side="middle" title={active?.label ?? ""}>
+            {active?.content}
+          </Pane>
+        }
+      />
+    );
+  }
 
   return (
     <div>

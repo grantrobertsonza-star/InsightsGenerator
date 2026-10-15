@@ -1,0 +1,15 @@
+{
+  "head": "955a4eccef132956520b3e3c4ba78378d6748885",
+  "purpose": "Read-only preparation review; no test execution or application edits",
+  "sha256": {
+    "src/lib/objectiveEvidence.ts": "f7968646ca31c8e61a69cb1681333cbc924689834bb9744466cdf656e2c07c15",
+    "src/lib/objectiveEvidenceActions.ts": "e3981aa0572882ca6ed1ba6ace04d59dc23686828e7caf64b3210a4036214efb",
+    "src/lib/objectiveValidator.ts": "70bc7cbbffab53e07a96a93080ff5535a4845f2f441cd3d0ff29632177003e24",
+    "src/app/runs/[id]/ObjectiveEvidence.tsx": "d3de0a8dfe75c1b144b0ae7593829ca354784b72b4040c16866d0fce063e98d5",
+    "src/lib/__tests__/objectiveEvidenceIdentity.test.ts": "81d67c669a9e5c43ab8c7715a157a7163b9cd77037d41ca3513532d41da1af93",
+    "src/lib/__tests__/objectiveEvidencePublish.test.ts": "071f45a3db68a3b24a45177692dd359cb5d1ee96fec2a8bbd272e701561ec10e",
+    "src/lib/db.ts": "42882fa413c095ceb58b396eac1cc5a2caac8c1d169d2092ac27aba632d3fa9d",
+    "supabase/migrations/0081_objective_evidence_candidate_ids.sql": "d4edb9ecb723c11e3972b9a20136f69fbf26215da6990b953ae5ca55d05b7eb7",
+    "supabase/migrations/0092_objective_evidence_generations.sql": "5c2d7524ff8ff1bc14b316bf73c6682e3b82a75160672cbebe08d827b68cd1b4"
+  }
+}

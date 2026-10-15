@@ -4,6 +4,7 @@ import Crosstabs from "./content/crosstabs";
 import Findings from "./content/findings";
 import Insights from "./content/insights";
 import Import from "./content/import";
+import PreparingFiles from "./content/preparing-files";
 import Objectives from "./content/objectives";
 import Decisions from "./content/decisions";
 import Reports from "./content/reports";
@@ -15,6 +16,7 @@ export const articleComponents: Record<string, ComponentType> = {
   findings: Findings,
   insights: Insights,
   import: Import,
+  "preparing-files": PreparingFiles,
   objectives: Objectives,
   decisions: Decisions,
   reports: Reports,

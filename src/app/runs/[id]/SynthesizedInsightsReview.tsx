@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { createContext, useContext, useState, useTransition } from "react";
+import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptSynthesizedInsight,
   rejectSynthesizedInsight,
@@ -147,6 +148,11 @@ function InfoDot({ text }: { text: string }) {
   );
 }
 
+const InsightSelection = createContext<{
+  selectedId: string | null;
+  select: (id: string) => void;
+}>({ selectedId: null, select: () => {} });
+
 /**
  * Shows the output of the findings->insights funnel (insightSynthesizer.ts):
  * a small number of insights built by clustering several pre-insights that
@@ -200,6 +206,7 @@ export default function SynthesizedInsightsReview({
   const [isCheckingStability, startStabilityCheck] = useTransition();
   const [stabilityError, setStabilityError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"insights" | "scores">("insights");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (insights.length === 0) {
     return (
@@ -262,8 +269,9 @@ export default function SynthesizedInsightsReview({
 
   const scoredCount = insights.filter((i) => i.quality_score !== null).length;
 
-  return (
-    <div className="space-y-4">
+  const selected = insights.find((i) => i.id === selectedId) ?? null;
+
+  const tabsBar = (
       <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
         {(
           [
@@ -295,10 +303,24 @@ export default function SynthesizedInsightsReview({
         ))}
       </div>
 
-      {activeTab === "scores" && <QualityScoresTable insights={insights} />}
+  );
 
-      {activeTab === "insights" && (
-        <>
+  if (activeTab === "scores") {
+    return (
+      <div className="space-y-4">
+        {tabsBar}
+        <QualityScoresTable insights={insights} />
+      </div>
+    );
+  }
+
+  return (
+    <InsightSelection.Provider
+      value={{ selectedId, select: setSelectedId }}
+    >
+      <ThreePane
+        left={
+          <Pane side="left" title="Filters">
           {acceptedCount > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3">
               <p className="max-w-2xl text-xs text-muted">
@@ -354,7 +376,7 @@ export default function SynthesizedInsightsReview({
                 }
               />
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 title={confidenceTierDefinition.strong}
@@ -429,7 +451,7 @@ export default function SynthesizedInsightsReview({
                 }
               />
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 title={qualityTierDefinition.qualified}
@@ -532,6 +554,19 @@ export default function SynthesizedInsightsReview({
             </div>
           )}
 
+          </Pane>
+        }
+        middle={
+          <Pane
+            side="middle"
+            title="Insights"
+            badge={
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                {filtered.length} of {insights.length}
+              </span>
+            }
+          >
+            {tabsBar}
           {filtered.length === 0 ? (
             <p className="text-sm text-muted">
               No synthesized insights match this filter.
@@ -547,9 +582,22 @@ export default function SynthesizedInsightsReview({
               ))}
             </div>
           )}
-        </>
-      )}
-    </div>
+          </Pane>
+        }
+        right={
+          <Pane side="right" title="Story and evidence">
+            {selected ? (
+              <InsightStory insight={selected} />
+            ) : (
+              <p className="text-sm text-muted">
+                Select an insight to read its observation, tension and
+                implication, and the chain of evidence behind it.
+              </p>
+            )}
+          </Pane>
+        }
+      />
+    </InsightSelection.Provider>
   );
 }
 
@@ -695,8 +743,9 @@ function SynthesizedInsightCard({
   insight: SynthesizedInsightRow;
 }) {
   const [isPending, startTransition] = useTransition();
-  // Rolled up by default: the headline and badges stay visible, the story and evidence open on request.
-  const [open, setOpen] = useState(false);
+  // The story and evidence show in the right-hand pane for the selected insight.
+  const { selectedId, select } = useContext(InsightSelection);
+  const isSelected = selectedId === insight.id;
   const isRejected = insight.review_status === "rejected";
 
   function handleDelete() {
@@ -711,7 +760,8 @@ function SynthesizedInsightCard({
 
   return (
     <div
-      className={`card-surface flex flex-col gap-4 rounded-xl border border-border bg-white p-5 ${isRejected ? "opacity-50" : ""}`}
+      onClick={() => select(insight.id)}
+      className={`card-surface flex cursor-pointer flex-col gap-3 rounded-xl border bg-white p-4 ${isSelected ? "border-primary/50 ring-2 ring-primary/40" : "border-border"} ${isRejected ? "opacity-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -818,7 +868,7 @@ function SynthesizedInsightCard({
         </button>
       </div>
 
-      <div className="text-lg font-semibold leading-snug text-foreground">
+      <div className="text-base font-semibold leading-snug text-foreground">
         {insight.headline}
       </div>
       <p className="-mt-1 text-xs text-muted">{insight.provenance_caption}</p>
@@ -837,14 +887,55 @@ function SynthesizedInsightCard({
         </div>
       )}
 
-      {open && (
-        <>
-      <div className="h-px bg-border" />
 
+      <div className="-mt-1 flex flex-wrap items-center justify-between gap-1.5">
+        <button
+          type="button"
+          onClick={() => select(insight.id)}
+          aria-pressed={isSelected}
+          className="rounded-lg px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/5"
+        >
+          {isSelected ? "Showing on the right" : "Show the story and evidence"}
+        </button>
+        <div className="flex flex-wrap gap-1.5">
+        {isRejected ? (
+          <button
+            disabled={isPending}
+            onClick={() =>
+              startTransition(() => acceptSynthesizedInsight(runId, insight.id))
+            }
+            className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
+          >
+            Accept
+          </button>
+        ) : (
+          <button
+            disabled={isPending}
+            onClick={() =>
+              startTransition(() => rejectSynthesizedInsight(runId, insight.id))
+            }
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
+          >
+            Reject
+          </button>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The right-hand pane for one insight: the observation, tension and implication, then why to trust it. */
+function InsightStory({ insight }: { insight: SynthesizedInsightRow }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="text-base font-semibold leading-snug text-foreground">
+        {insight.headline}
+      </div>
       {/* Laid out like a slide: the story on the left, why to trust it on
           the right. Stacks on narrow screens. */}
-      <div className="grid overflow-hidden rounded-2xl border border-border bg-white lg:grid-cols-[1.4fr_1fr]">
-        <div className="flex flex-col gap-5 p-5 lg:p-6">
+      <div className="grid overflow-hidden rounded-2xl border border-border bg-white ">
+        <div className="flex flex-col gap-5 p-4">
           {[
             {
               letter: "O",
@@ -894,7 +985,7 @@ function SynthesizedInsightCard({
           ))}
         </div>
 
-        <div className="flex flex-col gap-5 border-t border-border bg-slate-50 p-5 lg:border-l lg:border-t-0 lg:p-6">
+        <div className="flex flex-col gap-5 border-t border-border bg-slate-50 p-5 ">
           {insight.quality_rationale && (
             <div>
               <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-teal-700">
@@ -948,42 +1039,6 @@ function SynthesizedInsightCard({
               ))}
             </div>
           </div>
-        </div>
-      </div>
-        </>
-      )}
-
-      <div className="-mt-1 flex flex-wrap items-center justify-between gap-1.5">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="rounded-lg px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/5"
-        >
-          {open ? "Hide the story and evidence" : "Show the story and evidence"}
-        </button>
-        <div className="flex flex-wrap gap-1.5">
-        {isRejected ? (
-          <button
-            disabled={isPending}
-            onClick={() =>
-              startTransition(() => acceptSynthesizedInsight(runId, insight.id))
-            }
-            className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
-          >
-            Accept
-          </button>
-        ) : (
-          <button
-            disabled={isPending}
-            onClick={() =>
-              startTransition(() => rejectSynthesizedInsight(runId, insight.id))
-            }
-            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
-          >
-            Reject
-          </button>
-        )}
         </div>
       </div>
     </div>

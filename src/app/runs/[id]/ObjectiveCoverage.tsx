@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { checkObjectiveCoverage, suggestObjectivesFromUnmatched } from "@/lib/objectiveCoverageActions";
 
 type Validation = {
@@ -35,6 +36,7 @@ export default function ObjectiveCoverage({
   insights: InsightLite[];
   hasObjectiveOrDecision: boolean;
 }) {
+  const { selected, select } = useObjectiveSelection();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const accepted = insights.filter((i) => i.review_status === "accepted");
@@ -59,7 +61,7 @@ export default function ObjectiveCoverage({
 
   if (accepted.length === 0 && validations.length === 0) {
     return (
-      <p className="mb-6 max-w-3xl text-sm text-muted">
+      <p className="text-sm text-muted">
         Coverage appears here once there are accepted insights: each objective is checked against them,
         and evidence that no objective asks about is listed.
       </p>
@@ -67,9 +69,9 @@ export default function ObjectiveCoverage({
   }
 
   return (
-    <div className="mb-6 max-w-3xl space-y-4 rounded-xl border border-border bg-white p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <div className="space-y-4 rounded-xl border border-border bg-white p-4">
+      <div className="flex flex-col items-start gap-2">
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">Coverage of your objectives</h3>
           <p className="mt-1 text-xs text-muted">
             Each stated objective and decision is checked against the accepted insights. This updates
@@ -83,9 +85,15 @@ export default function ObjectiveCoverage({
         )}
       </div>
 
+      {selected && (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          Showing the selected objective only.
+          <button className="underline" onClick={() => select(selected)}>Show all</button>
+        </p>
+      )}
       {validations.length > 0 ? (
         <ul className="space-y-3">
-          {ordered.map((v) => (
+          {ordered.filter((v) => !selected || sameObjective(selected, { text: v.item_text })).map((v) => (
             <li key={`${v.item_kind}-${v.item_order}`} className="rounded-lg border border-border p-3">
               <div className="flex items-center gap-2">
                 <span
@@ -126,7 +134,7 @@ export default function ObjectiveCoverage({
         </p>
       )}
 
-      {statedExists || (validations.length === 0 && !hasObjectiveOrDecision) ? (
+      {selected ? null : statedExists || (validations.length === 0 && !hasObjectiveOrDecision) ? (
       <div className="border-t border-border pt-4">
         <div className="flex items-start justify-between gap-4">
           <div>

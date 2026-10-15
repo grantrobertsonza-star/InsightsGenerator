@@ -23,6 +23,7 @@ import {
   addDeckRoadmapSlide,
   addVisualSCQASlide,
 } from "@/lib/deckSlides";
+import { exportCaveatLabels } from "@/lib/caveatLabels";
 import type { DeckPillar } from "@/lib/storyNarrative";
 import { addDiscoverySlides } from "@/lib/discoverySlides";
 import { loadDiscoveryReportData } from "@/lib/discoveryReport";
@@ -42,6 +43,13 @@ type PillarInsight = {
   implication: string;
   confidence_tier: ConfidenceTier;
   quality_tier: QualityTier;
+  /** FND-001/REP-OUT-001 (second counter-review): raw caveat tags aggregated, live, from every
+   * still-eligible (non-rejected) finding this insight was built from - see caveatLabels.ts for
+   * why only a narrow allow-list is ever exported. Not rendered inline on the fixed-height
+   * evidence card (addEvidenceCard is tuned for exactly three lines - see INSIGHT_ROW's own
+   * comment on why a third line already needed a height increase); surfaced instead on a
+   * dedicated "EVIDENCE QUALIFICATIONS" slide below. */
+  caveat_tags: string[] | null;
 };
 
 type ExportRecommendation = {
@@ -50,6 +58,9 @@ type ExportRecommendation = {
   timeline: string;
   metric: string;
   priority: "high" | "medium" | "low";
+  /** Same meaning as PillarInsight['caveat_tags'] above, aggregated via the insight this
+   * recommendation is anchored to (recommendations.synthesized_insight_id). */
+  caveat_tags: string[] | null;
 };
 
 type ExportObjectiveValidation = {
@@ -158,36 +169,124 @@ export async function GET(
         )
       : [];
 
+    // FND-001 / REP-OUT-001: a synthesized insight (or any pre-insight it draws on) can be
+    // rejected, or its own finding rejected, AFTER this run's narrative was last generated -
+    // `deck_narratives.pillars[].insight_ids` is a point-in-time snapshot of ids, not a live
+    // reference. Without `si.review_status = 'accepted'` and `si.run_id = $2` here, a now-
+    // rejected insight (or one belonging to a different run entirely) still rendered in every
+    // export of a narrative that referenced it before the rejection. The `not exists` clause
+    // closes the same gap one layer further down: an insight that is itself still "accepted"
+    // but was built from a pre-insight whose underlying finding has SINCE been rejected is
+    // excluded too, rather than only checking the insight's own status. Kept identical to, but
+    // not imported from, export-docx/route.ts's own copy - same reasoning as this file's own
+    // doc comment on why the two routes share a query by copy, not by import.
     const insightsResult =
       insightIds.length > 0
         ? await client.query<PillarInsight>(
-            `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier
+            `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier,
+                    (
+                      select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
+                      from synthesized_insight_sources s2
+                      join insights i2 on i2.id = s2.pre_insight_id
+                      join findings f2 on f2.id = i2.finding_id
+                      cross join lateral jsonb_array_elements_text(coalesce(f2.stated_stats->'caveats', '[]'::jsonb)) as tag
+                      where s2.synthesized_insight_id = si.id and f2.status <> 'rejected'
+                    ) as caveat_tags
              from synthesized_insights si
-             where si.id = any($1::uuid[])`,
-            [insightIds],
+             where si.id = any($1::uuid[])
+               and si.run_id = $2
+               and si.review_status = 'accepted'
+               -- FND-001/REP-OUT-001 (second counter-review): replaces the old 'not exists
+               -- (... f.status = rejected)' check. That check could only ever see a source row
+               -- that STILL EXISTS - but synthesized_insight_sources.pre_insight_id and
+               -- insights.claim_id (the finding link) both cascade on delete (0027/0005), so a hard
+               -- deletion (deleteDocument removing a document's findings outright, or a
+               -- regenerate/reprocess pass that deletes and re-creates findings with new ids -
+               -- 0021_finding_history.sql) makes the join row vanish with no status to find at all,
+               -- not rejected. triangulation_count (insightSynthesizer.ts) is the exact number of
+               -- sources this insight was built from, persisted once and never updated - comparing
+               -- the LIVE count of still-linked, non-rejected sources against it catches a rejected
+               -- source (excluded by status, same as before) AND a deleted/regenerated one (simply
+               -- missing from the join, so the count itself comes up short) in one measure, with no
+               -- new column or migration needed.
+               and (
+                 select count(*) from synthesized_insight_sources s
+                 join insights i on i.id = s.pre_insight_id
+                 join findings f on f.id = i.finding_id
+                 where s.synthesized_insight_id = si.id and f.status <> 'rejected'
+               ) >= si.triangulation_count`,
+            [insightIds, runId],
           )
         : null;
 
+    // Same freshness contract as insightsResult above, applied to recommendations: a
+    // recommendation can stay "accepted" while the synthesized insight it is anchored to has
+    // since been rejected (or had a dependent finding rejected) - neither was checked before,
+    // only the recommendation's own status.
     const recommendationsResult = await client.query<ExportRecommendation>(
-      `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority
+      `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority,
+              (
+                select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
+                from synthesized_insight_sources s2
+                join insights i2 on i2.id = s2.pre_insight_id
+                join findings f2 on f2.id = i2.finding_id
+                cross join lateral jsonb_array_elements_text(coalesce(f2.stated_stats->'caveats', '[]'::jsonb)) as tag
+                where s2.synthesized_insight_id = si.id and f2.status <> 'rejected'
+              ) as caveat_tags
        from recommendations r
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
+         and si.review_status = 'accepted'
+         -- FND-001/REP-OUT-001 (second counter-review): same live-count-vs-triangulation_count
+         -- comparison as insightsResult above - see its comment for why a bare 'not exists
+         -- (... rejected)' check cannot see a source whose link row was removed by cascading
+         -- deletion rather than marked rejected.
+         and (
+           select count(*) from synthesized_insight_sources s
+           join insights i on i.id = s.pre_insight_id
+           join findings f on f.id = i.finding_id
+           where s.synthesized_insight_id = si.id and f.status <> 'rejected'
+         ) >= si.triangulation_count
        order by case r.priority when 'high' then 0 when 'medium' then 1 else 2 end, r.created_at`,
       [runId],
     );
 
-    const objectiveValidationsResult =
-      await client.query<ExportObjectiveValidation>(
-        `select item_kind, item_text,
-              case when inferred then 'inferred' else status end as status,
-              case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion,
-              synthesized_insight_ids
-       from objective_validations
-       where run_id = $1
-       order by item_kind, item_order`,
-        [runId],
-      );
+    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a catalog
+    // probe, same technique and same reasoning as page.tsx's own getObjectiveValidations - a
+    // failed SELECT on a pre-migration database would abort the rest of this transaction. Both
+    // export routes used to omit this column entirely, so a degraded conclusion (generated while
+    // direct data-evidence retrieval was failing) reached DOCX/PPTX with no qualification at all,
+    // even though the live app already flags it. Folded into the same `conclusion` string the
+    // existing "inferred" wrapper already builds, rather than a new field, so every renderer that
+    // already prints `conclusion` picks this up with no further change.
+    const evidenceDigestDegradedColExists = await client.query<{ exists: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
+       ) as "exists"`,
+    );
+    const objectiveValidationsResult = evidenceDigestDegradedColExists.rows[0]?.exists === true
+      ? await client.query<ExportObjectiveValidation>(
+          `select item_kind, item_text,
+                case when inferred then 'inferred' else status end as status,
+                (case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end)
+                  || (case when evidence_digest_degraded then ' (Evidence check degraded: generated while data-evidence retrieval was failing - may be missing evidence a working check would have cited.)' else '' end) as conclusion,
+                synthesized_insight_ids
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+          [runId],
+        )
+      : await client.query<ExportObjectiveValidation>(
+          `select item_kind, item_text,
+                case when inferred then 'inferred' else status end as status,
+                case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion,
+                synthesized_insight_ids
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+          [runId],
+        );
 
     // An accepted synthesized insight that no objective/decision item's
     // array references at all -- evidence the project turned up that
@@ -476,6 +575,11 @@ export async function GET(
     const insights = pillar.insight_ids
       .map((id) => insightsById.get(id))
       .filter((insight): insight is PillarInsight => Boolean(insight));
+    // REP-OUT-001: same eligibility contract as insightsResult's own query above - an id that
+    // didn't resolve was rejected (directly or through a since-rejected dependent finding), not
+    // merely absent. Tracked here, not silently dropped, so page 0 of this pillar can say so -
+    // see the note rendered just after pillar.so_what below.
+    const omittedInsightCount = pillar.insight_ids.length - insights.length;
     const pageCount = Math.max(
       1,
       Math.ceil(insights.length / INSIGHT_ROW.PER_SLIDE),
@@ -532,6 +636,28 @@ export async function GET(
           w: 8.8,
           h: 0.45,
           fontSize: fittedSoWhat.fontSize,
+          italic: true,
+          fontFace: FONT.body,
+          color: COLORS.muted,
+        });
+      }
+      if (page === 0 && omittedInsightCount > 0) {
+        // REP-OUT-001: placed below so_what (whether or not so_what itself rendered) rather
+        // than inventing a new row - same reasoning as docxReport.ts's equivalent note, kept to
+        // one short italic line so it doesn't compete with the pillar's own fixed layout.
+        const staleNote = `${omittedInsightCount} insight${omittedInsightCount === 1 ? "" : "s"} referenced here ${omittedInsightCount === 1 ? "is" : "are"} no longer current and ${omittedInsightCount === 1 ? "has" : "have"} been left out.`;
+        const fittedStale = fitParagraph(staleNote, {
+          fontSize: 11,
+          widthIn: 8.8,
+          heightIn: 0.35,
+          minFontScale: 0.7,
+        });
+        slide.addText(fittedStale.text, {
+          x: 0.6,
+          y: pillar.so_what ? 1.72 : 1.3,
+          w: 8.8,
+          h: 0.35,
+          fontSize: fittedStale.fontSize,
           italic: true,
           fontFace: FONT.body,
           color: COLORS.muted,
@@ -739,6 +865,70 @@ export async function GET(
       color: COLORS.mutedOnDark,
     });
     addFooter(slide, deckTitle, "Caveats & scope");
+  }
+
+  // FND-001/REP-OUT-001 (second counter-review): a second, independent qualification surface
+  // from the model-authored "CAVEATS & SCOPE" slide above (narrative.caveats is free text the
+  // narrative generator wrote, never verified evidence numbers - see deck_narratives' own
+  // migration comment). This slide instead lists, per still-exported insight and recommendation,
+  // the export-worthy caveat tags aggregated live from that claim's own still-eligible
+  // contributing findings. Gated on its own non-empty condition so a deck with no qualifying
+  // findings renders no extra slide, and never merged into the prose above - a reader must not
+  // mistake "this insight is stale" (the per-pillar note above) for "this insight is current but
+  // qualified" (this slide).
+  const insightQualifications = Array.from(insightsById.values())
+    .map((insight) => ({
+      headline: insight.headline,
+      caveats: exportCaveatLabels(insight.caveat_tags),
+    }))
+    .filter((entry) => entry.caveats.length > 0);
+  const recommendationQualifications = recommendations
+    .map((rec) => ({
+      headline: rec.action_text,
+      caveats: exportCaveatLabels(rec.caveat_tags),
+    }))
+    .filter((entry) => entry.caveats.length > 0);
+
+  if (insightQualifications.length > 0 || recommendationQualifications.length > 0) {
+    const slide = pptx.addSlide();
+    slide.background = { color: COLORS.ink };
+    slide.addText("EVIDENCE QUALIFICATIONS", {
+      x: 0.6,
+      y: 0.55,
+      w: 8.6,
+      h: 0.4,
+      fontSize: 13,
+      bold: true,
+      fontFace: FONT.body,
+      color: COLORS.accentOnDark,
+      charSpacing: 2,
+    });
+    const qualificationLines = [
+      ...insightQualifications,
+      ...recommendationQualifications,
+    ].map((entry) => `${entry.headline} — ${entry.caveats.join("; ")}.`);
+    const fittedQualifications = fitBulletList(qualificationLines, {
+      fontSize: 13,
+      widthIn: 8.4,
+      heightIn: 3.6,
+      minFontScale: 0.6,
+    });
+    slide.addText(
+      fittedQualifications.items.map((line) => ({
+        text: line,
+        options: { bullet: { code: "25AA" }, breakLine: true, color: "FFFFFF" },
+      })),
+      {
+        x: 0.7,
+        y: 1.15,
+        w: 8.4,
+        h: 3.6,
+        fontSize: fittedQualifications.fontSize,
+        fontFace: FONT.body,
+        valign: "top",
+      },
+    );
+    addFooter(slide, deckTitle, "Evidence qualifications");
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;

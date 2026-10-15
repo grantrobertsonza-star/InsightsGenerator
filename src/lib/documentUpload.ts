@@ -80,24 +80,106 @@ export async function storeUploadedDocument(
     throw new Error(`Upload of ${file.name} failed: ${uploadError.message}`);
   }
 
-  return withTenant(tenantId, async (client) => {
-    // The instrument column only exists once migration 0060 is applied, so
-    // it is only named for instrument uploads and every other upload is
-    // unaffected until then.
-    const result =
-      kind === "instrument"
-        ? await client.query<{ id: string }>(
-            `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, instrument_type)
-             values ($1, $2, $3, $4, $5, $6)
-             returning id`,
-            [tenantId, runId, kind, file.name, storagePath, instrumentType ?? "questionnaire"]
-          )
-        : await client.query<{ id: string }>(
-            `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, ingestion_type)
-             values ($1, $2, $3, $4, $5, $6)
-             returning id`,
-            [tenantId, runId, kind, file.name, storagePath, kind === "table" ? ingestionType : null]
-          );
-    return result.rows[0].id;
-  });
+  try {
+    return await withTenant(tenantId, async (client) => {
+      // The instrument column only exists once migration 0060 is applied, so
+      // it is only named for instrument uploads and every other upload is
+      // unaffected until then.
+      const result =
+        kind === "instrument"
+          ? await client.query<{ id: string }>(
+              `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, instrument_type)
+               values ($1, $2, $3, $4, $5, $6)
+               returning id`,
+              [tenantId, runId, kind, file.name, storagePath, instrumentType ?? "questionnaire"]
+            )
+          : await client.query<{ id: string }>(
+              `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, ingestion_type)
+               values ($1, $2, $3, $4, $5, $6)
+               returning id`,
+              [tenantId, runId, kind, file.name, storagePath, kind === "table" ? ingestionType : null]
+            );
+      return result.rows[0].id;
+    });
+  } catch (error) {
+    // The file is already in storage but has no document row to point at it:
+    // clean it up rather than leaving an orphaned object with nothing in the
+    // database to show it exists or to let a retry find and reuse it. Best
+    // effort; if the cleanup itself fails, the original insert error is still
+    // the one that reaches the caller, not this one, but the cleanup failure
+    // itself is recorded rather than silently dropped - without this, a
+    // double failure (insert fails, then cleanup also fails) left an
+    // orphaned storage object with literally nothing, anywhere, saying it
+    // existed or needed attention.
+    // IMP-007: `.remove()` can reject outright, not just resolve with an `{ error }` - a
+    // rejection here used to escape this catch block as a brand-new thrown error, replacing
+    // the original insert failure (`error`) with the cleanup failure instead of adding to it,
+    // and the `throw error;` below never ran, so neither the insert failure nor the cleanup
+    // failure was ever recorded. Both shapes are now folded into the same recorded trace, and
+    // the original insert error is always what this function throws.
+    let cleanupError: { message: string } | null = null;
+    try {
+      const { error: cleanupErr } = await supabaseAdmin.storage.from(BUCKET).remove([storagePath]);
+      cleanupError = cleanupErr;
+    } catch (thrown) {
+      cleanupError = { message: thrown instanceof Error ? thrown.message : String(thrown) };
+    }
+    if (cleanupError) {
+      await withTenant(tenantId, async (client) => {
+        await client.query(
+          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'document_storage_cleanup_failed', $3)`,
+          [tenantId, runId, JSON.stringify({ storagePath, insertError: error instanceof Error ? error.message : String(error), cleanupError: cleanupError.message })]
+        );
+      }).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+/**
+ * Records whether a document's last processing attempt actually produced usable data,
+ * independent of whether the upload that stored it succeeded - storage succeeding only
+ * means the bytes are safely kept, not that anything could be read out of them. Shared
+ * by the explicit single-document processing actions (page.tsx) and by storeAndRead
+ * (documentUploadActions.ts), whose best-effort read-on-upload used to leave this unset
+ * on failure: the document then showed as freshly added with no hint that it came back
+ * empty until the researcher happened to notice, or separately clicked a processing
+ * action that repeated the same failure. Best-effort and migration-guarded like the
+ * other document_tables/variable_overrides columns this file's neighbours touch: a
+ * pre-migration-0079 database has no processing_status column yet, so this is silently
+ * a no-op there rather than a hard failure over a column that doesn't exist yet.
+ */
+/**
+ * Counter-review on ANA-QUAL-001: this used to return void, so a status write that was
+ * silently swallowed by the migration guard below (a pre-0088 database rejecting
+ * 'incomplete' via its check constraint, same as a pre-0079 database having no column at
+ * all) was indistinguishable from one that actually succeeded - the caller had no way to
+ * know the document's processing_status was NOT updated, and a document could keep
+ * showing a stale prior status (most dangerously a stale "ready" left over from an
+ * earlier, fully-successful run) while today's run, which actually left coding
+ * incomplete, believed it had recorded that. Returning whether the write actually took
+ * effect lets a caller that cares (extractThemes.ts's three apply-codebook call sites, in
+ * particular - see their own comments) tell the two apart and say so, rather than
+ * implying a status was saved when it was not.
+ */
+export async function markDocumentProcessingStatus(
+  tenantId: string,
+  documentId: string,
+  // ANA-QUAL-001: 'incomplete' (migration 0088) is a transcript whose coding batches came
+  // back without full per-unit coverage - not a failure (it still produced usable findings),
+  // but not a clean run either. See extractThemes.ts's applyCodebook/incompleteBatches.
+  status: "ready" | "incomplete" | "failed",
+): Promise<boolean> {
+  try {
+    await withTenant(tenantId, async (client) => {
+      await client.query("update documents set processing_status = $1 where id = $2", [status, documentId]);
+    });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/processing_status/.test(message)) throw error;
+    // Pre-migration-0079 database (no column), or pre-migration-0088 (column exists but
+    // its check constraint does not yet allow 'incomplete'): nothing was recorded.
+    return false;
+  }
 }

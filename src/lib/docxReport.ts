@@ -136,7 +136,28 @@ function chartImageParagraph(image: {
 export type NarrativeReportPillar = {
   headline: string;
   so_what: string;
-  insights: { headline: string; observation: string; implication: string }[];
+  insights: {
+    headline: string;
+    observation: string;
+    implication: string;
+    /** FND-001/REP-OUT-001 (second counter-review): export-worthy caveat labels aggregated
+     * live, at export time, from every still-eligible (non-rejected) finding this insight was
+     * built from - never from deck_narratives.caveats, which is model-authored free text and
+     * does not qualify specific evidence numbers (see that table's own migration comment).
+     * Omitted or [] when this insight carries no export-worthy caveat, so it renders with no
+     * extra line - this must stay invisible when there is nothing to say. Distinct from
+     * omittedInsightCount below: that says an insight is no longer current; this says a still-
+     * current insight carries residual uncertainty. The two never merge into one sentence. */
+    caveats?: string[];
+  }[];
+  /** REP-OUT-001: how many of this pillar's ORIGINAL referenced insights were left out of
+   * `insights` above because they (or a finding one of their pre-insights depends on) are no
+   * longer accepted - see the export routes' own comment on the `insightsResult` query. Omitted
+   * or 0 when nothing was left out, so a caller only needs to check this before rendering a
+   * pillar, never diff insight_ids itself. This replaces a silent `.filter(Boolean)` drop: the
+   * reader of this report is told a pillar thinned out, rather than seeing a shorter pillar with
+   * no explanation that anything changed since it was written. */
+  omittedInsightCount?: number;
 };
 
 export type NarrativeReportObjectiveItem = {
@@ -152,6 +173,11 @@ export type NarrativeReportRecommendation = {
   timeline: string;
   metric: string;
   priority: "high" | "medium" | "low";
+  /** FND-001/REP-OUT-001 (second counter-review): same meaning and same aggregation rule as
+   * NarrativeReportPillar['insights'][number]['caveats'] - a recommendation is itself a claim
+   * anchored to a synthesized insight, so it is qualified the same way, via the insight it is
+   * anchored to (recommendations.synthesized_insight_id). */
+  caveats?: string[];
 };
 
 export type NarrativeReportDocument = {
@@ -177,6 +203,15 @@ export type NarrativeReportChartImage = {
 
 export type NarrativeReportInput = {
   title: string;
+  /** REP-OUT-001 / FND-001: true when at least one pillar had an insight omitted for the reason
+   * NarrativeReportPillar['omittedInsightCount'] documents - surfaced once, at the top of the
+   * Insights section, as a single run-level note rather than only the per-pillar counts, so a
+   * reader who skims past one pillar's note still sees that this narrative's framing may be out
+   * of date overall. This does not rewrite governingThought/executiveSummary - closing that
+   * fully is a narrative-GENERATION concern (regenerating the narrative text itself), out of
+   * scope for an export-time fix; this only flags that the framing may no longer match the
+   * evidence it was written from. */
+  narrativeMayBeStale?: boolean;
   decisionStatement: string | null;
   audience: string | null;
   businessProblem: string | null;
@@ -607,6 +642,14 @@ export async function buildNarrativeReportDocx(
       body(input.governingThought, { italic: true, color: ACCENT }),
     );
   }
+  if (input.narrativeMayBeStale) {
+    children.push(
+      body(
+        "This narrative's framing may be out of date: one or more insights it referenced when generated are no longer current. Regenerate it to incorporate the change.",
+        { italic: true, color: MUTED },
+      ),
+    );
+  }
 
   input.pillars.forEach((pillar, index) => {
     children.push(
@@ -632,6 +675,14 @@ export async function buildNarrativeReportDocx(
     if (pillar.so_what) {
       children.push(body(pillar.so_what, { italic: true, color: MUTED }));
     }
+    if (pillar.omittedInsightCount) {
+      children.push(
+        body(
+          `${pillar.omittedInsightCount} insight${pillar.omittedInsightCount === 1 ? "" : "s"} referenced here ${pillar.omittedInsightCount === 1 ? "is" : "are"} no longer current and ${pillar.omittedInsightCount === 1 ? "has" : "have"} been left out.`,
+          { italic: true, color: MUTED },
+        ),
+      );
+    }
     for (const insight of pillar.insights) {
       children.push(
         new Paragraph({
@@ -650,6 +701,14 @@ export async function buildNarrativeReportDocx(
       children.push(
         body(`“${insight.implication}”`, { italic: true, color: MUTED }),
       );
+      if (insight.caveats && insight.caveats.length > 0) {
+        children.push(
+          body(`Caveats: ${insight.caveats.join("; ")}.`, {
+            italic: true,
+            color: MUTED,
+          }),
+        );
+      }
     }
   });
 
@@ -752,6 +811,14 @@ export async function buildNarrativeReportDocx(
         { color: MUTED },
       ),
     );
+    if (rec.caveats && rec.caveats.length > 0) {
+      children.push(
+        body(`Caveats: ${rec.caveats.join("; ")}.`, {
+          italic: true,
+          color: MUTED,
+        }),
+      );
+    }
   }
 
   // --- Next steps: gaps worth following up, plus scope & limitations -----

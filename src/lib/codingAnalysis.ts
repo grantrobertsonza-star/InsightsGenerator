@@ -53,6 +53,7 @@ import {
   MIN_TURNS_TO_JUDGE,
   estimateAudit,
   extendedAgreement,
+  looserAgreement,
   selectAuditSample,
   summariseStability,
   type AttentionCheck,
@@ -125,6 +126,11 @@ export type StabilityTurn = {
 export type StabilityView = {
   runs: number;
   summary: StabilitySummary;
+  // Looser readings beside the strict whole-turn figure. themeShare: turns where every run gave the same
+  // broader themes (null when the codes are not grouped). overlap: average share of codes two runs have in
+  // common on a turn. Both null when the individual runs were not kept (checks made before migration 0074,
+  // with more than one re-run).
+  looser: { themeShare: number | null; overlap: number | null } | null;
   perCode: {
     codeId: string;
     name: string;
@@ -308,6 +314,9 @@ export type CodingAnalysisView = {
 
 type TableRow = Record<string, string | number | null>;
 
+// Numeric column names per stored table, keyed by the table's row version.
+const numericCache = new Map<string, { version: string; numeric: string[] }>();
+
 function rowsToArrays(headers: string[], rows: TableRow[]): CellValue[][] {
   return rows.map((r) => headers.map((h) => r?.[h] ?? null));
 }
@@ -465,9 +474,14 @@ export async function getCodingAnalysis(
     (async () => {
     try {
       tables = await withTenantRead(tenantId, async (client) => {
+        // Rows are left out here: they can be huge. The few places that need
+        // them (numeric column names, a linked case table) get them below.
         const r = await client.query<TableRecord>(
-          `select id, document_id, table_index, label, headers, rows
-           from document_tables where run_id = $1 order by document_id, table_index`,
+          `select id, document_id, table_index, label, headers, '[]'::jsonb as rows,
+                  xmin::text as row_version
+           from document_tables
+           where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
+           order by document_id, table_index`,
           [runId],
         );
         return r.rows.filter(
@@ -686,16 +700,51 @@ export async function getCodingAnalysis(
     label: string | null;
     headers: string[];
     rows: TableRow[];
+    row_version?: string;
   };
+  // Which columns are numeric is worked out from the stored rows, which is
+  // slow for a large file. It only changes when the table is rewritten, so
+  // it is kept per table and the rows are fetched only when it is missing
+  // (and for a table the researcher linked as a case table).
+  const linkedTableIds = new Set(
+    settings.map((x) => x.case_table_id).filter((x): x is string => !!x),
+  );
+  const needRows = tables.filter(
+    (t) =>
+      linkedTableIds.has(t.id) ||
+      numericCache.get(t.id)?.version !== `${t.row_version}|${t.headers.length}`,
+  );
+  if (needRows.length > 0) {
+    try {
+      const fetched = await withTenantRead(tenantId, async (client) => {
+        const r = await client.query<{ id: string; rows: TableRow[] }>(
+          "select id, rows from document_tables where id = any($1::uuid[])",
+          [needRows.map((t) => t.id)],
+        );
+        return new Map(r.rows.map((x) => [x.id, x.rows] as const));
+      });
+      for (const t of needRows) {
+        const rows = fetched.get(t.id) ?? [];
+        const version = `${t.row_version}|${t.headers.length}`;
+        if (numericCache.get(t.id)?.version !== version) {
+          if (numericCache.size >= 200) numericCache.delete(numericCache.keys().next().value as string);
+          numericCache.set(t.id, {
+            version,
+            numeric: numericVariables(t.headers, rowsToArrays(t.headers, rows)).map((v) => v.name),
+          });
+        }
+        if (linkedTableIds.has(t.id)) t.rows = rows;
+      }
+    } catch {
+      // leave numeric lists empty rather than fail the whole view
+    }
+  }
   const tableById = new Map(tables.map((t) => [t.id, t]));
   const surveyTables: SurveyTableOption[] = tables.map((t) => ({
     id: t.id,
     label: `${docName.get(t.document_id) ?? "Table"}${t.label ? `, ${t.label}` : ` (table ${t.table_index + 1})`}`,
     headers: t.headers,
-    numeric: numericVariables(
-      t.headers,
-      rowsToArrays(t.headers, t.rows ?? []),
-    ).map((v) => v.name),
+    numeric: numericCache.get(t.id)?.numeric ?? [],
   }));
 
   // The researcher's own state (migration 0044).
@@ -821,14 +870,25 @@ export async function getCodingAnalysis(
     // migration 0055 not applied
   }
 
+  // Meaning checks and turn notes for every book at once, rather than two
+  // round trips per book one after another.
+  const perBook = new Map(
+    await Promise.all(
+      books.map(async (b) => {
+        const [mc, tn] = await Promise.all([
+          loadMeaningChecks(tenantId, b.document_id),
+          loadTurnNotes(tenantId, b.document_id).catch(
+            () => new Map<number, string>(), // migration 0055 not applied
+          ),
+        ]);
+        return [b.document_id, { mc, tn }] as const;
+      }),
+    ),
+  );
+
   for (const book of books) {
-    const meaningChecks = await loadMeaningChecks(tenantId, book.document_id);
-    let turnNotes = new Map<number, string>();
-    try {
-      turnNotes = await loadTurnNotes(tenantId, book.document_id);
-    } catch {
-      // migration 0055 not applied
-    }
+    const meaningChecks = perBook.get(book.document_id)?.mc ?? new Map();
+    const turnNotes = perBook.get(book.document_id)?.tn ?? new Map<number, string>();
     const docMeta = metaByDoc.get(book.document_id) ?? new Map<string, CodeMeta>();
     const metaOf = (name: string): CodeMeta | undefined =>
       docMeta.get(normName(name));
@@ -976,8 +1036,31 @@ export async function getCodingAnalysis(
         const ks = codeKappas(perTurn, bookCodes.length);
         return ks.map((x) => x.kappa);
       })();
+      const runsHere = Math.max(...bookStability.map((r) => r.runs));
+      // The code numbers each run gave, per turn. Exact when each run was kept; with a single re-run it can be
+      // rebuilt from what was added and dropped; otherwise it is unknown.
+      const perTurnRuns: number[][][] | null = (() => {
+        const kept = bookStability.every((r) => runCodesExt.has(`${book.id}|${r.segment_id}`));
+        if (kept)
+          return bookStability.map((r) => [r.orig_codes, ...(runCodesExt.get(`${book.id}|${r.segment_id}`) ?? [])]);
+        if (runsHere === 2)
+          return bookStability.map((r) => [
+            r.orig_codes,
+            [...r.orig_codes.filter((c) => !r.dropped_codes.includes(c)), ...r.alt_codes],
+          ]);
+        return null;
+      })();
+      const looser = (() => {
+        if (!perTurnRuns) return null;
+        const r = looserAgreement(perTurnRuns, (n) => {
+          const code = bookCodes[n - 1];
+          return code ? (metaOf(code.name)?.theme ?? null) : null;
+        });
+        return { themeShare: r.themeShare, overlap: r.overlap };
+      })();
       stabilityView = {
         runs: Math.max(...bookStability.map((r) => r.runs)),
+        looser,
         summary: summariseStability(bookStability),
         majority: (() => {
           const m = majorityExt.get(book.id);

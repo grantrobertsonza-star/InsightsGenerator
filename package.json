@@ -13,7 +13,10 @@
     "db:local": "node scripts/local-db-env.mjs",
     "db:reset": "npx supabase db reset",
     "backup": "node scripts/backup.mjs",
-    "restore": "node scripts/restore.mjs"
+    "restore": "node scripts/restore.mjs",
+    "typecheck": "node scripts/validate.cjs typecheck",
+    "test:retained": "node scripts/validate.cjs tests",
+    "validate": "node scripts/validate.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

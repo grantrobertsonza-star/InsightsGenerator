@@ -1,0 +1,56 @@
+{
+  "head": "955a4eccef132956520b3e3c4ba78378d6748885",
+  "beforeAfterMatched": true,
+  "hashes": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "280BF1933359A3829F234112E4E54B1264AA38DA88848F47E912F9337DCFED3E",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\parseTable.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "7E7C0C1B14F566B34F4ADE55196FF94459A9F28F6E220CB436EDB90E2727EF56",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\crosstabs.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "CDD8D237C8A67D82F98D1B3BB32A0A204845BD6F785E67C2D794509C0B664C70",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\documentTables.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "607AAA40FFAD6A067F035DA39EEFF8D6D44717D41CD5ACB202A3A7FF084FF078",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\previewActions.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "DB54818ACB330DA2B9F56B8131E0FB54B3E275EFEA9634D9F78E40F28840A47E",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\parseStatsFile.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "2EB72ED286D6F423F7F238448DD65648830D81B575F6C5CFD9F0437A501D2D07",
+      "Path": "C:\\Personal\\InsighsAI\\app\\api\\parse-stats-file.py"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "CCD81390D7DE49E73D5A449E0E0D9A71FCD79B158B2F802B5EAB2F60BEDCD793",
+      "Path": "C:\\Personal\\InsighsAI\\app\\scripts\\parse_stats_local.py"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "D748CAF16912C9EE441073A8924FEB5B2026FB57E73778A4D82DCA916EAD5037",
+      "Path": "C:\\Personal\\InsighsAI\\app\\scripts\\parse_stats_worker.py"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "0659F00B5B52960A1424D2932A7654439863C48717D2346DAC2A37FABA6D2870",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\sheetSelectionConsistency.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "46B2FB184EFE3D0FAE85E3E6B5691253F983BE882B2D1D6C584B242F6F5DC0FB",
+      "Path": "C:\\Personal\\InsighsAI\\app\\supabase\\migrations\\0093_documents_selected_sheet.sql"
+    }
+  ]
+}

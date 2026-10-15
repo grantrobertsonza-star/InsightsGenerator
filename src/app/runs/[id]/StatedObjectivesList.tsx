@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { editStatedObjective } from "@/lib/runContextActions";
+import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 
 const miniBtn =
   "rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-50";
@@ -28,9 +29,17 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
   const [draft, setDraft] = useState(text);
   const accent = ACCENTS[index % ACCENTS.length];
   const { label, body } = splitLabel(text);
+  const { selected, select } = useObjectiveSelection();
+  const isHeading = text.trim().endsWith(":");
+  const isSel = sameObjective(selected, { text });
 
   return (
-    <li className={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-l-4 border-border px-3 py-2.5 shadow-sm ${accent.tint} ${accent.border}`}>
+    <li
+      onClick={() => {
+        if (!editing && !isHeading) select({ id: null, text });
+      }}
+      className={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-l-4 border-border px-3 py-2.5 shadow-sm ${isHeading ? "" : "cursor-pointer"} ${isSel ? "ring-2 ring-primary/60" : ""} ${accent.tint} ${accent.border}`}
+    >
       {editing ? (
         <textarea
           autoFocus
@@ -101,8 +110,7 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
 export default function StatedObjectivesList({ runId, lines }: { runId: string; lines: string[] }) {
   if (lines.length === 0) return null;
   return (
-    <div className="max-w-3xl">
-      <h3 className="mb-2 text-sm font-semibold text-foreground">Your objectives</h3>
+    <div>
       <ul className="space-y-2">
         {lines.map((l, i) => (
           <Item key={l} runId={runId} text={l} index={i} />

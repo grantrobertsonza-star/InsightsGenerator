@@ -51,10 +51,17 @@ describe("readLevel", () => {
   it("is inconclusive when the interval spans the threshold", () => {
     expect(readLevel(t, { kind: "level", answer: "Yes", direction: "above", threshold: 52 })!.stance).toBe("inconclusive");
   });
-  it("is silent on a thin base and null for a missing answer", () => {
+  it("is silent on a thin base and inconclusive (not null) for a missing answer", () => {
+    // OBJ-REV-006: readLevel stopped returning null for a structurally-unbound expectation
+    // (see evidenceStance.ts's own `unresolved` helper) - a missing row is now an explicit,
+    // already-"computed" inconclusive Reading, so evaluateEvidenceQuestion's `if (computed)`
+    // branch takes the computed path instead of falling through to a free-text model
+    // judgment of some unrelated row in the table.
     const thin = table([row("Yes", [60, 50], 55, [10, 10])]);
     expect(readLevel(thin, { kind: "level", answer: "Yes", direction: "above", threshold: 10 })!.stance).toBe("silent");
-    expect(readLevel(t, { kind: "level", answer: "Maybe", direction: "above", threshold: 10 })).toBeNull();
+    const missing = readLevel(t, { kind: "level", answer: "Maybe", direction: "above", threshold: 10 });
+    expect(missing).not.toBeNull();
+    expect(missing!.stance).toBe("inconclusive");
   });
 });
 
@@ -80,9 +87,13 @@ describe("readComparison", () => {
     const t = table([row("Yes", [60, 50], 55, [200, 200], [8, 8])]);
     expect(readComparison(t, { kind: "comparison", answer: "Yes", direction: "higher", groupA: "Women", groupB: "Men" })!.stance).toBe("inconclusive");
   });
-  it("is null when a group cannot be found and silent on a thin group", () => {
+  it("is inconclusive (not null) when a group cannot be found, and silent on a thin group", () => {
+    // Same OBJ-REV-006 contract change as readLevel above: an unresolvable group binding is
+    // an explicit inconclusive Reading, not null.
     const t = table([row("Yes", [70, 50], 60, [200, 200])]);
-    expect(readComparison(t, { kind: "comparison", answer: "Yes", direction: "higher", groupA: "Rural", groupB: "Men" })).toBeNull();
+    const missingGroup = readComparison(t, { kind: "comparison", answer: "Yes", direction: "higher", groupA: "Rural", groupB: "Men" });
+    expect(missingGroup).not.toBeNull();
+    expect(missingGroup!.stance).toBe("inconclusive");
     const thin = table([row("Yes", [70, 50], 60, [200, 12])]);
     expect(readComparison(thin, { kind: "comparison", answer: "Yes", direction: "higher", groupA: "Women", groupB: "Men" })!.stance).toBe("silent");
   });

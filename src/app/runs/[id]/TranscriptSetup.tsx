@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction } from "@/lib/codingAnalysisActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
@@ -41,7 +41,7 @@ export const MODE_LABEL: Record<SegmentMode, string> = {
 };
 
 const select =
-  "rounded-md border border-border bg-white px-2 py-1 text-xs text-foreground";
+  "rounded-md border border-border bg-white !px-1.5 !py-0.5 !text-[11px] text-foreground";
 
 type FilePreview =
   | {
@@ -93,9 +93,50 @@ const SETUP_EVENT = "transcript-setup-saved";
 const CARD =
   "flex h-full flex-col gap-3 rounded-xl border border-l-4 border-border bg-white p-4 shadow-sm";
 
+const FileDetailContext = createContext<{
+  selectedId: string | null;
+  select: (id: string) => void;
+  setRows: (rows: Row[]) => void;
+  rows: Row[];
+}>({ selectedId: null, select: () => {}, setRows: () => {}, rows: [] });
+
+/** Holds which file is selected in the list so the right-hand pane can show its preview, questionnaire and data quality. */
+export function ImportDetailProvider({ children }: { children: ReactNode }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
+  return (
+    <FileDetailContext.Provider value={{ selectedId, select: setSelectedId, setRows, rows }}>
+      {children}
+    </FileDetailContext.Provider>
+  );
+}
+
+/** The right-hand pane body: everything about the selected file that used to sit inside its card. */
+export function SelectedFileDetail() {
+  const { selectedId, rows } = useContext(FileDetailContext);
+  const row = rows.find((r) => r.documentId === selectedId) ?? null;
+  if (!row) {
+    return <p className="text-sm text-muted">Select a file in the list to see what was read, its questionnaire and its data quality.</p>;
+  }
+  return (
+    <div className="@container flex flex-col gap-3">
+      <div>
+        <p className="break-words text-sm font-semibold text-foreground">{row.filename}</p>
+        <p className="text-[11px] text-muted">{row.kindLabel}</p>
+      </div>
+      <PreviewPanel preview={row.preview} docKind={row.kind} />
+      {row.attached}
+      {row.quality}
+      {!row.preview && !row.attached && !row.quality && (
+        <p className="text-sm text-muted">Nothing to preview for this file yet.</p>
+      )}
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2">
+    <label className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
       <span className="text-[11px] font-medium text-muted">{label}</span>
       {children}
     </label>
@@ -232,13 +273,10 @@ function PlainRow({ row }: { row: Row }) {
       <CardHeader
         row={row}
         status={
-          <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">Ready</span>
+          <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">Accepted</span>
         }
       />
       <p className="text-[11px] text-muted">{row.detail}</p>
-      <PreviewPanel preview={row.preview} docKind={row.kind} />
-      {row.attached}
-      {row.quality}
     </div>
   );
 }
@@ -248,6 +286,7 @@ function PlainRow({ row }: { row: Row }) {
 // the run; changing the layout takes effect the next time the file is read.
 function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
   const [choice, setChoice] = useState<DataSetup>(row.dataSetup ?? DEFAULT_DATA_SETUP);
+  const [waveText, setWaveText] = useState(row.dataSetup?.wave ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [layoutChanged, setLayoutChanged] = useState(false);
@@ -275,24 +314,34 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
   useEffect(() => {
     if (row.dataSetup !== null || autoRan.current) return;
     autoRan.current = true;
-    void saveDataSetupAction(runId, row.documentId, { ...DEFAULT_DATA_SETUP, accepted: true }).then((r) => {
+    void saveDataSetupAction(runId, row.documentId, { ...DEFAULT_DATA_SETUP, accepted: true }, { kind: "none" }).then((r) => {
       if (r.ok) {
         setChoice({ ...DEFAULT_DATA_SETUP, accepted: true });
         setAutoAccepted(true);
         router.refresh();
+      } else if (r.conflict) {
+        // A deliberate edit (or another tab) already set this file up since the page
+        // loaded - don't let this default-on-first-view save stomp it; just pick up
+        // whatever is actually there now.
+        router.refresh();
       }
     });
   }, [row.dataSetup, row.documentId, runId, router]);
+
+  useEffect(() => {
+    setWaveText(choice.wave ?? "");
+  }, [choice.wave]);
 
   // Changing the structure puts the file back to "needs review": what was
   // checked is no longer what will be read.
   async function save(next: DataSetup) {
     const layoutDiffers = next.layout !== choice.layout;
     if (next.unit !== choice.unit || layoutDiffers || next.method !== choice.method) next = { ...next, accepted: false };
+    const previous = choice;
     setChoice(next);
     setError(null);
     setPending(true);
-    const r = await saveDataSetupAction(runId, row.documentId, next);
+    const r = await saveDataSetupAction(runId, row.documentId, next, { kind: "value", setup: previous });
     setPending(false);
     if (r.ok) {
       if (layoutDiffers) {
@@ -304,6 +353,12 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
           router.refresh();
         } else setReadError(rr.error);
       }
+    } else if (r.conflict) {
+      // This file's set-up changed elsewhere (another save still in flight, or another
+      // tab) while this edit was being made. Show what's actually saved rather than the
+      // edit that lost the race, so the two don't keep clobbering each other silently.
+      setChoice(r.current ?? previous);
+      setError("This file's set-up changed elsewhere just now; showing the latest version. Make your change again if it's still needed.");
     } else setError(r.error);
   }
 
@@ -362,11 +417,25 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
           ))}
         </select>
         </Field>
+        <Field label="Wave (optional)">
+          <input
+            aria-label={`Wave: ${row.filename}`}
+            className={`${select} w-full`}
+            placeholder="e.g. Wave 1, Baseline"
+            value={waveText}
+            onChange={(e) => setWaveText(e.target.value)}
+            onBlur={() => {
+              if (waveText.trim() === (choice.wave ?? "")) return;
+              void save({ ...choice, wave: waveText.trim() || null });
+            }}
+          />
+          <p className="col-span-2 mt-1 text-[10px] text-muted">
+            Label this file as one wave of a tracking study (same questionnaire, repeated over time) to compare it with
+            other waves from the Analytics tool on this file, under Wave tracking.
+          </p>
+        </Field>
       </div>
       {row.detail && <p className="text-[11px] text-muted">{row.detail}</p>}
-      <PreviewPanel preview={row.preview} docKind={row.kind} />
-      {row.attached}
-      {row.quality}
       {layoutChanged && !error && (
         <p className="text-[11px] text-muted">
           Layout changed. Reading the file again the new way, then the preview and quality checks update.
@@ -458,7 +527,23 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
   }
 
   const sug = row.suggestion;
-  const showSuggestion = sug !== null && !confirmed;
+  // A transcript nobody has set up yet is accepted on import with the app's
+  // best reading of it (individual interviews when it cannot tell). The
+  // dropdowns stay open to change it.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (wasConfirmed || autoRan.current) return;
+    autoRan.current = true;
+    const first: Choice = {
+      sessionType: sug?.sessionType ?? "individual",
+      mode: sug?.mode ?? "auto",
+      style: "",
+    };
+    setChoice(first);
+    void flush(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const showSuggestion = sug !== null && confirmed && sug.sessionType !== choice.sessionType;
   const note = error
     ? error
     : changedAfterCoding
@@ -475,7 +560,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
               confirmed ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
             }`}
           >
-            {pending ? "Saving..." : confirmed ? "Confirmed" : "Setup needed"}
+            {pending ? "Saving..." : confirmed ? "Accepted" : "Needs review"}
           </span>
         }
       />
@@ -537,9 +622,6 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
         </select>
         </Field>
       </div>
-      <PreviewPanel preview={row.preview} docKind={row.kind} />
-      {row.attached}
-      {row.quality}
       {showSuggestion && sug && (
         <p className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
           Looks like{" "}
@@ -583,13 +665,18 @@ export default function TranscriptSetupTable({
   runId: string;
   rows: Row[];
 }) {
+  const { selectedId, select, setRows } = useContext(FileDetailContext);
+  useEffect(() => {
+    setRows(rows);
+    if (!selectedId && rows.length > 0) select(rows[0].documentId);
+  }, [rows, selectedId, select, setRows]);
   if (rows.length === 0) return null;
   const transcriptRows = rows.filter((r) => r.kind === "transcript");
   const waiting = transcriptRows.filter((r) => !(r.initial?.confirmed ?? false)).length;
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xl font-semibold text-foreground">
+        <h2 className="text-base font-semibold text-foreground">
           Your files ({rows.length})
         </h2>
         <span className="text-xs text-muted">
@@ -600,16 +687,22 @@ export default function TranscriptSetupTable({
               : `${waiting} of ${transcriptRows.length} transcripts still need setup and are skipped until then.`}
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        {rows.map((r) =>
-          r.kind === "transcript" ? (
-            <SetupRow key={r.documentId} runId={runId} row={r} />
-          ) : r.isRawData ? (
-            <DataSetupRow key={r.documentId} runId={runId} row={r} />
-          ) : (
-            <PlainRow key={r.documentId} row={r} />
-          ),
-        )}
+      <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+        {rows.map((r) => (
+          <div
+            key={r.documentId}
+            onClick={() => select(r.documentId)}
+            className={`cursor-pointer rounded-xl ${selectedId === r.documentId ? "ring-2 ring-primary/50" : ""}`}
+          >
+            {r.kind === "transcript" ? (
+              <SetupRow runId={runId} row={r} />
+            ) : r.isRawData ? (
+              <DataSetupRow runId={runId} row={r} />
+            ) : (
+              <PlainRow row={r} />
+            )}
+          </div>
+        ))}
       </div>
       <p className="mt-2 text-[11px] text-muted">
         The colour bar on each card matches each file&apos;s card under Analysis (Cross tabs, Coding or Reports and decks). For transcripts, if

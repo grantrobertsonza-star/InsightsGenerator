@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { withTenant, withTenantRead } from "@/lib/db";
 import { extractFindingsFromDocument, readContextDocument } from "@/lib/extractFindings";
+import { findingProvenanceAvailable } from "@/lib/findingProvenance";
 import { processTableDocument } from "@/lib/documentTables";
 import { generateFindingsFromBannerPlan } from "@/lib/generateFindingsFromBannerPlan";
 import {
@@ -17,6 +18,7 @@ import { detectDuplicateFindings } from "@/lib/dedupe";
 import { readCodingFile } from "@/lib/codedImportFile";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { deleteDocument } from "@/lib/documentActions";
+import { markDocumentProcessingStatus } from "@/lib/documentUpload";
 import { generateDecisionCandidates } from "@/lib/decisionFramer";
 import { refreshVerdicts, reverifyFindings } from "@/lib/verifyFindings";
 import { refreshStatedInsightValidations } from "@/lib/validateStatedInsights";
@@ -53,6 +55,8 @@ import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
 import ObjectiveCoverage from "./ObjectiveCoverage";
 import ObjectiveEvidence from "./ObjectiveEvidence";
+import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
+import { ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
 import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
 import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
@@ -74,20 +78,27 @@ import {
 import type { FindingKind } from "@/lib/findingActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
 import SubmitButton from "@/components/SubmitButton";
+import { Pane, ThreePane } from "./ThreePane";
 import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
 import CodingFormProgress from "./CodingFormProgress";
 import ReportReadSummary, { type ReportReadStats } from "./ReportReadSummary";
 import PipelineStatus from "./PipelineStatus";
 import WorkingDataTabs from "./WorkingDataTabs";
-import ImportQualityPanel from "./ImportQualityPanel";
+import ImportQualityPanel, { ImportPreviewRecovery } from "./ImportQualityPanel";
+import { loadImportPreviewIdentities } from "@/lib/importPreviewIdentity";
+import ImportVariablesPanel from "./ImportVariablesPanel";
+import DocumentPicker from "./DocumentPicker";
 import DataAuditPanel from "./DataAuditPanel";
 import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
 import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
 import { getInstrumentSummaries, getConfirmedItemsForData } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
-import { loadVariableDictionary } from "@/lib/crosstabs";
+import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
+import { loadVariableDictionary, resolveCurrentDesignSnapshotStatus, designFreshnessStatus, type DesignFreshness, type CurrentDesignSnapshotStatus } from "@/lib/crosstabs";
+import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverrides";
+import type { VariableDictionary } from "@/lib/parseStatsFile";
 import InstrumentCard from "./InstrumentCard";
 import AttachedInstruments from "./AttachedInstruments";
 import AcceptDataButton from "./AcceptDataButton";
@@ -100,6 +111,8 @@ import CodingExtras from "./CodingExtras";
 import CodingAnalysisPanel from "./CodingAnalysisPanel";
 import TranscriptSetupTable, {
   CodeGate,
+  ImportDetailProvider,
+  SelectedFileDetail,
   MODE_LABEL,
   SESSION_LABEL,
 } from "./TranscriptSetup";
@@ -116,11 +129,12 @@ import {
   getFindingCodingCounts,
 } from "@/lib/codingAnalysis";
 import AcrossTranscripts from "./AcrossTranscripts";
-import CrosstabBuilder from "./CrosstabBuilder";
 import AnalyticsBuilder from "./AnalyticsBuilder";
+import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
+import { parseObjectiveLines } from "@/lib/objectiveLines";
 import ResearchAssistantCard, {
   type AssistantChatMessage,
 } from "./ResearchAssistantCard";
@@ -203,6 +217,10 @@ type Run = {
   status: string;
   entry_point: "generate" | "validate" | null;
   initial_research_objective: string | null;
+  // OBJ-SET-M01: the current, editable list of stated objectives. Null on a
+  // pre-migration-0080 database (getRun falls back to a column-less query,
+  // same guard pattern used elsewhere for a not-yet-applied migration).
+  stated_objectives_text: string | null;
   program_id: string | null;
   wave_label: string | null;
 };
@@ -213,6 +231,13 @@ type Document = {
   source_filename: string;
   uploaded_at: string;
   ingestion_type: "raw" | "aggregated" | null;
+  // IMP-006: null until a processing attempt has actually run; see
+  // 0079_document_processing_status.sql for why this can't be inferred from
+  // document_tables/findings alone. Selected with a fallback below so a
+  // pre-migration database doesn't 42703 on this query. 'incomplete' (0088,
+  // ANA-QUAL-001): a transcript whose coding came back without full per-unit
+  // coverage - not a failure, but not a clean run either.
+  processing_status: "ready" | "incomplete" | "failed" | null;
 };
 
 type Finding = {
@@ -250,18 +275,51 @@ type Finding = {
   supporting_segments: number | null;
   supporting_speakers: number | null;
   quote_match: "exact" | "near" | "none" | null;
+  // Codex re-review, package 4 (cross-tab handover repair); Brief 37 repair: "demonstrate
+  // downstream staleness after design changes through saved tables, findings, insights,
+  // recommendations and narratives." This is the findings-level piece of that: "current" or
+  // "stale" when this finding's source table's design snapshot could be compared against what a
+  // fresh build of its document would resolve now (same rule as a crosstab's own
+  // designFreshness in crosstabs.ts); "unknown" when it has a source table but the comparison
+  // itself could not be made - a legacy snapshot never recorded, or the document's current
+  // set-up failing to load just now - which Brief 37's re-review found this previously
+  // collapsed into the same `false` a genuine match would show. Never alters finding_text or
+  // any human wording - purely an additional, read-only signal. Null for a finding with no
+  // source table at all (nothing to compare, a different thing from "couldn't compare").
+  designFreshness: DesignFreshness | null;
 };
 
 async function getRun(runId: string): Promise<Run | null> {
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Run>(
-      `select id, project_name, business_problem, research_objective, decision_statement,
-              evidence_synthesis, audience, status, entry_point, initial_research_objective,
-              program_id, wave_label
-       from runs where id = $1`,
-      [runId],
-    );
-    return result.rows[0] ?? null;
+    try {
+      const result = await client.query<Run>(
+        `select id, project_name, business_problem, research_objective, decision_statement,
+                evidence_synthesis, audience, status, entry_point, initial_research_objective,
+                stated_objectives_text, program_id, wave_label
+         from runs where id = $1`,
+        [runId],
+      );
+      return result.rows[0] ?? null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/stated_objectives_text/.test(message)) throw error;
+      // Pre-migration-0080 database: same query without the new column.
+      const result = await client.query<Omit<Run, "stated_objectives_text">>(
+        `select id, project_name, business_problem, research_objective, decision_statement,
+                evidence_synthesis, audience, status, entry_point, initial_research_objective,
+                program_id, wave_label
+         from runs where id = $1`,
+        [runId],
+      );
+      const row = result.rows[0];
+      // Pre-migration-0080, a run's current objective list lived in initial_research_objective
+      // (migration 0080's own backfill is `stated_objectives_text = initial_research_objective`
+      // for exactly this reason - see its comment). Hardcoding null here instead ignored that
+      // and made every existing project's objectives vanish from Setup's display with nothing
+      // to say why (OBJ-SET-005): falling back to the same column the migration itself treats
+      // as the legacy source of truth keeps them visible until the migration actually runs.
+      return row ? { ...row, stated_objectives_text: row.initial_research_objective } : null;
+    }
   });
 }
 
@@ -330,12 +388,49 @@ async function getReportReadStats(runId: string): Promise<Map<string, NonNullabl
 
 async function getDocuments(runId: string): Promise<Document[]> {
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Document>(
-      "select id, kind, source_filename, uploaded_at, ingestion_type from documents where run_id = $1 order by uploaded_at desc",
-      [runId],
-    );
-    return result.rows;
+    try {
+      const result = await client.query<Document>(
+        "select id, kind, source_filename, uploaded_at, ingestion_type, processing_status from documents where run_id = $1 order by uploaded_at desc",
+        [runId],
+      );
+      return result.rows;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/processing_status/.test(message)) throw error;
+      // Pre-migration-0079 database: same query without the new column.
+      const result = await client.query<Omit<Document, "processing_status">>(
+        "select id, kind, source_filename, uploaded_at, ingestion_type from documents where run_id = $1 order by uploaded_at desc",
+        [runId],
+      );
+      return result.rows.map((row) => ({ ...row, processing_status: null as "ready" | "incomplete" | "failed" | null }));
+    }
   });
+}
+
+/**
+ * Best-effort, like stampSingleDocumentBatch: records the one durable fact
+ * IMP-006 needed a column for (did this document's last processing attempt
+ * succeed or fail), independent of the run-level error banner, which is
+ * scoped to "the most recent click on this run" and so loses an earlier
+ * failure the moment any other document on the run is processed afterward.
+ * Silently a no-op pre-0079, same migration-guard shape used elsewhere in
+ * this file for document_tables/variable_overrides etc.
+ */
+async function setDocumentProcessingStatus(
+  documentId: string,
+  status: "ready" | "incomplete" | "failed",
+): Promise<boolean> {
+  // Shared with storeAndRead's upload-time read (documentUploadActions.ts), so a document's
+  // status reflects every attempt that could tell whether it has usable data, not just the
+  // ones triggered from this page.
+  //
+  // IMP-006 / REP-IN-001: returns markDocumentProcessingStatus's own boolean (false on a
+  // pre-migration database where the write could not land) instead of discarding it. Every
+  // call site below now checks this, so a status-persistence failure surfaces as an
+  // actionable error rather than leaving the document looking like whatever status it had
+  // before this attempt - which, for a document that just finished reading successfully,
+  // would otherwise read as an unqualified "ready" that was never actually saved.
+  return await markDocumentProcessingStatus(TENANT_ID, documentId, status);
 }
 
 type DocumentTablePreview = {
@@ -349,6 +444,10 @@ type DocumentTablePreview = {
   ingestion_type: "raw" | "aggregated";
   banner_columns: string[] | null;
   stub_columns: string[] | null;
+  /** Raw files come back with no rows (they can be huge); this is the true count. */
+  row_count: number;
+  /** Changes whenever the stored table is rewritten. Keys the quality cache. */
+  row_version: string;
 };
 
 /**
@@ -367,7 +466,22 @@ async function getDocumentTablePreviews(
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<DocumentTablePreview>(
-        `select id, document_id, table_index, label, source_page, headers, rows,
+        // A raw table's full `rows` column can be huge, so this never ships it whole - but
+        // shipping literally nothing (the previous '[]'::jsonb, regardless of actual size) left
+        // the "Raw data" preview with a true row_count and zero rows to ever show for it (IMP-010).
+        // jsonb_array_length already has to read and parse that same column to get the true
+        // count, so pulling the first 10 elements alongside it with jsonb_array_elements + a
+        // LIMIT adds no new full-table read, just a small in-memory slice of what was parsed
+        // anyway; an aggregated table's rows column is already small enough to send whole.
+        `select id, document_id, table_index, label, source_page, headers,
+                case when ingestion_type = 'raw'
+                  then coalesce((select jsonb_agg(elem) from (
+                         select elem from jsonb_array_elements(rows) as elem limit 10
+                       ) sample), '[]'::jsonb)
+                  else rows
+                end as rows,
+                jsonb_array_length(rows)::int as row_count,
+                xmin::text as row_version,
                 ingestion_type, banner_columns, stub_columns
          from document_tables
          where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
@@ -378,6 +492,36 @@ async function getDocumentTablePreviews(
     });
   } catch {
     return [];
+  }
+}
+
+// Quality figures for a raw data file are worked out from every stored row,
+// which is slow to fetch and to count. They only change when the stored table
+// is rewritten or the skip logic changes, so the result is kept in memory per
+// table and reused on later page loads.
+const rawQualityCache = new Map<string, { version: string; q: TableQuality }>();
+
+async function getRawQuality(
+  t: { id: string; headers: string[]; row_version: string },
+  stated: StatedRouting[],
+): Promise<TableQuality | null> {
+  const version = `${t.row_version}|${t.headers.length}|${JSON.stringify(stated)}`;
+  const hit = rawQualityCache.get(t.id);
+  if (hit && hit.version === version) return hit.q;
+  try {
+    const rows = await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ rows: Record<string, string | number | null>[] }>(
+        "select rows from document_tables where id = $1",
+        [t.id],
+      );
+      return r.rows[0]?.rows ?? [];
+    });
+    const q = computeTableQuality(t.headers, rows, "raw", stated);
+    if (rawQualityCache.size >= 40) rawQualityCache.delete(rawQualityCache.keys().next().value as string);
+    rawQualityCache.set(t.id, { version, q });
+    return q;
+  } catch {
+    return null;
   }
 }
 
@@ -661,27 +805,110 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
   return out;
 }
 
+type FindingRow = Omit<Finding, "designFreshness"> & {
+  source_table_document_id: string | null;
+  design_snapshot: { design: { psu: string | null; strata: string | null } | null } | null;
+};
+
 async function getFindings(runId: string): Promise<Finding[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Finding>(
-      `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
-              coalesce(d1.source_filename, d2.source_filename) as source_filename,
-              c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
-              c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
-              c.pattern_type, c.stated_stats, c.created_at::text as created_at,
-              c.reproduced_runs, c.total_runs, c.supporting_segments, c.supporting_speakers, c.quote_match,
-              exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
-              exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
-              exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report
-       from findings c
-       left join documents d1 on d1.id = c.source_document_id
-       left join document_tables dt2 on dt2.id = c.source_table_id
-       left join documents d2 on d2.id = dt2.document_id
-       where c.run_id = $1
-       order by c.created_at`,
-      [runId],
-    );
-    return result.rows;
+  const rows = await withTenantRead(TENANT_ID, async (client) => {
+    try {
+      const result = await client.query<FindingRow>(
+        `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
+                coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
+                c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
+                c.pattern_type, c.stated_stats, c.created_at::text as created_at,
+                c.reproduced_runs, c.total_runs, c.supporting_segments, c.supporting_speakers, c.quote_match,
+                exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
+                exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
+                exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
+                dt2.document_id as source_table_document_id, dt2.design_snapshot
+         from findings c
+         left join documents d1 on d1.id = c.source_document_id
+         left join document_tables dt2 on dt2.id = c.source_table_id
+         left join documents d2 on d2.id = dt2.document_id
+         where c.run_id = $1
+         order by c.created_at`,
+        [runId],
+      );
+      return result.rows;
+    } catch (error) {
+      // Migration 0091 (design_snapshot) not applied yet: same query without that column, same
+      // way listCrosstabs itself degrades (crosstabs.ts). Brief 38 repair (Codex re-review of
+      // Brief 37, item 3): `dt2.document_id as source_table_document_id` is a column on the
+      // long-existing `document_tables` table - it predates migration 0091 and needs no
+      // fallback of its own, so it stays in this query even though `design_snapshot` is dropped.
+      // Previously this fallback hardcoded `source_table_document_id: null` below regardless of
+      // what the join actually found, which collapsed two different situations into the same
+      // result: a finding with NO source table at all (genuinely nothing to compare) and a
+      // finding that DOES have a source table but whose design freshness can't be verified
+      // because this database predates the migration. Both produced `designFreshness: null`
+      // ("not applicable"), when only the first one should.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/design_snapshot/.test(message)) throw error;
+      const result = await client.query<Omit<FindingRow, "design_snapshot">>(
+        `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
+                coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
+                c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
+                c.pattern_type, c.stated_stats, c.created_at::text as created_at,
+                c.reproduced_runs, c.total_runs, c.supporting_segments, c.supporting_speakers, c.quote_match,
+                exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
+                exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
+                exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
+                dt2.document_id as source_table_document_id
+         from findings c
+         left join documents d1 on d1.id = c.source_document_id
+         left join document_tables dt2 on dt2.id = c.source_table_id
+         left join documents d2 on d2.id = dt2.document_id
+         where c.run_id = $1
+         order by c.created_at`,
+        [runId],
+      );
+      // `source_table_document_id` is now a real selected column (present whenever the finding
+      // has a source table, migration or no migration) - only `design_snapshot` is forced to
+      // null here, because that column genuinely cannot be read without the migration. The
+      // mapper below already turns (real document id + null design_snapshot) into
+      // designFreshness: "unknown" via designFreshnessStatus's own first branch, so no change
+      // is needed there.
+      return result.rows.map((r) => ({ ...r, design_snapshot: null }));
+    }
+  });
+
+  // Codex re-review, package 4: resolve "what design would a fresh build use right now" once per
+  // DISTINCT document among these findings' source tables, not once per finding - the same
+  // resolution listCrosstabs performs per document already, now shared via
+  // resolveCurrentDesignSnapshotStatus (crosstabs.ts) so this cannot drift from that rule.
+  const distinctDocIds = Array.from(
+    new Set(rows.map((r) => r.source_table_document_id).filter((id): id is string => id !== null)),
+  );
+  // Brief 37 repair: a failed per-document lookup is now recorded as its own explicit status
+  // ({ ok: false, error }), not simply left absent from the map. Previously an absent entry and
+  // a "nothing to compare" finding (no source table at all) were indistinguishable - both ended
+  // up with `currentSnapshot === undefined`, and both produced `designStale: null` - so a real
+  // lookup failure silently looked exactly like "not applicable" instead of "couldn't verify."
+  const currentSnapshotStatuses = new Map<string, CurrentDesignSnapshotStatus>();
+  await Promise.all(
+    distinctDocIds.map(async (docId) => {
+      currentSnapshotStatuses.set(docId, await resolveCurrentDesignSnapshotStatus(TENANT_ID, runId, docId));
+    }),
+  );
+
+  return rows.map((r) => {
+    const { source_table_document_id, design_snapshot, ...finding } = r;
+    if (!source_table_document_id) {
+      // No source table at all - there is nothing to compare, a different thing from having
+      // tried to compare and failed. Unchanged from before this repair.
+      return { ...finding, designFreshness: null };
+    }
+    const status = currentSnapshotStatuses.get(source_table_document_id);
+    // Brief 37 repair: `status` is only ever absent here if the Promise.all above somehow never
+    // resolved for this docId, which `distinctDocIds` guarantees it was scheduled for - but
+    // treat a missing entry as a failed lookup rather than assuming anyway, consistent with
+    // "failed configuration lookups must be unknown, not verified agreement."
+    const resolvedStatus = status ?? { ok: false as const, error: "design freshness was not resolved for this document" };
+    return { ...finding, designFreshness: designFreshnessStatus(design_snapshot, resolvedStatus) };
   });
 }
 
@@ -1042,6 +1269,42 @@ async function getTrimmedFiles(
   });
 }
 
+/**
+ * Codex round 3, "preserve the qualification through extraction": a document whose
+ * extraction found an id-like column with an Excel format the calculation side can't
+ * faithfully reproduce records an 'unsupported_identifier_format' trace row (see
+ * documentTables.ts). Read here the same way getTrimmedFiles reads its own event, so the
+ * Import screen can show a recovery message instead of silently importing the column.
+ */
+async function getUnsupportedIdentifierColumns(
+  runId: string,
+): Promise<Map<string, string[]>> {
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ detail: unknown }>(
+      `select detail from trace where run_id = $1 and event = 'unsupported_identifier_format' order by occurred_at asc`,
+      [runId],
+    );
+    const out = new Map<string, string[]>();
+    for (const row of result.rows) {
+      let d: unknown = row.detail;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          continue;
+        }
+      }
+      const o = d as { documentId?: unknown; columns?: unknown } | null;
+      if (o && typeof o.documentId === "string" && Array.isArray(o.columns)) {
+        const existing = out.get(o.documentId) ?? [];
+        const merged = Array.from(new Set([...existing, ...o.columns.filter((c): c is string => typeof c === "string")]));
+        out.set(o.documentId, merged);
+      }
+    }
+    return out;
+  });
+}
+
 async function getLatestTraceMessage(
   runId: string,
   events: string[],
@@ -1118,6 +1381,60 @@ async function getLatestProcessErrors(
       : [];
     if (errors.length === 0) return null;
     return { errors, occurredAt: row.occurred_at };
+  });
+}
+
+type PendingLegacyConfirmation = {
+  documentId: string;
+  filename: string;
+  findings: { id: string; text: string }[];
+};
+
+/**
+ * REP-IN-002: documents whose most recent replacement attempt was withheld because findings with
+ * unknown provenance would have been retired, and which have not been replaced since. Only the
+ * listed findings that still exist on that document (and, once migration 0094 is applied, still
+ * carry no recorded review or edit) are offered. This is a prompt, not a decision: publication
+ * re-checks every id under its lock.
+ */
+async function getPendingLegacyConfirmations(runId: string): Promise<PendingLegacyConfirmation[]> {
+  return withTenantRead(TENANT_ID, async (client) => {
+    const latest = await client.query<{
+      event: string;
+      detail: { documentId?: unknown; reason?: unknown; legacyFindingIds?: unknown };
+    }>(
+      `select distinct on (detail->>'documentId') event, detail from trace
+        where run_id = $1
+          and event in ('extract_findings_replacement_withheld', 'extract_findings_replacement_published')
+        order by detail->>'documentId', occurred_at desc, id desc`,
+      [runId],
+    );
+    const provenance = await findingProvenanceAvailable(client);
+    const pending: PendingLegacyConfirmation[] = [];
+    for (const row of latest.rows) {
+      if (row.event !== "extract_findings_replacement_withheld" || row.detail?.reason !== "legacy_unconfirmed") continue;
+      const documentId = typeof row.detail.documentId === "string" ? row.detail.documentId : null;
+      const ids = Array.isArray(row.detail.legacyFindingIds)
+        ? row.detail.legacyFindingIds.filter((x): x is string => typeof x === "string")
+        : [];
+      if (!documentId || ids.length === 0) continue;
+      const live = await client.query<{ id: string; finding_text: string; source_filename: string }>(
+        `select f.id, f.finding_text, d.source_filename
+           from findings f join documents d on d.id = f.source_document_id
+          where f.run_id = $1 and f.source_document_id = $2 and f.id = any($3::uuid[])
+            and f.status = 'accepted'
+            ${provenance ? "and f.provenance_tracked = false and f.human_reviewed_at is null and cardinality(f.human_edited_fields) = 0" : ""}
+          order by f.created_at, f.id`,
+        [runId, documentId, ids],
+      );
+      if (live.rows.length === 0) continue;
+      pending.push({
+        documentId,
+        filename: live.rows[0].source_filename,
+        findings: live.rows.map((r) => ({ id: r.id, text: r.finding_text })),
+      });
+    }
+    return pending;
   });
 }
 
@@ -1388,14 +1705,35 @@ async function getObjectiveValidations(
   runId: string,
 ): Promise<ObjectiveValidation[]> {
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<ObjectiveValidation>(
+    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a
+    // catalog probe rather than try/catch - a failed SELECT (the column doesn't exist
+    // pre-migration) would abort the rest of this transaction, taking a plain fallback query
+    // down with it, the same failure mode this fix's own package (OBJ-REV-007) had to correct
+    // elsewhere. The catalog check below cannot itself fail the transaction.
+    const colCheck = await client.query<{ exists: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
+       ) as "exists"`,
+    );
+    if (colCheck.rows[0]?.exists === true) {
+      const result = await client.query<ObjectiveValidation>(
+        `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, evidence_digest_degraded
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+        [runId],
+      );
+      return result.rows;
+    }
+    const result = await client.query<Omit<ObjectiveValidation, "evidence_digest_degraded">>(
       `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred
        from objective_validations
        where run_id = $1
        order by item_kind, item_order`,
       [runId],
     );
-    return result.rows;
+    return result.rows.map((row) => ({ ...row, evidence_digest_degraded: false }));
   });
 }
 
@@ -1708,11 +2046,65 @@ async function recordSingleDocumentError(
 
 async function extractFindingsAction(runId: string, documentId: string) {
   "use server";
+  await runReportExtraction(runId, documentId, {});
+}
+
+/**
+ * REP-IN-002: the researcher's explicit confirmation, from the legacy-replacement prompt, that
+ * exactly the listed findings on exactly this document may be replaced. The ids come from that
+ * prompt's hidden inputs; publication re-validates every one under its document lock and never
+ * retires a finding that has since been reviewed, edited, annotated or used.
+ */
+async function confirmLegacyReplacementAction(runId: string, documentId: string, formData: FormData) {
+  "use server";
+  const findingIds = formData
+    .getAll("findingId")
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
+  if (findingIds.length === 0) return;
+  await runReportExtraction(runId, documentId, { confirmLegacyReplacement: { findingIds } });
+}
+
+// The single-document report extraction (formerly extractFindingsAction's body, unchanged apart
+// from passing `options` through), shared by the normal action and the legacy confirmation.
+async function runReportExtraction(
+  runId: string,
+  documentId: string,
+  options: { confirmLegacyReplacement?: { findingIds: string[] } },
+) {
   await stampSingleDocumentBatch(runId, "single_document");
   try {
-    await extractFindingsFromDocument(TENANT_ID, runId, documentId);
+    const result = await extractFindingsFromDocument(TENANT_ID, runId, documentId, options);
+    // IMP-006 / REP-IN-001: some but not all chunks failing is not "ready" - it is a
+    // document a researcher must be told to treat as partially read, the same way a
+    // transcript's own coverage gap already surfaces as "incomplete" rather than "ready".
+    // REP-IN-002: a replacement that was withheld or could not be published left the
+    // previous findings in place; that is also "incomplete", with the retry instruction.
+    const status = result.failedParts > 0 || !result.published ? "incomplete" : "ready";
+    if (!result.published) {
+      await recordSingleDocumentError(runId, documentId, new Error(result.notPublishedReason ?? "the new reading was not applied; retry extraction for this document"));
+    }
+    const persisted = await setDocumentProcessingStatus(documentId, status);
+    if (!persisted) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          `extraction finished (${status}), but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+        ),
+      );
+    }
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    const persisted = await setDocumentProcessingStatus(documentId, "failed");
+    if (!persisted) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          "extraction failed, and its failed status could not be saved either (a database migration is pending) - do not trust this document's status badge",
+        ),
+      );
+    }
   }
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
@@ -1754,8 +2146,10 @@ async function generateFindingsAction(runId: string, documentId: string) {
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     await processTableDocument(TENANT_ID, runId, documentId);
+    await setDocumentProcessingStatus(documentId, "ready");
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    await setDocumentProcessingStatus(documentId, "failed");
   }
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
@@ -1806,8 +2200,20 @@ async function reapplyCodebookAction(
   "use server";
   await stampSingleDocumentBatch(runId, "single_document");
   try {
-    await reapplyCodebook(TENANT_ID, runId, documentId, codes);
+    // ANA-QUAL-001: reapplyCodebook stamps "ready"/"incomplete" itself now - see
+    // extractThemesFromTranscript's own comment on the same change.
+    const result = await reapplyCodebook(TENANT_ID, runId, documentId, codes);
+    if (!result.statusPersisted) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          "Coding finished, but its completion status could not be saved (a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+        ),
+      );
+    }
   } catch (error) {
+    await setDocumentProcessingStatus(documentId, "failed");
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
@@ -1843,9 +2249,27 @@ async function codeThemesAction(runId: string, documentId: string) {
     return;
   }
   try {
-    await extractThemesFromTranscript(TENANT_ID, runId, documentId);
+    // ANA-QUAL-001: extractThemesFromTranscript now stamps "ready" or "incomplete" itself
+    // (see its own comment) based on whether coding actually reached full per-unit coverage,
+    // so this no longer overwrites that with an unconditional "ready".
+    const result = await extractThemesFromTranscript(TENANT_ID, runId, documentId);
+    if (!result.statusPersisted) {
+      // Counter-review: the write was swallowed by a migration guard (pre-0088), so
+      // whatever status this document is showing now is NOT a confirmation that today's
+      // coverage was actually recorded - surfaced the same way a real processing error
+      // would be, since a researcher trusting a stale badge is exactly the failure mode
+      // this is meant to prevent.
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          "Coding finished, but its completion status could not be saved (a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+        ),
+      );
+    }
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    await setDocumentProcessingStatus(documentId, "failed");
   }
   await refreshAfterCoding(runId);
 }
@@ -1938,6 +2362,20 @@ async function importCodingAction(
       parsed,
     );
     const notes: string[] = [];
+    // ANA-QUAL-001: this codebook-only import handler is a third caller of the same
+    // statusPersisted contract reapplyCodebookAction and codeThemesAction already check (see
+    // their own comments above) - importCodedTranscript stamps the document's "ready"/"incomplete"
+    // status itself and reports whether that status write actually persisted, but this call site
+    // never inspected it, so a failed status write here (a pending migration, say) was reported to
+    // the researcher as a plain successful import with no sign the status badge can't be trusted.
+    // Folded into this function's own existing `notes` accumulator (not a second, separate
+    // recordSingleDocumentError call) so it reaches the researcher the same way every other
+    // advisory note from this import already does - one combined message, not two competing ones.
+    if (!result.statusPersisted) {
+      notes.push(
+        "coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge until that migration is applied and coding is re-run",
+      );
+    }
     if (result.quotesMatched < result.quotesTotal) {
       const missed = result.quotesTotal - result.quotesMatched;
       notes.push(
@@ -1978,8 +2416,15 @@ async function importCodingAction(
         ),
       );
     }
+    // Import itself succeeded even when there are advisory notes above -
+    // those aren't a processing failure. When codebookOnly, importCodedTranscript already
+    // stamped "ready" or "incomplete" itself based on the model's own apply-codebook
+    // coverage (ANA-QUAL-001); only a plain researcher-coded import (no model involved,
+    // so no coverage question to report) is set unconditionally here.
+    if (!result.codebookOnly) await setDocumentProcessingStatus(documentId, "ready");
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    await setDocumentProcessingStatus(documentId, "failed");
     revalidatePath(`/runs/${runId}`);
     return;
   }
@@ -2296,20 +2741,44 @@ async function processRunAction(
     async (doc) => {
       try {
         if (doc.kind === "report") {
-          await extractFindingsFromDocument(TENANT_ID, runId, doc.id, {
+          const result = await extractFindingsFromDocument(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
             archiveReason,
           });
+          // IMP-006 / REP-IN-001: mirrors the transcript carve-out just below - a report
+          // with failed chunks has its own accurate status to stamp ("incomplete"), so it is
+          // pulled out of the shared unconditional "ready" line the same way transcripts
+          // already are, rather than overwriting a partial result back to an unqualified
+          // "ready". REP-IN-002: a withheld or unpublished replacement keeps the previous
+          // findings and is reported as "incomplete" with its retry instruction.
+          const status = result.failedParts > 0 || !result.published ? "incomplete" : "ready";
+          if (!result.published) {
+            errors.push(`${doc.id}: ${result.notPublishedReason ?? "the new reading was not applied; retry extraction for this document"}`);
+          }
+          const persisted = await setDocumentProcessingStatus(doc.id, status);
+          if (!persisted) {
+            errors.push(
+              `${doc.id}: extraction finished (${status}), but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+            );
+          }
         } else if (doc.kind === "table") {
           await processTableDocument(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
             archiveReason,
           });
         } else if (doc.kind === "transcript") {
-          await extractThemesFromTranscript(TENANT_ID, runId, doc.id, {
+          const result = await extractThemesFromTranscript(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
             archiveReason,
           });
+          if (!result.statusPersisted) {
+            // Same migration-guard case as the single-document coding action - see its own
+            // comment. Pushed into the same batch `errors` array as a real processing
+            // failure would be, so it reaches the same process_run_errors banner below.
+            errors.push(
+              `${doc.id}: coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+            );
+          }
         } else if (doc.kind === "evidence") {
           // Context documents are not mined for findings, but their text is read and kept
           // so they preview and the brief and methodology steps can use them.
@@ -2322,10 +2791,31 @@ async function processRunAction(
           });
           if (!has) await readContextDocument(TENANT_ID, runId, doc.id);
         }
+        // ANA-QUAL-001 / IMP-006: a transcript or report already stamped its own accurate
+        // status above ("ready" or "incomplete", depending on whether coding or extraction
+        // reached full coverage) - this unconditional "ready" used to run right after it
+        // regardless and overwrite "incomplete" back to "ready" before a researcher ever saw
+        // it. Every other kind has no coverage concept of its own, so "ready" is still
+        // unconditionally correct for them.
+        if (doc.kind !== "transcript" && doc.kind !== "report") {
+          await setDocumentProcessingStatus(doc.id, "ready");
+        }
       } catch (error) {
         errors.push(
           `${doc.id}: ${error instanceof Error ? error.message : String(error)}`,
         );
+        // IMP-006 / REP-IN-001: the "failed" write itself can silently not land (same
+        // pre-migration-database case setDocumentProcessingStatus already guards elsewhere),
+        // which would otherwise leave this document showing whatever status it had before -
+        // for a document that had never been processed, that is no badge at all, which reads
+        // as "nothing wrong yet" rather than "failed". Surface that as its own error line in
+        // the same batch, rather than only here in the catch's own error push above.
+        const persisted = await setDocumentProcessingStatus(doc.id, "failed");
+        if (!persisted) {
+          errors.push(
+            `${doc.id}: failed, and its failed status could not be saved either (a database migration is pending) - do not trust this document's status badge`,
+          );
+        }
       } finally {
         incrementProcessProgress(runId);
       }
@@ -2446,6 +2936,13 @@ function startPageTiming() {
       marks.push({ name, ms: Date.now() - t0 });
     });
   };
+  // Logged just before the page is returned: the gap between "data ready" and
+  // this is page-body computation; the rest of the request time is the render
+  // and sending the result to the browser.
+  timing.bodyBuilt = () => {
+    if (!enabled) return;
+    console.log(`[run page] body computed at ${Date.now() - started}ms`);
+  };
   timing.done = () => {
     if (!enabled) return;
     const slow = [...marks]
@@ -2480,6 +2977,7 @@ export default async function RunPage({
     documentExcerpts,
     setupSuggestions,
     latestProcessErrors,
+    pendingLegacyConfirmations,
     documentTablePreviews,
     codebooksByDocument,
     objectiveCandidates,
@@ -2500,10 +2998,12 @@ export default async function RunPage({
     programs,
     apiUsageBatches,
     trimmedFiles,
+    unsupportedIdentifierColumnsByDoc,
     transcriptQuality,
     instrumentSummaries,
     outputSets,
     reportReadStats,
+    waveFilesResult,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -2514,6 +3014,7 @@ export default async function RunPage({
     timing("documentExcerpts", getDocumentExcerpts(id)),
     timing("setupSuggestions", getSetupSuggestions(TENANT_ID, id)),
     timing("latestProcessErrors", getLatestProcessErrors(id)),
+    timing("pendingLegacyConfirmations", getPendingLegacyConfirmations(id)),
     timing("documentTablePreviews", getDocumentTablePreviews(id)),
     timing("codebooks", getCodebooks(id)),
     timing("objectiveCandidates", getObjectiveCandidates(id)),
@@ -2534,14 +3035,18 @@ export default async function RunPage({
     timing("programs", getPrograms()),
     timing("apiUsageBatches", getApiUsageBatches(id)),
     timing("trimmedFiles", getTrimmedFiles(id)),
+    timing("unsupportedIdentifierColumnsByDoc", getUnsupportedIdentifierColumns(id)),
     timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
     timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
     timing("outputSets", getOutputSets(TENANT_ID, id)),
     timing("reportReadStats", getReportReadStats(id)),
+    timing("waveFiles", listWaveFilesAction(id)),
   ]);
   if (!run) {
     notFound();
   }
+
+  const waveFiles: WaveFile[] = waveFilesResult.ok ? waveFilesResult.files : [];
 
   // Only what depends on the first batch, again all at once.
   const needsVerdictSummary = insights.length === 0 && rawFindings.length > 0;
@@ -2605,6 +3110,8 @@ export default async function RunPage({
   const documentNameById = new Map(
     documents.map((d) => [d.id, d.source_filename]),
   );
+  const importPreviewIdentities = await loadImportPreviewIdentities(TENANT_ID, id, documentTablePreviews);
+
   // Skip logic from a confirmed questionnaire, per raw data file. Best
   // effort: without a questionnaire the detected routing is used.
   const statedRoutingByDoc = new Map<string, StatedRouting[]>();
@@ -2623,20 +3130,140 @@ export default async function RunPage({
         }
       }),
   );
-  const importQualityTables = documentTablePreviews
-    .filter((t) => t.headers.length > 0 && t.table_index < 100)
-    .map((t) => ({
-      id: t.id,
-      documentId: t.document_id,
-      documentName: documentNameById.get(t.document_id) ?? "Table",
-      label: t.label,
-      tableIndex: t.table_index,
-      headers: t.headers,
-      rows: t.rows,
-      ingestionType: t.ingestion_type,
-      trimmed: trimmedFiles.get(t.document_id) ?? null,
-      stated: statedRoutingByDoc.get(t.document_id) ?? [],
-    }));
+  const importQualityBase = documentTablePreviews.filter((t) => t.headers.length > 0 && t.table_index < 100);
+  const rawQualities = await Promise.all(
+    importQualityBase.map((t) =>
+      t.ingestion_type === "raw" ? getRawQuality(t, statedRoutingByDoc.get(t.document_id) ?? []) : Promise.resolve(null),
+    ),
+  );
+
+  // A file too wide to store whole only has the capped quality above, which
+  // covers the kept subset named in trimmedFiles. Where that happened, pull
+  // in the uncapped variable dictionary (the same one the cross tab tool
+  // reads, read from the full file with no column cap) and fold it into a
+  // quality report that covers every variable, not just the kept ones.
+  type FullCoverageExtra = { quality: TableQuality; questionTypeByVariable: Record<string, QuestionType> };
+  const trimmedRawRows = importQualityBase
+    .map((t, i) => ({ t, capped: rawQualities[i] }))
+    .filter(
+      (r): r is { t: (typeof importQualityBase)[number]; capped: TableQuality } =>
+        r.t.ingestion_type === "raw" && !!r.capped && trimmedFiles.has(r.t.document_id),
+    );
+  const trimmedDocs = [...new Map(trimmedRawRows.map((r) => [r.t.document_id, r.capped])).entries()];
+  const fullCoverageByDoc = new Map<string, FullCoverageExtra>();
+  await Promise.all(
+    trimmedDocs.map(async ([documentId, capped]) => {
+      try {
+        const dict = await loadVariableDictionary(TENANT_ID, id, documentId);
+        const quality = computeFullTableQuality(dict as VariableDictionary, capped);
+        const questionTypeByVariable: Record<string, QuestionType> = {};
+        for (const set of dict.sets ?? []) {
+          for (const name of set.vars) questionTypeByVariable[name] = (set.kind ?? "multi") as QuestionType;
+        }
+        fullCoverageByDoc.set(documentId, { quality, questionTypeByVariable });
+      } catch {
+        // Dictionary unavailable (e.g. a non-SPSS/Stata/SAS file was trimmed some
+        // other way): fall back to the capped view for this file rather than failing.
+      }
+    }),
+  );
+
+  // The researcher's saved type/question-type corrections apply to any raw
+  // file, not only ones too wide to store whole, so these are loaded for
+  // every raw document shown here (a single small jsonb read each).
+  const rawDocIds = [...new Set(importQualityBase.filter((t) => t.ingestion_type === "raw").map((t) => t.document_id))];
+  const overridesByDoc = new Map(
+    await Promise.all(
+      rawDocIds.map(
+        async (documentId) => [documentId, await loadVariableOverrides(TENANT_ID, id, documentId)] as const,
+      ),
+    ),
+  );
+
+  // An SPSS/Stata/SAS file not caught by the uncapped-coverage path above (it
+  // was never too wide to need it) still has its stored table, and so its
+  // quality.variableDetails, keyed by each variable's display LABEL rather
+  // than its canonical name - a correction saved against that label would
+  // otherwise reach nowhere the dictionary, crosstabs or any calculation
+  // actually looks. Built only for this case: CSV/Excel headers already are
+  // the canonical name, and a trimmed file's coverage is already canonically
+  // keyed via fullCoverageByDoc above.
+  const statsRawDocIds = rawDocIds.filter(
+    (documentId) => !fullCoverageByDoc.has(documentId) && isStatsFileName(documentNameById.get(documentId) ?? ""),
+  );
+  const canonicalMapByDoc = new Map(
+    await Promise.all(
+      statsRawDocIds.map(async (documentId) => {
+        try {
+          const dict = await loadVariableDictionary(TENANT_ID, id, documentId);
+          // Keyed only by the exact display header a correction was actually saved
+          // against (the disambiguated label _build_headers produced, falling back
+          // to the raw name only when no label exists). A raw name is never added
+          // as a second key: a variable's own name can coincide with another
+          // variable's disambiguated label (e.g. a label literally "q (2)" next to
+          // a raw-named column "q (2)"), and folding both into one object let
+          // whichever was written second silently redirect the other's corrections.
+          // If a key is ever claimed by two different variables, that key is left
+          // out entirely rather than guessing.
+          const map: Record<string, string> = {};
+          const ambiguous = new Set<string>();
+          for (const v of dict.variables) {
+            const key = v.label || v.name;
+            if (key in map && map[key] !== v.name) ambiguous.add(key);
+            else map[key] = v.name;
+          }
+          for (const key of ambiguous) delete map[key];
+          // IMP-003: the client used to fall back to the raw header text itself as the
+          // canonical name whenever a lookup here came up empty - correct for an
+          // unlabelled header, which already equals its own canonical name, but not
+          // generally safe: a display label with no entry in `map` (ambiguous, or any
+          // other reason) can still coincide, purely by chance, with some OTHER
+          // variable's actual canonical name (a label "Shared" sitting next to a
+          // genuinely different variable literally named "Shared"), and silently
+          // falling back to it then writes a correction into that other variable's
+          // override slot instead. Every real canonical name in this dictionary is
+          // sent down too, so the client can refuse that fallback whenever it would
+          // collide, rather than trust that no name ever repeats as a label elsewhere.
+          const allNames = dict.variables.map((v) => v.name);
+          return [documentId, { map, allNames }] as const;
+        } catch {
+          // Dictionary unavailable: headers are used as-is, same as before this fix.
+          return [documentId, { map: {} as Record<string, string>, allNames: [] as string[] }] as const;
+        }
+      }),
+    ),
+  );
+
+  const importQualityTables = importQualityBase
+    .map((t, i) => ({
+      quality: rawQualities[i] ?? undefined,
+      t,
+    }))
+    // A raw file whose quality could not be worked out is left out rather than shown as empty.
+    .filter(({ t, quality }) => t.ingestion_type !== "raw" || quality !== undefined)
+    .map(({ t, quality }) => {
+      const full = fullCoverageByDoc.get(t.document_id);
+      return {
+        quality: full?.quality ?? quality,
+        id: t.id,
+        documentId: t.document_id,
+        documentName: documentNameById.get(t.document_id) ?? "Table",
+        label: t.label,
+        tableIndex: t.table_index,
+        headers: t.headers,
+        rows: t.rows,
+        ingestionType: t.ingestion_type,
+        trimmed: trimmedFiles.get(t.document_id) ?? null,
+        previewError: importPreviewIdentities.get(t.document_id)?.error,
+        unsupportedIdentifierColumns: unsupportedIdentifierColumnsByDoc.get(t.document_id) ?? [],
+        fullyCovered: !!full,
+        stated: statedRoutingByDoc.get(t.document_id) ?? [],
+        questionTypeByVariable: full?.questionTypeByVariable,
+        overrides: overridesByDoc.get(t.document_id),
+        canonicalNameByHeader: canonicalMapByDoc.get(t.document_id)?.map,
+        claimedCanonicalNames: canonicalMapByDoc.get(t.document_id)?.allNames,
+      };
+    });
 
   // The framer is meant to run automatically once there's evidence to read,
   // not wait for the researcher to notice nothing showed up and click a
@@ -2784,12 +3411,9 @@ export default async function RunPage({
       : "Validate existing insights";
 
   const decisionSection = (
-    <CollapsibleSection
+    <div
       key={`decision-${decisionReached}-${decisionDone}`}
-      title="Business decisions"
-      bare
-      icon={<ListIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={decisionReached && !decisionDone}
+      className="flex flex-col gap-4"
     >
       <DecisionBriefReview
         runId={id}
@@ -2797,7 +3421,7 @@ export default async function RunPage({
         hasFindings={findings.length > 0}
         evidenceSynthesis={run.evidence_synthesis}
       />
-    </CollapsibleSection>
+    </div>
   );
 
   const statedInsightValidationsSection = (
@@ -2848,13 +3472,12 @@ export default async function RunPage({
   );
 
   const synthesizedInsightsSection = (
-    <CollapsibleSection
+    <div
       key={`synthesized-insights-${synthesizedInsights.length}`}
-      title={`Synthesized insights${synthesizedInsights.length > 0 ? ` (${synthesizedInsights.length})` : ""}`}
-      bare
-      icon={<SparkleIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={false}
-      headerRight={
+      className="flex flex-col gap-4"
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="ml-auto">
         <div className="flex flex-wrap items-center gap-2">
           {synthesizedInsights.length > 0 && (
             <>
@@ -2908,19 +3531,16 @@ export default async function RunPage({
             </SubmitButton>
           </form>
         </div>
-      }
-    >
+        </div>
+      </div>
       <SynthesizedInsightsReview runId={id} insights={synthesizedInsights} />
-    </CollapsibleSection>
+    </div>
   );
 
   const recommendationsSection = (
-    <CollapsibleSection
+    <div
       key={`recommendations-${recommendationsReached}`}
-      title={`Recommendations${synthesizedRecommendations.length > 0 ? ` (${synthesizedRecommendations.length})` : ""}`}
-      bare
-      icon={<TargetIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={false}
+      className="flex flex-col gap-4"
     >
       <SynthesizedRecommendationsReview
         runId={id}
@@ -2932,7 +3552,7 @@ export default async function RunPage({
         hasDecision={Boolean(run.decision_statement)}
         hasInsights={acceptedSynthesizedInsightCount > 0}
       />
-    </CollapsibleSection>
+    </div>
   );
 
   // The original 1:1 pre-insight recommendations, kept additive alongside
@@ -3005,35 +3625,13 @@ export default async function RunPage({
   );
 
   const storyReportSection = (
-    <CollapsibleSection
+    <div
       key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}
-      title="Insights Report"
-      bare
-      icon={<PresentationIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={false}
-      headerRight={
-        storyNarrative ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={`/api/runs/${id}/story/export`}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
-            >
-              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
-              Export deck (.pptx)
-            </a>
-            <a
-              href={`/api/runs/${id}/story/export-docx`}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
-            >
-              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
-              Export report (.docx)
-            </a>
-          </div>
-        ) : undefined
-      }
     >
-      <div className="space-y-4">
-        <p className="text-sm text-muted">
+      <ThreePane
+        left={
+          <Pane side="left" title="Generate and export">
+        <p className="text-xs text-muted">
           Weaves this project&apos;s accepted synthesized insights and
           recommendations into one underlying narrative, then lays it out two
           ways: the slide deck as an SCQA / Pyramid Principle argument built to
@@ -3075,6 +3673,33 @@ export default async function RunPage({
           )}
         </div>
 
+            {storyNarrative ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/api/runs/${id}/story/export`}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
+            >
+              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
+              Export deck (.pptx)
+            </a>
+            <a
+              href={`/api/runs/${id}/story/export-docx`}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
+            >
+              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
+              Export report (.docx)
+            </a>
+          </div>
+        ) : undefined}
+          </Pane>
+        }
+        middle={
+          <Pane side="middle" title="Narrative">
+            {!storyNarrative && (
+              <p className="text-sm text-muted">
+                Nothing generated yet. Generate the Insights Report on the left to see the narrative here.
+              </p>
+            )}
         {storyNarrative && (
           <div className="space-y-3 rounded-lg border border-border bg-slate-50 px-4 py-3">
             {storyNarrative.executive_summary && (
@@ -3127,6 +3752,15 @@ export default async function RunPage({
           </div>
         )}
 
+          </Pane>
+        }
+        right={
+          <Pane side="right" title="Objectives and decisions checked">
+            {objectiveValidations.length === 0 && !objectiveValidationError && (
+              <p className="text-sm text-muted">
+                Objectives and decisions, checked against the evidence, show here once the report is generated.
+              </p>
+            )}
         {objectiveValidationError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
             {objectiveValidationError}
@@ -3164,6 +3798,14 @@ export default async function RunPage({
                 return (
                   <li key={index} className="text-sm">
                     <div className="flex flex-wrap items-center gap-2">
+                      {item.evidence_digest_degraded && (
+                        <span
+                          className="rounded px-1.5 py-0.5 text-xs font-semibold uppercase bg-orange-100 text-orange-800"
+                          title="This conclusion was generated while direct data-evidence retrieval was failing (a connection or permission error, not a missing lane) - it may be missing evidence a working check would have cited."
+                        >
+                          Evidence check degraded
+                        </span>
+                      )}
                       <span
                         className={`rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${badge.className}`}
                       >
@@ -3190,8 +3832,10 @@ export default async function RunPage({
             </ul>
           </div>
         )}
-      </div>
-    </CollapsibleSection>
+          </Pane>
+        }
+      />
+    </div>
   );
 
   // True whenever a business problem/objective was already given before
@@ -3290,12 +3934,7 @@ export default async function RunPage({
   const qualityByText = new Map(
     objectiveQuality.rows.map((r) => [r.item_text.trim(), r] as const),
   );
-  const objectiveReviewList = (
-    <ObjectiveReviewTable
-      runId={id}
-      hasFindings={findings.length > 0}
-      missingMigration={objectiveQuality.missing}
-      rows={objectiveCandidates.map((c): ObjectiveRow => {
+  const objectiveRows: ObjectiveRow[] = objectiveCandidates.map((c): ObjectiveRow => {
         const q = qualityByText.get(c.candidate_text.trim());
         return {
           id: c.id,
@@ -3318,7 +3957,13 @@ export default async function RunPage({
                 }
               : null,
         };
-      })}
+  });
+  const objectiveReviewList = (
+    <ObjectiveReviewTable
+      runId={id}
+      hasFindings={findings.length > 0}
+      missingMigration={objectiveQuality.missing}
+      rows={objectiveRows}
     />
   );
 
@@ -3412,20 +4057,16 @@ export default async function RunPage({
     );
 
   const workingDataSection = (
-    <CollapsibleSection
-      key={`working-data-${insights.length}-${recommendations.length}-${findingHistory.length}`}
-      title="Working data"
-      bare
-      icon={<ListIcon className="h-4 w-4 text-muted" />}
-      defaultOpen={false}
-    >
-      <p className="mb-6 max-w-2xl text-sm text-muted">
-        The granular layer underneath the sections above: one pre-insight per
-        verified finding, one recommendation per pre-insight, and anything
-        removed along the way. Kept here as a full audit trail rather than
-        hidden, not meant as the first thing to read.
-      </p>
+    <div key={`working-data-${insights.length}-${recommendations.length}-${findingHistory.length}`}>
       <WorkingDataTabs
+        layout="pane"
+        intro={
+          <p className="text-xs text-muted">
+            The granular layer underneath the sections above: one pre-insight per verified finding,
+            one recommendation per pre-insight, and anything removed along the way. Kept as a full
+            audit trail, not meant as the first thing to read.
+          </p>
+        }
         tabs={[
           {
             id: "pre-insights",
@@ -3447,7 +4088,7 @@ export default async function RunPage({
           },
         ]}
       />
-    </CollapsibleSection>
+    </div>
   );
 
   // objectiveSection's own comment explains the dependency this mirrors:
@@ -3460,10 +4101,17 @@ export default async function RunPage({
   // order (RunPage) but never for this list.
   // Per-document cards, one list per kind of document, so Cross tabs (tables),
   // Coding (transcripts) and Reports each show only their own.
-  const documentCards = (kind: "table" | "transcript" | "report") => (
-                        <ul className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+  const documentCards = (
+    kind: "table" | "transcript" | "report",
+    single = false,
+    onlyId?: string,
+    omitSide = false,
+  ) => (
+                        <ul
+                          className={`grid grid-cols-1 items-start gap-4 ${single ? "" : "xl:grid-cols-2"}`}
+                        >
                           {documents
-                            .filter((d) => d.kind === kind)
+                            .filter((d) => d.kind === kind && (!onlyId || d.id === onlyId))
                             .map((doc) => {
                             const extractAction = extractFindingsAction.bind(
                               null,
@@ -3505,6 +4153,22 @@ export default async function RunPage({
                                         {DOC_KIND_STYLE[doc.kind]?.label ??
                                           doc.kind}
                                       </span>{" "}
+                                      {doc.processing_status === "failed" && (
+                                        <span
+                                          className="mr-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800"
+                                          title="The last processing attempt for this document failed. Check the error banner above, fix the issue, then try again."
+                                        >
+                                          processing failed
+                                        </span>
+                                      )}
+                                      {doc.processing_status === "incomplete" && (
+                                        <span
+                                          className="mr-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-800"
+                                          title="Coding finished, but at least one batch of turns came back without a decision for every unit it was asked about. Findings from this transcript may be missing some coded passages. Try Code again."
+                                        >
+                                          coding incomplete
+                                        </span>
+                                      )}
                                       {new Date(
                                         doc.uploaded_at,
                                       ).toLocaleDateString()}
@@ -3578,7 +4242,8 @@ export default async function RunPage({
                                     </form>
                                   )}
                                 {doc.kind === "table" &&
-                                  doc.ingestion_type === "raw" && (
+                                  doc.ingestion_type === "raw" &&
+                                  !single && (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
                                       Case-level data. Nothing is compared automatically.
                                       Build tables with the cross tab tool below, or start
@@ -3594,11 +4259,11 @@ export default async function RunPage({
                                     (doc.ingestion_type === "raw" &&
                                       isCaseTableFileName(doc.source_filename))) &&
                                   (!dataSetups.has(doc.id) || dataSetups.get(doc.id)?.accepted ? (
-                                    <>
-                                    <CrosstabBuilder
+                                    <AnalyticsBuilder
                                       runId={id}
                                       documentId={doc.id}
                                       filename={doc.source_filename}
+                                      waveFiles={waveFiles}
                                       saved={(
                                         documentTablesByDocument.get(doc.id) ?? []
                                       )
@@ -3608,12 +4273,6 @@ export default async function RunPage({
                                           label: t.label ?? "Crosstab",
                                         }))}
                                     />
-                                    <AnalyticsBuilder
-                                      runId={id}
-                                      documentId={doc.id}
-                                      filename={doc.source_filename}
-                                    />
-                                    </>
                                   ) : (
                                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                                       <span>
@@ -3817,6 +4476,8 @@ export default async function RunPage({
                                       view={codingAnalysis.get(doc.id)!}
                                     />
                                   )}
+                                {!omitSide && (
+                                  <>
                                 {doc.kind === "transcript" &&
                                   codebooksByDocument.has(doc.id) && (
                                     <CodingExtras
@@ -3858,10 +4519,61 @@ export default async function RunPage({
                                       Themed extract for writing up (.docx)
                                     </a>
                                   )}
+                                  </>
+                                )}
                               </li>
                             );
                           })}
                         </ul>
+  );
+  // The quality checks, extras and exports of one transcript, shown in the right-hand pane of Coding.
+  const transcriptSide = (doc: (typeof documents)[number]) => (
+    <div className="flex flex-col gap-3">
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <CodingExtras
+                                      key="extras"
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codingAnalysis.has(doc.id) && (
+                                    <TranscriptQualityPanel
+                                      key={`coding-quality-${doc.id}-${codingAnalysis.get(doc.id)!.version}`}
+                                      runId={id}
+                                      title="Quality control"
+                                      items={[
+                                        {
+                                          documentId: doc.id,
+                                          filename: doc.source_filename,
+                                          view: codingAnalysis.get(doc.id)!,
+                                        },
+                                      ]}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      key="export"
+                                      href={`/api/runs/${id}/coding/export`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Export codebook and coding checks (.xlsx)
+                                    </a>
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      key="extract"
+                                      href={`/api/runs/${id}/coding/extract`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Themed extract for writing up (.docx)
+                                    </a>
+                                  )}
+    </div>
   );
   const documentsToolbar =
     documents.length > 0 ? (
@@ -3901,12 +4613,13 @@ export default async function RunPage({
     ) : null;
 
   const navSections: RunNavSection[] = [
-    { id: "objective", group: "Setup", label: "Objective and context" },
+    { id: "objective", group: "Objectives", label: "Set Objectives" },
+    { id: "objectives", group: "Objectives", label: "Review Objectives" },
     { id: "upload", group: "Setup", label: "Import data" },
     {
       id: "crosstabs",
       group: "Analysis",
-      label: "Cross tabs",
+      label: "Analytics",
       badge: documents.filter((d) => d.kind === "table").length,
     },
     {
@@ -3933,7 +4646,6 @@ export default async function RunPage({
       label: "Insights",
       badge: synthesizedInsights.length,
     },
-    { id: "objective-review", group: "Decisions", label: "Objective review" },
     { id: "decisions", group: decisionGroup, label: "Business decisions" },
     {
       id: "recommendations",
@@ -3971,28 +4683,35 @@ export default async function RunPage({
         ? "upload"
         : "findings";
 
+  timing.bodyBuilt();
   return (
     <RunSectionProvider
       defaultId={defaultSectionId}
       validIds={navSections.map((s) => s.id)}
     >
       <main className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-[90rem] px-6 pt-8">
+        <div className="mx-auto w-full max-w-[90rem] px-6 pt-3">
           <PipelineStatus runId={id} />
-          <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
+          <div className="mb-2 flex flex-col items-start gap-y-0.5 text-left">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
             {run.project_name ??
               run.research_objective ??
               run.business_problem ??
               "Untitled project"}
           </h1>
-          <div className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-            <span>Audience: {run.audience}</span>
-            <span className="text-border">&middot;</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+            {run.audience && (
+              <>
+                <span>Audience: {run.audience}</span>
+                <span className="text-border">&middot;</span>
+              </>
+            )}
             <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
               {run.status.replace(/_/g, " ")}
             </span>
             <span className="text-border">&middot;</span>
             <span>Starting point: {startingPointLabel}</span>
+          </div>
           </div>
 
           {/* Program/wave membership is a Documents-page concern (it's
@@ -4025,16 +4744,65 @@ export default async function RunPage({
               </ul>
             </div>
           )}
+
+          {pendingLegacyConfirmations.map((pending) => {
+            const n = pending.findings.length;
+            const confirmAction = confirmLegacyReplacementAction.bind(null, id, pending.documentId);
+            return (
+              <div
+                key={pending.documentId}
+                className="mb-8 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              >
+                <p className="font-medium">
+                  A new reading of {pending.filename} was not applied: {n} existing finding{n === 1 ? "" : "s"}{" "}
+                  {n === 1 ? "predates" : "predate"} review tracking.
+                </p>
+                <p className="mt-1 text-amber-800">
+                  Whether a researcher accepted or edited {n === 1 ? "it" : "them"} cannot be established, so every
+                  existing finding was kept. Review {n === 1 ? "it" : "them"} under Findings (accepting, rejecting or
+                  editing a finding keeps it), or re-read the document and replace exactly the findings below. Replaced
+                  findings are archived to history; any that have been reviewed, edited, annotated or used since are
+                  kept regardless.
+                </p>
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-amber-800">
+                  {pending.findings.slice(0, 5).map((f) => (
+                    <li key={f.id} className="break-words">
+                      {f.text}
+                    </li>
+                  ))}
+                  {n > 5 && <li>and {n - 5} more</li>}
+                </ul>
+                <form action={confirmAction} className="mt-3">
+                  {pending.findings.map((f) => (
+                    <input key={f.id} type="hidden" name="findingId" value={f.id} />
+                  ))}
+                  <button
+                    type="submit"
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+                  >
+                    Re-read and replace {n === 1 ? "this finding" : `these ${n} findings`}
+                  </button>
+                </form>
+              </div>
+            );
+          })}
         </div>
 
         <RunNav sections={navSections} />
 
-        <div className="px-8 pb-8 pt-4">
+        <div className="px-6 pb-6 pt-2">
           <SectionPanel id="upload">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Import data
-            </h2>
-            <CollapsibleSection
+            <ImportDetailProvider>
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Import data</h2>
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Add files on the left. Everything you have added is listed in the middle, and the right pane
+              shows what to do next.
+            </p>
+            <ThreePane
+              wideRight
+              left={
+                <Pane side="left" title="Add files">
+                  <CollapsibleSection
               key={`upload-${uploadDone}`}
               title="Upload documents"
               bare
@@ -4043,148 +4811,16 @@ export default async function RunPage({
             >
               <UploadForm runId={id} />
             </CollapsibleSection>
-          </SectionPanel>
-
-          {outputSets.length > 0 && (
-            <SectionPanel id="upload">
-              <div className="mt-8 space-y-3">
-                <h2 className="text-xl font-semibold text-foreground">
-                  Statistical output ({outputSets.length} {outputSets.length === 1 ? "set" : "sets"})
-                </h2>
-                {outputSets.map((set) => (
-                  <OutputSetCard key={set.id} runId={id} set={set} />
-                ))}
-                {outputSets.length > 1 && <RelatedOutputSets runId={id} sets={outputSets} />}
-              </div>
-            </SectionPanel>
-          )}
-
-          {documents.some((d) => d.kind !== "output") && (
-            <SectionPanel id="upload">
-              <div className="mt-8">
-                <TranscriptSetupTable
-                  runId={id}
-                  rows={documents.filter((d) => !instrumentHome.has(d.id) && d.kind !== "output").map((d) => ({
-                    documentId: d.id,
-                    filename: d.source_filename,
-                    kind: d.kind,
-                    kindLabel: DOC_KIND_STYLE[d.kind]?.label ?? d.kind,
-                    kindBadge: DOC_KIND_STYLE[d.kind]?.badge ?? "",
-                    uploadedAt: d.uploaded_at,
-                    isRawData: d.kind === "table" && d.ingestion_type === "raw",
-                    dataSetup: dataSetups.get(d.id) ?? null,
-                    preview:
-                      d.kind === "instrument"
-                        ? null
-                        : d.kind === "table"
-                        ? {
-                            kind: "tables" as const,
-                            tables: (documentTablesByDocument.get(d.id) ?? [])
-                              .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.rows.length > 0)
-                              .map((t) => ({
-                                label: t.label ?? `Table ${t.table_index + 1}`,
-                                headers: t.headers.slice(0, 12),
-                                totalColumns: t.headers.length,
-                                rows: t.rows.slice(0, 8),
-                                totalRows: t.rows.length,
-                              })),
-                          }
-                        : documentExcerpts.has(d.id)
-                          ? {
-                              kind: "text" as const,
-                              excerpt: documentExcerpts.get(d.id)!.excerpt,
-                              length: documentExcerpts.get(d.id)!.length,
-                            }
-                          : null,
-                    attached: attachedFor(d),
-                    quality:
-                      d.kind === "instrument" && instrumentSummaries.has(d.id) ? (
-                        <InstrumentCard
-                          key="instrument"
-                          runId={id}
-                          documentId={d.id}
-                          summary={instrumentSummaries.get(d.id)!}
-                          dataDocs={
-                            instrumentSummaries.get(d.id)!.type === "questionnaire" ||
-                            instrumentSummaries.get(d.id)!.type === null
-                              ? documents
-                                  .filter((x) => x.kind === "table" && x.ingestion_type === "raw")
-                                  .map((x) => ({ id: x.id, name: x.source_filename }))
-                              : []
-                          }
-                        />
-                      ) : d.kind === "transcript" && transcriptQuality.has(d.id) ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <TranscriptImportQualityPanel q={transcriptQuality.get(d.id)!} />
-                          </div>
-                        </details>
-                      ) : d.kind === "table" &&
-                        d.ingestion_type !== "raw" &&
-                        (documentTablesByDocument.get(d.id) ?? []).length > 0 ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <AggregatedQualityPanel
-                              q={computeAggregatedQuality(
-                                (documentTablesByDocument.get(d.id) ?? [])
-                                  .filter((t) => t.table_index < 100)
-                                  .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
-                              )}
-                            />
-                          </div>
-                        </details>
-                      ) : d.kind === "table" &&
-                        importQualityTables.some((t) => t.documentId === d.id) ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <ImportQualityPanel
-                              tables={importQualityTables.filter((t) => t.documentId === d.id)}
-                              hasReportOnly={false}
-                            />
-                            {d.ingestion_type === "raw" && <DataAuditPanel runId={id} documentId={d.id} />}
-                          </div>
-                        </details>
-                      ) : null,
-                    detail:
-                      d.kind === "instrument"
-                        ? "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
-                        : d.kind === "table"
-                        ? d.ingestion_type === "raw"
-                          ? "Case-level data. Tables are built in Analysis, Cross tabs once you accept it here."
-                          : "Already-aggregated table, read as it is."
-                        : d.kind === "report"
-                          ? "Report, read for the findings it states."
-                          : "Context for the project, not mined for findings.",
-                    initial: transcriptSetups.get(d.id) ?? null,
-                    suggestion: setupSuggestions.get(d.id) ?? null,
-                    hasCoding: codebooksByDocument.has(d.id),
-                    accent:
-                      DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
-                    deleteAction: deleteDocument.bind(null, id, d.id),
-                  }))}
-                />
-              </div>
-            </SectionPanel>
-          )}
-
-          <SectionPanel id="upload">
-            <div className="mt-8 rounded-lg border border-dashed border-border bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <ChartIcon className="h-4 w-4 text-primary" />
+          
+                  
+            <div className="rounded-lg border border-dashed border-border bg-slate-50 p-4">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <ChartIcon className="h-3.5 w-3.5 text-primary" />
                 Tracking
               </div>
               {currentProgram ? (
                 <div>
-                  <p className="text-sm text-foreground">
+                  <p className="text-xs text-foreground">
                     Part of{" "}
                     <Link
                       href="/programs"
@@ -4227,22 +4863,22 @@ export default async function RunPage({
                 </div>
               ) : (
                 <div>
-                  <p className="mb-3 text-sm text-muted">
+                  <p className="mb-3 text-xs text-muted">
                     Not part of a program yet. If this project is one wave of an
                     ongoing tracking study, link it to a program below, picking
                     an existing one or naming a new one.
                   </p>
                   <form
                     action={updateProgramLinkWithId}
-                    className="flex flex-col gap-2 sm:flex-row sm:items-end"
+                    className="flex flex-col gap-2"
                   >
-                    <label className="block flex-1">
+                    <label className="block">
                       <span className="text-xs font-medium text-foreground">
                         Existing program
                       </span>
                       <select
                         name="programId"
-                        className="mt-1 block w-full rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        className="mt-1 block w-full rounded-lg border border-border px-2 py-1 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       >
                         <option value="">None</option>
                         {programs.map((program) => (
@@ -4252,24 +4888,24 @@ export default async function RunPage({
                         ))}
                       </select>
                     </label>
-                    <label className="block flex-1">
+                    <label className="block">
                       <span className="text-xs font-medium text-foreground">
                         Or new program name
                       </span>
                       <input
                         name="newProgramName"
                         placeholder="e.g. Acme Member Satisfaction Tracker"
-                        className="mt-1 block w-full rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        className="mt-1 block w-full rounded-lg border border-border px-2 py-1 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </label>
-                    <label className="block flex-1">
+                    <label className="block">
                       <span className="text-xs font-medium text-foreground">
                         Wave label
                       </span>
                       <input
                         name="waveLabel"
                         placeholder="e.g. Wave 1"
-                        className="mt-1 block w-full rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        className="mt-1 block w-full rounded-lg border border-border px-2 py-1 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </label>
                     <SubmitButton
@@ -4282,160 +4918,460 @@ export default async function RunPage({
                 </div>
               )}
             </div>
-          </SectionPanel>
-
-          {documents.length > 0 && (
-            <SectionPanel id="upload">
-              <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white p-4">
+          
+                </Pane>
+              }
+              middle={
+                <Pane
+                  side="middle"
+                  title="Documents"
+                  badge={
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {documents.filter((d) => d.kind !== "output").length}
+                    </span>
+                  }
+                >
+                  {outputSets.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-xl font-semibold text-foreground">
+                  Statistical output ({outputSets.length} {outputSets.length === 1 ? "set" : "sets"})
+                </h2>
+                {outputSets.map((set) => (
+                  <OutputSetCard key={set.id} runId={id} set={set} />
+                ))}
+                {outputSets.length > 1 && <RelatedOutputSets runId={id} sets={outputSets} />}
+              </div>
+            )}
+                  {documents.some((d) => d.kind !== "output") && (
+              <div className="">
+                <TranscriptSetupTable
+                  runId={id}
+                  rows={documents.filter((d) => !instrumentHome.has(d.id) && d.kind !== "output").map((d) => ({
+                    documentId: d.id,
+                    filename: d.source_filename,
+                    kind: d.kind,
+                    kindLabel: d.kind === "table" && d.ingestion_type === "raw" ? "Raw data" : (DOC_KIND_STYLE[d.kind]?.label ?? d.kind),
+                    kindBadge: DOC_KIND_STYLE[d.kind]?.badge ?? "",
+                    uploadedAt: d.uploaded_at,
+                    isRawData: d.kind === "table" && d.ingestion_type === "raw",
+                    dataSetup: dataSetups.get(d.id) ?? null,
+                    preview:
+                      d.kind === "instrument" || importPreviewIdentities.get(d.id)?.error
+                        ? null
+                        : d.kind === "table"
+                        ? {
+                            kind: "tables" as const,
+                            // row_count, not rows.length: getDocumentTablePreviews caps a raw
+                            // table's rows at a small sample (it can be huge in full), with
+                            // row_count holding the true count instead. Filtering or counting by
+                            // rows.length here used to always read a raw file's table as having
+                            // zero rows - it was filtered out of this list entirely regardless of
+                            // its real size, which in turn made TranscriptSetup's `unread` check
+                            // see "no tables yet" for every raw import and re-trigger a re-read on
+                            // every page load, not only on a genuinely unread file (IMP-010).
+                            tables: (documentTablesByDocument.get(d.id) ?? [])
+                              .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.row_count > 0)
+                              .map((t) => ({
+                                label: t.label ?? `Table ${t.table_index + 1}`,
+                                headers: t.headers.slice(0, 12),
+                                totalColumns: t.headers.length,
+                                rows: t.rows.slice(0, 8),
+                                totalRows: t.row_count,
+                              })),
+                          }
+                        : documentExcerpts.has(d.id)
+                          ? {
+                              kind: "text" as const,
+                              excerpt: documentExcerpts.get(d.id)!.excerpt,
+                              length: documentExcerpts.get(d.id)!.length,
+                            }
+                          : null,
+                    attached: attachedFor(d),
+                    quality:
+                      importPreviewIdentities.get(d.id)?.error ? (
+                        <ImportPreviewRecovery error={importPreviewIdentities.get(d.id)!.error!} />
+                      ) : d.kind === "instrument" && instrumentSummaries.has(d.id) ? (
+                        <InstrumentCard
+                          key="instrument"
+                          runId={id}
+                          documentId={d.id}
+                          summary={instrumentSummaries.get(d.id)!}
+                          dataDocs={
+                            instrumentSummaries.get(d.id)!.type === "questionnaire" ||
+                            instrumentSummaries.get(d.id)!.type === null
+                              ? documents
+                                  .filter((x) => x.kind === "table" && x.ingestion_type === "raw")
+                                  .map((x) => ({ id: x.id, name: x.source_filename }))
+                              : []
+                          }
+                        />
+                      ) : d.kind === "transcript" && transcriptQuality.has(d.id) ? (
+                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
+                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                            Data quality
+                          </summary>
+                          <div className="mt-3">
+                            <TranscriptImportQualityPanel q={transcriptQuality.get(d.id)!} />
+                          </div>
+                        </details>
+                      ) : d.kind === "table" &&
+                        d.ingestion_type !== "raw" &&
+                        (documentTablesByDocument.get(d.id) ?? []).length > 0 ? (
+                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
+                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                            Data quality
+                          </summary>
+                          <div className="mt-3">
+                            <AggregatedQualityPanel
+                              q={computeAggregatedQuality(
+                                (documentTablesByDocument.get(d.id) ?? [])
+                                  .filter((t) => t.table_index < 100)
+                                  .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
+                              )}
+                            />
+                          </div>
+                        </details>
+                      ) : d.kind === "table" &&
+                        importQualityTables.some((t) => t.documentId === d.id) ? (
+                        <div key="data-quality" className="flex flex-col gap-3">
+                          <details className="rounded-lg border border-border bg-white p-3">
+                            <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                              Data quality
+                            </summary>
+                            <div className="mt-3">
+                              <ImportQualityPanel
+                                tables={importQualityTables.filter((t) => t.documentId === d.id)}
+                                hasReportOnly={false}
+                              />
+                              {d.ingestion_type === "raw" && <DataAuditPanel runId={id} documentId={d.id} />}
+                            </div>
+                          </details>
+                          <details className="rounded-lg border border-border bg-white p-3">
+                            <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+                              Variables
+                            </summary>
+                            <div className="mt-3">
+                              <ImportVariablesPanel
+                                runId={id}
+                                tables={importQualityTables.filter((t) => t.documentId === d.id)}
+                              />
+                            </div>
+                          </details>
+                        </div>
+                      ) : null,
+                    detail:
+                      d.kind === "instrument"
+                        ? "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
+                        : d.kind === "table"
+                        ? d.ingestion_type === "raw"
+                          ? "Case-level data. Tables are built in Analysis, Analytics once you accept it here."
+                          : "Already-aggregated table, read as it is."
+                        : d.kind === "report"
+                          ? "Report, read for the findings it states."
+                          : "Context for the project, not mined for findings.",
+                    initial: transcriptSetups.get(d.id) ?? null,
+                    suggestion: setupSuggestions.get(d.id) ?? null,
+                    hasCoding: codebooksByDocument.has(d.id),
+                    accent:
+                      DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
+                    deleteAction: deleteDocument.bind(null, id, d.id),
+                  }))}
+                />
+              </div>
+            )}
+                  {documents.length === 0 && outputSets.length === 0 && (
+                    <p className="text-sm text-muted">Nothing here yet. Drop a report, data table or transcript on the left.</p>
+                  )}
+                </Pane>
+              }
+              right={
+                <Pane side="right" title="Selected file">
+                  <SelectedFileDetail />
+                  <div className="h-px shrink-0 bg-border" />
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["Reports", documents.filter((d) => d.kind === "report").length],
+                        ["Data tables", documents.filter((d) => d.kind === "table").length],
+                        ["Transcripts", documents.filter((d) => d.kind === "transcript").length],
+                      ] as const
+                    ).map(([label, n]) => (
+                      <div key={label} className="rounded-lg border border-border bg-slate-50 px-2.5 py-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+                        <div className="mt-0.5 text-lg font-semibold leading-none text-foreground">{n}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-foreground">
+                    <span className="font-semibold">{findings.length}</span>{" "}
+                    {findings.length === 1 ? "finding" : "findings"} so far
+                  </div>
+                  {documents.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white p-4">
                 <p className="max-w-2xl text-xs text-muted">
-                  Files are read and accepted as they arrive. Next, build tables in Analysis, Cross tabs, code
+                  Files are read and accepted as they arrive. Next, build tables in Analysis, Analytics, code
                   transcripts under Coding, or run the full analysis from Findings.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <GoToSection id="crosstabs">Open Analysis</GoToSection>
                 </div>
               </div>
-            </SectionPanel>
-          )}
-
-
-          <SectionPanel id="objective">
-            <h2 className="mb-2 text-xl font-semibold text-foreground">
-              Objective and context
-            </h2>
-            <p className="mb-5 max-w-3xl text-sm text-muted">
-              Optional. Add the business problem and your own objective if you have them, or import them from a
-              brief or proposal. Your objectives are scored for quality here. After the insights are built, the
-              Objective review step checks them against the evidence, and if you gave none it proposes some.
-            </p>
-            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-              <RunContextForm
-                runId={id}
-                businessProblem={run.business_problem}
-                objective={run.initial_research_objective}
-                audience={run.audience}
-              />
-              <div className="lg:sticky lg:top-4">
-                <StatedObjectivesList
-                  runId={id}
-                  lines={(run.initial_research_objective ?? "")
-                    .split(/\r?\n/)
-                    .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
-                    .filter((l) => l.length > 0)}
-                />
-              </div>
-            </div>
+            )}
+                </Pane>
+              }
+            />
+            </ImportDetailProvider>
           </SectionPanel>
 
-          <SectionPanel id="objective-review">
-            <h2 className="mb-2 text-xl font-semibold text-foreground">
-              Objective review
-            </h2>
-            <p className="mb-5 max-w-3xl text-sm text-muted">
-              Checks what you set out to learn against what the evidence shows. Stated objectives get a
-              verdict. If you gave none, objectives are inferred from the evidence and flagged as such, with no
-              verdict, because checking them against the same evidence would be circular.
+          <SectionPanel id="objective">
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Set up objectives</h2>
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Add the business problem and your own objectives, or import them from a brief or proposal.
+              They are scored and checked against the evidence on the Objectives page.
             </p>
-            <ObjectiveCoverage
-              runId={id}
-              validations={objectiveValidations}
-              insights={synthesizedInsights.map((i) => ({
-                id: i.id,
-                headline: i.headline,
-                review_status: i.review_status,
-              }))}
-              hasObjectiveOrDecision={Boolean(
-                (run.research_objective && run.research_objective.trim()) ||
-                  (run.decision_statement && run.decision_statement.trim()),
-              )}
+            <ThreePane
+              left={
+                <Pane side="left" title="Objective and context">
+                  <RunContextForm
+                    runId={id}
+                    businessProblem={run.business_problem}
+                    objective={run.stated_objectives_text}
+                    audience={run.audience}
+                  />
+                </Pane>
+              }
+              middle={
+                <Pane side="middle" title="Your objectives">
+                  <StatedObjectivesList
+                    runId={id}
+                    lines={parseObjectiveLines(run.stated_objectives_text)}
+                  />
+                  <p className="text-xs text-muted">
+                    Quality scores, the evidence check and suggested objectives are on the{" "}
+                    <GoToSection id="objectives">Review page</GoToSection>.
+                  </p>
+                </Pane>
+              }
             />
-            <ObjectiveEvidence
-              runId={id}
-              dataFiles={documents
-                .filter(
-                  (d) =>
-                    d.kind === "table" &&
-                    (isStatsFileName(d.source_filename) ||
-                      (d.ingestion_type === "raw" && isCaseTableFileName(d.source_filename))),
-                )
-                .map((d) => ({ id: d.id, name: d.source_filename }))}
-              hasObjectiveOrDecision={Boolean(
-                (run.research_objective && run.research_objective.trim()) ||
-                  (run.decision_statement && run.decision_statement.trim()),
-              )}
-            />
-            {objectiveReviewList}
+          </SectionPanel>
+
+          <SectionPanel id="objectives">
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Review objectives</h2>
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Pick an objective to see its quality score and what the evidence says about it. With none picked,
+              the middle shows every objective scored side by side.
+            </p>
+            <ObjectiveSelectionProvider>
+              <ThreePane
+                left={
+                  <Pane side="left" title="Objectives">
+                    <ObjectiveList
+                      rows={objectiveRows}
+                      verdicts={objectiveValidations.map((v) => ({
+                        item_text: v.item_text,
+                        status: v.status,
+                        inferred: v.inferred,
+                      }))}
+                    />
+                  </Pane>
+                }
+                middle={
+                  <Pane side="middle" title="Objective detail">
+                    <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
+                  </Pane>
+                }
+                right={
+                  <Pane side="right" title="Objective review">
+                    <ObjectiveCoverage
+                      runId={id}
+                      validations={objectiveValidations}
+                      insights={synthesizedInsights.map((i) => ({
+                        id: i.id,
+                        headline: i.headline,
+                        review_status: i.review_status,
+                      }))}
+                      hasObjectiveOrDecision={Boolean(
+                      (run.research_objective && run.research_objective.trim()) ||
+                        (run.decision_statement && run.decision_statement.trim()),
+                    )}
+                    />
+                    <ObjectiveEvidence
+                      runId={id}
+                      dataFiles={documents
+                        .filter(
+                          (d) =>
+                            d.kind === "table" &&
+                            (isStatsFileName(d.source_filename) ||
+                              (d.ingestion_type === "raw" && isCaseTableFileName(d.source_filename))),
+                        )
+                        .map((d) => ({ id: d.id, name: d.source_filename }))}
+                      hasObjectiveOrDecision={Boolean(
+                      (run.research_objective && run.research_objective.trim()) ||
+                        (run.decision_statement && run.decision_statement.trim()),
+                    )}
+                    />
+                  </Pane>
+                }
+              />
+            </ObjectiveSelectionProvider>
           </SectionPanel>
 
           <SectionPanel id="crosstabs">
-            <h2 className="mb-1 text-xl font-semibold text-foreground">
-              Cross tabs
-            </h2>
-            <p className="mb-5 max-w-3xl text-sm text-muted">
-              Survey and other numeric data. Build tables here, commit the ones worth keeping, and
-              their comparisons flow into Findings.
-            </p>
-            {!documents.some((d) => d.kind === "table") ? (
-              <p className="text-sm text-muted">
-                No data files yet. Add a survey data file or a table under Import data.
-              </p>
-            ) : (
-              documentCards("table")
-            )}
+            <DocumentPicker
+              title="Data files"
+              empty="No data files yet. Add a survey data file or a table under Import data."
+              rightTitle="Before you build tables"
+              items={documents
+                .filter((d) => d.kind === "table")
+                .map((d) => {
+                  const saved = (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length;
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: d.ingestion_type === "raw" ? "Case-level data" : "Aggregated tables",
+                    badge: saved > 0 ? `${saved} table${saved === 1 ? "" : "s"}` : undefined,
+                    node: documentCards("table", true, d.id),
+                  };
+                })}
+              accents={documents
+                .filter((d) => d.kind === "table")
+                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
+              right={
+                <>
+                  <p className="text-sm text-muted">
+                    Survey and other numeric data. Build tables here, commit the ones worth keeping, and
+                    their comparisons flow into Findings.
+                  </p>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Case-level data is not compared automatically. Every comparison is flagged as uncorrected
+                    for multiple comparisons and assumes simple random sampling. Complex survey designs are not
+                    applied yet.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-border bg-white px-3 py-2">
+                      <div className="text-lg font-semibold text-foreground">
+                        {documents.filter((d) => d.kind === "table").length}
+                      </div>
+                      <div className="text-xs text-muted">Data files</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-white px-3 py-2">
+                      <div className="text-lg font-semibold text-foreground">{findings.length}</div>
+                      <div className="text-xs text-muted">Findings so far</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Open the crosstab workspace to see the full variable list beside the table you are
+                    building. Analyses (drivers, segments) are run from the same file.
+                  </p>
+                </>
+              }
+            />
           </SectionPanel>
 
           <SectionPanel id="coding">
-            <h2 className="mb-1 text-xl font-semibold text-foreground">
-              Coding
-            </h2>
-            <p className="mb-5 max-w-3xl text-sm text-muted">
-              Interviews and group discussions. Code the themes here, review the codebook and the
-              checks, and the coded themes flow into Findings.
-            </p>
-            {!documents.some((d) => d.kind === "transcript") ? (
-              <p className="text-sm text-muted">
-                No transcripts yet. Add one under Import data.
-              </p>
-            ) : (
-              <>
-                {documentCards("transcript")}
-                {codingAnalysis.size > 1 && (
-                  <div className="mt-6">
-                    <AcrossTranscripts
-                      rows={crossTranscriptThemes(codingAnalysis)}
-                      documentNames={Object.fromEntries(
-                        documents.map((d) => [d.id, d.source_filename]),
-                      )}
-                      runId={id}
-                    />
-                  </div>
-                )}
-              </>
+            <DocumentPicker
+              title="Transcripts"
+              empty="No transcripts yet. Add one under Import data."
+              rightTitle="Quality and exports"
+              items={documents
+                .filter((d) => d.kind === "transcript")
+                .map((d) => {
+                  const view = codingAnalysis.get(d.id);
+                  const confirmed = transcriptSetups.get(d.id)?.confirmed ?? false;
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: codebooksByDocument.has(d.id) ? "Coded" : confirmed ? "Ready to code" : "Needs set-up",
+                    badge: view ? "Analysed" : undefined,
+                    node: documentCards("transcript", true, d.id, true),
+                    side: transcriptSide(d),
+                  };
+                })}
+              accents={documents
+                .filter((d) => d.kind === "transcript")
+                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
+              right={
+                <p className="text-xs text-muted">
+                  Interviews and group discussions. Code the themes in the middle, and the coded themes
+                  flow into Findings.
+                </p>
+              }
+            />
+            {codingAnalysis.size > 1 && (
+              <div className="mt-4">
+                <AcrossTranscripts
+                  rows={crossTranscriptThemes(codingAnalysis)}
+                  documentNames={Object.fromEntries(
+                    documents.map((d) => [d.id, d.source_filename]),
+                  )}
+                  runId={id}
+                />
+              </div>
             )}
           </SectionPanel>
 
           <SectionPanel id="reports">
-            <h2 className="mb-1 text-xl font-semibold text-foreground">
-              Reports and decks
-            </h2>
-            <p className="mb-5 max-w-3xl text-sm text-muted">
-              Written reports and presentations. Extract the claims they make, which are then
-              checked in Findings.
-            </p>
-            {!documents.some((d) => d.kind === "report") ? (
-              <p className="text-sm text-muted">
-                No reports yet. Add one under Import data.
-              </p>
-            ) : (
-              documentCards("report")
-            )}
+            <ThreePane
+              left={
+                <Pane side="left" title="About reports and decks">
+                  <p className="text-sm text-muted">
+                    Written reports and presentations. Extract the claims they make, which are then
+                    checked in Findings.
+                  </p>
+                  <p className="text-xs text-muted">
+                    Add more under Import. Each card has its own Extract findings and Run again
+                    buttons.
+                  </p>
+                </Pane>
+              }
+              middle={
+                <Pane
+                  side="middle"
+                  title="Reports and decks"
+                  badge={
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                      {documents.filter((d) => d.kind === "report").length}
+                    </span>
+                  }
+                >
+                  {!documents.some((d) => d.kind === "report") ? (
+                    <p className="text-sm text-muted">
+                      No reports yet. Add one under Import data.
+                    </p>
+                  ) : (
+                    documentCards("report", true)
+                  )}
+                </Pane>
+              }
+              right={
+                <Pane side="right" title="At a glance">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-border bg-white px-3 py-2">
+                      <div className="text-lg font-semibold text-foreground">
+                        {documents.filter((d) => d.kind === "report").length}
+                      </div>
+                      <div className="text-xs text-muted">Reports and decks</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-white px-3 py-2">
+                      <div className="text-lg font-semibold text-foreground">
+                        {findings.length}
+                      </div>
+                      <div className="text-xs text-muted">Findings so far</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Findings from every report and table are reviewed together under Findings.
+                  </p>
+                </Pane>
+              }
+            />
           </SectionPanel>
 
           <SectionPanel id="findings">
-            <h2 className="mb-1 text-xl font-semibold text-foreground">
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">
               Findings
             </h2>
-            <p className="mb-4 max-w-3xl text-sm text-muted">
+            <p className="mb-2 max-w-3xl text-sm text-muted">
               Every claim in one place: comparisons from committed tables, themes from coding, and
               claims extracted from reports.
             </p>
@@ -4463,61 +5399,54 @@ export default async function RunPage({
 
 
           <SectionPanel id="synthesized">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Synthesized insights
             </h2>
             {synthesizedInsightsSection}
           </SectionPanel>
 
           <SectionPanel id="decisions">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Business decisions
             </h2>
             {decisionSection}
           </SectionPanel>
 
           <SectionPanel id="recommendations">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Recommendations
             </h2>
             {recommendationsSection}
           </SectionPanel>
 
           <SectionPanel id="insights-report">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Insights report
             </h2>
             {storyReportSection}
           </SectionPanel>
 
           <SectionPanel id="assistant">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Research assistant
             </h2>
-            <CollapsibleSection
+            <ResearchAssistantCard
               key="research-assistant"
-              title="Research assistant"
-              bare
-              icon={<ChatIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={false}
-            >
-              <ResearchAssistantCard
-                runId={id}
-                initialMessages={assistantMessages}
-                hasReport={Boolean(storyNarrative)}
-              />
-            </CollapsibleSection>
+              runId={id}
+              initialMessages={assistantMessages}
+              hasReport={Boolean(storyNarrative)}
+            />
           </SectionPanel>
 
           <SectionPanel id="working-data">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Working data
             </h2>
             {workingDataSection}
           </SectionPanel>
 
           <SectionPanel id="api-usage">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               API usage &amp; cost
             </h2>
             {apiUsage.length > 0 && (

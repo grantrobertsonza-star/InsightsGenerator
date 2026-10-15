@@ -23,6 +23,14 @@ export const articles: ArticleMeta[] = [
     minutes: 14,
   },
   {
+    slug: "preparing-files",
+    title: "Preparing your files for import",
+    blurb: "How to lay out each kind of file, and what to change in your documents, so the app extracts them accurately",
+    category: "Method guides",
+    updated: "2026-10-11",
+    minutes: 8,
+  },
+  {
     slug: "objectives",
     title: "How objectives are framed and checked",
     blurb: "Stated and deduced objectives, how they are worded, scored on four dimensions, checked against insights, and where it stops",

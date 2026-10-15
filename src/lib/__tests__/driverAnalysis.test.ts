@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { driverAnalysis, relativeWeights, shapleyR2, topBox } from "../driverAnalysis";
+import { driverAnalysis, logisticFit, relativeWeights, shapleyR2, topBox } from "../driverAnalysis";
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -110,6 +110,22 @@ describe("driverAnalysis, binary outcome", () => {
     const r = driverAnalysis({ y: y.map(() => 1), x, names: ["a", "b", "c", "d"], outcome: "binary" });
     expect("error" in r).toBe(true);
   });
+
+  // ANA-DRV-001 regression guard: a survey weight is not a frequency weight, so uniformly
+  // rescaling every case's weight must not change what the model calls significant.
+  it("keeps coefficients and standard errors unchanged when every weight is scaled by the same constant", () => {
+    const yb = y.map((v) => (v > 0.2 ? 1 : 0));
+    const w1 = Array(yb.length).fill(1);
+    const w10 = Array(yb.length).fill(10);
+    const fit1 = logisticFit(x, yb, w1);
+    const fit10 = logisticFit(x, yb, w10);
+    if (!fit1 || !fit10) throw new Error("both fits should converge");
+    for (let j = 0; j < fit1.coef.length; j++) {
+      expect(fit10.coef[j]).toBeCloseTo(fit1.coef[j], 6);
+      expect(fit10.se[j]).toBeCloseTo(fit1.se[j], 6);
+      expect(fit10.p[j]).toBeCloseTo(fit1.p[j], 6);
+    }
+  });
 });
 
 describe("input handling", () => {
@@ -125,6 +141,14 @@ describe("input handling", () => {
 
   it("reports too few cases", () => {
     const r = driverAnalysis({ y: [1, 2, 3], x: [[1, 2], [2, 3], [3, 5]], names: ["a", "b"], outcome: "continuous" });
+    expect("error" in r).toBe(true);
+  });
+
+  // ANA-DRV-002 regression guard: a constant continuous outcome has no variance for any
+  // predictor to explain and must be rejected outright, not returned as a "successful" fit.
+  it("refuses a continuous outcome that never varies", () => {
+    const { x } = simulate(60);
+    const r = driverAnalysis({ y: Array(x.length).fill(42), x, names: ["x1", "x2", "x3", "x4"], outcome: "continuous", bootstrap: 0 });
     expect("error" in r).toBe(true);
   });
 

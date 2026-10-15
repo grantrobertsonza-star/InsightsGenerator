@@ -22,7 +22,12 @@ type Fail = { ok: false; error: string };
 
 function explain(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (/driver_analyses/.test(message) && /(exist|relation)/.test(message)) return "Saving needs migration 0072 applied first (npx.cmd supabase migration up).";
+  // "does not exist" alone, not "exist" or "relation" (same pattern as OBJ-REV-012 in
+  // objectiveEvidence.ts): a permission-denied message also contains "relation" and the
+  // word "exist" is too broad as well, so either alternative alone can misclassify a real
+  // permission failure as "needs this migration". "does not exist" is unique to Postgres's
+  // actual missing-relation error.
+  if (/driver_analyses/.test(message) && /does not exist/.test(message)) return "Saving needs migration 0072 applied first (npx.cmd supabase migration up).";
   return message;
 }
 

@@ -68,7 +68,7 @@ export function TranscriptImportQualityPanel({ q }: { q: TranscriptImportQuality
         </p>
         <StatusPill status={q.status} />
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 @lg:grid-cols-4">
         <Stat value={q.respondents} label={q.sessionType === "focus_group" ? "Respondents (group)" : "Respondents"} />
         <Stat value={n(q.totalWords)} label="Words" />
         <Stat value={`${q.moderatorTurns} / ${q.participantTurns}`} label="Moderator / participant turns" />
@@ -132,7 +132,7 @@ export function AggregatedQualityPanel({ q }: { q: AggregatedQuality }) {
         </p>
         <StatusPill status={q.status} />
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 @lg:grid-cols-4">
         <Stat value={q.tables} label="Tables" />
         <Stat value={`${q.withBase} of ${q.tables}`} label="Tables with a base" />
         <Stat value={q.bases.median === null ? "n/a" : n(q.bases.median)} label="Median base" />

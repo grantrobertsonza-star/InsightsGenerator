@@ -94,7 +94,12 @@ export function SectionPanel({
   children: ReactNode;
 }) {
   const { selected } = useRunSection();
-  return <div className={selected === id ? "block" : "hidden"}>{children}</div>;
+  // A section's client components are mounted the first time it is opened and
+  // then kept (hidden), so state survives switching but a page load does not
+  // pay to render and hydrate all fourteen sections at once.
+  const [visited, setVisited] = useState(selected === id);
+  if (selected === id && !visited) setVisited(true);
+  return <div className={selected === id ? "block" : "hidden"}>{visited ? children : null}</div>;
 }
 
 // Renders into GlobalShell's "run-nav-slot" div (via portal) so a run's

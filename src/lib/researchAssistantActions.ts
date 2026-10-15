@@ -89,7 +89,10 @@ export async function uploadAssistantDocument(
   try {
     const documentId = await storeUploadedDocument(TENANT_ID, runId, "report", file);
     try {
-      await extractFindingsFromDocument(TENANT_ID, runId, documentId);
+      const result = await extractFindingsFromDocument(TENANT_ID, runId, documentId);
+      // REP-IN-002: a publication that rolled back returns published: false rather than
+      // throwing; route it to the same error trace as a thrown failure.
+      if (!result.published) throw new Error(result.notPublishedReason ?? "the reading of this document was not saved");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await withTenant(TENANT_ID, async (client) => {

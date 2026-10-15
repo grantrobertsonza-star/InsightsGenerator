@@ -134,7 +134,30 @@ export default function InstrumentCard({
               ? "Read the guide to list its questions and probes. They will be matched to the questions asked in your transcripts."
               : "Read the questionnaire to list its questions, answer options and skip instructions. They are then matched to your data file's variables."}
           </p>
-          <button className={btnPrimary} disabled={pending} onClick={() => run(() => readInstrumentAction(runId, documentId), (r) => `Read ${r.items} items.`)}>
+          <button
+            className={btnPrimary}
+            disabled={pending}
+            onClick={() =>
+              run(
+                () => readInstrumentAction(runId, documentId),
+                (r) => {
+                  if (r.complete) return `Read ${r.items} items.`;
+                  const failedChunks = Number(r.failedChunks ?? 0);
+                  const incompleteItems = Number(r.incompleteItems ?? 0);
+                  // IMP-012: an incomplete read used to always be reported as a chunk count,
+                  // but a chunk can read back fine while a specific item in it was individually
+                  // unusable or had its option list cut off - that read is just as incomplete,
+                  // with failedChunks sitting at 0, which used to print as "0 parts of the
+                  // document could not be read" and read as nothing having gone wrong at all.
+                  const reason =
+                    failedChunks > 0
+                      ? `${failedChunks} part${failedChunks === 1 ? "" : "s"} of the document could not be read`
+                      : `${incompleteItems} item${incompleteItems === 1 ? "" : "s"} came back incomplete (an unreadable question or a cut-off list of answer options)`;
+                  return `Read ${r.items} items, but ${reason}. Existing items were kept rather than removed; read again to try to fill in the rest.`;
+                },
+              )
+            }
+          >
             {pending ? "Reading, this can take a minute..." : isGuide ? "Read guide" : "Read questionnaire"}
           </button>
         </div>

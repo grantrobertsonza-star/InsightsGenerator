@@ -2,14 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { withTenant, withTenantRead } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { deleteRun } from "@/lib/runActions";
+import { deleteRun, renameRun } from "@/lib/runActions";
 import DeleteRunButton from "./DeleteRunButton";
+import RenameRunButton from "./RenameRunButton";
 import {
   BoltIcon,
   CheckIcon,
 } from "@/components/icons";
 import SubmitButton from "@/components/SubmitButton";
 import { parseNumberedItems } from "@/lib/text";
+import { Pane, ThreePane } from "./runs/[id]/ThreePane";
 
 // There's no login system yet, so every run on this page belongs to one
 // fixed tenant read from the environment. Once real auth exists, this will
@@ -32,18 +34,15 @@ type Run = {
 
 async function getRuns(): Promise<Run[]> {
   return withTenantRead(TENANT_ID, async (client) => {
-    const runsResult = await client.query<
+    // Both queries are independent, so they go to the database together on
+    // the same connection (pg queues them) instead of one waiting on the other
+    // in code. The counts query only needs the findings table.
+    const runsPromise = client.query<
       Omit<Run, "findings_total" | "findings_rejected">
     >(
       "select id, project_name, business_problem, research_objective, decision_statement, audience, status, entry_point, created_at from runs order by created_at desc",
     );
-    // Findings insert as 'accepted' by default now, so nothing here is
-    // waiting on a human to look at it before the rest of the pipeline can
-    // run; a researcher reviews by exception, rejecting the ones that are
-    // wrong. This tallies, per run, how many have been rejected out of the
-    // total, in one pass rather than a query per card, so a project card
-    // can show how much has actually been trimmed.
-    const countsResult = await client.query<{
+    const countsPromise = client.query<{
       run_id: string;
       total: string;
       rejected: string;
@@ -52,6 +51,7 @@ async function getRuns(): Promise<Run[]> {
        from findings
        group by run_id`,
     );
+    const [runsResult, countsResult] = await Promise.all([runsPromise, countsPromise]);
     const countsByRun = new Map(
       countsResult.rows.map((row) => [
         row.run_id,
@@ -102,6 +102,17 @@ const statusStyles: Record<string, string> = {
   error: "bg-danger-light text-danger ring-red-200",
 };
 
+// Same statuses as above, as a left border color for the project card in the list, so the status reads
+// at a glance without having to find the badge text.
+const statusBorder: Record<string, string> = {
+  draft: "border-l-slate-300",
+  ready: "border-l-primary",
+  running: "border-l-amber-400",
+  awaiting_human_review: "border-l-amber-400",
+  complete: "border-l-success",
+  error: "border-l-danger",
+};
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
@@ -122,97 +133,119 @@ export default async function Home({
   const { entry } = await searchParams;
   const runs = await getRuns();
 
+  const statusCounts = new Map<string, number>();
+  let totalFindings = 0;
+  let totalExcluded = 0;
+  for (const run of runs) {
+    statusCounts.set(run.status, (statusCounts.get(run.status) ?? 0) + 1);
+    totalFindings += run.findings_total;
+    totalExcluded += run.findings_rejected;
+  }
+
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-8 py-10">
+    <main className="mx-auto w-full max-w-7xl flex-1 px-8 py-10">
       <h1 className="mb-2 text-3xl font-bold tracking-tight text-foreground">
         Insights, <span className="text-primary">elevated</span>.
       </h1>
-      <p className="mb-10 text-sm text-muted">
+      <p className="mb-6 text-sm text-muted">
         A project is one engagement: a decision to inform, using a client&apos;s
         report and data.
       </p>
 
-      {entry !== "generate" && entry !== "validate" ? (
-        <div className="mb-12 grid gap-4 sm:grid-cols-2">
-          <Link
-            href="/?entry=generate"
-            className="card-surface group rounded-xl border border-border bg-white p-6 hover:border-primary/50"
-          >
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary-light text-primary">
-              <BoltIcon />
-            </div>
-            <div className="mb-2 text-base font-semibold text-foreground group-hover:text-primary">
-              Generate from data
-            </div>
-            <div className="text-sm text-muted">
-              Start from raw tables or a dataset. The app mines it directly for
-              undeclared patterns: segment differences, trends, outliers,
-              relationships.
-            </div>
-          </Link>
-          <Link
-            href="/?entry=validate"
-            className="card-surface group rounded-xl border border-border bg-white p-6 hover:border-primary/50"
-          >
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary-light text-primary">
-              <CheckIcon />
-            </div>
-            <div className="mb-2 text-base font-semibold text-foreground group-hover:text-primary">
-              Validate existing insights
-            </div>
-            <div className="text-sm text-muted">
-              Start from a report that already makes findings. The app checks
-              each one and elevates what survives into a clear narrative.
-            </div>
-          </Link>
-        </div>
-      ) : (
-        <div className="card-surface mb-12 rounded-xl border border-border bg-white p-6">
-          <Link
-            href="/"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            &larr; Choose a different starting point
-          </Link>
-          <div className="mt-3 mb-5">
-            <span className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-blue-200">
-              {entryPointLabel[entry]}
+      <ThreePane
+        left={
+          <Pane side="left" title="Start a project">
+            {entry !== "generate" && entry !== "validate" ? (
+              <div className="flex flex-col gap-3">
+                <Link
+                  href="/?entry=generate"
+                  className="card-surface group rounded-xl border border-border bg-white p-4 hover:border-primary/50"
+                >
+                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light text-primary">
+                    <BoltIcon />
+                  </div>
+                  <div className="mb-1 text-sm font-semibold text-foreground group-hover:text-primary">
+                    Generate from data
+                  </div>
+                  <div className="text-sm text-muted">
+                    Start from raw tables or a dataset. The app mines it directly
+                    for undeclared patterns: segment differences, trends,
+                    outliers, relationships.
+                  </div>
+                </Link>
+                <Link
+                  href="/?entry=validate"
+                  className="card-surface group rounded-xl border border-border bg-white p-4 hover:border-primary/50"
+                >
+                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light text-primary">
+                    <CheckIcon />
+                  </div>
+                  <div className="mb-1 text-sm font-semibold text-foreground group-hover:text-primary">
+                    Validate existing insights
+                  </div>
+                  <div className="text-sm text-muted">
+                    Start from a report that already makes findings. The app
+                    checks each one and elevates what survives into a clear
+                    narrative.
+                  </div>
+                </Link>
+              </div>
+            ) : (
+              <div className="card-surface rounded-xl border border-border bg-white p-4">
+                <Link
+                  href="/"
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  &larr; Choose a different starting point
+                </Link>
+                <div className="mt-3 mb-4">
+                  <span className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-blue-200">
+                    {entryPointLabel[entry]}
+                  </span>
+                </div>
+                <form action={createRun} className="flex flex-col gap-4">
+                  <input type="hidden" name="entryPoint" value={entry} />
+                  <label className="block">
+                    <span className="text-sm font-medium text-foreground">
+                      Project name
+                    </span>
+                    <input
+                      name="projectName"
+                      required
+                      placeholder="e.g. Acme Q3 member survey"
+                      className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </label>
+                  <SubmitButton
+                    pendingLabel="Creating project..."
+                    className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                  >
+                    Create project
+                  </SubmitButton>
+                </form>
+              </div>
+            )}
+          </Pane>
+        }
+        middle={
+          <Pane side="middle" title="Projects" badge={runs.length > 0 ? (
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {runs.length}
             </span>
-          </div>
-          <form action={createRun} className="flex flex-col gap-4">
-            <input type="hidden" name="entryPoint" value={entry} />
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">
-                Project name
-              </span>
-              <input
-                name="projectName"
-                required
-                placeholder="e.g. Acme Q3 member survey"
-                className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </label>
-            <SubmitButton
-              pendingLabel="Creating project..."
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-            >
-              Create project
-            </SubmitButton>
-          </form>
-        </div>
-      )}
-
-      <h2 className="mb-4 text-lg font-semibold text-foreground">Projects</h2>
+          ) : undefined}>
       {runs.length === 0 && (
         <p className="text-sm text-muted">No projects yet.</p>
       )}
       <ul className="flex flex-col gap-3">
         {runs.map((run) => {
           const deleteThisRun = deleteRun.bind(null, run.id);
+          const renameThisRun = renameRun.bind(null, run.id);
           return (
             <li
               key={run.id}
-              className="card-surface flex items-start justify-between gap-4 rounded-xl border border-border bg-white p-4 hover:border-primary/30"
+              className={`card-surface flex items-start justify-between gap-4 rounded-xl border border-border bg-white p-4 hover:border-primary/30 border-l-4 ${
+                statusBorder[run.status] ?? "border-l-slate-300"
+              }`}
             >
               <Link href={`/runs/${run.id}`} className="flex-1 no-underline">
                 <div className="font-semibold text-foreground">
@@ -287,13 +320,69 @@ export default async function Home({
                   </div>
                 )}
               </Link>
-              <form action={deleteThisRun}>
-                <DeleteRunButton />
-              </form>
+              <div className="flex shrink-0 items-start gap-2">
+                <RenameRunButton
+                  name={
+                    run.project_name ??
+                    run.research_objective ??
+                    run.business_problem ??
+                    ""
+                  }
+                  onRename={renameThisRun}
+                />
+                <form action={deleteThisRun}>
+                  <DeleteRunButton />
+                </form>
+              </div>
             </li>
           );
         })}
       </ul>
+          </Pane>
+        }
+        right={
+          <Pane side="right" title="Overview">
+            <div className="flex flex-col gap-4 text-sm">
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-muted">
+                  Projects
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-foreground">
+                  {runs.length}
+                </div>
+              </div>
+              {statusCounts.size > 0 && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted">
+                    By status
+                  </div>
+                  <ul className="mt-1.5 flex flex-col gap-1.5">
+                    {[...statusCounts.entries()].map(([status, count]) => (
+                      <li key={status} className="flex items-center justify-between gap-2">
+                        <StatusBadge status={status} />
+                        <span className="text-muted">{count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {totalFindings > 0 && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted">
+                    Findings across all projects
+                  </div>
+                  <div className="mt-1 text-foreground">
+                    {totalExcluded} of {totalFindings} excluded
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted">
+                Open a project from the middle pane for its own run dashboard, imports and analysis.
+              </p>
+            </div>
+          </Pane>
+        }
+      />
     </main>
   );
 }

@@ -360,7 +360,23 @@ export function logisticFit(x: number[][], y: number[], w: number[]): LogisticFi
     for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) h[a][b] += w[i] * v * row[a] * row[b];
     if ((mu >= 0.5 ? 1 : 0) === y[i]) correct += w[i];
   }
-  const inv = invert(h);
+  // ANA-DRV-001: h above is the observed Fisher information computed directly from the given
+  // weights - correct when those weights are FREQUENCY weights (replication counts), where more
+  // total weight really is more independent information. A survey weight is not that: it
+  // corrects for differential sampling probability, and multiplying every respondent's weight by
+  // the same constant must not manufacture extra apparent precision out of the same n
+  // respondents (the actual fixture: scaling every weight by 10 left the coefficients unchanged,
+  // as it should, but dropped the standard error from 0.283588 to 0.089678 and the p-value from
+  // 0.02374 to about 8.7e-13 - false confidence from nothing but a weighting convention). Scaling
+  // the information matrix back to the actual case count n, rather than leaving it in terms of
+  // the weighted total sw, is the same correction the OLS fit just above already applies via its
+  // own `scale = n / sw`; it removes the spurious sensitivity to the overall weight scale. This
+  // is not a full design-based sandwich or cluster covariance (see the caveat the exported report
+  // carries on this), but it is the minimum needed so uniformly rescaling the weights cannot
+  // change what the model calls significant, which the raw frequency-weighted information matrix
+  // could not promise.
+  const hScaled = h.map((row) => row.map((v) => v * (n / sw)));
+  const inv = invert(hScaled);
   const se = inv ? inv.map((r, i) => Math.sqrt(Math.max(0, r[i]))) : Array(k).fill(NaN);
   const nullLogLik = wy * Math.log(base) + (sw - wy) * Math.log(1 - base);
   const mcFadden = nullLogLik !== 0 ? 1 - finalLl / nullLogLik : 0;
@@ -483,8 +499,23 @@ export function driverAnalysis(input: DriverInput): DriverResult | { error: stri
     if (ones === 0 || ones === n) return { error: "The outcome is the same for every case, so there is nothing to explain." };
     const events = Math.min(ones, n - ones);
     if (events < 10 * p) warnings.push(`Only ${events} cases in the smaller outcome group for ${p} predictors. About 10 per predictor is the usual minimum, so treat the weights as rough.`);
-  } else if (n < 10 * p) {
-    warnings.push(`${n} cases for ${p} predictors is under 10 per predictor, so the weights may be unstable.`);
+  } else {
+    // ANA-DRV-002: a constant (or near-constant) continuous outcome has no variance for any
+    // predictor to explain, but without this check it still reached linearFit/sharesFor, which
+    // returned a "successful" fit - R-squared of 0, a numerical-noise residual coefficient with
+    // its own (spurious) significance, and a driver ranking split by that noise rather than
+    // flagged as not estimable. Checked on the actual fitting weights, not a plain unweighted
+    // variance, since a weighted mean/variance is what the regression itself uses; zero weighted
+    // variance (every case answered literally the same, or only the zero-weighted cases differ)
+    // is rejected the same way a constant binary outcome already is above.
+    const sw = w.reduce((a, b) => a + b, 0);
+    const wMean = sw > 0 ? y.reduce((a, v, i) => a + w[i] * v, 0) / sw : 0;
+    const wVar = sw > 0 ? y.reduce((a, v, i) => a + w[i] * (v - wMean) ** 2, 0) / sw : 0;
+    const scale = 1 + Math.abs(wMean);
+    if (!(wVar > 1e-12 * scale * scale)) {
+      return { error: "The outcome is the same (or effectively the same) for every case, so there is nothing to explain." };
+    }
+    if (n < 10 * p) warnings.push(`${n} cases for ${p} predictors is under 10 per predictor, so the weights may be unstable.`);
   }
 
   const cor = weightedCorrelations(x, y, w);

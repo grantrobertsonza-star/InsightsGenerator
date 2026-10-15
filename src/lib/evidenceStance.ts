@@ -54,7 +54,15 @@ export type EvidenceEstimate = {
 
 export type Reading = { stance: Stance; estimate: EvidenceEstimate; summary: string };
 
-/** Below this effective base an estimate is too thin to count either way. */
+/**
+ * Below this effective base an estimate is too thin to count either way
+ * (OBJ-REV-M03). A conventional round-number survey-research threshold, not
+ * derived from a formal power calculation or a specific confidence target
+ * for this data: 30 is the usual rule-of-thumb floor below which a normal
+ * approximation for a proportion or mean starts to misbehave. A base just
+ * over this line is still thin; treat a stance near the boundary with the
+ * same caution as one with a wide interval, not as settled.
+ */
 export const MIN_BASE = 30;
 const Z = 1.96;
 
@@ -77,14 +85,21 @@ const round = (x: number, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
 
 type Cell = { value: number; se: number | null; n: number | null; measure: "percent" | "mean" };
 
-/** One cell of a row as an estimate. col = -1 reads the total column. */
-function cell(row: CrosstabRow, col: number): Cell | null {
+/**
+ * One cell of a row as an estimate. col = -1 reads the total column. When the table has no
+ * real banner/group variable, `columns` holds only the synthetic "All respondents" column,
+ * so that column's own se[0] (design based when a sampling design was supplied) is the exact
+ * standard error of the Total column's percentage too, and `singleCol` says so can be used;
+ * with a real banner variable the Total mixes across groups and the engine never computed a
+ * standard error for that mixture, so this still falls back to the naive SRS estimate below.
+ */
+function cell(row: CrosstabRow, col: number, singleCol: boolean): Cell | null {
   const measure: "percent" | "mean" = row.isMean || row.isScore ? "mean" : "percent";
   const value = col < 0 ? row.total.pct : row.pct[col];
   if (value === null || value === undefined) return null;
   const base = col < 0 ? row.total.base : row.base[col];
   const n = base ? base.nEff || base.n : null;
-  let se: number | null = col < 0 ? null : (row.se?.[col] ?? null);
+  let se: number | null = col < 0 ? (singleCol ? (row.se?.[0] ?? null) : null) : (row.se?.[col] ?? null);
   if (col < 0 && measure === "mean" && row.desc?.sem != null) se = row.desc.sem;
   if (se === null && measure === "percent" && n && n > 0) {
     const p = Math.min(Math.max(value / 100, 0), 1);
@@ -101,39 +116,111 @@ function interval(c: Cell): { lo: number | null; hi: number | null } {
     lo = Math.max(0, lo);
     hi = Math.min(100, hi);
   }
-  return { lo: round(lo), hi: round(hi) };
+  // Deliberately NOT rounded here (OBJ-REV-005): every caller classifies against these
+  // exact bounds before it ever rounds anything for display. Round at the point of display
+  // or storage, never before a comparison.
+  return { lo, hi };
 }
 
-/** The row an expectation points at, or null when the table has no such row. */
+/**
+ * The row an expectation points at, or null when the table has no such row - or when more
+ * than one row across the candidate questions matches, and which one was actually meant is
+ * genuinely ambiguous (OBJ-REV-006: "two questions sharing 'Yes', without a question
+ * binding, still select the first matching question"). Without an explicit question
+ * identity, more than one question in a table can have a row with the same answer label -
+ * two separate "Yes/No" items, say, at very different percentages - and returning
+ * whichever one happened to come first let the table's own row order silently decide the
+ * research answer instead of the request actually naming which question it meant. Every
+ * candidate question's matching row is collected first; a row is returned only when
+ * exactly one match exists across all of them, and two or more is treated the same as zero
+ * - unresolved, not a guess.
+ */
 export function locateRow(result: CrosstabResult, answer: string | null, question?: string | null): CrosstabRow | null {
   let qs = result.questions;
   if (question) {
     const qLabel = matchLabel(qs.map((q) => q.label), question);
-    if (qLabel) qs = qs.filter((q) => q.label === qLabel);
+    // A specific question was asked for but none matched: stop here rather
+    // than falling through to search every other question in the table,
+    // which can return an unrelated row under the right answer label.
+    if (!qLabel) return null;
+    qs = qs.filter((q) => q.label === qLabel);
   }
+  const matches: CrosstabRow[] = [];
   for (const q of qs) {
     const rows = q.rows.filter((r) => !r.isBase && !r.isEffBase);
     if (answer === null) {
       const scored = rows.find((r) => r.isMean || r.isScore);
-      if (scored) return scored;
+      if (scored) matches.push(scored);
       continue;
     }
     const label = matchLabel(rows.map((r) => r.label), answer);
-    if (label) return rows.find((r) => r.label === label) ?? null;
+    const row = label ? rows.find((r) => r.label === label) : undefined;
+    if (row) matches.push(row);
   }
-  return null;
+  return matches.length === 1 ? matches[0] : null;
 }
 
 const units = (c: Cell) => (c.measure === "percent" ? "%" : "");
 const f = (x: number | null) => (x === null ? "n/a" : String(round(x)));
 
+/**
+ * A structured (numeric) expectation that names a specific question, answer, or group
+ * that this table does not have is a binding failure, not an absence of evidence to hand
+ * to the model instead (OBJ-REV-006: "missing explicit question falls back to model
+ * judgment and stores supports"). readLevel/readComparison return this sentinel - an
+ * explicit, already-"computed" Reading - rather than null whenever that happens, so
+ * evaluateEvidenceQuestion's `if (computed) ... else judge(...)` branch takes the computed
+ * path and records "could not locate what was asked for" instead of asking the model to
+ * read the table fresh with no constraint tying it back to the specific request.
+ */
+function unresolved(reason: string): Reading {
+  return {
+    stance: "inconclusive",
+    estimate: { measure: "percent", label: "", value: null, lo: null, hi: null, n: null },
+    summary: reason,
+  };
+}
+
 export function readLevel(result: CrosstabResult, exp: Extract<Expectation, { kind: "level" }>): Reading | null {
   const row = locateRow(result, exp.answer, exp.question);
-  if (!row) return null;
-  const c = cell(row, -1);
-  if (!c) return null;
-  const { lo, hi } = interval(c);
-  const estimate: EvidenceEstimate = { measure: c.measure, label: row.label, value: round(c.value), lo, hi, n: c.n };
+  if (!row) {
+    return unresolved(
+      `Could not find ${exp.question ? `the question "${exp.question}"` : "a matching row"}${
+        exp.answer ? ` with answer "${exp.answer}"` : ""
+      } in this table, so the stated expectation could not be checked here.`,
+    );
+  }
+  // result.overall is the table's own authoritative "no banner variable was
+  // chosen" signal (OBJ-REV-M03): columns.length === 1 is also true for a
+  // REAL banner variable that just happens to have only one category
+  // present in this data, where reusing the Total's own se[0] would wrongly
+  // treat that one sub-group's standard error as the question's synthetic
+  // Total. OBJ-REV-M03: this comment used to go on to say a table saved
+  // before `overall` existed falls back to a column-count heuristic instead
+  // - that fallback is exactly what the OBJ-REV-005 fix immediately below
+  // removed (an undefined `overall` is now always treated as false, never
+  // inferred from column count), so the next paragraph is the current,
+  // accurate description of what a pre-`overall` table actually gets.
+  // Trust row.se[0] as the Total's own SE only when the table itself says so (OBJ-REV-005:
+  // "legacy tables still use the unsafe column-count fallback"). A table saved before
+  // `overall` existed has no way to tell "no banner variable" apart from "a real banner
+  // with only one category present in this data" by column count alone, and guessing wrong
+  // silently borrows a subgroup's SE as if it were the Total's - confidently computing a
+  // verdict from the wrong uncertainty rather than admitting the uncertainty is unknown.
+  // Treating an undefined `overall` as false (never guessing true from count) means that
+  // ambiguity now safely falls through to cell()'s col<0-with-singleCol-false path, which
+  // leaves se null and the reading comes back inconclusive instead of confidently wrong.
+  const c = cell(row, -1, result.overall === true);
+  if (!c) return unresolved(`${row.label}: this table has no readable value for the requested row, so the stated expectation could not be checked here.`);
+  const { lo, hi } = interval(c); // raw, unrounded: classified against these exact bounds below
+  const estimate: EvidenceEstimate = {
+    measure: c.measure,
+    label: row.label,
+    value: round(c.value),
+    lo: lo === null ? null : round(lo),
+    hi: hi === null ? null : round(hi),
+    n: c.n,
+  };
   if (c.n !== null && c.n < MIN_BASE) {
     return { stance: "silent", estimate, summary: `${row.label}: base of ${f(c.n)} is too small to read.` };
   }
@@ -149,20 +236,74 @@ export function readLevel(result: CrosstabResult, exp: Extract<Expectation, { ki
 
 export function readComparison(result: CrosstabResult, exp: Extract<Expectation, { kind: "comparison" }>): Reading | null {
   const row = locateRow(result, exp.answer, exp.question);
-  if (!row) return null;
+  if (!row) {
+    return unresolved(
+      `Could not find ${exp.question ? `the question "${exp.question}"` : "a matching row"}${
+        exp.answer ? ` with answer "${exp.answer}"` : ""
+      } in this table, so the stated comparison could not be checked here.`,
+    );
+  }
   const names = result.columns.map((c) => c.name);
   const a = matchLabel(names, exp.groupA);
   const b = matchLabel(names, exp.groupB);
-  if (!a || !b || a === b) return null;
-  const ca = cell(row, names.indexOf(a));
-  const cb = cell(row, names.indexOf(b));
-  if (!ca || !cb) return null;
+  if (!a || !b || a === b) {
+    return unresolved(
+      `Could not find both groups ("${exp.groupA}" and "${exp.groupB}") as distinct columns in this table, so the stated comparison could not be checked here.`,
+    );
+  }
+  // See readLevel's comment: overall is the direct signal for "this is the
+  // synthetic All-respondents column", not just "there happens to be one
+  // column".
+  // Same reasoning as readLevel above: only an explicit `overall === true` is trusted.
+  const singleCol = result.overall === true;
+  const ca = cell(row, names.indexOf(a), singleCol);
+  const cb = cell(row, names.indexOf(b), singleCol);
+  if (!ca || !cb) {
+    return unresolved(`${row.label}: this table has no readable value for one or both of "${a}"/"${b}", so the stated comparison could not be checked here.`);
+  }
+
+  // seA and seB are combined below as sqrt(seA^2 + seB^2), the variance of
+  // a difference between two INDEPENDENT estimates. That holds for groupA
+  // and groupB as two categories of the same banner variable (Male vs
+  // Female, say): a respondent falls into at most one, so the two counts
+  // never share anyone and the estimates are independent under the usual
+  // survey design. It does not hold, and the comparison below should not
+  // be trusted, when one group is actually an aggregate containing the
+  // other (a Net/"isGroup" column compared against one of its own
+  // constituent categories - they necessarily overlap and are therefore
+  // strongly correlated, not independent) - guarded here, since both
+  // belonging to the same banner block and one being a Net is cheaply
+  // detectable. More generally, if groupA and groupB could share any
+  // respondents at all (overlapping segments, or the same group read at
+  // two waves with panel overlap), independence fails too, but that is not
+  // something this function can detect from a single table; a reading
+  // built that way should not be trusted without checking that assumption
+  // by hand.
+  const colA = result.columns[names.indexOf(a)];
+  const colB = result.columns[names.indexOf(b)];
+  if (colA && colB && colA.block === colB.block && (colA.isGroup || colB.isGroup)) {
+    return {
+      stance: "inconclusive",
+      estimate: {
+        measure: ca.measure,
+        label: row.label,
+        value: round(ca.value),
+        lo: interval(ca).lo === null ? null : round(interval(ca).lo as number),
+        hi: interval(ca).hi === null ? null : round(interval(ca).hi as number),
+        n: ca.n,
+        groupA: a,
+        groupB: b,
+      },
+      summary: `${row.label}: ${a} and ${b} are not independent (one is a combined group containing the other), so the gap between them can't be read as a clean comparison.`,
+    };
+  }
+  const caInterval = interval(ca);
   const base: EvidenceEstimate = {
     measure: ca.measure,
     label: row.label,
     value: round(ca.value),
-    lo: interval(ca).lo,
-    hi: interval(ca).hi,
+    lo: caInterval.lo === null ? null : round(caInterval.lo),
+    hi: caInterval.hi === null ? null : round(caInterval.hi),
     n: ca.n,
     groupA: a,
     groupB: b,
@@ -185,15 +326,23 @@ export function readComparison(result: CrosstabResult, exp: Extract<Expectation,
   const sLo = sign === 1 ? lo : -hi; // interval of the gap in the expected direction
   const sHi = sign === 1 ? hi : -lo;
   const margin = exp.margin && exp.margin > 0 ? exp.margin : null;
+  // A declared margin takes precedence over raw statistical significance (OBJ-REV-005):
+  // this used to only be checked in the "not clearly significant" fallback branch, so a
+  // gap whose interval excluded zero (sLo > 0) was called "supports" even when the whole
+  // gap sat inside the researcher's own declared no-meaningful-difference band - a real,
+  // detectable difference that the researcher had already said was too small to matter.
+  // Checking containment within the margin first, before the significance check, is what
+  // actually gives the margin its stated precedence over a merely-significant gap.
+  const withinMargin = margin !== null && lo > -margin && hi < margin;
   let stance: Stance;
-  if (sLo > 0) stance = "supports";
+  if (withinMargin) stance = "against";
+  else if (sLo > 0) stance = "supports";
   else if (sHi < 0) stance = "against";
-  else if (margin !== null && lo > -margin && hi < margin) stance = "against";
   else stance = "inconclusive";
   const note =
     stance === "inconclusive"
       ? "The interval for the gap includes zero, so this does not settle it either way."
-      : stance === "against" && sHi >= 0
+      : withinMargin
         ? `The gap is within the ${margin}-point margin set for no meaningful difference.`
         : "";
   return {
@@ -207,7 +356,23 @@ export function readExpectation(result: CrosstabResult, exp: Expectation): Readi
   return exp.kind === "level" ? readLevel(result, exp) : readComparison(result, exp);
 }
 
-/** Several readings (or several questions under one objective) into one stance. */
+/**
+ * Several readings (or several questions under one objective) into one
+ * stance. Aggregation policy, made explicit (OBJ-REV-M03): a genuine
+ * conflict (both supports and against appear) is the only case flagged
+ * mixed. Short of that, any supports present wins over inconclusive or
+ * silent readings, and any against wins over inconclusive or silent in
+ * turn - a result that actually speaks to the objective outweighs other
+ * questions that turned up nothing either way, on the view that a silent
+ * or inconclusive reading is an absence of evidence, not evidence of
+ * absence. The trade-off this makes: if one sub-question out of several
+ * supports the objective and the rest are silent or inconclusive, the
+ * combined stance reads as a plain "supports" with no indication that most
+ * of what was asked found nothing - read the underlying per-question
+ * readings, not just this rollup, before treating "supports" here as
+ * several questions agreeing rather than one question answering and the
+ * others staying quiet.
+ */
 export function combineStances(stances: Stance[]): Stance {
   if (stances.length === 0) return "silent";
   const has = (s: Stance) => stances.includes(s);

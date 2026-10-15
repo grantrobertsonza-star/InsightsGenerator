@@ -19,8 +19,9 @@ export default function AcceptDataButton({ runId, documentId, setup }: { runId: 
         onClick={async () => {
           setPending(true);
           setError(null);
-          const r = await saveDataSetupAction(runId, documentId, { ...setup, accepted: true });
+          const r = await saveDataSetupAction(runId, documentId, { ...setup, accepted: true }, { kind: "value", setup });
           if (r.ok) router.refresh();
+          else if (r.conflict) router.refresh(); // someone/something else already changed this; pick up the latest rather than retry blind
           else setError(r.error);
           setPending(false);
         }}

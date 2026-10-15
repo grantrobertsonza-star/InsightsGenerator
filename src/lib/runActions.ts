@@ -28,3 +28,14 @@ export async function deleteRun(runId: string) {
 
   revalidatePath("/");
 }
+
+export async function renameRun(runId: string, name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  await withTenant(TENANT_ID, async (client) => {
+    await client.query("update runs set project_name = $1 where id = $2", [trimmed, runId]);
+  });
+
+  revalidatePath("/");
+  revalidatePath(`/runs/${runId}`);
+}

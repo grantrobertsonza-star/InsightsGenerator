@@ -8,6 +8,8 @@ const toc = [
   { id: "scoring", title: "Quality scoring: four dimensions" },
   { id: "coverage", title: "Coverage against the insights" },
   { id: "workflow", title: "The review workflow" },
+  { id: "pages", title: "The two objective pages" },
+  { id: "evidence", title: "Evidence from the data" },
   { id: "limits", title: "Where it stops" },
   { id: "practice", title: "A sensible way to work with it" },
 ];
@@ -79,6 +81,12 @@ export default function ObjectiveGuide() {
         considered statement where it is sharper, and the two are reconciled into one set. Anything you typed takes
         priority over what was extracted. If the document cannot be read, what you typed is still saved and the failure
         is logged quietly.
+      </P>
+      <P>
+        The reader is told to write one complete objective per line and never to output a section heading, such as
+        &quot;Secondary objectives:&quot;, as a line of its own. A short label from the document (main question,
+        primary, secondary) stays as a prefix with a dash. As a second guard, any line that is a bare heading ending in
+        a colon is dropped when the lines are saved.
       </P>
       <P>
         The objective box only adds. Lines you save are split into separate objectives, ignoring bullets and numbering,
@@ -236,6 +244,40 @@ export default function ObjectiveGuide() {
         Rejecting and deleting do not, so after either one the coverage panel may still reflect the earlier list until
         you press <em>Check again</em>. Likewise, new insights accepted after the last check are not reflected until the
         check is run again.
+      </P>
+
+      <H2 id="pages">The two objective pages</H2>
+      <P>
+        Objectives have two places in the sidebar, under one <em>Objectives</em> group. <em>Set up</em> holds the form
+        (brief and proposal import, business problem, objectives, audience) and your stated objectives, which you can
+        edit or delete there. <em>Review</em> is where they are scored and checked.
+      </P>
+      <P>
+        Review has three panes. The left lists every objective as a numbered, colour-coded card with its tag, its
+        quality tier and score, and whether the evidence answers it. Selecting one shows that objective in the middle
+        (its text, the actions in the table above, four score tiles, the scorer&apos;s reasoning and how to sharpen it)
+        in the same colour, and narrows the right pane to its coverage verdict, its linked insights and its evidence
+        questions. With nothing selected, the middle shows every objective in one scored table and the right shows the
+        whole coverage check. Selecting a row in that table also selects the objective. Objectives are matched to their
+        results by their wording, not by position, so a re-ordered list does not mismatch a verdict.
+      </P>
+
+      <H2 id="evidence">Evidence from the data</H2>
+      <P>
+        The right pane also asks the data directly. Each stated objective and confirmed decision is broken into up to
+        three questions, written before any table is seen. Each question is answered with a table built from your
+        case-level data files (SPSS, Stata or SAS files, and raw case tables) by the same engine as Cross tabs, and
+        read as supporting, against, mixed, inconclusive or silent. Objectives the app inferred itself are skipped,
+        because testing them against the same data would be circular. It does not read the uploaded reports or any
+        table you already built or imported.
+      </P>
+      <P>
+        The first time a project has objectives and data but no evidence, it is gathered automatically, once per
+        browser session. The button stays for gathering again. Where an expectation can be measured the stance is
+        computed in code, otherwise a model reads the table and the answer is marked judged. Each answer has a
+        <em> Show table</em> link that opens the table behind it, read-only, and <em>Add to Cross tabs</em>, which moves
+        the table into your draft set so it can be edited and committed into findings. Until you do that, evidence
+        tables stay out of Cross tabs and out of findings, so that findings are not shaped by the objectives.
       </P>
 
       <H2 id="limits">Where it stops</H2>

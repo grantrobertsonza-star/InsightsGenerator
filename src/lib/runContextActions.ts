@@ -6,6 +6,7 @@ import { supabaseAdmin } from "./supabaseAdmin";
 import { readContextDocument } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
+import { parseObjectiveLines, normalizeObjectiveLine } from "./objectiveLines";
 
 const BUCKET = "documents";
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
@@ -21,6 +22,15 @@ function fileOrNull(entry: FormDataEntryValue | null): File | null {
  * typed by hand. The objective is also kept as the researcher's own accepted
  * candidate, so a later accept or reject on the objective list (which
  * recomputes runs.research_objective from accepted candidates) cannot wipe it.
+ *
+ * The merge below reads and writes stated_objectives_text, the current,
+ * ordinary mutable list of what the researcher has typed or imported so
+ * far (OBJ-SET-M01). initial_research_objective is a separate, write-once
+ * column: the update sets it with coalesce so only the very first save
+ * for a run ever touches it, after which objectiveFramer.ts can keep
+ * reading it as a true, untouched snapshot of the researcher's starting
+ * point rather than something this function (or editStatedObjective) has
+ * been quietly rewriting on every add, edit, or delete.
  */
 export async function saveRunContext(runId: string, formData: FormData) {
   const clean = (key: string) => {
@@ -80,28 +90,51 @@ export async function saveRunContext(runId: string, formData: FormData) {
   }
 
   await withTenant(TENANT_ID, async (client) => {
-    const prev = await client.query<{ initial_research_objective: string | null }>(
-      "select initial_research_objective from runs where id = $1",
+    const prev = await client.query<{ stated_objectives_text: string | null }>(
+      "select stated_objectives_text from runs where id = $1",
       [runId],
     );
-    const prevObjective = prev.rows[0]?.initial_research_objective?.trim() ?? null;
+    const prevObjective = prev.rows[0]?.stated_objectives_text?.trim() ?? null;
 
     // The objective box only adds. Saved objectives live in the list beside
     // the form, where they are edited or deleted one by one.
-    const toLines = (text: string | null) =>
-      (text ?? "")
-        .split(/\r?\n/)
-        .map((l) => l.replace(/^\s*(\d+[.)]|[-*\u2022])\s*/, "").trim())
-        .filter((l) => l.length > 0);
-    const prevLines = toLines(prevObjective);
-    const newLines = toLines(objective).filter((l) => !prevLines.includes(l));
+    const prevLines = parseObjectiveLines(prevObjective);
+    const newLines = parseObjectiveLines(objective).filter((l) => !prevLines.includes(l));
     const merged = [...prevLines, ...newLines].join("\n") || null;
 
-    await client.query(
-      `update runs set business_problem = $1, initial_research_objective = $2,
-              audience = $3, updated_at = now() where id = $4`,
-      [businessProblem, merged, audience, runId],
-    );
+    // OBJ-SET-003: this is "Setup's own first save" the objectiveFramer.ts carry-over comment
+    // already assumed sets objective_candidates_seeded - it never actually did. Without it, a
+    // run that is only ever edited through Setup (never regenerated) stays permanently
+    // unseeded, so the first time generateObjectiveCandidates ever runs for it - possibly long
+    // after several Setup edits have replaced the original upfront text - its carry-over logic
+    // treats the ORIGINAL initial_research_objective as "not yet represented" and inserts it
+    // fresh alongside whatever the researcher's edits actually left current, resurrecting
+    // superseded text. Setting the marker here, transactionally with the save that creates
+    // the initial candidate rows below, is what the comment in objectiveFramer.ts already
+    // describes as the intended source of truth for it.
+    await client.query("savepoint obj_candidates_seeded_setup_save");
+    try {
+      await client.query(
+        `update runs set business_problem = $1, stated_objectives_text = $2,
+                initial_research_objective = coalesce(initial_research_objective, $2),
+                audience = $3, objective_candidates_seeded = true, updated_at = now() where id = $4`,
+        [businessProblem, merged, audience, runId],
+      );
+      await client.query("release savepoint obj_candidates_seeded_setup_save");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/objective_candidates_seeded/.test(message)) throw error;
+      // Migration 0084 not applied yet: no such column. Roll back to the savepoint (so this
+      // failed statement does not poison the rest of the transaction) and save everything
+      // else the same way this always did before that migration existed.
+      await client.query("rollback to savepoint obj_candidates_seeded_setup_save");
+      await client.query(
+        `update runs set business_problem = $1, stated_objectives_text = $2,
+                initial_research_objective = coalesce(initial_research_objective, $2),
+                audience = $3, updated_at = now() where id = $4`,
+        [businessProblem, merged, audience, runId],
+      );
+    }
 
     for (const line of newLines) {
       const exists = await client.query(
@@ -124,55 +157,105 @@ export async function saveRunContext(runId: string, formData: FormData) {
   revalidatePath(`/runs/${runId}`);
 }
 
-const splitObjectiveLines = (text: string | null) =>
-  (text ?? "")
-    .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, "").trim())
-    .filter((l) => l.length > 0);
-
 /**
  * Edits or removes one stated objective (pass newText = null to remove it).
- * Keeps the project's starting-objective text and the objective list in step.
+ * Edits runs.stated_objectives_text, the current mutable list (OBJ-SET-M01) -
+ * never runs.initial_research_objective, which is write-once and reserved
+ * for objectiveFramer.ts's "researcher's true starting point" read.
  */
 export async function editStatedObjective(runId: string, oldText: string, newText: string | null) {
-  const next = newText?.trim() ? newText.trim() : null;
+  // OBJ-SET-M02: only trimming here, instead of running the replacement through the same
+  // normalizeObjectiveLine stripping parseObjectiveLines applies on every read, let a
+  // bulleted/numbered edit ("- B", "1. B") get stored as typed while display (which always
+  // re-parses through parseObjectiveLines) showed it already stripped ("B") - so a next edit
+  // of what the researcher actually SEES never matched the raw, unstripped text actually on
+  // file, in either stated_objectives_text or the synced objective_candidates row, and
+  // silently inserted a second candidate instead of updating the one already there.
+  const next = newText ? normalizeObjectiveLine(newText) || null : null;
   await withTenant(TENANT_ID, async (client) => {
-    const r = await client.query<{ initial_research_objective: string | null }>(
-      "select initial_research_objective from runs where id = $1",
+    // stated_objectives_text is a single text column holding every line, recomputed in
+    // application code from a fresh read and written back whole - there is no per-line
+    // row to update in place. Two concurrent edits (two different lines, say) that each
+    // read the same starting text and each write back their own recomputed version of
+    // the WHOLE column race: whichever UPDATE commits last overwrites the other's change
+    // with no trace it ever happened (OBJ-SET-002: "concurrent independent edits lose one
+    // change"). Making the write conditional on the column still holding exactly what was
+    // just read - an optimistic-concurrency compare-and-swap, since there is no separate
+    // version column to check instead - and retrying the whole read-recompute-write cycle
+    // on a lost race (bounded, so a genuinely stuck case fails loudly rather than looping
+    // forever) is what stops the second writer from silently discarding the first's edit.
+    let newLines: string[] | null = null;
+    const MAX_ATTEMPTS = 5;
+    let attempt = 0;
+    for (; attempt < MAX_ATTEMPTS; attempt++) {
+      const r = await client.query<{ stated_objectives_text: string | null }>(
+        "select stated_objectives_text from runs where id = $1",
+        [runId],
+      );
+      const before = r.rows[0]?.stated_objectives_text ?? null;
+      const lines = parseObjectiveLines(before);
+      // OBJ-SET-M02: parseObjectiveLines already stripped every line's leading marker, so
+      // matching against a bare .trim() of oldText missed it whenever oldText still carried
+      // one (any caller other than this module's own already-stripped UI list). Matching on
+      // the same normalizeObjectiveLine() every line in `lines` was built from keeps this
+      // lookup correct regardless of what form oldText arrives in.
+      const idx = lines.indexOf(normalizeObjectiveLine(oldText));
+      if (idx >= 0) {
+        if (next) lines[idx] = next;
+        else lines.splice(idx, 1);
+      } else if (next) {
+        lines.push(next);
+      }
+      const after = lines.length > 0 ? lines.join("\n") : null;
+      const result = await client.query(
+        "update runs set stated_objectives_text = $1, updated_at = now() where id = $2 and stated_objectives_text is not distinct from $3",
+        [after, runId, before],
+      );
+      if ((result.rowCount ?? 0) > 0) {
+        newLines = lines;
+        break;
+      }
+      // Someone else's edit landed between the select and this update; loop back and
+      // redo the read-recompute-write against the now-current text rather than
+      // overwriting it.
+    }
+    if (newLines === null) {
+      throw new Error("Could not save this edit: it kept conflicting with another change in progress. Try again.");
+    }
+
+    // OBJ-SET-001/M02: `trim(candidate_text) = $N` only ever found a row saved with the
+    // exact same whitespace-trimmed text. A candidate accepted on Review with its bullet or
+    // number still attached ("- B", not the stripped "B" this module always works with) was
+    // therefore invisible to this match, so an edit made here added a second, divergent
+    // candidate instead of updating the one Review had already created - the two modules'
+    // views of "the same objective" could permanently diverge. Comparing both sides through
+    // normalizeObjectiveLine (the same stripping every line in `lines` above already went
+    // through) finds that row regardless of which marker, if any, it still carries, and
+    // doing the comparison in application code sidesteps needing a second, SQL-side copy of
+    // the same stripping rule to keep in sync with objectiveLines.ts by hand.
+    const normalizedOldText = normalizeObjectiveLine(oldText);
+    const existingCandidates = await client.query<{ id: string; candidate_text: string }>(
+      `select id, candidate_text from objective_candidates where run_id = $1 and source = 'researcher_authored'`,
       [runId],
     );
-    const lines = splitObjectiveLines(r.rows[0]?.initial_research_objective ?? null);
-    const idx = lines.indexOf(oldText.trim());
-    if (idx >= 0) {
-      if (next) lines[idx] = next;
-      else lines.splice(idx, 1);
-    } else if (next) {
-      lines.push(next);
-    }
-    await client.query("update runs set initial_research_objective = $1, updated_at = now() where id = $2", [
-      lines.length > 0 ? lines.join("\n") : null,
-      runId,
-    ]);
-
+    const matchingIds = existingCandidates.rows
+      .filter((row) => normalizeObjectiveLine(row.candidate_text) === normalizedOldText)
+      .map((row) => row.id);
     if (next) {
-      const updated = await client.query(
-        `update objective_candidates set candidate_text = $1, edited = true
-         where run_id = $2 and source = 'researcher_authored' and trim(candidate_text) = $3`,
-        [next, runId, oldText.trim()],
-      );
-      if (updated.rowCount === 0) {
+      if (matchingIds.length > 0) {
+        await client.query(`update objective_candidates set candidate_text = $1, edited = true where id = any($2)`, [
+          next,
+          matchingIds,
+        ]);
+      } else {
         await client.query(
           `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
            values ($1, $2, $3, 'Written or imported at project set-up.', 'researcher_authored', 'accepted')`,
           [TENANT_ID, runId, next],
         );
       }
-    } else {
-      await client.query(
-        `delete from objective_candidates
-         where run_id = $1 and source = 'researcher_authored' and trim(candidate_text) = $2`,
-        [runId, oldText.trim()],
-      );
+    } else if (matchingIds.length > 0) {
+      await client.query(`delete from objective_candidates where id = any($1)`, [matchingIds]);
     }
     await syncResearchObjective(client, runId);
   });

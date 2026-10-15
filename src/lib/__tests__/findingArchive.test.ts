@@ -17,10 +17,16 @@ import { archiveAndReplaceFindings } from "../findingArchive";
 // clause, or reorders the delete ahead of the snapshot, one of these
 // assertions should catch it before it reaches production as the same
 // silent failure again.
-function createMockClient() {
+// REP-IN-002: the archive first asks whether migration 0094's provenance columns exist. That
+// lookup is answered here (absent by default) and kept out of `calls`, so the assertions below
+// still see exactly the archive's own statements, in order.
+function createMockClient(provenanceAvailable = false) {
   const calls: { text: string; params: unknown[] }[] = [];
   const client = {
     query: vi.fn(async (text: string, params: unknown[] = []) => {
+      if (/information_schema\.columns/.test(text)) {
+        return { rows: [{ n: provenanceAvailable ? 10 : 0 }] };
+      }
       calls.push({ text, params });
       return { rows: [] };
     }),
@@ -141,5 +147,52 @@ describe("archiveAndReplaceFindings", () => {
     expect(calls[0].params[2]).toBe("wave_recompare");
     expect(calls[0].text).toMatch(/\$3/);
     expect(calls[4].text).toMatch(/delete from findings/i);
+  });
+
+  it("REP-IN-002: before migration 0094, history copies no provenance columns", async () => {
+    const { client, calls } = createMockClient(false);
+    await archiveAndReplaceFindings(client, {
+      documentColumn: "source_document_id",
+      documentId: "doc-1",
+      ids: ["f-1"],
+      onlyRejected: false,
+      archiveReason: "manual_reextract",
+    });
+    expect(calls).toHaveLength(5);
+    expect(calls[0].text).not.toMatch(/provenance_tracked|human_reviewed_at|human_edited_fields/);
+  });
+
+  it("REP-IN-002: once migration 0094 exists, history keeps review and edit provenance separately", async () => {
+    // Fresh modules: the availability answer is cached per module once positive.
+    vi.resetModules();
+    const { archiveAndReplaceFindings: archiveFresh } = await import("../findingArchive");
+    const { client, calls } = createMockClient(true);
+    await archiveFresh(client, {
+      documentColumn: "source_document_id",
+      documentId: "doc-1",
+      ids: ["f-1"],
+      onlyRejected: false,
+      archiveReason: "manual_reextract",
+    });
+    expect(calls).toHaveLength(5);
+    const [insertList, selectList] = calls[0].text.split(/\bselect\b/i);
+    for (const part of [insertList, selectList]) {
+      for (const column of ["human_reviewed_at", "human_review_action", "human_edited_at", "human_edited_fields", "provenance_tracked"]) {
+        expect(part).toContain(column);
+      }
+    }
+    expect(calls[4].text).toMatch(/delete from findings/i);
+  });
+
+  it("REP-IN-002: an explicit empty id list issues no query at all, not even the availability check", async () => {
+    const { client } = createMockClient(true);
+    await archiveAndReplaceFindings(client, {
+      documentColumn: "source_document_id",
+      documentId: "doc-1",
+      ids: [],
+      onlyRejected: false,
+      archiveReason: "manual_reextract",
+    });
+    expect(vi.mocked(client.query)).not.toHaveBeenCalled();
   });
 });

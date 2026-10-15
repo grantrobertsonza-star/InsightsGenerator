@@ -239,7 +239,11 @@ async function chainCheckOneClaim(
       "- supported: the evidence given actually backs the claim as stated, at the strength it's stated.\n" +
       "- overreach: real evidence exists and points the right direction, but the claim concludes more " +
       "than that evidence justifies (a broader generalization, a stronger causal claim, a ranking the " +
-      "evidence doesn't actually establish).\n" +
+      "evidence doesn't actually establish). Check this dimension by dimension against what the evidence " +
+      "actually shows: the population the claim is about, the metric, which groups are compared, the " +
+      "direction and magnitude of any difference, the time frame, and whether causal language (\"drives\", " +
+      "\"because\", \"leads to\") is used where the evidence only supports an association. A claim can be " +
+      "right on every other dimension and still be overreach on one, most often the causal wording.\n" +
       "- contradicted: something in the evidence conflicts with the claim.\n" +
       "- unsupported: nothing in the evidence given actually addresses this claim either way.\n\n" +
       "Give relied_indices: the indices of the evidence items you actually used to reach your judgment " +

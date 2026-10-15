@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
 
-// NOTE: there is no login system yet, so for now the tenant is passed in
-// directly by whoever calls this route. Once auth exists, this will come
-// from the logged-in user's session instead of the request body/query.
+// IMP-001: this route used to take tenantId straight from the request (a query param on GET, the
+// body on POST) with no check at all - an unauthenticated caller could read or create runs under
+// ANY tenant id simply by naming it. There is still no login system in this app (no session, no
+// per-user identity - every other entry point in the codebase runs under this same single
+// DEFAULT_TENANT_ID), so "authenticate the caller" cannot yet mean distinguishing one real user
+// from another. What it can mean today is this: the server decides the tenant, exactly like every
+// other action in the app already does, and a caller can no longer select an arbitrary one. This
+// closes the concrete hole (arbitrary caller-chosen tenant scope) without pretending a multi-user
+// auth system exists yet - that remains a separate, larger piece of work, deliberately deferred by
+// the user's own instruction (2026-10-14) rather than attempted here.
+const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
-export async function GET(request: Request) {
-  const tenantId = new URL(request.url).searchParams.get("tenantId");
-  if (!tenantId) {
-    return NextResponse.json({ error: "tenantId is required" }, { status: 400 });
-  }
-
-  const runs = await withTenant(tenantId, async (client) => {
+export async function GET(_request: Request) {
+  const runs = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query(
       `select id, business_problem, research_objective, decision_statement, evidence_threshold, audience,
               status, created_at
@@ -31,20 +34,17 @@ export async function POST(request: Request) {
   // researchObjective are the normal upstream fields the actual UI now
   // captures at intake; the decision framer proposes candidate decisions
   // from those plus the evidence rather than one being supplied upfront.
-  const { tenantId, businessProblem, researchObjective, decisionStatement, evidenceThreshold, audience } =
-    body ?? {};
+  // tenantId is deliberately NOT read from the request body any more - see the comment above
+  // GET. A legacy caller that still sends one is silently ignored rather than honoured.
+  const { businessProblem, researchObjective, decisionStatement, evidenceThreshold, audience } = body ?? {};
 
-  if (!tenantId) {
-    return NextResponse.json({ error: "tenantId is required" }, { status: 400 });
-  }
-
-  const run = await withTenant(tenantId, async (client) => {
+  const run = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query(
       `insert into runs (tenant_id, business_problem, research_objective, decision_statement, evidence_threshold, audience)
        values ($1, $2, $3, $4, $5, $6)
        returning id, business_problem, research_objective, decision_statement, evidence_threshold, audience, status, created_at`,
       [
-        tenantId,
+        TENANT_ID,
         businessProblem ?? null,
         researchObjective ?? null,
         decisionStatement ?? null,

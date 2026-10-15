@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptDecisionCandidate,
   rejectDecisionCandidate,
@@ -232,9 +233,10 @@ export default function DecisionBriefReview({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <p className="max-w-2xl text-sm text-muted">
+    <ThreePane
+      left={
+        <Pane side="left" title="Suggest and add">
+        <p className="text-xs text-muted">
           Every decision suggested here is already accepted, so the project moves on without waiting on a
           review step; everything downstream (findings, verdicts, recommendations) is judged against
           whichever decision(s) are currently accepted, and a project can genuinely be organized around
@@ -245,28 +247,60 @@ export default function DecisionBriefReview({
           <button
             disabled={isPending}
             onClick={handleRegenerate}
-            className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
+            className="self-start whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
           >
             {isPending ? regenerateBusyLabel : regenerateLabel}
           </button>
         )}
-      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const text = addText.trim();
+          if (!text) return;
+          startTransition(async () => {
+            await addOwnDecisionCandidate(runId, text);
+            setAddText("");
+          });
+        }}
+        className="rounded-lg border border-dashed border-border p-4"
+      >
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+          Add your own decision
+        </label>
+        <textarea
+          rows={2}
+          value={addText}
+          onChange={(e) => setAddText(e.target.value)}
+          placeholder="e.g. Whether to launch the loyalty tier in Q2 or hold for the rebrand"
+          className={textareaClass}
+        />
+        <button
+          type="submit"
+          disabled={isPending || !addText.trim()}
+          className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
+        >
+          Add decision
+        </button>
+      </form>
 
+        </Pane>
+      }
+      middle={
+        <Pane
+          side="middle"
+          title="Decisions"
+          badge={
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
+              {accepted.length} accepted
+            </span>
+          }
+        >
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           <span>Couldn&apos;t generate suggestions right now: {regenerateError}</span>
           <button onClick={() => setRegenerateError(null)} className="shrink-0 font-medium underline">
             Dismiss
           </button>
-        </div>
-      )}
-
-      {evidenceSynthesis && (
-        <div className="rounded-lg border border-primary/20 bg-primary-light/40 px-4 py-3">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
-            What the evidence shows
-          </div>
-          <p className="text-sm text-foreground">{evidenceSynthesis}</p>
         </div>
       )}
 
@@ -328,37 +362,24 @@ export default function DecisionBriefReview({
         </div>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = addText.trim();
-          if (!text) return;
-          startTransition(async () => {
-            await addOwnDecisionCandidate(runId, text);
-            setAddText("");
-          });
-        }}
-        className="rounded-lg border border-dashed border-border p-4"
-      >
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
-          Add your own decision
-        </label>
-        <textarea
-          rows={2}
-          value={addText}
-          onChange={(e) => setAddText(e.target.value)}
-          placeholder="e.g. Whether to launch the loyalty tier in Q2 or hold for the rebrand"
-          className={textareaClass}
-        />
-        <button
-          type="submit"
-          disabled={isPending || !addText.trim()}
-          className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
-        >
-          Add decision
-        </button>
-      </form>
+        </Pane>
+      }
+      right={
+        <Pane side="right" title="Evidence and rejected">
+      {evidenceSynthesis && (
+        <div className="rounded-lg border border-primary/20 bg-primary-light/40 px-4 py-3">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
+            What the evidence shows
+          </div>
+          <p className="text-sm text-foreground">{evidenceSynthesis}</p>
+        </div>
+      )}
 
+          {!evidenceSynthesis && rejected.length === 0 && (
+            <p className="text-sm text-muted">
+              The evidence summary and any rejected decisions show here.
+            </p>
+          )}
       {rejected.length > 0 && (
         <div className="rounded-lg border border-dashed border-border p-3">
           <button
@@ -387,6 +408,8 @@ export default function DecisionBriefReview({
           )}
         </div>
       )}
-    </div>
+        </Pane>
+      }
+    />
   );
 }
