@@ -46,6 +46,8 @@ Latest authorities: [workflow/tenant review](workflow-tenant-staged-review-2026-
 
 **Codex integration milestone:** Repair7 is integrated after matching27 released base/archive hashes. The overall trust-hardening acceptance milestone remains incomplete; pane review does not complete it. Claude remains paused; implementation ownership labels below are superseded by [the explicit handoff](agent-handoff.md). Codex follow-up fixes are **self-validation**, not independent closure. [Shared status](current-engineering-status.md) records805passed/33skipped, final build, native replay/downloads, upload cleanup fault/retry, objective/business transitions and representative body/design handovers. Approved scope is20,000,000bytes and100,000cases/file; exact/one-over/recovery and two concurrent native exact-limit imports pass. SAS is excluded pending verification. The43-row partition remains unchanged pending required independent evidence/disposition; historical failed invocations are retained.
 
+**Independent disposition, 2026-10-16 (night):** row-by-row evidence levels and dispositions for the c07eea8 release are in [independent-acceptance-disposition-2026-10-16.md](independent-acceptance-disposition-2026-10-16.md). The partition below is deliberately unchanged; proposed promotions await owner decision and independent review of Claude-authored repairs.
+
 ### 1. Recorded demonstrated defects — repair evidence awaiting disposition
 
 | Existing ID / recorded finding | Latest evidence and current scope | Owner | Exact closure condition | E/T/A |

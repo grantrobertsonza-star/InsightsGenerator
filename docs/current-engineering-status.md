@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16. State: **READY_FOR_CLAUDE ? explicit independent-acceptance handoff**.
+Updated: 2026-10-16 (night). State: **READY_FOR_CODEX: Claude close-out recorded; independent review of Claude-authored repairs requested**.
 
 ## Active version and ownership
 
@@ -337,3 +337,36 @@ The subsequent documentation-only checkpoint explicitly releases ownership to Cl
 [agent-handoff.md](agent-handoff.md), with completed work, released files and remaining required
 review/acceptance/environment tasks. Codex has stopped editing; no implicit transfer. Overall
 trust-hardening acceptance remains incomplete pending that independent disposition.
+
+## Claude independent acceptance and close-out — 2026-10-16 (night)
+
+Claude owned the c07eea8 / be625c7 release and recorded every canonical row's evidence level and
+disposition in [independent-acceptance-disposition-2026-10-16.md](independent-acceptance-disposition-2026-10-16.md).
+The 43-row partition (12/18/2/5/6) is unchanged; promotions are proposed there for owner decision.
+
+Independently executed on c07eea8: typecheck pass; 108 files / 807 passed / 33 skipped (real
+PostgreSQL and Python); 6 UI checks, golden-thread smoke 1, adapter readiness 2 (after correcting
+Claude's own A1 check), retained objective-review script 3/3 on its second invocation (first
+invocation failed on a 5 s visibility wait on a cold stack; retained as failed). Production build
+not re-run here (Google Fonts unreachable). After the repairs below: typecheck pass, 110 files /
+817 passed / 0 failed / 34 skipped, 7 UI checks, smoke 1, adapter 2, objective script 3/3.
+
+Reproduced and repaired (Claude-authored, need independent review):
+- Regeneration re-inserted wording the researcher had rejected: objectives as a pending duplicate;
+  decisions as accepted, re-entering the decision statement. Shared rule
+  `src/lib/candidateSuggestionFilter.ts`; real-DB tests `objectiveDecisionClosure.db.test.ts`.
+- The flipped-workbook guard refusal was repeated per variable and framed as an SPSS/Stata/SAS read
+  failure. One file-level notice, format-neutral engine error prefix; native
+  `e2e/ui/flipped-codebook-guard.check.mjs`.
+- New closing tests without source change: `objectiveEvidenceClosure.db.test.ts` (REV-006 selector
+  persistence/reload, REV-007 stale retry and transaction rollback) and SET-002 refresh-failure
+  retry plus decision-statement exclusion.
+
+Remaining concrete failures and unestablished assertions: IMP-017 first v12 concurrent invocation
+(documentless upload returned 200; outcome unexplained) stays failed; Probe B browser PPTX timeout
+stays failed; ANA-NPS-003 design-triggered native handover not established; Task D absent-download
+and retried-content assertions missing; OBJ-REV-005 stored qualification for unsupported uncertainty
+untested; OBJ-REV-006 stores the answer label, not the raw code; IMP-010 neither checked nor
+documented. Exclusions (SAS; flipped workbook with separate Codebook weight/MR), deferrables,
+historical-definition gaps and the public-release security/deployment gates are unchanged.
+No push, deployment, live/development change or model call; spend US$3.817316 of US$10.

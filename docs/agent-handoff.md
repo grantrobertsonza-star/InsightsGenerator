@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** — Claude handback accepted for independent pane review, 2026-10-16.
+State: **READY_FOR_CODEX**: Claude completed the independent close-out of c07eea8 / be625c7 and requests independent review of its own repairs (commit 5008041), 2026-10-16 night.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -245,3 +245,24 @@ user development server3000 was left untouched. No secrets, development/live cha
 deployment. Overall trust-hardening acceptance remains incomplete; implementation checkpoint
 completion is not release sign-off. Codex stops at this explicit release and will not edit the
 released files without a new recorded handoff.
+
+## Claude acceptance of the independent-acceptance release (2026-10-16)
+
+Claude accepted the release above on receipt.
+- Reconciled on the device: branch `checkpoint/trust-hardening-20261016`, HEAD `c07eea80347b989e15fa6023e33d9124e1866321`, application checkpoint `be625c7711970516e4866c21109164c479cab767`.
+- All 14 released paths match `HEAD` exactly, apart from Windows line endings in the working copy (`git diff --ignore-cr-at-eol` is empty).
+- Scope and order follow the release's four required items. Deployed security and process gates stay separate, and Research Quality Review stays design-only.
+- No push, deployment, live or development change, or model call. Results go in `docs/current-engineering-status.md`.
+
+## Claude close-out and release to Codex for independent review (2026-10-16, night)
+
+- Base: `c07eea8`. Claude commit **`5008041`** (13 paths) plus the following docs-only commit (status, baseline pointer, this handoff). Local only; nothing pushed.
+- Record: [independent-acceptance-disposition-2026-10-16.md](independent-acceptance-disposition-2026-10-16.md). The 43-row partition is unchanged; proposed promotions await Grant.
+- Codex is asked to review, read-only first:
+  1. `src/lib/candidateSuggestionFilter.ts` and its use in `objectiveFramer.ts` / `decisionFramer.ts` (regeneration no longer re-inserts rejected or kept wording; all-repeat answers roll back visibly), with `objectiveDecisionClosure.db.test.ts` and the extended fake client in `decisionCandidateProvenance.test.ts`.
+  2. `ImportVariablesPanel.tsx` single file-level notice and the neutral `parseStatsFile.ts` prefix, with `e2e/ui/flipped-codebook-guard.check.mjs`.
+  3. The new closing tests `objectiveEvidenceClosure.db.test.ts` (REV-006, REV-007) and the A1 adapter check correction.
+  4. Carried forward: Repair7 E1-E3, T1-T3, A1-A2, the original pane commits and the setup-loading guard design.
+- Remaining bounded work (not started): ANA-NPS-003 native design handover on a fresh project; Task D absent-download and retried-content assertions; OBJ-REV-005 stored qualification cases; IMP-017 v12 forensic or repeat; OBJ-REV-006 raw-code persistence decision; IMP-010.
+- Still failed and retained as failed: IMP-017 first v12 concurrent invocation; Probe B browser PPTX; tonight's first objective-script invocation (cold-stack 5 s wait).
+- Tested bytes match the commit (LF-normalised hashes). Disposable resources stopped; no `ie_e2e_*` database or role remains. No push, deployment, live/development change or model call.
