@@ -86,3 +86,51 @@ test("on a narrow window the panes stack and show no handles", async ({ page }) 
   expect(Math.abs((await width(page.getByTestId("three-pane-left"))) - grid)).toBeLessThanOrEqual(1);
   await expect(page.getByRole("button", { name: "Collapse left panel" })).toBeHidden();
 });
+
+for (const blocked of ["getItem", "setItem"]) {
+  test(`blocked storage ${blocked} preserves in-page interaction and safely resets on reload`, async ({ page }) => {
+    await page.addInitScript((method) => {
+      Storage.prototype[method] = () => { throw new DOMException("Blocked site data", "SecurityError"); };
+    }, blocked);
+    await page.goto(`${home}?entry=generate`, { waitUntil: "networkidle" });
+    const input = page.getByLabel("Project name");
+    await input.fill("Keep this unfinished project");
+    const left = page.getByTestId("three-pane-left");
+    const handle = page.getByRole("separator", { name: "Resize left panel" });
+    await handle.focus();
+    await page.keyboard.press("Home");
+    await expect.poll(() => width(left)).toBe(224);
+    const box = await handle.boundingBox();
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 40, y, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(() => width(left)).toBe(264);
+    await page.getByRole("button", { name: "Collapse left panel", exact: true }).click();
+    await expect(input).toBeAttached();
+    await expect(input).toBeHidden();
+    await page.getByRole("button", { name: "Expand left panel", exact: true }).click();
+    await expect(input).toHaveValue("Keep this unfinished project");
+    await expect.poll(() => width(left)).toBe(264);
+    await page.reload({ waitUntil: "networkidle" });
+    await expect.poll(() => width(left)).toBe(352);
+  });
+}
+
+test("separator values track rendered widths and viewport-dependent bounds", async ({ page }) => {
+  await page.goto(home, { waitUntil: "networkidle" });
+  for (const [viewport, containerWidth] of [[1440, null], [1100, null], [1440, 700], [1440, 400]]) {
+    await page.setViewportSize({ width: viewport, height: 900 });
+    await page.getByTestId("three-pane").evaluate((element, size) => { element.style.width = size === null ? "" : `${size}px`; }, containerWidth);
+    const gridWidth = await width(page.getByTestId("three-pane"));
+    for (const [side, minimum, fraction] of [["left", 224, 0.35], ["right", 288, 0.5]]) {
+      const handle = page.getByRole("separator", { name: `Resize ${side} panel` });
+      const pane = page.getByTestId(`three-pane-${side}`);
+      await expect.poll(async () => Number(await handle.getAttribute("aria-valuenow"))).toBe(await width(pane));
+      const maximum = Math.min(960, Math.round(gridWidth * fraction));
+      await expect(handle).toHaveAttribute("aria-valuemax", String(maximum));
+      await expect(handle).toHaveAttribute("aria-valuemin", String(Math.min(minimum, maximum)));
+    }
+  }
+});

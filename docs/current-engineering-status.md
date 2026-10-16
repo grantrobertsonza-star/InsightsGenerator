@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16. State: **CODEX_WORKING — independent pane review complete; changes required**.
+Updated: 2026-10-16. State: **CODEX_WORKING — remaining authorised repairs verified; final checkpoint/handoff**.
 
 ## Active version and ownership
 
@@ -236,3 +236,97 @@ definitions retain their stated dispositions. Research Quality Review architectu
 is separate and not a trust-repair prerequisite. Representative Office and brief/link limitations
 remain explicit. Current review/reconciliation uses retained evidence only: no new application
 execution, model call, resource, push, deployment or source repair.
+
+
+## Continued engineering completion — 2026-10-16
+
+Codex retained ownership and implemented the routine repairs directly; Grant did not have to
+relay individual fixes. This update supersedes the prior pane/parked-fix and named native-gap
+dispositions, while retaining all earlier passing and failed evidence.
+
+Completed this continuation:
+
+- Pane preferences now retain in-page state when storage reads or writes fail. Native blocked
+  read/write tests cover collapse/expand, pointer/keyboard widths, mounted unfinished input and
+  reload defaults. Normal persistence remains passing. ResizeObserver reports actual pane widths
+  and effective grid-dependent separator bounds. Five native pane checks pass.
+- The parked layout-loading issue was diagnosed, not assumed: held JavaScript left a visible,
+  enabled layout select showing columns-as-cases while the database remained rows-as-cases. The
+  inspected guard and shared useHydrated hook are now integrated. The fixed held-script native
+  check passes save/reload recovery; two actual SSR checks cover raw and transcript choices.
+  The old archive remains evidence, but its fix is no longer parked/unapplied. Its earlier test
+  had an unsafe held-route release/unroute race; corrected handling does not explain every old
+  failure or revoke earlier Brief38/IMP-014 closures.
+- OBJ-REV-004 native execution reproduced overview action clicks selecting the row and replacing
+  the overview/editor. Action cells now stop that propagation. Detail and overview transitions,
+  edit/reaccept/reject/restore/regenerate/reload preserve wording, excluded/rejected suggestion
+  and original brief. The retained portable `scripts/e2e/objective-review-acceptance.mjs` also
+  passes on the same isolated source. Earlier timeout/hidden-locator attempts stay failed.
+- Native delete/storage failure leaves discoverable pending cleanup after reload; a failed retry
+  stays actionable; corrected storage clears the intent once and after reload. Combined with
+  prior upload/DB/storage/trace/concurrency evidence, no extra native deletion execution gap is
+  asserted. This remains local storage recovery evidence, not deployed authorization.
+- SAV/DTA malformed-file errors are explicitly visible after reload, no partial table is published,
+  and supported delete/corrected reupload recovers calculation without the error. Original valid
+  SAV pass plus the final three-case continuation establish the bounded matrix. Raw-file readiness
+  uses parser/UI states rather than the report-processing column; its null value is not a new
+  data-loss defect or a ready/failed certification. The first count-timeout and interrupted second
+  invocation remain separate. Deletion recovery now waits for reloaded UI before adapter counts.
+
+Evidence: `scripts/workflow-tenant-review/completion/` holds pane-browser.log (5 passes),
+hydration-diagnosis.json (pre-repair mismatch), hydration-browser.log (1 pass),
+setup-guard-ssr-retry.log (2 passes), objective-review-native.json and
+objective-retained-regression.log (3 native groups each), delete-cleanup-native.json (2 groups),
+native-formats-attempt1.json plus native-formats.json, and final-runtime-sources.json. All8
+changed source/check files match the tested isolated copy. The unrelated development server on
+port3000 was not used or stopped.
+
+Final strict validation:108 files/807 passes/33 explicit skips, full-project typecheck; required
+actual PostgreSQL/Python suites ran with no NOT RUN placeholders. Earlier focused SSR alias
+configuration failure was corrected and retained separately. Full build/cleanup/checkpoint
+accounting follows below. No new model/provider calls; spend remains US$3.817316 ofUS$10.
+
+Overall trust-hardening acceptance is still incomplete for a concrete reason: the changes authored
+by Codex require independent assessment and row-level disposition. Codex can implement and
+self-validate them but cannot supply independent review of its own changes. The corresponding
+closing assertions are now in the existing canonical register; repeated whole matrices are not
+required merely because ownership changes. Other external prerequisites remain deployed trusted
+user-to-tenant identity, storage/privacy/signed-link policy, final deployed role/schema boundary
+and intended migration/backup runner certification. They require the actual environment/owner
+authorization, not another local browser run.
+
+For independent disposition, reuse actual document chart/status DB reload checks, degraded
+permission-failure save/reload plus actual DOCX qualification, finite evaluator/base/stance cases,
+business transition/failed-refresh evidence and affected download failure/retry evidence. Only
+specifically unestablished assertions should trigger further bounded execution or repair; do not
+introduce new native permutations without a requirement. Retained exact-limit timeout remains
+unexplained and must not be called green; separate successful bounded retries remain valid.
+Deferrable preview/marker/load-error and historical-definition gaps remain explicitly deferred;
+approved SAS and flipped/separate-Codebook weight/MR exclusions remain conditional and in force.
+
+
+### Final source verification and cleanup
+
+The final bounds correction shares pixel-rounded limits between interaction and ARIA, scales
+minimum widths down when the container cannot fit them, and clamps both normal and wideRight
+default right panes to half the container. Six exact-component/compiled-CSS geometry checks pass
+for normal/wideRight at1200/700/400px. The initial floor-versus-rendered-pixel mismatch remains
+retained as a failed invocation. The five native route checks preceded this final narrow-container
+extension; the enhanced native test was not rerun after it. Final exact-source strict validation
+again passes108 files/807 tests/33 explicit skips, with all required PostgreSQL/Python suites run;
+final production build passes. Logs: completion/validate-final-bounds.log and build-final-bounds.log.
+
+All8 changed source/check hashes match the isolated tested copy. Nine referenced storage objects
+and the password-free disposable cluster dump were retained locally before shutdown. The verified
+labelled trust-completion-20261016 container and its local-stack parent were stopped; reserved
+ports3228/62190/62191/55512/55017 have no listeners. The unrelated development server on3000 was
+left untouched. Generated builds, database/storage copies, logs and historical untracked evidence
+are excluded from the checkpoint; the authoritative lockfile is unchanged.
+
+Claude's released pane instruction was not fulfilled in every respect: the claimed current-page
+fallback under blocked storage was absent, separator semantics were inaccurate, and the standing
+requirement to update affected claude/*.md engineering documentation was omitted. These are
+implementation/documentation omissions, distinct from the disclosed real-tablet and individual
+screen testing limits. The new focused pane brief and self-validated repairs address them; they
+still need independent assessment. The separately parked setup-loading fix has now been diagnosed
+and integrated, as recorded above; its full failed-invocation history remains retained.

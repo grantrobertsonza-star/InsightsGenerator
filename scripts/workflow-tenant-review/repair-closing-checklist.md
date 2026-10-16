@@ -42,7 +42,14 @@ Released Repair7 hashes matched and27 files were integrated. Codex follow-up che
 self-validation, not independent review. E1/E2 actual engine controls, E3 actual cache/failure/retry,
 T1/T2 actual setup-created role/membership/SET ROLE and T3 explicit/fallback privilege cases ran.
 A1 nested continuous mean7.1 and raw-code subgroups40/60 pass; original6.5 reference retained.
-A2 permanent navigation works in native replay; an isolated synthetic spaced-name/unrelated-prefix
-matrix is not claimed. A3 final frozen replay actual downloads/content/reload, HTTP500 refusal and
+A2 permanent navigation works in native replay; the later isolated actual-adapter Analytics /Analytics1 /Analytics 1 and unrelated-prefix matrix also passes at its DOM-fixture scope. A3 final frozen replay actual downloads/content/reload, HTTP500 refusal and
 targeted download retry pass. Earlier timeouts stay failed. Existing shared status records artifacts
 and remainders; no new issue register or whole-row closure is introduced.
+
+
+Remaining-authorisation follow-up: pane storage/accessibility, diagnosed setup-loading guard and
+objective overview action propagation repairs have targeted native regression evidence. Native
+delete/storage failure/reload/retry and SAV/DTA failure/reload/corrected-reupload checks also ran.
+See existing shared status for precise failures/continuations and source scopes. Strict gate now
+108 files/807 passes/33 explicit skips. Self-validation does not promote canonical row statuses
+or certify deployed security. No complete matrix is reopened by these affected checks.

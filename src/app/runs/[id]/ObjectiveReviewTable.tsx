@@ -120,7 +120,8 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           <span className="text-muted">Not scored</span>
         )}
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>
+        {/* Row selection must not replace this editor while a status/edit action is clicked. */}
         <div className="flex flex-wrap items-center gap-1">
           {a.editing ? (
             <>

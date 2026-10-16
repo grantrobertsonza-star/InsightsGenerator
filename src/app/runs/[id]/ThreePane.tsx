@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -40,8 +41,12 @@ type Layout = { left: number | null; right: number | null; leftCollapsed: boolea
 const DEFAULT_LAYOUT: Layout = { left: null, right: null, leftCollapsed: false };
 
 const CHANGE_EVENT = "three-pane-layout";
+// The page must remain interactive when storage reads or writes are blocked. This also keeps
+// layouts sharing a key in sync; a real cross-tab storage event invalidates the in-page value.
+const pageLayouts = new Map<string, string>();
 
 function readStored(key: string): string | null {
+  if (pageLayouts.has(key)) return pageLayouts.get(key)!;
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -50,8 +55,10 @@ function readStored(key: string): string | null {
 }
 
 function writeStored(key: string, layout: Layout) {
+  const raw = JSON.stringify(layout);
+  pageLayouts.set(key, raw);
   try {
-    window.localStorage.setItem(key, JSON.stringify(layout));
+    window.localStorage.setItem(key, raw);
   } catch {
     // Storage unavailable: the layout still applies for this page view, it just is not remembered.
   }
@@ -70,15 +77,24 @@ function parseLayout(raw: string | null): Layout {
 }
 
 function subscribe(onChange: () => void) {
-  window.addEventListener("storage", onChange);
+  const storageChanged = (event: StorageEvent) => {
+    if (event.key === null) pageLayouts.clear();
+    else pageLayouts.delete(event.key);
+    onChange();
+  };
+  window.addEventListener("storage", storageChanged);
   window.addEventListener(CHANGE_EVENT, onChange);
   return () => {
-    window.removeEventListener("storage", onChange);
+    window.removeEventListener("storage", storageChanged);
     window.removeEventListener(CHANGE_EVENT, onChange);
   };
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+function panelBounds(side: "left" | "right", total: number) {
+  const max = Math.max(0, Math.min(MAX_SIDE_PX, Math.round(total * (side === "left" ? 0.35 : 0.5))));
+  return { min: Math.min(side === "left" ? MIN_LEFT_PX : MIN_RIGHT_PX, max), max };
+}
 
 export function ThreePane({
   left,
@@ -110,6 +126,21 @@ export function ThreePane({
   const gridRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
+  const [measured, setMeasured] = useState<{ total: number; left: number; right: number } | null>(null);
+  useEffect(() => {
+    const measure = () => {
+      const next = {
+        total: gridRef.current?.getBoundingClientRect().width ?? 0,
+        left: leftRef.current?.getBoundingClientRect().width ?? 0,
+        right: rightRef.current?.getBoundingClientRect().width ?? 0,
+      };
+      setMeasured(previous => previous && previous.total === next.total && previous.left === next.left && previous.right === next.right ? previous : next);
+    };
+    const observer = new ResizeObserver(measure);
+    for (const element of [gridRef.current, leftRef.current, rightRef.current]) if (element) observer.observe(element);
+    measure();
+    return () => observer.disconnect();
+  }, [hasRight]);
 
   // CSS min() keeps the middle pane usable even when a stored width came from a wider window.
   const leftCol = layout.leftCollapsed ? "2.75rem" : `min(${layout.left ?? DEFAULT_LEFT_PX}px, 35%)`;
@@ -117,8 +148,8 @@ export function ThreePane({
     ? layout.right !== null
       ? `min(${layout.right}px, 50%)`
       : wideRight
-        ? "minmax(24rem,34%)"
-        : `${DEFAULT_RIGHT_PX}px`
+        ? "minmax(min(24rem,50%),34%)"
+        : `min(${DEFAULT_RIGHT_PX}px,50%)`
     : null;
   const cols = [leftCol, "1rem", "minmax(0,1fr)", ...(rightCol ? ["1rem", rightCol] : [])].join(" ");
 
@@ -127,8 +158,7 @@ export function ThreePane({
   const limits = useCallback(
     (side: "left" | "right") => {
       const total = gridRef.current?.getBoundingClientRect().width ?? 1200;
-      if (side === "left") return { min: MIN_LEFT_PX, max: clamp(Math.floor(total * 0.35), MIN_LEFT_PX, MAX_SIDE_PX) };
-      return { min: MIN_RIGHT_PX, max: clamp(Math.floor(total * 0.5), MIN_RIGHT_PX, MAX_SIDE_PX) };
+      return panelBounds(side, total);
     },
     [],
   );
@@ -184,8 +214,11 @@ export function ThreePane({
   const reset = (side: "left" | "right") => commit(side === "left" ? { ...layout, left: null } : { ...layout, right: null });
   const setCollapsed = (leftCollapsed: boolean) => commit({ ...layout, leftCollapsed });
 
-  const leftNow = layout.left ?? DEFAULT_LEFT_PX;
-  const rightNow = layout.right ?? DEFAULT_RIGHT_PX;
+  const leftNow = measured?.left ?? layout.left ?? DEFAULT_LEFT_PX;
+  const rightNow = measured?.right ?? layout.right ?? DEFAULT_RIGHT_PX;
+  const total = measured?.total ?? 1200;
+  const leftBounds = panelBounds("left", total);
+  const rightBounds = panelBounds("right", total);
 
   return (
     <div
@@ -217,8 +250,8 @@ export function ThreePane({
             <ResizeHandle
               label="Resize left panel"
               valueNow={Math.round(leftNow)}
-              min={MIN_LEFT_PX}
-              max={MAX_SIDE_PX}
+              min={leftBounds.min}
+              max={leftBounds.max}
               onPointerDown={(e) => startDrag("left", e)}
               onKeyDown={(e) => onHandleKey("left", e)}
               onDoubleClick={() => reset("left")}
@@ -243,8 +276,8 @@ export function ThreePane({
             <ResizeHandle
               label="Resize right panel"
               valueNow={Math.round(rightNow)}
-              min={MIN_RIGHT_PX}
-              max={MAX_SIDE_PX}
+              min={rightBounds.min}
+              max={rightBounds.max}
               onPointerDown={(e) => startDrag("right", e)}
               onKeyDown={(e) => onHandleKey("right", e)}
               onDoubleClick={() => reset("right")}
@@ -262,8 +295,7 @@ export function ThreePane({
 
 /** A vertical drag handle between two panes: pointer drag, arrow keys (Shift for bigger steps),
  * Home/End for the narrowest/widest, Enter or a double-click for the default width. min/max are the
- * fixed bounds for assistive technology; the effective maximum also depends on the window width and is
- * applied while dragging or pressing keys. */
+ * effective bounds for assistive technology and valueNow is the measured rendered pane width. */
 function ResizeHandle({
   label,
   valueNow,

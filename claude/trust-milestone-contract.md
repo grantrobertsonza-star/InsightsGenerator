@@ -35,3 +35,10 @@ questions or introducing a second snapshot. Imported question definitions are lo
 from researcher corrections so clearing a correction restores the declared definition; failure is
 visibly unknown. Driver requests refuse unavailable saved layout before dispatch rather than
 substituting rows-as-cases.
+
+Objective overview action cells stop click propagation to the selectable row. Otherwise an
+Unaccept/Edit click selected the detail view and unmounted the overview controls/editor during
+the action. The native OBJ-REV-004 regression covers detail and overview transitions, edited
+wording, rejected exclusions and original-brief preservation through regeneration/reload.
+Run `node scripts/e2e/objective-review-acceptance.mjs` against an explicitly disposable manifest
+from the local stack; no real model key is used.

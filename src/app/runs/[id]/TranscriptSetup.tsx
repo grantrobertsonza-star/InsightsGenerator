@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction } from "@/lib/codingAnalysisActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
 import { readDataFileAction, saveDataSetupAction } from "@/lib/dataSetupActions";
+import { useHydrated } from "@/app/useHydrated";
 import {
   DEFAULT_DATA_SETUP,
   LAYOUT_LABEL,
@@ -140,6 +141,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-[11px] font-medium text-muted">{label}</span>
       {children}
     </label>
+  );
+}
+
+// Shown while the page is still loading and the set-up controls are held (see useHydrated).
+function LoadingHint({ ready }: { ready: boolean }) {
+  if (ready) return null;
+  return (
+    <p className="text-[11px] text-muted" data-testid="setup-loading">
+      Loading. The set-up options can be changed in a moment.
+    </p>
   );
 }
 
@@ -295,6 +306,8 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
   const autoRan = useRef(false);
   const readRan = useRef(false);
   const [readError, setReadError] = useState<string | null>(null);
+  // Held until React is attached: a change made before that is never saved (see useHydrated).
+  const ready = useHydrated();
 
   // A data file is read into its table on import, so the preview and the data
   // quality appear without another step.
@@ -378,6 +391,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
         <Field label="What a case is">
         <select
           aria-label={`What a case is: ${row.filename}`}
+          disabled={!ready}
           className={`${select} w-full`}
           value={choice.unit}
           onChange={(e) => void save({ ...choice, unit: e.target.value as DataSetup["unit"] })}
@@ -394,6 +408,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
           aria-label={`How the file is laid out: ${row.filename}`}
           className={`${select} w-full`}
           value={choice.layout}
+          disabled={!ready}
           onChange={(e) => void save({ ...choice, layout: e.target.value as DataSetup["layout"] })}
         >
           {Object.entries(LAYOUT_LABEL).map(([k, l]) => (
@@ -406,6 +421,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
         <Field label="How collected">
         <select
           aria-label={`How the data was collected: ${row.filename}`}
+          disabled={!ready}
           className={`${select} w-full`}
           value={choice.method}
           onChange={(e) => void save({ ...choice, method: e.target.value as DataSetup["method"] })}
@@ -420,6 +436,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
         <Field label="Wave (optional)">
           <input
             aria-label={`Wave: ${row.filename}`}
+            disabled={!ready}
             className={`${select} w-full`}
             placeholder="e.g. Wave 1, Baseline"
             value={waveText}
@@ -435,6 +452,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
           </p>
         </Field>
       </div>
+      <LoadingHint ready={ready} />
       {row.detail && <p className="text-[11px] text-muted">{row.detail}</p>}
       {layoutChanged && !error && (
         <p className="text-[11px] text-muted">
@@ -451,7 +469,7 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
         </p>
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || !ready}
           onClick={() => void save({ ...choice, accepted: !choice.accepted })}
           className={
             choice.accepted
@@ -484,6 +502,8 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
   // dropdowns never lock while a save is in flight.
   const saving = useRef(false);
   const queued = useRef<Choice | null>(null);
+  // Held until React is attached: a change made before that is never saved (see useHydrated).
+  const ready = useHydrated();
 
   async function flush(next: Choice) {
     if (next.sessionType === "") return;
@@ -568,6 +588,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
         <Field label="Who is in each session">
         <select
           aria-label={`Who is in each session: ${row.filename}`}
+          disabled={!ready}
           className={`${select} w-full`}
           value={choice.sessionType}
           onChange={(e) =>
@@ -592,6 +613,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
           aria-label={`How the file is laid out: ${row.filename}`}
           className={`${select} w-full`}
           value={choice.mode}
+          disabled={!ready}
           onChange={(e) =>
             save({ ...choice, mode: e.target.value as SegmentMode })
           }
@@ -608,7 +630,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
           aria-label={`Interview style: ${row.filename}`}
           className={`${select} w-full`}
           value={choice.style}
-          disabled={initial?.styleAvailable === false}
+          disabled={!ready || initial?.styleAvailable === false}
           onChange={(e) =>
             save({ ...choice, style: e.target.value as InterviewStyle | "" })
           }
@@ -622,6 +644,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
         </select>
         </Field>
       </div>
+      <LoadingHint ready={ready} />
       {showSuggestion && sug && (
         <p className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
           Looks like{" "}
@@ -631,6 +654,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
           ({sug.reason}).
           <button
             type="button"
+            disabled={!ready}
             onClick={() =>
               save({
                 sessionType: sug.sessionType,
