@@ -1,12 +1,50 @@
 # Engineering ownership handoff
 
-State: **CODEX_WORKING** — milestone complete; Codex retains ownership and Claude remains paused, 2026-10-16.
+State: **READY_FOR_CLAUDE** — Codex releases the checkout to Claude, 2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
-Claude released the current repairs in the record below. Codex now owns integration, bounded repairs and verification; Claude must not edit released files without a new explicit handoff. Earlier staged archives remain historical inputs.
+The current release to Claude below supersedes earlier Codex ownership and pause instructions. Earlier takeover and package records remain historical evidence.
 
-## Claude release
+
+## Current release to Claude — 2026-10-16
+
+Grant accepted the milestone and explicitly authorised this handoff. Codex releases ownership of
+the checkout and stops editing. Claude may resume and apply the staged adjustable three-pane
+package `.fnd001/staged-three-pane-20261016` on application checkpoint
+**`2330179ff16791ad619e18fa6db55a3b53242aee`**, branch
+`checkpoint/trust-hardening-20261016`. The subsequent handoff commit changes documentation only.
+No three-pane package bytes have been applied by Codex.
+
+Files Claude may change for this package:
+
+- `src/app/runs/[id]/ThreePane.tsx`
+- `e2e/ui/ui-check.config.mjs` (new)
+- `e2e/ui/three-pane.check.mjs` (new)
+- Affected `claude/*.md` engineering documentation, this handoff and
+  `docs/current-engineering-status.md` to record integration/check results.
+
+Archive and manifest hashes match the staged HANDOVER.md: archive
+`2ad7defaa9c49b1aa68060cb8f3eaa59350219f596f094bc58000346752431cc`, manifest
+`5e1aad3d2e28f3a425d9e22826eb7e7864dc17df7cc8765670b2b4c5ae4a3f82`.
+The current ThreePane base matches `80af31cc0e597e3bb663948b19f673effdcb859d33416bc152d0d0c87b928090`;
+both new test/config paths are absent. This is hash/base reconciliation, not independent
+verification of the staged layout implementation. Preserve the accepted import guards and other
+checkpoint behavior. The parked hydration package and `TranscriptSetup.tsx` are outside this
+three-pane release. Do not overwrite unrelated untracked historical evidence.
+
+Disposable resources still running: **none belonging to this milestone**, verified at handoff.
+No recorded app/storage/replay/gateway/database listeners or owned stack processes remain;
+`trust-milestone-20261016` and `trust-codebook-guard-20261016` are stopped/removed. Synthetic
+evidence, frozen source copies, dumps and exports remain local outside Git. The memory-only key
+was cleared; model spend remains US$3.817316 ofUS$10. No new model calls, live/development
+changes, push or deployment are authorised by this handoff.
+
+Latest self-validation:107 files/805 passes/33 explicit skips, full typecheck and required actual
+PostgreSQL/Python suites. Detailed evidence/limits remain in the shared status. Canonical43-row
+counts and separate independent-review/security/deployment gates are unchanged.
+
+## Claude release (historical)
 
 ### Final owner instruction — applies to both agents
 

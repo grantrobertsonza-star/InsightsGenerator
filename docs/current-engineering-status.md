@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16. State: **MILESTONE_COMPLETE — Codex retains ownership; Claude paused**.
+Updated: 2026-10-16. State: **READY_FOR_CLAUDE — milestone accepted; checkout released**.
 
 ## Active version and ownership
 
@@ -104,3 +104,9 @@ typecheck pass. Required actual PostgreSQL/Python suites ran with no NOT RUN pla
 3 explicit skips. The owned guard-test database was retained without role passwords and stopped.
 No model spend, push or deployment; Claude remains paused. These are Codex self-validation
 results. Full separate-Codebook/flip support remains excluded and in the backlog.
+
+
+Ownership release: Grant accepted the milestone. Codex released the checkout to Claude for
+`.fnd001/staged-three-pane-20261016` on application checkpoint2330179; the authoritative current
+file scope and verified absence of running milestone resources are in `docs/agent-handoff.md`.
+This release supersedes earlier statements that Claude remains paused. Codex has stopped editing.
