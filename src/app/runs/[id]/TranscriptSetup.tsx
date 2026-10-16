@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction } from "@/lib/codingAnalysisActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
 import { readDataFileAction, saveDataSetupAction } from "@/lib/dataSetupActions";
+import { displayDay, displayUtcMinute } from "@/lib/displayDate";
 import { useHydrated } from "@/app/useHydrated";
 import {
   DEFAULT_DATA_SETUP,
@@ -262,7 +263,7 @@ function FileCell({ row }: { row: Row }) {
         <span className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${row.kindBadge}`}>
           {row.kindLabel}
         </span>
-        {new Date(row.uploadedAt).toLocaleDateString()}
+        <span title={`Uploaded ${displayUtcMinute(row.uploadedAt)}`}>{displayDay(row.uploadedAt)}</span>
       </p>
     </div>
   );

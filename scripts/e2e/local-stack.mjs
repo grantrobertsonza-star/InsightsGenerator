@@ -93,6 +93,7 @@ writeFileSync(grantsArtifact, JSON.stringify({ role, database: dbName, grants: r
 // ---- storage stand-in (in memory)
 const objects = new Map();
 const signTokens = new Map();
+const objectReads = new Map();
 const storage = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const body = await new Promise((resolve) => {
@@ -124,6 +125,11 @@ const storage = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/__inventory") {
     return send(200, [...objects.keys()].sort());
   }
+  // Disposable inspection only: how many times each object's bytes were served (direct or signed
+  // download), so a check can see every read of a stored file, whatever the server mode logs.
+  if (req.method === "GET" && url.pathname === "/__reads") {
+    return send(200, Object.fromEntries([...objectReads].sort()));
+  }
   let m;
   if (req.method === "POST" && (m = /^\/object\/sign\/(.+)$/.exec(p))) {
     const token = randomBytes(8).toString("hex");
@@ -133,6 +139,7 @@ const storage = http.createServer(async (req, res) => {
   if (req.method === "GET" && (m = /^\/object\/sign\/(.+)$/.exec(p))) {
     const key = signTokens.get(url.searchParams.get("token"));
     const obj = key && objects.get(key);
+    if (obj) objectReads.set(key, (objectReads.get(key) ?? 0) + 1);
     return obj ? send(200, obj.bytes, obj.type) : send(404, { message: "not found" });
   }
   if ((req.method === "POST" || req.method === "PUT") && (m = /^\/object\/(.+)$/.exec(p))) {
@@ -141,6 +148,7 @@ const storage = http.createServer(async (req, res) => {
   }
   if (req.method === "GET" && (m = /^\/object\/(?:authenticated\/)?(.+)$/.exec(p))) {
     const obj = objects.get(m[1]);
+    if (obj) objectReads.set(m[1], (objectReads.get(m[1]) ?? 0) + 1);
     return obj ? send(200, obj.bytes, obj.type) : send(404, { message: "not found", statusCode: "404" });
   }
   if (req.method === "DELETE" && (m = /^\/object\/([^/]+)$/.exec(p))) {
@@ -234,6 +242,7 @@ writeFileSync(
       modelReplayLog: path.join(outDir, "model-replay-log.json"),
       // Disposable storage stand-in: its object inventory and the fault file its handlers read.
       storageInventoryUrl: `${storageUrl}/__inventory`,
+      storageReadsUrl: `${storageUrl}/__reads`,
       storageFaultFile: path.join(outDir, "storage-fault.json"),
       tenantId,
       startedAt: new Date().toISOString(),

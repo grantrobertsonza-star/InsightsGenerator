@@ -1,6 +1,7 @@
 "use client";
 
 import EvidenceTable from "./EvidenceTable";
+import { actionFailureMessage } from "./actionFailure";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useEffect, useState } from "react";
 import {
@@ -216,6 +217,20 @@ function EvidenceGroupCard({ it, orphan, handlers }: { it: ItemEvidence; orphan:
   );
 }
 
+/**
+ * Awaits a server action that reports failure as `{ ok: false, error }`, and turns a rejected
+ * request (dropped connection, server restart, a thrown error Next withholds) into the same
+ * shape. Without it a rejected evaluate round left the panel on "Reading the data..." with every
+ * button disabled, and a rejected load left it silently empty.
+ */
+async function settled<T extends { ok: boolean }>(action: Promise<T>): Promise<T | { ok: false; error: string }> {
+  try {
+    return await action;
+  } catch (error) {
+    return { ok: false, error: actionFailureMessage(error) };
+  }
+}
+
 export default function ObjectiveEvidence({
   runId,
   dataFiles,
@@ -245,7 +260,7 @@ export default function ObjectiveEvidence({
   const [draft, setDraft] = useState({ question: "", request_text: "", supports_if: "", against_if: "" });
 
   async function refresh() {
-    const r = await loadObjectiveEvidenceAction(runId);
+    const r = await settled(loadObjectiveEvidenceAction(runId));
     if (r.ok) {
       setItems(r.items);
       setVariablesTruncated(r.variablesTruncated);
@@ -257,7 +272,7 @@ export default function ObjectiveEvidence({
   // without being asked. Once per browser session, so a failure never loops.
   useEffect(() => {
     void (async () => {
-      const r = await loadObjectiveEvidenceAction(runId);
+      const r = await settled(loadObjectiveEvidenceAction(runId));
       if (!r.ok) {
         setError(r.error);
         return;
@@ -280,13 +295,14 @@ export default function ObjectiveEvidence({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
-  /** One click does it all: write the questions, then answer them two at a time until none remain. */
+  /** One click does it all: write the questions, then answer them two at a time until none remain,
+   * a round fails, nothing could be saved, or 60 rounds have run (see answerRest). */
   async function gather() {
     setError(null);
     setNote(null);
     setHasPending(false);
     setBusy("Writing the evidence questions...");
-    const g = await generateObjectiveEvidenceAction(runId);
+    const g = await settled(generateObjectiveEvidenceAction(runId));
     if (!g.ok) {
       setError(g.error);
       setBusy(null);
@@ -309,9 +325,9 @@ export default function ObjectiveEvidence({
     let guard = 0;
     for (; guard < GUARD_LIMIT; guard++) {
       setBusy("Reading the data...");
-      const e = await evaluateObjectiveEvidenceAction(runId);
+      const e = await settled(evaluateObjectiveEvidenceAction(runId));
       if (!e.ok) {
-        setError(e.error);
+        setError(`Reading stopped: ${e.error}`);
         roundFailed = true;
         break;
       }
@@ -360,7 +376,7 @@ export default function ObjectiveEvidence({
   // include/leave-out or retry is reported rather than silently ignored.
   async function save(q: EvidenceQuestion) {
     setError(null);
-    const r = await editObjectiveEvidenceAction(runId, q.id, draft);
+    const r = await settled(editObjectiveEvidenceAction(runId, q.id, draft));
     if (!r.ok) {
       setError(`Not saved: ${r.error}`);
       return;
@@ -372,14 +388,14 @@ export default function ObjectiveEvidence({
 
   async function toggle(q: EvidenceQuestion) {
     setError(null);
-    const r = await editObjectiveEvidenceAction(runId, q.id, { excluded: !q.excluded });
+    const r = await settled(editObjectiveEvidenceAction(runId, q.id, { excluded: !q.excluded }));
     if (!r.ok) setError(`Not changed: ${r.error}`);
     await refresh();
   }
 
   async function retry(id?: string) {
     setError(null);
-    const r = await retryObjectiveEvidenceAction(runId, id);
+    const r = await settled(retryObjectiveEvidenceAction(runId, id));
     if (!r.ok) {
       setError(`Could not retry: ${r.error}`);
       return;

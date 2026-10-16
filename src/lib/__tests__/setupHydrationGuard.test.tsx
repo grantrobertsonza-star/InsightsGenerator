@@ -7,6 +7,7 @@ vi.mock("@/lib/dataSetupActions", () => ({ readDataFileAction: vi.fn(), saveData
 vi.mock("@/app/DeleteDocumentButton", () => ({ default: () => null }));
 vi.mock("@/app/useHydrated", async () => await import("../../app/useHydrated"));
 vi.mock("@/lib/dataSetupShared", async () => await import("../dataSetupShared"));
+vi.mock("@/lib/displayDate", async () => await import("../displayDate"));
 
 const { default: TranscriptSetupTable, ImportDetailProvider } = await import("../../app/runs/[id]/TranscriptSetup");
 
