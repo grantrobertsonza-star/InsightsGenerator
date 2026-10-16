@@ -162,11 +162,21 @@ export async function addOwnDecisionCandidate(runId: string, candidateText: stri
   if (!text) return;
 
   await withTenant(TENANT_ID, async (client) => {
-    await client.query(
-      `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-       values ($1, $2, $3, 'Written directly by the researcher.', 'researcher_authored', 'accepted')`,
-      [TENANT_ID, runId, text]
+    // A refresh can fail after this transaction commits. Serialise additions per owned run so
+    // retrying that request (or overlapping submissions) reuses the researcher's persisted row.
+    const owned = await client.query("select id from runs where id = $1 and tenant_id = $2 for update", [runId, TENANT_ID]);
+    if (!owned.rowCount) throw new Error("That project is not available.");
+    const existing = await client.query(
+      "select id from decision_candidates where run_id = $1 and tenant_id = $2 and source = 'researcher_authored' and trim(candidate_text) = $3",
+      [runId, TENANT_ID, text],
     );
+    if (!existing.rowCount) {
+      await client.query(
+        `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+         values ($1, $2, $3, 'Written directly by the researcher.', 'researcher_authored', 'accepted')`,
+        [TENANT_ID, runId, text]
+      );
+    }
     await syncDecisionStatement(client, runId);
   });
 

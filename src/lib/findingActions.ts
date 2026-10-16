@@ -1,8 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { withTenant } from "./db";
 import { recordHumanEdit, recordHumanReview, reviewActionForStatus } from "./findingProvenance";
+import { editFindingWordingTx, revertFindingWordingTx, type WordingEditResult } from "./findingWording";
+import { verifyAfterGenerate } from "./verifyAfterGenerate";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -93,4 +96,54 @@ export async function setFindingNote(runId: string, findingId: string, note: str
     await recordHumanEdit(client, r.rows.map((row) => row.id), "researcher_note");
   });
   revalidatePath(`/runs/${runId}`);
+}
+
+/**
+ * FND-001 probe B: a researcher edits the wording of a finding read from a report (see
+ * findingWording.ts for the full contract). `editedFrom` is the wording the editor started from,
+ * so a concurrent change is a conflict, not a silent overwrite. On success the run's verification
+ * chain is queued (the edited claim has no verdict until it is re-checked); a failure there leaves
+ * it visibly "not yet re-checked", never with the old verdict.
+ */
+export async function editFindingWording(
+  runId: string,
+  findingId: string,
+  editedFrom: string,
+  newText: string,
+): Promise<WordingEditResult> {
+  const result = await withTenant(TENANT_ID, (client) => editFindingWordingTx(client, TENANT_ID, runId, findingId, editedFrom, newText));
+  if (result.ok && result.changed) {
+    after(() => verifyAfterGenerate(TENANT_ID, runId));
+    revalidatePath(`/runs/${runId}`);
+  }
+  return result;
+}
+
+/** Restores the extracted wording (and its grounding) exactly; re-checked the same way as an edit. */
+export async function revertFindingWording(runId: string, findingId: string, editedFrom: string): Promise<WordingEditResult> {
+  const result = await withTenant(TENANT_ID, (client) => revertFindingWordingTx(client, TENANT_ID, runId, findingId, editedFrom));
+  if (result.ok) {
+    after(() => verifyAfterGenerate(TENANT_ID, runId));
+    revalidatePath(`/runs/${runId}`);
+  }
+  return result;
+}
+
+/**
+ * Runs the verification chain now for a finding still waiting for a re-check (the automatic one
+ * after an edit failed or has not finished). Returns whether it now has a verdict.
+ */
+export async function recheckFindingWording(runId: string, findingId: string): Promise<{ ok: boolean; error?: string }> {
+  await verifyAfterGenerate(TENANT_ID, runId);
+  const has = await withTenant(TENANT_ID, async (client) => {
+    const r = await client.query<{ has: boolean }>(
+      `select exists (select 1 from verdicts v join findings f on f.id = v.finding_id where f.id = $1 and f.run_id = $2) as has`,
+      [findingId, runId],
+    );
+    return r.rows[0]?.has === true;
+  });
+  revalidatePath(`/runs/${runId}`);
+  return has
+    ? { ok: true }
+    : { ok: false, error: "The re-check did not produce a verdict yet. The finding stays marked as not re-checked; try again shortly." };
 }

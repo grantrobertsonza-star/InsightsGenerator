@@ -9,6 +9,9 @@ import {
   checkStability,
 } from "@/lib/synthesizedInsightActions";
 import { TrashIcon } from "@/components/icons";
+import type { InsightSupport } from "@/lib/supportStatusShared";
+import { SupportStatusNotice } from "./SupportStatusNotice";
+import { FigureCheckFor } from "./FigureCheckNotice";
 
 // Matches MIN_CLUSTER_SIZE in src/lib/insightSynthesizer.ts (not imported
 // directly -- that file pulls in server-only dependencies this client
@@ -39,6 +42,9 @@ export type SynthesizedInsightRow = {
   implication: string;
   action_plan_status: ActionPlanStatus;
   triangulation_count: number;
+  /** INS-001: distinct independent evidence sources (null = not checked, e.g. before migration
+   * 0097). The confidence tier is computed from this, not from triangulation_count. */
+  independent_source_count: number | null;
   source_theme_count: number;
   materiality_rationale: string | null;
   confidence_tier: ConfidenceTier | null;
@@ -62,6 +68,8 @@ export type SynthesizedInsightRow = {
   stability_reappeared_count: number | null;
   stability_checked_at: string | null;
   source_headlines: string[];
+  /** The findings behind source_headlines, by id (identity for review tools and browser checks). */
+  source_finding_ids?: string[];
   // Every synthesized insight is net-new by synthesis: the report never said
   // it. This says how much of it stands on claims the report itself made, so
   // the "new" label never hides what it is built on (see
@@ -70,7 +78,12 @@ export type SynthesizedInsightRow = {
   // Report claims this insight directly contradicts. Each is rated not
   // supported for that reason.
   contradicts: { original_text: string; rationale: string }[];
+  /** FND-001: whether the evidence this insight was drafted from is still what it was (see
+   * supportStatusShared.ts). Separate from review_status: accepting an insight does not make its
+   * sources current, and a changed source never edits or rejects the insight by itself. */
+  support: InsightSupport;
 };
+
 
 const confidenceTierLabel: Record<ConfidenceTier, string> = {
   strong: "Strong",
@@ -84,21 +97,22 @@ const confidenceTierClass: Record<ConfidenceTier, string> = {
   exploratory: "bg-slate-100 text-slate-600",
 };
 
-// Mirrors the strong/moderate/exploratory thresholds computed server-side in
-// insightSynthesizer.ts (sourceThemeCount >= 2 && triangulationCount >= 3 =
-// strong; either alone = moderate; neither = exploratory). Display copy
-// only, same reasoning as THIN_EVIDENCE_FLOOR and
-// STABILITY_RESAMPLE_COUNT_LABEL above: kept here rather than imported so
-// this client component doesn't pull in server-only code.
+// Describes the thresholds defined once in SQL, insight_confidence_tier() (migration 0097, INS-001;
+// sources are keyed per document since 0099, so tables from one data file are one source):
+// strong = 3+ independent sources across 2+ themes; moderate = 3+ independent sources, or 2+
+// independent sources across 2+ themes; otherwise exploratory. Display copy only, kept here
+// rather than imported so this client component doesn't pull in server-only code.
 const confidenceTierDefinition: Record<ConfidenceTier, string> = {
   strong:
-    "Strong confidence: at least 3 corroborating pre-insights spanning at least 2 distinct themes. " +
-    "Computed directly from the evidence count, not a judgment call the model makes.",
+    "Strong confidence: at least 3 independent evidence sources spanning at least 2 distinct themes. " +
+    "Several findings from the same data file (any number of its tables) or the same report count as " +
+    "one source. Computed from the " +
+    "evidence, not a judgment call the model makes.",
   moderate:
-    "Moderate confidence: either 3+ corroborating pre-insights or 2+ distinct themes, but not both.",
+    "Moderate confidence: 3+ independent evidence sources, or 2+ independent sources spanning 2+ themes.",
   exploratory:
-    "Exploratory confidence: fewer than 3 corroborating pre-insights and from a single theme. Worth " +
-    "watching, but not yet well-triangulated against independent evidence.",
+    "Exploratory confidence: fewer independent sources than that, for example several findings that all " +
+    "come from one data file or one report. Worth watching, but not yet triangulated against independent evidence.",
 };
 
 const qualityTierLabel: Record<QualityTier, string> = {
@@ -760,6 +774,10 @@ function SynthesizedInsightCard({
 
   return (
     <div
+      data-testid="synthesized-insight-card"
+      data-insight-id={insight.id}
+      data-review-status={insight.review_status}
+      data-source-finding-ids={(insight.source_finding_ids ?? []).join(" ")}
       onClick={() => select(insight.id)}
       className={`card-surface flex cursor-pointer flex-col gap-3 rounded-xl border bg-white p-4 ${isSelected ? "border-primary/50 ring-2 ring-primary/40" : "border-border"} ${isRejected ? "opacity-50" : ""}`}
     >
@@ -775,6 +793,13 @@ function SynthesizedInsightCard({
                 aria-hidden
               />
               {confidenceTierLabel[insight.confidence_tier]} confidence
+            </span>
+          ) : insight.independent_source_count === null ? (
+            <span
+              title="Confidence is only assigned once the insight's sources have been checked for independence (several findings from one data file or one report count as one source). Re-run synthesis to assess it."
+              className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600"
+            >
+              Confidence not assessed
             </span>
           ) : null}
           {insight.quality_tier ? (
@@ -796,19 +821,24 @@ function SynthesizedInsightCard({
           )}
           <span
             title={
-              `Built from ${insight.triangulation_count} corroborating pre-insight${insight.triangulation_count === 1 ? "" : "s"}` +
+              (insight.independent_source_count === null
+                ? "Its sources have not been checked for independence. "
+                : `Rests on ${insight.independent_source_count} independent evidence source${insight.independent_source_count === 1 ? "" : "s"} ` +
+                  "(findings from the same table, or claims from the same report, count as one). ") +
+              `Built from ${insight.triangulation_count} linked pre-insight${insight.triangulation_count === 1 ? "" : "s"}` +
               `${insight.source_theme_count > 1 ? ` across ${insight.source_theme_count} distinct themes` : " from a single theme"}. ` +
-              "This count is what the Strong/Moderate/Exploratory confidence tier above is computed from."
+              "The confidence tier is computed from the independent sources and themes, not from the number of pre-insights."
             }
             className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
           >
-            {insight.triangulation_count} corroborating pre-insight
-            {insight.triangulation_count === 1 ? "" : "s"}
+            {insight.independent_source_count === null
+              ? "Sources not checked for independence"
+              : `${insight.independent_source_count} independent source${insight.independent_source_count === 1 ? "" : "s"}`}
             {insight.source_theme_count > 1
               ? ` across ${insight.source_theme_count} themes`
               : ""}
           </span>
-          {insight.triangulation_count <= THIN_EVIDENCE_FLOOR && (
+          {(insight.independent_source_count ?? insight.triangulation_count) <= THIN_EVIDENCE_FLOOR && (
             <span
               title="This insight rests on the bare minimum of corroborating evidence; losing one supporting finding could undo it. A full reproducibility check (resampling the evidence and re-running synthesis) would confirm whether it holds up, but isn't run automatically."
               className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700"
@@ -867,6 +897,8 @@ function SynthesizedInsightCard({
           <TrashIcon className="h-3 w-3" />
         </button>
       </div>
+      <SupportStatusNotice support={insight.support} />
+      <FigureCheckFor kind="synthesizedInsights" id={insight.id} />
 
       <div className="text-base font-semibold leading-snug text-foreground">
         {insight.headline}

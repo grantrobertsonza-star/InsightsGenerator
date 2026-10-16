@@ -47,10 +47,9 @@ export default function RawDataPage() {
         you control, and <code>sampling_assumed_random</code>, for the reason explained below.
       </P>
 
-      <H2>SPSS, Stata, and SAS files</H2>
+      <H2>SPSS and Stata files</H2>
       <P>
-        If your raw data comes from labelled statistical software, a <code>.sav</code>, <code>.dta</code>,
-        or <code>.sas7bdat</code> file, the app reads it directly, including the variable labels (so a
+        If your raw data comes from labelled statistical software, a <code>.sav</code> or <code>.dta</code> file (SAS is excluded pending verification), the app reads it directly, including the variable labels (so a
         column literally named <code>Q7a</code> shows up as &quot;Preferred channel&quot; if that&apos;s
         its label) and value labels (so a code like <code>1</code> shows up as &quot;Male&quot; rather
         than a bare number) wherever your file defines them.
@@ -68,7 +67,7 @@ export default function RawDataPage() {
         does={[
           "Lets you name exactly which columns to compare, rather than scanning everything automatically",
           "Runs a real statistical test for every comparison it produces, not a guess or an estimate",
-          "Reads SPSS, Stata, and SAS files directly, labels and all",
+          "Reads SPSS and Stata files directly, labels and all",
           "Flags every banner-plan result as part of a multiple-comparisons batch, honestly, every time",
         ]}
         doesNot={[

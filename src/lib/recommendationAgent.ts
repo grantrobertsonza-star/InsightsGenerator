@@ -2,10 +2,176 @@ import { refreshRecommendationQuality } from "./recommendationQualityScorer";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
+import type { PoolClient } from "pg";
 import { withTenant } from "./db";
+import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { mapWithConcurrency } from "./concurrency";
+import { figureCheck, type FigureCheck } from "./numberTrace";
+import { figureCheckAvailable } from "./figureChecks";
 
 const MAX_INSIGHTS_FOR_PROMPT = 60;
+
+// REC-002: what one batch of a recommendation run produced. A batch whose model call throws is
+// contained (containChunk) so the other batches' work and the overall outcome are still reported.
+type ChunkOutcome = { writtenIds: string[]; failure?: string };
+
+function containChunk<T>(fn: (batch: T[], chunkIndex: number) => Promise<ChunkOutcome>) {
+  return async (batch: T[], chunkIndex: number): Promise<ChunkOutcome> => {
+    try {
+      return await fn(batch, chunkIndex);
+    } catch (error) {
+      return {
+        writtenIds: [],
+        failure: `${batch.length} insight(s) starting at index ${chunkIndex * RECOMMENDATION_CHUNK_SIZE}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  };
+}
+
+/**
+ * REC-002: the outcome of a recommendation run, recorded and made actionable. Before this a run
+ * reported success whenever at least one recommendation was written, so batches that failed (or
+ * insights the model skipped) left recommendations silently missing. Now:
+ *   - every run writes a trace row (`event`) with requested / covered / missing counts and the
+ *     batch failures, so the outcome is persisted, not just logged to a console;
+ *   - nothing written at all -> the existing "nothing was changed, try again" error;
+ *   - some written, some missing -> an error that says how many are missing and why, that the
+ *     written ones are kept, and that running again covers only the rest. Retrying never
+ *     duplicates: the generators only draft for insights that still have no recommendation, and
+ *     insertOncePerAnchor re-checks that under a row lock at write time (repeated model indices,
+ *     concurrent runs).
+ * The written recommendations are committed per batch and are not rolled back.
+ */
+async function settleRecommendationRun(
+  tenantId: string,
+  runId: string,
+  event: "recommendation_run" | "synthesized_recommendation_run",
+  requestedIds: string[],
+  outcomes: ChunkOutcome[],
+): Promise<void> {
+  const covered = new Set(outcomes.flatMap((o) => o.writtenIds));
+  const missing = requestedIds.filter((id) => !covered.has(id));
+  const failures = outcomes.map((o) => o.failure).filter((f): f is string => !!f);
+  await withTenant(tenantId, async (client) => {
+    await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, $3, $4)`, [
+      tenantId,
+      runId,
+      event,
+      JSON.stringify({
+        requested: requestedIds.length,
+        covered: requestedIds.length - missing.length,
+        missing: missing.length,
+        missing_ids: missing.slice(0, 100),
+        failures,
+        complete: missing.length === 0,
+      }),
+    ]);
+  });
+  if (covered.size === 0) {
+    const detail = failures.length > 0 ? ` (${failures.join("; ")})` : "";
+    throw new Error(`No usable recommendations came back this time${detail}. Nothing was changed, try again.`);
+  }
+  if (missing.length > 0) {
+    const why = failures.length > 0 ? failures.join("; ") : "the model returned no usable recommendation for them";
+    throw new Error(
+      `Recommendations were written for ${requestedIds.length - missing.length} of ${requestedIds.length} insights; ` +
+        `${missing.length} still have none (${why}). The ones written are kept. Run it again to generate the rest; ` +
+        "insights that already have a recommendation are not repeated.",
+    );
+  }
+}
+
+
+/**
+ * Numerical traceability for one drafted recommendation (numberTrace.ts), against the insight it
+ * is anchored to. Timeline is not checked (dates and quarters are plans, not evidence). A figure
+ * absent from the evidence may be a proposed target, so it needs review rather than blocking; a
+ * conflicting figure (unit, measure, direction, or a different value for the same subject) is
+ * unsupported and the recommendation is not written (the insight then counts as missing, and a
+ * retry drafts it again).
+ */
+function checkRecommendationFigures(
+  rec: { action_text: string; owner_feasibility_note: string; metric: string; assumptions_and_risks: string; alternatives_considered: string },
+  sources: string[],
+): FigureCheck {
+  return figureCheck(
+    (["action_text", "owner_feasibility_note", "metric", "assumptions_and_risks", "alternatives_considered"] as const).map((field) => ({
+      field,
+      text: rec[field],
+      sources,
+    })),
+    { absent: "needs_review" },
+  );
+}
+
+type RecommendationFields = {
+  figureCheck?: FigureCheck;
+  action_text: string;
+  owner_role: string;
+  owner_feasibility_note: string;
+  timeline: string;
+  metric: string;
+  priority: Priority;
+  assumptions_and_risks: string;
+  alternatives_considered: string;
+};
+
+/**
+ * REC-002: writes at most one AI-suggested recommendation per anchor, safely under retries and
+ * concurrent runs. For each anchor, inside the caller's transaction:
+ *   1. lock the anchor row (pre-insight or synthesized insight) in this run; a missing row (deleted
+ *      meanwhile, or not in this run) is skipped and stays reported as missing;
+ *   2. insert only if the anchor still has no recommendation of any kind - the same rule the
+ *      eligibility query uses, so a researcher's own recommendation is never duplicated or replaced.
+ * The anchor lock serialises two runs drafting for the same insight, so the second one sees the
+ * first one's row. Returns the anchors that now have a recommendation (written here or already
+ * present), which is what the run's coverage report counts.
+ */
+async function insertOncePerAnchor(
+  client: PoolClient,
+  anchorTable: "insights" | "synthesized_insights",
+  anchorColumn: "insight_id" | "synthesized_insight_id",
+  tenantId: string,
+  runId: string,
+  rows: { anchorId: string; fields: RecommendationFields }[],
+): Promise<string[]> {
+  const covered: string[] = [];
+  const seen = new Set<string>();
+  const storeCheck = await figureCheckAvailable(client);
+  // Locks are taken in id order so two concurrent runs over overlapping anchors cannot deadlock.
+  const ordered = [...rows].sort((a, b) => (a.anchorId < b.anchorId ? -1 : a.anchorId > b.anchorId ? 1 : 0));
+  for (const { anchorId, fields } of ordered) {
+    if (seen.has(anchorId)) continue;
+    seen.add(anchorId);
+    const locked = await client.query(`select id from ${anchorTable} where id = $1 and run_id = $2 for update`, [anchorId, runId]);
+    if (locked.rows.length === 0) continue;
+    await client.query(
+      `insert into recommendations
+         (tenant_id, run_id, ${anchorColumn}, action_text, owner_role, owner_feasibility_note, timeline,
+          metric, priority, assumptions_and_risks, alternatives_considered, source, status${storeCheck ? ", figure_check" : ""})
+       select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ai_suggested', 'accepted'${storeCheck ? ", $12::jsonb" : ""}
+       where not exists (select 1 from recommendations r where r.${anchorColumn} = $3)`,
+      [
+        tenantId,
+        runId,
+        anchorId,
+        fields.action_text,
+        fields.owner_role,
+        fields.owner_feasibility_note,
+        fields.timeline,
+        fields.metric,
+        fields.priority,
+        fields.assumptions_and_risks,
+        fields.alternatives_considered,
+        ...(storeCheck ? [fields.figureCheck ? JSON.stringify(fields.figureCheck) : null] : []),
+      ]
+    );
+    covered.push(anchorId);
+  }
+  return covered;
+}
 
 // Same chunking reasoning as verifyFindings and insightGenerator: each
 // recommendation carries eight written fields, twice what an insight
@@ -85,6 +251,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
   const audienceBlock = run.audience ? `The recommendation's audience is: ${run.audience}.\n\n` : "";
 
   type Prepared = {
+    figureCheck: FigureCheck;
     insightId: string;
     action_text: string;
     owner_role: string;
@@ -101,12 +268,12 @@ export async function generateRecommendations(tenantId: string, runId: string): 
     chunks.push(eligible.slice(start, start + RECOMMENDATION_CHUNK_SIZE));
   }
 
-  type ChunkResult = { written: number; failure?: string };
+  type ChunkResult = ChunkOutcome;
 
   const chunkResults = await mapWithConcurrency(
     chunks,
     RECOMMENDATION_CONCURRENCY,
-    async (batch, chunkIndex): Promise<ChunkResult> => {
+    containChunk(async (batch, chunkIndex): Promise<ChunkResult> => {
       const insightsBlock = batch
         .map(
           (insight, index) =>
@@ -208,6 +375,8 @@ export async function generateRecommendations(tenantId: string, runId: string): 
           : [];
 
       const prepared: Prepared[] = [];
+      const seenIndices = new Set<number>();
+      const figureRefusals: string[] = [];
       for (const raw of rawRecommendations) {
         const index = typeof raw.index === "number" ? raw.index : null;
         const action_text = typeof raw.action_text === "string" ? raw.action_text.trim() : "";
@@ -223,7 +392,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
         const alternatives_considered =
           typeof raw.alternatives_considered === "string" ? raw.alternatives_considered.trim() : "";
 
-        if (index === null || index < 0 || index >= batch.length) continue;
+        if (index === null || !Number.isInteger(index) || index < 0 || index >= batch.length) continue;
         if (
           !action_text ||
           !owner_role ||
@@ -236,8 +405,22 @@ export async function generateRecommendations(tenantId: string, runId: string): 
         ) {
           continue;
         }
+        // REC-002: one recommendation per listed insight per call. The model sometimes repeats an
+        // index; the first complete entry for it is kept and any repeat is dropped.
+        if (seenIndices.has(index)) continue;
+        seenIndices.add(index);
 
+        const anchor = batch[index];
+        const check = checkRecommendationFigures(
+          { action_text, owner_feasibility_note, metric, assumptions_and_risks, alternatives_considered },
+          [anchor.headline, anchor.observation, anchor.tension, anchor.implication, anchor.theme ?? ""],
+        );
+        if (check.status === "unsupported") {
+          figureRefusals.push(...check.figures.filter((f) => f.status === "unsupported").map((f) => `${f.text}: ${f.reason}`));
+          continue;
+        }
         prepared.push({
+          figureCheck: check,
           insightId: batch[index].id,
           action_text,
           owner_role,
@@ -252,52 +435,28 @@ export async function generateRecommendations(tenantId: string, runId: string): 
 
       if (prepared.length === 0) {
         return {
-          written: 0,
+          writtenIds: [],
           failure:
             `${batch.length} insight(s) starting at index ${chunkIndex * RECOMMENDATION_CHUNK_SIZE} ` +
-            `(stop reason: ${response.stop_reason ?? "unknown"})`,
+            `(stop reason: ${response.stop_reason ?? "unknown"}` +
+            `${figureRefusals.length > 0 ? `; held back for figures not supported by their insight: ${figureRefusals.slice(0, 5).join("; ")}` : ""})`,
         };
       }
 
-      await withTenant(tenantId, async (client) => {
-        for (const rec of prepared) {
-          await client.query(
-            `insert into recommendations
-               (tenant_id, run_id, insight_id, action_text, owner_role, owner_feasibility_note, timeline,
-                metric, priority, assumptions_and_risks, alternatives_considered, source, status)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ai_suggested', 'accepted')`,
-            [
-              tenantId,
-              runId,
-              rec.insightId,
-              rec.action_text,
-              rec.owner_role,
-              rec.owner_feasibility_note,
-              rec.timeline,
-              rec.metric,
-              rec.priority,
-              rec.assumptions_and_risks,
-              rec.alternatives_considered,
-            ]
-          );
-        }
-      });
+      const coveredIds = await withTenant(tenantId, (client) =>
+        insertOncePerAnchor(client, "insights", "insight_id", tenantId, runId, prepared.map((p) => ({ anchorId: p.insightId, fields: p })))
+      );
 
-      return { written: prepared.length };
-    }
+      return figureRefusals.length > 0
+        ? {
+            writtenIds: coveredIds,
+            failure: `held back for figures not supported by their insight: ${figureRefusals.slice(0, 5).join("; ")}`,
+          }
+        : { writtenIds: coveredIds };
+    })
   );
 
-  let totalWritten = 0;
-  const chunkFailures: string[] = [];
-  for (const result of chunkResults) {
-    totalWritten += result.written;
-    if (result.failure) chunkFailures.push(result.failure);
-  }
-
-  if (totalWritten === 0) {
-    const detail = chunkFailures.length > 0 ? ` (${chunkFailures.join("; ")})` : "";
-    throw new Error(`No usable recommendations came back this time${detail}. Nothing was changed, try again.`);
-  }
+  await settleRecommendationRun(tenantId, runId, "recommendation_run", eligible.map((i) => i.id), chunkResults);
 }
 
 
@@ -346,7 +505,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
   if (!run) return;
   if (!run.decision_statement) return;
 
-  const eligible = await withTenant(tenantId, async (client) => {
+  const acceptedEligible = await withTenant(tenantId, async (client) => {
     const result = await client.query<EligibleSynthesizedInsight>(
       `select si.id, si.headline, si.observation, si.tension, si.implication,
               array_agg(pi.headline order by pi.created_at) as source_headlines
@@ -365,11 +524,23 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
     return result.rows;
   });
 
+  // FND-001: never draft a recommendation for an insight whose support is no longer valid (a
+  // supporting finding rejected or deleted since it was drafted). Changed or uncheckable support
+  // is still drafted from; the recommendation inherits that status wherever it is shown or
+  // exported. The insight itself, and its review decision, are left untouched.
+  const support = await loadInsightSupportOrUnchecked(
+    tenantId,
+    runId,
+    acceptedEligible.map((insight) => insight.id),
+  );
+  const eligible = acceptedEligible.filter((insight) => support.statusOf(insight.id).status !== "invalid");
+
   if (eligible.length === 0) return;
 
   const audienceBlock = run.audience ? `The recommendation's audience is: ${run.audience}.\n\n` : "";
 
   type Prepared = {
+    figureCheck: FigureCheck;
     synthesizedInsightId: string;
     action_text: string;
     owner_role: string;
@@ -386,12 +557,12 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
     chunks.push(eligible.slice(start, start + RECOMMENDATION_CHUNK_SIZE));
   }
 
-  type ChunkResult = { written: number; failure?: string };
+  type ChunkResult = ChunkOutcome;
 
   const chunkResults = await mapWithConcurrency(
     chunks,
     RECOMMENDATION_CONCURRENCY,
-    async (batch, chunkIndex): Promise<ChunkResult> => {
+    containChunk(async (batch, chunkIndex): Promise<ChunkResult> => {
       const insightsBlock = batch
         .map(
           (insight, index) =>
@@ -494,6 +665,8 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
           : [];
 
       const prepared: Prepared[] = [];
+      const seenIndices = new Set<number>();
+      const figureRefusals: string[] = [];
       for (const raw of rawRecommendations) {
         const index = typeof raw.index === "number" ? raw.index : null;
         const action_text = typeof raw.action_text === "string" ? raw.action_text.trim() : "";
@@ -509,7 +682,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
         const alternatives_considered =
           typeof raw.alternatives_considered === "string" ? raw.alternatives_considered.trim() : "";
 
-        if (index === null || index < 0 || index >= batch.length) continue;
+        if (index === null || !Number.isInteger(index) || index < 0 || index >= batch.length) continue;
         if (
           !action_text ||
           !owner_role ||
@@ -522,8 +695,22 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
         ) {
           continue;
         }
+        // REC-002: one recommendation per listed insight per call. The model sometimes repeats an
+        // index; the first complete entry for it is kept and any repeat is dropped.
+        if (seenIndices.has(index)) continue;
+        seenIndices.add(index);
 
+        const anchor = batch[index];
+        const check = checkRecommendationFigures(
+          { action_text, owner_feasibility_note, metric, assumptions_and_risks, alternatives_considered },
+          [anchor.headline, anchor.observation, anchor.tension, anchor.implication, ...anchor.source_headlines],
+        );
+        if (check.status === "unsupported") {
+          figureRefusals.push(...check.figures.filter((f) => f.status === "unsupported").map((f) => `${f.text}: ${f.reason}`));
+          continue;
+        }
         prepared.push({
+          figureCheck: check,
           synthesizedInsightId: batch[index].id,
           action_text,
           owner_role,
@@ -538,52 +725,35 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
 
       if (prepared.length === 0) {
         return {
-          written: 0,
+          writtenIds: [],
           failure:
             `${batch.length} insight(s) starting at index ${chunkIndex * RECOMMENDATION_CHUNK_SIZE} ` +
-            `(stop reason: ${response.stop_reason ?? "unknown"})`,
+            `(stop reason: ${response.stop_reason ?? "unknown"}` +
+            `${figureRefusals.length > 0 ? `; held back for figures not supported by their insight: ${figureRefusals.slice(0, 5).join("; ")}` : ""})`,
         };
       }
 
-      await withTenant(tenantId, async (client) => {
-        for (const rec of prepared) {
-          await client.query(
-            `insert into recommendations
-               (tenant_id, run_id, synthesized_insight_id, action_text, owner_role, owner_feasibility_note,
-                timeline, metric, priority, assumptions_and_risks, alternatives_considered, source, status)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ai_suggested', 'accepted')`,
-            [
-              tenantId,
-              runId,
-              rec.synthesizedInsightId,
-              rec.action_text,
-              rec.owner_role,
-              rec.owner_feasibility_note,
-              rec.timeline,
-              rec.metric,
-              rec.priority,
-              rec.assumptions_and_risks,
-              rec.alternatives_considered,
-            ]
-          );
-        }
-      });
+      const coveredIds = await withTenant(tenantId, (client) =>
+        insertOncePerAnchor(
+          client,
+          "synthesized_insights",
+          "synthesized_insight_id",
+          tenantId,
+          runId,
+          prepared.map((p) => ({ anchorId: p.synthesizedInsightId, fields: p }))
+        )
+      );
 
-      return { written: prepared.length };
-    }
+      return figureRefusals.length > 0
+        ? {
+            writtenIds: coveredIds,
+            failure: `held back for figures not supported by their insight: ${figureRefusals.slice(0, 5).join("; ")}`,
+          }
+        : { writtenIds: coveredIds };
+    })
   );
 
-  let totalWritten = 0;
-  const chunkFailures: string[] = [];
-  for (const result of chunkResults) {
-    totalWritten += result.written;
-    if (result.failure) chunkFailures.push(result.failure);
-  }
-
-  if (totalWritten === 0) {
-    const detail = chunkFailures.length > 0 ? ` (${chunkFailures.join("; ")})` : "";
-    throw new Error(`No usable recommendations came back this time${detail}. Nothing was changed, try again.`);
-  }
+  await settleRecommendationRun(tenantId, runId, "synthesized_recommendation_run", eligible.map((i) => i.id), chunkResults);
 }
 
 /**

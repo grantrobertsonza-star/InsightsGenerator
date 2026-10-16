@@ -12,7 +12,10 @@ import {
   regenerateSynthesizedRecommendations,
 } from "@/lib/recommendationActions";
 import { TrashIcon } from "@/components/icons";
+import type { InsightSupport } from "@/lib/supportStatusShared";
+import { SupportStatusNotice } from "./SupportStatusNotice";
 import { scoreRecommendationsAction } from "@/lib/qualityActions";
+import { FigureCheckFor } from "./FigureCheckNotice";
 
 type Priority = "high" | "medium" | "low";
 
@@ -38,6 +41,8 @@ type Recommendation = {
   confidence_tier: ConfidenceTier | null;
   quality_score: number | null;
   quality_tier: QualityTier | null;
+  /** FND-001: inherited from the anchor insight's support status (supportStatus.ts). */
+  support?: InsightSupport;
   // The recommendation's own quality scores (migration 0045). Impact is
   // shown beside the total, not in it.
   rec_actionability_score?: number | null;
@@ -269,7 +274,45 @@ type ParkedInsight = {
   tension: string;
   implication: string;
   action_plan_status: "has_action" | "retained_no_action";
+  /** REC-002: false when no recommendation of any status exists for this insight. */
+  has_any_recommendation?: boolean;
 };
+
+/** REC-002: accepted insights the synthesizer gave an action plan but that have no recommendation
+ * at all - what a partial or failed generation run leaves behind. Derived from the data on every
+ * load, so it survives reloads; regenerating covers only these (nothing is duplicated). */
+export function missingRecommendationCount(parked: ParkedInsight[]): number {
+  return parked.filter((p) => p.action_plan_status === "has_action" && p.has_any_recommendation === false).length;
+}
+
+/** REC-002: the notice for insights left without a recommendation. Renders nothing when none are. */
+export function MissingRecommendationsNotice({
+  count,
+  onRetry,
+  busy,
+}: {
+  count: number;
+  onRetry: () => void;
+  busy: boolean;
+}) {
+  if (count === 0) return null;
+  return (
+    <div
+      role="status"
+      data-testid="missing-recommendations"
+      className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+    >
+      <span>
+        <strong>Incomplete:</strong> {count} accepted insight{count === 1 ? "" : "s"} with an action plan{" "}
+        {count === 1 ? "has" : "have"} no recommendation yet, usually because part of the last generation run failed.
+        The recommendations already written are kept; generating again covers only the missing ones.
+      </span>
+      <button type="button" onClick={onRetry} disabled={busy} className="shrink-0 font-medium underline disabled:opacity-50">
+        Generate the missing ones
+      </button>
+    </div>
+  );
+}
 
 type Draft = {
   action_text: string;
@@ -330,6 +373,7 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
         <label className={labelClass}>Action</label>
         <textarea
           rows={2}
+          aria-label="Action"
           value={draft.action_text}
           onChange={(e) => onChange({ ...draft, action_text: e.target.value })}
           className={textareaClass}
@@ -338,17 +382,20 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <label className={labelClass}>Owner role</label>
-          <input value={draft.owner_role} onChange={(e) => onChange({ ...draft, owner_role: e.target.value })} className={inputClass} />
+          <input aria-label="Owner role"
+          value={draft.owner_role} onChange={(e) => onChange({ ...draft, owner_role: e.target.value })} className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>Timeline</label>
-          <input value={draft.timeline} onChange={(e) => onChange({ ...draft, timeline: e.target.value })} className={inputClass} />
+          <input aria-label="Timeline"
+          value={draft.timeline} onChange={(e) => onChange({ ...draft, timeline: e.target.value })} className={inputClass} />
         </div>
       </div>
       <div>
         <label className={labelClass}>Why this owner, and feasibility</label>
         <textarea
           rows={2}
+          aria-label="Why this owner, and feasibility"
           value={draft.owner_feasibility_note}
           onChange={(e) => onChange({ ...draft, owner_feasibility_note: e.target.value })}
           className={textareaClass}
@@ -357,12 +404,14 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <label className={labelClass}>Metric</label>
-          <input value={draft.metric} onChange={(e) => onChange({ ...draft, metric: e.target.value })} className={inputClass} />
+          <input aria-label="Metric"
+          value={draft.metric} onChange={(e) => onChange({ ...draft, metric: e.target.value })} className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>Priority</label>
           <select
-            value={draft.priority}
+            aria-label="Priority"
+          value={draft.priority}
             onChange={(e) => onChange({ ...draft, priority: e.target.value as Priority })}
             className={inputClass}
           >
@@ -376,6 +425,7 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
         <label className={labelClass}>Assumptions and risks</label>
         <textarea
           rows={2}
+          aria-label="Assumptions and risks"
           value={draft.assumptions_and_risks}
           onChange={(e) => onChange({ ...draft, assumptions_and_risks: e.target.value })}
           className={textareaClass}
@@ -385,6 +435,7 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
         <label className={labelClass}>Alternatives considered</label>
         <textarea
           rows={2}
+          aria-label="Alternatives considered"
           value={draft.alternatives_considered}
           onChange={(e) => onChange({ ...draft, alternatives_considered: e.target.value })}
           className={textareaClass}
@@ -409,6 +460,10 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
 
   return (
     <div
+      data-testid="recommendation-card"
+      data-recommendation-id={recommendation.id}
+      data-insight-id={recommendation.synthesized_insight_id}
+      data-source={recommendation.source}
       className={`card-surface flex flex-col gap-4 rounded-xl border bg-white p-5 ${
         isAccepted ? "border-success" : isRejected ? "border-border opacity-50" : "border-border"
       }`}
@@ -477,6 +532,8 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
           <p className="-mt-2 text-xs text-muted">
             From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
           </p>
+          {recommendation.support && <SupportStatusNotice support={recommendation.support} subject="recommendation" />}
+          <FigureCheckFor kind="recommendations" id={recommendation.id} />
 
           <div className="h-px bg-border" />
 
@@ -643,6 +700,8 @@ export default function SynthesizedRecommendationsReview({
 }) {
   const [isPending, startTransition] = useTransition();
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  // REC-001: a refused add keeps the draft and says why.
+  const [addError, setAddError] = useState<string | null>(null);
   const [rejectedOpen, setRejectedOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [addInsightId, setAddInsightId] = useState(insightOptions[0]?.id ?? "");
@@ -786,18 +845,26 @@ export default function SynthesizedRecommendationsReview({
 
       {insightOptions.length > 0 && (
         <form
+          aria-label="Add your own recommendation"
           onSubmit={(e) => {
             e.preventDefault();
             if (!addInsightId || !draftComplete(addDraft)) return;
+            setAddError(null);
             startTransition(async () => {
-              await addOwnSynthesizedRecommendation(runId, addInsightId, addDraft);
-              setAddDraft(emptyDraft);
+              const result = await addOwnSynthesizedRecommendation(runId, addInsightId, addDraft);
+              if (result.ok) setAddDraft(emptyDraft);
+              else setAddError(result.error);
             });
           }}
           className="rounded-lg border border-dashed border-border p-4"
         >
           <label className={labelClass}>Add your own recommendation</label>
-          <select value={addInsightId} onChange={(e) => setAddInsightId(e.target.value)} className={`${inputClass} mb-2`}>
+          <select
+            aria-label="Insight this recommendation is for"
+            value={addInsightId}
+            onChange={(e) => setAddInsightId(e.target.value)}
+            className={`${inputClass} mb-2`}
+          >
             {insightOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.headline}
@@ -805,6 +872,11 @@ export default function SynthesizedRecommendationsReview({
             ))}
           </select>
           <EditFields draft={addDraft} onChange={setAddDraft} />
+          {addError && (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {addError}
+            </p>
+          )}
           <button
             type="submit"
             disabled={isPending || !addInsightId || !draftComplete(addDraft)}
@@ -828,6 +900,7 @@ export default function SynthesizedRecommendationsReview({
           }
         >
           {tabsBar}
+      <MissingRecommendationsNotice count={missingRecommendationCount(parkedInsights)} onRetry={handleRegenerate} busy={isPending} />
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           <span>Couldn&apos;t generate recommendations right now: {regenerateError}</span>

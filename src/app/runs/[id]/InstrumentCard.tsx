@@ -232,6 +232,12 @@ export default function InstrumentCard({
         </div>
       )}
 
+      {summary.readStatus?.complete === false && (
+        <p role="status" className="text-amber-800">The last read was incomplete: {summary.readStatus.failedChunks} unread parts and {summary.readStatus.incompleteItems} incomplete items. Previously confirmed links were preserved. Read again to retry.</p>
+      )}
+      {read && !summary.readStatus && (
+        <p role="status" className="text-amber-800">Reading coverage is unknown for these saved items. Read again to establish complete coverage; confirmed links are preserved.</p>
+      )}
       {message && <p className="text-foreground">{message}</p>}
       {error && <p className="text-danger">{error}</p>}
 

@@ -9,6 +9,7 @@ import { supabaseAdmin } from "./supabaseAdmin";
 import { withTenant } from "./db";
 import type { PoolClient } from "pg";
 import { findingProvenanceAvailable } from "./findingProvenance";
+import { findingOriginalAvailable } from "./findingWording";
 import mammoth from "mammoth";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -1123,6 +1124,9 @@ export type CurrentFinding = {
   human_edited_fields: string[];
   /** False when this row's researcher actions were never recorded (it predates 0094, or 0094 is not applied). */
   provenance_tracked: boolean;
+  /** FND-001 probe B: the extracted wording when a researcher has since edited it (migration 0100);
+   * null when never edited, or before 0100. Absent in callers that predate it. */
+  original_finding_text?: string | null;
 };
 
 function citedIds(f: CurrentFinding): string[] {
@@ -1262,11 +1266,13 @@ async function publishReplacement(
   // Before migration 0094 no researcher action was recorded, so every finding reads as
   // provenance unknown rather than as untouched.
   const provenance = await findingProvenanceAvailable(client);
+  const originals = await findingOriginalAvailable(client);
   const current = await client.query<CurrentFinding>(
     `select id, status, researcher_note, source_quote, source_page, finding_text, cited_support_finding_ids,
             ${provenance
               ? "human_reviewed_at, human_edited_fields, provenance_tracked"
-              : "null::timestamptz as human_reviewed_at, '{}'::text[] as human_edited_fields, false as provenance_tracked"}
+              : "null::timestamptz as human_reviewed_at, '{}'::text[] as human_edited_fields, false as provenance_tracked"},
+            ${originals ? "original_extraction->>'finding_text'" : "null::text"} as original_finding_text
        from findings where source_document_id = $1 order by created_at, id for update`,
     [documentId],
   );
@@ -1321,10 +1327,16 @@ async function publishReplacement(
 
   // A staged finding that is the same claim as a kept finding (claimIdentityKey) is not inserted;
   // the kept finding keeps its id, and anything that cites the duplicate resolves to that id.
+  // FND-001 probe B: a finding whose wording a researcher edited is also keyed by its EXTRACTED
+  // wording, so a re-read that reads the original claim again resolves to the edited finding
+  // instead of adding the original back as a second, unedited copy.
   const keptByClaim = new Map<string, CurrentFinding>();
   for (const f of plan.keep) {
-    const key = claimIdentityKey(f.finding_text, f.source_quote, f.source_page);
-    if (!keptByClaim.has(key)) keptByClaim.set(key, f);
+    for (const text of [f.finding_text, f.original_finding_text]) {
+      if (!text) continue;
+      const key = claimIdentityKey(text, f.source_quote, f.source_page);
+      if (!keptByClaim.has(key)) keptByClaim.set(key, f);
+    }
   }
 
   const rows: { id: string; finding_text: string }[] = [];

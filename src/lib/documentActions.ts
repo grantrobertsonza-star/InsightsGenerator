@@ -2,10 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
-import { supabaseAdmin } from "./supabaseAdmin";
+import { finishDocumentStorageCleanup, queueDocumentStorageCleanup } from "./documentStorageCleanup";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
-const BUCKET = "documents";
 
 /**
  * Deletes a single uploaded document from a run (e.g. a duplicate re-import,
@@ -15,27 +14,13 @@ const BUCKET = "documents";
  * so they're removed alongside it rather than left dangling.
  */
 export async function deleteDocument(runId: string, documentId: string) {
-  const document = await withTenant(TENANT_ID, async (client) => {
-    const result = await client.query<{ storage_path: string; preview_storage_path: string | null }>(
-      "select storage_path, preview_storage_path from documents where id = $1 and run_id = $2",
-      [documentId, runId]
-    );
-    return result.rows[0];
-  });
-
-  if (!document) return;
-
-  // The database row goes first, storage cleanup second - the reverse of how this used to
-  // run. Removing storage first meant a database failure afterward (a dropped connection, a
-  // constraint this code doesn't know about) left the original evidence already gone from
-  // storage with a document row still sitting there pointing at nothing, no way to tell the
-  // delete "didn't happen" apart from one that silently lost the file. Deleting the database
-  // row first instead means the worst case of a later storage failure is an orphaned object
-  // left in the bucket: wasted space, not lost evidence or a misleading document that looks
-  // alive but isn't. The database delete is also the one a researcher can retry and see
-  // reflected immediately; storage cleanup that fails afterward is recorded instead of thrown,
-  // since the document is, correctly, already gone by then.
-  await withTenant(TENANT_ID, async (client) => {
+  const cleanupId = await withTenant(TENANT_ID, async (client) => {
+    // Lock the owned document before queuing paths or deleting dependent human work.
+    const owned = await client.query<{ storage_path: string; preview_storage_path: string | null }>("select storage_path,preview_storage_path from documents where id=$1 and run_id=$2 and tenant_id=$3 for update", [documentId, runId, TENANT_ID]);
+    if (!owned.rowCount) return null;
+    const document = owned.rows[0];
+    const storagePaths = [document.storage_path, document.preview_storage_path].filter((path): path is string => Boolean(path));
+    const cleanupId = storagePaths.length ? await queueDocumentStorageCleanup(client, TENANT_ID, runId, documentId, storagePaths) : null;
     // source_table_id points at a document_tables row, not this document
     // directly (see 0023_document_tables.sql, which repointed it away from
     // documents.id), so a table-computed finding has to be reached through
@@ -56,37 +41,23 @@ export async function deleteDocument(runId: string, documentId: string) {
     if (result.rowCount === 0) {
       throw new Error("That document was not found in this run.");
     }
+    return cleanupId;
   });
 
-  const storagePaths = [document.storage_path, document.preview_storage_path].filter(
-    (path): path is string => Boolean(path)
-  );
-  if (storagePaths.length > 0) {
-    // IMP-007: `.remove()` can fail two different ways - resolve with an `{ error }` (handled
-    // below), or reject outright (a dropped connection, a network error). Only the first used
-    // to be caught: a rejection escaped this function entirely, after the database row was
-    // already gone, with no trace row recorded at all - the one case this whole block exists to
-    // cover. Both shapes are now funneled into the same recorded-cleanup-failure path.
-    let removeError: { message: string } | null = null;
-    try {
-      const { error } = await supabaseAdmin.storage.from(BUCKET).remove(storagePaths);
-      removeError = error;
-    } catch (thrown) {
-      removeError = { message: thrown instanceof Error ? thrown.message : String(thrown) };
-    }
-    if (removeError) {
-      // The document is already gone from the database, which is the state that matters to
-      // every reader of this run, so this is recorded for cleanup rather than thrown back at
-      // whoever clicked delete - they would have no useful way to "retry" a delete that, from
-      // the app's point of view, already succeeded.
-      await withTenant(TENANT_ID, async (client) => {
-        await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'document_storage_cleanup_failed', $3)`,
-          [TENANT_ID, runId, JSON.stringify({ documentId, storagePaths, message: removeError.message })]
-        );
-      }).catch(() => {});
-    }
+  if (cleanupId) {
+    // The durable pending record stays visible in Import until storage and completion both succeed.
+    await finishDocumentStorageCleanup(TENANT_ID, runId, cleanupId).catch(() => {});
   }
 
   revalidatePath(`/runs/${runId}`);
+}
+
+export async function retryDocumentStorageCleanup(runId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await finishDocumentStorageCleanup(TENANT_ID, runId);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }

@@ -1,5 +1,6 @@
 import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
 import { withTenant, withTenantRead } from "./db";
+import { assertImportCaseCount } from "./importLimits";
 import { loadDataSetup, loadDataSetupWithStatus } from "./dataSetup";
 import type { DataSetup } from "./dataSetupShared";
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
@@ -180,6 +181,20 @@ export async function loadVariableDictionaryWithStatus(
   return { ok: true, dictionary };
 }
 
+/**
+ * The oldest cached dictionary version still valid for a layout. Version 8 (engine
+ * DICTIONARY_VERSION) changed how a columns-as-cases file is typed after its flip: identifiers keep
+ * their literal text, and whole numbers beyond the 64-bit range stay exact instead of wrapping
+ * negative. A version-7 cache of such a file may list an identifier as numeric, so it is rebuilt
+ * from the file on its next read; rows-as-cases typing did not change, so its version-7 caches stay
+ * valid and are not recomputed. Rebuilding only replaces documents.variable_dictionary: the
+ * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
+ * rebuild cannot lose them.
+ */
+export function minimumDictionaryVersion(layout: DataSetup["layout"]): number {
+  return layout === "columns_are_cases" ? 8 : 7;
+}
+
 async function buildVariableDictionaryForSetup(
   tenantId: string,
   runId: string,
@@ -230,12 +245,15 @@ async function buildVariableDictionaryForSetup(
       doc.selected_sheet = authoritative;
     }
     const sheetMatches = !doc.selected_sheet || cachedSheet === doc.selected_sheet;
-    if (cached && cached.sets && (cached.version ?? 0) >= 6 && cachedLayout === setup.layout && sheetMatches) {
+    // IMP-015: version 7 shows conflicting label definitions as conflicts; an older cache may
+    // carry a silently chosen label, so it is recomputed.
+    if (cached && cached.sets && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout) && cachedLayout === setup.layout && sheetMatches) {
       dictionary = cached;
     }
   } catch {
     // column missing until migration 0058 is applied; fall through and compute
   }
+  if (dictionary) assertImportCaseCount(dictionary.nCases);
   if (!dictionary) {
     dictionary = await runStatsTool<VariableDictionary>("dictionary", doc.storage_path, doc.source_filename, {
       layout: setup.layout,
@@ -259,6 +277,7 @@ async function buildVariableDictionaryForSetup(
         dictionary.layout = setup.layout;
       }
     }
+    assertImportCaseCount(dictionary.nCases);
     try {
       await withTenant(tenantId, async (client) => {
         await client.query("update documents set variable_dictionary = $1 where id = $2", [

@@ -389,8 +389,10 @@ export type VariableDictionary = {
    * a different orientation. Absent on dictionaries cached before this was tracked. */
   layout?: string | null;
   /** An Excel workbook whose label sheets (or codebook) declared two different labels for the
-   * same variable or the same value code: which one was kept, which was discarded, and where
-   * each came from. Present only when such a conflict was found; capped at 50 entries. */
+   * same variable or the same value code, and where each came from. Present only when such a
+   * conflict was found; capped at 50 entries. IMP-015 (version 7+): neither label is applied -
+   * the code is shown with every competing label (resolution "shown_as_conflict"); "kept" and
+   * "discarded" only record which source was read later. */
   labelConflicts?: {
     variable: string;
     kind: "variable_label" | "value_label";
@@ -399,7 +401,11 @@ export type VariableDictionary = {
     kept?: unknown;
     discardedSheet?: string | null;
     discarded?: unknown;
+    resolution?: "shown_as_conflict";
   }[];
+  /** IMP-015: variable names in a workbook's label sheets that match no data column, so their
+   * labels never apply (often a renamed or misspelt column). Capped at 50. */
+  unmatchedLabelVariables?: string[];
 };
 
 export type CrosstabNet = { label: string; vars: string[] };
@@ -626,7 +632,10 @@ export type CrosstabResult = {
   /** Free text under the table, set by the researcher. */
   caption?: string;
   blocks: { var: string; label: string }[];
-  columns: { block: number; blockLabel: string; name: string; letter?: string; isGroup?: boolean; n: number; w: number; nEff: number }[];
+  /** var/rawCode: a banner column's identity (its variable and answer code, same text form as
+   * CrosstabRow.rawCode); rawCodes for a grouped column. Absent for the overall column, a set
+   * member column, and tables built by an engine before 2026.10.16-9. */
+  columns: { block: number; blockLabel: string; name: string; letter?: string; isGroup?: boolean; n: number; w: number; nEff: number; var?: string; rawCode?: string; rawCodes?: string[] }[];
   /** Base of the NET column of each banner variable. Absent on tables saved before 9 October 2026. */
   nets?: { block: number; blockLabel: string; n: number; w: number; nEff: number }[];
   total: CellBase;

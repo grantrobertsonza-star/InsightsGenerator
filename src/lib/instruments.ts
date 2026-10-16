@@ -333,6 +333,9 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
     }
 
     const r = await client.query<{ n: string }>("select count(*)::text as n from instrument_items where document_id = $1", [documentId]);
+    // Coverage belongs to the persisted item set: a reload must not turn an incomplete reread
+    // into an apparently complete questionnaire merely because older confirmed items survived.
+    await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_finished',$3)", [tenantId, runId, JSON.stringify({ documentId, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems })]);
     return Number(r.rows[0]?.n ?? rows.length);
   });
   return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems };
@@ -418,6 +421,7 @@ export type InstrumentSummary = {
   fromJumps: number;
   statedRoutingText: number;
   links: { suggested: number; confirmed: number; rejected: number };
+  readStatus?: { complete: boolean; failedChunks: number; incompleteItems: number };
 };
 
 export async function getInstrumentSummaries(tenantId: string, runId: string): Promise<Map<string, InstrumentSummary>> {
@@ -456,6 +460,14 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
       for (const r of links.rows) {
         const s = out.get(r.document_id);
         if (s) s.links[r.status] = Number(r.n);
+      }
+      const coverage = await client.query<{ detail: { documentId?: unknown; complete?: unknown; failedChunks?: unknown; incompleteItems?: unknown } }>(
+        "select distinct on (detail->>'documentId') detail from trace where run_id=$1 and event='instrument_read_finished' order by detail->>'documentId', occurred_at desc, id desc", [runId],
+      );
+      for (const { detail } of coverage.rows) {
+        if (typeof detail.documentId !== "string" || typeof detail.complete !== "boolean" || !Number.isInteger(detail.failedChunks) || !Number.isInteger(detail.incompleteItems)) continue;
+        const summary = out.get(detail.documentId);
+        if (summary) summary.readStatus = { complete: detail.complete, failedChunks: Number(detail.failedChunks), incompleteItems: Number(detail.incompleteItems) };
       }
     });
   } catch {

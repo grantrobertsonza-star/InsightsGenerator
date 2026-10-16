@@ -22,8 +22,10 @@ export default function UploadForm({ runId }: { runId: string }) {
         setError(null);
         start(async () => {
           const result = await uploadDocumentsAction(runId, data);
+          // IMP-008: files already in the project are named, not silently dropped or re-added.
+          const repeats = result.alreadyPresent && result.alreadyPresent.length > 0 ? ` ${result.alreadyPresent.join(" ")}` : "";
           if (result.ok) {
-            setMessage(`Added ${result.added.length} file${result.added.length === 1 ? "" : "s"}: ${result.added.join(", ")}`);
+            setMessage(`Added ${result.added.length} file${result.added.length === 1 ? "" : "s"}${result.added.length ? `: ${result.added.join(", ")}` : ""}.${repeats}`);
           } else {
             // Files named in `added` are already stored, even though the overall result is an
             // error - said so here, and not just in the one case the batch fully succeeded, so
@@ -33,9 +35,9 @@ export default function UploadForm({ runId }: { runId: string }) {
             // either already succeeded, or needs to be deliberately re-chosen, never silently
             // resent as-is.
             setError(
-              result.added.length > 0
+              (result.added.length > 0
                 ? `${result.error} (Already added: ${result.added.join(", ")}.)`
-                : result.error,
+                : result.error) + repeats,
             );
           }
           setRound((n) => n + 1); // remount the pickers so they are empty again, success or not
@@ -47,7 +49,7 @@ export default function UploadForm({ runId }: { runId: string }) {
         <FileInput
           name="tableFiles"
           multiple
-          accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+          accept=".csv,.xlsx,.xls,.sav,.dta"
           icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
           label="Tables"
           caption="Already aggregated"
@@ -55,10 +57,10 @@ export default function UploadForm({ runId }: { runId: string }) {
         <FileInput
           name="rawTableFiles"
           multiple
-          accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
+          accept=".csv,.xlsx,.xls,.sav,.dta"
           icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
           label="Raw data"
-          caption="Row by column data"
+          caption="CSV/Excel, SPSS or Stata. Up to 20 MB and 100,000 cases per file. SAS excluded pending verification."
         />
         <FileInput
           name="outputFiles"

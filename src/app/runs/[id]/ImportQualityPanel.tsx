@@ -60,7 +60,57 @@ export type ImportQualityTable = {
    * value rather than guess at a format neither side can reproduce identically) - this
    * is a block with a recovery instruction, not a warning over a value that still works. */
   unsupportedIdentifierColumns?: string[];
+  /** IMP-015: variables whose label sheets disagree about what a code (or the variable) means.
+   * The engine shows such codes with every competing label instead of choosing one. */
+  labelConflicts?: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[];
+  /** IMP-015: label-sheet variable names that match no data column. */
+  unmatchedLabelVariables?: string[];
 };
+
+/** IMP-015: what the import screen says about a workbook's label sheets. Conflicting definitions are shown,
+ * never silently resolved; label-sheet names matching no data column are listed. Renders nothing when both are empty. */
+export function LabelDiagnosticsNotice({
+  conflicts,
+  unmatched,
+}: {
+  conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[];
+  unmatched: string[];
+}) {
+  if (conflicts.length === 0 && unmatched.length === 0) return null;
+  return (
+    <>
+      {conflicts.length > 0 ? (
+        <p role="alert" data-testid="label-conflicts" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <strong>Conflicting labels.</strong> This workbook&rsquo;s label sheets disagree about what{" "}
+          {(() => {
+            const vars = Array.from(new Set(conflicts.map((c) => c.variable)));
+            return (
+              <>
+                {vars.length === 1 ? "the variable " : "the variables "}
+                <strong>{vars.slice(0, 8).map((v) => `"${v}"`).join(", ")}</strong>
+                {vars.length > 8 ? ` and ${vars.length - 8} more` : ""}
+              </>
+            );
+          })()}{" "}
+          {"mean. No label was chosen: each conflicting code is shown with all of its labels, for example "}
+          <em>1 [conflicting labels: &ldquo;Yes&rdquo; / &ldquo;No&rdquo;]</em>, in every table, chart and export, and the
+          counts are unaffected. <strong>To resolve:</strong> correct the label sheets in the workbook so each code has one
+          meaning, then re-upload the file. Tables or findings calculated before this check may still show one of
+          the labels; recalculate them after re-uploading.
+        </p>
+      ) : null}
+      {unmatched.length > 0 ? (
+        <p data-testid="unmatched-label-variables" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          The label sheets describe {unmatched.length === 1 ? "a variable" : "variables"} that the data does
+          not contain, so {unmatched.length === 1 ? "its labels are" : "their labels are"} not applied:{" "}
+          <strong>{unmatched.slice(0, 8).map((v) => `"${v}"`).join(", ")}</strong>
+          {unmatched.length > 8 ? ` and ${unmatched.length - 8} more` : ""}. Check
+          for a renamed or misspelt column.
+        </p>
+      ) : null}
+    </>
+  );
+}
 
 export function ImportPreviewRecovery({ error }: { error: string }) {
   return <p role="alert" data-testid="import-preview-recovery" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{error}</p>;
@@ -156,6 +206,7 @@ export default function ImportQualityPanel({
         return (
           <div
             key={table.id}
+            data-testid="import-quality-table"
             className="space-y-3 rounded-xl border border-border bg-white p-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -192,6 +243,7 @@ export default function ImportQualityPanel({
                 kept variables, since that check needs the full row-by-row data in memory, not summaries.
               </p>
             ) : null}
+            <LabelDiagnosticsNotice conflicts={table.labelConflicts ?? []} unmatched={table.unmatchedLabelVariables ?? []} />
             {table.unsupportedIdentifierColumns && table.unsupportedIdentifierColumns.length > 0 ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {table.unsupportedIdentifierColumns.length === 1 ? "The identifier column " : "The identifier columns "}

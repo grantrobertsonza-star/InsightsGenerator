@@ -1,7 +1,9 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import type { DeckPillar } from "./storyNarrative";
+import type { DeckNarrative, DeckPillar } from "./storyNarrative";
+import { loadNarrativeEvidence, narrativeFigureCheck } from "./storyNarrative";
+import { figureCheckAvailable } from "./figureChecks";
 
 const MAX_FINDINGS_FOR_CONTEXT = 80;
 const MAX_INSIGHTS_FOR_CONTEXT = 60;
@@ -248,10 +250,14 @@ async function applyNarrativeRevision(
   revision: NarrativeRevision
 ): Promise<string[]> {
   const changed: string[] = [];
+  // Numerical traceability: a revision is model-written too, so it is checked with the same rule
+  // as generation (storyNarrative.narrativeFigureCheck) against the evidence as it stands now.
+  const evidence = await loadNarrativeEvidence(tenantId, runId);
 
   await withTenant(tenantId, async (client) => {
-    const current = await client.query<{ pillars: DeckPillar[] }>(
-      "select pillars from deck_narratives where run_id = $1",
+    const current = await client.query<{ pillars: DeckPillar[] } & Pick<DeckNarrative, "executive_summary" | "situation" | "complication" | "question" | "governing_thought" | "recommendations_intro" | "caveats">>(
+      `select pillars, executive_summary, situation, complication, question, governing_thought, recommendations_intro, caveats
+         from deck_narratives where run_id = $1 for update`,
       [runId]
     );
     if (current.rows.length === 0) {
@@ -305,6 +311,40 @@ async function applyNarrativeRevision(
     }
 
     if (setClauses.length === 0) return;
+
+    // The narrative as it would read after this revision, checked as a whole. An unsupported figure
+    // refuses the revision (nothing is written); figures needing review are stored with it.
+    const row = current.rows[0];
+    const pick = (field: keyof NarrativeRevision & keyof typeof row) => {
+      const value = revision[field];
+      return typeof value === "string" && value.trim().length > 0 ? value.trim() : (row[field] as string);
+    };
+    const check = narrativeFigureCheck(
+      {
+        executive_summary: pick("executive_summary"),
+        situation: pick("situation"),
+        complication: pick("complication"),
+        question: pick("question"),
+        governing_thought: pick("governing_thought"),
+        recommendations_intro: pick("recommendations_intro"),
+        caveats: revision.caveats && revision.caveats.length > 0 ? revision.caveats : (row.caveats ?? []),
+        pillars,
+      },
+      evidence,
+    );
+    const unsupported = check.figures.filter((f) => f.status === "unsupported");
+    if (unsupported.length > 0) {
+      throw new Error(
+        `The revision was not applied: it states figures the evidence does not support (${unsupported
+          .map((f) => `${f.field}: ${f.text}, ${f.reason}`)
+          .join("; ")}). The narrative is unchanged.`,
+      );
+    }
+    if (await figureCheckAvailable(client)) {
+      setClauses.push(`figure_check = $${paramIndex}`);
+      values.push(JSON.stringify(check));
+      paramIndex += 1;
+    }
 
     values.push(runId);
     await client.query(`update deck_narratives set ${setClauses.join(", ")} where run_id = $${paramIndex}`, values);

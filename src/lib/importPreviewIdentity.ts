@@ -1,5 +1,6 @@
 import { withTenantRead } from "./db";
 import { parseTableDocument } from "./parseTable";
+import { loadDataSetupWithStatus, transposeTable } from "./dataSetup";
 
 type StoredPreview = {
   document_id: string;
@@ -27,11 +28,18 @@ export async function loadImportPreviewIdentities(
       "Retry by reloading. If the file or selected sheet changed, re-upload the corrected file; " +
       "the existing evidence is kept until you deliberately replace it.",
   });
-  let documents: { id: string; source_filename: string; storage_path: string; selected_sheet: string | null; kind: string }[];
+  let documents: {
+    id: string;
+    source_filename: string;
+    storage_path: string;
+    selected_sheet: string | null;
+    kind: string;
+    ingestion_type: string | null;
+  }[];
   try {
     documents = await withTenantRead(tenantId, async (client) => (
       await client.query<typeof documents[number]>(
-        "select id, source_filename, storage_path, selected_sheet, kind from documents where run_id = $1 and id = any($2::uuid[])",
+        "select id, source_filename, storage_path, selected_sheet, kind, ingestion_type from documents where run_id = $1 and id = any($2::uuid[])",
         [runId, ids],
       )
     ).rows);
@@ -45,7 +53,25 @@ export async function loadImportPreviewIdentities(
     if (doc.kind !== "table" || !/\.(xlsx|xls)$/i.test(doc.source_filename)) return;
     if (!doc.selected_sheet) { result.set(id, recovery("the workbook has no confirmed data sheet")); return; }
     try {
-      const parsed = await parseTableDocument(doc.storage_path, doc.selected_sheet);
+      let parsed: { headers: string[]; rows: Record<string, string | number | null>[] } = await parseTableDocument(
+        doc.storage_path,
+        doc.selected_sheet,
+      );
+      // IMP-009: a raw file set up as columns-as-cases is stored TRANSPOSED (extractAndStoreDocumentTables
+      // flips it once with transposeTable), so it is compared with the same flip of the selected sheet.
+      // Comparing the untransposed parse withheld every valid columns-as-cases workbook. A layout that
+      // cannot be read fails closed (recovery notice), never a guessed orientation.
+      if (doc.ingestion_type === "raw") {
+        const setup = await loadDataSetupWithStatus(tenantId, doc.id);
+        if (!setup.ok) {
+          result.set(id, recovery(`the file's layout setting could not be read (${setup.error})`));
+          return;
+        }
+        if (setup.setup.layout === "columns_are_cases") {
+          const flipped = transposeTable(parsed.headers, parsed.rows);
+          parsed = { headers: flipped.headers, rows: flipped.rows as Record<string, string | number | null>[] };
+        }
+      }
       const stored = tables.filter((t) => t.document_id === id && t.table_index < 100);
       const matches = stored.every((t) =>
         t.headers.length > 0 && t.headers.every((h) => parsed.headers.includes(h)) &&

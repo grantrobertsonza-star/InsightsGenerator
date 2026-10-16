@@ -21,7 +21,7 @@ export type HumanReviewAction =
   | "tool_add"
   | "tool_remove";
 
-export type HumanEditField = "theme" | "finding_kind" | "researcher_note";
+export type HumanEditField = "theme" | "finding_kind" | "researcher_note" | "finding_text";
 
 const PROVENANCE_COLUMNS = [
   "human_reviewed_at",

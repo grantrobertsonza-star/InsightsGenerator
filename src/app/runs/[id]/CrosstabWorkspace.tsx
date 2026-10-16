@@ -23,6 +23,7 @@ import { QuickChart, Histogram, buildRCode } from "./CrosstabExtras";
 import FilterBuilder from "./CrosstabFilters";
 import CrosstabAsk from "./CrosstabAsk";
 import { planStarterTables } from "@/lib/starterTables";
+import { varTypeOf, type VarType } from "@/lib/crosstabVariableTypes";
 import { listEvidenceTablesAction, promoteEvidenceTableAction, type EvidenceTableListing } from "@/lib/objectiveEvidenceActions";
 import CrosstabOptions, { DEFAULT_CELLS, DEFAULT_STATS, STAT_LABELS, type CellPrefs, type StatPrefs } from "./CrosstabOptions";
 import type { CrosstabListItem } from "@/lib/crosstabs";
@@ -61,7 +62,6 @@ type Entry =
   | { kind: "var"; v: VariableInfo; depth: 0 | 1 }
   | { kind: "set"; s: VariableSet; open: boolean };
 type SortKey = "order" | "name" | "label" | "n" | "asked";
-type VarType = "single" | "multi" | "rating" | "numeric" | "grid" | "text" | "weight";
 const VAR_TYPES: { key: VarType; label: string }[] = [
   { key: "single", label: "Single choice" },
   { key: "multi", label: "Multiple response sets" },
@@ -71,18 +71,6 @@ const VAR_TYPES: { key: VarType; label: string }[] = [
   { key: "text", label: "Text answers" },
   { key: "weight", label: "Weights" },
 ];
-/** Best guess at the kind of a variable, from what the dictionary already holds. */
-function varTypeOf(v: VariableInfo, set?: VariableSet): VarType {
-  if (v.weightLike) return "weight";
-  if (set) return set.kind === "grid" || set.kind === "battery" ? "grid" : "multi";
-  if (v.text) return "text";
-  if (v.numeric && !v.labelled) {
-    return v.nDistinct > 10 ? "numeric" : v.nDistinct >= 3 ? "rating" : "single";
-  }
-  if (v.numeric && v.labelled && v.nDistinct >= 3 && v.nDistinct <= 10 &&
-      /rat(e|ing)|satisf|agree|scale|likel|score|0 to 10|1 to 5/i.test(v.label)) return "rating";
-  return "single";
-}
 type Stat = "col" | "row" | "count" | "stack";
 /** What one answer row can show in each cell. Several at once in the stacked view. */
 type MeasureKey = "col" | "row" | "n" | "count" | "letters" | "base" | "resp" | "residual";
@@ -1031,12 +1019,13 @@ export default function CrosstabWorkspace({
                             setColumnVars((c) => (c.includes(v.name) ? c.filter((x) => x !== v.name) : [...c, v.name]))
                           }
                           className={btn(isCol)}
+                          aria-pressed={isCol}
                         >
                           Column
                         </button>
                       </span>
                       <span className="flex items-center justify-center whitespace-nowrap">
-                        <button type="button" onClick={() => toggleRow(item)} className={btn(isRow)}>
+                        <button type="button" onClick={() => toggleRow(item)} className={btn(isRow)} aria-pressed={isRow}>
                           Row
                         </button>
                       </span>
@@ -1293,7 +1282,7 @@ export default function CrosstabWorkspace({
                 <div className="flex h-44 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-white p-2 text-sm shadow-inner">
                   {rowItems.length === 0 && nets.length === 0 && <span className="text-muted">One or more variables or whole sets.</span>}
                   {rowItems.map((r) => (
-                    <span key={r.key} className="flex w-full shrink-0 items-center rounded bg-slate-100">
+                    <span key={r.key} data-row-key={r.key} className="flex w-full shrink-0 items-center rounded bg-slate-100">
                       <button type="button" onClick={() => toggleRow(r)} className="min-w-0 flex-1 px-2 py-1 text-left">
                         {r.label}
                         {r.vars.length > 1 ? ` (${r.vars.length} options)` : ""}
@@ -1635,6 +1624,9 @@ function TableCard({
 
   useEffect(() => {
     if (scrollTo) {
+      // Pre-existing pattern, kept as is: scrollTo is a one-off signal from the parent (the table
+      // just added), so this runs once per signal rather than cascading.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpen(true); // a table you have just added opens; the rest stay rolled up
       ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -2077,7 +2069,13 @@ function CrosstabView({
         </details>
       )}
       <div className="overflow-auto rounded-lg border border-border">
-        <table className="w-full border-collapse text-left text-xs">
+        {/* data-*: stable identity for reading a table (tests, the browser adapter): this is the
+            result table, for these row questions; the nested descriptive-statistics table is not. */}
+        <table
+          className="w-full border-collapse text-left text-xs"
+          data-testid="crosstab-result-table"
+          data-question-keys={JSON.stringify(result.questions.map((q) => q.key))}
+        >
           <thead className="sticky top-0 z-10 bg-slate-50">
             <tr className="border-b border-border">
               <th className="px-3 py-1.5" />
@@ -2104,7 +2102,13 @@ function CrosstabView({
                 }
                 const { c, j } = e;
                 return (
-                  <th key={j} className="px-3 py-2 align-bottom font-semibold text-foreground">
+                  <th
+                    key={j}
+                    className="px-3 py-2 align-bottom font-semibold text-foreground"
+                    data-col-var={c.var}
+                    data-raw-code={c.rawCode}
+                    data-raw-codes={c.rawCodes ? JSON.stringify(c.rawCodes) : undefined}
+                  >
                     <div className="flex items-start gap-1">
                       <span>
                         {c.letter && <span className="mr-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-muted">{c.letter}</span>}
@@ -2173,7 +2177,12 @@ function CrosstabView({
                       return (
                         <tr key={`${key}:${mk}`} className={`${last ? "border-b border-border" : "border-b border-slate-100"} last:border-b-0 ${rowCls}`}>
                           {mi === 0 && (
-                            <td rowSpan={keys.length} className="px-3 py-1.5 align-top text-foreground">
+                            <td
+                              rowSpan={keys.length}
+                              // Identity for browser checks: the answer's code, not its wording.
+                              data-raw-code={r.rawCode ?? undefined}
+                              className="px-3 py-1.5 align-top text-foreground"
+                            >
                               <span className="flex items-start gap-1">
                                 <button
                                   type="button"
@@ -2366,7 +2375,7 @@ function DescTable({ items, weighted }: { items: { label: string; d: CrosstabDes
       <p className="mb-1 text-[11px] font-semibold text-foreground">
         Descriptive statistics{weighted ? " (weighted; n is the number of cases)" : ""}
       </p>
-      <table className="w-full border-collapse text-[11px]">
+      <table className="w-full border-collapse text-[11px]" data-testid="crosstab-descriptives">
         <thead>
           <tr className="border-b border-border text-muted">
             <th className="py-1 pr-3 text-left font-semibold">Variable</th>
@@ -2612,7 +2621,7 @@ function GroupDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl">
+      <div role="dialog" aria-label="Group categories" className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl">
         <div className="border-b border-border p-3">
           <p className="text-sm font-semibold text-foreground">Group categories: {list?.label ?? variable}</p>
           <p className="text-[11px] text-muted">

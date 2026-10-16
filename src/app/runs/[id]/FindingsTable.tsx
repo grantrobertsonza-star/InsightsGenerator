@@ -15,8 +15,12 @@ import {
   setFindingKind,
   setFindingTheme,
   setFindingNote,
+  editFindingWording,
+  revertFindingWording,
+  recheckFindingWording,
   type FindingKind,
 } from "@/lib/findingActions";
+import type { WordingEditState } from "@/lib/findingWording";
 import { getDocumentPreviewUrl } from "@/lib/previewActions";
 import type { ParsedTable } from "@/lib/parseTable";
 import {
@@ -37,6 +41,11 @@ const SelectionContext = createContext<{ selectedId: string | null; select: (id:
   selectedId: null,
   select: () => {},
 });
+
+// FND-001 probe B: which findings have researcher-edited wording, and whether editing is
+// available at all (migration 0100). Provided once by FindingsTable, read by each card.
+export type WordingEdits = { available: boolean; edits: Record<string, WordingEditState>; error?: string };
+const WordingEditsContext = createContext<WordingEdits>({ available: false, edits: {} });
 
 type Finding = {
   id: string;
@@ -715,6 +724,130 @@ function AssuranceNotes({ finding }: { finding: Finding }) {
   );
 }
 
+/**
+ * FND-001 probe B: the finding's wording, editable for a claim read from a report. Saving only
+ * closes the editor once the server confirms the write; a conflict (the wording changed since
+ * editing began) or any refusal keeps the draft open with the reason, so nothing typed is lost.
+ * An edited finding shows its extracted wording and whether it still waits for a re-check
+ * against the data (it has no verdict until then, never the old one).
+ */
+function WordingField({ runId, finding }: { runId: string; finding: Finding }) {
+  const wording = useContext(WordingEditsContext);
+  const edit = wording.edits[finding.id];
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedFrom, setEditedFrom] = useState(finding.finding_text);
+  const [draft, setDraft] = useState(finding.finding_text);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, startSaving] = useTransition();
+  const editable = wording.available && finding.origin === "stated";
+
+  function begin() {
+    setEditedFrom(finding.finding_text);
+    setDraft(finding.finding_text);
+    setError(null);
+    setIsEditing(true);
+  }
+
+  function save() {
+    startSaving(async () => {
+      const result = await editFindingWording(runId, finding.id, editedFrom, draft);
+      if (result.ok) {
+        setIsEditing(false);
+        setError(null);
+      } else {
+        setError(result.currentText ? `${result.error} Current wording: "${result.currentText}"` : result.error);
+        if (result.currentText) setEditedFrom(result.currentText);
+      }
+    });
+  }
+
+  function revert() {
+    startSaving(async () => {
+      const result = await revertFindingWording(runId, finding.id, finding.finding_text);
+      setError(result.ok ? null : result.error);
+    });
+  }
+
+  function recheck() {
+    startSaving(async () => {
+      const result = await recheckFindingWording(runId, finding.id);
+      setError(result.ok ? null : (result.error ?? "The re-check failed."));
+    });
+  }
+
+  if (isEditing) {
+    return (
+      <div className="flex flex-col gap-1.5" data-testid="finding-wording-editor">
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          disabled={isSaving}
+          className="w-full rounded-md border border-border px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+        />
+        {error && <p className="text-xs text-rose-700">{error}</p>}
+        <p className="text-xs text-muted">The extracted wording is kept. The edited claim is re-checked against the data.</p>
+        <div className="flex gap-1.5">
+          <button
+            onClick={save}
+            disabled={isSaving || draft.trim() === ""}
+            className="rounded-md border border-primary/30 bg-primary-light px-2 py-0.5 text-xs font-medium text-primary transition hover:border-primary/60"
+          >
+            {isSaving ? "Saving..." : "Save wording"}
+          </button>
+          <button
+            onClick={() => {
+              setIsEditing(false);
+              setError(null);
+            }}
+            disabled={isSaving}
+            className="rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted transition hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="max-w-prose text-sm text-foreground">{finding.finding_text}</div>
+      {edit && (
+        <div className="flex flex-col gap-1 text-xs" data-testid="finding-wording-edited">
+          <span className="font-medium text-amber-800">Edited by researcher</span>
+          <details>
+            <summary className="cursor-pointer text-muted">Extracted wording</summary>
+            <p className="mt-1 text-muted">{edit.originalText}</p>
+          </details>
+          {edit.recheckPending && (
+            <span className="text-amber-800">
+              Wording edited: not yet re-checked against the data.{" "}
+              <button onClick={recheck} disabled={isSaving} className="font-medium underline">
+                {isSaving ? "Checking..." : "Re-check now"}
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+      {error && <p className="text-xs text-rose-700">{error}</p>}
+      {editable && (
+        <div className="flex gap-3">
+          <button onClick={begin} disabled={isSaving} className="self-start text-xs font-medium text-muted transition hover:text-primary">
+            Edit wording
+          </button>
+          {edit && (
+            <button onClick={revert} disabled={isSaving} className="self-start text-xs font-medium text-muted transition hover:text-primary">
+              Revert to extracted wording
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(finding.researcher_note ?? "");
@@ -808,6 +941,7 @@ function ReviewButtons({
       <button
         disabled={isPending}
         onClick={() => setStatus("accepted")}
+        aria-pressed={finding.status === "accepted"}
         className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
           finding.status === "accepted"
             ? "border-success bg-success-light text-success"
@@ -820,6 +954,7 @@ function ReviewButtons({
       <button
         disabled={isPending}
         onClick={() => setStatus("rejected")}
+        aria-pressed={finding.status === "rejected"}
         className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
           finding.status === "rejected"
             ? "border-danger bg-danger-light text-danger"
@@ -1064,6 +1199,9 @@ function FindingCard({
   const { selectedId, select } = useContext(SelectionContext);
   return (
     <div
+      data-testid="finding-card"
+      data-finding-id={finding.id}
+      data-review-status={finding.status}
       onClick={() => select(finding.id)}
       className={`card-surface flex cursor-pointer flex-col gap-2.5 rounded-xl border border-l-4 bg-white p-4 ${cardBorderClass} ${borderLeftClass} ${
         finding.status === "rejected" ? "opacity-50" : ""
@@ -1104,9 +1242,7 @@ function FindingCard({
             Sub-theme: {finding.coding_counts.codeName}
           </div>
         )}
-      <div className="max-w-prose text-sm text-foreground">
-        {finding.finding_text}
-      </div>
+      <WordingField runId={runId} finding={finding} />
       {hasReachSummary && <CodedReachSummary finding={finding} />}
       <AssuranceNotes finding={finding} />
       <NoteField runId={runId} finding={finding} />
@@ -1288,9 +1424,12 @@ function ThemeRollupLine({
 export default function FindingsTable({
   runId,
   findings: findingsProp,
+  wordingEdits,
 }: {
   runId: string;
   findings: Finding[];
+  /** FND-001 probe B. Absent: editing unavailable, nothing shown as edited. */
+  wordingEdits?: WordingEdits;
 }) {
   const [isPending, startTransition] = useTransition();
   const [extraThemes, setExtraThemes] = useState<string[]>([]);
@@ -1775,6 +1914,13 @@ export default function FindingsTable({
 
   return (
     <SelectionContext.Provider value={{ selectedId, select: setSelectedId }}>
+    <WordingEditsContext.Provider value={wordingEdits ?? { available: false, edits: {} }}>
+    {wordingEdits?.error && (
+      <p className="mb-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="wording-edits-error">
+        Which findings a researcher re-worded could not be loaded ({wordingEdits.error}), so edited wording is not marked
+        below and editing is off until the page reloads successfully.
+      </p>
+    )}
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_24rem]">
       <aside className="flex flex-col gap-4 rounded-xl border-2 border-sky-200 bg-sky-50 p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
         <div className="text-sm font-semibold text-foreground">Filters</div>
@@ -2269,6 +2415,9 @@ export default function FindingsTable({
                   {filteredFindings.map((finding) => (
                     <tr
                       key={finding.id}
+                      data-testid="finding-row"
+                      data-finding-id={finding.id}
+                      data-review-status={finding.status}
                       className={`border-t border-border transition hover:bg-slate-50 ${
                         finding.status === "rejected" ? "opacity-50" : ""
                       }`}
@@ -2285,6 +2434,9 @@ export default function FindingsTable({
                         <div className="text-foreground">
                           {finding.finding_text}
                         </div>
+                        {wordingEdits?.edits[finding.id] && (
+                          <div className="mt-1 text-xs font-medium text-amber-800">Edited by researcher</div>
+                        )}
                       </td>
                       <td className="px-3 py-3 align-top">
                         <KindControl
@@ -2429,6 +2581,7 @@ export default function FindingsTable({
         )}
       </div>
     </div>
+    </WordingEditsContext.Provider>
     </SelectionContext.Provider>
   );
 }

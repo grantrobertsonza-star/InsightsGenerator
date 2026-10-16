@@ -22,11 +22,18 @@ import {
   addArgumentMapSlide,
   addDeckRoadmapSlide,
   addVisualSCQASlide,
+  addQualificationBand,
 } from "@/lib/deckSlides";
 import { exportCaveatLabels } from "@/lib/caveatLabels";
+import { loadInsightSupportOrUnchecked } from "@/lib/supportStatus";
+import { loadSynthesizedInsightSources, sourceLine } from "@/lib/sourceAttribution";
+import { summariseSupport, type InsightSupport, type SupportStatus } from "@/lib/supportStatusShared";
+import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
+import { figureCheckNote } from "@/lib/numberTrace";
 import type { DeckPillar } from "@/lib/storyNarrative";
 import { addDiscoverySlides } from "@/lib/discoverySlides";
-import { loadDiscoveryReportData } from "@/lib/discoveryReport";
+import { applySupportToDiscovery, discoveryInsightIds, loadDiscoveryReportData } from "@/lib/discoveryReport";
+import { narrativeFramingQualification } from "@/lib/narrativeSupportSummary";
 import { buildChartImagesByTheme } from "@/lib/exportChartImages";
 import type { ChartableFinding } from "@/lib/findingsChartData";
 
@@ -61,7 +68,25 @@ type ExportRecommendation = {
   /** Same meaning as PillarInsight['caveat_tags'] above, aggregated via the insight this
    * recommendation is anchored to (recommendations.synthesized_insight_id). */
   caveat_tags: string[] | null;
+  /** FND-001: the anchor insight, whose support status the recommendation inherits. */
+  synthesized_insight_id: string;
+  synthesized_insight_headline: string;
+  id: string;
 };
+
+/** FND-001: the support status shown, in words, on an evidence card's badge strip (never colour
+ * alone). A current insight's badge is unchanged. Invalid support never reaches a card - it is
+ * excluded and listed on the "Evidence status" slide. */
+const SUPPORT_BADGE_SUFFIX: Record<SupportStatus, string> = {
+  current: "",
+  stale: "SUPPORT CHANGED",
+  unknown: "SUPPORT NOT CHECKED",
+  invalid: "SUPPORT NO LONGER VALID",
+};
+function withSupportBadge<B extends { glyph: string; label: string; color: string }>(badge: B, status: SupportStatus): B {
+  const suffix = SUPPORT_BADGE_SUFFIX[status];
+  return suffix ? { ...badge, label: `${badge.label} · ${suffix}` } : badge;
+}
 
 type ExportObjectiveValidation = {
   item_kind: "objective" | "decision";
@@ -174,10 +199,9 @@ export async function GET(
     // `deck_narratives.pillars[].insight_ids` is a point-in-time snapshot of ids, not a live
     // reference. Without `si.review_status = 'accepted'` and `si.run_id = $2` here, a now-
     // rejected insight (or one belonging to a different run entirely) still rendered in every
-    // export of a narrative that referenced it before the rejection. The `not exists` clause
-    // closes the same gap one layer further down: an insight that is itself still "accepted"
-    // but was built from a pre-insight whose underlying finding has SINCE been rejected is
-    // excluded too, rather than only checking the insight's own status. Kept identical to, but
+    // export of a narrative that referenced it before the rejection. One layer further down (a
+    // source finding rejected, deleted, edited in place or recalculated since the insight was
+    // drafted) is decided by the shared support check applied after this transaction. Kept identical to, but
     // not imported from, export-docx/route.ts's own copy - same reasoning as this file's own
     // doc comment on why the two routes share a query by copy, not by import.
     const insightsResult =
@@ -195,26 +219,11 @@ export async function GET(
              from synthesized_insights si
              where si.id = any($1::uuid[])
                and si.run_id = $2
-               and si.review_status = 'accepted'
-               -- FND-001/REP-OUT-001 (second counter-review): replaces the old 'not exists
-               -- (... f.status = rejected)' check. That check could only ever see a source row
-               -- that STILL EXISTS - but synthesized_insight_sources.pre_insight_id and
-               -- insights.claim_id (the finding link) both cascade on delete (0027/0005), so a hard
-               -- deletion (deleteDocument removing a document's findings outright, or a
-               -- regenerate/reprocess pass that deletes and re-creates findings with new ids -
-               -- 0021_finding_history.sql) makes the join row vanish with no status to find at all,
-               -- not rejected. triangulation_count (insightSynthesizer.ts) is the exact number of
-               -- sources this insight was built from, persisted once and never updated - comparing
-               -- the LIVE count of still-linked, non-rejected sources against it catches a rejected
-               -- source (excluded by status, same as before) AND a deleted/regenerated one (simply
-               -- missing from the join, so the count itself comes up short) in one measure, with no
-               -- new column or migration needed.
-               and (
-                 select count(*) from synthesized_insight_sources s
-                 join insights i on i.id = s.pre_insight_id
-                 join findings f on f.id = i.finding_id
-                 where s.synthesized_insight_id = si.id and f.status <> 'rejected'
-               ) >= si.triangulation_count`,
+               and si.review_status = 'accepted'`,
+            // FND-001 (this repair): the Brief 35 live-count comparison that sat here is replaced by
+            // the shared support check (supportStatus.ts) applied after this transaction - same
+            // rejection/deletion coverage, plus in-place edits, recalculation and uncheckable support,
+            // with a visible reason instead of a silent drop.
             [insightIds, runId],
           )
         : null;
@@ -224,7 +233,8 @@ export async function GET(
     // since been rejected (or had a dependent finding rejected) - neither was checked before,
     // only the recommendation's own status.
     const recommendationsResult = await client.query<ExportRecommendation>(
-      `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority,
+      `select r.id, r.action_text, r.owner_role, r.timeline, r.metric, r.priority,
+              r.synthesized_insight_id, si.headline as synthesized_insight_headline,
               (
                 select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
                 from synthesized_insight_sources s2
@@ -237,16 +247,7 @@ export async function GET(
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
          and si.review_status = 'accepted'
-         -- FND-001/REP-OUT-001 (second counter-review): same live-count-vs-triangulation_count
-         -- comparison as insightsResult above - see its comment for why a bare 'not exists
-         -- (... rejected)' check cannot see a source whose link row was removed by cascading
-         -- deletion rather than marked rejected.
-         and (
-           select count(*) from synthesized_insight_sources s
-           join insights i on i.id = s.pre_insight_id
-           join findings f on f.id = i.finding_id
-           where s.synthesized_insight_id = si.id and f.status <> 'rejected'
-         ) >= si.triangulation_count
+         -- FND-001: support status is applied after this transaction (see insightsResult).
        order by case r.priority when 'high' then 0 when 'medium' then 1 else 2 end, r.created_at`,
       [runId],
     );
@@ -293,8 +294,8 @@ export async function GET(
     // nothing it originally asked about was pointing toward. Worth naming
     // on the deck rather than letting it disappear into a pillar as though
     // it always belonged there (see objectiveValidator.ts's doc comment).
-    const unmappedInsightsResult = await client.query<{ headline: string }>(
-      `select si.headline
+    const unmappedInsightsResult = await client.query<{ id: string; headline: string }>(
+      `select si.id, si.headline
        from synthesized_insights si
        where si.run_id = $1 and si.review_status = 'accepted'
          and not exists (
@@ -326,14 +327,12 @@ export async function GET(
     return {
       run: runResult.rows[0],
       narrative,
-      insightsById: new Map(
+      acceptedInsightsById: new Map(
         (insightsResult?.rows ?? []).map((row) => [row.id, row]),
       ),
-      recommendations: recommendationsResult.rows,
+      acceptedRecommendations: recommendationsResult.rows,
       objectiveValidations: objectiveValidationsResult.rows,
-      unmappedInsightHeadlines: unmappedInsightsResult.rows.map(
-        (row) => row.headline,
-      ),
+      unmappedInsights: unmappedInsightsResult.rows,
       findings: findingsResult.rows,
       discovery,
     };
@@ -342,10 +341,10 @@ export async function GET(
   const {
     run,
     narrative,
-    insightsById,
-    recommendations,
+    acceptedInsightsById,
+    acceptedRecommendations,
     objectiveValidations,
-    unmappedInsightHeadlines,
+    unmappedInsights,
     findings,
     discovery,
   } = result;
@@ -362,6 +361,88 @@ export async function GET(
       { status: 404 },
     );
   }
+
+  // FND-001 / REP-OUT-001: one support check for every insight this deck can show. Invalid support
+  // (a source rejected or deleted) is left out and listed on the "Evidence status" slide; changed
+  // or uncheckable support stays, with the status in words on the card's badge and its reason on
+  // that slide. A failed check marks everything "not checked" (qualified), never current. Read-only:
+  // wording and review decisions are untouched.
+  const support = await loadInsightSupportOrUnchecked(
+    TENANT_ID,
+    runId,
+    Array.from(
+      new Set([
+        ...acceptedInsightsById.keys(),
+        ...acceptedRecommendations.map((r) => r.synthesized_insight_id),
+        ...unmappedInsights.map((u) => u.id),
+        ...discoveryInsightIds(discovery),
+      ]),
+    ),
+  );
+  const supportOf = (id: string): InsightSupport => support.statusOf(id);
+  // Golden-thread repair: each insight card names the sources its evidence came from.
+  const sourcesByInsight = await withTenant(TENANT_ID, (client) =>
+    loadSynthesizedInsightSources(client, Array.from(acceptedInsightsById.keys())),
+  );
+  const insightsById = new Map(
+    Array.from(acceptedInsightsById).filter(([id]) => supportOf(id).status !== "invalid"),
+  );
+  const excludedLines: string[] = [];
+  const qualifiedLines = new Map<string, string[]>();
+  const noteQualified = (headline: string, s: InsightSupport) => {
+    if (s.status !== "stale" && s.status !== "unknown") return;
+    const summary = summariseSupport(s);
+    const list = qualifiedLines.get(summary) ?? [];
+    list.push(headline);
+    qualifiedLines.set(summary, list);
+  };
+  const excludedInsightIds = new Set<string>();
+  for (const [id, insight] of acceptedInsightsById) {
+    const s = supportOf(id);
+    if (s.status === "invalid") {
+      excludedInsightIds.add(id);
+      excludedLines.push(`Insight left out: ${insight.headline}. ${summariseSupport(s)}`);
+    } else noteQualified(insight.headline, s);
+  }
+  // The "new beyond the report" slides follow the same rule: an insight left out above cannot come
+  // back there as an ordinary new insight. One the narrative does not cite is listed here too.
+  const discoveryApplied = applySupportToDiscovery(discovery, supportOf);
+  for (const e of discoveryApplied.excluded) {
+    if (e.kind === "contradiction") {
+      excludedLines.push(`Contradiction left out: ${e.headline}; ${e.reason}.`);
+      continue;
+    }
+    if (!e.insightId || excludedInsightIds.has(e.insightId)) continue;
+    excludedInsightIds.add(e.insightId);
+    excludedLines.push(`Insight left out: ${e.headline}. ${e.reason}`);
+  }
+  // Saved framing (executive summary, governing thought, SCQA answer, argument map) is shown as it
+  // was generated, with this qualification on each of those slides whenever any insight it was
+  // written from no longer has current support. Same counting rule as the app's support line.
+  const citedInsightIds = narrative.pillars.flatMap((pillar) => pillar.insight_ids);
+  const framingNote = narrativeFramingQualification(
+    citedInsightIds,
+    Object.fromEntries(citedInsightIds.filter((id) => acceptedInsightsById.has(id)).map((id) => [id, supportOf(id)])),
+  );
+  const recommendations = acceptedRecommendations.filter((rec) => {
+    const s = supportOf(rec.synthesized_insight_id);
+    if (s.status === "invalid") {
+      excludedLines.push(
+        `Recommendation left out: ${rec.action_text}. Its insight "${rec.synthesized_insight_headline}" is no longer supported.`,
+      );
+      return false;
+    }
+    noteQualified(rec.action_text, s);
+    return true;
+  });
+  const unmappedInsightHeadlines = unmappedInsights
+    .filter((u) => supportOf(u.id).status !== "invalid")
+    .map((u) => u.headline);
+  // An id the narrative referenced that is no longer accepted (or no longer exists) has no
+  // headline left to report; it is still counted per pillar below.
+  const unresolvedReferenceCount = narrative.pillars
+    .flatMap((pillar) => pillar.insight_ids)
+    .filter((id) => !acceptedInsightsById.has(id)).length;
 
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
@@ -400,6 +481,7 @@ export async function GET(
       label: "Executive summary",
       body: narrative.executive_summary,
     });
+    if (framingNote) addQualificationBand(summarySlide, framingNote);
     addFooter(summarySlide, deckTitle, "Executive summary");
   }
 
@@ -414,6 +496,7 @@ export async function GET(
     question: narrative.question,
     answer: narrative.governing_thought,
   });
+  if (framingNote) addQualificationBand(scqaSlide, framingNote);
   addFooter(scqaSlide, deckTitle, "SCQA");
 
   const situationSlide = addLabeledTextSlide(pptx, {
@@ -434,6 +517,7 @@ export async function GET(
     statement: narrative.governing_thought,
     subtext: narrative.question,
   });
+  if (framingNote) addQualificationBand(apexSlide, framingNote, "top");
   addFooter(apexSlide, deckTitle, "Governing thought");
 
   // Standard market-research reporting practice: every research objective
@@ -556,7 +640,7 @@ export async function GET(
   // New beyond the report: the net-new half of the validated / net-new
   // split, on its own pages so a reader can tell what the original report
   // said from what this analysis added (and where it corrects the report).
-  addDiscoverySlides(pptx, discovery, deckTitle);
+  addDiscoverySlides(pptx, discoveryApplied.discovery, deckTitle);
 
   // The last thing the reader sees before the pillars themselves: a map of
   // how many there are and how each relates to the governing thought just
@@ -568,6 +652,7 @@ export async function GET(
         headline: pillar.headline,
       })),
     });
+    if (framingNote) addQualificationBand(mapSlide, framingNote);
     addFooter(mapSlide, deckTitle, "The shape of this argument");
   }
 
@@ -575,10 +660,9 @@ export async function GET(
     const insights = pillar.insight_ids
       .map((id) => insightsById.get(id))
       .filter((insight): insight is PillarInsight => Boolean(insight));
-    // REP-OUT-001: same eligibility contract as insightsResult's own query above - an id that
-    // didn't resolve was rejected (directly or through a since-rejected dependent finding), not
-    // merely absent. Tracked here, not silently dropped, so page 0 of this pillar can say so -
-    // see the note rendered just after pillar.so_what below.
+    // REP-OUT-001 / FND-001: an id that didn't resolve is no longer accepted, or its support is no
+    // longer valid (see the support check above). Tracked here, not silently dropped, so page 0
+    // of this pillar can say so, and the "Evidence status" slide says which and why.
     const omittedInsightCount = pillar.insight_ids.length - insights.length;
     const pageCount = Math.max(
       1,
@@ -667,7 +751,7 @@ export async function GET(
       pageInsights.forEach((insight, rowIndex) => {
         const y =
           INSIGHT_ROW.GRID_Y + rowIndex * (INSIGHT_ROW.H + INSIGHT_ROW.GAP);
-        const badge = confidenceBadgeFor(insight.confidence_tier);
+        const badge = withSupportBadge(confidenceBadgeFor(insight.confidence_tier), supportOf(insight.id).status);
 
         addEvidenceCard(slide, {
           x: INSIGHT_ROW.GRID_X,
@@ -684,6 +768,7 @@ export async function GET(
               italic: true,
               color: COLORS.muted,
             },
+            { text: sourceLine(sourcesByInsight.get(insight.id) ?? []), fontSize: 8, color: COLORS.muted },
           ],
         });
       });
@@ -759,7 +844,7 @@ export async function GET(
       const row = Math.floor(index / CARDS_PER_ROW);
       const x = GRID_X + col * (CARD_W + CARD_GAP_X);
       const y = GRID_Y + row * (CARD_H + CARD_GAP_Y);
-      const badge = PRIORITY_BADGES[rec.priority];
+      const badge = withSupportBadge(PRIORITY_BADGES[rec.priority], supportOf(rec.synthesized_insight_id).status);
 
       addEvidenceCard(slide, {
         x,
@@ -929,6 +1014,76 @@ export async function GET(
       },
     );
     addFooter(slide, deckTitle, "Evidence qualifications");
+  }
+
+  // FND-001 / REP-OUT-001: what was left out, and what is shown with changed or uncheckable
+  // support, with the reason - separate from the caveats slide, because a caveat qualifies current
+  // evidence while this says the evidence itself moved. Identical reasons are said once with the
+  // items they apply to, so a legacy project ("drafted before support tracking") gets one line,
+  // not one per insight.
+  // Numerical traceability (0101): AI-written text whose figures need review is listed here too,
+  // with the figures and why; a failed read of the checks is said, never read as "all traced".
+  const figures = await loadRunFigureChecksForExport((fn) => withTenant(TENANT_ID, fn), runId);
+  const figureLines = [
+    figureCheckLoadErrorNote(figures),
+    figureCheckNote(figures.narrative) ? `Report narrative. ${figureCheckNote(figures.narrative)}` : null,
+    ...Array.from(insightsById).map(([id, insight]) => {
+      const note = figureCheckNote(figures.synthesizedInsights[id]);
+      return note ? `${insight.headline}. ${note}` : null;
+    }),
+    ...recommendations.map((rec) => {
+      const note = figureCheckNote(figures.recommendations[rec.id]);
+      return note ? `${rec.action_text}. ${note}` : null;
+    }),
+  ].filter((line): line is string => line !== null);
+  const statusLines = [
+    ...excludedLines,
+    ...figureLines,
+    ...(unresolvedReferenceCount > 0
+      ? [
+          `${unresolvedReferenceCount} insight reference${unresolvedReferenceCount === 1 ? "" : "s"} in this narrative ${unresolvedReferenceCount === 1 ? "is" : "are"} no longer accepted or no longer exist${unresolvedReferenceCount === 1 ? "s" : ""}, and ${unresolvedReferenceCount === 1 ? "was" : "were"} left out.`,
+        ]
+      : []),
+    ...Array.from(qualifiedLines).map(([summary, headlines]) =>
+      headlines.length === 1 ? `${headlines[0]}. ${summary}` : `${headlines.length} items (${headlines.join("; ")}). ${summary}`,
+    ),
+  ];
+  if (statusLines.length > 0) {
+    const slide = pptx.addSlide();
+    slide.background = { color: COLORS.ink };
+    slide.addText("EVIDENCE STATUS: NEEDS REVIEW", {
+      x: 0.6,
+      y: 0.55,
+      w: 8.6,
+      h: 0.4,
+      fontSize: 13,
+      bold: true,
+      fontFace: FONT.body,
+      color: COLORS.accentOnDark,
+      charSpacing: 2,
+    });
+    const fittedStatus = fitBulletList(statusLines, {
+      fontSize: 13,
+      widthIn: 8.4,
+      heightIn: 3.6,
+      minFontScale: 0.6,
+    });
+    slide.addText(
+      fittedStatus.items.map((line) => ({
+        text: line,
+        options: { bullet: { code: "25AA" }, breakLine: true, color: "FFFFFF" },
+      })),
+      {
+        x: 0.7,
+        y: 1.15,
+        w: 8.4,
+        h: 3.6,
+        fontSize: fittedStatus.fontSize,
+        fontFace: FONT.body,
+        valign: "top",
+      },
+    );
+    addFooter(slide, deckTitle, "Evidence status");
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;

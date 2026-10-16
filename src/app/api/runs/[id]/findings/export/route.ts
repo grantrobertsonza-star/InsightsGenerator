@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
+import { findingSourceSql, SOURCE_NOT_RECORDED } from "@/lib/sourceAttribution";
+import { findingOriginalAvailable } from "@/lib/findingWording";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -17,6 +19,8 @@ type ExportRow = {
   quote_verified: boolean | null;
   duplicate_group_id: string | null;
   researcher_note: string | null;
+  /** FND-001 probe B: the extracted wording when a researcher edited it; null otherwise (or before 0100). */
+  original_finding_text: string | null;
 };
 
 const kindLabel: Record<string, string> = {
@@ -55,13 +59,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       "select project_name, decision_statement from runs where id = $1",
       [runId]
     );
+    const originals = await findingOriginalAvailable(client);
     const findingsResult = await client.query<ExportRow>(
+      // Golden-thread repair: source_table_id points at document_tables, not documents, so the
+      // old documents-on-source_table_id join never matched and every computed finding exported a
+      // blank Source. Resolved through the shared definition (sourceAttribution.ts).
       `select c.origin, c.finding_text, c.finding_kind, c.pattern_type, c.theme, c.status,
-              coalesce(d1.source_filename, d2.source_filename) as source_filename,
-              c.source_page, c.quote_verified, c.duplicate_group_id, c.researcher_note, c.data_type
+              ${findingSourceSql("c").columns},
+              c.quote_verified, c.duplicate_group_id, c.researcher_note, c.data_type,
+              ${originals ? "c.original_extraction->>'finding_text'" : "null::text"} as original_finding_text
        from findings c
-       left join documents d1 on d1.id = c.source_document_id
-       left join documents d2 on d2.id = c.source_table_id
+       ${findingSourceSql("c").join}
        where c.run_id = $1${onlyAccepted ? " and c.status = 'accepted'" : ""}
        order by c.theme nulls last, c.created_at`,
       [runId]
@@ -88,8 +96,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         ? (patternLabel[row.pattern_type] ?? row.pattern_type)
         : "",
     Finding: row.finding_text,
+    // FND-001 probe B: an edited report finding shows the researcher's wording above and the
+    // extracted wording here, so the export never passes an edit off as the report's own words.
+    "Edited by researcher": row.original_finding_text !== null ? "Yes" : "No",
+    "Original wording": row.original_finding_text ?? "",
     Status: row.status.charAt(0).toUpperCase() + row.status.slice(1),
-    Source: row.source_filename ?? "",
+    Source: row.source_filename ?? SOURCE_NOT_RECORDED,
     Page: row.source_page ?? "",
     "Quote verified": row.quote_verified === null ? "" : row.quote_verified ? "Yes" : "No",
     "Possible duplicate": row.duplicate_group_id ? "Yes" : "No",
@@ -103,6 +115,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     { wch: 14 }, // Data type
     { wch: 18 }, // Kind
     { wch: 80 }, // Finding
+    { wch: 12 }, // Edited by researcher
+    { wch: 60 }, // Original wording
     { wch: 10 }, // Status
     { wch: 30 }, // Source
     { wch: 6 },  // Page

@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { findingProvenanceAvailable } from "./findingProvenance";
+import { findingOriginalAvailable } from "./findingWording";
 
 export type ArchiveReason =
   "regenerate_unreviewed" | "full_reprocess" | "manual_reextract" | "wave_recompare";
@@ -87,9 +88,12 @@ export async function archiveAndReplaceFindings(
   // REP-IN-002 (migration 0094): the history copy keeps review and edit provenance separately, and
   // keeps provenance_tracked, so an archived finding still says whether its researcher actions were
   // recorded or unknown. Before 0094 neither table has these columns and nothing extra is copied.
-  const provenanceColumns = (await findingProvenanceAvailable(client))
-    ? ", human_reviewed_at, human_review_action, human_edited_at, human_edited_fields, provenance_tracked"
-    : "";
+  const provenanceColumns =
+    ((await findingProvenanceAvailable(client))
+      ? ", human_reviewed_at, human_review_action, human_edited_at, human_edited_fields, provenance_tracked"
+      : "") +
+    // FND-001 probe B (migration 0100): an archived edited finding keeps its extracted wording too.
+    ((await findingOriginalAvailable(client)) ? ", original_extraction" : "");
 
   await client.query(
     `insert into finding_history (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CrosstabFilter, CrosstabRowItem, VariableDictionary, VariableInfo } from "@/lib/parseStatsFile";
 import FilterBuilder from "./CrosstabFilters";
+import { isStringCategory } from "@/lib/variableKinds";
 
 /** What each cell of a table can show. Mirrors the "Show in each cell" ticks on a table. */
 export type CellPrefs = { col: boolean; row: boolean; n: boolean; count: boolean; letters: boolean };
@@ -101,7 +102,9 @@ export default function CrosstabDialog({
     const setByKey = new Map((dict.sets ?? []).map((s) => [s.key, s]));
     const seen = new Set<string>();
     for (const v of dict.variables as VariableInfo[]) {
-      if (v.weightLike || v.text) continue;
+      // Free text and identifiers are left out; a string category (Gender, "Yes"/"No") is offered,
+      // by the same shared rule as the crosstab workspace (variableKinds.ts).
+      if (v.weightLike || (v.text && !isStringCategory(v))) continue;
       const s = v.inSet ? setByKey.get(v.inSet) : undefined;
       if (s) {
         if (seen.has(s.key)) continue;

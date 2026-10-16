@@ -1,0 +1,14 @@
+{
+  "client-brief.docx": "93cad352b66a31f6834b4f624bb24c23454963a2e4ff4399f679629baadc9830",
+  "expected-downstream.json": "2fe6f83261ef9997ebe59e421ff1c173b83107586bd1891f8b4e62dc0fe24010",
+  "expected.json": "3088f49ac9e401832890a74e40eaddd2c9a56fb5e88f3b784938bf25eb1e629c",
+  "golden-survey-documented.xlsx": "2ab599a253b6dbffd01219edb57d08c1776fcbf6f8fc4fa467d26f58a288e6b0",
+  "questionnaire.docx": "66d788d3a7fc8f1956eb4ef0a89a500dc7b440a6a917b9a8cc608b0bcc619f12",
+  "README.md": "4766885cb1aa1d250405aa5d36d66bc49a716a80cb731f77345de13501b90499",
+  "report.docx": "1549849f6ff5126c2cdb4ca9cbb5b55188a846fe8bde8759147cd9193c1b92f6",
+  "history\\answer-key-addendum.json": "d4d7db3ee1d8c89d34f9934b70a40827dc182190fad488f87de38639d53bffe1",
+  "history\\answer-key.json": "6bc8c8da9ff625c9559c2a469792a55a2fe3831eaf87befedd0a6990514975b2",
+  "history\\answer-key.md": "67c567e0df2333f764a8cbfc70ea5b95742774384f7ca6a1ef9006544d49091d",
+  "history\\fixture-adjustment.json": "f7be31d85ccc9fb586ca76fcd9205d22aee7dabcc9d97229c5cae72ed8e7dab0",
+  "history\\golden-survey.xlsx": "16e22e79314f1d10c5b4c856f67b213efdac8aa9649dc377393860ad256fff0d"
+}

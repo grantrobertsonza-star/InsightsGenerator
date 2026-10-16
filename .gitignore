@@ -66,3 +66,6 @@ extract-timing.log
 /scripts/**/*.zip
 /scripts/.obj_rev_009_tmp/
 /scripts/.imp_ship_trace_tmp*/
+
+# browser smoke output (scripts/e2e/local-stack.mjs, playwright.config.mjs)
+/e2e-results/

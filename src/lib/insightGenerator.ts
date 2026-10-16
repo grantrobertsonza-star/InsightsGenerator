@@ -3,6 +3,8 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
 import { BASIS_LABEL, findingBasis } from "./findingBasis";
+import { figureCheck, type FigureCheck } from "./numberTrace";
+import { figureCheckAvailable } from "./figureChecks";
 
 const MAX_FINDINGS_FOR_INSIGHT = 60;
 
@@ -37,6 +39,7 @@ type PreparedInsight = {
   observation: string;
   tension: string;
   implication: string;
+  figureCheck: FigureCheck;
 };
 
 /**
@@ -167,6 +170,18 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     const detail = chunkFailures.length > 0 ? ` (${chunkFailures.join("; ")})` : "";
     throw new Error(`No usable insights came back this time${detail}. Nothing was changed, try again.`);
   }
+  if (chunkFailures.length > 0) {
+    // Some were written and some were not (a failed batch, or insights held back for unsupported
+    // figures): recorded, so the gap is observable. The findings left out stay eligible for the
+    // next pass.
+    await withTenant(tenantId, async (client) => {
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'insight_generator_partial', $3)`, [
+        tenantId,
+        runId,
+        JSON.stringify({ written: totalWritten, failures: chunkFailures }),
+      ]);
+    });
+  }
   return hasMore;
 }
 
@@ -259,6 +274,7 @@ async function generateInsightsForChunk(
     const prepared: PreparedInsight[] = [];
     let skippedIndex = 0;
     let skippedEmpty = 0;
+    const skippedFigures: string[] = [];
     for (const raw of rawInsights) {
       const index = typeof raw.index === "number" ? raw.index : null;
       const headline = typeof raw.headline === "string" ? raw.headline.trim() : "";
@@ -273,7 +289,24 @@ async function generateInsightsForChunk(
         skippedEmpty += 1;
         continue;
       }
-      prepared.push({ findingId: batch[index].id, headline, observation, tension, implication });
+      // Numerical traceability (numberTrace.ts): every figure must come from this finding, its
+      // verification note or the project's stated framing, in context. An unsupported figure keeps
+      // the pre-insight out (the finding stays eligible for the next pass); a figure whose context
+      // cannot be established is saved with a "needs review" mark.
+      const f = batch[index];
+      const sources = [f.finding_text, f.verdict_rationale, f.stated_stats ? JSON.stringify(f.stated_stats) : "", framingBlock];
+      const check = figureCheck(
+        (["headline", "observation", "tension", "implication"] as const).map((field) => ({
+          field,
+          text: { headline, observation, tension, implication }[field],
+          sources,
+        })),
+      );
+      if (check.status === "unsupported") {
+        skippedFigures.push(...check.figures.filter((x) => x.status === "unsupported").map((x) => `${x.text}: ${x.reason}`));
+        continue;
+      }
+      prepared.push({ findingId: f.id, headline, observation, tension, implication, figureCheck: check });
     }
 
     if (prepared.length === 0) {
@@ -282,11 +315,14 @@ async function generateInsightsForChunk(
         failure:
           `${batch.length} finding(s) starting at index ${chunkIndex * INSIGHT_CHUNK_SIZE} ` +
           `(stop reason: ${response.stop_reason ?? "unknown"}; items returned: ${rawInsights.length}, ` +
-          `bad index: ${skippedIndex}, empty field: ${skippedEmpty}, field type: ${Array.isArray(rawField) ? "array" : typeof rawField})`,
+          `bad index: ${skippedIndex}, empty field: ${skippedEmpty}, unsupported figures: ${skippedFigures.length}, ` +
+          `field type: ${Array.isArray(rawField) ? "array" : typeof rawField})` +
+          (skippedFigures.length > 0 ? `; ${skippedFigures.slice(0, 5).join("; ")}` : ""),
       };
     }
 
     await withTenant(tenantId, async (client) => {
+      const storeCheck = await figureCheckAvailable(client);
       for (const insight of prepared) {
         await client.query(
           // on conflict: a concurrent generation pass on the same run could
@@ -295,8 +331,8 @@ async function generateInsightsForChunk(
           // constraint (see 0022_dedupe_insights.sql) this silently keeps
           // whichever insert won instead of throwing, rather than failing
           // the whole chunk over a race neither side could see coming.
-          `insert into insights (tenant_id, run_id, finding_id, decision_context, headline, observation, tension, implication)
-           values ($1, $2, $3, $4, $5, $6, $7, $8)
+          `insert into insights (tenant_id, run_id, finding_id, decision_context, headline, observation, tension, implication${storeCheck ? ", figure_check" : ""})
+           values ($1, $2, $3, $4, $5, $6, $7, $8${storeCheck ? ", $9" : ""})
            on conflict (finding_id) do nothing`,
           [
             tenantId,
@@ -307,12 +343,18 @@ async function generateInsightsForChunk(
             insight.observation,
             insight.tension,
             insight.implication,
+            ...(storeCheck ? [JSON.stringify(insight.figureCheck)] : []),
           ]
         );
       }
     });
 
-  return { written: prepared.length };
+  return {
+    written: prepared.length,
+    ...(skippedFigures.length > 0
+      ? { failure: `${skippedFigures.length} figure(s) not supported by their finding, so those insights were not written: ${skippedFigures.slice(0, 5).join("; ")}` }
+      : {}),
+  };
 }
 
 /**

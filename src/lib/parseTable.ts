@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { assertImportFileSupported, assertImportCaseCount } from "./importLimits";
 
 const BUCKET = "documents";
 
@@ -206,6 +207,7 @@ export async function parseTableDocument(storagePath: string, selectedSheet?: st
   }
 
   const buffer = Buffer.from(await data.arrayBuffer());
+  assertImportFileSupported("", buffer.length);
 
   // A .docx or .pptx file is a zip archive too, just like .xlsx, so it gets
   // past XLSX's "is this a zip?" sniffing and only fails once it looks for
@@ -298,8 +300,8 @@ export async function parseTableDocument(storagePath: string, selectedSheet?: st
           // IMP-SHIP-002: an id-like header is read from the cell's own formatted text, the
           // same way Python's dtype=str trick for an id-like column keeps a leading-zero
           // identifier like "001" intact instead of letting numeric inference collapse it to 1.
-          const text = (cell.w !== undefined ? String(cell.w) : String(cell.v)).trim();
-          value = NA_TOKENS.has(text) ? null : text;
+          const text = cell.w !== undefined ? String(cell.w) : String(cell.v);
+          value = NA_TOKENS.has(text.trim()) ? null : text;
         }
       } else if (typeof cell.v === "string") {
         value = NA_TOKENS.has(cell.v.trim()) ? null : cell.v;
@@ -315,7 +317,10 @@ export async function parseTableDocument(storagePath: string, selectedSheet?: st
     // Mirrors Python's `df.dropna(how="all")` in _read_plain, run after the same NA-token
     // normalization: a row with nothing but blank/NA cells across every column is dropped
     // entirely rather than kept as a row of nulls, so preview and calculated row counts agree.
-    if (rowHasValue) rows.push(row);
+    if (rowHasValue) {
+      rows.push(row);
+      assertImportCaseCount(rows.length);
+    }
   }
 
   return { headers, rows, sheetName: dataSheetName, unsupportedIdentifierColumns: [...unsupportedIdentifierColumns] };

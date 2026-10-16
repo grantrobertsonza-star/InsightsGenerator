@@ -42,6 +42,17 @@ from http.server import BaseHTTPRequestHandler
 
 import pyreadstat
 
+# Shared with the upload boundary: these are the owner's declared initial release limits.
+with open(os.path.join(os.path.dirname(__file__), "import-limits.json"), encoding="utf-8") as _limits_file:
+    IMPORT_LIMITS = json.load(_limits_file)
+
+
+def _check_import_limits(file_bytes, cases=None):
+    if len(file_bytes) > IMPORT_LIMITS["maxFileBytes"]:
+        raise ValueError("This file exceeds the supported 20 MB limit (20,000,000 bytes). Split it into smaller files, then retry.")
+    if cases is not None and cases > IMPORT_LIMITS["maxCases"]:
+        raise ValueError("This file exceeds the supported 100,000 case limit. Split it into smaller files, then retry; no partial result was published.")
+
 READERS = {
     ".sav": pyreadstat.read_sav,
     ".dta": pyreadstat.read_dta,
@@ -210,6 +221,7 @@ def _remove_quietly(path: str) -> None:
 
 
 def convert(file_bytes: bytes, source_filename: str) -> dict:
+    _check_import_limits(file_bytes)
     ext = os.path.splitext(source_filename.lower())[1]
     reader = READERS.get(ext)
     if reader is None:
@@ -225,6 +237,7 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
         _remove_quietly(tmp_path)
 
     variable_labels = meta.column_names_to_labels or {}
+    _check_import_limits(file_bytes, len(df))
     value_labels_by_var = meta.variable_value_labels or {}
 
     all_names = list(df.columns)
@@ -263,8 +276,12 @@ MAX_COLUMN_GROUPS = 15
 MAX_ROW_CATEGORIES = 30
 NUMERIC_AS_CATEGORIES_MAX = 25
 # Bump when the dictionary changes shape, so saved copies are rebuilt.
-DICTIONARY_VERSION = 6
-ENGINE_VERSION = "2026.10.09-7"  # bump when a calculation or a rule changes; stored with every table
+# 7: IMP-015 conflicting labels shown as conflicts, not silently chosen.
+# 8: columns-as-cases files typed per variable after the flip (_flip_types): exact large integers,
+#    identifiers kept literally. Only that layout's cached copies need rebuilding; crosstabs.ts asks
+#    for 8 there and still accepts 7 for rows-as-cases, whose typing did not change.
+DICTIONARY_VERSION = 8
+ENGINE_VERSION = "2026.10.16-10"  # declared file/case release limits; stored with every table
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -333,6 +350,69 @@ def _classify_header(cells):
     return pos
 
 
+def _format_code(code):
+    if isinstance(code, float) and code.is_integer():
+        return str(int(code))
+    return str(code)
+
+
+def _show_label_conflicts(var_labels, value_labels, conflicts):
+    """IMP-015: when label sources disagree, no definition is silently chosen.
+
+    Before this, a later sheet (or the codebook) simply won, and the losing definition was
+    recorded in metadata nothing displayed: two sheets defining code 1 as "Yes" and as "No"
+    could reverse a finding's meaning with no visible sign. Now every conflicting code is
+    labelled with its raw code and ALL the competing labels, e.g. 1 [conflicting labels:
+    "Yes" / "No"], and a conflicting variable label likewise. That text reaches every table,
+    chart and export through the normal label path, so the conflict is visible wherever the
+    category appears. The raw code stays the category's identity (labels never decide it), so
+    counts and percentages are unchanged; only the meaning attached to the code is withheld.
+    Codes that do not conflict keep their labels. Resolution is deterministic: correct the
+    workbook's label sheets and re-read the file. Each conflict entry records
+    resolution = "shown_as_conflict"."""
+    var_labels = dict(var_labels)
+    value_labels = {k: dict(v) for k, v in value_labels.items()}
+    seen_values: dict = {}  # (variable, code) -> competing labels in the order found
+    seen_vars: dict = {}
+    for c in conflicts:
+        kind = c.get("kind")
+        name = c.get("variable")
+        if kind == "value_label":
+            kept, discarded = c.get("kept"), c.get("discarded")
+            if isinstance(kept, dict) or isinstance(discarded, dict):
+                kept_d = kept if isinstance(kept, dict) else {}
+                disc_d = discarded if isinstance(discarded, dict) else {}
+                for code in kept_d.keys() & disc_d.keys():
+                    if str(kept_d[code]) != str(disc_d[code]):
+                        bucket = seen_values.setdefault((name, code), [])
+                        for lab in (str(disc_d[code]), str(kept_d[code])):
+                            if lab not in bucket:
+                                bucket.append(lab)
+            elif "value" in c:
+                bucket = seen_values.setdefault((name, c["value"]), [])
+                for lab in (str(discarded), str(kept)):
+                    if lab not in bucket:
+                        bucket.append(lab)
+            c["resolution"] = "shown_as_conflict"
+        elif kind == "variable_label":
+            bucket = seen_vars.setdefault(name, [])
+            for lab in (str(c.get("kept")), str(c.get("discarded"))):
+                if lab not in bucket:
+                    bucket.append(lab)
+            c["resolution"] = "shown_as_conflict"
+    for (name, code), labels in seen_values.items():
+        if len(labels) < 2 or name not in value_labels:
+            continue
+        shown = " / ".join(f'"{lab}"' for lab in labels)
+        value_labels[name][code] = f"{_format_code(code)} [conflicting labels: {shown}]"
+    for name, labels in seen_vars.items():
+        if len(labels) < 2:
+            continue
+        shown = " / ".join(f'"{lab}"' for lab in labels)
+        var_labels[name] = f"{name} [conflicting labels: {shown}]"
+    return var_labels, value_labels
+
+
 def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
     """Reads variable labels and value labels from the workbook's other sheets.
 
@@ -345,6 +425,7 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
     names = set(data_columns)
     var_labels, value_labels, used = {}, {}, {"variables": None, "values": None}
     var_label_sheet: dict[str, str] = {}
+    value_label_sheet: dict = {}  # (variable, code) -> sheet the current label came from
     conflicts: list[dict] = []
     for sheet in other_sheets:
         try:
@@ -373,6 +454,10 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
                 continue
             name = str(name).strip()
             if name not in names:
+                # IMP-015: a label row for a variable the data does not have is diagnosed, not
+                # silently ignored (often a renamed or misspelt column, whose labels then never apply).
+                if name and not any(c.get("kind") == "unmatched_variable" and c.get("variable") == name for c in conflicts):
+                    conflicts.append({"variable": name, "kind": "unmatched_variable", "sheet": sheet})
                 continue
             if pos["label"] is not None and not (has_values and pos["vlabel"] is None):
                 lab = body.loc[idx].iloc[pos["label"]]
@@ -420,11 +505,14 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
                             "value": key,
                             "keptSheet": sheet,
                             "kept": lab,
-                            "discardedSheet": used.get("values"),
+                            # IMP-015: the sheet the discarded label actually came from (this
+                            # used to report the last sheet read, which could be the same one).
+                            "discardedSheet": value_label_sheet.get((name, key), used.get("values")),
                             "discarded": existing[key],
                         }
                     )
                 existing[key] = lab
+                value_label_sheet[(name, key)] = sheet
                 used["values"] = sheet
     return var_labels, value_labels, used, conflicts
 
@@ -494,7 +582,21 @@ def _excel_codebook(xl, other_sheets, data_columns):
             )
         if var_col is None:
             continue
-        label_col = next((c for k, c in cols.items() if _CB_LABEL_RE.search(k) and "set" not in k and "code" not in k), None)
+        # IMP-015: a sheet with its own value/code column is the row-per-value layout that
+        # _excel_labels reads. Read here as a codebook, its "Value label" column matched the label
+        # pattern, so each ANSWER label was taken as the QUESTION label (last row winning): a
+        # variable could be titled "No". Such sheets are skipped, and an answer-label column is
+        # never taken as the variable label.
+        if any(_VALUE_COL_RE.match(k) for k in cols):
+            continue
+        label_col = next(
+            (
+                c
+                for k, c in cols.items()
+                if _CB_LABEL_RE.search(k) and "set" not in k and "code" not in k and not _VLABEL_COL_RE.match(k)
+            ),
+            None,
+        )
         codes_col = next((c for k, c in cols.items() if _CB_CODES_RE.search(k)), None)
         set_col = next((c for k, c in cols.items() if _CB_SET_RE.search(k)), None)
         if label_col is None and codes_col is None:
@@ -760,6 +862,89 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
     return unsupported
 
 
+_INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
+_WHOLE_NUMBER_TEXT = re.compile(r"^\s*[+-]?\d+\s*$")
+
+
+def _fits_int64(numeric):
+    """Every value of an all-whole-number series lies in the signed 64-bit range. Compared as
+    Python integers: a uint64 series compared with int64 bounds inside numpy can itself wrap."""
+    return all(_INT64_MIN <= int(v) <= _INT64_MAX for v in numeric.tolist())
+
+
+def _converts_exactly(original, numeric):
+    """True when every whole number written in `original` (text such as "9223372036854775808",
+    or an int cell) has exactly the same value after conversion. Decimal text ("1.5") is judged
+    as ordinary floating point, as any numeric read of it is, and is not checked here."""
+    for v, x in zip(original.tolist(), numeric.tolist()):
+        if v is None or (isinstance(v, float) and v != v):
+            continue
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, int):
+            want = v
+        elif isinstance(v, str) and _WHOLE_NUMBER_TEXT.match(v):
+            want = int(v)
+        else:
+            continue
+        if x is None or (isinstance(x, float) and (x != x or not x.is_integer())):
+            return False
+        if int(x) != want:
+            return False
+    return True
+
+
+def _flip_types(df):
+    """Types each variable of a columns-as-cases file AFTER its flip. Reading such a file infers
+    a type per file COLUMN, but a file column there is one case holding every variable's values,
+    so pandas used to coerce a text cell such as an identifier "001" to the number 1 because the
+    other cells in that case were numbers: leading zeros were lost and the identifier became a
+    numeric variable. Each flipped variable now gets the type its own values support, the way a
+    rows-as-cases read types a column:
+      - an identifier-like name (the same _is_id_like_header rule the rows-as-cases readers use to
+        read an ID column as text): kept as text exactly as written, including any surrounding
+        spaces, as a rows-as-cases read with dtype=str keeps them; " 001 " and "001" stay two
+        different identifiers rather than silently becoming one. A number cell (Excel) is written
+        without a trailing ".0"
+      - otherwise numeric when every non-missing value converts AND the conversion keeps each
+        whole number exactly (_converts_exactly); else left as text, exactly as written. A whole
+        number beyond the signed 64-bit range (above 9223372036854775807) used to be converted to
+        an unsigned value and then cast to int64, which wrapped it to a NEGATIVE number with no
+        message; one beyond what a float holds exactly (above 2**53) would silently round when
+        the variable has gaps. Such a variable now stays text, so its values are unchanged and it
+        is visibly listed as a text variable rather than as plausible-looking wrong numbers.
+    Missing cells stay missing. Zero-padding that exists only as an Excel number FORMAT on a
+    numeric cell (handled for rows-as-cases by _apply_zero_padded_id_formats) is not recovered
+    here: in this layout the format belongs to a case column, not the identifier variable."""
+    import pandas as pd
+
+    out = {}
+    for name in df.columns:
+        col = df[name]
+        if _is_id_like_header(name):
+            out[name] = col.map(
+                lambda v: None
+                if v is None or (isinstance(v, float) and v != v)
+                else (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
+            ).astype(object)
+            continue
+        try:
+            pd.to_numeric(col.dropna(), errors="raise")
+        except (ValueError, TypeError):
+            out[name] = col.astype(object)
+            continue
+        numeric = pd.to_numeric(col, errors="coerce")
+        # An all-integer variable keeps an integer dtype when nothing is missing, as a rows-as-cases
+        # read would give it; with gaps it is float (NaN), again as pandas reads such a column.
+        if numeric.notna().all() and (numeric % 1 == 0).all() and _fits_int64(numeric):
+            numeric = numeric.astype("int64")
+        if not _converts_exactly(col, numeric):
+            out[name] = col.astype(object)
+            continue
+        out[name] = numeric
+    return pd.DataFrame(out, index=df.index)
+
+
 def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=None):
     """CSV, TSV and Excel case-level files: one row per case, header row of names.
     No variable labels or value labels exist, so names stand in for labels and
@@ -796,6 +981,10 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
                 raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
                 headers = _dedupe_header_names(raw_headers)
                 id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
+                if layout == "columns_are_cases":
+                    # Each file column is a case here, so its cells mix every variable's values;
+                    # read them as text and type each variable after the flip (_flip_types).
+                    id_dtype = str
                 df = pd.read_csv(
                     path, sep=sep, encoding=enc, low_memory=False, header=None, skiprows=1, dtype=id_dtype
                 )
@@ -832,6 +1021,10 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
         headers = _dedupe_header_names(raw_headers)
         id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
+        if layout == "columns_are_cases":
+            # As in the CSV branch: no per-column type inference across a case's mixed cells;
+            # Excel's own cell types are kept and each variable is typed after the flip.
+            id_dtype = object
         df = xl.parse(data_sheet, header=None, skiprows=1, dtype=id_dtype)
         df.columns = headers
         unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
@@ -882,6 +1075,7 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
             vlabs = {**vlabs, **cb_vlabs}
             used["values"] = "codebook"
         used["data"] = data_sheet
+        labs, vlabs = _show_label_conflicts(labs, vlabs, conflicts)
         meta = _PlainMeta(labs, vlabs, used, mr_sets, label_conflicts=conflicts)
     if xl is not None:
         xl.close()  # Windows will not delete a temp file that is still open
@@ -923,7 +1117,7 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         flipped = df.drop(columns=[key_col]).transpose()
         flipped.columns = names
         flipped = flipped.reset_index(drop=True)
-        df = flipped
+        df = _flip_types(flipped)
     if usecols:
         df = df[[c for c in usecols if c in df.columns]]
     return df, meta
@@ -940,6 +1134,7 @@ _READ_CACHE_MAX_MB = 400
 
 
 def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None):
+    _check_import_limits(file_bytes)
     ext = os.path.splitext(source_filename.lower())[1]
     # layout is part of the cache key too: the same bytes read once with no layout set and once
     # with "columns_are_cases" are two different tables, not the same one served twice.
@@ -951,6 +1146,7 @@ def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None
     hit = _READ_CACHE.get(key)
     if hit is None:
         df, meta = _read_raw_uncached(file_bytes, source_filename, None, layout, selected_sheet)
+        _check_import_limits(file_bytes, len(df))
         size_mb = float(df.memory_usage(deep=False).sum()) / (1024 * 1024)
         if size_mb > _READ_CACHE_MAX_MB:
             # Too big to keep: answer this call from the full read and move on.
@@ -1395,7 +1591,13 @@ def dictionary(file_bytes: bytes, source_filename: str, args: dict | None = None
     # row, and this is a diagnostic, not a full audit trail.
     conflicts = getattr(meta, "label_conflicts", None)
     if conflicts:
-        out["labelConflicts"] = conflicts[:50]
+        real = [c for c in conflicts if c.get("kind") != "unmatched_variable"]
+        if real:
+            out["labelConflicts"] = real[:50]
+        # IMP-015: label-sheet variables that match no data column, so their labels never apply.
+        unmatched = sorted({c["variable"] for c in conflicts if c.get("kind") == "unmatched_variable"})
+        if unmatched:
+            out["unmatchedLabelVariables"] = unmatched[:50]
     return out
 
 
@@ -1457,6 +1659,29 @@ def _raw_key(v, labels):
     if isinstance(v, float) and v.is_integer() and int(v) in labels:
         return int(v)
     return v
+
+
+def _code_text(c):
+    """The one text form of an answer code (CrosstabRow.rawCode). A code reaches here as the data
+    value or as a value-label key, and the two can differ in type for the same code: Excel/CSV
+    data reads 1 as an integer while a Labels or Codebook sheet's "1=Very easy" is keyed 1.0, so
+    str() gave "1" for an unlabelled variable and "1.0" for a labelled one - two identities for one
+    code, which split wave-tracking alignment (waveTrackingActions.ts keys bars by rawCode) and
+    any by-code comparison. An integer-valued float is written as the integer; every other value
+    (text codes such as "01", non-integer numbers such as 1.5) keeps its own str() unchanged."""
+    if isinstance(c, bool):
+        return str(c)
+    try:
+        import numpy as np
+        if isinstance(c, np.floating):
+            c = float(c)
+        elif isinstance(c, np.integer):
+            c = int(c)
+    except ImportError:
+        pass
+    if isinstance(c, float) and c.is_integer():
+        return str(int(c))
+    return str(c)
 
 
 def _ordered_categories_raw(ident_valid, labels, include_unobserved=False):
@@ -2200,12 +2425,16 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         for c in cats:
             gi = member_of.get(c)
             if gi is None:
-                columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": _col_label_of_code(c)})
+                # var + rawCode: the column's identity (its banner variable and answer code, in the
+                # same one text form as CrosstabRow.rawCode), so a reader finds a subgroup by code,
+                # never by its label or position. Output only; nothing is computed from it.
+                columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": _col_label_of_code(c), "var": cv, "rawCode": _code_text(c)})
                 col_masks.append(np.array([x == c for x in ident_arr], dtype=bool))
             elif gi not in emitted:
                 emitted.add(gi)
                 members = group_codes[gi]
-                columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": groups[gi]["label"], "isGroup": True})
+                columns.append({"block": bi, "blockLabel": labels.get(cv) or cv, "name": groups[gi]["label"], "isGroup": True, "var": cv,
+                                "rawCodes": sorted(_code_text(m) for m in members)})
                 col_masks.append(np.array([x in members for x in ident_arr], dtype=bool))
     if len(columns) > 60:
         raise ValueError("Too many banner columns in total (limit 60). Use fewer or smaller column variables.")
@@ -2332,7 +2561,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         from the exact same rescaled observed/expected counts so the two always agree with each
         other."""
         out = []
-        cell_resid: dict = {str(c): {} for c in cats}
+        cell_resid: dict = {_code_text(c): {} for c in cats}
         sels = {cat: np.array([x == cat for x in arr], dtype=bool) for cat in cats}
         for b in sorted(set(block_of_col)):
             ks = [k for k in range(K) if block_of_col[k] == b]
@@ -2404,7 +2633,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             for i, cat in enumerate(cats_kept):
                 for j, k in enumerate(ks_kept):
                     sres, ares = std[i, j], adj[i, j]
-                    cell_resid[str(cat)][k] = {
+                    cell_resid[_code_text(cat)][k] = {
                         "std": None if not np.isfinite(sres) else round(float(sres), 2),
                         "adj": None if not np.isfinite(ares) else round(float(ares), 2),
                     }
@@ -2765,8 +2994,8 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 row = prop_row(sel, r_valid)
                 add_row_pct(row, block_of_col)
                 row["label"] = _label_of_code(cat)
-                row["rawCode"] = str(cat)
-                res = cell_resid.get(str(cat)) or {}
+                row["rawCode"] = _code_text(cat)
+                res = cell_resid.get(_code_text(cat)) or {}
                 if res:
                     row["residual"] = [res.get(k, {}).get("std") for k in range(K)]
                     row["adjResidual"] = [res.get(k, {}).get("adj") for k in range(K)]

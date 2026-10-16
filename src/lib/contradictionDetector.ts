@@ -44,6 +44,15 @@ type SynthesizedToCheck = {
  *
  * Idempotent: a verdict already carrying the contradiction marker is left
  * alone.
+ *
+ * Golden-thread repair (verdict grounding): a synthesized insight is DERIVED from this run's
+ * findings, so it is not independent evidence against a claim whose verdict was already reached
+ * by checking it against computed data (verification_basis 'data_backed'). Such a "contradiction"
+ * is recorded and shown on the verdict as a qualification, but it never changes the tier: the
+ * computed check is the stronger evidence. A contradicting FINDING (or any contradictor of a
+ * report-only verdict) still downgrades as before. A data-backed verdict that an earlier version
+ * of this function downgraded on a synthesized insight's say-so is restored to its recorded
+ * previous tier, with the qualification kept.
  */
 export async function downgradeContradictedOriginal(
   client: PoolClient,
@@ -63,12 +72,18 @@ export async function downgradeContradictedOriginal(
     rationale: string;
     corroboration_level: string;
     due_care: Record<string, unknown> | null;
+    verification_basis: string | null;
   }>(
-    `select id, verdict_tier, rationale, corroboration_level, due_care
+    `select id, verdict_tier, rationale, corroboration_level, due_care, verification_basis
      from verdicts where finding_id = $1 order by created_at desc limit 1`,
     [args.findingId],
   );
   const row = existing.rows[0];
+
+  if (row && args.kind === "synthesized_insight" && row.verification_basis === "data_backed") {
+    await qualifyDataBackedVerdict(client, row, args);
+    return;
+  }
 
   if (
     row &&
@@ -128,6 +143,70 @@ export async function downgradeContradictedOriginal(
       }),
       JSON.stringify(marker),
       args.basis ?? "report_only",
+    ],
+  );
+}
+
+/**
+ * A data-backed verdict "contradicted" by a synthesized insight keeps its tier and gains a visible
+ * qualification instead (see downgradeContradictedOriginal). Idempotent. Also undoes a downgrade an
+ * earlier version applied in this situation, restoring the recorded previous tier and
+ * corroboration level.
+ */
+async function qualifyDataBackedVerdict(
+  client: PoolClient,
+  row: {
+    id: string;
+    verdict_tier: string;
+    rationale: string;
+    corroboration_level: string;
+    due_care: Record<string, unknown> | null;
+  },
+  args: { contradictingText: string; detail: string },
+): Promise<void> {
+  const dueCare = (row.due_care && typeof row.due_care === "object" ? row.due_care : {}) as Record<string, unknown>;
+  const note =
+    `Qualified by a synthesized insight: "${args.contradictingText}". ${args.detail}`.trim() +
+    " The verdict stands because this claim was checked against computed data; the insight is derived " +
+    "from the same evidence, so it qualifies the claim rather than overturning it.";
+
+  const prior = dueCare.contradiction_downgrade as
+    | { previous_tier?: string | null; previous_corroboration_level?: string | null; contradicted_by?: string }
+    | undefined;
+  if (prior && prior.contradicted_by === "synthesized_insight" && prior.previous_tier) {
+    // Restore what the computed check had established, keeping the old marker for the record.
+    const restoredRationale = row.rationale.includes("(Earlier assessment: ")
+      ? row.rationale.slice(row.rationale.indexOf("(Earlier assessment: ") + "(Earlier assessment: ".length).replace(/\)$/, "")
+      : row.rationale;
+    await client.query(
+      `update verdicts
+       set verdict_tier = $2,
+           corroboration_level = coalesce($3, corroboration_level),
+           rationale = $4,
+           due_care = (coalesce(due_care, '{}'::jsonb) - 'contradiction_downgrade')
+                      || jsonb_build_object('reverted_contradiction_downgrade', due_care->'contradiction_downgrade')
+                      || $5::jsonb
+       where id = $1`,
+      [
+        row.id,
+        prior.previous_tier,
+        prior.previous_corroboration_level ?? null,
+        `${restoredRationale} ${note}`,
+        JSON.stringify({ synthesized_qualification: { text: args.contradictingText, detail: args.detail } }),
+      ],
+    );
+    return;
+  }
+  if ("synthesized_qualification" in dueCare || "contradiction_downgrade" in dueCare) return;
+  await client.query(
+    `update verdicts
+     set rationale = $2,
+         due_care = coalesce(due_care, '{}'::jsonb) || $3::jsonb
+     where id = $1`,
+    [
+      row.id,
+      `${row.rationale} ${note}`,
+      JSON.stringify({ synthesized_qualification: { text: args.contradictingText, detail: args.detail } }),
     ],
   );
 }
@@ -293,6 +372,11 @@ export async function detectSynthesizedContradictions(
             "stronger or weaker version of the same claim, a different topic, or the insight simply saying " +
             "more than the claim did. A false flag wrongly marks down a good claim, so when you are unsure, " +
             "do not flag it.\n\n" +
+            "A caveat about precision or reliability is never a contradiction: saying a figure is uncertain, " +
+            "has a wide confidence interval, comes from one sample or one reading, is not yet validated, or " +
+            "should be treated with caution QUALIFIES the claim; it does not dispute its value. For a figure, a " +
+            "contradiction needs the insight to assert a different value, or the opposite direction, for the " +
+            "same measure and population.\n\n" +
             "Return contradicted_indices (empty if none) and, if any, one sentence in detail naming the " +
             "specific conflict. Leave detail empty when there is none.",
           tool_choice: { type: "tool", name: "record_contradictions" },

@@ -2,6 +2,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { syncDecisionStatement } from "./runSync";
+import { evidenceStatusLabel, NO_INVENTED_EXPLANATIONS_RULE } from "./groundingRules";
 
 const MAX_FINDINGS_FOR_PROMPT = 120;
 const MAX_INSIGHTS_FOR_PROMPT = 120;
@@ -114,9 +115,24 @@ export async function generateDecisionCandidates(
       text: `${i.headline}. Observation: ${i.observation} Tension: ${i.tension} Implication: ${i.implication}`,
     }));
   } else {
+    // Golden-thread repair: each finding goes to the model with its verification status, so a report
+    // claim already found not supported is never presented as evidence equal to a computed result.
     const findings = await withTenant(tenantId, async (client) => {
-      const result = await client.query<{ finding_text: string; theme: string | null }>(
-        "select finding_text, theme from findings where run_id = $1 and status != 'rejected' order by theme nulls last limit $2",
+      const result = await client.query<{
+        finding_text: string;
+        theme: string | null;
+        origin: string | null;
+        verdict_tier: string | null;
+        verification_basis: string | null;
+      }>(
+        `select f.finding_text, f.theme, f.origin, v.verdict_tier, v.verification_basis
+         from findings f
+         left join lateral (
+           select verdict_tier, verification_basis from verdicts
+           where finding_id = f.id order by created_at desc, id desc limit 1
+         ) v on true
+         where f.run_id = $1 and f.status != 'rejected'
+         order by f.theme nulls last limit $2`,
         [runId, MAX_FINDINGS_FOR_PROMPT]
       );
       return result.rows;
@@ -130,7 +146,14 @@ export async function generateDecisionCandidates(
     }
 
     evidenceKindLabel = "findings";
-    evidence = findings.map((f) => ({ theme: f.theme, text: f.finding_text }));
+    evidence = findings.map((f) => ({
+      theme: f.theme,
+      text: `${f.finding_text} [${evidenceStatusLabel({
+        origin: f.origin,
+        verdictTier: f.verdict_tier,
+        verificationBasis: f.verification_basis,
+      })}]`,
+    }));
   }
 
   const evidenceBlock = evidence.map((e) => `- [${e.theme ?? "Uncategorized"}] ${e.text}`).join("\n");
@@ -165,7 +188,12 @@ export async function generateDecisionCandidates(
       "findings, not a decision and not a restatement of any single finding: name the pattern across themes, " +
       "note where the evidence is thin or mixed if it is, and connect it to the business problem or " +
       "research objective when one was given. Hedge appropriately; do not overstate what a small or " +
-      "single-source set of findings can support.\n\n";
+      "single-source set of findings can support.\n\n" +
+      "Each finding ends with its verification status in brackets. A finding marked NOT SUPPORTED is a " +
+      "claim the data did not bear out: it is not evidence and must not be weighed against computed or " +
+      "verified findings as if the two were competing measurements.\n\n" +
+      NO_INVENTED_EXPLANATIONS_RULE +
+      "\n\n";
 
   // Pass 1: synthesize what the evidence shows, grounded in whatever
   // problem/objective context exists.

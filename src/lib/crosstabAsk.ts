@@ -3,6 +3,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { loadCategories, loadVariableDictionary } from "./crosstabs";
 import type { CrosstabFilter, CrosstabRowItem, VariableDictionary, VariableInfo } from "./parseStatsFile";
+import { isLookupEligible, isStringCategory } from "./variableKinds";
 
 /** What a plain-English request turns into. Nothing runs from this: the researcher reads it and decides. */
 export type AskPlan = {
@@ -36,6 +37,7 @@ function tokens(text: string): string[] {
 
 function kindOf(v: VariableInfo): string {
   if (v.numeric && !v.labelled && v.nDistinct > 10) return "number (use a range filter)";
+  if (isStringCategory(v)) return `categorical, ${v.nDistinct} answers`;
   return v.labelled ? `categorical, ${v.nDistinct} answers` : v.numeric ? `number, ${v.nDistinct} values` : "text";
 }
 
@@ -53,7 +55,8 @@ function search(dict: VariableDictionary, query: string): string {
     return s;
   };
   const vars = dict.variables
-    .filter((v) => !v.weightLike && !v.text)
+    // OBJ-REV-006: string categories are searchable; free text and weights are not.
+    .filter(isLookupEligible)
     .map((v) => ({ v, s: score(v.name, v.label) + (v.labelled ? 0.25 : 0) }))
     .filter((x) => x.s >= 1)
     .sort((a, b) => b.s - a.s)

@@ -16,7 +16,9 @@
     "restore": "node scripts/restore.mjs",
     "typecheck": "node scripts/validate.cjs typecheck",
     "test:retained": "node scripts/validate.cjs tests",
-    "validate": "node scripts/validate.cjs"
+    "validate": "node scripts/validate.cjs",
+    "e2e:stack": "node scripts/e2e/local-stack.mjs",
+    "e2e:smoke": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
@@ -35,6 +37,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",

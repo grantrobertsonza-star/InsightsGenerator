@@ -33,6 +33,12 @@ import {
 import { refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
 import { generateStoryNarrative, type DeckPillar } from "@/lib/storyNarrative";
+import { loadInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
+import { NarrativeSupportBanner } from "./NarrativeSupportBanner";
+import { loadWordingEdits } from "@/lib/findingWording";
+import { loadRunFigureChecks, type RunFigureChecks } from "@/lib/figureChecks";
+import { FigureChecksProvider, FigureCheckNotice } from "./FigureCheckNotice";
+import type { WordingEdits } from "./FindingsTable";
 import {
   generateObjectiveValidation,
   type ObjectiveValidation,
@@ -50,6 +56,7 @@ import DecisionBriefReview from "./DecisionBriefReview";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
 import UploadForm from "./UploadForm";
+import StorageCleanupNotice from "./StorageCleanupNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
@@ -810,6 +817,37 @@ type FindingRow = Omit<Finding, "designFreshness"> & {
   design_snapshot: { design: { psu: string | null; strata: string | null } | null } | null;
 };
 
+/**
+ * FND-001 probe B: which findings carry researcher-edited wording (and whether each still waits for
+ * a re-check). A failed read is reported to the findings screen, never shown as "nothing edited".
+ */
+/**
+ * Numerical traceability (0101): every stored figure check in the run that is not "traced". A
+ * failed read is reported on the page, never shown as "nothing to review".
+ */
+async function getFigureChecks(runId: string): Promise<RunFigureChecks> {
+  try {
+    return await withTenantRead(TENANT_ID, (client) => loadRunFigureChecks(client, runId));
+  } catch (error) {
+    return {
+      available: false,
+      preInsights: {},
+      synthesizedInsights: {},
+      recommendations: {},
+      narrative: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getWordingEdits(runId: string): Promise<WordingEdits> {
+  try {
+    return await withTenantRead(TENANT_ID, (client) => loadWordingEdits(client, runId));
+  } catch (error) {
+    return { available: false, edits: {}, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function getFindings(runId: string): Promise<Finding[]> {
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     try {
@@ -1023,25 +1061,31 @@ type SynthesizedInsightQueryRow = Omit<
 
 async function getSynthesizedInsights(
   runId: string,
+  supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedInsightRow[]> {
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<SynthesizedInsightQueryRow>(
       `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status,
               si.triangulation_count, si.source_theme_count, si.materiality_rationale, si.confidence_tier,
+              -- INS-001: read through to_jsonb so this works before migration 0097 (null = not checked).
+              (to_jsonb(si)->>'independent_source_count')::int as independent_source_count,
               si.review_status, si.why_score, si.actionability_score, si.novelty_score, si.synthesis_score,
               si.evidentiary_score, si.quality_score, si.quality_tier, si.quality_rationale,
               si.stability_testable_count, si.stability_reappeared_count, si.stability_checked_at::text,
-              array_agg(pi.headline order by pi.created_at) as source_headlines,
-              array_agg(
+              coalesce(array_agg(pi.headline order by pi.created_at) filter (where pi.id is not null), '{}') as source_headlines,
+              coalesce(array_agg(pf.id::text order by pi.created_at) filter (where pf.id is not null), '{}') as source_finding_ids,
+              coalesce(array_agg(
                 case when pf.origin in ('stated', 'coded')
                        or exists (select 1 from findings g where g.grounded_by_finding_id = pf.id)
                      then 'validated' else 'net_new' end
                 order by pi.created_at
-              ) as member_discovery_types
+              ) filter (where pf.id is not null), '{}') as member_discovery_types
        from synthesized_insights si
-       join synthesized_insight_sources s on s.synthesized_insight_id = si.id
-       join insights pi on pi.id = s.pre_insight_id
-       join findings pf on pf.id = pi.finding_id
+       -- FND-001: left joins, so an insight whose supporting findings were all deleted still
+       -- appears (with "Support no longer valid") instead of silently disappearing from review.
+       left join synthesized_insight_sources s on s.synthesized_insight_id = si.id
+       left join insights pi on pi.id = s.pre_insight_id
+       left join findings pf on pf.id = pi.finding_id
        where si.run_id = $1
        group by si.id
        order by case si.review_status when 'rejected' then 1 else 0 end,
@@ -1072,8 +1116,10 @@ async function getSynthesizedInsights(
     return result.rows;
   });
 
+  const support = await supportPromise;
   return rows.map(({ member_discovery_types, ...row }) => ({
     ...row,
+    support: support.statusOf(row.id),
     provenance_caption: summarizeSynthesizedProvenance(member_discovery_types)
       .caption,
     contradicts: contradictionRows
@@ -1276,6 +1322,37 @@ async function getTrimmedFiles(
  * documentTables.ts). Read here the same way getTrimmedFiles reads its own event, so the
  * Import screen can show a recovery message instead of silently importing the column.
  */
+/**
+ * IMP-015: label diagnostics from each table document's cached variable dictionary - variables whose
+ * label sheets disagree (shown with every competing label, never one silently chosen) and label-sheet
+ * names matching no data column. Read-only. A document whose dictionary has not been computed yet has
+ * no entry, which shows no notice; the conflict text itself is still in every computed table.
+ */
+async function getLabelDiagnostics(
+  runId: string,
+): Promise<Map<string, { conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[]; unmatched: string[] }>> {
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ id: string; conflicts: unknown; unmatched: unknown }>(
+      `select id, variable_dictionary->'labelConflicts' as conflicts, variable_dictionary->'unmatchedLabelVariables' as unmatched
+       from documents
+       where run_id = $1 and variable_dictionary is not null
+         and (variable_dictionary ? 'labelConflicts' or variable_dictionary ? 'unmatchedLabelVariables')`,
+      [runId],
+    );
+    const out = new Map<string, { conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[]; unmatched: string[] }>();
+    for (const row of result.rows) {
+      const conflicts = (Array.isArray(row.conflicts) ? row.conflicts : []).filter(
+        (c): c is { variable: string; kind: "variable_label" | "value_label"; value?: string | number } =>
+          !!c && typeof c === "object" && typeof (c as { variable?: unknown }).variable === "string" &&
+          ((c as { kind?: unknown }).kind === "value_label" || (c as { kind?: unknown }).kind === "variable_label"),
+      );
+      const unmatched = (Array.isArray(row.unmatched) ? row.unmatched : []).filter((u): u is string => typeof u === "string");
+      out.set(row.id, { conflicts, unmatched });
+    }
+    return out;
+  });
+}
+
 async function getUnsupportedIdentifierColumns(
   runId: string,
 ): Promise<Map<string, string[]>> {
@@ -1503,6 +1580,8 @@ type SynthesizedRecommendation = {
   confidence_tier: "strong" | "moderate" | "exploratory" | null;
   quality_score: number | null;
   quality_tier: "finding" | "partial" | "qualified" | null;
+  /** FND-001: inherited from the anchor insight (supportStatus.ts). */
+  support?: import("@/lib/supportStatusShared").InsightSupport;
 };
 
 type RecommendationQuality = {
@@ -1582,8 +1661,9 @@ async function getObjectiveQuality(
  */
 async function getSynthesizedRecommendations(
   runId: string,
+  supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedRecommendation[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
+  const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<SynthesizedRecommendation>(
       `select r.id, r.synthesized_insight_id, si.headline as synthesized_insight_headline, r.action_text,
               r.owner_role, r.owner_feasibility_note, r.timeline, r.metric, r.priority,
@@ -1598,6 +1678,8 @@ async function getSynthesizedRecommendations(
     );
     return result.rows;
   });
+  const support = await supportPromise;
+  return rows.map((row) => ({ ...row, support: support.statusOf(row.synthesized_insight_id) }));
 }
 
 type ParkedInsight = {
@@ -1607,6 +1689,8 @@ type ParkedInsight = {
   tension: string;
   implication: string;
   action_plan_status: "has_action" | "retained_no_action";
+  /** REC-002: false when no recommendation of any status exists for it (a partial run left it out). */
+  has_any_recommendation: boolean;
 };
 
 /**
@@ -1625,7 +1709,8 @@ type ParkedInsight = {
 async function getParkedInsights(runId: string): Promise<ParkedInsight[]> {
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ParkedInsight>(
-      `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status
+      `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status,
+              exists (select 1 from recommendations r2 where r2.synthesized_insight_id = si.id) as has_any_recommendation
        from synthesized_insights si
        where si.run_id = $1
          and si.review_status = 'accepted'
@@ -2967,6 +3052,10 @@ export default async function RunPage({
   // used to run one after another, which meant the page waited on the sum of
   // some thirty database round trips instead of the slowest one.
   const timing = startPageTiming();
+  // FND-001: one support check per page load, shared by the synthesized-insight and
+  // recommendation loaders below (and the narrative note), so they cannot disagree. A failed
+  // check reads "Support not checked" with its reason; it never fails the page or shows current.
+  const insightSupport = loadInsightSupportOrUnchecked(TENANT_ID, id);
   const [
     run,
     documents,
@@ -2999,6 +3088,7 @@ export default async function RunPage({
     apiUsageBatches,
     trimmedFiles,
     unsupportedIdentifierColumnsByDoc,
+    labelDiagnosticsByDoc,
     transcriptQuality,
     instrumentSummaries,
     outputSets,
@@ -3020,12 +3110,12 @@ export default async function RunPage({
     timing("objectiveCandidates", getObjectiveCandidates(id)),
     timing("decisionCandidates", getDecisionCandidates(id)),
     timing("insights", getInsights(id)),
-    timing("synthesizedInsights", getSynthesizedInsights(id)),
+    timing("synthesizedInsights", getSynthesizedInsights(id, insightSupport)),
     timing("statedInsightValidations", getStatedInsightValidations(id)),
     timing("inputCompleteness", getRunInputCompleteness(TENANT_ID, id)),
     timing("recommendations", getRecommendations(id)),
     timing("recommendationQuality", getRecommendationQuality(id)),
-    timing("synthesizedRecommendations", getSynthesizedRecommendations(id)),
+    timing("synthesizedRecommendations", getSynthesizedRecommendations(id, insightSupport)),
     timing("parkedInsights", getParkedInsights(id)),
     timing("apiUsage", getApiUsage(id)),
     timing("findingHistory", getFindingHistory(id)),
@@ -3036,6 +3126,7 @@ export default async function RunPage({
     timing("apiUsageBatches", getApiUsageBatches(id)),
     timing("trimmedFiles", getTrimmedFiles(id)),
     timing("unsupportedIdentifierColumnsByDoc", getUnsupportedIdentifierColumns(id)),
+    timing("labelDiagnosticsByDoc", getLabelDiagnostics(id)),
     timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
     timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
     timing("outputSets", getOutputSets(TENANT_ID, id)),
@@ -3086,6 +3177,8 @@ export default async function RunPage({
       ? await getSampleFailedVerdicts(id)
       : [];
   timing.done();
+  const wordingEdits = await getWordingEdits(id);
+  const figureChecks = await getFigureChecks(id);
   const findings = rawFindings.map((f) => ({
     ...f,
     coding_counts: findingCodingCounts.get(f.id) ?? null,
@@ -3256,6 +3349,8 @@ export default async function RunPage({
         trimmed: trimmedFiles.get(t.document_id) ?? null,
         previewError: importPreviewIdentities.get(t.document_id)?.error,
         unsupportedIdentifierColumns: unsupportedIdentifierColumnsByDoc.get(t.document_id) ?? [],
+        labelConflicts: labelDiagnosticsByDoc.get(t.document_id)?.conflicts ?? [],
+        unmatchedLabelVariables: labelDiagnosticsByDoc.get(t.document_id)?.unmatched ?? [],
         fullyCovered: !!full,
         stated: statedRoutingByDoc.get(t.document_id) ?? [],
         questionTypeByVariable: full?.questionTypeByVariable,
@@ -3702,6 +3797,15 @@ export default async function RunPage({
             )}
         {storyNarrative && (
           <div className="space-y-3 rounded-lg border border-border bg-slate-50 px-4 py-3">
+            {/* FND-001 / REP-OUT-001: counts each support status separately; unknown is never
+                reported as changed or removed. Placed above the executive summary and governing
+                thought, which it qualifies, so the saved framing never reads unqualified. */}
+            <NarrativeSupportBanner
+              insightIds={storyNarrative.pillars.flatMap((pillar) => pillar.insight_ids)}
+              supportById={Object.fromEntries(
+                synthesizedInsights.map((insight) => [insight.id, insight.support]),
+              )}
+            />
             {storyNarrative.executive_summary && (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted">
@@ -3746,6 +3850,8 @@ export default async function RunPage({
                 ))}
               </ul>
             </div>
+            {/* Numerical traceability: figures in the narrative that need review, or the stored check. */}
+            <FigureCheckNotice check={figureChecks.narrative} />
             <p className="text-xs text-muted">
               Generated {new Date(storyNarrative.generated_at).toLocaleString()}
             </p>
@@ -3913,7 +4019,7 @@ export default async function RunPage({
       {findings.length === 0 ? (
         <p className="text-sm text-muted">None extracted yet.</p>
       ) : (
-        <FindingsTable runId={id} findings={findings} />
+        <FindingsTable runId={id} findings={findings} wordingEdits={wordingEdits} />
       )}
     </CollapsibleSection>
   );
@@ -4685,6 +4791,7 @@ export default async function RunPage({
 
   timing.bodyBuilt();
   return (
+    <FigureChecksProvider checks={figureChecks}>
     <RunSectionProvider
       defaultId={defaultSectionId}
       validIds={navSections.map((s) => s.id)}
@@ -4811,6 +4918,7 @@ export default async function RunPage({
             >
               <UploadForm runId={id} />
             </CollapsibleSection>
+            <StorageCleanupNotice runId={id} />
           
                   
             <div className="rounded-lg border border-dashed border-border bg-slate-50 p-4">
@@ -5603,6 +5711,7 @@ export default async function RunPage({
         </div>
       </main>
     </RunSectionProvider>
+    </FigureChecksProvider>
   );
 }
 

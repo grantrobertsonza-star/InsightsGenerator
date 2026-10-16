@@ -11,6 +11,7 @@ import {
   regenerateRecommendations,
 } from "@/lib/recommendationActions";
 import { TrashIcon } from "@/components/icons";
+import { FigureCheckFor } from "./FigureCheckNotice";
 
 type Priority = "high" | "medium" | "low";
 
@@ -237,6 +238,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
       ) : (
         <div className="space-y-1.5 text-sm">
           <div className="font-medium text-foreground">{recommendation.action_text}</div>
+          <FigureCheckFor kind="recommendations" id={recommendation.id} />
           <div className="text-xs text-muted">
             <span className="font-semibold text-foreground">{recommendation.owner_role}</span> &middot; {recommendation.timeline}
           </div>
@@ -363,6 +365,8 @@ export default function RecommendationsReview({
 }) {
   const [isPending, startTransition] = useTransition();
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  // REC-001: a refused add keeps the draft and says why.
+  const [addError, setAddError] = useState<string | null>(null);
   const [rejectedOpen, setRejectedOpen] = useState(false);
   const [addInsightId, setAddInsightId] = useState(insightOptions[0]?.id ?? "");
   const [addDraft, setAddDraft] = useState<Draft>(emptyDraft);
@@ -558,9 +562,11 @@ export default function RecommendationsReview({
           onSubmit={(e) => {
             e.preventDefault();
             if (!addInsightId || !draftComplete(addDraft)) return;
+            setAddError(null);
             startTransition(async () => {
-              await addOwnRecommendation(runId, addInsightId, addDraft);
-              setAddDraft(emptyDraft);
+              const result = await addOwnRecommendation(runId, addInsightId, addDraft);
+              if (result.ok) setAddDraft(emptyDraft);
+              else setAddError(result.error);
             });
           }}
           className="rounded-lg border border-dashed border-border p-4"
@@ -575,6 +581,11 @@ export default function RecommendationsReview({
             ))}
           </select>
           <EditFields draft={addDraft} onChange={setAddDraft} />
+          {addError && (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {addError}
+            </p>
+          )}
           <button
             type="submit"
             disabled={isPending || !addInsightId || !draftComplete(addDraft)}

@@ -184,17 +184,18 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
   if (!text) return;
 
   await withTenant(TENANT_ID, async (client) => {
+    // Serialize additions for this owned run even before migration 0083, where the fallback
+    // lacks a unique index. The lock covers its duplicate check, insert and wording sync.
+    const owned = await client.query("select id from runs where id=$1 and tenant_id=$2 for update", [runId, TENANT_ID]);
+    if (!owned.rowCount) throw new Error("This project is not available for adding objectives.");
     // Idempotent on the exact same text (OBJ-SET-002: "repeated add requests create
     // duplicates"). A rejected candidate with the same text does not block a fresh add:
     // rejecting it was its own decision, not a reason to refuse the researcher adding it
     // again deliberately - migration 0083's partial unique index is scoped the same way.
     //
-    // A pre-check-then-insert (the first version of this fix) is a race, not protection: two
-    // concurrent identical requests - a double click, a retried submit after a slow response
-    // - both pass the SELECT before either INSERT commits, and both land. Only a constraint
-    // Postgres itself enforces at commit time actually closes that, so this now relies on
-    // migration 0083's partial unique index via ON CONFLICT ... DO NOTHING, which no
-    // concurrent pair of transactions can both get past.
+    // Migration 0083 additionally enforces this identity in PostgreSQL, including writers
+    // outside this action. Before it is available, this action's owned-run lock prevents
+    // concurrent requests from both passing the fallback duplicate check.
     // OBJ-SET-002: withTenant runs this whole callback in one transaction on one client.
     // The ON CONFLICT insert below fails outright (not merely "no match") when migration
     // 0083 hasn't applied, because there is no such partial unique index for it to target -
@@ -222,10 +223,8 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
       // Migration 0083 not applied yet: no such partial unique index for ON CONFLICT to
       // target. Rolling back to the savepoint undoes just the failed insert attempt,
       // leaving the surrounding transaction (and this client) usable again, so the fallback
-      // below runs in a valid transaction boundary instead of an aborted one. Falls back to
-      // the old check-then-insert - not race-safe, but no worse than before this fix, and
-      // this run keeps working rather than failing outright over a migration that hasn't
-      // landed.
+      // below runs in a valid transaction boundary instead of an aborted one. The owned-run
+      // lock above serializes this check-then-insert path until migration 0083 is available.
       const message = error instanceof Error ? error.message : String(error);
       if (!/no unique or exclusion constraint matching/.test(message)) throw error;
       await client.query("rollback to savepoint obj_cand_insert");

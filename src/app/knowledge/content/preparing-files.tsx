@@ -112,7 +112,7 @@ export default function PreparingFilesGuide() {
 
       <H2 id="raw">Raw case-level data</H2>
       <P>
-        Use <em>Raw data</em> for files with one row per respondent: .sav, .dta, .sas7bdat, .csv or Excel. This is what
+        Use <em>Raw data</em> for files with one row per respondent: .sav, .dta, .csv or Excel (SAS is excluded pending verification). This is what
         the cross tab tool works from.
       </P>
       <UL>

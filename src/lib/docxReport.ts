@@ -42,6 +42,8 @@ const INK = "1A1A1A";
 const MUTED = "595959";
 const RULE = "D9D9D9";
 const ACCENT = "1E2761";
+// A qualification that must not read as ordinary body text (FND-001 framing notes).
+const QUALIFY = "A1261B";
 
 const BODY_FONT = "Calibri";
 const DISPLAY_FONT = "Cambria";
@@ -149,6 +151,12 @@ export type NarrativeReportPillar = {
      * omittedInsightCount below: that says an insight is no longer current; this says a still-
      * current insight carries residual uncertainty. The two never merge into one sentence. */
     caveats?: string[];
+    /** FND-001: set when this insight's support changed since it was drafted, or cannot be
+     * checked (supportStatus.ts summariseSupport) - e.g. "Support changed since drafted: the
+     * figures in "..." changed." Rendered as its own line, separate from caveats: a caveat
+     * qualifies current evidence; this says the evidence itself moved. Omitted when the support
+     * is current, so a current insight renders exactly as before. */
+    supportNote?: string;
   }[];
   /** REP-OUT-001: how many of this pillar's ORIGINAL referenced insights were left out of
    * `insights` above because they (or a finding one of their pre-insights depends on) are no
@@ -158,6 +166,10 @@ export type NarrativeReportPillar = {
    * reader of this report is told a pillar thinned out, rather than seeing a shorter pillar with
    * no explanation that anything changed since it was written. */
   omittedInsightCount?: number;
+  /** FND-001 / REP-OUT-001: what was left out of this pillar and why (headline plus reason), so
+   * the reader sees which conclusions were withdrawn, not only how many. omittedInsightCount
+   * stays equal to its length. */
+  excluded?: { headline: string; reason: string }[];
 };
 
 export type NarrativeReportObjectiveItem = {
@@ -178,6 +190,9 @@ export type NarrativeReportRecommendation = {
    * anchored to a synthesized insight, so it is qualified the same way, via the insight it is
    * anchored to (recommendations.synthesized_insight_id). */
   caveats?: string[];
+  /** FND-001: inherited from the anchor insight's support status; same meaning as
+   * NarrativeReportPillar['insights'][number]['supportNote']. */
+  supportNote?: string;
 };
 
 export type NarrativeReportDocument = {
@@ -212,6 +227,21 @@ export type NarrativeReportInput = {
    * scope for an export-time fix; this only flags that the framing may no longer match the
    * evidence it was written from. */
   narrativeMayBeStale?: boolean;
+  /** FND-001: the qualification for the narrative's saved framing (narrativeFramingQualification),
+   * printed directly after the executive summary and after the governing thought - beside the
+   * passages it qualifies, not only as a distant note. The framing text itself is printed as
+   * saved. Omitted when every insight the narrative cites has current support. */
+  framingNote?: string;
+  /** Numerical traceability (numberTrace.ts): the narrative's own figure-check note (figures that
+   * need review or are unsupported), or that the checks could not be read. Rendered once at the
+   * top of the Insights section. Omitted when every figure traced or nothing was checked. */
+  figureNote?: string;
+  /** FND-001 / REP-OUT-001: every insight and recommendation the generated narrative referenced
+   * that this export left out because its support is no longer valid or it is no longer
+   * accepted, with the reason. Rendered as its own "Excluded from this report" section so a
+   * withdrawn conclusion is visible rather than silently missing. Omitted or [] when nothing was
+   * excluded. */
+  excludedFromReport?: { kind: "insight" | "recommendation" | "contradiction"; headline: string; reason: string }[];
   decisionStatement: string | null;
   audience: string | null;
   businessProblem: string | null;
@@ -340,6 +370,8 @@ function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
         body(`“${insight.implication}”`, { italic: true, color: MUTED }),
       );
       out.push(body(insight.provenanceCaption, { color: MUTED }));
+      // FND-001: changed or uncheckable support, said beside the insight it qualifies.
+      if (insight.supportNote) out.push(body(insight.supportNote, { italic: true, color: MUTED }));
     }
   }
 
@@ -354,7 +386,7 @@ function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
     for (const finding of d.netNewFindings) {
       out.push(
         bullet(
-          `${finding.theme ? `${finding.theme}: ` : ""}${finding.text} (${verdictTierLabel[finding.verdictTier] ?? finding.verdictTier})`,
+          `${finding.theme ? `${finding.theme}: ` : ""}${finding.text} (${verdictTierLabel[finding.verdictTier] ?? finding.verdictTier}${finding.source ? `; source: ${finding.source}` : ""})`,
         ),
       );
     }
@@ -410,7 +442,7 @@ function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
       );
       out.push(
         body(
-          `Contradicted by ${by}: “${c.contradictingText}”. ${c.rationale}`,
+          `Contradicted by ${by}: “${c.contradictingText}”. ${c.rationale}${c.supportNote ? ` ${c.supportNote}` : ""}`,
           { color: MUTED },
         ),
       );
@@ -539,6 +571,7 @@ export async function buildNarrativeReportDocx(
   if (input.executiveSummary) {
     children.push(heading("Executive summary", HeadingLevel.HEADING_1));
     children.push(body(input.executiveSummary));
+    if (input.framingNote) children.push(body(input.framingNote, { italic: true, color: QUALIFY }));
   }
 
   // --- Introduction: business problem, objectives, background --------
@@ -642,13 +675,18 @@ export async function buildNarrativeReportDocx(
       body(input.governingThought, { italic: true, color: ACCENT }),
     );
   }
-  if (input.narrativeMayBeStale) {
+  if (input.governingThought && input.framingNote) {
+    children.push(body(input.framingNote, { italic: true, color: QUALIFY }));
+  } else if (input.narrativeMayBeStale) {
     children.push(
       body(
         "This narrative's framing may be out of date: one or more insights it referenced when generated are no longer current. Regenerate it to incorporate the change.",
         { italic: true, color: MUTED },
       ),
     );
+  }
+  if (input.figureNote) {
+    children.push(body(input.figureNote, { italic: true, color: MUTED }));
   }
 
   input.pillars.forEach((pillar, index) => {
@@ -682,6 +720,9 @@ export async function buildNarrativeReportDocx(
           { italic: true, color: MUTED },
         ),
       );
+      for (const item of pillar.excluded ?? []) {
+        children.push(body(`Left out: ${item.headline} (${item.reason})`, { italic: true, color: MUTED }));
+      }
     }
     for (const insight of pillar.insights) {
       children.push(
@@ -701,6 +742,9 @@ export async function buildNarrativeReportDocx(
       children.push(
         body(`“${insight.implication}”`, { italic: true, color: MUTED }),
       );
+      if (insight.supportNote) {
+        children.push(body(insight.supportNote, { italic: true, color: MUTED }));
+      }
       if (insight.caveats && insight.caveats.length > 0) {
         children.push(
           body(`Caveats: ${insight.caveats.join("; ")}.`, {
@@ -811,12 +855,35 @@ export async function buildNarrativeReportDocx(
         { color: MUTED },
       ),
     );
+    if (rec.supportNote) {
+      children.push(body(rec.supportNote, { italic: true, color: MUTED }));
+    }
     if (rec.caveats && rec.caveats.length > 0) {
       children.push(
         body(`Caveats: ${rec.caveats.join("; ")}.`, {
           italic: true,
           color: MUTED,
         }),
+      );
+    }
+  }
+
+  // FND-001 / REP-OUT-001: withdrawn conclusions, listed rather than silently dropped.
+  const excludedFromReport = input.excludedFromReport ?? [];
+  if (excludedFromReport.length > 0) {
+    children.push(rule());
+    children.push(heading("Excluded from this report: needs review", HeadingLevel.HEADING_1));
+    children.push(
+      body(
+        "These conclusions and contradictions were part of this report's generated content but are not reported above, because the evidence " +
+          "they rested on was rejected or removed, or they are no longer accepted. Review them in the app before " +
+          "relying on this report.",
+        { color: MUTED },
+      ),
+    );
+    for (const item of excludedFromReport) {
+      children.push(
+        body(`${item.kind === "insight" ? "Insight" : item.kind === "contradiction" ? "Contradiction" : "Recommendation"}: ${item.headline} (${item.reason})`),
       );
     }
   }

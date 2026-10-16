@@ -7,6 +7,7 @@ import {
   type VerificationBasis,
 } from "@/lib/discoveryClassification";
 import { CAVEAT_LABELS, caveatLabel } from "@/lib/caveatLabels";
+import { FigureCheckFor } from "./FigureCheckNotice";
 
 type VerdictTier = "robust" | "use_with_caution";
 
@@ -298,6 +299,7 @@ export default function InsightsReview({
               <div className="mb-2 text-sm font-semibold text-foreground">
                 {insight.headline}
               </div>
+              <FigureCheckFor kind="preInsights" id={insight.id} />
               <dl className="space-y-1.5 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-muted">

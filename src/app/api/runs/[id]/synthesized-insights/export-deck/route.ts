@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
-import { addTitleSlide, addFooter, CARD_LAYOUT, safeFileStem } from "@/lib/deckSlides";
+import { addTitleSlide, addFooter, CARD_LAYOUT, safeFileStem, fitBulletList } from "@/lib/deckSlides";
+import { loadInsightSupportOrUnchecked } from "@/lib/supportStatus";
+import { summariseSupport, type SupportStatus } from "@/lib/supportStatusShared";
+import { loadSynthesizedInsightSources, sourceLine } from "@/lib/sourceAttribution";
+import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
+import { figureCheckNote } from "@/lib/numberTrace";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
 type ExportInsight = {
+  id: string;
   confidence_tier: "strong" | "moderate" | "exploratory" | null;
   headline: string;
   implication: string;
@@ -44,7 +50,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") === "all" ? "all" : "accepted";
 
-  const [run, insights] = await withTenant(TENANT_ID, async (client) => {
+  const [run, allInsights, sourcesByInsight] = await withTenant(TENANT_ID, async (client) => {
     const runResult = await client.query<{
       project_name: string | null;
       decision_statement: string | null;
@@ -52,14 +58,36 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }>("select project_name, decision_statement, audience from runs where id = $1", [runId]);
 
     const insightsResult = await client.query<ExportInsight>(
-      `select confidence_tier, headline, implication, quality_score, review_status
+      `select id, confidence_tier, headline, implication, quality_score, review_status
        from synthesized_insights
        where run_id = $1${scope === "accepted" ? " and review_status = 'accepted'" : ""}
        order by quality_score desc nulls last, created_at`,
       [runId]
     );
-    return [runResult.rows[0], insightsResult.rows] as const;
+    return [runResult.rows[0], insightsResult.rows, await loadSynthesizedInsightSources(client, insightsResult.rows.map((i) => i.id))] as const;
   });
+
+  // FND-001: same support rule as the story deck. In the default (accepted, client-facing) scope
+  // an insight whose support is no longer valid is left out and listed on a closing slide; changed
+  // or uncheckable support stays, tagged in words. scope=all is the audit view: everything stays,
+  // tagged. Read-only.
+  const support = await loadInsightSupportOrUnchecked(TENANT_ID, runId, allInsights.map((i) => i.id));
+  // Numerical traceability (0101): a card whose figures need review says so under its sources.
+  const figures = await loadRunFigureChecksForExport((fn) => withTenant(TENANT_ID, fn), runId);
+  const supportTag: Record<SupportStatus, string> = {
+    current: "",
+    stale: " · SUPPORT CHANGED",
+    unknown: " · SUPPORT NOT CHECKED",
+    invalid: " · SUPPORT NO LONGER VALID",
+  };
+  const excludedLines = scope === "accepted"
+    ? allInsights
+        .filter((i) => support.statusOf(i.id).status === "invalid")
+        .map((i) => `${i.headline}. ${summariseSupport(support.statusOf(i.id))}`)
+    : [];
+  const insights = scope === "accepted"
+    ? allInsights.filter((i) => support.statusOf(i.id).status !== "invalid")
+    : allInsights;
 
   if (!run) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
@@ -133,7 +161,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         });
         slide.addShape("rect", { x, y, w: 0.06, h: CARD_H, fill: { color: accent }, line: { type: "none" } });
 
-        const statusTag = scope === "all" && insight.review_status === "rejected" ? " · Rejected" : "";
+        const statusTag =
+          (scope === "all" && insight.review_status === "rejected" ? " · Rejected" : "") +
+          supportTag[support.statusOf(insight.id).status];
 
         slide.addText(`${sectionLabel.toUpperCase()}${statusTag}`, {
           x: x + 0.15,
@@ -149,7 +179,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         slide.addText(
           [
             { text: insight.headline, options: { fontSize: 12, bold: true, color: "111827", breakLine: true } },
-            { text: insight.implication, options: { fontSize: 10, color: "374151" } },
+            { text: insight.implication, options: { fontSize: 10, color: "374151", breakLine: true } },
+            // Golden-thread repair: the evidence's sources, as in the app.
+            { text: sourceLine(sourcesByInsight.get(insight.id) ?? []), options: { fontSize: 8, color: "6B7280", breakLine: true } },
+            ...(() => {
+              const note = figureCheckLoadErrorNote(figures) ?? figureCheckNote(figures.synthesizedInsights[insight.id]);
+              return note ? [{ text: note, options: { fontSize: 8, color: "B45309" } }] : [];
+            })(),
           ],
           {
             x: x + 0.15,
@@ -164,6 +200,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
       addFooter(slide, deckTitle, `${sectionLabel} · ${page + 1}/${pageCount}`);
     }
+  }
+
+  if (excludedLines.length > 0) {
+    const slide = pptx.addSlide();
+    slide.addText("Left out: support no longer valid", {
+      x: 0.5,
+      y: 0.35,
+      w: 9,
+      h: 0.55,
+      fontSize: 22,
+      bold: true,
+      color: "1D4ED8",
+    });
+    const fitted = fitBulletList(excludedLines, { fontSize: 13, widthIn: 8.6, heightIn: 3.9, minFontScale: 0.6 });
+    slide.addText(
+      fitted.items.map((line) => ({ text: line, options: { bullet: true, breakLine: true } })),
+      { x: 0.6, y: 1.05, w: 8.6, h: 3.9, fontSize: fitted.fontSize, color: "374151", valign: "top" },
+    );
+    addFooter(slide, deckTitle, "Left out: needs review");
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;

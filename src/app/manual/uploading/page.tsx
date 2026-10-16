@@ -14,8 +14,7 @@ export default function UploadingPage() {
       </P>
       <P>
         <strong>Tables</strong> are structured data: a spreadsheet, a CSV, or a Word/PDF document that
-        contains one or more data tables worth analysing on their own terms. SPSS (.sav), Stata (.dta),
-        and SAS (.sas7bdat) files are read the same way as a spreadsheet, including the variable and
+        contains one or more data tables worth analysing on their own terms. SPSS (.sav) and Stata (.dta) files are read the same way as a spreadsheet, including the variable and
         value labels they carry, so a question coded as <code>Q7a</code> with answers coded 1 and 2 shows
         up with its real label and category names rather than raw codes.
       </P>
@@ -58,7 +57,7 @@ export default function UploadingPage() {
 
       <DoesDoesNot
         does={[
-          "Reads CSV, Excel (.xlsx/.xls), SPSS (.sav), Stata (.dta), and SAS (.sas7bdat) files for tables",
+          "Reads CSV, Excel (.xlsx/.xls), SPSS (.sav) and Stata (.dta) files for tables; SAS is excluded pending verification",
           "Keeps every tenant's documents and data completely separate from every other tenant's",
           "Lets you re-upload or re-tag a document if you set the wrong kind or ingestion type the first time",
         ]}

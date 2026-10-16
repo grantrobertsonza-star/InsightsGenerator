@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
 import { addTitleSlide, addFooter, safeFileStem } from "@/lib/deckSlides";
+import { findingSourceSql, formatFindingSource, sourceLine } from "@/lib/sourceAttribution";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -13,6 +14,9 @@ type ExportFinding = {
   status: "pending" | "accepted" | "rejected";
   researcher_note: string | null;
   data_type: "qualitative" | "quantitative" | null;
+  source_filename: string | null;
+  source_page: number | null;
+  source_table_label: string | null;
 };
 
 const kindLabel: Record<string, string> = {
@@ -50,10 +54,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }>("select project_name, decision_statement, audience from runs where id = $1", [runId]);
 
     const findingsResult = await client.query<ExportFinding>(
-      `select finding_text, finding_kind, origin, theme, status, researcher_note, data_type
-       from findings
-       where run_id = $1${scope === "accepted" ? " and status = 'accepted'" : ""}
-       order by theme nulls last, created_at`,
+      `select f.finding_text, f.finding_kind, f.origin, f.theme, f.status, f.researcher_note, f.data_type,
+              ${findingSourceSql("f").columns}
+       from findings f
+       ${findingSourceSql("f").join}
+       where f.run_id = $1${scope === "accepted" ? " and f.status = 'accepted'" : ""}
+       order by f.theme nulls last, f.created_at`,
       [runId]
     );
     return [runResult.rows[0], findingsResult.rows] as const;
@@ -226,15 +232,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           charSpacing: 1,
         });
 
-        const bodyLines = finding.researcher_note
-          ? [
-              { text: finding.finding_text, options: { fontSize: 11.5, color: "111827", breakLine: true } },
-              {
-                text: `Note: ${finding.researcher_note}`,
-                options: { fontSize: 9.5, italic: true, color: "6B7280" },
-              },
-            ]
-          : [{ text: finding.finding_text, options: { fontSize: 11.5, color: "111827" } }];
+        // Golden-thread repair: every card names its source, as the app and the spreadsheet do.
+        const source = sourceLine([formatFindingSource(finding)]);
+        const bodyLines = [
+          { text: finding.finding_text, options: { fontSize: 11.5, color: "111827", breakLine: true } },
+          ...(finding.researcher_note
+            ? [
+                {
+                  text: `Note: ${finding.researcher_note}`,
+                  options: { fontSize: 9.5, italic: true, color: "6B7280", breakLine: true },
+                },
+              ]
+            : []),
+          { text: source, options: { fontSize: 8, color: "6B7280" } },
+        ];
 
         slide.addText(bodyLines, {
           x: x + 0.15,

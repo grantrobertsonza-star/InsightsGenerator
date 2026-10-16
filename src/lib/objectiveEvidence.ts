@@ -7,13 +7,18 @@ import { buildCrosstab, loadCrosstab, loadVariableDictionary, loadVariableDictio
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { planCrosstabFromText } from "./crosstabAsk";
+import { isLookupEligible } from "./variableKinds";
 import { defaultWeight } from "./starterTables";
 import { capWords, parseNumberedItems } from "./text";
 import { isCaseTableFileName, isStatsFileName } from "./statsFileName";
 import {
   combineStances,
+  locateRow,
   parseExpectation,
   readExpectation,
+  responseSelectorCandidates,
+  responseSelectorUnresolved,
+  selectorAcceptance,
   type EvidenceEstimate,
   type Expectation,
   type Stance,
@@ -517,9 +522,18 @@ const DECOMPOSE_TOOL: Anthropic.Tool = {
                 "Fill only when the result can be judged from numbers. kind 'none' otherwise. Never invent a threshold: use 'level' only when the objective or the brief states one.",
               properties: {
                 kind: { type: "string", enum: ["none", "level", "comparison"] },
-                answer: { type: "string", description: "The answer label to read, e.g. 'Yes'. Empty for an average." },
+                answer: {
+                  type: "string",
+                  description:
+                    "The answer whose share is read, e.g. 'Yes' for 'Do women buy more than men?'. Required for a share (measure 'percent'), including comparisons. Empty only for an average or score.",
+                },
                 direction: { type: "string", enum: ["above", "below", "higher", "lower"] },
                 threshold: { type: "number", description: "level only: percent for a share, or the unit of the average." },
+                measure: {
+                  type: "string",
+                  enum: ["percent", "mean"],
+                  description: "What the expectation is in: 'percent' for a share of answers, 'mean' for an average or a score such as NPS. Checked against the table row before judging.",
+                },
                 groupA: { type: "string", description: "comparison only: the group expected to differ." },
                 groupB: { type: "string", description: "comparison only: the group compared with." },
                 margin: { type: "number", description: "comparison only, optional: a gap (in points) small enough to count as no meaningful difference." },
@@ -615,7 +629,8 @@ export async function generateEvidenceQuestions(
   let variablesTruncated = false;
   for (const ds of datasets) {
     const dict = await loadVariableDictionary(tenantId, runId, ds.id);
-    const eligible = dict.variables.filter((x) => !x.weightLike && !x.text);
+    // OBJ-REV-006: string categories (e.g. a Gender column of "Male"/"Female") are eligible too.
+    const eligible = dict.variables.filter(isLookupEligible);
     if (eligible.length > perFile) variablesTruncated = true;
     for (const v of eligible.slice(0, perFile)) {
       const key = (v.label || v.name).toLowerCase();
@@ -861,6 +876,57 @@ export function tableText(result: CrosstabResult): string {
   return lines.join("\n").slice(0, 9000);
 }
 
+/**
+ * OBJ-REV-006: names the one answer a share expectation is about, chosen from this table's own
+ * answers by the meaning of the evidence question (for "Does purchase differ between men and
+ * women?", the Purchase answer that means having purchased). The model may only pick one of the
+ * listed pairs or "none"; "none" is the instruction whenever more than one answer could be meant
+ * or a combination of answers would be needed. The caller re-validates the pick against the table.
+ * A failed call throws, which stores an actionable error for this question (retryable), never a
+ * reading.
+ */
+async function chooseResponse(
+  tenantId: string,
+  runId: string,
+  q: EvidenceQuestion,
+  candidates: { question: string; answer: string }[],
+): Promise<{ question: string; answer: string } | null> {
+  const options = candidates.slice(0, 60);
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 200,
+    system:
+      "An evidence question compares or tests the share of people giving one particular answer. Pick which listed answer that is, from the meaning of the question.\n" +
+      "- Pick only an answer the question clearly refers to (for 'Do women buy more than men?', the answer meaning they bought).\n" +
+      "- Answer 'none' if more than one listed answer could be meant, if a combination of answers would be needed, or if none fits. Never guess.",
+    tools: [
+      {
+        name: "choose_answer",
+        description: "Record which listed answer the question is about, or none.",
+        input_schema: {
+          type: "object",
+          properties: { choice: { type: "string", enum: [...options.map((_, i) => String(i + 1)), "none"] } },
+          required: ["choice"],
+        },
+      },
+    ],
+    tool_choice: { type: "tool", name: "choose_answer" },
+    messages: [
+      {
+        role: "user",
+        content:
+          `Evidence question: ${q.question}\nSupports if: ${q.supports_if}\nUndermines if: ${q.against_if}\n\nAnswers in the table:\n` +
+          options.map((o, i) => `${i + 1}. ${o.question}: ${o.answer}`).join("\n"),
+      },
+    ],
+  });
+  await logApiUsage(tenantId, runId, "objective_evidence", response.usage);
+  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+  const choice = String((tu?.input as { choice?: unknown } | undefined)?.choice ?? "none");
+  const index = Number(choice) - 1;
+  return Number.isInteger(index) && index >= 0 && index < options.length ? options[index] : null;
+}
+
 async function judge(
   tenantId: string,
   runId: string,
@@ -940,12 +1006,6 @@ async function judge(
  * before it. The WHERE EXISTS condition on the INSERT/UPDATE below is kept as well, as
  * defense in depth (it costs nothing and remains correct on its own), but the row lock is
  * now what actually closes the race, not the single-statement shape of the write.
- *
- * Caveat, stated plainly rather than left implicit: this reasoning is source-level. This
- * sandbox has no live Postgres to run two real sessions against each other and confirm the
- * lock actually blocks the way described - that is an integration test, not something a
- * standalone script against no database can demonstrate, and it remains open per the
- * review's own "Minimum remaining verification" list (concurrent evaluation/edit tests).
  *
  * Returns whether a row was actually written (false when the question moved on since
  * expectedRevision was captured, or the question row no longer exists).
@@ -1084,7 +1144,7 @@ export async function evaluateEvidenceQuestion(tenantId: string, runId: string, 
       // (whether a row was actually written) is this function's only source of truth for
       // whether the question moved on, since a separate pre-check here would reopen the
       // exact gap that fix closes.
-      return storeResult(tenantId, runId, id, ds, q.question_revision, {
+      return await storeResult(tenantId, runId, id, ds, q.question_revision, {
         stance: "silent",
         basis: "computed",
         summary: `${ds.name} has no variable that matches "${q.request_text}", so it cannot speak to this question.`,
@@ -1156,7 +1216,38 @@ export async function evaluateEvidenceQuestion(tenantId: string, runId: string, 
     const { result } = await loadCrosstab(tenantId, runId, built.tableId);
     if (!result) throw new Error("The table could not be read back.");
 
-    const computed = q.expectation ? readExpectation(result, q.expectation) : null;
+    // OBJ-REV-006: a share expectation is never read without knowing which answer it is about.
+    // When the stored expectation names none (and the table has no average row to read
+    // instead), the answer is matched to this table's own answers from the question's wording,
+    // validated against the table, and recorded in the summary - or the reading is stored as
+    // unresolved. Never the first or largest answer.
+    let expectation = q.expectation;
+    let selectorNote = "";
+    let computed: ReturnType<typeof readExpectation> = null;
+    if (expectation) {
+      const candidates = responseSelectorCandidates(result, expectation);
+      if (candidates !== null) {
+        const chosen = candidates.length > 0 ? await chooseResponse(tenantId, runId, q, candidates) : null;
+        // A table-valid choice is not enough: it must also be structurally unambiguous for this
+        // question (selectorAcceptance), or the researcher is asked to resolve it.
+        const acceptance = chosen ? selectorAcceptance(candidates, chosen, { question: q.question, supportsIf: q.supports_if }) : null;
+        if (chosen && acceptance && !acceptance.ok) {
+          computed = responseSelectorUnresolved(acceptance.reason);
+        } else if (chosen && locateRow(result, chosen.answer, chosen.question) !== null) {
+          expectation = { ...expectation, answer: chosen.answer, question: chosen.question };
+          selectorNote =
+            ` The question did not name which answer to compare, so the share answering "${chosen.answer}" to "${chosen.question}" ` +
+            "was matched to this table's answers from the question's wording. Edit the question to name a different answer.";
+        } else {
+          computed = responseSelectorUnresolved(
+            candidates.length === 0
+              ? "this table has no answers to choose from"
+              : "the question's wording does not identify one of this table's answers unambiguously",
+          );
+        }
+      }
+      if (!computed) computed = readExpectation(result, expectation);
+    }
     let stance: Stance;
     let basis: "computed" | "judged";
     let summary: string;
@@ -1174,7 +1265,7 @@ export async function evaluateEvidenceQuestion(tenantId: string, runId: string, 
       resolvedDesign.ambiguous.psu.length > 0 || resolvedDesign.ambiguous.strata.length > 0
         ? ` This file has more than one candidate survey-design variable (${[...resolvedDesign.ambiguous.psu, ...resolvedDesign.ambiguous.strata].join(", ")}), so none was applied automatically; the table below uses plain weighted variance.`
         : "";
-    const note = (plan.unclear.length ? ` Table set-up notes: ${plan.unclear.join(" ")}` : "") + designNote;
+    const note = selectorNote + (plan.unclear.length ? ` Table set-up notes: ${plan.unclear.join(" ")}` : "") + designNote;
     // The planner's own "unclear" notes mean the table it built does not fully match what
     // was asked - a requested region, period, or segment it couldn't find, say - and it
     // built the nearest table it could instead of the one actually requested (OBJ-REV-006:
@@ -1184,7 +1275,8 @@ export async function evaluateEvidenceQuestion(tenantId: string, runId: string, 
     // supports/against as if the table matched. Downgrading to inconclusive here means the
     // scope gap actually blocks the verdict rather than just annotating it.
     if (plan.unclear.length > 0 && stance !== "silent") stance = "inconclusive";
-    return storeResult(tenantId, runId, id, ds, q.question_revision, { table_id: built.tableId, stance, basis, estimate, summary: summary + note });
+    // Await inside this try so a rejected write reaches the durable-failure handler below.
+    return await storeResult(tenantId, runId, id, ds, q.question_revision, { table_id: built.tableId, stance, basis, estimate, summary: summary + note });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     try {
@@ -1294,6 +1386,10 @@ export async function editEvidenceQuestion(
       [id, runId],
     );
     const row = current.rows[0];
+    // A lock query must confirm its row (standing requirement 4): editing a question deleted
+    // meanwhile (regenerated away, or its run removed) used to report success while changing
+    // nothing. It now fails with an actionable message instead.
+    if (!row) throw new Error("This evidence question no longer exists. Reload the page to see the current questions.");
     const changedWording = Boolean(
       row && (
         (nextQuestion !== undefined && nextQuestion !== (row.question ?? "")) ||

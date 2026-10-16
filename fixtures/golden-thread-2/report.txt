@@ -1,0 +1,6 @@
+SYNTHETIC REPORT WITH PLANTED CLAIMS
+C1: Weighted purchase is65% among120 respondents; weighted total240.
+C2: The weighted mean rating is7.5 on the1-10 scale.
+C3: Weighted purchase is65%,but one weighting-only sample still carries sampling and calibration uncertainty. This caveat does not contradict the point estimate.
+C4: A cluster-robust95% confidence interval proves the rating is stable across sampling clusters.
+C5: The eight-person pilot subgroup proves the weighted finding holds throughout the population.

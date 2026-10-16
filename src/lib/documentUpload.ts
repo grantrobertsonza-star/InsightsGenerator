@@ -1,5 +1,28 @@
+import { createHash, randomUUID } from "node:crypto";
 import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { assertImportFileSupported } from "./importLimits";
+import { queueDocumentStorageCleanup, finishDocumentStorageCleanup } from "./documentStorageCleanup";
+
+/**
+ * IMP-008: the same file (same bytes) already stored as the same kind in this project. Not a
+ * failure: a retried batch must add each good file exactly once, so the repeat is refused and
+ * reported by name instead of becoming a second document that double counts.
+ */
+export class DuplicateUploadError extends Error {
+  constructor(
+    readonly fileName: string,
+    readonly existingFileName: string,
+  ) {
+    super(`${fileName} is already in this project${existingFileName !== fileName ? ` (as ${existingFileName})` : ""}, so it was not added again.`);
+    this.name = "DuplicateUploadError";
+  }
+}
+
+/** Hex SHA-256 of an upload's bytes: its content identity (IMP-008). */
+export function contentSha256(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
+}
 
 const BUCKET = "documents";
 
@@ -52,6 +75,7 @@ export async function storeUploadedDocument(
   ingestionType?: TableIngestionType,
   instrumentType?: InstrumentTypeChoice,
 ): Promise<string> {
+  assertImportFileSupported(file.name, file.size);
   // The DB constraint (0038_table_ingestion_type.sql) would catch a missing
   // value here too, but failing before the file is even uploaded to storage
   // gives a clearer error and skips an otherwise-wasted upload.
@@ -69,19 +93,44 @@ export async function storeUploadedDocument(
   // Storage API's request encoding. The real file name is kept as-is in
   // source_filename for display everywhere else.
   const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-  const storagePath = `${tenantId}/${runId}/${Date.now()}-${safeFileName}`;
+  const storagePath = `${tenantId}/${runId}/${Date.now()}-${randomUUID()}-${safeFileName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(storagePath, buffer, { contentType: file.type || undefined });
+  // IMP-008: refuse a second copy of the same bytes as the same kind in this project, before
+  // anything is uploaded. Migration-guarded (0098): before it is applied there is no content
+  // identity to check, so uploads behave exactly as before.
+  const sha256 = contentSha256(buffer);
+  const dedupe = await withTenant(tenantId, async (client) => {
+    const probe = await client.query<{ available: boolean }>(
+      `select exists (select 1 from information_schema.columns
+                      where table_name = 'documents' and column_name = 'content_sha256') as available`,
+    );
+    if (probe.rows[0]?.available !== true) return { available: false as const };
+    const existing = await client.query<{ source_filename: string }>(
+      "select source_filename from documents where run_id = $1 and kind = $2 and content_sha256 = $3 limit 1",
+      [runId, kind, sha256],
+    );
+    return { available: true as const, existing: existing.rows[0]?.source_filename ?? null };
+  });
+  if (dedupe.available && dedupe.existing !== null) throw new DuplicateUploadError(file.name, dedupe.existing);
 
-  if (uploadError) {
-    throw new Error(`Upload of ${file.name} failed: ${uploadError.message}`);
-  }
+  // Commit intent before the external write. If insertion and subsequent cleanup both fail,
+  // this record survives independently and the existing Import retry can discover the object.
+  const cleanupId = await withTenant(tenantId, async client => {
+    const run = await client.query("select id from runs where id=$1 and tenant_id=$2", [runId, tenantId]);
+    if (!run.rowCount) throw new Error("Project not found for upload.");
+    return queueDocumentStorageCleanup(client, tenantId, runId, "pending-upload", [storagePath]);
+  });
 
   try {
     return await withTenant(tenantId, async (client) => {
+      const run = await client.query("select id from runs where id=$1 and tenant_id=$2 for update", [runId, tenantId]);
+      if (!run.rowCount) throw new Error("Project not found for upload.");
+      const intent = await client.query("select id from trace where id=$1 and tenant_id=$2 and run_id=$3 and event='document_storage_cleanup_pending'", [cleanupId, tenantId, runId]);
+      if (!intent.rowCount) throw new Error("This upload was cleaned up before it started. Retry the file.");
+      // Cleanup takes the same lock, so it cannot remove bytes between upload and insertion.
+      const { error: uploadError } = await supabaseAdmin.storage.from(BUCKET).upload(storagePath, buffer, { contentType: file.type || undefined });
+      if (uploadError) throw new Error(`Upload of ${file.name} failed: ${uploadError.message}`);
       // The instrument column only exists once migration 0060 is applied, so
       // it is only named for instrument uploads and every other upload is
       // unaffected until then.
@@ -99,38 +148,28 @@ export async function storeUploadedDocument(
                returning id`,
               [tenantId, runId, kind, file.name, storagePath, kind === "table" ? ingestionType : null]
             );
-      return result.rows[0].id;
+      const id = result.rows[0].id;
+      // IMP-008: recorded in the same transaction as the insert. The partial unique index
+      // (0098) rejects it when a concurrent retry stored the same bytes first; the whole insert
+      // then rolls back and the storage object is cleaned up below.
+      if (dedupe.available) {
+        await client.query("update documents set content_sha256 = $2 where id = $1", [id, sha256]);
+      }
+      await client.query("delete from trace where id=$1 and tenant_id=$2 and run_id=$3", [cleanupId, tenantId, runId]);
+      return id;
     });
   } catch (error) {
-    // The file is already in storage but has no document row to point at it:
-    // clean it up rather than leaving an orphaned object with nothing in the
-    // database to show it exists or to let a retry find and reuse it. Best
-    // effort; if the cleanup itself fails, the original insert error is still
-    // the one that reaches the caller, not this one, but the cleanup failure
-    // itself is recorded rather than silently dropped - without this, a
-    // double failure (insert fails, then cleanup also fails) left an
-    // orphaned storage object with literally nothing, anywhere, saying it
-    // existed or needed attention.
-    // IMP-007: `.remove()` can reject outright, not just resolve with an `{ error }` - a
-    // rejection here used to escape this catch block as a brand-new thrown error, replacing
-    // the original insert failure (`error`) with the cleanup failure instead of adding to it,
-    // and the `throw error;` below never ran, so neither the insert failure nor the cleanup
-    // failure was ever recorded. Both shapes are now folded into the same recorded trace, and
-    // the original insert error is always what this function throws.
-    let cleanupError: { message: string } | null = null;
     try {
-      const { error: cleanupErr } = await supabaseAdmin.storage.from(BUCKET).remove([storagePath]);
-      cleanupError = cleanupErr;
-    } catch (thrown) {
-      cleanupError = { message: thrown instanceof Error ? thrown.message : String(thrown) };
+      await finishDocumentStorageCleanup(tenantId, runId, cleanupId);
+    } catch (cleanupError) {
+      const original = error instanceof Error ? error.message : String(error);
+      const cleanup = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      throw new Error(`${original} File cleanup remains pending in Import; use Retry file cleanup. ${cleanup}`);
     }
-    if (cleanupError) {
-      await withTenant(tenantId, async (client) => {
-        await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'document_storage_cleanup_failed', $3)`,
-          [tenantId, runId, JSON.stringify({ storagePath, insertError: error instanceof Error ? error.message : String(error), cleanupError: cleanupError.message })]
-        );
-      }).catch(() => {});
+    // A concurrent retry stored the same bytes first (unique index from 0098): a duplicate,
+    // reported as such - the storage object was cleaned up above like any failed insert.
+    if ((error as { code?: string })?.code === "23505" && /documents_run_kind_content_uidx/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
+      throw new DuplicateUploadError(file.name, file.name);
     }
     throw error;
   }

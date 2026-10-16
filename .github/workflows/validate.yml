@@ -1,18 +1,55 @@
 name: Retained validation
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    services:
+      # Disposable PostgreSQL for the *.db.test.ts suites: each suite builds its own ie_test_*
+      # database from supabase/migrations and drops it afterwards. pgvector is required by the
+      # migrations. Trust auth on a throwaway service container only.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://postgres@localhost:5432/postgres
+      # Fail the run if any real-database or Python-engine suite only ran its "NOT RUN" placeholder.
+      VALIDATE_REQUIRE_INTEGRATION: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      # The statistics engine (api/parse-stats-file.py) and its tests need pandas, openpyxl and
+      # pyreadstat; requirements.txt pins them (pandas arrives with pyreadstat).
+      - run: python -m pip install -r requirements.txt pandas
       - run: npm ci
+      # Lint only the files this change touches: the repository still has pre-existing findings in
+      # untouched files, which this gate does not claim to have fixed.
+      - name: Lint changed files
+        if: github.event_name == 'pull_request'
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- '*.ts' '*.tsx' '*.mjs' '*.cjs' | tr '\n' ' ')
+          if [ -n "$files" ]; then npx eslint $files; else echo "No lintable files changed."; fi
       - run: npm run validate

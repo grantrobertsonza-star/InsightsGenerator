@@ -87,7 +87,7 @@ export default function ImportGuide() {
         rows={[
           ["Kind", "What it is", "What Import does with it"],
           ["Report", "A narrative document, deck or PDF that makes claims", "Reads it and extracts atomic claims for verification (see the findings guide)."],
-          ["Data file", "Case-level data (.sav, .dta, .sas7bdat, .csv, .xlsx) or an already summarised table", "Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings."],
+          ["Data file", "Case-level data (.sav, .dta, .csv, .xlsx; SAS excluded pending verification) or an already summarised table", "Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings."],
           ["Transcript", "An interview or group discussion", "Checks it before coding: who speaks, how much, how the moderator behaves, and whether it is long enough to code."],
           ["Questionnaire or guide", "The instrument behind the data or the discussion", "Attached to a data file or to transcripts, read automatically, and matched. See below."],
           ["Statistical output", "A zip or several files of model results, cluster profiles, diagnostics and logs", "Sorted into a set, classified, checked as a set, and turned into findings. See below."],

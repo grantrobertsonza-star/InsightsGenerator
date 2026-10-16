@@ -344,6 +344,43 @@ export function addSectionDivider(
   return slide;
 }
 
+/**
+ * FND-001: a qualification printed ON the slide whose content it qualifies (for example saved
+ * narrative framing that rests on insights whose support has changed), as a solid band so it reads
+ * on light and dark slides alike and cannot be separated from that content. The slide's own
+ * content is left exactly as it was. "bottom" sits between a full-height content block (which these
+ * layouts end by 4.8in) and the footer rule at 5.22in; "top" is for a layout whose bottom is taken
+ * (the governing-thought slide's subtext), above its eyebrow at 1.05in.
+ */
+export function addQualificationBand(
+  slide: PptxGenJS.PresSlide,
+  text: string,
+  position: "top" | "bottom" = "bottom",
+) {
+  const box = position === "bottom" ? { y: 4.85, h: 0.34 } : { y: 0.3, h: 0.5 };
+  const fitted = fitParagraph(text, { fontSize: 10, widthIn: 8.7, heightIn: box.h, minFontScale: 0.75 });
+  slide.addShape("rect", {
+    x: 0.5,
+    y: box.y,
+    w: 9,
+    h: box.h,
+    fill: { color: "FBEAE7" },
+    line: { color: COLORS.high, width: 0.75 },
+  });
+  slide.addText(fitted.text, {
+    x: 0.6,
+    y: box.y,
+    w: 8.8,
+    h: box.h,
+    fontSize: fitted.fontSize,
+    italic: true,
+    fontFace: FONT.body,
+    color: COLORS.high,
+    valign: "middle",
+    margin: 0.02,
+  });
+}
+
 /** Small page footer used on every content slide across the deck exports. */
 export function addFooter(
   slide: PptxGenJS.PresSlide,
@@ -634,7 +671,7 @@ export function fitBulletList(
     size = Math.round(fontSize * scale * 10) / 10;
   }
 
-  let working = [...items];
+  const working = [...items];
   let guard = 0;
   while (estimateHeight(working, size) > heightIn && guard < 30) {
     const longestIndex = working.reduce(

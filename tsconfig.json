@@ -30,5 +30,15 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "scripts/exportfix-review",
+    "scripts/overnight-trust-review/runs",
+    "scripts/repair6-verification/adapters",
+    "scripts/staged-identity-review",
+    "scripts/workflow-tenant-review/candidate-tenant",
+    "scripts/workflow-tenant-review/candidate-workflow",
+    "scripts/workflow-tenant-review/repair7/before",
+    "scripts/workflow-tenant-review/repair7/candidate"
+  ]
 }

@@ -1,0 +1,1165 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Independent semantic numerical-grounding reference cases; not application validator output",
+  "proposedDerivationPolicy": {
+    "exactAndRounding": "Allowed only with compatible measure,group,unit,base,period and sign; no invented precision.",
+    "percentagePointDifference": "Proposed permitted:60%-40%=20pp with named comparator and compatible bases.",
+    "relativeRatios": "Marked needs_review pending Grant approval; reference arithmetic supplied, never silently accepted.",
+    "intervals": "Coverage,bounds,sign and measure must remain faithful; no invented margin.",
+    "interpretation": "Matching numbers never establish causal or population interpretation.",
+    "aggregation": "Any unsupported research claim makes overall unsupported; unresolved policy makes needs_review unless a separate unsupported claim already exists."
+  },
+  "cases": [
+    {
+      "id": "exact",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase was60%.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "60%",
+          "expectedDisposition": "traced",
+          "measure": "purchase",
+          "group": "Male",
+          "unit": "percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Exact measure,group,period and denominator match.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "rounding",
+      "citedFindingIds": [
+        "f-round"
+      ],
+      "findings": [
+        {
+          "id": "f-round",
+          "text": "42.6% selected convenience;raw base500,2026.",
+          "figures": [
+            {
+              "measure": "convenience",
+              "group": "all",
+              "value": 42.6,
+              "unit": "percent",
+              "base": 500,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "About43% selected convenience.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "43%",
+          "expectedDisposition": "traced",
+          "measure": "convenience",
+          "group": "all",
+          "unit": "percent",
+          "base": 500,
+          "period": "2026"
+        }
+      ],
+      "reason": "42.6 rounds to43 at stated whole-percent precision.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "overprecision",
+      "citedFindingIds": [
+        "f-round"
+      ],
+      "findings": [
+        {
+          "id": "f-round",
+          "text": "42.6% selected convenience;raw base500,2026.",
+          "figures": [
+            {
+              "measure": "convenience",
+              "group": "all",
+              "value": 42.6,
+              "unit": "percent",
+              "base": 500,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Exactly42.63% selected convenience.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "42.63%",
+          "expectedDisposition": "unsupported",
+          "measure": "convenience",
+          "group": "all",
+          "unit": "percent",
+          "base": 500,
+          "period": "2026"
+        }
+      ],
+      "reason": "Unprovided extra precision is not rounding.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "points",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase exceeds female purchase by20 percentage points.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "20 percentage points",
+          "expectedDisposition": "traced",
+          "measure": "purchase",
+          "group": "Male minus Female",
+          "unit": "percentage_points",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Permitted compatible difference60-40=20.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "relative-confusion",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase is20% higher than female purchase.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "20% higher",
+          "expectedDisposition": "unsupported",
+          "measure": "purchase",
+          "group": "Male relative to Female",
+          "unit": "relative_percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Relative increase is(60-40)/40=50%,not20%.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "relative-derived",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase is50% higher than female purchase.",
+      "expectedClassification": "needs_review",
+      "numericalClaims": [
+        {
+          "text": "50% higher",
+          "expectedDisposition": "needs_review",
+          "measure": "purchase",
+          "group": "Male relative to Female",
+          "unit": "relative_percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Arithmetic compatible; product must approve derived relative claims.",
+      "unresolvedProductPolicy": "Approve relative percentage derivations when comparator/base is explicit?"
+    },
+    {
+      "id": "ratio",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase is1.5 times female purchase.",
+      "expectedClassification": "needs_review",
+      "numericalClaims": [
+        {
+          "text": "1.5 times",
+          "expectedDisposition": "needs_review",
+          "measure": "purchase",
+          "group": "Male relative to Female",
+          "unit": "ratio",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "60/40=1.5; policy approval required for derived ratio.",
+      "unresolvedProductPolicy": "Approve compatible cited ratios?"
+    },
+    {
+      "id": "words",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Sixty percent of men purchased.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "Sixty percent",
+          "expectedDisposition": "traced",
+          "measure": "purchase",
+          "group": "Male",
+          "unit": "percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Spelling does not alter numeric meaning.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "range",
+      "citedFindingIds": [
+        "f-nps"
+      ],
+      "findings": [
+        {
+          "id": "f-nps",
+          "text": "NPS25,95% interval14.4 to35.6,raw base200,2026 wave.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": 25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                -100,
+                100
+              ],
+              "interval": {
+                "level": 0.95,
+                "lower": 14.4,
+                "upper": 35.6
+              }
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "NPS is25 with95% interval14.4-35.6.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "25",
+          "expectedDisposition": "traced",
+          "measure": "NPS",
+          "group": "all",
+          "unit": "nps_points",
+          "base": 200,
+          "period": "2026"
+        },
+        {
+          "text": "95%",
+          "expectedDisposition": "traced",
+          "measure": "interval_coverage",
+          "group": "all",
+          "unit": "percent",
+          "base": 200,
+          "period": "2026"
+        },
+        {
+          "text": "14.4-35.6",
+          "expectedDisposition": "traced",
+          "measure": "NPS interval",
+          "group": "all",
+          "unit": "nps_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Estimate,coverage and bounds match.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "rounded-range",
+      "citedFindingIds": [
+        "f-nps"
+      ],
+      "findings": [
+        {
+          "id": "f-nps",
+          "text": "NPS25,95% interval14.4 to35.6,raw base200,2026 wave.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": 25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                -100,
+                100
+              ],
+              "interval": {
+                "level": 0.95,
+                "lower": 14.4,
+                "upper": 35.6
+              }
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "NPS interval is about14 to36.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "14 to36",
+          "expectedDisposition": "traced",
+          "measure": "NPS interval",
+          "group": "all",
+          "unit": "nps_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Bounds rounded at displayed integer precision.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "invented-range",
+      "citedFindingIds": [
+        "f-nps"
+      ],
+      "findings": [
+        {
+          "id": "f-nps",
+          "text": "NPS25,95% interval14.4 to35.6,raw base200,2026 wave.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": 25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                -100,
+                100
+              ],
+              "interval": {
+                "level": 0.95,
+                "lower": 14.4,
+                "upper": 35.6
+              }
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "NPS could be15 points higher or lower.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "15 points",
+          "expectedDisposition": "unsupported",
+          "measure": "NPS interval halfwidth",
+          "group": "all",
+          "unit": "nps_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "No\u00b115 basis; supplied halfwidth10.6.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "mean-as-share",
+      "citedFindingIds": [
+        "f-mean"
+      ],
+      "findings": [
+        {
+          "id": "f-mean",
+          "text": "Satisfaction mean3.5 on1-5 scale;raw base200,2026.",
+          "figures": [
+            {
+              "measure": "satisfaction",
+              "group": "all",
+              "value": 3.5,
+              "unit": "scale_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                1,
+                5
+              ]
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "3.5% of respondents were satisfied.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "3.5%",
+          "expectedDisposition": "unsupported",
+          "measure": "satisfaction",
+          "group": "all",
+          "unit": "percent",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Mean is not a share.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "nps-as-percent",
+      "citedFindingIds": [
+        "f-nps"
+      ],
+      "findings": [
+        {
+          "id": "f-nps",
+          "text": "NPS25,95% interval14.4 to35.6,raw base200,2026 wave.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": 25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                -100,
+                100
+              ],
+              "interval": {
+                "level": 0.95,
+                "lower": 14.4,
+                "upper": 35.6
+              }
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "25% of respondents are promoters.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "25%",
+          "expectedDisposition": "unsupported",
+          "measure": "promoters",
+          "group": "all",
+          "unit": "percent",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "NPS25 is net score,not promoter share.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "sign-reversal",
+      "citedFindingIds": [
+        "f-nps"
+      ],
+      "findings": [
+        {
+          "id": "f-nps",
+          "text": "NPS25,95% interval14.4 to35.6,raw base200,2026 wave.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": 25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                -100,
+                100
+              ],
+              "interval": {
+                "level": 0.95,
+                "lower": 14.4,
+                "upper": 35.6
+              }
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "NPS was-25.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "-25",
+          "expectedDisposition": "unsupported",
+          "measure": "NPS",
+          "group": "all",
+          "unit": "nps_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Direction reversal changes research meaning.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "negative-match",
+      "citedFindingIds": [
+        "f-negative"
+      ],
+      "findings": [
+        {
+          "id": "f-negative",
+          "text": "NPS-25,raw base200,2026.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": -25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "NPS was minus twenty-five.",
+      "expectedClassification": "traced",
+      "numericalClaims": [
+        {
+          "text": "minus twenty-five",
+          "expectedDisposition": "traced",
+          "measure": "NPS",
+          "group": "all",
+          "unit": "nps_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Signed value matches; NPS scale-100..100.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "invented-scale",
+      "citedFindingIds": [
+        "f-mean"
+      ],
+      "findings": [
+        {
+          "id": "f-mean",
+          "text": "Satisfaction mean3.5 on1-5 scale;raw base200,2026.",
+          "figures": [
+            {
+              "measure": "satisfaction",
+              "group": "all",
+              "value": 3.5,
+              "unit": "scale_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                1,
+                5
+              ]
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Mean satisfaction3.5 on a1-10 instrument.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "3.5",
+          "expectedDisposition": "traced",
+          "measure": "satisfaction",
+          "group": "all",
+          "unit": "scale_points",
+          "base": 200,
+          "period": "2026"
+        },
+        {
+          "text": "1-10",
+          "expectedDisposition": "unsupported",
+          "measure": "satisfaction_scale",
+          "group": "all",
+          "unit": "scale_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Figure matches,but cited scale is1-5.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "invented-base",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase60%,based on200 men.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "60%",
+          "expectedDisposition": "traced",
+          "measure": "purchase",
+          "group": "Male",
+          "unit": "percent",
+          "base": 100,
+          "period": "2026"
+        },
+        {
+          "text": "200 men",
+          "expectedDisposition": "unsupported",
+          "measure": "base",
+          "group": "Male",
+          "unit": "respondents",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "Total200 cannot substitute for male base100.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "uncited-number",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [
+        {
+          "id": "f-mean",
+          "text": "Satisfaction mean3.5 on1-5 scale;raw base200,2026.",
+          "figures": [
+            {
+              "measure": "satisfaction",
+              "group": "all",
+              "value": 3.5,
+              "unit": "scale_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                1,
+                5
+              ]
+            }
+          ]
+        }
+      ],
+      "aiText": "Satisfaction averaged3.5.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "3.5",
+          "expectedDisposition": "unsupported",
+          "measure": "satisfaction",
+          "group": "all",
+          "unit": "scale_points",
+          "base": 200,
+          "period": "2026"
+        }
+      ],
+      "reason": "An uncited finding is not supporting evidence.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "operational",
+      "citedFindingIds": [
+        "f-nps"
+      ],
+      "findings": [
+        {
+          "id": "f-nps",
+          "text": "NPS25,95% interval14.4 to35.6,raw base200,2026 wave.",
+          "figures": [
+            {
+              "measure": "NPS",
+              "group": "all",
+              "value": 25,
+              "unit": "nps_points",
+              "base": 200,
+              "period": "2026",
+              "scale": [
+                -100,
+                100
+              ],
+              "interval": {
+                "level": 0.95,
+                "lower": 14.4,
+                "upper": 35.6
+              }
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "In2026 we propose3 implementation steps.",
+      "expectedClassification": "needs_review",
+      "numericalClaims": [
+        {
+          "text": "2026",
+          "expectedDisposition": "traced",
+          "measure": "wave",
+          "group": "all",
+          "unit": "year",
+          "base": null,
+          "period": "2026"
+        },
+        {
+          "text": "3 implementation steps",
+          "expectedDisposition": "needs_review",
+          "measure": "operational_count",
+          "group": null,
+          "unit": "steps",
+          "base": null,
+          "period": null
+        }
+      ],
+      "reason": "Years/operational counts require role classification,not rejection as invented research statistics.",
+      "unresolvedProductPolicy": "Permit author-defined operational counts when explicitly non-research?"
+    },
+    {
+      "id": "wrong-group",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Female purchase was60%.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "60%",
+          "expectedDisposition": "unsupported",
+          "measure": "purchase",
+          "group": "Female",
+          "unit": "percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "60 is cited but belongs toMale;Female40.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "wrong-period",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "Male purchase was60% in2025.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "60%",
+          "expectedDisposition": "unsupported",
+          "measure": "purchase",
+          "group": "Male",
+          "unit": "percent",
+          "base": 100,
+          "period": "2025"
+        },
+        {
+          "text": "2025",
+          "expectedDisposition": "unsupported",
+          "measure": "wave",
+          "group": "Male",
+          "unit": "year",
+          "base": null,
+          "period": "2025"
+        }
+      ],
+      "reason": "Correct value assigned to uncited period.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "causal-overreach",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "The60% male purchase rate proves advertising caused purchase.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "60%",
+          "expectedDisposition": "traced",
+          "measure": "purchase",
+          "group": "Male",
+          "unit": "percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Matching share does not establish causal mechanism; overall unsupported despite traced numeral.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "population-overreach",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "All men in the population purchase at exactly60%.",
+      "expectedClassification": "unsupported",
+      "numericalClaims": [
+        {
+          "text": "60%",
+          "expectedDisposition": "unsupported",
+          "measure": "purchase",
+          "group": "Male",
+          "unit": "percent",
+          "base": 100,
+          "period": "2026"
+        }
+      ],
+      "reason": "Sample estimate is not exact universal population claim.",
+      "unresolvedProductPolicy": null
+    },
+    {
+      "id": "unknown-denominator",
+      "citedFindingIds": [
+        "f-share"
+      ],
+      "findings": [
+        {
+          "id": "f-share",
+          "text": "Purchase: Male60%,Female40%,raw base100 each;2026 wave.",
+          "figures": [
+            {
+              "measure": "purchase",
+              "group": "Male",
+              "value": 60,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            },
+            {
+              "measure": "purchase",
+              "group": "Female",
+              "value": 40,
+              "unit": "percent",
+              "base": 100,
+              "period": "2026"
+            }
+          ]
+        }
+      ],
+      "uncitedFindings": [],
+      "aiText": "There were60 male buyers in the eligible weighted population.",
+      "expectedClassification": "needs_review",
+      "numericalClaims": [
+        {
+          "text": "60",
+          "expectedDisposition": "needs_review",
+          "measure": "buyers",
+          "group": "Male",
+          "unit": "weighted_count",
+          "base": null,
+          "period": "2026"
+        }
+      ],
+      "reason": "Raw100 base supports raw60 buyers,but no eligible weighted population exists.",
+      "unresolvedProductPolicy": "Resolve intended denominator/weight meaning before accepting derived count."
+    }
+  ]
+}

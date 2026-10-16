@@ -1,0 +1,5 @@
+{
+  "reason": "Initial Value Labels sheet accidentally also matched one-row-per-variable codebook interpretation; MR had no explicit membership and sparse NPS had no declared 0?10 domain. Use supported explicit one-row-per-variable Codebook metadata. No Data cell or independent expectation changes. Initial workbook, UI refusals and key retained.",
+  "same_data": true,
+  "new_sha256": "2ab599a253b6dbffd01219edb57d08c1776fcbf6f8fc4fa467d26f58a288e6b0"
+}

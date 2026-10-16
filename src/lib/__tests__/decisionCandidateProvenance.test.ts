@@ -51,8 +51,12 @@ function makeFakeDb(rows: Row[]) {
       if (s.startsWith("select business_problem, research_objective, decision_statement, audience, entry_point from runs")) {
         return { rows: [{ business_problem: null, research_objective: null, decision_statement: null, audience: null, entry_point: "validate" }] };
       }
-      if (s.startsWith("select finding_text, theme from findings")) {
-        return { rows: [{ finding_text: "Customers want faster delivery.", theme: "Logistics" }] };
+      // The findings read now also returns each finding's latest verification status (golden-thread
+      // repair, decisionFramer.ts); the fixture finding is unverified. Provenance logic unaffected.
+      if (s.startsWith("select f.finding_text, f.theme, f.origin, v.verdict_tier, v.verification_basis")) {
+        return {
+          rows: [{ finding_text: "Customers want faster delivery.", theme: "Logistics", origin: "stated", verdict_tier: null, verification_basis: null }],
+        };
       }
       if (s.startsWith("update runs set evidence_synthesis")) {
         return { rows: [] };

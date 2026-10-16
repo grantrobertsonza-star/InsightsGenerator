@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
+import { figureCheckAvailable } from "./figureChecks";
 import { generateRecommendations, generateSynthesizedRecommendations } from "./recommendationAgent";
 import { refreshRecommendationQuality } from "./recommendationQualityScorer";
 
@@ -74,11 +75,15 @@ export async function updateAndAcceptRecommendation(
   fields: RecommendationFields
 ) {
   await withTenant(TENANT_ID, async (client) => {
+    // Numerical traceability (0101): the stored figure check described the AI's wording. A
+    // researcher's own wording is not AI output, so the check is cleared (not checked) rather than
+    // carried over to text it never examined.
+    const clearCheck = (await figureCheckAvailable(client)) ? ", figure_check = null" : "";
     await client.query(
       `update recommendations
        set action_text = $1, owner_role = $2, owner_feasibility_note = $3, timeline = $4, metric = $5,
            priority = $6, assumptions_and_risks = $7, alternatives_considered = $8, status = 'accepted',
-           edited = true
+           edited = true${clearCheck}
        where id = $9 and run_id = $10`,
       [
         fields.action_text,
@@ -125,13 +130,20 @@ export async function addOwnRecommendation(
   runId: string,
   insightId: string,
   fields: RecommendationFields
-) {
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query(
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // REC-001: the anchor's ownership is validated in the SAME statement that writes the
+  // recommendation (insert ... select ... where the insight belongs to this run), inside the
+  // tenant-scoped transaction, so a recommendation can never be attached to another project's
+  // insight, and an insight deleted meanwhile cannot be written against. Nothing inserted -> refused.
+  const inserted = await withTenant(TENANT_ID, async (client) => {
+    const r = await client.query(
       `insert into recommendations
          (tenant_id, run_id, insight_id, action_text, owner_role, owner_feasibility_note, timeline, metric,
           priority, assumptions_and_risks, alternatives_considered, source, status)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'researcher_authored', 'accepted')`,
+       select $1, $2, i.id, $4, $5, $6, $7, $8, $9, $10, $11, 'researcher_authored', 'accepted'
+       from insights i
+       where i.id = $3 and i.run_id = $2
+       returning id`,
       [
         TENANT_ID,
         runId,
@@ -146,8 +158,13 @@ export async function addOwnRecommendation(
         fields.alternatives_considered,
       ]
     );
+    return r.rowCount ?? 0;
   });
+  if (inserted === 0) {
+    return { ok: false, error: "That insight is not part of this project any more, so no recommendation was added. Reload and choose again." };
+  }
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 export async function deleteRecommendation(runId: string, recommendationId: string) {
@@ -195,13 +212,18 @@ export async function addOwnSynthesizedRecommendation(
   runId: string,
   synthesizedInsightId: string,
   fields: RecommendationFields
-) {
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query(
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // REC-001: same single-statement ownership validation as addOwnRecommendation; the anchor must
+  // also still be accepted (the picker only offers accepted insights).
+  const inserted = await withTenant(TENANT_ID, async (client) => {
+    const r = await client.query(
       `insert into recommendations
          (tenant_id, run_id, synthesized_insight_id, action_text, owner_role, owner_feasibility_note, timeline,
           metric, priority, assumptions_and_risks, alternatives_considered, source, status)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'researcher_authored', 'accepted')`,
+       select $1, $2, si.id, $4, $5, $6, $7, $8, $9, $10, $11, 'researcher_authored', 'accepted'
+       from synthesized_insights si
+       where si.id = $3 and si.run_id = $2 and si.review_status = 'accepted'
+       returning id`,
       [
         TENANT_ID,
         runId,
@@ -216,9 +238,17 @@ export async function addOwnSynthesizedRecommendation(
         fields.alternatives_considered,
       ]
     );
+    return r.rowCount ?? 0;
   });
+  if (inserted === 0) {
+    return {
+      ok: false,
+      error: "That insight is not an accepted insight of this project any more, so no recommendation was added. Reload and choose again.",
+    };
+  }
   await refreshRecommendationQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 /**

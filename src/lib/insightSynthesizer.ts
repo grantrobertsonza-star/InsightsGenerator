@@ -2,7 +2,11 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
+import { NO_INVENTED_EXPLANATIONS_RULE } from "./groundingRules";
 import { refreshContradictions } from "./contradictionDetector";
+import type { SupportParts } from "./supportStatusShared";
+import { figureCheck, type FigureCheck } from "./numberTrace";
+import { figureCheckAvailable } from "./figureChecks";
 
 // Same ceiling as generateInsights' MAX_FINDINGS_FOR_INSIGHT: the pool of
 // pre-insights this pass can see at once, kept to one model call's worth
@@ -47,6 +51,17 @@ type EligiblePreInsight = {
   tension: string;
   implication: string;
   theme: string | null;
+  /** FND-001: finding_support_parts() of this pre-insight's finding AS READ HERE, i.e. the
+   * evidence the model is about to cluster and reframe. Stored on the source link when the
+   * insight is persisted, so a change made while drafting (model calls run outside any
+   * transaction) shows as "changed since drafted" immediately rather than being stamped as
+   * current. Null when migration 0096 is not applied. */
+  support_snapshot: SupportParts | null;
+  /** INS-001: finding_evidence_key() of this pre-insight's finding - which independent piece of
+   * evidence it rests on (its source table, its source document, or itself; a claim grounded by
+   * a computed finding shares that finding's key). Confidence counts distinct keys, never rows.
+   * Null when migration 0097 is not applied, and then no confidence tier is assigned. */
+  evidence_key: string | null;
 };
 
 type RunFraming = {
@@ -68,6 +83,8 @@ type SynthesizedCandidate = {
   materialityRationale: string;
   passesValidityGate: boolean;
   gateFailureReason: string | null;
+  /** Numerical traceability against the clustered pre-insights (numberTrace.ts). */
+  figureCheck: FigureCheck;
 };
 
 // Distinguishes "the model's response couldn't be parsed into a candidate
@@ -125,7 +142,10 @@ type ReframeOutcome =
  *    source_theme_count are counted in code, not asserted by the model,
  *    same "model frames, application computes" principle the verdict and
  *    quality-scoring code already follows. confidence_tier is derived from
- *    those two counts. Every synthesized insight is linked back to its
+ *    independent_source_count (distinct evidence keys, INS-001) and
+ *    source_theme_count - never from triangulation_count, which is the
+ *    number of linked pre-insights and so counts one source repeated as
+ *    several. Every synthesized insight is linked back to its
  *    member pre-insights in synthesized_insight_sources, so the full chain
  *    (finding -> pre-insight -> synthesized insight) stays queryable.
  *
@@ -181,9 +201,35 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
     return Number(result.rows[0]?.count ?? "0");
   });
 
-  const eligible = await withTenant(tenantId, async (client) => {
+  // FND-001: catalog pre-check for migration 0096 (a failing SELECT would abort this
+  // transaction). Without it the insight is still written, and every one of its sources reads
+  // "support not checked" (unknown) - visible, never current - until the migration is applied and
+  // synthesis runs again.
+  const { eligible, supportTracking, independenceTracking } = await withTenant(tenantId, async (client) => {
+    const probe = await client.query<{ available: boolean; independence: boolean }>(
+      `select (
+         exists (
+           select 1 from information_schema.columns
+           where table_name = 'synthesized_insight_sources' and column_name = 'support_snapshot'
+         )
+         and to_regprocedure('finding_support_parts(uuid)') is not null
+       ) as available,
+       (
+         exists (
+           select 1 from information_schema.columns
+           where table_name = 'synthesized_insights' and column_name = 'independent_source_count'
+         )
+         and to_regprocedure('finding_evidence_key(uuid)') is not null
+         and to_regprocedure('insight_confidence_tier(integer,integer)') is not null
+       ) as independence`,
+    );
+    const tracking = probe.rows[0]?.available === true;
+    // INS-001: catalog pre-check for migration 0097, same pattern and reason as 0096 above.
+    const independence = probe.rows[0]?.independence === true;
     const result = await client.query<EligiblePreInsight>(
-      `select i.id, i.headline, i.observation, i.tension, i.implication, f.theme
+      `select i.id, i.headline, i.observation, i.tension, i.implication, f.theme,
+              ${tracking ? "finding_support_parts(f.id)" : "null::jsonb"} as support_snapshot,
+              ${independence ? "finding_evidence_key(f.id)" : "null::text"} as evidence_key
        from insights i
        join findings f on f.id = i.finding_id
        where i.run_id = $1
@@ -195,7 +241,7 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
        limit $2`,
       [runId, MAX_PRE_INSIGHTS_FOR_SYNTHESIS]
     );
-    return result.rows;
+    return { eligible: result.rows, supportTracking: tracking, independenceTracking: independence };
   });
 
   if (eligible.length < MIN_CLUSTER_SIZE) return;
@@ -303,46 +349,86 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
   if (toPersist.length === 0) return;
 
   await withTenant(tenantId, async (client) => {
+    const storeCheck = await figureCheckAvailable(client);
     for (const candidate of toPersist) {
       const themes = new Set(candidate.cluster.members.map((m) => m.theme).filter((t): t is string => !!t));
+      // triangulation_count stays the number of source links written below (one per distinct
+      // member, de-duplicated by clusterPreInsights' `claimed` set): FND-001's deleted-source
+      // check compares it with the live link count. It is NOT a measure of corroboration.
       const triangulationCount = candidate.cluster.members.length;
       const sourceThemeCount = themes.size;
-      const confidenceTier =
-        sourceThemeCount >= 2 && triangulationCount >= 3
-          ? "strong"
-          : sourceThemeCount >= 2 || triangulationCount >= 3
-            ? "moderate"
-            : "exploratory";
+      // INS-001: corroboration counts distinct evidence keys, so several pre-insights resting on
+      // one finding, one data file (any of its tables) or one report count once. Unknown (0097 not applied, or a key the
+      // check could not resolve) stays unknown: no count is stored and no tier is assigned,
+      // rather than falling back to the row count that overstated confidence.
+      const keys = candidate.cluster.members.map((m) => m.evidence_key);
+      const independentSourceCount =
+        independenceTracking && keys.every((k): k is string => typeof k === "string" && k.length > 0)
+          ? new Set(keys).size
+          : null;
 
-      const inserted = await client.query<{ id: string }>(
-        `insert into synthesized_insights
-           (tenant_id, run_id, decision_context, headline, observation, tension, implication,
-            action_plan_status, triangulation_count, source_theme_count, materiality_rationale, confidence_tier)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         returning id`,
-        [
-          tenantId,
-          runId,
-          run.decision_statement,
-          candidate.headline,
-          candidate.observation,
-          candidate.tension,
-          candidate.implication,
-          candidate.actionPlanStatus,
-          triangulationCount,
-          sourceThemeCount,
-          candidate.materialityRationale,
-          confidenceTier,
-        ]
-      );
+      const values = [
+        tenantId,
+        runId,
+        run.decision_statement,
+        candidate.headline,
+        candidate.observation,
+        candidate.tension,
+        candidate.implication,
+        candidate.actionPlanStatus,
+        triangulationCount,
+        sourceThemeCount,
+        candidate.materialityRationale,
+      ];
+      // The tier thresholds have one definition, insight_confidence_tier() in migration 0097.
+      // Every parameter used more than once is cast to the same type at every use: PostgreSQL
+      // deduces one type per parameter, and $10 feeds both the smallint source_theme_count column
+      // and the function's integer argument (an uncast column use deduced smallint and the
+      // statement failed with 42P08). Assignment from integer to smallint is implicit.
+      const inserted =
+        independentSourceCount !== null
+          ? await client.query<{ id: string }>(
+              `insert into synthesized_insights
+                 (tenant_id, run_id, decision_context, headline, observation, tension, implication,
+                  action_plan_status, triangulation_count, source_theme_count, materiality_rationale,
+                  independent_source_count, confidence_tier)
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::integer, $11, $12::integer,
+                       insight_confidence_tier($12::integer, $10::integer))
+               returning id`,
+              [...values, independentSourceCount]
+            )
+          : await client.query<{ id: string }>(
+              `insert into synthesized_insights
+                 (tenant_id, run_id, decision_context, headline, observation, tension, implication,
+                  action_plan_status, triangulation_count, source_theme_count, materiality_rationale, confidence_tier)
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, null)
+               returning id`,
+              values
+            );
       const synthesizedInsightId = inserted.rows[0].id;
+      if (storeCheck) {
+        await client.query("update synthesized_insights set figure_check = $2 where id = $1", [
+          synthesizedInsightId,
+          JSON.stringify(candidate.figureCheck),
+        ]);
+      }
       for (const member of candidate.cluster.members) {
-        await client.query(
-          `insert into synthesized_insight_sources (tenant_id, synthesized_insight_id, pre_insight_id)
-           values ($1, $2, $3)
-           on conflict do nothing`,
-          [tenantId, synthesizedInsightId, member.id]
-        );
+        if (supportTracking) {
+          // FND-001: the drafted-from fingerprint (see EligiblePreInsight.support_snapshot).
+          await client.query(
+            `insert into synthesized_insight_sources (tenant_id, synthesized_insight_id, pre_insight_id, support_snapshot)
+             values ($1, $2, $3, $4)
+             on conflict do nothing`,
+            [tenantId, synthesizedInsightId, member.id, JSON.stringify(member.support_snapshot)]
+          );
+        } else {
+          await client.query(
+            `insert into synthesized_insight_sources (tenant_id, synthesized_insight_id, pre_insight_id)
+             values ($1, $2, $3)
+             on conflict do nothing`,
+            [tenantId, synthesizedInsightId, member.id]
+          );
+        }
       }
     }
   });
@@ -535,6 +621,8 @@ async function callReframe(
       "real insight. Clustering only organizes these pre-insights, it does not by itself explain why they " +
       "co-occur, that is your job here: name the underlying tension or motivation that connects them, don't " +
       "just summarize or concatenate what they each already say.\n\n" +
+      NO_INVENTED_EXPLANATIONS_RULE +
+      "\n\n" +
       framingBlock +
       "Write:\n" +
       "- headline: a short, specific statement of the insight.\n" +
@@ -670,6 +758,19 @@ async function reframeAndGateCluster(
     };
   }
 
+  // Numerical traceability: every figure must come from the pre-insights this insight clusters
+  // (or the project's stated framing), in context. An unsupported figure fails the gate exactly as
+  // the model's own validity judgement can: the insight is not published, the reason is in the
+  // synthesis summary trace, and its pre-insights stay eligible for the next pass.
+  const sources = [...cluster.members.flatMap((m) => [m.headline, m.observation, m.tension, m.implication]), framingBlock];
+  const check = figureCheck(
+    (["headline", "observation", "tension", "implication"] as const).map((field) => ({
+      field,
+      text: result[field],
+      sources,
+    })),
+  );
+  const unsupported = check.figures.filter((f) => f.status === "unsupported");
   return {
     ok: true,
     candidate: {
@@ -680,8 +781,12 @@ async function reframeAndGateCluster(
       implication: result.implication,
       actionPlanStatus: result.actionPlanStatus,
       materialityRationale: result.materialityRationale,
-      passesValidityGate: result.passesValidityGate,
-      gateFailureReason: result.gateFailureReason,
+      passesValidityGate: result.passesValidityGate && unsupported.length === 0,
+      gateFailureReason:
+        unsupported.length > 0
+          ? `figures not supported by the clustered pre-insights: ${unsupported.map((f) => `${f.text} (${f.reason})`).join("; ")}`
+          : result.gateFailureReason,
+      figureCheck: check,
     },
   };
 }

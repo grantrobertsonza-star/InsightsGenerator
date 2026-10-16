@@ -345,6 +345,17 @@ describe("round 4: canonical NA/whitespace/tie semantics (criterion 1)", () => {
     const result = await parseTableDocument("fixture_tie.xlsx", null);
     expect(result.sheetName).toBe("First");
   });
+
+  it("literal identifiers retain surrounding spaces and collisions while missing controls remain missing", async () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["respondent_id", "q"], [" 001 ", 1], ["001", 2], [" ", 3], ["NA", 4]]), "Data");
+    mockDownload(workbookBuffer(wb));
+    const parsed = await parseTableDocument("literal-identifiers.xlsx", "Data");
+    expect(parsed.rows.map(row => row.respondent_id)).toEqual([" 001 ", "001", null, null]);
+    mockDownload(Uint8Array.from(Buffer.from('respondent_id,q\n" 001 ",1\n001,2\n" ",3\nNA,4\n')).buffer);
+    const csv = await parseTableDocument("literal-identifiers.csv");
+    expect(csv.rows.map(row => row.respondent_id)).toEqual([" 001 ", "001", null, null]);
+  });
 });
 
 /** Shared fake-DB harness for the caller-level tests below. Keyed by documentId so several
@@ -544,7 +555,8 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
         storage_path: "fixture.xlsx",
         source_filename: "fixture.xlsx",
         selected_sheet: null,
-        variable_dictionary: { version: 6, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        // IMP-015: version 7 is the current dictionary version (a version-6 cache is recomputed; see below).
+        variable_dictionary: { version: 7, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
@@ -560,13 +572,36 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
     expect(DOCS["doc-3"].selected_sheet).toBe("Alpha");
   });
 
+  it("IMP-015: a version-6 cache (labels possibly chosen silently from conflicting sheets) is recomputed, not reused", async () => {
+    const { client } = makeFakeDb({
+      "doc-6": {
+        storage_path: "fixture.xlsx",
+        source_filename: "fixture.xlsx",
+        selected_sheet: "Alpha",
+        variable_dictionary: { version: 6, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+      },
+    });
+    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: Parameters<typeof withTenant>[1]) => cb(client() as never));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: Parameters<typeof withTenantRead>[1]) => cb(client() as never));
+    const { runStatsTool } = await import("../parseStatsFile");
+    vi.mocked(runStatsTool).mockReset();
+    vi.mocked(runStatsTool).mockResolvedValue({ version: 7, sets: {}, sheets: { data: "Alpha" }, variables: {} } as unknown as Awaited<ReturnType<typeof runStatsTool>>);
+
+    const { loadVariableDictionary } = await import("../crosstabs");
+    const dict = await loadVariableDictionary("tenant-1", "run-1", "doc-6");
+
+    expect(vi.mocked(runStatsTool)).toHaveBeenCalledTimes(1);
+    expect(dict).toMatchObject({ version: 7 });
+  });
+
   it("criterion 3: a cache naming a sheet that LOSES the confirmation race is not reused - it is invalidated and rebuilt", async () => {
     const { DOCS, client } = makeFakeDb({
       "doc-4": {
         storage_path: "fixture.xlsx",
         source_filename: "fixture.xlsx",
         selected_sheet: null,
-        variable_dictionary: { version: 6, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        // IMP-015: version 7 is the current dictionary version (a version-6 cache is recomputed; see below).
+        variable_dictionary: { version: 7, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     // Another reader already published "Beta" as authoritative for this document moments

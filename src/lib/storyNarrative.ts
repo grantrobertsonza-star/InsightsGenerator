@@ -1,7 +1,11 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
+import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { capWords } from "./text";
+import { NO_INVENTED_EXPLANATIONS_RULE, NO_DERIVED_FIGURES_RULE } from "./groundingRules";
+import { figureCheck, type FigureCheck } from "./numberTrace";
+import { figureCheckAvailable } from "./figureChecks";
 import type { ConfidenceTier, QualityTier } from "./tiers";
 
 type EvidenceInsight = {
@@ -22,6 +26,8 @@ type EvidenceRecommendation = {
   metric: string;
   priority: "high" | "medium" | "low";
   synthesized_insight_headline: string | null;
+  /** FND-001: the anchor insight, so a recommendation on an insight with invalid support is left out. */
+  synthesized_insight_id: string | null;
 };
 
 export type DeckPillar = {
@@ -105,11 +111,96 @@ const confidenceRank: Record<string, number> = {
  * explicitly-reviewed bar, not "anything not yet rejected" the way some
  * internal exports do.
  */
+/** What a narrative may take figures from (numerical traceability, numberTrace.ts). */
+export type NarrativeEvidence = {
+  insights: { id: string; headline: string; observation: string; tension: string; implication: string }[];
+  recommendations: { action_text: string; owner_role: string; timeline: string; synthesized_insight_headline: string | null }[];
+  /** The project's own stated context and counts the model was given. Never the earlier evidence summary. */
+  context: string[];
+};
+
+/**
+ * Checks every figure of a narrative against its cited evidence: a pillar's headline and "so what"
+ * against the insights that pillar cites; the summary, framing, caveats and transition against
+ * all accepted insights, recommendations and the stated context. Used by the generator and by the
+ * assistant's narrative revisions, so both apply the same rule.
+ */
+export function narrativeFigureCheck(
+  narrative: Pick<DeckNarrative, "executive_summary" | "situation" | "complication" | "question" | "governing_thought" | "recommendations_intro" | "caveats" | "pillars">,
+  evidence: NarrativeEvidence,
+): FigureCheck {
+  const insightText = (i: NarrativeEvidence["insights"][number]) => [i.headline, i.observation, i.tension, i.implication];
+  const all = [
+    ...evidence.insights.flatMap(insightText),
+    ...evidence.recommendations.flatMap((r) => [r.action_text, r.owner_role, r.timeline, r.synthesized_insight_headline ?? ""]),
+    ...evidence.context,
+  ];
+  const byId = new Map(evidence.insights.map((i) => [i.id, i]));
+  return figureCheck([
+    { field: "executive summary", text: narrative.executive_summary, sources: all },
+    { field: "situation", text: narrative.situation, sources: all },
+    { field: "complication", text: narrative.complication, sources: all },
+    { field: "question", text: narrative.question, sources: all },
+    { field: "governing thought", text: narrative.governing_thought, sources: all },
+    { field: "recommendations intro", text: narrative.recommendations_intro, sources: all },
+    ...narrative.caveats.map((c, i) => ({ field: `caveat ${i + 1}`, text: c, sources: all })),
+    ...narrative.pillars.flatMap((p, i) => {
+      const cited = p.insight_ids.flatMap((id) => (byId.has(id) ? insightText(byId.get(id)!) : []));
+      return [
+        { field: `pillar ${i + 1} headline`, text: p.headline, sources: cited },
+        { field: `pillar ${i + 1} so what`, text: p.so_what, sources: cited },
+      ];
+    }),
+  ]);
+}
+
+/**
+ * The evidence a stored narrative may take figures from, read fresh: accepted synthesized insights
+ * whose support is not invalid, accepted recommendations not anchored to an invalid insight, and
+ * the project's stated context. Used to check the assistant's narrative revisions with the same
+ * rule as generation.
+ */
+export async function loadNarrativeEvidence(tenantId: string, runId: string): Promise<NarrativeEvidence> {
+  const data = await withTenant(tenantId, async (client) => {
+    const run = await client.query<{ business_problem: string | null; research_objective: string | null; decision_statement: string | null; audience: string | null }>(
+      "select business_problem, research_objective, decision_statement, audience from runs where id = $1",
+      [runId],
+    );
+    const insights = await client.query<NarrativeEvidence["insights"][number] & { confidence_tier: string | null }>(
+      `select id, headline, observation, tension, implication, confidence_tier
+         from synthesized_insights where run_id = $1 and review_status = 'accepted'`,
+      [runId],
+    );
+    const recs = await client.query<NarrativeEvidence["recommendations"][number] & { synthesized_insight_id: string }>(
+      `select r.action_text, r.owner_role, r.timeline, si.headline as synthesized_insight_headline, si.id as synthesized_insight_id
+         from recommendations r join synthesized_insights si on si.id = r.synthesized_insight_id
+        where r.run_id = $1 and r.status = 'accepted'`,
+      [runId],
+    );
+    return { run: run.rows[0], insights: insights.rows, recs: recs.rows };
+  });
+  const support = await loadInsightSupportOrUnchecked(tenantId, runId, data.insights.map((i) => i.id));
+  const insights = data.insights.filter((i) => support.statusOf(i.id).status !== "invalid");
+  const tiers = (t: string) => insights.filter((i) => i.confidence_tier === t).length;
+  return {
+    insights,
+    recommendations: data.recs.filter((r) => support.statusOf(r.synthesized_insight_id).status !== "invalid"),
+    context: [
+      data.run?.business_problem ?? "",
+      data.run?.research_objective ?? "",
+      data.run?.decision_statement ?? "",
+      data.run?.audience ?? "",
+      `${insights.length} insights: ${tiers("strong")} strong, ${tiers("moderate")} moderate, ${tiers("exploratory")} exploratory, ` +
+        `${insights.filter((i) => !i.confidence_tier).length} not yet tiered`,
+    ],
+  };
+}
+
 export async function generateStoryNarrative(
   tenantId: string,
   runId: string,
 ): Promise<DeckNarrative> {
-  const { run, insights, recommendations } = await withTenant(
+  const { run, insights: acceptedInsights, recommendations: acceptedRecommendations } = await withTenant(
     tenantId,
     async (client) => {
       const runResult = await client.query<{
@@ -135,7 +226,8 @@ export async function generateStoryNarrative(
       );
 
       const recommendationsResult = await client.query<EvidenceRecommendation>(
-        `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority, si.headline as synthesized_insight_headline
+        `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority, si.headline as synthesized_insight_headline,
+              si.id as synthesized_insight_id
        from recommendations r
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
@@ -153,6 +245,29 @@ export async function generateStoryNarrative(
 
   if (!run) {
     throw new Error("Project not found");
+  }
+
+  // FND-001: a narrative is never drafted from an insight whose support is no longer valid (a
+  // supporting finding rejected or deleted), nor from a recommendation anchored to one. Insights
+  // whose support changed or cannot be checked are still used; the exports qualify them visibly
+  // (see supportStatus.ts and both story export routes). A failed check reads every insight as
+  // "not checked", which is allowed here and qualified on export - it never blocks silently and
+  // never certifies anything as current.
+  const support = await loadInsightSupportOrUnchecked(
+    tenantId,
+    runId,
+    acceptedInsights.map((insight) => insight.id),
+  );
+  const insights = acceptedInsights.filter((insight) => support.statusOf(insight.id).status !== "invalid");
+  const recommendations = acceptedRecommendations.filter(
+    (rec) => !rec.synthesized_insight_id || support.statusOf(rec.synthesized_insight_id).status !== "invalid",
+  );
+  if (acceptedInsights.length > 0 && insights.length === 0) {
+    throw new Error(
+      "Every accepted synthesized insight now rests on evidence that was rejected or deleted. Review them " +
+        "(their support status is shown on the Insights screen), then re-run synthesis or accept current ones " +
+        "before generating the Insights Report.",
+    );
   }
   if (insights.length === 0) {
     throw new Error(
@@ -204,8 +319,10 @@ export async function generateStoryNarrative(
     run.decision_statement
       ? `Decision(s) this project exists to inform: ${run.decision_statement}`
       : null,
+    // Golden-thread repair: background only. It was written earlier, from findings as they then
+    // stood, and is not refreshed when verification changes, so it must not supply figures.
     run.evidence_synthesis
-      ? `Evidence synthesis so far: ${run.evidence_synthesis}`
+      ? `Earlier evidence summary (background framing only; take every figure from the accepted insights and recommendations below, never from this summary): ${run.evidence_synthesis}`
       : null,
     run.audience ? `Audience for this report: ${run.audience}` : null,
   ]
@@ -223,6 +340,24 @@ export async function generateStoryNarrative(
   // this input is, and a second or third attempt succeeding outright is
   // strictly better than either a hard failure or a same-every-time
   // fallback.
+  // Numerical traceability (enforced, numberTrace.ts): every figure the narrative states must come
+  // from what it cites - see narrativeFigureCheck. The earlier evidence summary is NOT a source of
+  // figures (it is background only, see contextBlock), and neither are the list numbers or the
+  // prompt's own instructions.
+  const evidence: NarrativeEvidence = {
+    insights,
+    recommendations,
+    context: [
+      run.business_problem ?? "",
+      run.research_objective ?? "",
+      run.decision_statement ?? "",
+      run.audience ?? "",
+      `${insights.length} insights: ${strongCount} strong, ${moderateCount} moderate, ${exploratoryCount} exploratory, ${untieredCount} not yet tiered`,
+    ],
+  };
+  let figureFeedback = "";
+  let lastUnsupported: FigureCheck["figures"] = [];
+
   const MAX_PILLAR_ATTEMPTS = 3;
   let raw: {
     executive_summary?: unknown;
@@ -279,6 +414,10 @@ export async function generateStoryNarrative(
         "Use only the indices given; do not invent insights, numbers, or claims beyond what the list below " +
         "actually supports. The governing thought and every pillar headline must be a claim this evidence " +
         "actually backs, not an aspirational or generic restatement.\n\n" +
+        NO_INVENTED_EXPLANATIONS_RULE +
+        "\n\n" +
+        NO_DERIVED_FIGURES_RULE +
+        "\n\n" +
         `${contextBlock}\n\n` +
         "Accepted, synthesized insights (confidence tier reflects how well-triangulated the cluster behind it " +
         'is: "strong" means solid corroboration across sources, "moderate" some corroboration with gaps, ' +
@@ -347,7 +486,7 @@ export async function generateStoryNarrative(
         },
       ],
       messages: [
-        { role: "user", content: "Build the narrative structure now." },
+        { role: "user", content: `Build the narrative structure now.${figureFeedback}` },
       ],
     });
 
@@ -416,6 +555,33 @@ export async function generateStoryNarrative(
       });
     }
 
+    // Enforced: a draft stating a figure that is unsupported by what it cites is not accepted. The
+    // next attempt is told which figures to drop; if the last attempt still has one, nothing is
+    // saved (below) and the previous narrative, if any, stays as it was. Figures that only need
+    // review do not block: they are stored with the narrative and shown (see figure_check).
+    const attemptCheck = narrativeFigureCheck(
+      {
+        executive_summary: asText(raw.executive_summary, ""),
+        situation: asText(raw.situation, ""),
+        complication: asText(raw.complication, ""),
+        question: asText(raw.question, ""),
+        governing_thought: asText(raw.governing_thought, ""),
+        recommendations_intro: asText(raw.recommendations_intro, ""),
+        caveats: (Array.isArray(raw.caveats) ? raw.caveats : []).filter((c): c is string => typeof c === "string"),
+        pillars: attemptPillars,
+      },
+      evidence,
+    );
+    lastUnsupported = attemptCheck.figures.filter((f) => f.status === "unsupported");
+    if (lastUnsupported.length > 0) {
+      const listed = [...new Set(lastUnsupported.map((f) => `${f.text} (${f.reason})`))].join("; ");
+      figureFeedback =
+        ` Your previous draft stated figures that the evidence it cites does not support: ${listed}. ` +
+        "Use only figures exactly as they appear in the accepted insights and recommendations (rounding is fine), " +
+        "for the same group and measure. Do not compute new ranges, margins, differences, ratios or totals.";
+      continue;
+    }
+
     if (attemptPillars.length > 0) {
       pillars = attemptPillars;
       break;
@@ -427,6 +593,14 @@ export async function generateStoryNarrative(
 
   if (!raw) {
     throw new Error("Claude did not return a structured narrative");
+  }
+  if (lastUnsupported.length > 0) {
+    const detail = lastUnsupported.map((f) => `${f.field}: ${f.text} (${f.reason})`).join("; ");
+    throw new Error(
+      `The drafted narrative stated figures that the evidence it cites does not support (${detail}), ` +
+        `in each of ${MAX_PILLAR_ATTEMPTS} attempts. Nothing was saved; the previous narrative, if any, is unchanged. ` +
+        "Try again, or add the figure to the insight it belongs to if it is genuinely part of the evidence.",
+    );
   }
 
   if (pillars.length === 0) {
@@ -470,7 +644,10 @@ export async function generateStoryNarrative(
     generated_at: new Date().toISOString(),
   };
 
+  // The stored check describes exactly what is saved (including the one-pillar-per-insight fallback).
+  const finalCheck = narrativeFigureCheck(narrative, evidence);
   await withTenant(tenantId, async (client) => {
+    const storeCheck = await figureCheckAvailable(client);
     await client.query(
       `insert into deck_narratives
          (tenant_id, run_id, executive_summary, situation, complication, question, governing_thought, pillars,
@@ -499,6 +676,9 @@ export async function generateStoryNarrative(
         JSON.stringify(narrative.caveats),
       ],
     );
+    if (storeCheck) {
+      await client.query("update deck_narratives set figure_check = $2 where run_id = $1", [runId, JSON.stringify(finalCheck)]);
+    }
   });
 
   return narrative;

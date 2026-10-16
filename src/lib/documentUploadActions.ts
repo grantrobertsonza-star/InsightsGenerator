@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { ingestOutputFiles } from "./outputIngest";
 import { readContextDocument } from "./extractFindings";
-import { INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
+import { DuplicateUploadError, INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -29,12 +29,14 @@ async function storeAndRead(runId: string, kind: "report" | "transcript", file: 
 }
 
 export type UploadResult =
-  | { ok: true; added: string[] }
+  // IMP-008: `alreadyPresent` lists files whose identical content was already in this project as
+  // the same kind; they are not added a second time (a retried batch imports each file once).
+  | { ok: true; added: string[]; alreadyPresent?: string[] }
   // `added` here too: a partial failure already stored some files durably (each is its
   // own try/catch in the loop below), and the caller needs their names to avoid
   // resubmitting them - a retry that resends the whole original file list, successes
   // included, stores each already-added file a second time under a new document row.
-  | { ok: false; error: string; added: string[] };
+  | { ok: false; error: string; added: string[]; alreadyPresent?: string[] };
 
 /**
  * Stores whichever of the five upload slots have files. Returns what was
@@ -60,6 +62,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
 
   const added: string[] = [];
   const failed: string[] = [];
+  const alreadyPresent: string[] = [];
   const jobs: [File, () => Promise<string>][] = [
     ...reports.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "report", f)]),
     ...tables.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "table", f, "aggregated")]),
@@ -72,6 +75,10 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
       await run();
       added.push(file.name);
     } catch (error) {
+      if (error instanceof DuplicateUploadError) {
+        alreadyPresent.push(error.message);
+        continue;
+      }
       const message = error instanceof Error ? error.message : String(error);
       failed.push(`${file.name}: ${message}`);
       await withTenant(TENANT_ID, async (client) => {
@@ -93,7 +100,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   }
   revalidatePath(`/runs/${runId}`);
   if (failed.length > 0) {
-    return { ok: false, error: `Could not add ${failed.length} file(s). ${failed.join(" | ")}`, added };
+    return { ok: false, error: `Could not add ${failed.length} file(s). ${failed.join(" | ")}`, added, alreadyPresent };
   }
-  return { ok: true, added };
+  return { ok: true, added, alreadyPresent };
 }

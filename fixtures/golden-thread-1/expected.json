@@ -1,0 +1,1021 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "golden-thread-1",
+  "datasetId": "gt1-survey-respondents-v1",
+  "inputs": {
+    "golden-survey-documented.xlsx": "2ab599a253b6dbffd01219edb57d08c1776fcbf6f8fc4fa467d26f58a288e6b0",
+    "questionnaire.docx": "66d788d3a7fc8f1956eb4ef0a89a500dc7b440a6a917b9a8cc608b0bcc619f12",
+    "report.docx": "1549849f6ff5126c2cdb4ca9cbb5b55188a846fe8bde8759147cd9193c1b92f6",
+    "client-brief.docx": "93cad352b66a31f6834b4f624bb24c23454963a2e4ff4399f679629baadc9830"
+  },
+  "datasetIdentityPolicy": "Original/corrected workbook has identical Data cells and is ONE dataset, not independent corroboration.",
+  "intervalHistory": "Historical addendum used z=1.96. This reference uses z=1.959963984540054; endpoints differ by less than0.0002 NPS point, below the explicit0.1 tolerance. Original addendum unchanged.",
+  "missingValues": "No missing cells in checked survey measures; raw empty/declared missing values must be excluded from valid measure bases if fixtures are extended.",
+  "rounding": "Compare unrounded references using per-assertion absolute tolerance; UI interval1decimal and p4decimals. Display rounding is not a new method.",
+  "assertions": [
+    {
+      "id": "authoritative-sheet",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": null,
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "authoritative_sheet",
+      "unit": "sheet_name",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": "Data",
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0,
+        "unit": "sheet_name"
+      },
+      "independentMethod": {
+        "formula": "Explicit fixture contract: Data is respondents, Notes decoy",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "id-first",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "RespondentID",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "identifier",
+      "unit": "text",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": "0001",
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0,
+        "unit": "text"
+      },
+      "independentMethod": {
+        "formula": "Exact string comparison; do not coerce to number",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "id-last",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "RespondentID",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "identifier",
+      "unit": "text",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": "0200",
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0,
+        "unit": "text"
+      },
+      "independentMethod": {
+        "formula": "Exact string comparison",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-None",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "selection_percentage",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 50.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 count(Purchase=\"Yes\") / nonmissing Purchase respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "satisfaction-None",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Satisfaction",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "mean",
+      "unit": "scale_points",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 3.5,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.01,
+        "unit": "scale_points"
+      },
+      "independentMethod": {
+        "formula": "sum(raw Satisfaction) / valid respondents; scale1\u20135",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-Male",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": {
+        "variable": "Gender",
+        "rawCode": "Male"
+      },
+      "filters": [],
+      "statistic": "selection_percentage",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 100
+      },
+      "expectedValue": 60.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 count(Purchase=\"Yes\") / nonmissing Purchase respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "satisfaction-Male",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Satisfaction",
+      "rawCategoryCodes": [],
+      "segment": {
+        "variable": "Gender",
+        "rawCode": "Male"
+      },
+      "filters": [],
+      "statistic": "mean",
+      "unit": "scale_points",
+      "base": {
+        "type": "raw",
+        "expected": 100
+      },
+      "expectedValue": 4.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.01,
+        "unit": "scale_points"
+      },
+      "independentMethod": {
+        "formula": "sum(raw Satisfaction) / valid respondents; scale1\u20135",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-Female",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": {
+        "variable": "Gender",
+        "rawCode": "Female"
+      },
+      "filters": [],
+      "statistic": "selection_percentage",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 100
+      },
+      "expectedValue": 40.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 count(Purchase=\"Yes\") / nonmissing Purchase respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "satisfaction-Female",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Satisfaction",
+      "rawCategoryCodes": [],
+      "segment": {
+        "variable": "Gender",
+        "rawCode": "Female"
+      },
+      "filters": [],
+      "statistic": "mean",
+      "unit": "scale_points",
+      "base": {
+        "type": "raw",
+        "expected": 100
+      },
+      "expectedValue": 3.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.01,
+        "unit": "scale_points"
+      },
+      "independentMethod": {
+        "formula": "sum(raw Satisfaction) / valid respondents; scale1\u20135",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "multiple_response_selection",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 60.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 selected raw code1 / eligible valid respondents; NOT sum of selections",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience-Male",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": {
+        "variable": "Gender",
+        "rawCode": "Male"
+      },
+      "filters": [],
+      "statistic": "multiple_response_selection",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 100
+      },
+      "expectedValue": 70.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 code1 selections / eligible group respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience-Female",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": {
+        "variable": "Gender",
+        "rawCode": "Female"
+      },
+      "filters": [],
+      "statistic": "multiple_response_selection",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 100
+      },
+      "expectedValue": 50.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 code1 selections / eligible group respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Value",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Value",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "multiple_response_selection",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 45.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 selected raw code1 / eligible valid respondents; NOT sum of selections",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Service",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Service",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "multiple_response_selection",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 20.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 selected raw code1 / eligible valid respondents; NOT sum of selections",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "nps",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Recommend",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "net_promoter_score",
+      "unit": "nps_points",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 25.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "nps_points"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 (count(9,10) - count(0..6)) / valid0..10 respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "nps-ci",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Recommend",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "normal_95_interval",
+      "unit": "nps_points",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": [
+        14.377248338688796,
+        35.622751661311206
+      ],
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "nps_points"
+      },
+      "independentMethod": {
+        "formula": "NPS \u00b1 z(.975) \u00d7100 sqrt((p_promoter+p_detractor-(p_promoter-p_detractor)^2)/n)",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "Purchase-z",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "pooled_two_proportion_z",
+      "unit": "z",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 2.8284271247461894,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "z"
+      },
+      "independentMethod": {
+        "formula": "(pMale-pFemale)/sqrt(pooled_p(1-pooled_p)(1/nMale+1/nFemale))",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "Purchase-p",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "two_sided_p",
+      "unit": "probability",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 0.004677734981047281,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "probability"
+      },
+      "independentMethod": {
+        "formula": "erfc(abs(z)/sqrt(2)); independent unweighted groups",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "Purchase-significant",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "significant_at_alpha_.05",
+      "unit": "boolean",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": true,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0,
+        "unit": "boolean"
+      },
+      "independentMethod": {
+        "formula": "two-sided p < .05; no multiplicity adjustment",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience-z",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "pooled_two_proportion_z",
+      "unit": "z",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 2.886751345948128,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "z"
+      },
+      "independentMethod": {
+        "formula": "(pMale-pFemale)/sqrt(pooled_p(1-pooled_p)(1/nMale+1/nFemale))",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience-p",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "two_sided_p",
+      "unit": "probability",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 0.003892417122778643,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "probability"
+      },
+      "independentMethod": {
+        "formula": "erfc(abs(z)/sqrt(2)); independent unweighted groups",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience-significant",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "significant_at_alpha_.05",
+      "unit": "boolean",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": true,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0,
+        "unit": "boolean"
+      },
+      "independentMethod": {
+        "formula": "two-sided p < .05; no multiplicity adjustment",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "NearTie-z",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "NearTie",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "pooled_two_proportion_z",
+      "unit": "z",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 0.2828427124746193,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "z"
+      },
+      "independentMethod": {
+        "formula": "(pMale-pFemale)/sqrt(pooled_p(1-pooled_p)(1/nMale+1/nFemale))",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "NearTie-p",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "NearTie",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "two_sided_p",
+      "unit": "probability",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 0.7772974107895214,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "probability"
+      },
+      "independentMethod": {
+        "formula": "erfc(abs(z)/sqrt(2)); independent unweighted groups",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "NearTie-significant",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "NearTie",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "significant_at_alpha_.05",
+      "unit": "boolean",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": false,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0,
+        "unit": "boolean"
+      },
+      "independentMethod": {
+        "formula": "two-sided p < .05; no multiplicity adjustment",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "effective-correction",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Satisfaction",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "effective_measure_after_continuous_override",
+      "unit": "scale_points",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 3.5,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.01,
+        "unit": "scale_points"
+      },
+      "independentMethod": {
+        "formula": "Save continuous override on Satisfaction; recompute arithmetic mean; retain siblings",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "satisfaction-top-two",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Satisfaction",
+      "rawCategoryCodes": [
+        4,
+        5
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "top_two_box",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 50.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 ? count(raw Satisfaction in4,5) / valid respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-chi-square",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Purchase",
+      "rawCategoryCodes": [
+        "Yes"
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "pearson_chi_square",
+      "unit": "chi_square",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 7.9999999999999964,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "chi_square"
+      },
+      "independentMethod": {
+        "formula": "For this2?2 unweighted table, Pearson chi-square equals pooled two-proportion z squared; df1",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "nps-promoters",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Recommend",
+      "rawCategoryCodes": [
+        9,
+        10
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "promoters_percentage",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 45.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 ? count(raw code in declared band) / valid0..10 respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "nps-passives",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Recommend",
+      "rawCategoryCodes": [
+        7,
+        8
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "passives_percentage",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 35.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 ? count(raw code in declared band) / valid0..10 respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "nps-detractors",
+      "fixtureId": "golden-thread-1",
+      "datasetId": "gt1-survey-respondents-v1",
+      "canonicalVariable": "Recommend",
+      "rawCategoryCodes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "detractors_percentage",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 200
+      },
+      "expectedValue": 20.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 ? count(raw code in declared band) / valid0..10 respondents",
+        "tool": "Python standard-library arithmetic over openpyxl-loaded Data cells; no application analytical functions"
+      },
+      "assumptions": [
+        "Synthetic independent respondents",
+        "Unweighted; no cluster/strata design",
+        "No multiplicity adjustment"
+      ]
+    }
+  ]
+}

@@ -24,6 +24,11 @@ export type Expectation =
       /** Percent (0 to 100) for a share, or the unit of the mean for an average. */
       threshold: number;
       question?: string | null;
+      /** OBJ-REV-005: what the threshold is in, declared before the table is read. When set and
+       * the row found is the other kind (a mean where a share was meant, or the reverse), the
+       * reading is unresolved instead of comparing numbers in different units. Absent on
+       * expectations written before this existed: no check (unchanged behaviour). */
+      measure?: "percent" | "mean" | null;
     }
   | {
       kind: "comparison";
@@ -35,6 +40,8 @@ export type Expectation =
       /** Gap that counts as "no meaningful difference". Optional; set before reading. */
       margin?: number | null;
       question?: string | null;
+      /** OBJ-REV-005: as for a level. */
+      measure?: "percent" | "mean" | null;
     };
 
 export type EvidenceEstimate = {
@@ -173,6 +180,15 @@ const f = (x: number | null) => (x === null ? "n/a" : String(round(x)));
  * path and records "could not locate what was asked for" instead of asking the model to
  * read the table fresh with no constraint tying it back to the specific request.
  */
+/** OBJ-REV-005: a declared measure that differs from the row read is a binding failure, not a reading. */
+function measureMismatch(declared: "percent" | "mean" | null | undefined, actual: "percent" | "mean", label: string): Reading | null {
+  if (!declared || declared === actual) return null;
+  const word = (m: "percent" | "mean") => (m === "percent" ? "a share (percent)" : "an average or score");
+  return unresolved(
+    `${label}: the expectation is ${word(declared)} but this row is ${word(actual)}, so the two cannot be compared and the expectation was not checked.`,
+  );
+}
+
 function unresolved(reason: string): Reading {
   return {
     stance: "inconclusive",
@@ -212,6 +228,8 @@ export function readLevel(result: CrosstabResult, exp: Extract<Expectation, { ki
   // leaves se null and the reading comes back inconclusive instead of confidently wrong.
   const c = cell(row, -1, result.overall === true);
   if (!c) return unresolved(`${row.label}: this table has no readable value for the requested row, so the stated expectation could not be checked here.`);
+  const mismatch = measureMismatch(exp.measure, c.measure, row.label);
+  if (mismatch) return mismatch;
   const { lo, hi } = interval(c); // raw, unrounded: classified against these exact bounds below
   const estimate: EvidenceEstimate = {
     measure: c.measure,
@@ -261,6 +279,8 @@ export function readComparison(result: CrosstabResult, exp: Extract<Expectation,
   if (!ca || !cb) {
     return unresolved(`${row.label}: this table has no readable value for one or both of "${a}"/"${b}", so the stated comparison could not be checked here.`);
   }
+  const mismatch = measureMismatch(exp.measure, ca.measure, row.label);
+  if (mismatch) return mismatch;
 
   // seA and seB are combined below as sqrt(seA^2 + seB^2), the variance of
   // a difference between two INDEPENDENT estimates. That holds for groupA
@@ -352,6 +372,113 @@ export function readComparison(result: CrosstabResult, exp: Extract<Expectation,
   };
 }
 
+/**
+ * OBJ-REV-006 / OBJ-REV-005: a share expectation must say WHICH answer's share it is about before
+ * the table is read. "Does purchase differ between men and women?" compares the share answering
+ * one particular answer of the Purchase question; with no answer named, there is no row to read
+ * (a categorical question has no average row), and the old result was a bare "could not find a
+ * matching row".
+ *
+ * Returns null when no selector is needed: an answer is named, the expectation is declared as an
+ * average or score, or the table has exactly one average/score row the expectation can read.
+ * Otherwise returns every (question, answer) pair in the candidate questions (the named question
+ * only, when one is named), so the caller can resolve the selector explicitly or report that it
+ * could not. This function never picks one: choosing "the first" or "the largest" answer would
+ * let row order or the data decide what was asked.
+ */
+export function responseSelectorCandidates(
+  result: CrosstabResult,
+  exp: Expectation,
+): { question: string; answer: string }[] | null {
+  if (exp.answer !== null) return null;
+  if (exp.measure === "mean") return null;
+  if (locateRow(result, null, exp.question) !== null) return null;
+  let qs = result.questions;
+  if (exp.question) {
+    const qLabel = matchLabel(qs.map((q) => q.label), exp.question);
+    qs = qLabel ? qs.filter((q) => q.label === qLabel) : [];
+  }
+  return qs.flatMap((q) =>
+    q.rows.filter((r) => !r.isBase && !r.isEffBase && !r.isMean && !r.isScore).map((r) => ({ question: q.label, answer: r.label })),
+  );
+}
+
+const NON_SUBSTANTIVE = /\b(don'?t know|do not know|not sure|unsure|prefer not|refused|no answer|not applicable|n\/a|none of (these|the above)|other)\b/i;
+const NEGATIVE = /(^|\s)(no|not|never|none|did not|didn'?t|does not|doesn'?t|do not|don'?t|non[- ]?\w*|neither)(\s|$)/i;
+const LABEL_STOP = new Set(["the", "a", "an", "of", "in", "at", "on", "to", "and", "or", "for", "with", "by", "is", "are", "was", "were", "did", "do", "does"]);
+const labelWords = (text: string) =>
+  new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !LABEL_STOP.has(w))
+      .map((w) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w)),
+  );
+
+/**
+ * OBJ-REV-006 / 005: whether a response chosen for an unnamed share expectation may become a
+ * COMPUTED answer. A choice that merely exists in the table is not enough: "Do men purchase more
+ * often than women?" over Bought online / Bought in store / Did not buy has no single answer that
+ * means "purchase" (online alone changes the question; buying at all is a combination). Accepted
+ * only when the meaning is structurally unambiguous:
+ *   - the question has an explicit Yes/No or True/False pair ("don't know"-type answers
+ *     aside), and the choice is not the negative one unless the evidence question itself is
+ *     negative; or
+ *   - the evidence question's own wording names the chosen answer (its distinctive words), and
+ *     names no other answer.
+ * Otherwise the reading must ask the researcher to name the answer(s); nothing is assumed.
+ */
+export function selectorAcceptance(
+  candidates: { question: string; answer: string }[],
+  chosen: { question: string; answer: string },
+  evidence: { question: string; supportsIf?: string | null },
+): { ok: true } | { ok: false; reason: string } {
+  const answers = candidates.filter((c) => c.question === chosen.question).map((c) => c.answer);
+  const substantive = answers.filter((a) => !NON_SUBSTANTIVE.test(a));
+  const list = answers.map((a) => `"${a}"`).join(", ");
+  // The answer may be named by the question or by what was written down as supporting it; whether
+  // the question is itself about the negative answer is judged on the question alone (the
+  // "undermines if" wording is usually negative and says nothing about which answer is meant).
+  const asked = labelWords(`${evidence.question} ${evidence.supportsIf ?? ""}`);
+  const questionNegative = NEGATIVE.test(` ${evidence.question.toLowerCase()} `);
+  // Two channels can be exhaustive without either channel meaning the event being asked about.
+  // Only explicit boolean answers permit an unnamed response; other pairs need a named answer.
+  const booleanPair = substantive.length === 2 && (
+    substantive.some((a) => /^yes$/i.test(a.trim())) && substantive.some((a) => /^no$/i.test(a.trim())) ||
+    substantive.some((a) => /^true$/i.test(a.trim())) && substantive.some((a) => /^false$/i.test(a.trim()))
+  );
+  if (booleanPair && substantive.includes(chosen.answer)) {
+    if (NEGATIVE.test(` ${chosen.answer.toLowerCase()} `) && !questionNegative) {
+      return { ok: false, reason: `the matched answer "${chosen.answer}" is the negative one, which the question does not ask about (answers: ${list})` };
+    }
+    return { ok: true };
+  }
+  // Non-boolean answers: only a choice the question's own words name, uniquely.
+  const shared = substantive.length > 1 ? [...labelWords(substantive[0])].filter((w) => substantive.every((a) => labelWords(a).has(w))) : [];
+  const distinctive = (a: string) => [...labelWords(a)].filter((w) => !shared.includes(w));
+  // A negative answer ("Did not buy") is named only by a question that is itself negative.
+  const named = substantive.filter(
+    (a) => distinctive(a).some((w) => asked.has(w)) && (questionNegative || !NEGATIVE.test(` ${a.toLowerCase()} `)),
+  );
+  if (named.length === 1 && named[0] === chosen.answer) return { ok: true };
+  return {
+    ok: false,
+    reason:
+      named.length > 1
+        ? `the question's wording could mean more than one of this table's answers (${list})`
+        : `the question does not say which of this table's answers (${list}) it compares, and choosing one, or a combination, would change the question`,
+  };
+}
+
+/** The reading stored when a share expectation's answer could not be resolved: explicit, never a guess. */
+export function responseSelectorUnresolved(reason: string): Reading {
+  return unresolved(
+    `Needs your resolution: the expectation compares a share but does not name which answer to compare, and ${reason}. ` +
+      "Edit the question to name the answer or answers it means; nothing was assumed and no other reading was substituted.",
+  );
+}
+
 export function readExpectation(result: CrosstabResult, exp: Expectation): Reading | null {
   return exp.kind === "level" ? readLevel(result, exp) : readComparison(result, exp);
 }
@@ -392,16 +519,17 @@ export function parseExpectation(raw: unknown): Expectation | null {
   const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null);
   const question = str(r.question);
   const answer = str(r.answer);
+  const measure = r.measure === "percent" || r.measure === "mean" ? r.measure : null;
   if (r.kind === "level") {
     const threshold = num(r.threshold);
     if (threshold === null || (r.direction !== "above" && r.direction !== "below")) return null;
-    return { kind: "level", answer, direction: r.direction, threshold, question };
+    return { kind: "level", answer, direction: r.direction, threshold, question, measure };
   }
   if (r.kind === "comparison") {
     const a = str(r.groupA);
     const b = str(r.groupB);
     if (!a || !b || (r.direction !== "higher" && r.direction !== "lower")) return null;
-    return { kind: "comparison", answer, direction: r.direction, groupA: a, groupB: b, margin: num(r.margin), question };
+    return { kind: "comparison", answer, direction: r.direction, groupA: a, groupB: b, margin: num(r.margin), question, measure };
   }
   return null;
 }
