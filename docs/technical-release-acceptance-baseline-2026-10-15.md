@@ -59,6 +59,17 @@ upload_error (fetch failed), correcting the unlogged-success allegation; failed-
 remains unknown. Preserve failed history, exclusions, closures, deferrals and43-row counts. Overall
 acceptance remains incomplete; exact remaining row dispositions are in the linked addendum.
 
+**Latest independent review of34cb123 at laptopf873608:** see the appended review in
+[independent acceptance disposition](independent-acceptance-disposition-2026-10-16.md). Whitespace,
+new durable raw identity/multiplicity and conflicting-duplicate repairs pass affected independent
+checks; the new native upload/reload/edit/workbook checks pass. Of the four smaller limits,
+overview Accept/accepted-state label comparison now passes; group-correction calculation and
+computed native retry remain unverified. OBJ-REV-012 exports qualify, but its primary native
+coverage drops the persisted degradation flag: a reproduced required UI repair, explicitly released
+to Claude. This supersedes older remaining-whitespace/ownership statements at those scopes only.
+Overall acceptance and43-row counts remain unchanged; previous failures, passes, deferred items,
+conditional exclusions and deployment/security gates remain explicit.
+
 ### 1. Recorded demonstrated defects — repair evidence awaiting disposition
 
 | Existing ID / recorded finding | Latest evidence and current scope | Owner | Exact closure condition | E/T/A |

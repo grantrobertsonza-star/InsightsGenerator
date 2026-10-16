@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude completed the shared-identity repair release; independent review of Claude commit 34cb123 requested, 2026-10-16 evening.
+State: **READY_FOR_CLAUDE** ? independent34cb123 review complete; explicit OBJ-REV-012 native coverage repair release,2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -336,3 +336,58 @@ stable; do not transfer ownership implicitly.
 - Retained failed invocations this round: adapter/objective run cut short by the container memory kill; first OBJ-SET-001 port run (reload before save; harness timing).
 - Disposable resources: stack stopped by PID after the record; no `ie_e2e_*` database or role is left. No push, deployment, live or development change, or model call.
 
+
+
+## Codex acceptance of34cb123 release ? 2026-10-16
+
+Confirmed HEADf8736084f83e274741d3cdff0d120ac7c0cb8a0a, branch checkpoint/trust-hardening-20261016 and repair34cb1232e41539d237597380b7400e39b1fb5d8a. Tracked tree clean before this record. Codex owns read-only application review and targeted disposable verification, retained native evidence assessment and four individual limit dispositions. No push/deployment; earlier failures and43-row counts preserved. Claude remains stopped until explicit release.
+
+
+## Codex review34 complete ? explicit release to Claude,2026-10-16
+
+Codex releases ownership explicitly and stops source editing (none performed). Application/source
+checkpoint f8736084f83e274741d3cdff0d120ac7c0cb8a0a; reviewed repair34cb1232e41539d237597380b7400e39b1fb5d8a,
+branch checkpoint/trust-hardening-20261016. The following review checkpoint changes documentation
+only. Latest detailed scope/results and affected-row dispositions are in the appended review34
+section of independent-acceptance-disposition-2026-10-16.md; shared operational status updated.
+
+Completed independent verification: affected65passes/4inactive skips, additional actual-digest
+qualification1pass/1inactive skip, five released native checks pass, native overview Accept and
+accepted detail/overview label/control comparison pass. Actual both-format export transport keeps
+multiplicity and degradation qualifications. All15 released source/check paths reconcile after LF
+normalisation and only two isolated Python executable adaptations. Prior passes/failures preserved.
+
+**Claude next required repair (existing OBJ-REV-012, no new issue row):** ObjectiveCoverage.tsx drops
+evidence_digest_degraded, so actual Review Objectives coverage shows the conclusion/status without
+its failure qualification after reload. A true stored flag is independently confirmed after the
+failed native assertion. Forward/render the existing warning semantics, preserve conclusion/status
+and full human wording, and cover true/false/selected/reload/restored-reassessment cases. Preserve
+passing DOCX/PPTX qualifications. This pre-existing remainder is not a new34cb123 regression.
+
+**Explicitly released files:** src/app/runs/[id]/ObjectiveCoverage.tsx; its caller page.tsx and
+ObjectivesWorkspace.tsx only where needed to carry/render the same flag consistently; relevant
+focused tests/e2e checks; claude/trust-milestone-contract.md; the existing shared status, disposition,
+canonical baseline and this handoff. Read all necessary source. Record a bounded affected-file
+extension before editing outside the released prior repair/acceptance scope; no routine Grant relay
+needed for authorised fixes. No new feature, dependency or broad refactor.
+
+**Remaining named acceptance work:** IMP-005 actual numerical calculation under a saved supported
+group correction and clear/reload; OBJ-REV-013 native pending/write-failure/reload?computed retry
+with exactly one current result. Scripted planner/model boundaries must be disclosed, not treated
+as provider-quality evidence. Assess only other exact row remainders still unestablished; do not
+repeat unaffected whole matrices. IMP-017 injected fetch-failure UI/complete-storage/retry contract
+now passes; retain the old v12 concurrent failure and unresolved original cause without calling it
+green or making a hosted capacity claim. Old legacy identity/conclusions are unchanged until rerun.
+
+**Preserved:**43-row partition12/18/2/5/6, earlier12closures, deferred IMP-010/M02/M04 and historical
+definitions, approved SAS/flipped-separate-Codebook exclusions, explicit deployment/security/real
+storage/identity/runner prerequisites, design-only Research Quality Review. Overall acceptance is
+incomplete. No new model calls; spendUS$3.817316 ofUS$10 unchanged; no push/deployment.
+
+Local evidence scripts/workflow-tenant-review/review34/: failed smaller-boundaries invocation
+remains failed (actual UI defect); exports continuation passes separately. Extra actual-digest
+probe is retained there and runs when copied into an isolated src/lib/__tests__ for sibling imports.
+Four synthetic stored objects/full inventory and password-free database dump retained. Verified
+owned process tree and labelled codex-review34-20261016 cluster stopped; reserved listeners clear;
+existing development/user services untouched. Claude may resume this bounded repair and return
+READY_FOR_CODEX with exact commit/files/evidence once stable. No implicit ownership transfer.

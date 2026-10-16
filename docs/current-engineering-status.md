@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated:2026-10-16. State: **READY_FOR_CLAUDE ? explicit bounded repair release after independent review**.
+Updated:2026-10-16. State: **READY_FOR_CLAUDE ?34cb123 reviewed; focused OBJ-REV-012 coverage repair released**.
 
 ## Active version and ownership
 
@@ -420,3 +420,46 @@ No dependency, migration, broad refactor or new feature.
 
 Commit `34cb123` (15 paths) over `ff4d8af`. Results and dispositions: [independent-acceptance-disposition-2026-10-16.md](independent-acceptance-disposition-2026-10-16.md) (section "Claude repairs after Codex review"). Full suite 113 files / 825 passed / 0 failed / 36 skipped; 11 UI checks, smoke 1, adapter 2 and objective script 3/3 on a fresh stack. One adapter/objective invocation failed when the cloud container killed the dev server for memory; retained. Partition unchanged; acceptance incomplete. State READY_FOR_CODEX for independent review.
 
+
+
+## Codex review34cb123 at laptopf873608 ?2026-10-16
+
+Confirmed source HEADf8736084f83e274741d3cdff0d120ac7c0cb8a0a and repair34cb1232e41539d237597380b7400e39b1fb5d8a.
+Application source stayed read-only; all15 released paths match isolated tested bytes after LF
+normalisation/two documented harness Python-executable adaptations. Full latest row dispositions:
+appended Codex review34 section in independent-acceptance-disposition-2026-10-16.md.
+
+Independent affected gate:10files/65passed/4inactive skips, actual PostgreSQL. Additional real-digest
+qualification test1pass/1inactive skip. Native5/5: workbook recovery, current-source Setup/Review
+identity, golden saved figures/reload, conflicting labels/counts/reload, upload failure before/after
+storage and complete-inventory cleanup plus healthy retry. Prior full825/36/build limitations are
+retained scopes, not rerun claims. Earlier failed invocations remain failed; cloud memory cause is
+implementer-reported, not independently reconstructed here. No new paid calls/spend.
+
+Whitespace normalization, optional raw identity persistence, new-conclusion multiplicity and
+conflicting duplicate refusal are independently verified at their declared scopes. Actual DOCX/PPTX
+transport preserves both the full multiplicity note and degradation warning. Legacy results require
+regeneration; no retrospective backfill or new statistical adjustment is claimed.
+
+Four smaller limits assessed separately:
+- OBJ-REV-004 direct overview Accept/durable status and accepted overview/detail label/control
+  comparison now pass natively; earlier state-transition evidence preserved.
+- IMP-005 group-correction calculation remains unverified beyond dictionary/clear. Imported Codebook
+  MR recovery is not that researcher-correction assertion. No new numerical defect claimed.
+- OBJ-REV-012 PPTX qualification passes, but native Review Objectives coverage drops the persisted
+  true degradation flag: normal Partly answered conclusion with no warning. Actual UI reproduction,
+  source inspection and post-failure DB flag confirmation establish a required repair under this row.
+  This is not introduced by34cb123. The failed badge invocation is retained separately from passing
+  same-project exports; seeded flag and actual nonowner failure generation are distinct evidence.
+- OBJ-REV-013 computed native retry remains unexecuted. DB mixed-write/retry and native planner-
+  refusal recovery passes remain valid but do not prove a computed native recovery.
+
+Owner release in agent-handoff.md is explicit: Claude may repair ObjectiveCoverage's missing warning
+and continue only named bounded assertions. Overall acceptance is incomplete and43-row12/18/2/5/6
+counts unchanged. Earlier closed/deferred rows, conditional exclusions and deployed security/process
+gates remain explicit; Research Quality Review is design-only.
+
+Evidence retained under scripts/workflow-tenant-review/review34/: logs, hashes, actual exports,
+failing native badge text/JSON and confirmed durable flag, full4-object synthetic storage inventory
+and password-free cluster dump. Verified owned review34 processes/labelled cluster stopped; reserved
+ports clear. Existing user/development resources untouched. No push/deployment or source patch.

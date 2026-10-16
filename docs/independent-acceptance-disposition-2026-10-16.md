@@ -345,3 +345,131 @@ Executed on the repaired tree (cloud workspace, disposable PostgreSQL 16 and Pyt
 
 Still deferred or external: IMP-010, OBJ-SET-M02, OBJ-REV-M04, the five historical definitions, SAS and the flipped/separate-Codebook exclusion, and the security/deployment gates. Remaining limits named earlier and not addressed here: the overview direct-Accept click and status-label comparison (OBJ-REV-004); the IMP-005 group-correction calculation beyond the dictionary; OBJ-REV-012 PPTX/native badge; OBJ-REV-013 computed native retry.
 
+
+
+## Codex independent review of34cb123 at laptopf873608 ? 2026-10-16
+
+Confirmed HEADf8736084f83e274741d3cdff0d120ac7c0cb8a0a, repair34cb1232e41539d237597380b7400e39b1fb5d8a,
+branch checkpoint/trust-hardening-20261016. Tracked tree was clean before CODEX_WORKING was recorded.
+Application source stayed read-only. All15 released paths match current and isolated tested bytes
+(LF normalised; only two isolated native checks replace python3 with installed Windows python).
+Comparison/evidence: scripts/workflow-tenant-review/review34/. No dependencies installed, paid model
+calls, live/development mutation, push or deployment. Spend unchangedUS$3.817316 ofUS$10.
+The canonical43-row12/18/2/5/6 partition remains unchanged; dispositions below are finite scopes.
+
+### Executed checks and retained history
+
+- Affected suites:10 files,65 passed,4 inactive placeholders skipped, actual isolated PostgreSQL.
+  Includes whitespace/retry/provenance, evidence identity/stance, selector persistence/rollback,
+  multiplicity storage, duplicate refusal and prior index/nonowner degradation controls.
+- Additional independent test removes the implementer's mocked evidence digest and seeds actual
+  linked text-identity evidence/results: the real digest maps only the intended objective, the note
+  is stored after the cap exactly once and regeneration preserves it.1 pass/1 inactive skip.
+- Released native checks:5 passes (3minutes): flipped-workbook recovery, Setup/Review identity,
+  golden saved figures/reload, conflict-label counts/reload, both upload storage-write fault modes
+  and healthy retry. Python executable adaptation changes no assertions/application bytes.
+- A separate smaller-limit native check passes direct overview Accept/durable accepted state and
+  overview/detail Inferred-label plus Unaccept-control comparison, then FAILS the missing native
+  degradation-warning assertion. This remains a failed invocation, not a green combined run.
+- Same-project output continuation passes actual DOCX/PPTX extraction: both carry the complete
+  multiplicity note and Evidence check degraded qualification. Saved qualification/degraded flag
+  is a synthetic fixture; actual nonowner permission-failure generation/reload remains separately
+  executed DB evidence. No claim of a continuous native permission-failure trigger.
+
+The implementer-reported cloud memory kill/connection refusal, first reload-before-save harness
+failure, older v12 failure, Probe B browser PPTX and other historical failures are preserved. The
+cloud memory cause is reported evidence, not independently reconstructed on this laptop. The
+cloud825/36 full gate,11UI/smoke/adapter totals and unavailable-font build limitation are retained
+claims at their documented scopes, not rerun totals here. The local e2e-results report originally
+present on receipt described an older hydration-only run; new review34 logs/report in the isolated
+runtime establish the independent current native results instead. Source archive/hash comparison
+establishes identity, not historical test execution. No whole-project build claim is added.
+
+### Review of the repaired mechanisms
+
+The shared candidateWordingKey now normalises stored and proposed text through JavaScript trim.
+Both framers retain their transaction/rollback and human wording. Tab/LF/CRLF/NBSP/ordinary-space
+boundaries, distinct internal wording/case/punctuation, answer-local duplicate and all-repeat retry/
+statement controls pass. The earlier reproduced resurrection defect is closed at this regression
+scope; unchanged SQL-trim own-add/index semantics and un-serialised concurrent regeneration remain
+explicit separate limits, not silently changed or newly reproduced defects.
+
+Raw identity now accompanies display labels in the estimate: question key/raw answer code and
+banner variable/raw code(s), with no label-derived guesses when identity is absent. Pure opposite-
+group/level/missing-identity controls and actual saved selector result reload pass. Older results
+remain without these fields until re-evaluation; no migration/backfill or broader provenance claim.
+
+Multiplicity qualification is durably appended to conclusions with an actual direct-evidence digest
+entry after the word cap. The real-digest control confirms the production key mapping rather than
+only a mock has() override. Actual both-format export transport preserves the full stored note.
+This meets the new-conclusion/output assertion; older conclusions require regeneration. It does
+not modify intervals or add a multiplicity correction, nor claim the raw per-question estimate
+summary contains this conclusion-level note. Existing global UI disclaimer remains valid.
+
+Conflicting duplicate assessments (different conclusion or status) refuse before replacing the
+stored batch; exact normalized repeats store once. Actual DB tests preserve the prior batch, and
+prior fractional/omitted/extra tests pass. Comparison of citation arrays remains order-sensitive:
+a reordered equivalent citation set can conservatively refuse; no incorrect accepted result is
+inferred and no semantic deduplication is claimed.
+
+Layering/security/comments: new identity reading is pure; filter is shared in the existing server
+transactions; validation persistence and run/tenant boundary remain in their prior server layer.
+Storage inventory/write-drop hooks are confined to the explicitly disposable loopback harness,
+not an application storage authorization route. No new statistical calculation or measured
+performance defect is identified. No unrelated abstraction/refactor is requested.
+
+### Four smaller outstanding limits ? individual disposition
+
+| Existing scope | Independent result | Disposition / next action |
+|---|---|---|
+| OBJ-REV-004 overview direct Accept and status-label comparison | Actual native direct Accept persists; overview/detail display Inferred and Unaccept for the same accepted AI candidate. Existing state transition suites remain passing. | **Verified for the named accepted-state boundary.** Preserve prior reject/edit/regeneration scopes; not a new all-status UI permutation matrix. |
+| IMP-005 group-correction calculation beyond dictionary | No new numerical caller/engine check under a saved question-group correction in34cb123. Native workbook MR-definition recovery is imported Codebook metadata, not a researcher group correction. | **Unresolved acceptance assertion.** Save a supported group change, calculate using its effective membership/kind with an independent expectation, clear/reload and recalculate. Existing type/group dictionary/clear evidence remains valid; no new defect asserted. |
+| OBJ-REV-012 PPTX/native degraded badge | PPTX qualification now independently verified. Primary Review Objectives coverage FAILS: stored evidence_digest_degraded=true, status partial and conclusion persist, but coverage shows Partly answered without the warning. | **PPTX projection verified; native correctness defect unresolved.** See finding below. Database nonowner failure/retry and prior DOCX closure preserved. |
+| OBJ-REV-013 computed native retry | Actual durable mixed-write failure/retry and zero-progress reload/Continue evidence preserved. Latest native retry still ends in an uncomputed planner refusal; no successful computed native retry added by this repair. | **Unresolved native boundary.** Capture native durable-write failure, pending/reload, healthy computed retry and exactly one saved current result. Scripted planning is permitted as a disclosed boundary; do not call a planner refusal computed success. |
+
+### Concrete finding under existing OBJ-REV-012: native coverage drops degradation (P2)
+
+Not introduced by34cb123, but independently reproduced while assessing its named remainder.
+ObjectiveCoverage.tsx:7 defines Validation without evidence_digest_degraded and its result card
+around line115 renders conclusion/status only. page.tsx passes the full validation objects, but
+the active Review Objectives coverage component ignores the true flag. The older narrative panel
+has a warning; its presence does not qualify this primary review presentation.
+
+Reproduction: synthetic current-schema objective with objective_validations.status=partial,
+evidence_digest_degraded=true and a persisted conclusion; reload Review Objectives. The conclusion
+and Partly answered label are visible, while Evidence check degraded is absent. Actual stored flag
+was re-queried after the failed assertion and remains true (degraded-durable-state.json), excluding
+a later refresh/fixture overwrite. smaller-boundaries-error.txt retains the researcher-visible text.
+The native check seeds the flag, whereas the affected DB suite separately demonstrates the real
+permission-failure path writes that flag; the UI projection defect itself requires no model claim.
+
+Consequence: a researcher reviewing objectives cannot tell that the conclusion was generated while
+its direct-evidence retrieval failed. Smallest fix: carry the existing degradation field into the
+coverage presentation and visibly qualify that result, including selection/filter and reload.
+Use the existing wording/semantics rather than a parallel reliability classification. Closing check:
+true flag warns in actual Review Objectives coverage/detail as applicable; false control does not;
+reload retains qualification; restored lookup/reassessment clears it. Preserve full human conclusion,
+status and existing DOCX/PPTX output qualifications. No new issue ID/canonical row.
+
+### Affected-row disposition reconciliation
+
+| Existing row / subcase | Latest disposition (no count promotion) |
+|---|---|
+| OBJ-REV-004 / business whitespace | **Repaired and independently verified** for both callers' whitespace/retry/statement contract. Prior failure retained as superseded by named repair. Other business refresh/bulk limits are not inferred closed. |
+| OBJ-REV-006 raw identity / selector persistence | **New durable-identity contract independently verified.** Actual question/raw answer/banner identities survive loader reload. Preserve semantic ambiguity/refusal and historical provider wording boundaries; legacy estimates unchanged until rerun. |
+| OBJ-REV-005 multiplicity | **New-conclusion durable/output subcase independently verified** with actual digest and both exports. Net/member/ambiguous-design and previous means/base/uncertainty cases retained; no actual multiplicity correction or legacy backfill claimed. |
+| OBJ-REV-008 conflicting repeats | **Repair independently verified** for differing conclusions/status, identical repeats and prior-batch preservation. Existing finite index cases pass; no broader model-output audit. |
+| IMP-007 / IMP-017 upload failure class | **Native failure/cleanup/retry assertion verified** before and after storage landing: visible filename error, zero document/pending cleanup/object in complete stand-in inventory; healthy retry once. Old exact-limit failure stays failed and cause unresolved. This establishes that error-class outcome on supported local code, not retrospective UI evidence or hosted/concurrent capacity certification. Preserve independent limit/boundary/concurrent passes. |
+| IMP-004 / IMP-015 saved tables | **Named saved-content/reload gap verified:** independent3.5 mean/50% top box/50% purchase references persist; conflicting labels and3/1 counts survive reopen. Broader sparse/missing/export/source scopes retain their separate prior evidence; one fixture is not all scale cases. |
+| OBJ-SET-001 current source | **Native dual-module identity assertion verified** on released bytes: A?B?C, one candidate ID, delete, reload, original brief unchanged. Wait for durable save corrects harness timing without claiming optimistic display is a defect. |
+| IMP-009 / Task B recovery | **Named analytical recovery verified:** delete refused file, recovered Codebook MR types, Gender2/2 calculation. Full excluded flipped/separate-Codebook combination remains conditional exclusion/backlog, not full support. |
+| OBJ-REV-012 | **Mixed:** durable failure/recovery and both export projections retained/verified; actual primary coverage warning defect remains required repair. |
+| IMP-005 / OBJ-REV-013 | **Remaining named numerical/native-retry assertions unresolved**, as individually assessed above; prior narrower passes preserved. |
+| Prior closed/deferred/excluded/external rows | **Unchanged.** Preserve12closed rows; IMP-010/M02/M04 and five historical definitions remain deferred; SAS/excluded workbook combination remain excluded; public security/identity/storage/role/migration/backup runner require authorised deployed environment. Research Quality Review design-only. |
+
+Overall acceptance is **incomplete**. Next is a bounded OBJ-REV-012 coverage warning repair and only
+the named supported remaining assertions. Four synthetic stored objects/full inventory and a
+password-free cluster dump were retained; the owned review34 process tree and labelled PostgreSQL
+container were stopped, reserved ports clear. Existing user/development resources were untouched.
+Application source is unchanged; ownership release and local documentation checkpoint are in the
+existing handoff/shared status. Historical failed invocations remain immutable evidence.
