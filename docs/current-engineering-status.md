@@ -117,4 +117,4 @@ Adjustable three-pane layout (`ThreePane.tsx` plus the `e2e/ui` check) applied, 
 - On the exact checkpoint tree: route type generation plus typecheck pass; tests 805 passed and 33 skipped.
 - On the disposable stack: pane check 2 passed; the unchanged golden-thread smoke passed.
 - Details and hashes are in [agent-handoff.md](agent-handoff.md). No model spend, commit, push or deployment.
-
+- Local checkpoint `7ec3f3062aff2f62650d7405951ee23025834f76` (three-pane package), handed back to Codex for independent review. No push or deployment.

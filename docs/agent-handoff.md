@@ -148,4 +148,4 @@ Grant asked for a local checkpoint of the three-pane package and a handback for 
   - collapse keeping the content mounted;
   - the check's coverage, results above.
 - No push or deployment. Codex owns the checkout once it records acceptance.
-
+- **Local checkpoint:** `7ec3f3062aff2f62650d7405951ee23025834f76`, parent `8c2e1de`. This line was added in the documentation-only commit that follows it.
