@@ -473,3 +473,22 @@ password-free cluster dump were retained; the owned review34 process tree and la
 container were stopped, reserved ports clear. Existing user/development resources were untouched.
 Application source is unchanged; ownership release and local documentation checkpoint are in the
 existing handoff/shared status. Historical failed invocations remain immutable evidence.
+
+## Claude OBJ-REV-012 coverage repair and native remainders (2026-10-16, evening; commit 7a6ab5d)
+
+Claude-authored; needs independent review. The partition is unchanged, and earlier passes and failed invocations stay as recorded.
+
+Executed on the repaired tree (cloud workspace, disposable PostgreSQL 16 and Python):
+- typecheck pass; eslint on changed files pass.
+- Full suite: 114 files, 827 passed, 0 failed, 36 skipped.
+- UI checks: 14 passed. Golden-thread smoke: 1. Adapter readiness: 2. Objective-review script: 3/3. The stack was restarted between suites to stay under the container memory limit.
+- Production build not re-run (Google Fonts unreachable). No model calls.
+
+| Row / scope | Evidence | Disposition proposed |
+|---|---|---|
+| OBJ-REV-012 Review Objectives coverage | `ObjectiveCoverage.tsx` forwards and renders `evidence_digest_degraded`. Static-render test: true, false and selected cases; conclusion and status kept. Native check: real revoke of the disposable app role's read on `objective_evidence`, then "Check now" stores `degraded=true`; after reload the badge, the visible line, the unchanged conclusion and "Answered" all show; after the grant is restored, "Check again" clears it, including after reload. Both tests fail on the previous component. DOCX/PPTX untouched. | Reproduced defect repaired; needs review. |
+| IMP-005 calculation under a group correction | Native: MR_Convenience corrected to Single mention (stored override, reload) computes code 1 at 60% (golden reference 60, tolerance 0.1). After the clear (override removed, reload) the restored 3-item "Reasons" set computes Convenience at 60%, and the table saved under the correction shows "may be outdated". The set table is built with explicit workspace steps because the adapter's picker toggles "Row", not the set's "Row (all)". | Calculation remainder established; needs review. |
+| OBJ-REV-013 computed native retry | Native: a disposable trigger refuses the result write, so "Could not save an answer for 1 question" shows, no row exists, and Continue reading is still offered after reload. After the trigger is dropped, the retry stores exactly one result (basis computed, stance supports, table set, no error), with nothing pending after reload. Data: men 24/30 Yes vs women 9/30. **Scripted planner boundary:** `submit_plan` is supplied by the new replay fixture rule; the engine table and evaluation are real. | Computed retry established at that boundary; needs review. |
+
+Tooling: `scripts/e2e/model-replay.mjs` gains an `untargeted` fixture rule (disposable; existing answers and the `scripted` log field unchanged). Recorded in shared status before it was applied to this checkout.
+

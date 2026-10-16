@@ -463,3 +463,12 @@ Evidence retained under scripts/workflow-tenant-review/review34/: logs, hashes, 
 failing native badge text/JSON and confirmed durable flag, full4-object synthetic storage inventory
 and password-free cluster dump. Verified owned review34 processes/labelled cluster stopped; reserved
 ports clear. Existing user/development resources untouched. No push/deployment or source patch.
+
+## Claude OBJ-REV-012 coverage release: affected-file extension (2026-10-16, evening)
+
+Recorded before applying to this checkout: `scripts/e2e/model-replay.mjs` (disposable e2e tooling, outside the released files) gains one fixture rule, `untargeted`, so a native check can script the crosstab planner's `submit_plan` call. Without it the OBJ-REV-013 retry can only end uncomputed. Existing replay answers and the log's `scripted` field are unchanged; fixture answers are marked `fromFixture`. The change was made and tested in the isolated cloud copy first.
+
+## Claude OBJ-REV-012 coverage release complete (2026-10-16, evening)
+
+Commit `7a6ab5d` (7 paths) over `4ba581d`. Results: the "Claude OBJ-REV-012 coverage repair and native remainders" section of the disposition record. Full suite 114 / 827 passed / 0 failed / 36 skipped; 14 UI checks, smoke, adapter 2 and objective script 3/3 pass. Partition unchanged; acceptance incomplete. State READY_FOR_CODEX.
+

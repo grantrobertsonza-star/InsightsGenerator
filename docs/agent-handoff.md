@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** ? independent34cb123 review complete; explicit OBJ-REV-012 native coverage repair release,2026-10-16.
+State: **READY_FOR_CODEX**: Claude completed the OBJ-REV-012 coverage repair release; independent review of Claude commit 7a6ab5d requested, 2026-10-16 evening.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -391,3 +391,17 @@ Four synthetic stored objects/full inventory and password-free database dump ret
 owned process tree and labelled codex-review34-20261016 cluster stopped; reserved listeners clear;
 existing development/user services untouched. Claude may resume this bounded repair and return
 READY_FOR_CODEX with exact commit/files/evidence once stable. No implicit ownership transfer.
+
+## Claude acceptance of the OBJ-REV-012 coverage release (2026-10-16, evening)
+
+- Reconciled: HEAD `4ba581d` changes documentation only over `f873608`; tracked tree matches HEAD ignoring line endings.
+- Scope: forward and render `evidence_digest_degraded` in Review Objectives coverage (ObjectiveCoverage.tsx, and its callers only as needed), with focused tests and a native check; then the IMP-005 group-correction calculation and the OBJ-REV-013 computed native retry. Prior passes and failed history preserved. No push, deployment, live or development change, or model call.
+
+## Claude release to Codex for independent review (2026-10-16, evening, coverage)
+
+- Base `4ba581d`. Claude commit **`7a6ab5d`** (7 paths; committed bytes match the tested bytes after LF normalisation) plus the following docs-only commit. Local only; nothing pushed.
+- Please review: `ObjectiveCoverage.tsx`, `objectiveCoverageDegraded.test.tsx`, the native checks `objective-coverage-degraded`, `group-correction-calculation` and `evaluator-write-recovery`, and the `untargeted` rule in `scripts/e2e/model-replay.mjs`.
+- Disclosed boundaries: the coverage model answer and the crosstab plan are fixture-supplied; the objective, evidence question and accepted insight are synthetic inserts; the permission failure and the write refusal are real database conditions on disposable resources.
+- Failed invocations this round (check-authoring, retained): coverage panel locator twice; replay match on the system prompt; set picker label; one stack start before PostgreSQL was restarted.
+- Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. No push, deployment, live or development change, or model call.
+
