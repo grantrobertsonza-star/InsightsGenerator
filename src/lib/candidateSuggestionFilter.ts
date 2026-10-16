@@ -1,6 +1,21 @@
 import type { PoolClient } from "pg";
 
 /**
+ * The comparison key for a candidate's wording: the text with leading and trailing whitespace
+ * removed (spaces, tabs, line breaks and other Unicode whitespace, as String.prototype.trim does).
+ * Inner wording, case and punctuation are kept, so "Grow share" and "Grow  share" or "grow share"
+ * stay distinct candidates; this does not attempt semantic matching. It is a key only: stored
+ * wording is never rewritten with it.
+ *
+ * Both sides of the comparison must go through this one function. Comparing SQL trim() of stored
+ * text (spaces only) with a JavaScript trim of new text (all whitespace) let rejected wording that
+ * ends in a tab or line break slip back in.
+ */
+export function candidateWordingKey(text: string): string {
+  return text.trim();
+}
+
+/**
  * Which model suggestions a regeneration may insert.
  *
  * A regeneration first removes the run's undecided AI suggestions, then inserts the model's new
@@ -11,10 +26,8 @@ import type { PoolClient } from "pg";
  *     runs.decision_statement (decisions), silently undoing the researcher's rejection;
  *   - an accepted or researcher-authored one would be duplicated.
  *
- * Identity is the trimmed text, the same rule the researcher-text unique index (0083) and the own
- * add/duplicate guards use. Wording that differs only in case or punctuation is a different
- * candidate; this does not attempt semantic matching. Duplicates within one model answer are also
- * collapsed to the first occurrence.
+ * Wording identity is candidateWordingKey, applied in this process to both the stored rows and
+ * the new suggestions. Duplicates within one model answer collapse to the first occurrence.
  *
  * Must run on the regeneration's own client, after its delete and inside its transaction, so the
  * check sees exactly the rows that will remain. It does not serialise two concurrent
@@ -26,14 +39,14 @@ export async function suggestionsNotAlreadyOnRun<T extends { candidate_text: str
   runId: string,
   suggestions: T[],
 ): Promise<T[]> {
-  const existing = await client.query<{ t: string }>(
-    `select trim(candidate_text) as t from ${table} where run_id = $1`,
+  const existing = await client.query<{ candidate_text: string }>(
+    `select candidate_text from ${table} where run_id = $1`,
     [runId],
   );
-  const taken = new Set(existing.rows.map((r) => r.t));
+  const taken = new Set(existing.rows.map((r) => candidateWordingKey(r.candidate_text)));
   const kept: T[] = [];
   for (const suggestion of suggestions) {
-    const key = suggestion.candidate_text.trim();
+    const key = candidateWordingKey(suggestion.candidate_text);
     if (taken.has(key)) continue;
     taken.add(key);
     kept.push(suggestion);

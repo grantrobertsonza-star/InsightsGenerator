@@ -9,7 +9,9 @@
 //      as an SPSS/Stata/SAS read failure);
 //   2. the refusal survives a reload;
 //   3. recovery works: the same data re-exported one row per respondent, uploaded as a new file,
-//      reads normally (default layout, no refusal for it).
+//      reads normally (default layout, no refusal for it). After the refused file is deleted, the
+//      recovered file's Codebook multiple-response definition is applied (Opt_A and Opt_B show as
+//      Multiple response) and a table computes from it (Gender counts 2 and 2).
 // Not covered: whether Cross tabs or Drivers produce output for the refused file (engine tests in
 // columnsAsCases.test.ts cover dictionary, categories, crosstab and driver refusal).
 // Synthetic data only. No model calls.
@@ -18,6 +20,7 @@ import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -105,4 +108,21 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
   await expect(recoveredLayout).toHaveValue("rows_are_cases");
   await expect(notice()).toHaveCount(1);
 
+  // Delete the refused file; the recovered one carries the analysis.
+  page.on("dialog", (d) => d.accept());
+  const flippedCard = page.locator("div", { has: page.getByText("flipped-guard.xlsx", { exact: true }) }).filter({ has: page.getByRole("button", { name: "Delete document" }) }).last();
+  await flippedCard.getByRole("button", { name: "Delete document" }).click();
+  await expect(page.getByText("flipped-guard.xlsx", { exact: true })).toHaveCount(0, { timeout: 60_000 });
+  await page.goto(runUrl, { waitUntil: "networkidle" });
+  await openSection(page, /Import data/);
+  await showVariables();
+  await expect(notice()).toHaveCount(0);
+  for (const v of ["Opt_A", "Opt_B"]) await expect(page.getByLabel(`Question type: ${v}`, { exact: true })).toHaveValue("multi", { timeout: 60_000 });
+
+  const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+  const ui = await bind({ page, target, testInfo: test.info() });
+  const run = { id: /\/runs\/([0-9a-f-]{36})/.exec(runUrl)[1], url: runUrl };
+  const gender = await ui.buildTable(run, { row: "Gender" });
+  expect(await ui.readStatistic(gender, { variable: "Gender", rawCode: "1", statistic: "category_count" })).toBe(2);
+  expect(await ui.readStatistic(gender, { variable: "Gender", rawCode: "2", statistic: "category_count" })).toBe(2);
 });

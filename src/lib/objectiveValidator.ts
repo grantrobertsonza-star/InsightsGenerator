@@ -45,6 +45,10 @@ type RawItem = { kind: "objective" | "decision"; order: number; text: string; in
 /** Clears this run's objective_validations rows outright, used only when the actual
  * prerequisite they were assessed against (accepted insights, or any objective/decision
  * at all) has gone away - see the two call sites in generateObjectiveValidation. */
+/** Appended to a conclusion that drew on direct data evidence (OBJ-REV-005). */
+export const DIRECT_EVIDENCE_MULTIPLICITY_NOTE =
+  "(Direct data evidence: 95% intervals, not corrected for the number of questions checked; weigh it, do not treat it as a verdict.)";
+
 export async function clearObjectiveValidations(tenantId: string, runId: string): Promise<void> {
   await withTenant(tenantId, async (client) => {
     await client.query("delete from objective_validations where run_id = $1", [runId]);
@@ -249,6 +253,8 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       : [];
 
   const byIndex = new Map<number, { status: ValidationStatus; conclusion: string; insightIds: string[] }>();
+  const conflicting = new Set<number>();
+
   for (const raw of rawValidations) {
     // OBJ-REV-008: a fractional index (0.5, 1.5) used to pass this check - `typeof === "number"`
     // is true for any float - and then survive as its own distinct Map key, never colliding
@@ -277,11 +283,25 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     // yields resolved without links for A"). "gap" is the one status that legitimately has
     // no insights to cite (that's what a gap IS), so only resolved/partial are held to this.
     if (status !== "gap" && insightIndices.length === 0) continue;
-    byIndex.set(itemIndex, {
+    const assessment = {
       status,
       conclusion,
       insightIds: [...new Set(insightIndices)].map((i) => insights[i].id),
-    });
+    };
+    // OBJ-REV-008: two assessments for one item. An identical repeat says nothing new and is kept
+    // once; a differing one leaves no way to tell which belongs to the item, so the item is
+    // marked conflicting and the whole answer is refused below (the previous batch is kept),
+    // rather than silently keeping whichever came last.
+    const earlier = byIndex.get(itemIndex);
+    if (earlier && JSON.stringify(earlier) !== JSON.stringify(assessment)) conflicting.add(itemIndex);
+    byIndex.set(itemIndex, assessment);
+  }
+
+  if (conflicting.size > 0) {
+    throw new Error(
+      `Claude's response gave more than one assessment for ${conflicting.size === 1 ? "an objective or decision" : `${conflicting.size} objectives or decisions`} ` +
+        `(item ${[...conflicting].sort((x, y) => x - y).map((i) => i + 1).join(", ")}), so it cannot say which applies. Nothing was changed; try again.`
+    );
   }
 
   if (byIndex.size === 0) {
@@ -317,15 +337,21 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   // showing a mid-sentence ellipsis cut instead of a clean, complete thought.
   const validations: ObjectiveValidation[] = items.map((item, index) => {
     const result = byIndex.get(index);
+    const conclusion = capWords(
+      result?.conclusion ?? "Not yet assessed against the accepted evidence; try regenerating.",
+      35
+    );
     return {
       item_kind: item.kind,
       item_order: item.order,
       item_text: capWords(item.text, 40),
       status: result?.status ?? "gap",
-      conclusion: capWords(
-        result?.conclusion ?? "Not yet assessed against the accepted evidence; try regenerating.",
-        35
-      ),
+      // OBJ-REV-005: the evidence panel says once that its intervals are not corrected for the
+      // number of questions checked. A conclusion that drew on that evidence travels without the
+      // panel (the objectives slide, the report), so it carries the same qualification in its own
+      // text, added after the word cap so it is never cut. Items with no direct evidence are left
+      // unchanged.
+      conclusion: digest.has(currentItemKey(item)) ? `${conclusion} ${DIRECT_EVIDENCE_MULTIPLICITY_NOTE}` : conclusion,
       synthesized_insight_ids: result?.insightIds ?? [],
       inferred: item.inferred === true,
       evidence_digest_degraded: evidenceDigestDegraded,

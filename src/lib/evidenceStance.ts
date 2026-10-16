@@ -57,7 +57,39 @@ export type EvidenceEstimate = {
   diff?: number | null;
   diffLo?: number | null;
   diffHi?: number | null;
+  /**
+   * OBJ-REV-006: the stable identity of what was read, kept beside the display labels above.
+   * `label`, `groupA` and `groupB` are wording and can change (a value-label edit, a re-read);
+   * these record the table question's key, the row's raw answer code and each banner column's
+   * variable and raw code, as the engine reported them, so a saved reading can be traced to the exact
+   * category later. Absent when the table did not carry them (a net, mean or score row, or an
+   * older saved result); never guessed from a label.
+   */
+  answerIdentity?: CategoryIdentity;
+  groupAIdentity?: CategoryIdentity;
+  groupBIdentity?: CategoryIdentity;
 };
+
+export type CategoryIdentity = { question?: string; variable?: string; rawCode?: string; rawCodes?: string[] };
+
+/** The answer row's identity: its table question's key plus whatever the engine attached to the row. */
+function rowIdentity(result: CrosstabResult, row: CrosstabRow): CategoryIdentity | undefined {
+  const question = result.questions.find((q) => q.rows.includes(row))?.key;
+  const own = identityOf(row);
+  if (!question) return own;
+  return { question, ...own };
+}
+
+/** The identity fields the engine attached to a row or column, or undefined when it attached none. */
+function identityOf(source: { variable?: string; var?: string; rawCode?: string; rawCodes?: string[] } | undefined): CategoryIdentity | undefined {
+  if (!source) return undefined;
+  const id: CategoryIdentity = {};
+  const variable = source.variable ?? source.var;
+  if (variable) id.variable = variable;
+  if (source.rawCode !== undefined && source.rawCode !== null) id.rawCode = String(source.rawCode);
+  if (source.rawCodes && source.rawCodes.length > 0) id.rawCodes = source.rawCodes.map(String);
+  return Object.keys(id).length > 0 ? id : undefined;
+}
 
 export type Reading = { stance: Stance; estimate: EvidenceEstimate; summary: string };
 
@@ -238,6 +270,7 @@ export function readLevel(result: CrosstabResult, exp: Extract<Expectation, { ki
     lo: lo === null ? null : round(lo),
     hi: hi === null ? null : round(hi),
     n: c.n,
+    ...(rowIdentity(result, row) ? { answerIdentity: rowIdentity(result, row) } : {}),
   };
   if (c.n !== null && c.n < MIN_BASE) {
     return { stance: "silent", estimate, summary: `${row.label}: base of ${f(c.n)} is too small to read.` };
@@ -301,6 +334,14 @@ export function readComparison(result: CrosstabResult, exp: Extract<Expectation,
   // by hand.
   const colA = result.columns[names.indexOf(a)];
   const colB = result.columns[names.indexOf(b)];
+  const answerId = rowIdentity(result, row);
+  const aId = identityOf(colA);
+  const bId = identityOf(colB);
+  const identities: Pick<EvidenceEstimate, "answerIdentity" | "groupAIdentity" | "groupBIdentity"> = {
+    ...(answerId ? { answerIdentity: answerId } : {}),
+    ...(aId ? { groupAIdentity: aId } : {}),
+    ...(bId ? { groupBIdentity: bId } : {}),
+  };
   if (colA && colB && colA.block === colB.block && (colA.isGroup || colB.isGroup)) {
     return {
       stance: "inconclusive",
@@ -313,6 +354,7 @@ export function readComparison(result: CrosstabResult, exp: Extract<Expectation,
         n: ca.n,
         groupA: a,
         groupB: b,
+        ...identities,
       },
       summary: `${row.label}: ${a} and ${b} are not independent (one is a combined group containing the other), so the gap between them can't be read as a clean comparison.`,
     };
@@ -327,6 +369,7 @@ export function readComparison(result: CrosstabResult, exp: Extract<Expectation,
     n: ca.n,
     groupA: a,
     groupB: b,
+    ...identities,
   };
   if ((ca.n !== null && ca.n < MIN_BASE) || (cb.n !== null && cb.n < MIN_BASE)) {
     return { stance: "silent", estimate: base, summary: `${row.label}: one of the groups has a base under ${MIN_BASE}, too small to compare.` };

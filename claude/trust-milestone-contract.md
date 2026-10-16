@@ -50,8 +50,14 @@ an accepted or edited one, or the researcher's own text. Re-inserting rejected w
 the rejection (a pending copy for objectives; an accepted copy that re-entered
 runs.decision_statement for decisions). Duplicates within one answer collapse to the first. If no
 new wording remains, the transaction rolls back with a visible "Nothing was changed" error so
-undecided suggestions are not replaced by nothing. Identity is trimmed text only, matching the
-0083 index; no case or semantic matching, and concurrent regenerations of one run are not
-serialised. Covered by src/lib/__tests__/objectiveDecisionClosure.db.test.ts.
+undecided suggestions are not replaced by nothing. Wording identity is candidateWordingKey
+(candidateSuggestionFilter.ts): surrounding whitespace of any kind (spaces, tabs, line breaks,
+no-break spaces) is ignored, applied in the app to both stored and new wording. Inner wording, case
+and punctuation stay distinct; no semantic matching. An earlier version compared SQL trim() of
+stored text (spaces only) with a JavaScript trim of new text, so rejected wording ending in a tab or
+line break came back. Concurrent regenerations of one run are not serialised. The own-add
+duplicate guards and the 0083 unique index still use SQL trim() (spaces only); that separate rule
+for researcher-authored additions is unchanged here. Covered by
+src/lib/__tests__/objectiveDecisionClosure.db.test.ts.
 Run `node scripts/e2e/objective-review-acceptance.mjs` against an explicitly disposable manifest
 from the local stack; no real model key is used.

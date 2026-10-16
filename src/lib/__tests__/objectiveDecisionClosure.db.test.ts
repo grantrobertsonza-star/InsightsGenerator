@@ -6,6 +6,8 @@
 //   - an own-objective addition whose post-commit quality refresh fails is retried safely: one row;
 //   - the accepted decision statement holds exactly the accepted decisions, never an unaccepted or
 //     rejected one.
+//   - wording identity ignores only surrounding whitespace (spaces, tabs, line breaks), the same way
+//     for stored and new wording, in both framers; inner wording, case and punctuation stay distinct.
 // Real disposable PostgreSQL. Only the model and the downstream refreshes are controlled.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -148,5 +150,117 @@ describe.skipIf(!TEST_DATABASE_URL)("objective and decision closing assertions (
     expect((await rows("objective")).filter((r) => r.candidate_text.trim() === "Retried objective")).toEqual([
       expect.objectContaining({ status: "accepted", source: "researcher_authored" }),
     ]);
+  });
+
+  // Surrounding whitespace the model may add or drop: tab, line break, carriage return, a no-break
+  // space and plain spaces, on either the stored or the new side.
+  const PADDED = ["\t", "\n", "\r\n", "\u00a0", "   "];
+  const freshRun = async (name: string) => {
+    const id = (await db.pool.query("insert into runs(tenant_id,project_name,initial_research_objective,objective_candidates_seeded) values($1,$2,'Brief',true) returning id", [tenant, name])).rows[0].id as string;
+    await db.pool.query("insert into findings(tenant_id,run_id,origin,finding_text) values($1,$2,'generated','Synthetic evidence')", [tenant, id]);
+    return id;
+  };
+  const listOf = async (kind: "objective" | "decision", runId: string) =>
+    (await db.pool.query(`select id,candidate_text,status,source,edited from ${kind}_candidates where run_id=$1 order by created_at,id`, [runId])).rows;
+
+  it("objectives: rejected wording stored with surrounding tabs/line breaks stays rejected however the model pads it again", async () => {
+    const a = await import("../objectiveCandidateActions");
+    const { generateObjectiveCandidates } = await import("../objectiveFramer");
+    for (const stored of PADDED) {
+      const r = await freshRun(`objective whitespace ${JSON.stringify(stored)}`);
+      await a.addOwnObjectiveCandidate(r, "Own objective");
+      state.suggestions = [{ candidate_text: `Measure loyalty${stored}`, rationale: "first" }, { candidate_text: "Undecided idea", rationale: "first" }];
+      await generateObjectiveCandidates(tenant, r);
+      const rejected = (await listOf("objective", r)).find((x) => x.candidate_text.trim() === "Measure loyalty")!;
+      await a.rejectObjectiveCandidate(r, rejected.id);
+      for (const again of PADDED) {
+        state.suggestions = [
+          { candidate_text: `${again}Measure loyalty${again}`, rationale: "repeat" },
+          { candidate_text: "Measure  loyalty", rationale: "inner spacing differs: distinct" },
+          { candidate_text: "measure loyalty", rationale: "case differs: distinct" },
+          { candidate_text: `New idea${again}`, rationale: "new" },
+          { candidate_text: `${again}New idea`, rationale: "same answer, padded differently" },
+        ];
+        await generateObjectiveCandidates(tenant, r);
+        const after = await listOf("objective", r);
+        expect(after.filter((x) => x.candidate_text.trim() === "Measure loyalty")).toEqual([
+          expect.objectContaining({ id: rejected.id, status: "rejected", candidate_text: `Measure loyalty${stored}` }),
+        ]);
+        expect(after.filter((x) => x.candidate_text === "Measure  loyalty")).toHaveLength(1);
+        expect(after.filter((x) => x.candidate_text === "measure loyalty")).toHaveLength(1);
+        expect(after.filter((x) => x.candidate_text.trim() === "New idea")).toHaveLength(1);
+        expect(after.filter((x) => x.candidate_text === "Own objective")).toEqual([expect.objectContaining({ status: "accepted", source: "researcher_authored" })]);
+      }
+    }
+  });
+
+  it("decisions: padded rejected wording never returns as accepted or into the statement; distinct wording still lands", async () => {
+    const a = await import("../decisionCandidateActions");
+    const { generateDecisionCandidates } = await import("../decisionFramer");
+    for (const stored of PADDED) {
+      const r = await freshRun(`decision whitespace ${JSON.stringify(stored)}`);
+      state.suggestions = [{ candidate_text: `Exit region B${stored}`, rationale: "first" }, { candidate_text: "Keep prices", rationale: "first" }];
+      await generateDecisionCandidates(tenant, r);
+      const exit = (await listOf("decision", r)).find((x) => x.candidate_text.trim() === "Exit region B")!;
+      await a.rejectDecisionCandidate(r, exit.id);
+      for (const again of PADDED) {
+        state.suggestions = [
+          { candidate_text: `${again}Exit region B${again}`, rationale: "repeat" },
+          { candidate_text: "Exit region B.", rationale: "punctuation differs: distinct" },
+          { candidate_text: `Open channel C${again}`, rationale: "new" },
+          { candidate_text: `${again}Open channel C`, rationale: "same answer, padded differently" },
+        ];
+        await generateDecisionCandidates(tenant, r);
+        const after = await listOf("decision", r);
+        expect(after.filter((x) => x.candidate_text.trim() === "Exit region B")).toEqual([expect.objectContaining({ id: exit.id, status: "rejected" })]);
+        expect(after.filter((x) => x.candidate_text.trim() === "Open channel C")).toHaveLength(1);
+        expect(after.filter((x) => x.candidate_text === "Exit region B.")).toHaveLength(1);
+        const statement = (await db.pool.query("select decision_statement from runs where id=$1", [r])).rows[0].decision_statement as string;
+        expect(statement.split("\n").some((line) => line.replace(/^\d+\.\s*/, "").trim() === "Exit region B")).toBe(false);
+        expect(statement).toContain("Open channel C");
+      }
+    }
+  });
+
+  it("an all-repeat answer padded with whitespace rolls back, keeps undecided suggestions and the statement, and a later usable answer succeeds", async () => {
+    const a = await import("../decisionCandidateActions");
+    const { generateDecisionCandidates } = await import("../decisionFramer");
+    const { generateObjectiveCandidates } = await import("../objectiveFramer");
+    const objectiveRun = await freshRun("objective all-repeat");
+    await (await import("../objectiveCandidateActions")).addOwnObjectiveCandidate(objectiveRun, "Own objective");
+    state.suggestions = [{ candidate_text: "Pending objective idea", rationale: "first" }, { candidate_text: "Rejected objective idea", rationale: "first" }];
+    await generateObjectiveCandidates(tenant, objectiveRun);
+    await (await import("../objectiveCandidateActions")).rejectObjectiveCandidate(objectiveRun, (await listOf("objective", objectiveRun)).find((x) => x.candidate_text === "Rejected objective idea")!.id);
+    const objectivesBefore = await listOf("objective", objectiveRun);
+    // Only wording that survives the undecided-suggestion delete counts as already on the run:
+    // the rejected suggestion and the researcher's own objective, both padded differently.
+    state.suggestions = [{ candidate_text: "Rejected objective idea\n", rationale: "repeat" }, { candidate_text: "\tOwn objective", rationale: "repeat" }];
+    await expect(generateObjectiveCandidates(tenant, objectiveRun)).rejects.toThrow(/every suggestion repeats wording already on this run/);
+    expect(await listOf("objective", objectiveRun)).toEqual(objectivesBefore);
+    state.suggestions = [{ candidate_text: "Retry objective idea", rationale: "usable" }];
+    await generateObjectiveCandidates(tenant, objectiveRun);
+    const objectivesAfter = await listOf("objective", objectiveRun);
+    expect(objectivesAfter.some((x) => x.candidate_text === "Retry objective idea")).toBe(true);
+    expect(objectivesAfter.some((x) => x.candidate_text === "Pending objective idea")).toBe(false);
+
+    const decisionRun = await freshRun("decision all-repeat");
+    state.suggestions = [{ candidate_text: "Keep prices", rationale: "first" }, { candidate_text: "Exit region B", rationale: "first" }];
+    await generateDecisionCandidates(tenant, decisionRun);
+    await a.rejectDecisionCandidate(decisionRun, (await listOf("decision", decisionRun)).find((x) => x.candidate_text === "Exit region B")!.id);
+    await a.acceptDecisionCandidate(decisionRun, (await listOf("decision", decisionRun)).find((x) => x.candidate_text === "Keep prices")!.id, "Keep prices for now");
+    const decisionsBefore = await listOf("decision", decisionRun);
+    const statementBefore = (await db.pool.query("select decision_statement from runs where id=$1", [decisionRun])).rows[0].decision_statement;
+    expect(statementBefore).toBe("Keep prices for now");
+    state.suggestions = [{ candidate_text: "Exit region B\t", rationale: "repeat" }, { candidate_text: " Keep prices for now\r\n", rationale: "repeat" }];
+    await expect(generateDecisionCandidates(tenant, decisionRun)).rejects.toThrow(/every suggestion repeats wording already on this run/);
+    expect(await listOf("decision", decisionRun)).toEqual(decisionsBefore);
+    expect((await db.pool.query("select decision_statement from runs where id=$1", [decisionRun])).rows[0].decision_statement).toBe(statementBefore);
+    state.suggestions = [{ candidate_text: "Review channel mix", rationale: "usable" }];
+    await generateDecisionCandidates(tenant, decisionRun);
+    const statementAfter = (await db.pool.query("select decision_statement from runs where id=$1", [decisionRun])).rows[0].decision_statement as string;
+    expect(statementAfter).toContain("Keep prices for now");
+    expect(statementAfter).toContain("Review channel mix");
+    expect(statementAfter).not.toContain("Exit region B");
+    expect((await listOf("decision", decisionRun)).find((x) => x.candidate_text === "Keep prices for now")).toMatchObject({ edited: true, status: "accepted" });
   });
 });

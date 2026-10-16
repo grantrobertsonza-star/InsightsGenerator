@@ -106,8 +106,23 @@ const storage = http.createServer(async (req, res) => {
   };
   const p = decodeURIComponent(url.pathname.replace(/^\/storage\/v1/, ""));
   const readFaultFile = path.join(outDir, "storage-fault.json");
-  if (req.method === "GET" && existsSync(readFaultFile) && JSON.parse(readFileSync(readFaultFile, "utf8")).get === true) {
+  let m0;
+  const fault = existsSync(readFaultFile) ? JSON.parse(readFileSync(readFaultFile, "utf8")) : {};
+  if (req.method === "GET" && fault.get === true) {
     return send(503, { message: "Synthetic storage read outage" });
+  }
+  // Disposable fault fixture only: an object write whose connection drops, which the app's storage
+  // client reports as "fetch failed" (the error seen in the IMP-017 v12 run). {"put":"drop"} drops
+  // before storing; {"put":"drop-after-store"} stores the bytes and then drops, so the app never
+  // learns the write landed.
+  if ((req.method === "POST" || req.method === "PUT") && (fault.put === "drop" || fault.put === "drop-after-store") && (m0 = /^\/object\/(?!sign\/)(.+)$/.exec(p))) {
+    if (fault.put === "drop-after-store") objects.set(m0[1], { bytes: body, type: req.headers["content-type"] ?? "application/octet-stream" });
+    req.socket.destroy();
+    return;
+  }
+  // Disposable inspection only: every stored object key, so a check can prove no orphan remains.
+  if (req.method === "GET" && url.pathname === "/__inventory") {
+    return send(200, [...objects.keys()].sort());
   }
   let m;
   if (req.method === "POST" && (m = /^\/object\/sign\/(.+)$/.exec(p))) {
@@ -209,6 +224,9 @@ writeFileSync(
       grantsArtifact,
       modelMode: gateway ? "real-model" : "explicit-replay",
       modelReplayLog: path.join(outDir, "model-replay-log.json"),
+      // Disposable storage stand-in: its object inventory and the fault file its handlers read.
+      storageInventoryUrl: `${storageUrl}/__inventory`,
+      storageFaultFile: path.join(outDir, "storage-fault.json"),
       tenantId,
       startedAt: new Date().toISOString(),
     },

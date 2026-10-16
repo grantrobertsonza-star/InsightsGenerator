@@ -68,7 +68,8 @@ function purchaseTable(rows: ReturnType<typeof row>[]): CrosstabResult {
   return {
     version: 2, weightVar: null, weightLabel: null,
     blocks: [{ var: "gender", label: "Gender" }],
-    columns: ["Male", "Female"].map((name) => ({ block: 0, blockLabel: "Gender", name, n: 100, w: 100, nEff: 100 })),
+    // Banner columns carry their variable and raw code, as the engine reports them.
+    columns: ["Male", "Female"].map((name, i) => ({ block: 0, blockLabel: "Gender", name, n: 100, w: 100, nEff: 100, var: "gender", rawCode: String(i + 1) })),
     total: base(200),
     questions: [{ key: "purchase", label: "Purchase", kind: "single", rows }],
   } as unknown as CrosstabResult;
@@ -132,6 +133,12 @@ describe.skipIf(!TEST_DATABASE_URL)("OBJ-REV-006/007 objective evidence closing 
     expect(r).toMatchObject({ table_id: table, stance: "supports", basis: "computed", error: null, stale: false });
     expect(r.estimate).toMatchObject({ measure: "percent", label: "Yes", groupA: "Male", groupB: "Female" });
     expect(r.estimate!.diff).toBeCloseTo(20, 6);
+    // The saved reading keeps the exact categories it read, not only their wording.
+    expect(r.estimate).toMatchObject({
+      answerIdentity: { question: "purchase", rawCode: "1" },
+      groupAIdentity: { variable: "gender", rawCode: "1" },
+      groupBIdentity: { variable: "gender", rawCode: "2" },
+    });
     expect(r.summary).toMatch(/Male 60% vs Female 40%/);
     expect(r.summary).toContain('the share answering "Yes" to "Purchase" was matched');
     expect(q).toMatchObject({ stance: "supports", basis: "computed" });
