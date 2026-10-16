@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Article, H2, H3, P, UL, OL, Table, Limit, WhyBox, ExampleBox, DoesDoesNot, References, type Source } from "../kbBlocks";
 
 const toc = [
@@ -72,9 +73,9 @@ export default function ImportGuide() {
       </P>
       <P>
         How well a file reads depends a good deal on how it is laid out. The{" "}
-        <a href="/knowledge/preparing-files" className="text-primary hover:underline">
+        <Link href="/knowledge/preparing-files" className="text-primary hover:underline">
           guide to preparing your files
-        </a>{" "}
+        </Link>{" "}
         gives layout tips for each kind.
       </P>
       <P>

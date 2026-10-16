@@ -473,7 +473,7 @@ export function driverAnalysis(input: DriverInput): DriverResult | { error: stri
     const row = input.x[i];
     if (Number.isFinite(input.y[i]) && row.every((v) => Number.isFinite(v))) keep.push(i);
   }
-  let y = keep.map((i) => input.y[i]);
+  const y = keep.map((i) => input.y[i]);
   let x = keep.map((i) => input.x[i]);
   const w = keep.map((i) => (input.weights ? Math.max(0, input.weights[i] ?? 1) : 1));
   const lost = input.y.length - keep.length;

@@ -341,9 +341,14 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
     });
   }, [row.dataSetup, row.documentId, runId, router]);
 
-  useEffect(() => {
+  // Keep the wave box in step when the saved choice's wave changes (a save, a conflict reload).
+  // Adjusted during render when the source value changes, the pattern React recommends over an
+  // effect that sets state after rendering; typing in the box still edits waveText alone.
+  const [waveSource, setWaveSource] = useState(choice.wave);
+  if (choice.wave !== waveSource) {
+    setWaveSource(choice.wave);
     setWaveText(choice.wave ?? "");
-  }, [choice.wave]);
+  }
 
   // Changing the structure puts the file back to "needs review": what was
   // checked is no longer what will be read.

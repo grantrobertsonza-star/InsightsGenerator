@@ -7,8 +7,9 @@
 //   1. Golden fixture: Satisfaction mean and top-two box (codes 4 and 5) and Purchase "Yes" share
 //      match the fixture's independent references (fixtures/golden-thread-1/expected.json) before
 //      and after reload, and do not change across the reload.
-//   2. A workbook whose two label sheets give code 1 and 2 opposite meanings: the saved table
-//      still shows both conflicting labels and the same per-code counts after reload.
+//   2. A workbook whose two label sheets give code 1 and 2 opposite meanings: the table's Excel
+//      download carries both conflicting labels, and the saved table still shows both conflicting
+//      labels and the same per-code counts after reload.
 // Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
 import { readFileSync, mkdtempSync } from "node:fs";
@@ -16,6 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
+import JSZip from "jszip";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -112,6 +114,15 @@ test("a saved table with conflicting value labels keeps both labels and its coun
   ];
   const before = await counts(built);
   expect(before).toEqual([3, 1]);
+  // The table's Excel download keeps the conflict visible (IMP-015 export, current tree).
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 120_000 }),
+    built.dialog.getByRole("link", { name: "Download Excel", exact: true }).first().click(),
+  ]);
+  const zip = await JSZip.loadAsync(readFileSync(await download.path()));
+  const xml = (await Promise.all(Object.values(zip.files).filter((f) => !f.dir && f.name.endsWith(".xml")).map((f) => f.async("string")))).join(" ");
+  expect(xml).toContain("conflicting labels: &quot;Yes&quot; / &quot;No&quot;");
+  expect(xml).toContain("conflicting labels: &quot;No&quot; / &quot;Yes&quot;");
   const saved = await reopenSaved(page, run, "q");
   await expect(saved.table).toContainText('conflicting labels: "Yes" / "No"');
   await expect(saved.table).toContainText('conflicting labels: "No" / "Yes"');

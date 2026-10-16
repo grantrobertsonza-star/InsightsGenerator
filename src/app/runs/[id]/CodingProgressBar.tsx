@@ -24,6 +24,9 @@ function eta(ms: number): string {
  */
 export default function CodingProgressBar({ runId, active }: { runId: string; active: boolean }) {
   const [entries, setEntries] = useState<Entry[]>([]);
+  // When the last poll answered: the "still working" hint compares against this rather than
+  // reading the clock during render (the bar re-renders on every poll, so the timing is the same).
+  const [polledAt, setPolledAt] = useState(0);
 
   useEffect(() => {
     if (!active) {
@@ -36,7 +39,10 @@ export default function CodingProgressBar({ runId, active }: { runId: string; ac
         const response = await fetch(`/api/runs/${runId}/coding-progress`, { cache: "no-store" });
         if (!response.ok || cancelled) return;
         const data = (await response.json()) as { progress: Entry[] };
-        if (!cancelled) setEntries(data.progress);
+        if (!cancelled) {
+          setEntries(data.progress);
+          setPolledAt(Date.now());
+        }
       } catch {
         // A missed poll just means one update is skipped.
       }
@@ -54,7 +60,7 @@ export default function CodingProgressBar({ runId, active }: { runId: string; ac
     <div className="mt-2 space-y-2" aria-live="polite">
       {entries.map((e) => {
         const pct = Math.round((e.done / e.total) * 100);
-        const quiet = Date.now() - e.updatedAt > 90_000;
+        const quiet = polledAt - e.updatedAt > 90_000;
         return (
           <div key={e.documentId}>
             <div className="flex justify-between text-[11px] text-muted">

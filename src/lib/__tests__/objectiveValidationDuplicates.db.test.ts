@@ -45,5 +45,16 @@ describe.skipIf(!TEST_DATABASE_URL)("objective validation duplicate indices (rea
     await generateObjectiveValidation(tenant, run);
     expect((await saved()).map((r) => r.conclusion)).toEqual(["Repeated identically", "Answer 1"]);
   });
+
+  it("out-of-range extras alongside a complete valid set are ignored and the new conclusions are saved", async () => {
+    // The existing index suite's extras case reused the previous wording, so it could not tell a
+    // saved answer from a preserved one. Distinct wording here shows which happened.
+    const { generateObjectiveValidation } = await import("../objectiveValidator");
+    state.rows = [item(0, "Batch one A"), item(1, "Batch one B")];
+    await generateObjectiveValidation(tenant, run);
+    state.rows = [item(1, "Batch two B"), item(99, "Out of range"), item(-1, "Negative"), item(0, "Batch two A")];
+    await generateObjectiveValidation(tenant, run);
+    expect((await saved()).map((r) => r.conclusion)).toEqual(["Batch two A", "Batch two B"]);
+  });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("objective validation duplicate indices (real database)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

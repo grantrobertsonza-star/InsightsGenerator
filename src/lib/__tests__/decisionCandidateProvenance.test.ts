@@ -89,7 +89,7 @@ function makeFakeDb(rows: Row[]) {
       throw new Error("unhandled mock query: " + sql);
     },
   };
-  vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client));
+  vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: Parameters<typeof withTenant>[1]) => cb(client as never) as never);
   return { client, rows };
 }
 
@@ -98,12 +98,12 @@ function mockLlmCandidates(candidates: { candidate_text: string; rationale: stri
     .mockResolvedValueOnce({
       content: [{ type: "tool_use", input: { synthesis: "Customers want faster delivery across the board." } }],
       usage: {},
-    } as any)
+    } as never)
     .mockResolvedValueOnce({
       content: [{ type: "tool_use", input: { candidates } }],
       usage: {},
       stop_reason: "tool_use",
-    } as any);
+    } as never);
 }
 
 describe("decision-candidate human-edit provenance survives re-accept and regenerate (overnight queue, package 5, DEC-001)", () => {

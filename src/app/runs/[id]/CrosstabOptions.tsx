@@ -93,7 +93,7 @@ export default function CrosstabOptions({
       <div className="rounded-lg border border-border p-2">
         <p className="mb-1 text-xs font-semibold text-foreground">Layer (optional)</p>
         <p className="mb-1 text-[11px] text-muted">
-          Break the table out into one subtable per category of a variable, the way SPSS Crosstabs' Layer box does
+          Break the table out into one subtable per category of a variable, the way SPSS Crosstabs&apos; Layer box does
           (for example: the whole table repeated for each region, each wave, or each store). Adding a table builds one
           saved table per category instead of one combined table.
         </p>
