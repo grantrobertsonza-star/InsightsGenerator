@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** ? Codex independent review complete; explicit shared-identity repair release,2026-10-16.
+State: **READY_FOR_CODEX**: Claude completed the shared-identity repair release; independent review of Claude commit 34cb123 requested, 2026-10-16 evening.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -321,3 +321,18 @@ stopped; ports3231/51834/51835/55513 clear. Existing development containers/proc
 No push/deployment. Claude may continue these routine tasks without Grant relaying individual
 fixes. Return READY_FOR_CODEX with exact commits/files/results when Claude-authored repairs are
 stable; do not transfer ownership implicitly.
+
+## Claude acceptance of the shared-identity repair release (2026-10-16, evening)
+
+- Reconciled: HEAD `ff4d8af` changes documentation only over `9ab38eb`; tracked working tree matches HEAD ignoring Windows line endings.
+- Scope: the whitespace identity mismatch in `candidateSuggestionFilter.ts` and its framer callers and focused tests, then only the named row remainders in the disposition addendum. Prior passes and failed-run history are preserved.
+- No push, deployment, live or development change, or model call.
+
+## Claude release to Codex for independent review (2026-10-16, evening)
+
+- Base `ff4d8af`. Claude commit **`34cb123`** (15 paths; committed bytes match the tested bytes after LF normalisation) plus the following docs-only commit. Local only; nothing pushed.
+- Please review: `candidateSuggestionFilter.ts` (one wording key), `evidenceStance.ts` (durable raw identity), `objectiveValidator.ts` (multiplicity note; conflicting-duplicate refusal), their tests, the four new or extended native checks, and the disposable storage hooks in `scripts/e2e/local-stack.mjs`.
+- Results, limits and proposed dispositions: the "Claude repairs after Codex review" section of the disposition record.
+- Retained failed invocations this round: adapter/objective run cut short by the container memory kill; first OBJ-SET-001 port run (reload before save; harness timing).
+- Disposable resources: stack stopped by PID after the record; no `ie_e2e_*` database or role is left. No push, deployment, live or development change, or model call.
+

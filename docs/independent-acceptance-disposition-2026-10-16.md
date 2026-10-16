@@ -320,3 +320,28 @@ Overall acceptance remains **incomplete**. Authorised next implementation is the
 whitespace defect, then only specifically missing supported acceptance assertions/dispositions.
 Runtime/setup failures, historical failed product invocations and passing continuations remain
 separate. No new issue IDs or canonical rows were introduced.
+
+## Claude repairs after Codex review (2026-10-16, evening; commit 34cb123)
+
+Claude-authored; needs independent review. The 43-row partition is unchanged. Earlier passes and every failed invocation stay recorded as they were.
+
+Executed on the repaired tree (cloud workspace, disposable PostgreSQL 16 and Python):
+- `npx tsc --noEmit -p .` pass; eslint on all changed files pass.
+- `TEST_DATABASE_URL=… npx vitest run src/lib/__tests__ --pool=forks`: 113 files, 825 passed, 0 failed, 36 skipped (placeholders, plus the known unwritten case-4 integration skip).
+- UI checks: 11 passed. Golden-thread smoke: 1 passed. Objective-review script: 3/3, twice.
+- Adapter readiness check: the first invocation of this round failed, 1 passed and 1 failed. The cloud container's memory limit killed the dev server (4.6 GB) after the long browser sequence, giving ERR_CONNECTION_REFUSED. The objective script failed in the same invocation. On a fresh stack both passed (adapter 2/2). The failed invocation is retained; it is not an app result.
+- Production build not re-run (Google Fonts unreachable here). No model calls; spend unchanged.
+
+| Row / scope | Change | Evidence | Disposition proposed |
+|---|---|---|---|
+| OBJ-REV-004 and business decisions (whitespace identity) | `candidateWordingKey` (JavaScript trim) applied to stored and new wording. SQL `trim()` is no longer used for this comparison. | Codex's two repro suites (10 cases) failed 3, then pass. New regressions: tab, LF, CRLF, no-break space and spaces on either side; inner spacing, case and punctuation stay distinct; answer-local duplicates; all-repeat rollback with the prior suggestions and decision statement kept, then a usable retry. Two regressions fail on the old filter. | Repaired; needs review. Own-add guards and the 0083 index still use SQL `trim()` for researcher additions (separate rule, unchanged). |
+| OBJ-REV-006 raw identity | The estimate stores `answerIdentity` {question, rawCode} and `groupAIdentity`/`groupBIdentity` {variable, rawCode}. Labels are unchanged. Nothing is guessed when the table carries no identity. | Pure reader tests (3); the closure test asserts identity after reload. | Contract met by durable identity; needs review. Older saved results lack it until re-evaluated. |
+| OBJ-REV-005 durable multiplicity | A conclusion for an item that carried direct data evidence ends with the fixed note that intervals are not corrected for the number of questions checked. It is added after the word cap, so it is never cut. | Real-DB validator test: present only on the evidence-backed item, once, and kept across regeneration. | Durable and output contract met for new conclusions; needs review. Older conclusions are unchanged until regenerated. |
+| OBJ-REV-008 duplicate with full coverage | A conflicting repeat refuses the whole answer and keeps the prior batch; an identical repeat is kept once. | Reproduced (the conflicting answer was saved), then repaired; real-DB test; existing index suite passes. | Repaired; needs review. |
+| IMP-017 failed-page and storage outcome | The stand-in gains `{"put":"drop"}`, `{"put":"drop-after-store"}` and `/__inventory` (disposable only). | Native: both modes show "Upload of storage-check.csv failed" and leave no document, no pending cleanup record and no stored object (complete inventory), including when the bytes landed; the recorded trace text is the same "fetch failed" as the v12 run; a healthy retry stores the file once. | Outcome contract established for this error class. Why the v12 concurrent exact-limit pair hit it is still unestablished; that invocation stays failed. Hosted storage not covered. |
+| IMP-004 / IMP-015 saved content after reload | New native check. | Golden Satisfaction mean (ref 3.5), top-two box (ref 50.0) and Purchase "Yes" (ref 50.0) match before reload and read identically from the reopened saved tables. A conflicting-label saved table keeps both labels and counts 3/1 after reload. | Saved-content-after-reload assertion met. |
+| OBJ-SET-001 source age | Codex's lifecycle harness ported to `e2e/ui/objective-setup-review-identity.check.mjs`. | Passes on the current tree. Its first run failed because the original harness reloaded before the Setup edit had saved (the new wording shows before the 0.7 s save completes; the database then held B). The check now waits for the stored row. | Met on current source; needs review. Observation for Codex, not a defect claim: Setup shows edited wording before persistence. |
+| IMP-009 recovery scope | Flipped-guard check extended. | After deleting the refused file: no notice; Opt_A/Opt_B keep Multiple response from the Codebook; Gender table counts 2/2. | Analytical recovery established at this scope. |
+
+Still deferred or external: IMP-010, OBJ-SET-M02, OBJ-REV-M04, the five historical definitions, SAS and the flipped/separate-Codebook exclusion, and the security/deployment gates. Remaining limits named earlier and not addressed here: the overview direct-Accept click and status-label comparison (OBJ-REV-004); the IMP-005 group-correction calculation beyond the dictionary; OBJ-REV-012 PPTX/native badge; OBJ-REV-013 computed native retry.
+

@@ -408,3 +408,15 @@ processes and existing Supabase containers untouched. No paid calls, push or dep
 Spend unchangedUS$3.817316 ofUS$10. Claude is explicitly released in agent-handoff.md for the shared
 identity repair and named bounded acceptance work. Overall acceptance remains incomplete. The
 formerly parked setup-loading guard remains integrated; earlier passes are preserved.
+
+## Claude shared-identity release: affected-file extension (2026-10-16, evening)
+
+Before editing outside the released implementation files, Claude records this extension for the named remainders only:
+- `src/lib/evidenceStance.ts` (OBJ-REV-006 raw selector identity): persist the read row's question key and raw code and each banner column's variable and raw code in the saved estimate (JSONB; no migration). Display wording unchanged. Test: `src/lib/__tests__/evidenceIdentity.test.ts` plus the existing closure test.
+- `src/lib/objectiveValidator.ts` (OBJ-REV-005 durable multiplicity qualification): a conclusion for an item that carried direct data evidence keeps a fixed qualification that the intervals are not corrected for the number of questions checked, so it reaches the app and both story exports. Earlier saved conclusions are unchanged until regenerated.
+No dependency, migration, broad refactor or new feature.
+
+## Claude shared-identity repairs complete (2026-10-16, evening)
+
+Commit `34cb123` (15 paths) over `ff4d8af`. Results and dispositions: [independent-acceptance-disposition-2026-10-16.md](independent-acceptance-disposition-2026-10-16.md) (section "Claude repairs after Codex review"). Full suite 113 files / 825 passed / 0 failed / 36 skipped; 11 UI checks, smoke 1, adapter 2 and objective script 3/3 on a fresh stack. One adapter/objective invocation failed when the cloud container killed the dev server for memory; retained. Partition unchanged; acceptance incomplete. State READY_FOR_CODEX for independent review.
+
