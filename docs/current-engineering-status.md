@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16. State: **READY_FOR_CLAUDE — milestone accepted; checkout released**.
+Updated: 2026-10-16. State: **CODEX_WORKING — independent pane review complete; changes required**.
 
 ## Active version and ownership
 
@@ -113,8 +113,71 @@ This release supersedes earlier statements that Claude remains paused. Codex has
 
 ## Three-pane package (Claude, after the milestone release)
 
-Adjustable three-pane layout (`ThreePane.tsx` plus the `e2e/ui` check) applied, uncommitted, on `8c2e1de`. Implemented, ready for review.
+Adjustable three-pane layout (`ThreePane.tsx` plus the `e2e/ui` check) was applied on `8c2e1de`, then committed as7ec3f30 and handed back in badcd13. The independent review below supersedes the earlier ready-for-review state.
 - On the exact checkpoint tree: route type generation plus typecheck pass; tests 805 passed and 33 skipped.
 - On the disposable stack: pane check 2 passed; the unchanged golden-thread smoke passed.
 - Details and hashes are in [agent-handoff.md](agent-handoff.md). No model spend, commit, push or deployment.
 - Local checkpoint `7ec3f3062aff2f62650d7405951ee23025834f76` (three-pane package), handed back to Codex for independent review. No push or deployment.
+
+
+## Independent pane review and milestone reconciliation — 2026-10-16
+
+**Review complete; pane acceptance requires changes. Codex retains ownership.** Confirmed branch
+`checkpoint/trust-hardening-20261016`, package7ec3f3062aff2f62650d7405951ee23025834f76 and
+documentation handback badcd139285f8b5e15ea14df5387b1f873084baa. All three released file hashes
+match the staged manifest. No implementation file was changed during this review.
+
+Reused Claude's exact-tree type generation/typecheck,805-pass/33-skip gate, two pane browser checks
+and unchanged replay smoke at their recorded scopes. Inspected the complete component, test/config
+and its callers against the installed Next client-boundary guidance and coding standard. Additional
+independent Chromium check bundled the exact released component with installed React: normal
+collapse and reload persistence pass; blocked-storage collapse fails. Evidence:
+`scripts/workflow-tenant-review/repair7/pane-independent-browser.json`. This isolated component
+harness tests state/persistence, not application-route rendering or CSS geometry. It shut down its
+browser and loopback server; no new persistent disposable resource or model call was created.
+
+Required functional finding (P2): `src/app/runs/[id]/ThreePane.tsx:52` swallows localStorage writes,
+while `layout` at108 derives only from the persisted snapshot or transient drag state and commit
+at136 updates no in-page state. With Storage.setItem throwing SecurityError, pressing Collapse
+leaves data-left-collapsed=false. Keyboard resizing is discarded for the same reason, and a drag
+can snap back on release. The comment that a layout still applies for the current page is false.
+Smallest correction: retain the selected layout in page memory independently of successful storage
+persistence. Closing check: blocked reads and blocked writes permit collapse/expand and keyboard/
+pointer resize for the current page, preserve mounted input, reload safely uses defaults when
+persistence is unavailable, and ordinary storage still persists. Add this failure/recovery case to
+the focused pane check. This is a pane finding, not a new canonical release row.
+
+Accessibility finding (P3, code inspection): ResizeHandle advertises fixed aria-valuemax960 and
+stored/default aria-valuenow at219–247, while actual permitted maxima use35%/50% of the grid and
+CSS further clamps saved widths after resizing the window. Assistive technology therefore receives
+a different range/value from the rendered pane. Closing check: report the effective permitted
+maximum and rendered width for each separator, including wideRight default and viewport shrink.
+No measured performance defect or unrelated structural refactor is asserted.
+
+Overall disposition: the **Grant-accepted implementation milestone remains completed at its
+recorded self-validation level**. The later pane package has been independently reviewed and has
+the two findings above; it is not yet accepted. Overall technical-release sign-off is **not complete**.
+Remaining required work is:
+
+1. Resolve the pane functional finding and correct separator accessibility values, with affected
+   regression checks and a stable checkpoint for review. Codex has not released implementation
+   back to Claude; no silent ownership transfer is implied by these findings.
+2. Independently assess Codex-authored trust/metadata/persistence repairs at2330179 and reconcile
+   the existing acceptance rows against the detailed self-validation evidence. A reviewer must
+   identify specific unfulfilled closing assertions rather than replay completed matrices; current
+   canonical43-row counts have deliberately not been promoted by self-validation or pane checks.
+3. Keep the **parked layout-loading fix** explicitly pending: `.fnd001/repair7-20261016/parked-hydration-guard.tgz`,
+   involving TranscriptSetup.tsx/useHydrated.ts and a check that failed once without diagnosis. It
+   is not the pane persistence/hydration mechanism. TranscriptSetup bytes match accepted2330179;
+   the package remains unapplied/unreleased. Diagnose the retained failing check and establish
+   whether a supported-workflow failure remains before deciding its disposition; no closure or
+   new supported defect is inferred from a failed check alone.
+4. Separate pre-public requirements remain actual user-to-tenant authentication, deployed storage
+   authorization/privacy, deployed-role equivalence and intended migration-runner certification.
+   They require the corresponding environment/owner authorization, not another local pane test.
+
+Approved SAS and flipped/separate-Codebook weight/MR exclusions remain in force. Full support is
+backlog work. Five historical-definition gaps and named deferrable checks remain deferrable;
+representative LibreOffice output is not certification of every Office version. Prior browser
+PPTX and concurrent-limit failed invocations remain recorded separately from their successful
+continuations/retries. Model spend remains US$3.817316 ofUS$10; no push/deployment or count changes.

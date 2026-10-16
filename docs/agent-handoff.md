@@ -1,10 +1,10 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: three-pane package committed locally by Claude and handed back for independent review. Claude has stopped editing, 2026-10-16.
+State: **CODEX_WORKING** — Claude handback accepted for independent pane review, 2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
-The current release to Claude below supersedes earlier Codex ownership and pause instructions. Earlier takeover and package records remain historical evidence.
+Codex now owns the checkout for independent review. Claude remains stopped until an explicit release is recorded. Earlier ownership and package records below are historical where superseded.
 
 
 ## Current release to Claude — 2026-10-16
@@ -149,3 +149,25 @@ Grant asked for a local checkpoint of the three-pane package and a handback for 
   - the check's coverage, results above.
 - No push or deployment. Codex owns the checkout once it records acceptance.
 - **Local checkpoint:** `7ec3f3062aff2f62650d7405951ee23025834f76`, parent `8c2e1de`. This line was added in the documentation-only commit that follows it.
+
+
+## Codex acceptance of pane handback — 2026-10-16
+
+Confirmed branch `checkpoint/trust-hardening-20261016`, application package commit
+`7ec3f3062aff2f62650d7405951ee23025834f76` and documentation handback
+`badcd139285f8b5e15ea14df5387b1f873084baa`, descending from accepted base2330179.
+Codex accepts ownership for read-only implementation review plus necessary targeted verification
+and status reconciliation. No implementation is released back to Claude by this acceptance.
+Parked layout-loading guard and `TranscriptSetup.tsx` remain excluded and unmodified.
+
+
+## Pane review completed; ownership retained — 2026-10-16
+
+Independent review of7ec3f30/badcd13 is complete. Required pane changes: blocked-storage
+interactions lose in-page layout changes (independently reproduced), and separator ARIA
+range/value does not match effective layout bounds (code inspection). Full findings, closing
+checks and overall milestone disposition are in `docs/current-engineering-status.md`.
+Codex retains **CODEX_WORKING** ownership; Claude remains stopped. No implementation has been
+handed back or released by this review. Parked layout-loading fix remains unapplied and explicitly
+pending diagnosis/disposition. The additional browser harness is stopped; no new persistent
+disposable resource remains. No application code, release counts, spend or deployment changed.
