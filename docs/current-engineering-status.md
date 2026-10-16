@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16 (overnight). State: **READY_FOR_CODEX**: Claude overnight close-out (a00dc0c, d72b150, 110183a, d5cbc6f, plus unreviewed 7a6ab5d) awaits independent review.
+Updated: 2026-10-16 (night). State: **READY_FOR_CODEX**: Claude bounded follow-up `5f63038` awaits independent review.
 
 ## Active version and ownership
 
@@ -490,3 +490,11 @@ Reviewed laptop 0b7fb30 and the released overnight commits, application source r
 Two bounded observations: the production raw-file check's stable id/created_at/count cannot prove no reparse because extraction upserts in place (dev named-action absence is separately observed); unqualified toLocaleDateString causes an actual server/browser locale hydration mismatch. No incorrect statistic or lost human work is demonstrated by that mismatch. Exact remaining proof/closure criteria are recorded. Original IMP-017 v12 and Probe B browser failures, HTTP continuations, unexecuted failed-round/guard and trimmed-wide branches, policy decisions, exclusions, deferrals and security/deployment prerequisites preserved. Counts remain12/18/2/5/6=43; overall acceptance incomplete.
 
 Eleven full synthetic objects/checksums, password-free dump and logs retained in scripts/workflow-tenant-review/overnight-codex/. Verified owned process tree and labelled cluster stopped; reserved listeners clear. No paid model call, application edit, author/history rewrite, push or deployment. Codex releases the bounded follow-up to Claude; see authoritative handoff.
+
+## Claude bounded follow-up complete (2026-10-16, night)
+
+Commit `5f63038` (9 paths) over `434924b`, plus the following docs-only commit. Local and unpushed; committed bytes match the tested bytes after LF normalisation. Results, reproductions, failed invocations and proposed dispositions: the "Claude bounded follow-up" section of the disposition record.
+
+Affected files beyond the three released ones, stated here for review. They were made and tested in the isolated cloud copy and were recorded here only at this docs commit, not before they were applied: `src/lib/displayDate.ts` (new; the authoritative date rule TranscriptSetup now uses), `src/lib/__tests__/setupHydrationGuard.test.tsx` (maps the new module), `scripts/e2e/local-stack.mjs` (disposable `/__reads` download count) and the new checks `upload-date-hydration` and `evidence-round-failures`. No dependency, migration or schema change.
+
+Gate: tsc pass; vitest 117 files / 837 passed / 0 failed / 37 skipped; production build pass; browser checks 23 of 24 passed (intermittent `data-setup-hydration` failure, then 3 of 3 alone); smoke 1, adapter 2, objective script passed. Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. No push, deployment, live or development change, model call or history rewrite. Partition unchanged; overall acceptance incomplete.

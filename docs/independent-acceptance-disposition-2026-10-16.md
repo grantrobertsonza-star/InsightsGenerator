@@ -681,3 +681,45 @@ Thus IMP-004 saved reference-content, IMP-007 local failure/retry, IMP-015 confl
 Eleven complete synthetic storage objects and inventory/checksums, a password-free database dump, logs and the final browser JSON report are retained locally. The initial source-copy attempt was denied Temp filesystem access; an explicitly scoped escalated copy succeeded (environment failure, no application result). The verified PID tree and labelled codex-overnight-review-20261016 container were stopped after retention; ports 3234/55515/63772 have no listeners. No development services were stopped. Model replay shutdown log was not produced by forced process shutdown; do not cite one as retained evidence. No paid calls; cumulative US$3.817316 unchanged.
 
 Codex releases the bounded follow-up to Claude through the handoff: correct/strengthen the raw-file proof and address the deterministic date rendering observation with targeted evidence, then only specifically missing failed-round/guard assertions if feasible. No full audit or repeated closed matrices. Overall acceptance remains incomplete, with unchanged 43-row counts.
+
+## Claude bounded follow-up after Codex's overnight review (2026-10-16, night; commit 5f63038)
+
+Claude-authored; needs independent review. Base `434924b`. The partition is unchanged (12 / 18 / 2 / 5 / 6 = 43) and no row is promoted. Earlier passes and failed invocations stay as recorded. Overall acceptance is not claimed.
+
+### Changes, each reproduced first where it is a defect
+
+| Released item | Change | Reproduction and evidence |
+|---|---|---|
+| IMP-010 reopen proof (`raw-file-reopen.check.mjs`) | The comment no longer says a re-read replaces the table: `documentTables.ts` upserts with ON CONFLICT DO UPDATE, keeping id, created_at and (for the same file) the count. No-reparse is now observed by two signals that change on every read: the storage stand-in's download count for the file's stored object (new disposable `/__reads` endpoint in `scripts/e2e/local-stack.mjs`) and the table row's version (`xmin`). Positive control: a layout change makes the page read the file again, and both signals change. The dev-only action-name check is kept. | Production server: passes on the previous build and on the repaired build. Both reopens leave downloads and row version unchanged; the positive control moves both. This is check evidence, not an application change; the trimmed-wide branch over 100 MB is still not exercised. |
+| Upload date hydration (`TranscriptSetup.tsx` FileCell) | New `src/lib/displayDate.ts`: the UTC calendar day in a fixed format ("16 Oct 2026"), the same in every runtime, with the exact UTC minute in the title. An invalid timestamp shows "Date unknown". Limit, stated in the module: near midnight the day shown is the UTC day, which can differ from the researcher's local day. | **Reproduced first** on the previous production build, with the browser in en-US and Pacific/Kiritimati: the row showed "10/17/2026" against the server's UTC "10/16/2026", and the console logged React error #418 (text hydration mismatch) twice. After the fix: native `upload-date-hydration.check.mjs` passes (fixed text before and after reload, no hydration error). `displayDate.test.ts` (4 tests): identical output across four time zones including just before UTC midnight; the old expression's zone dependence; invalid input. `setupHydrationGuard.test.tsx` maps the new module and still passes. No statistic or saved work was affected. |
+| OBJ-REV-013 failed round and dropped connection (`ObjectiveEvidence.tsx`) | Every server-action call in the panel is settled, so a rejected request becomes the `{ok:false}` result each caller already handles. A failed round reads "Reading stopped: <reason>". | **Reproduced first** on the previous build: a dropped evaluate request left both buttons on "Reading the data..." and disabled, with no message. Native `evidence-round-failures.check.mjs` now passes. (1) A second round returning `{ok:false}` shows the reason, leaves the panel idle and keeps Continue reading, also after reload; a clean continue then finishes. (2) A dropped connection does the same. The `{ok:false}` branch itself already passed on the previous build. |
+| OBJ-REV-M04 60-round guard and load failure | The `gather()` comment now names the stop conditions, including the 60-round cap. | Same native check. (3) Rounds that keep reporting 5 unread stop after exactly 60, show "Stopped after a long run with 5 question(s) still unread", and keep Continue reading. (4) With the app role's read on `objective_evidence` revoked, Review Objectives shows the load error and no question list; restored, it loads. Both branches passed on the previous build as well; this is new evidence, not a repair. |
+
+Controlled boundaries in `evidence-round-failures`: the browser intercepts only the evaluate action, recognised by its result. In the guard step it rewrites the server's real result. For a failed or dropped round it answers without reaching the server, so the server state matches what the panel is told. The planner's plan is fixture-supplied, and the objective and questions are synthetic inserts. The load failure is a real permission revoke on the disposable app role.
+
+### Executed on the final tree (cloud workspace, disposable PostgreSQL 16, production build)
+
+- `npx tsc --noEmit -p .` pass. eslint on every changed file pass.
+- `TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres npx vitest run src/lib/__tests__ --pool=forks`: 117 files, **837 passed, 0 failed, 37 skipped**.
+- Production build (`next build --webpack`, font stand-in) pass.
+- App browser checks against the production server, `--workers=1`: 24 run, **23 passed, 1 failed**. The failure was `data-setup-hydration` (Codex's check from `be625c7`): its single "Import data" click right after navigation did not open the panel, so the upload input was never found (timeout). It then passed 3 of 3 alone on the same stack. Recorded as an intermittent check failure, not relabelled; the check is outside this release and was not edited. A wait for the page to be interactive before that click would remove the race.
+- Golden-thread smoke 1 passed; adapter 2 passed; objective-review script passed (4 status entries passed).
+
+### Failed or incomplete invocations this round (retained)
+
+- First stack start: disposable PostgreSQL had stopped (ECONNREFUSED); restarted, then started.
+- First `evidence-round-failures` run: my route interception broke the multipart upload ("Choose at least one file first."); interception moved after setup.
+- Second run: the rewritten `{ok:false}` round had already done its work on the server, so nothing was left to continue; failed rounds are now answered without reaching the server.
+- On the repaired build, one run failed 3 vs 2 stored answers: the check took "no Continue button" as finished, but that button is relabelled while a round runs. "Finished" now means the answers are stored, the panel is idle, and Continue reading is gone.
+- The intermittent `data-setup-hydration` failure above.
+
+### Affected-row disposition (proposed; no promotion)
+
+| Row | Disposition |
+|---|---|
+| IMP-010 (Awaiting, deferrable) | The production no-reparse proof now rests on per-read signals with a positive control; needs review. The trimmed-wide branch stays unexercised. |
+| OBJ-REV-013 (Awaiting) | Failed-round and dropped-connection branches executed natively; dropped-connection defect repaired; needs review. The computed persistence retry closure is unchanged. |
+| OBJ-REV-M04 (Awaiting, deferrable) | 60-round guard and load failure executed natively; the comment now matches the stop conditions; needs review. |
+| Upload-date presentation (Codex observation, no row) | Repaired; needs review. Not a statistic or saved-work defect. Other unqualified `toLocaleDateString`/`toLocaleString` uses remain in `programs/page.tsx`, `app/page.tsx` and two export routes. They are outside this release; whether any of them hydrates in the browser was not assessed. |
+
+Everything else stays as Codex recorded it: the IMP-017 v12 original stays failed and its cause is unproven; Probe B browser PPTX stays failed; the owner decisions, exclusions, deferrals and environment gates are unchanged.

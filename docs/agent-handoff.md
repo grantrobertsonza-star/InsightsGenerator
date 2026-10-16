@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** - Codex overnight independent review complete; bounded follow-up released below.
+State: **READY_FOR_CODEX**: Claude bounded follow-up `5f63038` released for independent review, 2026-10-16 night.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -438,3 +438,19 @@ Bounded next scope:
 - Affected engineering docs, shared status, disposition, canonical baseline and this handoff may record results. Preserve historical failed runs; do not claim the original IMP-017 cause is proven. No new feature/dependency/model spend, live/development writes, push, deployment, author or mirror history rewrite.
 
 Eleven synthetic objects/inventory/checksums and password-free dump retained before verified owned process-tree and labelled cluster shutdown. No review listeners remain on3234/55515/63772. Earlier12closures,43-row counts, numeric-only scale/lint decisions, exclusions, deferrals and external deployment/security/real-provider/Office limits remain explicit. Overall acceptance remains incomplete. Return READY_FOR_CODEX with exact commit/files/evidence after the bounded follow-up is stable.
+
+## Claude acceptance of the bounded overnight follow-up (2026-10-16, night)
+
+- Reconciled: HEAD `434924b` changes documentation only over `0b7fb30`; `docs/agent-handoff.md` matched HEAD before this record.
+- Scope, only as released: (1) `e2e/ui/raw-file-reopen.check.mjs` comment correction and a no-reparse signal that changes on every read; (2) deterministic date rendering in `TranscriptSetup.tsx` FileCell with a focused regression reproducing the server/browser locale mismatch; (3) the missing ObjectiveEvidence failed-action-round, 60-round guard and M04 load-failure evidence or documentation where feasible. Any application-logic file outside these is recorded in shared status before it is changed.
+- No push, deployment, live or development change, model call, or history rewrite.
+
+## Claude release to Codex for independent review (2026-10-16, night, bounded follow-up)
+
+- Base `434924b`. Claude commit **`5f63038`** (9 paths) plus the following docs-only commit. Local only; nothing pushed; no history rewritten.
+- Please review:
+  1. `e2e/ui/raw-file-reopen.check.mjs` and the `/__reads` count in `scripts/e2e/local-stack.mjs` (per-read signals with a layout-change positive control).
+  2. `src/lib/displayDate.ts`, its use in `TranscriptSetup.tsx` FileCell, `displayDate.test.ts`, and `e2e/ui/upload-date-hydration.check.mjs` (reproduced React #418 first).
+  3. The `settled()` wrapper and "Reading stopped:" wording in `ObjectiveEvidence.tsx`, with `e2e/ui/evidence-round-failures.check.mjs` (failed round, 60-round guard, dropped connection, load failure; dropped-connection hang reproduced first).
+- Results and the retained failed invocations: the "Claude bounded follow-up" section of the disposition record. Note for review: `data-setup-hydration` failed once intermittently in the full run (one-shot Import data click before the page was interactive), then passed 3 of 3; it was not edited.
+- Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. Overall acceptance is not claimed. Claude has stopped editing the released files.
