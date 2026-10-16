@@ -492,3 +492,116 @@ Executed on the repaired tree (cloud workspace, disposable PostgreSQL 16 and Pyt
 
 Tooling: `scripts/e2e/model-replay.mjs` gains an `untargeted` fixture rule (disposable; existing answers and the `scripted` log field unchanged). Recorded in shared status before it was applied to this checkout.
 
+
+## Claude overnight close-out (2026-10-16, from 19:46 SAST; commits a00dc0c, d72b150, 110183a, d5cbc6f)
+
+Claude-authored throughout; every item below needs Codex's independent review. Overall acceptance is **not** claimed. The 43-row partition (12 Closed / 18 Awaiting / 2 Confirmed defect / 5 Untested / 6 Blocked) is unchanged. No row is promoted here, and every earlier pass and failed invocation stays as recorded. Base `48d76bc`; `7a6ab5d` (coverage repair) is still unreviewed and is part of this package.
+
+### Commits (local, unpushed, on `checkpoint/trust-hardening-20261016`)
+
+| Commit | Paths | Content |
+|---|---|---|
+| `a00dc0c` | 13 | Failed saves on objective, decision and recommendation controls are reported and keep the draft. Adds `saveStatedObjectiveEdit` (result-returning wrapper of `editStatedObjective`) in `runContextActions.ts`; `actionFailure.ts` (`actionFailureMessage`, `attempt`); route error boundary `runs/[id]/error.tsx`; failure reporting in `StatedObjectivesList`, `useObjectiveRowActions`, `ObjectiveReviewTable`, `ObjectivesWorkspace`, `DecisionBriefReview`, `RecommendationsReview`, `SynthesizedRecommendationsReview`. Tests: `actionFailure.test.ts`; native `setup-objective-save-failure`, `review-action-failure`. |
+| `d72b150` | 6 | `ObjectiveEvidence.tsx`: a refused question save keeps the editor and draft; refused include/leave-out and retry are reported; a failed evaluation round keeps Continue reading offered. Native checks `evidence-edit-failure`, `raw-file-reopen` (IMP-010), `objective-marker-variants` (OBJ-SET-M02), `objective-regeneration-native` (OBJ-SET-003 / OBJ-REV-004). Notes in `claude/trust-milestone-contract.md`. |
+| `110183a` | 11 | Evidence: native `native-formats` (IMP-018), Excel-download assertion in `saved-table-reload` (IMP-015), distinct-wording extras case in `objectiveValidationDuplicates.db.test.ts` (OBJ-REV-008), real-DB `narrativeWrongGroup.db.test.ts` (FND-001). Lint errors cleared without behaviour change in `TranscriptSetup`, `CodingProgressBar`, `AcrossTranscripts`, `CrosstabOptions`, `knowledge/content/import.tsx`, `driverAnalysis.ts`, `decisionCandidateProvenance.test.ts`. |
+| `d5cbc6f` | 5 | Test harness and documentation only: native `concurrent-limit-uploads` (IMP-017); `raw-file-reopen` settles by stored-table identity; `local-stack.mjs` options `E2E_NEXT_START` and `E2E_STORAGE_PORT`; `scripts/e2e/font-mock.cjs`; `docs/validation.md` section "App-owned browser checks". |
+
+Every commit was applied with `.fnd001/overnight/apply.py`, which refuses a target that differs from HEAD and reports 0 committed-byte mismatches against the LF-normalised tested hashes.
+
+### Defect found and repaired tonight (reproduced first)
+
+A refused server action crashed or silently passed in several researcher controls. Next.js withholds a thrown action's message (dev and production both send only a digest), so an uncaught refusal either reached the route without a boundary (the Setup objective edit took the whole page down and lost the draft) or was ignored (review buttons, the evidence editor, decision and recommendation cards showed nothing, and some editors closed as if the save had worked). Repaired generically: one shared `attempt()` helper turns a refusal into a visible "Not saved/Not changed/Not deleted: ..." alert (the reason, or a generic sentence with a reference when Next withholds it), editors stay open with the researcher's text, and the route gains an error boundary. Each native check installs a disposable trigger that refuses the write, asserts the alert, the kept draft and the unchanged stored row, then drops the trigger and asserts a normal save. The checks fail on the previous components (setup crash; no alert in review).
+
+Not covered natively: Continue reading staying offered after a failed evaluation round (the evaluate action has to fail while the panel's own load still works), and the 60-round guard. Both are by code review only.
+
+### Final-tree gate (cloud workspace, disposable PostgreSQL 16 on :55432, Python with pyreadstat)
+
+| Check | Command | Result |
+|---|---|---|
+| Typecheck | `npx next typegen && npx tsc --noEmit -p .` | pass |
+| Lint, changed and touched UI files | `npx eslint e2e/ui scripts/e2e/local-stack.mjs scripts/e2e/font-mock.cjs src/app/runs src/lib/runContextActions.ts` | 6 errors, 15 warnings. All 6 errors are the pre-existing `set-state-in-effect` findings (owner decision below); none is in a line changed tonight. |
+| Unit and real-DB suite | `TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres npx vitest run src/lib/__tests__ --pool=forks` | 116 files: **833 passed, 0 failed, 37 skipped** (placeholders and the known unwritten case-4 integration skip) |
+| Production build | `next build --webpack` with the font stand-in and a migrated disposable database (`docs/validation.md`) | pass |
+| App browser checks, production server | `npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1` | **22 passed** (3.5 min) |
+| Golden-thread smoke | `npm run e2e:smoke` with the smoke variables | 1 passed |
+| Adapter readiness | `npx playwright test -c e2e/adapter/adapter-check.config.mjs` | 2 passed (second invocation; see failed history) |
+| Objective-review script | `node scripts/e2e/objective-review-acceptance.mjs` | 3/3 passed |
+
+The stack was stopped by PID; no `ie_e2e_*` or `ie_test_build` database or role remains. Real infrastructure: PostgreSQL, the Python engine, Chromium, the Next.js production server. Controlled boundaries: the local storage stand-in (with fault hooks), the model replay (fixture answers), synthetic inserts and disposable refusal triggers, each named in the check's header. No model calls; spend unchanged at US$3.817316.
+
+### Failed or incomplete invocations tonight (retained, not relabelled)
+
+- Dev-server memory kills (about 4 GB in the 8 GB container) ended several long dev-mode browser sequences with connection refused. Not app results. Production mode was adopted for the full suite.
+- Check-authoring failures before each check passed: hidden list items matched; the innermost container picked the header or button row; counted section names ("Recommendations 1"); the recommendation button is "Edit and accept"; replay rules matched against the system prompt instead of the user message; set rows use "Row (all)".
+- `raw-file-reopen` failed once on the production server because it waited for a dev-only log line; rewritten to settle by stored-table identity, then passed.
+- Production build attempts failed on: Turbopack with the symlinked dependencies (use `--webpack`); unreachable Google Fonts (font stand-in); the server key name (`SUPABASE_SECRET_KEY`); the `/programs` pre-render needing a migrated database.
+- One stack was killed at the 30-minute background limit and left `ie_e2e_76e6c3fa26` (database and role); dropped by hand. Disposable PostgreSQL stopped once and was restarted.
+- IMP-017 concurrent check in dev mode: in two of two completed rounds one upload of the pair failed with "fetch failed" (EPIPE while the 20 MB body was written to storage); later dev rounds ended by memory kill.
+- Final-gate adapter check, first invocation: 2 skipped, because `TASK_B_FIXTURE_DIR` named a directory not present in the review clone. Rerun with the fixture directory from the retained checkout: 2 passed.
+
+### Row-by-row overnight disposition (all 43)
+
+Evidence levels: **C** = Claude check executed on the final tree tonight, needs review; **R** = retained test re-executed in tonight's full suite; **P** = earlier disposition preserved, nothing new tonight.
+
+| Row (partition status) | Tonight | Disposition proposed (no promotion) |
+|---|---|---|
+| IMP-001 / IMP-016 (Blocked) | R | **Environment-dependent.** Deployed identity, storage privacy and signed links, deployed role and the migration runner need the real environment and authorisation. |
+| IMP-002 (Closed) | R | Closure preserved. |
+| IMP-003 (Closed) | R | Closure preserved. |
+| IMP-004 (Awaiting) | R+C | Saved-content-after-reload established at the golden fixture scope (34cb123), re-passed tonight. The 0-10 numeric-only label mean stays an **owner decision**. |
+| IMP-005 (Awaiting) | C | Group-correction calculation and clear/reload (7a6ab5d) re-passed on the final tree; **needs review**. |
+| IMP-006 / REP-IN-001 / REP-IN-002 (Closed) | R | Closure preserved. |
+| IMP-007 (Awaiting) | R+C | Failure-class outcome re-passed (`upload-storage-failure`). Storage is the local stand-in; hosted storage is **environment-dependent**. |
+| IMP-008 (Closed) | R | Closure preserved. |
+| IMP-009 (Awaiting) | C | Notice and analytical recovery re-passed (`flipped-codebook-guard`). The flipped plus separate-Codebook combination stays an **owner-approved exclusion**. |
+| IMP-010 (Awaiting, deferrable) | C | **Newly evidenced, needs review.** Reopening a ready 5,000 x 301 raw file shows a bounded preview and the true case count, and does not re-read the file (stored-table identity unchanged). Not exercised: the trimmed-wide branch for a result over 100 MB. |
+| IMP-011 (Closed) | R | Closure preserved. |
+| IMP-012 (Awaiting) | R | Unchanged; controlled reread scope. |
+| IMP-013 (Awaiting) | R | Unchanged; real-DB re-query scope (no UI reload). |
+| IMP-014 (Closed) | R+C | Closure preserved; `data-setup-hydration` re-passed. |
+| IMP-015 (Awaiting) | C | **Newly evidenced, needs review.** The table's Excel download carries both conflicting labels, and the saved table keeps both labels and counts after reload. |
+| IMP-017 (Untested) | C | **Unresolved check.** The original v12 invocation **stays failed**. New native check: production server, 3 rounds, 6 of 6 exact-limit uploads complete in 6 to 9 s (run twice tonight, 12 of 12 in all; peak server memory about 818 MB); dev server, one of each pair fails visibly with EPIPE and leaves nothing behind. Direct concurrent uploads to the stand-in always succeed. The v12 failure looks specific to the dev runtime, but its exact cause is not proven. Hosted capacity is **environment-dependent**. |
+| IMP-018 (Untested) | C | **Newly evidenced in one invocation, needs review.** Valid SAV and DTA calculate (Yes 3 / No 1 by raw code); truncated files fail visibly, stay failed after reload, store no table, and recover by delete and replacement. SAS stays an **owner-approved exclusion**. |
+| OBJ-SET-001 (Awaiting) | C | Lifecycle re-passed. New: a refused Setup edit or delete is reported and keeps the draft (repaired defect, **needs review**). |
+| OBJ-SET-002 (Awaiting) | R | Unchanged at the real-DB closing-test scope. |
+| OBJ-SET-003 (Awaiting) | C | **Newly evidenced, needs review.** Native regeneration with a usable (fixture-supplied) model answer: rejected wording stays rejected, the undecided suggestion is replaced, edited own wording survives, a deleted own objective is not resurrected, and the original brief is unchanged. Scripted-model boundary disclosed. |
+| OBJ-SET-004 (Blocked) | none | **Deferred**: historical definition unavailable. |
+| OBJ-SET-005 (Blocked) | none | **Deferred**: historical definition unavailable. |
+| OBJ-SET-M02 (Awaiting, deferrable) | C | **Newly evidenced, needs review.** Numbered, hyphenated and Unicode-bulleted lines become one objective each with the marker removed and stay consistent across Setup and Review through edit, delete and reload, with stable ids. The stale source hashes in `normalization.cjs` stay **deferred** (historical harness, not edited). |
+| OBJ-REV-001 / OBJ-REV-002 (Closed) | R | Closure preserved. |
+| OBJ-REV-003 (Blocked) | none | **Deferred**: historical definition unavailable. |
+| OBJ-REV-004 (Awaiting) | C | Native regeneration as for OBJ-SET-003. New: refused Accept, Reject, Edit and Delete in Review are reported and keep the editor text (repaired defect, **needs review**). |
+| OBJ-REV-005 (Untested) | R | Unchanged at the 34cb123 scope (new conclusions carry the multiplicity note); older conclusions need regeneration. |
+| OBJ-REV-006 (Confirmed defect) | R | Durable raw identity unchanged at the 34cb123 scope. The first real-provider invocation stays recorded as inconclusive. |
+| OBJ-REV-007 (Awaiting) | C | New: a refused evidence-question edit keeps the editor and draft, and a refused leave-out is reported; a later edit saves and survives reload (repaired defect, **needs review**). |
+| OBJ-REV-008 (Awaiting) | R+C | New extras case uses distinct wording, so a saved answer can now be told from a preserved one; passes. Needs review. |
+| OBJ-REV-009 (Closed) | R | Closure preserved. |
+| OBJ-REV-010 (Blocked) | none | **Deferred**: historical definition unavailable. |
+| OBJ-REV-011 (Closed) | R | Closure preserved. |
+| OBJ-REV-012 (Awaiting) | C | Coverage warning repair (7a6ab5d) re-passed natively on the final tree; **needs review**. |
+| OBJ-REV-013 (Awaiting) | C | Computed native retry (7a6ab5d) re-passed; scripted planner boundary disclosed. Continue reading after a failed round is by code review only (see above). **Needs review.** |
+| OBJ-REV-M03 (Blocked) | none | **Deferred**: historical definition unavailable. |
+| OBJ-REV-M04 (Awaiting, deferrable) | none | **Deferred**: the guard and load-failure behaviour is still undocumented. |
+| DEC-001 (Closed) | R | Closure preserved. |
+| Business-decisions remainder (Untested) | C | New: refused card and list actions in the decision brief are reported, and a rejected decision stays open for correction when its action fails (repaired defect, **needs review**). Failed-refresh recovery for other mutations is not inferred. |
+| ANA-NPS-003 calculation-input subcase (Closed) | R | Closure preserved. |
+| ANA-NPS-003 / IMP-005 findings freshness subcase (Closed) | R | Closure preserved. |
+| FND-001 / REP-OUT-001 (Confirmed defect) | R+C | **Newly evidenced, needs review.** Real-DB `generateStoryNarrative`: a narrative citing the wrong group is saved `needs_review`, the right group is `traced`. This removes the "persistence is scripted" limit for that path. The outcome is still a qualified save, not a refusal. |
+| ANA-NPS-003 downstream freshness handover (Untested) | R | Unchanged at Codex's native fixture scope. |
+
+Section-2 scopes outside the 43 rows: Probe B browser PPTX **stays failed** (HTTP continuation only); Task D unchanged at Codex's scope; Office rendering is LibreOffice only, so real Office is **environment-dependent**.
+
+### For owner decision (not applied)
+
+- The 0-10 scale with numeric-only labels gets no mean (IMP-004): a policy choice, not a measured engine defect.
+- Six `react-hooks/set-state-in-effect` lint errors in `ClaimTableChecks`, the `CodingProgressBar` reset, `CrosstabFilters`, `ProcessProgress` and `RunShell` (two). Each needs a small behavioural refactor of a polling or reset effect. They were left alone tonight because the change is not lint-only.
+- Script and test lint (295 `require()` calls in scripts, 48 `any` in tests): style, not behaviour.
+
+### Reproducing tonight's results
+
+See `docs/validation.md`, section "App-owned browser checks". In short:
+1. Start disposable PostgreSQL; run the vitest command above.
+2. For production mode: migrate a disposable database, add one tenant, and build a copy of the tree with `NEXT_FONT_GOOGLE_MOCKED_RESPONSES=$PWD/scripts/e2e/font-mock.cjs`, `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:39123`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=local-stand-in`, `SUPABASE_SECRET_KEY=local-stand-in`, `DATABASE_URL` and `DEFAULT_TENANT_ID`, then `npx next build --webpack`.
+3. `E2E_NEXT_START=<built copy> E2E_STORAGE_PORT=39123 E2E_ADMIN_DATABASE_URL=... npm run e2e:stack`.
+4. `GOLDEN_SMOKE_TARGET_MANIFEST=e2e-results/target-manifest.json npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1`, then the smoke, adapter (with `TASK_B_FIXTURE_DIR`) and objective-script commands above.
+5. Stop the stack with Ctrl+C (or SIGINT to its PID) and confirm no `ie_e2e_*` database or role remains.

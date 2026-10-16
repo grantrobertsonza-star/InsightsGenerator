@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated:2026-10-16. State: **READY_FOR_CLAUDE ?34cb123 reviewed; focused OBJ-REV-012 coverage repair released**.
+Updated: 2026-10-16 (overnight). State: **READY_FOR_CODEX**: Claude overnight close-out (a00dc0c, d72b150, 110183a, d5cbc6f, plus unreviewed 7a6ab5d) awaits independent review.
 
 ## Active version and ownership
 
@@ -472,3 +472,13 @@ Recorded before applying to this checkout: `scripts/e2e/model-replay.mjs` (dispo
 
 Commit `7a6ab5d` (7 paths) over `4ba581d`. Results: the "Claude OBJ-REV-012 coverage repair and native remainders" section of the disposition record. Full suite 114 / 827 passed / 0 failed / 36 skipped; 14 UI checks, smoke, adapter 2 and objective script 3/3 pass. Partition unchanged; acceptance incomplete. State READY_FOR_CODEX.
 
+
+## Claude overnight close-out complete (2026-10-16, night)
+
+Under Grant's 19:46 SAST instruction. Commits over `48d76bc`: `a00dc0c` (13 paths), `d72b150` (6), `110183a` (11), `d5cbc6f` (5, harness and docs only), plus the following docs-only commit. All local and unpushed; committed bytes match the tested bytes after LF normalisation.
+
+Final-tree gate: typecheck pass; full suite 116 files, 833 passed, 0 failed, 37 skipped; production build pass; 22 app browser checks, smoke 1, adapter 2 and objective script 3/3 pass against a production server. Lint: the 6 known `set-state-in-effect` errors remain (owner decision). Results, failed invocations and the 43-row overnight disposition: section "Claude overnight close-out" of the disposition record. Partition unchanged; overall acceptance incomplete and not claimed.
+
+Affected-file extension used tonight (recorded here because it reaches outside the coverage release): the researcher-control failure repair touches `runContextActions.ts`, `StatedObjectivesList.tsx`, `useObjectiveRowActions.ts`, `ObjectiveReviewTable.tsx`, `ObjectivesWorkspace.tsx`, `ObjectiveEvidence.tsx`, `DecisionBriefReview.tsx`, `RecommendationsReview.tsx`, `SynthesizedRecommendationsReview.tsx`, and adds `actionFailure.ts` and `runs/[id]/error.tsx`. Lint-only edits: `TranscriptSetup.tsx`, `CodingProgressBar.tsx`, `AcrossTranscripts.tsx`, `CrosstabOptions.tsx`, `knowledge/content/import.tsx`, `driverAnalysis.ts`. No dependency, migration or schema change.
+
+Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. No push, deployment, live or development change, or model call; spend unchanged at US$3.817316.

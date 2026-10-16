@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude completed the OBJ-REV-012 coverage repair release; independent review of Claude commit 7a6ab5d requested, 2026-10-16 evening.
+State: **READY_FOR_CODEX**: Claude overnight close-out released for independent review (commits a00dc0c, d72b150, 110183a, d5cbc6f, and the still-unreviewed 7a6ab5d), 2026-10-16 night.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -405,3 +405,20 @@ READY_FOR_CODEX with exact commit/files/evidence once stable. No implicit owners
 - Failed invocations this round (check-authoring, retained): coverage panel locator twice; replay match on the system prompt; set picker label; one stack start before PostgreSQL was restarted.
 - Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. No push, deployment, live or development change, or model call.
 
+## Claude overnight close-out under Grant's instruction (2026-10-16, from 19:46 SAST)
+
+- Grant's instruction: build a checklist of every unresolved or unverified item from the disposition record and this handoff and work through it. For each defect: reproduce it, add a regression test, repair and verify. Address deferred application items where feasible. Reconcile every acceptance row. Keep owner exclusions. Everything stays unpushed. Finish READY_FOR_CODEX.
+- Base: `48d76bc` (Claude commit `7a6ab5d` still awaits Codex review and is included in tomorrow's package). Codex had not started; no conflicting ownership.
+- Done: commits `a00dc0c` (refused saves are reported and keep the draft across Setup, Review, evidence, decision and recommendation controls), `d72b150` (evidence editor failures; native IMP-010, OBJ-SET-M02 and regeneration checks), `110183a` (native SAV/DTA, Excel export, OBJ-REV-008 extras, real-DB FND-001 narrative; lint-only fixes), `d5cbc6f` (IMP-017 concurrent check, production-mode stack, docs), plus the following docs-only commit. Local only; nothing pushed.
+
+## Claude release to Codex for independent review (2026-10-16, night, overnight close-out)
+
+- Base `48d76bc`. Review targets, in order:
+  1. `7a6ab5d` (coverage warning, IMP-005, OBJ-REV-013), unchanged since its release.
+  2. `a00dc0c` and `d72b150`: the shared `attempt()` / `actionFailureMessage()` helper, `saveStatedObjectiveEdit`, the route error boundary, and each control's failure path; native checks `setup-objective-save-failure`, `review-action-failure`, `evidence-edit-failure`.
+  3. New evidence checks: `raw-file-reopen`, `objective-marker-variants`, `objective-regeneration-native`, `native-formats`, the Excel assertion in `saved-table-reload`, `concurrent-limit-uploads`, `narrativeWrongGroup.db.test.ts`, and the extras case in `objectiveValidationDuplicates.db.test.ts`.
+  4. Lint-only edits in `110183a`, for behaviour equivalence (notably the `TranscriptSetup` wave sync during render and `CodingProgressBar` polled-time state).
+  5. Harness: `E2E_NEXT_START`, `E2E_STORAGE_PORT`, `scripts/e2e/font-mock.cjs`.
+- Final-tree results, row-by-row disposition, failed invocations and reproduction steps: the "Claude overnight close-out" section of the disposition record. Gate: tsc pass; vitest 116 files / 833 passed / 0 failed / 37 skipped; production build pass; 22 browser checks, smoke 1, adapter 2, objective script 3/3.
+- Still open: the IMP-017 v12 original stays failed (cause attributed to the dev runtime, not proven); Probe B browser PPTX stays failed; Continue-after-failed-round and the 60-round guard are by code review only; the IMP-010 trimmed-wide branch is not exercised; OBJ-REV-M04 and the five historical definitions stay deferred; security, deployment, hosted storage, real Office and real model quality are environment-dependent. Owner decisions: the numeric-only scale mean, the six `set-state-in-effect` lint errors, script and test lint.
+- Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. No push, deployment, live or development change, or model call. Overall acceptance is not claimed. Claude has stopped editing the released files.
