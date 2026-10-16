@@ -158,6 +158,27 @@ export async function saveRunContext(runId: string, formData: FormData) {
 }
 
 /**
+ * The Setup list's entry point for editing or removing a stated objective. Same work as
+ * editStatedObjective, but a failure comes back as a result instead of a thrown error: a server
+ * action's thrown message is withheld in production builds, and an unhandled throw from the
+ * list's transition replaced the page and discarded the researcher's open draft. Returning it
+ * lets the list keep the draft open and show the actual reason (a database failure, or the
+ * repeated-conflict message below).
+ */
+export async function saveStatedObjectiveEdit(
+  runId: string,
+  oldText: string,
+  newText: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await editStatedObjective(runId, oldText, newText);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
  * Edits or removes one stated objective (pass newText = null to remove it).
  * Edits runs.stated_objectives_text, the current mutable list (OBJ-SET-M01) -
  * never runs.initial_research_objective, which is write-once and reserved

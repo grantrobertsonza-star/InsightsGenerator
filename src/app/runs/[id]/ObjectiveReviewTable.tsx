@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { attempt } from "./actionFailure";
 import {
   addOwnObjectiveCandidate,
   regenerateObjectiveCandidates,
@@ -167,6 +168,11 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             <TrashIcon className="h-3 w-3" />
           </button>
         </div>
+        {a.error && (
+          <p role="alert" className="mt-1 max-w-xs text-[11px] text-red-700">
+            {a.error}
+          </p>
+        )}
       </td>
     </tr>
   );
@@ -211,6 +217,16 @@ export default function ObjectiveReviewTable({
       else setError(r.error);
     });
   }
+  // Table-level actions report failure in `error`; adding your own objective keeps the typed
+  // text when the add fails (actionFailure.ts).
+  function runAction(action: () => Promise<unknown>, after?: () => void) {
+    setError(null);
+    start(async () => {
+      const failure = await attempt(action);
+      if (failure) setError(failure);
+      else after?.();
+    });
+  }
   function regenerate() {
     setError(null);
     start(async () => {
@@ -241,7 +257,7 @@ export default function ObjectiveReviewTable({
             </button>
           )}
           {pendingCount > 0 && (
-            <button className={btn} disabled={isPending} onClick={() => start(() => acceptAllObjectiveCandidates(runId))}>
+            <button className={btn} disabled={isPending} onClick={() => runAction(() => acceptAllObjectiveCandidates(runId))}>
               Accept all suggested
             </button>
           )}
@@ -251,9 +267,7 @@ export default function ObjectiveReviewTable({
               disabled={isPending}
               onClick={() => {
                 if (!confirm("Remove all suggested objectives? Your own and edited ones are kept.")) return;
-                start(async () => {
-                  await deleteSuggestedObjectives(runId);
-                });
+                runAction(() => deleteSuggestedObjectives(runId));
               }}
             >
               Remove suggested
@@ -269,7 +283,7 @@ export default function ObjectiveReviewTable({
       )}
       {message && <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">{message}</div>}
       {error && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">
+        <div role="alert" className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="shrink-0 font-medium underline">
             Dismiss
@@ -311,10 +325,7 @@ export default function ObjectiveReviewTable({
           e.preventDefault();
           const text = addText.trim();
           if (!text) return;
-          start(async () => {
-            await addOwnObjectiveCandidate(runId, text);
-            setAddText("");
-          });
+          runAction(() => addOwnObjectiveCandidate(runId, text), () => setAddText(""));
         }}
         className="rounded-lg border border-dashed border-border p-4"
       >

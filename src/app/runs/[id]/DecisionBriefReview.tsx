@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import { attempt } from "./actionFailure";
 import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptDecisionCandidate,
@@ -36,13 +37,23 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
   const [isPending, startTransition] = useTransition();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(candidate.candidate_text);
+  // Each action reports its failure here instead of throwing out of the transition, which
+  // replaced the page and lost an open edit; a failed save keeps the editor and draft.
+  const [error, setError] = useState<string | null>(null);
+  const run = (action: () => Promise<unknown>, after?: () => void) =>
+    startTransition(async () => {
+      setError(null);
+      const failure = await attempt(action);
+      if (failure) setError(failure);
+      else after?.();
+    });
 
   const isAccepted = candidate.status === "accepted";
   const isRejected = candidate.status === "rejected";
 
   function handleDelete() {
     if (!confirm("Delete this candidate? This can't be undone.")) return;
-    startTransition(() => deleteDecisionCandidate(runId, candidate.id));
+    run(() => deleteDecisionCandidate(runId, candidate.id));
   }
 
   return (
@@ -106,10 +117,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
             <button
               disabled={isPending || !draft.trim()}
               onClick={() =>
-                startTransition(async () => {
-                  await acceptDecisionCandidate(runId, candidate.id, draft.trim());
-                  setIsEditing(false);
-                })
+                run(() => acceptDecisionCandidate(runId, candidate.id, draft.trim()), () => setIsEditing(false))
               }
               className="rounded-lg border border-success bg-success px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
@@ -118,6 +126,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
             <button
               onClick={() => {
                 setDraft(candidate.candidate_text);
+                setError(null);
                 setIsEditing(false);
               }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
@@ -128,7 +137,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
         ) : isRejected ? (
           <button
             disabled={isPending}
-            onClick={() => startTransition(() => restoreDecisionCandidate(runId, candidate.id))}
+            onClick={() => run(() => restoreDecisionCandidate(runId, candidate.id))}
             className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-slate-400 hover:text-foreground"
           >
             Restore
@@ -138,7 +147,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
             {!isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => acceptDecisionCandidate(runId, candidate.id))}
+                onClick={() => run(() => acceptDecisionCandidate(runId, candidate.id))}
                 className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
               >
                 Accept
@@ -154,7 +163,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
             {!isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => rejectDecisionCandidate(runId, candidate.id))}
+                onClick={() => run(() => rejectDecisionCandidate(runId, candidate.id))}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
               >
                 Reject
@@ -163,7 +172,7 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
             {isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => unacceptDecisionCandidate(runId, candidate.id))}
+                onClick={() => run(() => unacceptDecisionCandidate(runId, candidate.id))}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
               >
                 Unaccept
@@ -172,6 +181,11 @@ function CandidateCard({ runId, candidate }: { runId: string; candidate: Decisio
           </>
         )}
       </div>
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -196,20 +210,21 @@ export default function DecisionBriefReview({
   const [isPending, startTransition] = useTransition();
   const [addText, setAddText] = useState("");
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  // List-level actions (add your own, accept all, delete all) report failure here; a failed add
+  // keeps the typed text.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const runListAction = (action: () => Promise<unknown>, after?: () => void) =>
+    startTransition(async () => {
+      setActionError(null);
+      const failure = await attempt(action);
+      if (failure) setActionError(failure);
+      else after?.();
+    });
   const [rejectedOpen, setRejectedOpen] = useState(false);
 
   const accepted = candidates.filter((c) => c.status === "accepted");
   const pending = candidates.filter((c) => c.status === "pending");
   const rejected = candidates.filter((c) => c.status === "rejected");
-
-  // When a regenerate attempt comes back with nothing usable, a rejected
-  // candidate someone already thought through is the most useful thing on
-  // this screen, so it's worth surfacing rather than leaving it collapsed.
-  useEffect(() => {
-    if (regenerateError && rejected.length > 0) {
-      setRejectedOpen(true);
-    }
-  }, [regenerateError, rejected.length]);
 
   // The framer already runs automatically once documents are processed
   // (see page.tsx), so this button is rarely someone's first way of getting
@@ -228,6 +243,11 @@ export default function DecisionBriefReview({
       const result = await regenerateDecisionCandidates(runId);
       if (!result.ok) {
         setRegenerateError(result.error);
+        // When a regenerate attempt comes back with nothing usable, a rejected candidate someone
+        // already thought through is the most useful thing on this screen, so it is opened
+        // rather than left collapsed. Done here, where the failure is learned, rather than in an
+        // effect that sets state after render.
+        if (rejected.length > 0) setRejectedOpen(true);
       }
     });
   }
@@ -257,10 +277,7 @@ export default function DecisionBriefReview({
           e.preventDefault();
           const text = addText.trim();
           if (!text) return;
-          startTransition(async () => {
-            await addOwnDecisionCandidate(runId, text);
-            setAddText("");
-          });
+          runListAction(() => addOwnDecisionCandidate(runId, text), () => setAddText(""));
         }}
         className="rounded-lg border border-dashed border-border p-4"
       >
@@ -295,6 +312,11 @@ export default function DecisionBriefReview({
             </span>
           }
         >
+      {actionError && (
+        <p role="alert" className="rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
+          Not saved: {actionError}
+        </p>
+      )}
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           <span>Couldn&apos;t generate suggestions right now: {regenerateError}</span>
@@ -338,7 +360,7 @@ export default function DecisionBriefReview({
               <button
                 type="button"
                 disabled={isPending}
-                onClick={() => startTransition(() => acceptAllDecisionCandidates(runId))}
+                onClick={() => runListAction(() => acceptAllDecisionCandidates(runId))}
                 className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light disabled:opacity-50"
               >
                 Accept all
@@ -348,7 +370,7 @@ export default function DecisionBriefReview({
                 disabled={isPending}
                 onClick={() => {
                   if (!confirm(`Delete all ${pending.length} remaining candidate(s)? This can't be undone.`)) return;
-                  startTransition(() => deleteAllDecisionCandidates(runId));
+                  runListAction(() => deleteAllDecisionCandidates(runId));
                 }}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger disabled:opacity-50"
               >

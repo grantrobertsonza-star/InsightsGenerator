@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { attempt } from "./actionFailure";
 import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptRecommendation,
@@ -449,13 +450,23 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
   const [isPending, startTransition] = useTransition();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(draftFrom(recommendation));
+  // Each action reports its failure here instead of throwing out of the transition, which
+  // replaced the page and lost an open edit; a failed save keeps the editor and draft.
+  const [error, setError] = useState<string | null>(null);
+  const run = (action: () => Promise<unknown>, after?: () => void) =>
+    startTransition(async () => {
+      setError(null);
+      const failure = await attempt(action);
+      if (failure) setError(failure);
+      else after?.();
+    });
 
   const isAccepted = recommendation.status === "accepted";
   const isRejected = recommendation.status === "rejected";
 
   function handleDelete() {
     if (!confirm("Delete this recommendation? This can't be undone.")) return;
-    startTransition(() => deleteRecommendation(runId, recommendation.id));
+    run(() => deleteRecommendation(runId, recommendation.id));
   }
 
   return (
@@ -583,10 +594,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             <button
               disabled={isPending || !draftComplete(draft)}
               onClick={() =>
-                startTransition(async () => {
-                  await updateAndAcceptRecommendation(runId, recommendation.id, draft);
-                  setIsEditing(false);
-                })
+                run(() => updateAndAcceptRecommendation(runId, recommendation.id, draft), () => setIsEditing(false))
               }
               className="rounded-lg border border-success bg-success px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
@@ -595,6 +603,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             <button
               onClick={() => {
                 setDraft(draftFrom(recommendation));
+                setError(null);
                 setIsEditing(false);
               }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
@@ -605,7 +614,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
         ) : isRejected ? (
           <button
             disabled={isPending}
-            onClick={() => startTransition(() => restoreRecommendation(runId, recommendation.id))}
+            onClick={() => run(() => restoreRecommendation(runId, recommendation.id))}
             className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-slate-400 hover:text-foreground"
           >
             Restore
@@ -615,7 +624,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             {!isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => acceptRecommendation(runId, recommendation.id))}
+                onClick={() => run(() => acceptRecommendation(runId, recommendation.id))}
                 className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
               >
                 Accept
@@ -631,7 +640,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             {!isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => rejectRecommendation(runId, recommendation.id))}
+                onClick={() => run(() => rejectRecommendation(runId, recommendation.id))}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
               >
                 Reject
@@ -640,7 +649,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             {isAccepted && (
               <button
                 disabled={isPending}
-                onClick={() => startTransition(() => restoreRecommendation(runId, recommendation.id))}
+                onClick={() => run(() => restoreRecommendation(runId, recommendation.id))}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
               >
                 Unaccept
@@ -649,6 +658,11 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
           </>
         )}
       </div>
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

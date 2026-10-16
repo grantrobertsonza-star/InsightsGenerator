@@ -142,6 +142,11 @@ function Detail({ runId, row, index }: { runId: string; row: ObjectiveRow; index
           </>
         )}
       </div>
+      {a.error && (
+        <p role="alert" className="text-xs text-red-700">
+          {a.error}
+        </p>
+      )}
 
       {row.scores ? (
         <div className="space-y-2">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { editStatedObjective } from "@/lib/runContextActions";
+import { saveStatedObjectiveEdit } from "@/lib/runContextActions";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 
 const miniBtn =
@@ -27,6 +27,9 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
+  // A failed save keeps the editor (and the draft) open and says why; nothing is shown as saved
+  // until the server confirms it.
+  const [error, setError] = useState<string | null>(null);
   const accent = ACCENTS[index % ACCENTS.length];
   const { label, body } = splitLabel(text);
   const { selected, select } = useObjectiveSelection();
@@ -66,8 +69,10 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
               disabled={pending || !draft.trim()}
               onClick={() =>
                 start(async () => {
-                  await editStatedObjective(runId, text, draft);
-                  setEditing(false);
+                  setError(null);
+                  const result = await saveStatedObjectiveEdit(runId, text, draft);
+                  if (result.ok) setEditing(false);
+                  else setError(`Not saved: ${result.error}`);
                 })
               }
             >
@@ -77,6 +82,7 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
               className={miniBtn}
               onClick={() => {
                 setDraft(text);
+                setError(null);
                 setEditing(false);
               }}
             >
@@ -94,7 +100,9 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
               onClick={() => {
                 if (!confirm("Delete this objective?")) return;
                 start(async () => {
-                  await editStatedObjective(runId, text, null);
+                  setError(null);
+                  const result = await saveStatedObjectiveEdit(runId, text, null);
+                  if (!result.ok) setError(`Not deleted: ${result.error}`);
                 });
               }}
             >
@@ -103,6 +111,11 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
           </>
         )}
       </div>
+      {error && (
+        <p role="alert" className="w-full text-xs text-red-700">
+          {error}
+        </p>
+      )}
     </li>
   );
 }
