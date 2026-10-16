@@ -44,3 +44,23 @@ One-time setup: `npx playwright install chromium`.
    - PowerShell: `$env:GOLDEN_SMOKE_TARGET_MANIFEST="e2e-results/target-manifest.json"; $env:GOLDEN_SMOKE_ADAPTER="e2e/adapter/golden-thread-adapter.mjs"; npm run e2e:smoke`
 
 Results, traces, screenshots and the downloaded exports go to `e2e-results/` (git-ignored); `e2e-results/model-replay-log.json` lists every model call the replay answered. With the replay the run is orchestration evidence only: it shows the workflow, persistence, freshness and export rules working on predictable text, not the quality of real model output. Export checks read the downloaded files' text and XML; they do not certify how Office renders them. `npm test` (plain `vitest run`) would also pick up the Playwright spec, so use `npm run validate` for the unit and integration gate.
+
+## App-owned browser checks (`e2e/ui/*.check.mjs`)
+
+Run against the same stack: `GOLDEN_SMOKE_TARGET_MANIFEST=e2e-results/target-manifest.json npx playwright test -c e2e/ui/ui-check.config.mjs` (one file: add its name, for example `native-formats`). They are the app's own regression checks, separate from Codex's smoke specification. Each states its fixture, what is real and what is controlled. Several insert synthetic fixtures directly into the disposable database, install disposable triggers to refuse a write, or supply model answers through `e2e-results/model-fixture.json`, which the stack's model replay reads on every request: per-tool rules `{"tools": {"<tool>": [{"match", "input"}]}}`, and `{"untargeted": [{"match", "tool", "input"}]}` for a tool loop with no forced tool (the crosstab planner). Those are scripted-model boundaries, not model-quality evidence.
+
+The adapter readiness check is separate: `npx playwright test -c e2e/adapter/adapter-check.config.mjs` (with the smoke variables and `TASK_B_FIXTURE_DIR` pointing at `scripts/golden-thread-hardening/supplemental/application-ready-v2`). The retained objective-review script runs with `node scripts/e2e/objective-review-acceptance.mjs`.
+
+### Production-mode stack
+
+`next dev` holds a lot of memory; on an 8 GB workspace the dev server is killed for memory during long runs and during the concurrent exact-limit upload check. A production build avoids that and is how `concurrent-limit-uploads` should be run:
+
+1. Pick a free port for the storage stand-in, for example 39123 (`NEXT_PUBLIC_*` values, including the storage URL, are inlined into a build).
+2. Build a copy of the tree once against a migrated disposable database (a running dev stack's database works; `/programs` is pre-rendered from it):
+   `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:39123 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=local-stand-in SUPABASE_SECRET_KEY=local-stand-in DATABASE_URL=<that database> DEFAULT_TENANT_ID=<its tenant> npx next build --webpack`
+   Where Google Fonts is unreachable, add `NEXT_FONT_GOOGLE_MOCKED_RESPONSES=$PWD/scripts/e2e/font-mock.cjs`, which answers every font URL with placeholder CSS (a compile check only; fonts are not delivered).
+3. Start the stack serving that build: `E2E_NEXT_START=<built tree> E2E_STORAGE_PORT=39123 E2E_ADMIN_DATABASE_URL=... npm run e2e:stack`. The database, role, storage stand-in and model replay are created as usual.
+
+A production server does not log server actions by name, so checks use stored identity (for example a table's id and creation time) rather than the dev log where possible.
+
+The stand-in also offers disposable fault hooks: `e2e-results/storage-fault.json` with `{"get": true}`, `{"remove": true}`, `{"put": "drop"}` or `{"put": "drop-after-store"}`, and a complete object inventory at `<storage>/__inventory` (both listed in the manifest).

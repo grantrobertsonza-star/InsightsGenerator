@@ -4,8 +4,9 @@
 //      project is reopened twice.
 //   2. Each reopen: the preview states the true size ("5,000 rows, 301 columns") and that it shows
 //      only a bounded part ("Showing the first N of 5,000 rows and M of 301 columns"); Data quality
-//      reports 5000 cases; the stored table keeps its id, creation time and 5,000 stored rows; and the server log for the
-//      reopen contains no readDataFileAction (the action that parses the stored file).
+//      reports 5000 cases; the stored table keeps its id, creation time and 5,000 stored rows (a
+//      re-read replaces it); and, on a dev server, whose log names each server action, the log for
+//      the reopen contains no readDataFileAction (the action that parses the stored file).
 // Real browser on the disposable stack; row_count and table identity are read from the database.
 import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
@@ -42,9 +43,17 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
     const stored = async () => (await db.query("select id, created_at, jsonb_array_length(rows)::int as row_count from document_tables where run_id=$1", [run.id])).rows;
     await expect.poll(async () => (await stored()).length, { timeout: 120_000 }).toBe(1);
     await expect.poll(async () => (await db.query("select data_setup->>'accepted' as a from documents where run_id=$1 and kind='table'", [run.id])).rows[0]?.a, { timeout: 120_000 }).toBe("true");
-    // Let the first read and its refresh finish before measuring a reopen.
-    await expect.poll(() => readFileSync(appLog, "utf8").split("\n").filter((l) => l.includes(`readDataFileAction("${run.id}"`)).length, { timeout: 120_000 }).toBeGreaterThanOrEqual(1);
+    // Let the first read and its refresh finish before measuring a reopen: the stored table must
+    // stay the same across a quiet interval. (A dev server also logs each server action by name;
+    // a production server does not, so the table's identity is the mode-independent evidence.)
     await page.waitForLoadState("networkidle");
+    let settled = JSON.stringify(await stored());
+    for (let i = 0; i < 30; i++) {
+      await page.waitForTimeout(3_000);
+      const now = JSON.stringify(await stored());
+      if (now === settled) break;
+      settled = now;
+    }
     const before = await stored();
     expect(before[0].row_count).toBe(5000);
 
@@ -63,6 +72,7 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(2_000);
       const during = readFileSync(appLog, "utf8").slice(offset);
+      // Only meaningful where the server logs actions by name (next dev); always false otherwise.
       expect(during.includes(`readDataFileAction("${run.id}"`), `reopen ${reopen} re-read the file`).toBe(false);
       expect(await stored(), `reopen ${reopen} replaced the stored table`).toEqual(before);
     }

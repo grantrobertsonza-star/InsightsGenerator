@@ -155,7 +155,9 @@ const storage = http.createServer(async (req, res) => {
   }
   return send(404, { message: `storage stand-in: unsupported ${req.method} ${p}` });
 });
-await new Promise((r) => storage.listen(0, "127.0.0.1", r));
+// E2E_STORAGE_PORT fixes the stand-in's port, needed with E2E_NEXT_START because NEXT_PUBLIC_*
+// values (the storage URL) are inlined into a production build.
+await new Promise((r) => storage.listen(Number(process.env.E2E_STORAGE_PORT ?? 0), "127.0.0.1", r));
 const storageUrl = `http://127.0.0.1:${storage.address().port}`;
 
 // ---- model replay
@@ -189,8 +191,14 @@ for (const file of readdirSync(ROOT).filter((f) => /^\.env/.test(f))) {
     }
   }
 }
-const app = spawn(process.execPath, [path.join(ROOT, "node_modules/next/dist/bin/next"), "dev", ...(process.env.E2E_WEBPACK === "1" ? ["--webpack"] : []), "-p", String(appPort), "-H", "127.0.0.1"], {
-  cwd: ROOT,
+// E2E_NEXT_START=<dir>: serve an existing production build (`next build --webpack` already run in
+// <dir>) with `next start`, instead of `next dev` in this checkout. Used to measure production
+// memory and behaviour; the same disposable database, role, storage stand-in and model replay apply.
+const startDir = process.env.E2E_NEXT_START ? path.resolve(process.env.E2E_NEXT_START) : null;
+const appDir = startDir ?? ROOT;
+const nextArgs = startDir ? ["start"] : ["dev", ...(process.env.E2E_WEBPACK === "1" ? ["--webpack"] : [])];
+const app = spawn(process.execPath, [path.join(appDir, "node_modules/next/dist/bin/next"), ...nextArgs, "-p", String(appPort), "-H", "127.0.0.1"], {
+  cwd: appDir,
   env,
   stdio: ["ignore", "pipe", "pipe"],
 });
