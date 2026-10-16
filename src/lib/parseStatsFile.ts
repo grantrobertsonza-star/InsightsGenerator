@@ -96,7 +96,7 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
       );
     }
     throw new Error(
-      `Couldn't read this as SPSS/Stata/SAS data (${response.status}). ${message || "The conversion step failed."}`
+      `Couldn't read this data file (${response.status}). ${message || "The conversion step failed."}`
     );
   }
 
@@ -277,7 +277,7 @@ async function runLocalStatsPython<T>(
     if (viaWorker?.ok) return viaWorker.value;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    throw new Error(/worker/i.test(message) ? message : `Couldn't read this as SPSS/Stata/SAS data. ${message}`);
+    throw new Error(/worker/i.test(message) ? message : `Couldn't read this data file. ${message}`);
   }
   const dir = await mkdtemp(path.join(tmpdir(), "stats-"));
   try {
@@ -310,7 +310,7 @@ async function runLocalStatsPython<T>(
     if (!ran) {
       throw new Error("Reading SPSS/Stata/SAS files locally needs Python. Install Python, then run: pip install pyreadstat");
     }
-    if (lastError) throw new Error(`Couldn't read this as SPSS/Stata/SAS data. ${lastError}`);
+    if (lastError) throw new Error(`Couldn't read this data file. ${lastError}`);
     return JSON.parse(await readFile(output, "utf-8")) as T;
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});

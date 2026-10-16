@@ -39,6 +39,19 @@ substituting rows-as-cases.
 Objective overview action cells stop click propagation to the selectable row. Otherwise an
 Unaccept/Edit click selected the detail view and unmounted the overview controls/editor during
 the action. The native OBJ-REV-004 regression covers detail and overview transitions, edited
-wording, rejected exclusions and original-brief preservation through regeneration/reload.
+wording, rejected exclusions and original-brief preservation through reload. Its "regenerate"
+step does not establish regeneration: the model replay has no scripted answer for
+record_objective_candidates, so the framer refuses with "Nothing was changed" and the harness
+does not check the outcome. Regeneration is covered at database level instead.
+
+Regeneration (objectives and decisions) removes only undecided AI suggestions, then inserts the
+model's new ones except any whose trimmed wording is already on the run: a rejected suggestion,
+an accepted or edited one, or the researcher's own text. Re-inserting rejected wording had undone
+the rejection (a pending copy for objectives; an accepted copy that re-entered
+runs.decision_statement for decisions). Duplicates within one answer collapse to the first. If no
+new wording remains, the transaction rolls back with a visible "Nothing was changed" error so
+undecided suggestions are not replaced by nothing. Identity is trimmed text only, matching the
+0083 index; no case or semantic matching, and concurrent regenerations of one run are not
+serialised. Covered by src/lib/__tests__/objectiveDecisionClosure.db.test.ts.
 Run `node scripts/e2e/objective-review-acceptance.mjs` against an explicitly disposable manifest
 from the local stack; no real model key is used.

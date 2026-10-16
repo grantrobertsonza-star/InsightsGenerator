@@ -75,6 +75,11 @@ function makeFakeDb(rows: Row[]) {
         }
         return { rowCount: before - rows.length };
       }
+      // Regeneration reads the wording still on the run so a suggestion repeating it is not re-inserted.
+      if (s.startsWith("select trim(candidate_text) as t from decision_candidates where run_id")) {
+        const [runId] = params as [string];
+        return { rows: rows.filter((r) => r.run_id === runId).map((r) => ({ t: r.candidate_text.trim() })) };
+      }
       if (s.startsWith("insert into decision_candidates")) {
         const [, runId, candidateText] = params as [string, string, string, string];
         const id = `new-${rows.length + 1}`;

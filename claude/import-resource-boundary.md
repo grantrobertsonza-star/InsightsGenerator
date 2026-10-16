@@ -26,6 +26,14 @@ being treated as absent. Dictionary10 is the minimum for flipped files so older 
 cannot bypass this guard; ordinary row-oriented and SAV missing-audit minimums remain unchanged.
 Full support for retargeting separate-Codebook research metadata remains backlog work.
 
+In the app the refusal reaches the researcher as one notice per file in Import data, Variables
+("Question definitions could not be checked for this file ..."), carrying the engine message and
+its re-export guidance; question types then show Not checked. It used to repeat on every variable
+and was framed as an SPSS/Stata/SAS read failure; engine errors are now prefixed "Couldn't read
+this data file" for every format. The notice sits in the selected file's Variables group, not on
+the file card beside Accept data, and accepting the data is not blocked by it. Native check:
+e2e/ui/flipped-codebook-guard.check.mjs.
+
 SAV/ZSAV readers retain formal missing declarations through metadata-only user-missing access,
 while the data reader continues masking those values. Dictionary version9 is required only for
 those formats; rows-oriented CSV/XLSX caches need not be reparsed for this metadata fix. Failed

@@ -3,6 +3,7 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines } from "./objectiveLines";
+import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
 
 const MAX_FINDINGS_FOR_PROMPT = 120;
 
@@ -333,7 +334,18 @@ export async function generateObjectiveCandidates(
       );
       const suggestionStatus = stated.rows.length > 0 ? "pending" : "accepted";
 
-      for (const candidate of validCandidates) {
+      // A suggestion whose wording is already on the run (rejected, accepted, edited or the
+      // researcher's own) is not inserted again: re-adding a rejected one would undo that
+      // rejection, re-adding a kept one would duplicate it (OBJ-REV-004).
+      const newSuggestions = await suggestionsNotAlreadyOnRun(client, "objective_candidates", runId, validCandidates);
+      // Inside the transaction, so this rolls back the delete above: undecided suggestions stay
+      // rather than being replaced by nothing, as for an unusable model answer.
+      if (newSuggestions.length === 0) {
+        throw new Error(
+          "No new objective suggestions came back this time (every suggestion repeats wording already on this run). Nothing was changed, try again."
+        );
+      }
+      for (const candidate of newSuggestions) {
         const result = await client.query<{ id: string; candidate_text: string }>(
           `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
            values ($1, $2, $3, $4, 'ai_suggested', $5)

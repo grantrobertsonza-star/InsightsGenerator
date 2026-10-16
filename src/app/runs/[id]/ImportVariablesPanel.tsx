@@ -184,6 +184,17 @@ export default function ImportVariablesPanel({
               </div>
             </div>
 
+            {/* One notice per file, not one per variable: the reason (for example the engine's
+                refusal of an unsupported layout, with its recovery steps) applies to the whole file,
+                and repeating it on every row buried it. Question types then show "Not checked"
+                rather than a default that would look like a real classification. */}
+            {table.questionTypeError && (
+              <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-danger">
+                Question definitions could not be checked for this file, so its question types show as Not
+                checked. {table.questionTypeError}
+              </p>
+            )}
+
             <details className="text-xs" open>
               <summary className="cursor-pointer select-none font-medium text-muted">
                 All variables ({q.variableDetails.length})
@@ -263,7 +274,6 @@ export default function ImportVariablesPanel({
                                 </option>
                               ))}
                             </select>
-                            {table.questionTypeError && <p role="alert" className="mt-1 text-[10px] text-danger">Question definitions could not be checked. Retry loading this file. {table.questionTypeError}</p>}
                             {unresolved && (
                               <div className="mt-0.5 text-[10px] text-danger">Ambiguous column name - corrections disabled.</div>
                             )}

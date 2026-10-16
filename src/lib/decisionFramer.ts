@@ -2,6 +2,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { syncDecisionStatement } from "./runSync";
+import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
 import { evidenceStatusLabel, NO_INVENTED_EXPLANATIONS_RULE } from "./groundingRules";
 
 const MAX_FINDINGS_FOR_PROMPT = 120;
@@ -400,7 +401,18 @@ export async function generateDecisionCandidates(
         [runId]
       );
 
-      for (const candidate of validCandidates) {
+      // Suggestions land accepted, so one whose wording the researcher rejected (or already
+      // kept, edited or wrote) must not be inserted again: it would re-enter
+      // runs.decision_statement and undo that rejection, or duplicate a kept decision.
+      const newSuggestions = await suggestionsNotAlreadyOnRun(client, "decision_candidates", runId, validCandidates);
+      // Inside the transaction, so this rolls back the delete above: undecided suggestions stay
+      // rather than being replaced by nothing, as for an unusable model answer.
+      if (newSuggestions.length === 0) {
+        throw new Error(
+          "No new decision suggestions came back this time (every suggestion repeats wording already on this run). Nothing was changed, try again."
+        );
+      }
+      for (const candidate of newSuggestions) {
         const result = await client.query<{ id: string; candidate_text: string }>(
           `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
            values ($1, $2, $3, $4, 'ai_suggested', 'accepted')

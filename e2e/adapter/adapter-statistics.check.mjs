@@ -53,9 +53,14 @@ test("adapter mechanics: nested-statistics mean, subgroup read by raw code, refu
   const run = await ui.createRun({ name: `adapter-mechanics-${Date.now()}` });
   await ui.upload(run, GOLDEN, "table");
 
-  const recommend = await ui.buildTable(run, { row: "Recommend" });
-  const mean = await ui.readStatistic(recommend, { variable: "Recommend", statistic: "mean" });
+  // Satisfaction is a worded 1-5 scale, so its result table nests a descriptive-statistics block.
+  // Recommend's value labels are the bare codes 0-10, for which the engine shows no mean; the
+  // adapter must refuse that read visibly rather than return some other number.
+  const satisfaction = await ui.buildTable(run, { row: "Satisfaction" });
+  const mean = await ui.readStatistic(satisfaction, { variable: "Satisfaction", statistic: "mean" });
   expect(Number.isFinite(mean)).toBe(true);
+  const recommend = await ui.buildTable(run, { row: "Recommend" });
+  await expect(ui.readStatistic(recommend, { variable: "Recommend", statistic: "mean" })).rejects.toThrow(/no single mean for Recommend/);
 
   const byGender = await ui.buildTable(run, { row: "Purchase", column: "Gender" });
   const overall = await ui.readStatistic(byGender, { variable: "Purchase", rawCode: "Yes", statistic: "selection_percentage" });
