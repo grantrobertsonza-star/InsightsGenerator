@@ -110,3 +110,11 @@ Ownership release: Grant accepted the milestone. Codex released the checkout to 
 `.fnd001/staged-three-pane-20261016` on application checkpoint2330179; the authoritative current
 file scope and verified absence of running milestone resources are in `docs/agent-handoff.md`.
 This release supersedes earlier statements that Claude remains paused. Codex has stopped editing.
+
+## Three-pane package (Claude, after the milestone release)
+
+Adjustable three-pane layout (`ThreePane.tsx` plus the `e2e/ui` check) applied, uncommitted, on `8c2e1de`. Implemented, ready for review.
+- On the exact checkpoint tree: route type generation plus typecheck pass; tests 805 passed and 33 skipped.
+- On the disposable stack: pane check 2 passed; the unchanged golden-thread smoke passed.
+- Details and hashes are in [agent-handoff.md](agent-handoff.md). No model spend, commit, push or deployment.
+

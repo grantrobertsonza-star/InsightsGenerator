@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** — Codex releases the checkout to Claude, 2026-10-16.
+State: **READY_FOR_CODEX**: three-pane package committed locally by Claude and handed back for independent review. Claude has stopped editing, 2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -104,3 +104,48 @@ Recorded by Claude, 2026-10-16. Packages are staged only; nothing was extracted 
 **Parked, not released:** `parked-hydration-guard.tgz` (the layout-loading guard; its check failed once and was not diagnosed). `src/app/runs/[id]/TranscriptSetup.tsx` is untouched.
 
 Claude has stopped editing all files listed above and will not edit them again without a new explicit handoff from Codex.
+
+## Claude acceptance of the release (2026-10-16)
+
+Claude accepted the release above and owns only the files it lists, for applying `.fnd001/staged-three-pane-20261016`. Reconciled on the device before any change: branch `checkpoint/trust-hardening-20261016`, HEAD `8c2e1de` (documentation-only, on application checkpoint `2330179`). `src/app/runs/[id]/ThreePane.tsx` = base `80af31cc0e597e3bb663948b19f673effdcb859d33416bc152d0d0c87b928090`. Archive `2ad7defa…31cc` and manifest `5e1aad3d…3f82` match. Both `e2e/ui/` paths absent. No commit, push, deployment or model call. Results are recorded below when the checks finish.
+
+### Three-pane package applied (Claude, 2026-10-16)
+
+- **Applied in the device checkout, uncommitted, on HEAD `8c2e1de`:**
+  - `src/app/runs/[id]/ThreePane.tsx` → `38a5fc02e86cac1c9b9ace72e27e4e27e3938a90c78217fc261eabab14c26e11`. Overwritten in place; the extracted file could not replace it, because deletes are not permitted.
+  - `e2e/ui/ui-check.config.mjs` → `477ec5b542f9b0a60d3a18a061994c06577c120afbf312905236384e06e2ffae` (new).
+  - `e2e/ui/three-pane.check.mjs` → `4f36c03eeb82a2feff700780f2ee1cff8c9a90602c26a922c0a8e8944d7b055b` (new).
+  - These match the package manifest. No other application file was touched.
+- **Verified on the exact checkpoint tree:** `git archive 8c2e1de` plus the three files, in the cloud workspace. Locked dependency versions were identical to the installed set.
+  - `npx next typegen` then `npx tsc --noEmit -p .`: exit 0.
+  - ESLint on the changed files: clean.
+  - `TEST_DATABASE_URL=… npx vitest run src/lib/__tests__ --pool=forks` (disposable PostgreSQL 16 and real Python): **107 files, 805 passed, 33 skipped**, the same as Codex's final gate.
+- **Disposable local stack:** non-owner restricted role, local storage stand-in, model replay, webpack. Turbopack refuses an out-of-root `node_modules` symlink.
+  - `npx playwright test -c e2e/ui/ui-check.config.mjs three-pane`: **2 passed**.
+  - Codex's unchanged `e2e/golden-thread-smoke.spec.mjs`: **1 passed** (3.5 minutes).
+  - The stack was stopped; no `ie_e2e_*` database or role remains.
+- **Spend and side effects:** no model calls (replay only); spend unchanged at US$3.817316 of US$10. No commit, push, deployment, or live/development change.
+- **Left behind:** `.fnd001/checkpoint-8c2e1de.tgz`, the verification archive, untracked. It is not removed because deletes are not permitted.
+- **Not covered:** touch dragging on a real tablet; each of the other 12 screens individually (they share the component and their props are unchanged).
+
+### Handback for independent review (Claude, 2026-10-16)
+
+Grant asked for a local checkpoint of the three-pane package and a handback for independent review.
+- **The local commit contains only:**
+  - `src/app/runs/[id]/ThreePane.tsx`
+  - `e2e/ui/ui-check.config.mjs`
+  - `e2e/ui/three-pane.check.mjs`
+  - `docs/current-engineering-status.md`
+  - this file
+- **Parent:** `8c2e1de`, on application checkpoint `2330179`.
+- **Commit hash:** recorded in a following documentation-only commit.
+- **Left untouched:** the parked hydration package, `TranscriptSetup.tsx` and all other untracked historical evidence.
+- **Review focus:**
+  - the layout behaviour on the 13 `ThreePane` screens;
+  - hydration safety: the server snapshot is the default layout;
+  - the 35%/50% CSS clamps;
+  - the keyboard and accessible separator semantics;
+  - collapse keeping the content mounted;
+  - the check's coverage, results above.
+- No push or deployment. Codex owns the checkout once it records acceptance.
+
