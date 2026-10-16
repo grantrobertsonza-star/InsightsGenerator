@@ -61,3 +61,16 @@ for researcher-authored additions is unchanged here. Covered by
 src/lib/__tests__/objectiveDecisionClosure.db.test.ts.
 Run `node scripts/e2e/objective-review-acceptance.mjs` against an explicitly disposable manifest
 from the local stack; no real model key is used.
+
+Review Objectives coverage (ObjectiveCoverage.tsx) shows the stored evidence_digest_degraded
+qualification as a badge and a visible line under the conclusion, the same meaning as the report
+section and both story exports; conclusion, status and wording are unchanged, and a working "Check
+again" clears it. Covered by src/lib/__tests__/objectiveCoverageDegraded.test.tsx (static render:
+true/false/selected) and e2e/ui/objective-coverage-degraded.check.mjs (real permission failure,
+reload, restored reassessment). Earlier the component dropped the flag, so coverage read as
+unqualified. Native evidence for IMP-005 (calculation under a saved group correction and after
+clearing it) and OBJ-REV-013 (refused write pending through reload, then one computed result) is in
+e2e/ui/group-correction-calculation.check.mjs and e2e/ui/evaluator-write-recovery.check.mjs; the
+latter scripts the crosstab planner through the model fixture's "untargeted" rule, a disclosed
+planner boundary, not model-quality evidence.
+

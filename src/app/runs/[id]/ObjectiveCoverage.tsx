@@ -12,6 +12,8 @@ type Validation = {
   conclusion: string;
   synthesized_insight_ids: string[];
   inferred: boolean;
+  /** OBJ-REV-012: the conclusion was generated while direct data-evidence retrieval was failing. */
+  evidence_digest_degraded: boolean;
 };
 type InsightLite = { id: string; headline: string; review_status: string };
 
@@ -103,6 +105,11 @@ export default function ObjectiveCoverage({
                 >
                   {v.inferred ? "Inferred" : statusLabel[v.status]}
                 </span>
+                {v.evidence_digest_degraded && (
+                  <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-inset ring-orange-200">
+                    Evidence check degraded
+                  </span>
+                )}
                 <span className="text-xs uppercase tracking-wide text-muted">{v.item_kind}</span>
               </div>
               <p className="mt-1.5 text-sm font-medium text-foreground">{v.item_text}</p>
@@ -113,6 +120,16 @@ export default function ObjectiveCoverage({
                 </p>
               )}
               <p className="mt-1 text-sm text-muted">{v.conclusion}</p>
+              {/* Same qualification the report section and both story exports carry. Shown as text,
+                  not only a tooltip, so it is readable on touch screens; the conclusion and status
+                  above are unchanged. "Check again" re-runs the check and clears it once retrieval
+                  works. */}
+              {v.evidence_digest_degraded && (
+                <p data-testid="coverage-evidence-degraded" className="mt-1 text-xs text-orange-800">
+                  Generated while data-evidence retrieval was failing, so it may be missing evidence a working
+                  check would have cited. Check again once the data evidence loads.
+                </p>
+              )}
               {v.synthesized_insight_ids.length > 0 && (
                 <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-muted">
                   {v.synthesized_insight_ids

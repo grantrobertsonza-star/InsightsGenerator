@@ -130,9 +130,15 @@ export function createModelReplay(fixturePath) {
       const input = override?.input ?? (handlers[name] ? handlers[name](content, system) : minimal(tool?.input_schema));
       blocks = [{ type: "tool_use", id: `toolu_replay_${log.length}`, name, input }];
     } else {
-      blocks = [{ type: "text", text: "Replay: no change made." }];
+      // A tool loop with no forced tool (the crosstab planner, for example) gets plain text unless
+      // the run's fixture scripts a tool call for it: {"untargeted":[{"match","tool","input"}]},
+      // matched against the request messages like the per-tool rules above.
+      const call = fixture?.untargeted?.find((rule) => content.includes(rule.match));
+      blocks = call
+        ? [{ type: "tool_use", id: `toolu_replay_${log.length}`, name: call.tool, input: call.input }]
+        : [{ type: "text", text: "Replay: no change made." }];
     }
-    log.push({ at: new Date().toISOString(), tool: name ?? null, promptChars: content.length + system.length, scripted: Boolean(name && handlers[name]), answer: blocks[0] });
+    log.push({ at: new Date().toISOString(), tool: name ?? (blocks[0].type === "tool_use" ? blocks[0].name : null), promptChars: content.length + system.length, scripted: Boolean(name && handlers[name]), ...(override || (!name && blocks[0].type === "tool_use") ? { fromFixture: true } : {}), answer: blocks[0] });
     res.writeHead(200, { "content-type": "application/json", "request-id": `replay-${log.length}` });
     res.end(
       JSON.stringify({
@@ -141,7 +147,7 @@ export function createModelReplay(fixturePath) {
         role: "assistant",
         model: body.model ?? "replay",
         content: blocks,
-        stop_reason: name ? "tool_use" : "end_turn",
+        stop_reason: blocks[0].type === "tool_use" ? "tool_use" : "end_turn",
         stop_sequence: null,
         usage: { input_tokens: 0, output_tokens: 0 },
       }),
