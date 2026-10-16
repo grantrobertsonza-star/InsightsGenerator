@@ -305,12 +305,14 @@ export default function ObjectiveEvidence({
     const GUARD_LIMIT = 60;
     let stillRemaining = 0;
     let stalledOnPersistence = false;
+    let roundFailed = false;
     let guard = 0;
     for (; guard < GUARD_LIMIT; guard++) {
       setBusy("Reading the data...");
       const e = await evaluateObjectiveEvidenceAction(runId);
       if (!e.ok) {
         setError(e.error);
+        roundFailed = true;
         break;
       }
       await refresh();
@@ -331,7 +333,11 @@ export default function ObjectiveEvidence({
     // remain" - say so when it's actually what stopped this, rather than
     // leaving the researcher thinking every question was read.
     const stillTruncated = guard >= GUARD_LIMIT && stillRemaining > 0;
-    setHasPending(stillTruncated);
+    // Continue reading stays offered whenever questions are still unread: after the runaway cap,
+    // after a persistence stall, and after a failed round (whose pending count is the one the last
+    // refresh read from the server). Only a round that finished everything clears it. Hiding it
+    // after a failed round left only "Gather again", which regenerates the questions.
+    if (!roundFailed) setHasPending(stillRemaining > 0);
     if (stalledOnPersistence) {
       setError(
         `Could not save an answer for ${stillRemaining} question(s) still unread - something is preventing results from being stored. Try Continue reading again; if it keeps stalling, this needs attention before more progress can be made.`,
@@ -350,21 +356,34 @@ export default function ObjectiveEvidence({
     await answerRest();
   }
 
+  // A failed save keeps the editor open with the researcher's draft and says why; a failed
+  // include/leave-out or retry is reported rather than silently ignored.
   async function save(q: EvidenceQuestion) {
+    setError(null);
     const r = await editObjectiveEvidenceAction(runId, q.id, draft);
-    if (!r.ok) setError(r.error);
+    if (!r.ok) {
+      setError(`Not saved: ${r.error}`);
+      return;
+    }
     setEditing(null);
     await refresh();
     await answerRest();
   }
 
   async function toggle(q: EvidenceQuestion) {
-    await editObjectiveEvidenceAction(runId, q.id, { excluded: !q.excluded });
+    setError(null);
+    const r = await editObjectiveEvidenceAction(runId, q.id, { excluded: !q.excluded });
+    if (!r.ok) setError(`Not changed: ${r.error}`);
     await refresh();
   }
 
   async function retry(id?: string) {
-    await retryObjectiveEvidenceAction(runId, id);
+    setError(null);
+    const r = await retryObjectiveEvidenceAction(runId, id);
+    if (!r.ok) {
+      setError(`Could not retry: ${r.error}`);
+      return;
+    }
     await refresh();
     await answerRest();
   }
@@ -406,12 +425,12 @@ export default function ObjectiveEvidence({
         <p className="text-xs text-amber-700">
           One or more data files have more eligible variables than evidence-question writing reads at once, so some
           may never have been considered for a question. This reflects the evidence questions currently in effect,
-          not just the last run - re-gather with fewer files, or treat any "data silent" verdict with that in mind.
+          not just the last run - re-gather with fewer files, or treat any &ldquo;data silent&rdquo; verdict with that in mind.
         </p>
       )}
       {variablesTruncated === null && (
         <p className="text-xs text-amber-700">
-          Whether any data file's variables were too many to all be considered for a question could not be checked
+          Whether any data file&apos;s variables were too many to all be considered for a question could not be checked
           just now - treat coverage as unverified rather than assuming nothing was left out.
         </p>
       )}
@@ -443,7 +462,7 @@ export default function ObjectiveEvidence({
           Try the {failed} failed question{failed === 1 ? "" : "s"} again
         </button>
       )}
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <p className="text-xs text-muted">
         Intervals are 95% normal approximations and are not corrected for the number of questions, so a stance is
         evidence to weigh, not a verdict. Data silent means the file cannot speak to it, which is itself a result.

@@ -74,3 +74,22 @@ e2e/ui/group-correction-calculation.check.mjs and e2e/ui/evaluator-write-recover
 latter scripts the crosstab planner through the model fixture's "untargeted" rule, a disclosed
 planner boundary, not model-quality evidence.
 
+Save failures on review controls (2026-10-16 overnight). A server action that throws inside a
+client transition escaped to the route and replaced the project page (production: the framework's
+generic client-exception screen; the app had no error boundary), losing any open draft. Controls that
+hold researcher text now report failure in place and keep the text: the Setup objective list (via
+saveStatedObjectiveEdit, which returns the actual reason), the shared objective row actions, the
+objective table's add/accept-all/delete-suggested, decision cards and list, both recommendation cards
+and the objective evidence editor (save, include/leave out, retry). A thrown message withheld in
+production shows a generic sentence with the server reference (actionFailure.ts). runs/[id]/error.tsx
+catches anything else with Try again. Native: setup-objective-save-failure, review-action-failure,
+evidence-edit-failure.
+
+Evaluator continuation (OBJ-REV-M04): the reading loop stops at 60 rounds (GUARD_LIMIT) and then says
+"Stopped after a long run with N question(s) still unread" with Continue reading; a round that saved
+nothing shows the persistence-stall message; a round whose evaluate action failed shows its error.
+In all three cases Continue reading stays offered while the server reports unread questions (it used
+to be hidden after a failed round, leaving only Gather again, which regenerates the questions). A
+failed panel load shows its error and keeps the previous items. Not natively exercised: the 60-round
+cap itself and the failed-round case (code review only).
+
