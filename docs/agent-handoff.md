@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude completed the independent close-out of c07eea8 / be625c7 and requests independent review of its own repairs (commit 5008041), 2026-10-16 night.
+State: **READY_FOR_CLAUDE** ? Codex independent review complete; explicit shared-identity repair release,2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -266,3 +266,58 @@ Claude accepted the release above on receipt.
 - Remaining bounded work (not started): ANA-NPS-003 native design handover on a fresh project; Task D absent-download and retried-content assertions; OBJ-REV-005 stored qualification cases; IMP-017 v12 forensic or repeat; OBJ-REV-006 raw-code persistence decision; IMP-010.
 - Still failed and retained as failed: IMP-017 first v12 concurrent invocation; Probe B browser PPTX; tonight's first objective-script invocation (cold-stack 5 s wait).
 - Tested bytes match the commit (LF-normalised hashes). Disposable resources stopped; no `ie_e2e_*` database or role remains. No push, deployment, live/development change or model call.
+
+
+## Codex acceptance of laptop release ? 2026-10-16
+
+Confirmed branch checkpoint/trust-hardening-20261016, HEAD9ab38eb93fb80908b6b5c5e5dac7f409d5d5344f, repair5008041fc4dc16c88ae58218331665a66a82065c. Tracked working tree was clean before this ownership record. Codex owns independent read-only source review, necessary disposable regression execution and acceptance-gap investigation/dispositions. Application changes remain excluded during independent review. Claude remains stopped until an explicit release. Failed-run history and finite43-row partition remain preserved; no push/deployment authorised.
+
+
+## Codex independent review complete; explicit release to Claude ? 2026-10-16
+
+Codex releases ownership explicitly and stops application editing (none performed during review).
+Application/source HEAD remains9ab38eb93fb80908b6b5c5e5dac7f409d5d5344f; reviewed repair
+5008041fc4dc16c88ae58218331665a66a82065c. The following local checkpoint changes documentation only.
+All13 released paths match the isolated source after LF normalisation and the documented native
+harness Python executable adaptation. Full results/row dispositions are appended to
+independent-acceptance-disposition-2026-10-16.md; current-engineering-status.md is operational status.
+
+Completed: released regressions13passes/1inactive skip on actual PostgreSQL; native one-notice
+check; independent Net/member and ambiguous-design durable qualifications; fresh native actual PSU
+change with current-before/unaffected control and qualified retained DOCX/PPTX continuation;
+Task D absent-download/bounded retry-content checks; v12 retained-dump forensic correction.
+Original failures and all passing scopes remain retained, not relabelled. No whole-tree/build rerun
+claimed, no paid calls or source changes.43-row partition unchanged; acceptance incomplete.
+
+**Claude's next required bounded task:** correct the shared whitespace identity mismatch in
+candidateSuggestionFilter.ts (SQL trim of existing text versus JS trim of new text). Actual
+objective and decision callers reproduce rejected tab-terminated wording returning as pending/
+accepted. Use one consistent authoritative normalisation; preserve human wording. Cover both
+framers, spaces/tabs/newlines, distinct controls, answer-local duplicates and all-repeat rollback/
+retry/statement preservation. Ordinary regressions already pass; do not erase that evidence.
+
+**Released implementation files:** src/lib/candidateSuggestionFilter.ts, objectiveFramer.ts,
+decisionFramer.ts, src/lib/__tests__/objectiveDecisionClosure.db.test.ts and corresponding focused
+regression files; claude/trust-milestone-contract.md. The existing original release scope remains
+available for necessary bounded acceptance corrections. Record affected-file extension in shared
+status before editing outside that scope. No dependency, broad refactor or new feature authorised.
+
+**Released acceptance/evidence scope:** existing disposition, canonical baseline, shared status,
+this handoff; affected native checks and existing evaluator/identity/preview/limit tests. Remaining
+required assertions are the exact row-specific remainders in the disposition addendum: durable
+multiplicity/output contract (global UI disclaimer already exists), raw selector identity
+contract, retained IMP-017 failed-page/complete-storage outcome, named saved-content-after-reload/
+source-age/native/index/recovery limits. Investigate or execute only those unestablished supported
+assertions. Preserve approved conditional exclusions; full unsupported combination support is
+backlog. IMP-010/M02/M04 and historical-definition gaps stay explicitly deferred. Security/deployed
+identity/storage/runner requirements need the real authorised environment; no deployment implied.
+
+Evidence scripts/probes and failed/pass logs stay local under scripts/workflow-tenant-review/
+laptop-review/, including whitespace repros and qualification probes (copy into the isolated
+src/lib/__tests__ directory to resolve their existing sibling imports). Fresh native fixture setup
+failures1-3, hidden-section-locator failure4 and passing same-project continuation remain distinct.
+Six referenced objects/password-free cluster dump retained. Verified owned processes/container
+stopped; ports3231/51834/51835/55513 clear. Existing development containers/processes untouched.
+No push/deployment. Claude may continue these routine tasks without Grant relaying individual
+fixes. Return READY_FOR_CODEX with exact commits/files/results when Claude-authored repairs are
+stable; do not transfer ownership implicitly.

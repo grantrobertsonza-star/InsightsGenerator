@@ -48,6 +48,17 @@ Latest authorities: [workflow/tenant review](workflow-tenant-staged-review-2026-
 
 **Independent disposition, 2026-10-16 (night):** row-by-row evidence levels and dispositions for the c07eea8 release are in [independent-acceptance-disposition-2026-10-16.md](independent-acceptance-disposition-2026-10-16.md). The partition below is deliberately unchanged; proposed promotions await owner decision and independent review of Claude-authored repairs.
 
+**Latest disposition of laptop9ab38eb / repair5008041:** the appended Codex review in
+[independent acceptance disposition](independent-acceptance-disposition-2026-10-16.md) supersedes
+older owner/next-action claims here. Claude is explicitly released for the remaining shared
+whitespace-identity repair: ordinary regeneration passes, but tabs still resurrect rejected wording
+(OBJ-REV-004/business remainder). New persisted Net/member/ambiguous-design and fresh native
+design-change/Task D assertions pass at their stated fixture/continuation scopes. Stored multiplicity
+qualification/raw identity dispositions and IMP-017 remain unresolved. The v12 dump contains an
+upload_error (fetch failed), correcting the unlogged-success allegation; failed-page/storage outcome
+remains unknown. Preserve failed history, exclusions, closures, deferrals and43-row counts. Overall
+acceptance remains incomplete; exact remaining row dispositions are in the linked addendum.
+
 ### 1. Recorded demonstrated defects — repair evidence awaiting disposition
 
 | Existing ID / recorded finding | Latest evidence and current scope | Owner | Exact closure condition | E/T/A |

@@ -183,3 +183,140 @@ Unchanged:
   - IMP-017: a forensic look at the failed v12 run, or a repeat that captures what each page shows.
   - OBJ-REV-006: whether the raw code should be persisted.
   - IMP-010: the check or a documented limitation.
+
+
+## Codex independent review of laptop9ab38eb and repair5008041 ? 2026-10-16
+
+This addendum supersedes earlier dispositions only where explicitly stated. Confirmed laptop HEAD
+9ab38eb93fb80908b6b5c5e5dac7f409d5d5344f on checkpoint/trust-hardening-20261016; repair
+5008041fc4dc16c88ae58218331665a66a82065c has the declared13 paths. Tracked tree was clean before
+Codex recorded CODEX_WORKING. Application source remained read-only. No push/deployment or real
+model call; spend unchangedUS$3.817316 ofUS$10. The43-row12/18/2/5/6 partition is unchanged.
+
+### Independent execution and evidence boundaries
+
+Local evidence directory: scripts/workflow-tenant-review/laptop-review/ (not committed runtime data).
+Released objectiveDecisionClosure, objectiveEvidenceClosure and decisionCandidateProvenance suites:
+**3 files,13 passed,1 inactive placeholder skipped**, actual isolated PostgreSQL. The planner,
+model and table-builder boundaries remain controlled exactly as disclosed; database/loader/rollback
+operations are real. Existing whole-tree817/34 gate and prior build are retained evidence, not
+reported as rerun here. Installed Next client-boundary guidance was read before UI assessment.
+
+The released native flipped-Codebook check passes after ONLY the isolated harness's python3 command
+was changed to the installed Windows python executable. Original python3-not-found invocation is
+failed/tooling, not a product failure. Assertions were unchanged. The recovery portion establishes
+upload/default layout and absence of an additional refusal; it does not select the recovered file's
+variables or compute a recovered result, so it alone is not full analytical recovery certification.
+Shared-reader recovery controls remain separate. The adapter mean check correction is valid at its
+mechanics scope: Number.isFinite is not an independent arithmetic expectation; retained7.1 and6.5
+reference evidence must not be replaced by that assertion.
+
+Additional actual-DB probes: Net/member qualification and ambiguous-PSU qualification persist and
+survive the actual action loader (7 passes including the copied5 closing cases,1 expected failing
+multiple-testing qualification assertion,1 inactive skip). The stored comparison summary says only
+"Yes: Male60% vs Female40%, gap20 (95% interval6.4 to33.6), expected higher." It carries no
+multiplicity qualification. **Correction to Claude's earlier statement:** the general UI disclaimer
+already exists in ObjectiveEvidence.tsx:448; this is not confined to a code comment. The precise
+remainder is whether that global disclaimer meets the durable/downstream qualification contract,
+or whether the saved result/output must carry it. Do not claim the current UI hides this limitation.
+
+### Required repair finding: whitespace identity still resurrects rejected suggestions (P2)
+
+src/lib/candidateSuggestionFilter.ts:30 selects SQL trim(candidate_text), which trims ordinary spaces;
+line36 normalises incoming wording using JavaScript trim(), which also trims tabs/newlines and
+other whitespace. These are different identities despite the comment claiming one shared rule.
+Actual caller/DB probe: generate "Suggestion to reject\t", reject it, then regenerate the same
+words with ordinary surrounding spaces. The rejected original remains, but a new pending copy is
+inserted. A corresponding decision-specific probe generates/rejects "Launch in region A\t" and
+then regenerates its plain wording: a fresh accepted copy appears. The shared statement-sync path
+can therefore reintroduce researcher-rejected wording. Ordinary-space regressions pass; the repair
+is partial, not independently closed. This is under existing OBJ-REV-004/business identities,
+not an added release row. The objective probe's later all-repeat failure is the same root cause,
+not another defect.
+
+Smallest fix: use the same authoritative normalisation on existing and proposed text before
+comparison, without rewriting preserved human wording. Closing evidence must cover both framers,
+ordinary-space/tab/newline boundaries, distinct wording preserved, answer-local duplicates, and
+all-repeat rollback/retry preserving previous suggestions and the accepted decision statement.
+No broad refactor or semantic matching is required. Concurrency remains a disclosed unclosed
+boundary; no new concurrent failure is asserted from inspection alone.
+
+Other coding-standard assessment: the filter is shared between the framers, receives their own
+transaction client and accepts only internal table-name literals; UI notice stays in its layer,
+parser prefix remains server-side. No newly introduced statistical calculation or measured
+performance problem was found. The SQL/JS identity mismatch is the concrete correctness and
+maintenance issue; no speculative abstraction or performance finding is added.
+
+### Fresh native handover and download-gap investigation
+
+A NEW synthetic project bf27399b-5707-4dd1-bac3-37c218e9c764 used native upload/calculation/posting,
+then explicit synthetic accepted insight/recommendation support fixtures (current SQL fingerprints).
+One source is the actual calculated finding; the unrelated control is an interview-style finding
+without that calculated-table dependency. Narrative generation uses explicit model replay.
+Before mutation both insight badges and narrative banner are absent/current. Saved PSU is null;
+changing it to Gender via the native picker is checked against the actual saved document before
+reload. No SQL design mutation and no unchanged-PSU substitution.
+
+After reload the calculated insight becomes stale while the unrelated insight remains current;
+recommendation/narrative qualify; actual retained DOCX/PPTX qualify and keep the unaffected human
+action exactly. Initial attempts1-3 failed during synthetic fixture setup (wrong column, existing
+pre-insight uniqueness, required recommendation field); attempt4 reached/passed current-before and
+affected/control-after assertions, then failed on a hidden retained-section locator. The same-
+project continuation uses a visible recommendation locator and passes the remaining assertions.
+This is combined bounded evidence, NEVER a wholly green original invocation. These fixtures test
+dependency propagation, not model interpretation or fresh synthesis quality.
+
+Task D on that same project: injected HTTP500 export visibly rejects; zero download events are
+observed through the response plus1.2seconds; only the affected export is retried. Its actual
+workbook is saved and parsed and contains the expected control finding. This closes the previously
+missing bounded absent-download and retried-content assertions; it does not prove no arbitrarily
+late event can ever occur. Earlier browser PPTX/deck timeouts stay failed.
+
+### IMP-017 retained-run forensics
+
+The password-free native-v12 dump DOES contain trace27 for failed run
+07f54a4b-ec05-4c85-b2f8-bb527ae3cd6d at2026-10-16T13:17:10.080606Z:
+upload_error, at-both-limits-1.csv, "Upload of at-both-limits-1.csv failed: fetch failed".
+At retention it has zero document rows and no pending-cleanup trace. Therefore "logged no error"
+is superseded. HTTP200 alone is not success for this server action: documentUploadActions.ts
+returns an ok:false result on caught upload failure. The original harness inspected persisted row
+count, not that response payload/page error. The retained storage inventory contains referenced
+objects, not an exhaustive listing: absence there cannot prove no orphan existed. Failed-page UI,
+response body and complete storage outcome remain unavailable. The original invocation stays
+failed and IMP-017 remains unresolved; the separate35.105second concurrent pass is preserved.
+
+### Current row-level dispositions (no partition promotion)
+
+Verified below means the stated finite assertion/evidence level, not whole-module sign-off.
+
+| Existing row / scope | Current disposition |
+|---|---|
+| OBJ-REV-004 | **Partially repaired; unresolved defect.** Ordinary-space regeneration/rollback verified; tab boundary resurrects a rejected objective. Propagation repair and earlier native passes preserved. Direct overview Accept/status-label comparison remain specifically unestablished. |
+| Business-decisions remainder | **Partially repaired; unresolved defect.** Statement/exclusion ordinary cases verified, but rejected tab-wording is inserted accepted. Failed-refresh evidence remains own-add only; broader mutation recovery is not inferred. DEC-001 unchanged. |
+| OBJ-SET-002 | **Verified at new actual-DB closing-test scope.** Post-commit quality-refresh failure/retry leaves one own objective. Existing concurrency/fallback evidence retained; no REV-009 reopening. |
+| OBJ-REV-006 | **Verified selector persistence; unresolved identity disposition.** Actual Yes60/40/table/loader and generic refusal pass. Estimate stores a label, not raw code/question key. That omission is confirmed, but the cited standing correctness rule3 does not explicitly require a new storage field. Resolve the canonical-identity contract explicitly, or add durable identity with affected tests; do not invent an independently reproduced misattachment from this omission alone. Preserve first provider inconclusive/refusal and later explicit-wording success as distinct invocations. |
+| OBJ-REV-007 | **Verified at new actual-DB scope.** Deleted-table stale retry replaces in place; edit/evaluate write failures roll back. Earlier concurrency/no-op evidence preserved. |
+| IMP-009 / Task B | **Notice repair verified with limits.** Native single neutral notice/reload passes; recovered-upload check is narrower than analytical recovery. E1-E3/shared guard evidence preserved. Full flipped/separate-Codebook combination remains approved conditional exclusion/backlog, not a substituted control pass. |
+| Unassigned A1 adapter finding | **Check correction accepted at mechanics scope.** Worded-scale mean and unsupported numeric-label refusal match the implementation; independent arithmetic references remain separate. Numeric-only scale policy is an owner analytical question, not a newly measured engine defect. |
+| OBJ-REV-005 | **Partially verified; unresolved durable qualification.** Net/member and ambiguous-design qualification now persist/reload; stored multiplicity note absent, global UI disclaimer present. Determine/meet the exact durable/output requirement before closure. Existing mean/percent/base/equality tests preserved. |
+| ANA-NPS-003 downstream freshness | **Representative native propagation verified at fixture scope.** Fresh-current preconditions, real PSU change, unaffected control, reload, qualified outputs and retained exports pass across failed invocation plus continuation. No full generation/model-quality certification. |
+| FND-001 / REP-OUT-001 handover dependency | **New design-triggered subcase verified as above.** Retained independent semantic assessment and body/reject/delete scopes preserved; no blanket repair of all consumers inferred. Canonical row status unchanged. |
+| Task D | **Missing bounded assertions verified.** Zero downloads during injected failure/settlement and actual retried workbook content pass; historical timeouts unchanged. |
+| IMP-017 | **Unresolved.** Forensic trace corrects the unlogged-success allegation; failed UI/complete storage outcome remains unestablished. No fresh repeat or manufactured explanation. |
+| IMP-010 | **Deferred, unverified.** No new bounded reopen/true-count/no-reparse run or product-facing limitation was delivered by this review. Retain as deferrable, not silently closed. |
+| IMP-004 | **Retained verification with unresolved stated reload-content limit.** Do not silently waive the declared-value-after-reload assertion merely by calling it a limitation. No new scale calculation change. |
+| IMP-005 | **Retained verification, limited to actual dictionary/calculation boundaries already demonstrated.** Group-correction calculation beyond dictionary evidence is not inferred. |
+| IMP-007 / IMP-012 / IMP-013 / IMP-018 | **Retained scoped verification.** Respect local storage, controlled reread, actual-DB reload and split native-format invocation boundaries; no new source change or unsupported promotion. SAS remains excluded. |
+| IMP-015 | **Retained passes; stated final-source/export and saved-content-after-reload limits remain unresolved evidence.** No new conflict failure asserted. |
+| OBJ-SET-001 / OBJ-SET-003 | **Retained scoped verification with native-generation/source-age limits.** New actual regenerated-candidate tests improve review evidence but do not prove every native regenerate/delete lifecycle. |
+| OBJ-REV-008 / OBJ-REV-012 / OBJ-REV-013 | **Retained scoped verification with the named index/degraded-output/computed-native-retry limits.** No new parser or evaluator defect inferred. |
+| OBJ-SET-M02 / OBJ-REV-M04 | **Deferred remainders.** Stale marker evidence and incomplete guard/load-failure documentation do not become new release blockers. |
+| Five unavailable historical definitions | **Deferred evidence gaps unchanged.** Recover/archive explicitly; never infer fixes. |
+| Existing twelve Closed rows | **Preserved.** Neither this review nor failures of unrelated harness setup reopen them. |
+| IMP-001/016 and separate deployment gates | **Unresolved external prerequisites.** Local T1-T3 evidence does not certify trusted deployed identity, actual storage privacy/signed-link policy, final role/schema or migration/backup runner. No deployed action authorised. |
+| Research Quality Review | **Design-only and separate.** No feature coding or fit completion inferred. |
+
+Overall acceptance remains **incomplete**. Authorised next implementation is the reproduced shared
+whitespace defect, then only specifically missing supported acceptance assertions/dispositions.
+Runtime/setup failures, historical failed product invocations and passing continuations remain
+separate. No new issue IDs or canonical rows were introduced.

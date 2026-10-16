@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16 (night). State: **READY_FOR_CODEX: Claude close-out recorded; independent review of Claude-authored repairs requested**.
+Updated:2026-10-16. State: **READY_FOR_CLAUDE ? explicit bounded repair release after independent review**.
 
 ## Active version and ownership
 
@@ -370,3 +370,41 @@ untested; OBJ-REV-006 stores the answer label, not the raw code; IMP-010 neither
 documented. Exclusions (SAS; flipped workbook with separate Codebook weight/MR), deferrables,
 historical-definition gaps and the public-release security/deployment gates are unchanged.
 No push, deployment, live/development change or model call; spend US$3.817316 of US$10.
+
+
+## Codex laptop independent review ? 2026-10-16
+
+Laptop9ab38eb / repair5008041 reviewed read-only; all13 released paths match the isolated copy
+(LF normalised, one documented Python-executable adaptation only). Full row dispositions and
+limits: appended Codex review in independent-acceptance-disposition-2026-10-16.md.
+
+Released regression suites pass13/1inactive skip on actual disposable PostgreSQL. Native guard
+passes after python3-to-python isolated harness adaptation; original tooling failure retained.
+Independent Net/member and ambiguous-design persisted/reloaded qualification probes pass. Stored
+multiplicity qualification is absent, but the global UI already discloses unadjusted intervals;
+resolve the exact durable/output contract rather than claiming no user-facing qualification.
+
+Repair5008041 is NOT fully accepted: SQL trim versus JavaScript trim in the shared suggestion
+filter still resurrects rejected tab-terminated model wording. Actual objective and decision probes
+reproduce it; the new decision copy is accepted. Ordinary-space passes remain valid. Fix under
+existing OBJ-REV-004/business remainder; no new row, source edit or speculative performance claim.
+
+Fresh native current-before preconditions, actual null-to-Gender PSU save, unaffected source control,
+reload and retained DOCX/PPTX establish representative design propagation. Synthetic accepted
+support fixtures/replay limit the conclusion. Setup/hidden-locator failures remain failed;
+same-project continuation passes. Task D now verifies no download through HTTP500 plus1.2s and
+parses the actual retried workbook for expected content.
+
+IMP-017 forensics finds retained upload_error trace27 (fetch failed) for the documentless v12 run,
+correcting "logged no error". No document/pending cleanup at retention; failed-page UI/response
+body/exhaustive storage listing remain unavailable. Failed invocation stays failed; separate
+concurrent pass preserved. Raw-code identity, durable qualification and named saved-content/native
+boundaries remain unresolved as recorded. Deferrables, exclusions and43-row partition unchanged.
+
+Local evidence: scripts/workflow-tenant-review/laptop-review/. Six referenced synthetic storage
+objects and password-free cluster dump retained before shutdown. Verified owned process tree and
+labelled codex-acceptance-20261016 container stopped; ports3231/51834/51835/55513 clear. User/development
+processes and existing Supabase containers untouched. No paid calls, push or deployment.
+Spend unchangedUS$3.817316 ofUS$10. Claude is explicitly released in agent-handoff.md for the shared
+identity repair and named bounded acceptance work. Overall acceptance remains incomplete. The
+formerly parked setup-loading guard remains integrated; earlier passes are preserved.
