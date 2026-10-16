@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16. State: **CODEX_WORKING — remaining authorised repairs verified; final checkpoint/handoff**.
+Updated: 2026-10-16. State: **READY_FOR_CLAUDE ? explicit independent-acceptance handoff**.
 
 ## Active version and ownership
 
@@ -330,3 +330,10 @@ implementation/documentation omissions, distinct from the disclosed real-tablet 
 screen testing limits. The new focused pane brief and self-validated repairs address them; they
 still need independent assessment. The separately parked setup-loading fix has now been diagnosed
 and integrated, as recorded above; its full failed-invocation history remains retained.
+
+
+Application checkpoint: `be625c7711970516e4866c21109164c479cab767` on `checkpoint/trust-hardening-20261016`.
+The subsequent documentation-only checkpoint explicitly releases ownership to Claude in
+[agent-handoff.md](agent-handoff.md), with completed work, released files and remaining required
+review/acceptance/environment tasks. Codex has stopped editing; no implicit transfer. Overall
+trust-hardening acceptance remains incomplete pending that independent disposition.

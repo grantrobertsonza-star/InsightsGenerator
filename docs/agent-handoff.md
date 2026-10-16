@@ -1,10 +1,10 @@
 # Engineering ownership handoff
 
-State: **CODEX_WORKING** — Claude handback accepted for independent pane review, 2026-10-16.
+State: **READY_FOR_CLAUDE** — Claude handback accepted for independent pane review, 2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
-Codex now owns the checkout for independent review. Claude remains stopped until an explicit release is recorded. Earlier ownership and package records below are historical where superseded.
+Codex explicitly releases the bounded scope below to Claude for independent review and remaining acceptance disposition. Codex has stopped editing application files. Earlier ownership records are historical where superseded.
 
 
 ## Current release to Claude — 2026-10-16
@@ -183,3 +183,65 @@ status. Earlier statements of implementation-checkpoint completion do not mean o
 Codex retains CODEX_WORKING; Claude remains stopped, with no implementation release. Parked
 layout-loading package remains unapplied/unreleased pending failed-check diagnosis/disposition.
 No application bytes or finite release-row statuses/priorities changed in this reconciliation.
+
+
+## Explicit release to Claude for independent acceptance ? 2026-10-16
+
+**READY_FOR_CLAUDE.** This is an explicit ownership transfer under Grant's instruction to hand off
+if Codex cannot continue. Local authorised implementation and bounded verification are complete;
+Codex cannot independently review its own repairs. Claude owns the released scope on receipt of
+this record; no further Grant relay or routine repair approval is needed within that scope.
+
+Branch: `checkpoint/trust-hardening-20261016`.
+Application checkpoint: `be625c7711970516e4866c21109164c479cab767` (parent46da41a).
+This following handoff checkpoint changes only this file and current-engineering-status.md.
+Claude's original7ec3f30/badcd13 pane commits remain in ancestry and were independently reviewed;
+Codex's subsequent corrections are self-validation pending independent assessment.
+
+Completed: pane blocked-storage state and measured separator bounds; diagnosed/integrated formerly
+parked setup-loading guard; objective overview action propagation; native objective lifecycle,
+cleanup fault/retry and SAV/DTA malformed/recovery checks. Final validation108 files/807 passed/
+33 explicit skips, actual required PostgreSQL/Python suites, final production build pass. Existing
+shared status contains exact evidence and limits; canonical outstanding register is reconciled in
+place. Prior passes and original failed invocations remain preserved. No new model calls/spend.
+
+**Released files:** all14 paths in the application checkpoint (git show --stat above commit),
+including ThreePane.tsx, TranscriptSetup.tsx, ObjectiveReviewTable.tsx, useHydrated.ts, their focused
+checks, scripts/e2e/objective-review-acceptance.mjs, three affected claude briefs, existing canonical
+baseline/shared status and repair-closing-checklist.md. Read-only access to all necessary sources
+is unrestricted. The previously released Repair7 manifest paths and bounded Codex follow-up paths
+in b5a2a4d/1783303/2330179 are also released for independent assessment and routine repairs required
+by the existing canonical register; do not turn their broad retained checkpoint into an unrelated
+audit. Record a bounded affected-file extension in shared status before editing outside these
+paths. Historical artifacts, dumps, logs, credentials and unrelated untracked files are not released
+for source inclusion. Authoritative lockfile unchanged; no dependency installation needed.
+
+**Remaining required work, in order:**
+
+1. Independently assess Codex-authored semantic, metadata/cache, persistence/recovery and latest
+   pane/setup/objective changes against the exact existing closing assertions. Reuse unchanged
+   independent Repair7 evidence and scoped self-validation artifacts; run only unestablished or
+   affected assertions. The enhanced narrow-container native pane check has not run after the
+   final bounds extension; six exact-component/compiled-CSS cases and final strict gate/build pass.
+2. Reconcile every existing canonical outstanding row to a supported evidence level/disposition;
+   do not silently promote the unchanged43-row12/18/2/5/6 partition. Existing chart/status/reload,
+   degradation/output, evaluator/base/stance, business and download failure/retry evidence should
+   be assessed before requesting new execution. Repair reproduced supported-workflow failures
+   directly within this release; no routine Grant relay. Keep the unexplained exact-limit timeout
+   failed while preserving the separate concurrent exact-limit pass.
+3. Preserve approved conditional SAS and flipped/separate-Codebook weight/MR exclusions and
+   recovery; full support is backlog work. The formerly parked layout-loading fix is now applied
+   after diagnosis, not forgotten; retain original failed-check history and assess the actual fix.
+   Deferrable preview/marker/load-error and five historical-definition gaps stay explicitly deferred.
+4. Overall technical acceptance requires independent disposition of the supported priority gates;
+   public release additionally requires actual trusted identity/user-to-tenant mapping, deployed
+   storage privacy/signed-link policy, final role/schema and intended migration/backup-runner
+   certification in an authorised environment. Local disposal checks do not certify these. Office
+   rendering/brief-link limitations remain stated. Research Quality Review remains design-only.
+
+**Resource state:** database/storage evidence retained locally; owned labelled container and
+local-stack parent stopped; reserved3228/62190/62191/55512/55017 have no listeners. The unrelated
+user development server3000 was left untouched. No secrets, development/live changes, push or
+deployment. Overall trust-hardening acceptance remains incomplete; implementation checkpoint
+completion is not release sign-off. Codex stops at this explicit release and will not edit the
+released files without a new recorded handoff.
