@@ -171,3 +171,15 @@ Codex retains **CODEX_WORKING** ownership; Claude remains stopped. No implementa
 handed back or released by this review. Parked layout-loading fix remains unapplied and explicitly
 pending diagnosis/disposition. The additional browser harness is stopped; no new persistent
 disposable resource remains. No application code, release counts, spend or deployment changed.
+
+
+## Overall register reconciliation — 2026-10-16
+
+Pane review remains complete with two unresolved findings. Codex reconciled all entries of the
+existing canonical consolidated outstanding register against retained milestone evidence; the
+overall trust-hardening milestone remains **incomplete**. Required execution/disposition and
+independent-review remainders are now recorded in place and summarised in the existing shared
+status. Earlier statements of implementation-checkpoint completion do not mean overall acceptance.
+Codex retains CODEX_WORKING; Claude remains stopped, with no implementation release. Parked
+layout-loading package remains unapplied/unreleased pending failed-check diagnosis/disposition.
+No application bytes or finite release-row statuses/priorities changed in this reconciliation.

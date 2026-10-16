@@ -6,7 +6,7 @@ Updated: 2026-10-16. State: **CODEX_WORKING — independent pane review complete
 
 - Dedicated local branch: `checkpoint/trust-hardening-20261016`; source checkpoint `b5a2a4dd198f384b7cd0c5ccb67fde37d892a673`. It retains accumulated pre-existing application implementation plus the bounded milestone fixes; unrelated local diagnostics/evidence remain outside Git.
 - Repair7 accepted and27 manifest files integrated after full base/archive/hash reconciliation. Both separately released legacy-test bases match. Authoritative lockfile unchanged. [agent-handoff.md](agent-handoff.md) records Codex ownership and exact manifests.
-- Integration evidence: `scripts/workflow-tenant-review/repair7/integration-comparison.json` and `applied.json`. Parked hydration archive excluded. The bounded milestone fixes and self-validation are complete at the scopes below.
+- Integration evidence: `scripts/workflow-tenant-review/repair7/integration-comparison.json` and `applied.json`. Parked hydration archive excluded. Recorded bounded fixes and self-validation remain valid at their exact scopes; overall trust-hardening acceptance is incomplete as reconciled below.
 
 ## Working queue
 
@@ -154,8 +154,7 @@ a different range/value from the rendered pane. Closing check: report the effect
 maximum and rendered width for each separator, including wideRight default and viewport shrink.
 No measured performance defect or unrelated structural refactor is asserted.
 
-Overall disposition: the **Grant-accepted implementation milestone remains completed at its
-recorded self-validation level**. The later pane package has been independently reviewed and has
+Overall disposition: Grant accepted the prior implementation checkpoint and its recorded self-validation; that acceptance does **not** complete the overall trust-hardening milestone. The later pane package has been independently reviewed and has
 the two findings above; it is not yet accepted. Overall technical-release sign-off is **not complete**.
 Remaining required work is:
 
@@ -181,3 +180,59 @@ backlog work. Five historical-definition gaps and named deferrable checks remain
 representative LibreOffice output is not certification of every Office version. Prior browser
 PPTX and concurrent-limit failed invocations remain recorded separately from their successful
 continuations/retries. Model spend remains US$3.817316 ofUS$10; no push/deployment or count changes.
+
+
+## Canonical outstanding-register reconciliation — 2026-10-16
+
+**Overall trust-hardening milestone: INCOMPLETE.** Pane commits7ec3f30/badcd13 were reviewed
+independently; the storage-failure and separator-accessibility findings remain. Their review
+does not independently review Codex's earlier repairs or close the canonical acceptance register.
+The earlier wording “implementation milestone complete” described the delivered checkpoint and
+self-validation only; it must not be used as the overall acceptance decision.
+
+Reconciled all43 entries of the existing consolidated outstanding-work tables in place:10 recorded
+defect findings,24 acceptance remainders,4 security/deployment entries and5 grouped deferrable/
+design entries. These entries are **not** the canonical43 release rows: shared findings/tasks/gaps
+use different grouping. The existing release-row partition12/18/2/5/6 and priorities34/9/0 remain
+unchanged pending explicit row-level disposition. No replacement register or broad audit was added.
+
+Retained evidence now replaces obsolete wholly-unexecuted claims for E1–E3/T1–T3/A1–A3,
+scale/missing audit, correction clear/group, upload cleanup, instrument reread, document finding
+identity, objective addition/legacy lifecycle, evaluator boundaries/recovery, business transitions
+and native design/body handover. These are self-validation where Codex authored changes, and
+individual controlled/real-provider/native/DB boundaries remain distinct. Evidence examples are
+`repair7/scale-audit-reload.json`, `sav-audit-native.json`, `correction-clear-native.json`,
+`upload-cleanup-native.json`, `instrument-reread-native.json`, `objective-lifecycle-native.json`,
+`business-lifecycle-native.json`, `evaluator-stall-native.json`, `design-handover-native.json`,
+`probe-b-download-retry.json`, plus strict gate logs and the retained source/test files. Failed
+initial invocations remain failed; continuations establish only their explicit assertions.
+
+Required next work, in bounded order:
+
+1. Resolve the two pane findings and their focused regression criteria under explicit implementation
+   ownership. Codex retains CODEX_WORKING; Claude has not been released.
+2. Independent review of Codex-authored repairs and finite assertion-by-assertion disposition against
+   the existing register, especially the two semantic rows and later guard/cache changes. Reuse
+   unchanged independent evidence; do not treat805 tests as whole-row or module acceptance.
+3. Complete specifically unestablished acceptance assertions: native OBJ-REV-004 accept/reject/
+   reaccept/regenerate/exclusion agreement in both presentations; truthful durable native SAV/DTA
+   status/recovery under IMP-018 (processing_status remains null); and any missing failure-to-native/
+   output assertion under REV-012. Review must also resolve whether the retained exact-limit
+   timeout leaves an IMP-017 stranded-work assertion unmet. This is not proof of a new product defect.
+4. For other implemented remainders, check the named exact assertions in the canonical table before
+   ordering further execution: native deletion-specific cleanup visibility, document-identity reload,
+   evaluator uncertainty/complete finite expectation coverage, remaining decision own-delete/bulk
+   callers, absent-download refusal, and shared support delete/replacement/duplicate consumers. These
+   are scope/evidence questions to resolve, not claims all were missed or already closed.
+5. Parked layout-loading package remains unapplied/unreleased: diagnose its retained failed check
+   and determine supported-workflow impact/disposition separately from the pane component. No
+   automatic reopening of prior IMP-014/Brief38 closures and no unreviewed TranscriptSetup change.
+6. Before public release: the distinct authenticated tenant/storage/deployed-role/migration-runner
+   gates in canonical section3, requiring their real environment and owner authorization.
+
+Approved exclusions remain SAS and flipped/separate-Codebook weight/MR metadata, conditional on
+visible refusal/recovery; full support is backlog. Deferrable IMP-010/M02/M04 and five historical
+definitions retain their stated dispositions. Research Quality Review architecture-fit/design work
+is separate and not a trust-repair prerequisite. Representative Office and brief/link limitations
+remain explicit. Current review/reconciliation uses retained evidence only: no new application
+execution, model call, resource, push, deployment or source repair.
