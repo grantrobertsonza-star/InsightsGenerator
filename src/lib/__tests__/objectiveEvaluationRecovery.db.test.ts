@@ -78,6 +78,12 @@ describe.skipIf(!TEST_DATABASE_URL)("REV-007/013 actual evaluator revision and d
     cases.push({ name: "total 50 percent exceeds 40", expected: "supports", expectation: level, table: structuredClone(original) });
     cases.push({ name: "equality does not establish above", expected: "inconclusive", expectation: { ...level, threshold: 50 }, table: structuredClone(original) });
     cases.push({ name: "mean cannot use percent row", expected: "inconclusive", expectation: { ...expectation, measure: "mean" }, table: structuredClone(original) });
+    cases.push({ name: "opposite direction", expected: "against", expectation: { ...expectation, direction: "lower" }, table: structuredClone(original) });
+    const mean = structuredClone(original);
+    mean.questions[0].rows = [mean.questions[0].rows[0]];
+    Object.assign(mean.questions[0].rows[0], {label:"Mean",isMean:true,desc:{sem:0.06},pct:[3.5,3.5]});
+    mean.questions[0].rows[0].total.pct = 3.5;
+    cases.push({name:"mean 3.5 with SE0.06 exceeds3.3",expected:"supports",expectation:{...level,answer:null,measure:"mean",threshold:3.3},table:mean});
     for (const n of [29,30]) {
       const table = structuredClone(original);
       table.columns.forEach(c => { c.n = n; c.w = n; c.nEff = n; });
@@ -86,12 +92,16 @@ describe.skipIf(!TEST_DATABASE_URL)("REV-007/013 actual evaluator revision and d
     }
     for (const c of cases) {
       const id = await question(c.name);
-      await db.pool.query("update objective_evidence set expectation=$1 where id=$2", [JSON.stringify(c.expectation), id]);
+      await db.pool.query("update objective_evidence set expectation=$1,origin_recorded=true where id=$2", [JSON.stringify(c.expectation), id]);
       state.result = c.table;
       expect(await evaluateEvidenceQuestion(tenant,run,{ id:doc,name:"survey.csv" },id), c.name).toBe(true);
       expect((await results(id))[0].stance, c.name).toBe(c.expected);
       expect((await db.pool.query("select table_id,basis from objective_evidence_results where evidence_id=$1",[id])).rows[0]).toMatchObject({table_id:state.tableId,basis:"computed"});
     }
+    await db.pool.query("update runs set research_objective='Understand purchase' where id=$1",[run]);
+    const { loadObjectiveEvidenceWithCoverage, rollUp, currentItemKey } = await import("../objectiveEvidence");
+    const loaded = await loadObjectiveEvidenceWithCoverage(tenant,run);
+    expect(rollUp(loaded.questions,new Set(loaded.currentItems.map(currentItemKey)))).toMatchObject([{stance:"mixed",orphaned:false}]);
     state.result = original;
   });
 });

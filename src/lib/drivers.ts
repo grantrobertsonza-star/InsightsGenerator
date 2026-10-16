@@ -1,6 +1,6 @@
 import { withTenant } from "./db";
 import { recordHumanReview } from "./findingProvenance";
-import { loadDataSetup } from "./dataSetup";
+import { loadDataSetupWithStatus } from "./dataSetup";
 import { runStatsTool } from "./parseStatsFile";
 import { loadDocumentFile, overlayFor } from "./crosstabs";
 import { driverAnalysis, type DriverResult } from "./driverAnalysis";
@@ -91,11 +91,13 @@ export async function runDriverAnalysisFor(
 ): Promise<DriverReport> {
   if (request.predictors.length < 2) throw new Error("Choose at least two predictors.");
   if (request.predictors.includes(request.outcome)) throw new Error("The outcome cannot also be a predictor.");
-  const [doc, overlay, setup] = await Promise.all([
+  const [doc, overlay, setupStatus] = await Promise.all([
     loadDocumentFile(tenantId, runId, documentId),
     overlayFor(tenantId, runId, documentId),
-    loadDataSetup(tenantId, documentId),
+    loadDataSetupWithStatus(tenantId, documentId),
   ]);
+  if (!setupStatus.ok) throw new Error(`Could not read the saved data layout for driver analysis: ${setupStatus.error}`);
+  const setup = setupStatus.setup;
   const cols = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
     outcome: request.outcome,
     predictors: request.predictors,

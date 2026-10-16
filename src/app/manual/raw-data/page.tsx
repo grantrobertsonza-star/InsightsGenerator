@@ -49,6 +49,11 @@ export default function RawDataPage() {
 
       <H2>SPSS and Stata files</H2>
       <P>
+        Initial release scope excludes columns-as-cases workbooks that require a separate Codebook
+        to define weights or multiple-response sets, pending verification. Those definitions must
+        not be assumed absent or replaced with an unweighted calculation.
+      </P>
+      <P>
         If your raw data comes from labelled statistical software, a <code>.sav</code> or <code>.dta</code> file (SAS is excluded pending verification), the app reads it directly, including the variable labels (so a
         column literally named <code>Q7a</code> shows up as &quot;Preferred channel&quot; if that&apos;s
         its label) and value labels (so a code like <code>1</code> shows up as &quot;Male&quot; rather

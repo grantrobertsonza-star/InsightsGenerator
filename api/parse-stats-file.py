@@ -280,8 +280,8 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 8: columns-as-cases files typed per variable after the flip (_flip_types): exact large integers,
 #    identifiers kept literally. Only that layout's cached copies need rebuilding; crosstabs.ts asks
 #    for 8 there and still accepts 7 for rows-as-cases, whose typing did not change.
-DICTIONARY_VERSION = 8
-ENGINE_VERSION = "2026.10.16-10"  # declared file/case release limits; stored with every table
+DICTIONARY_VERSION = 9
+ENGINE_VERSION = "2026.10.16-11"  # preserves SAV missing declarations while retaining masked data
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -1222,7 +1222,14 @@ def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, la
         tmp_path = tmp.name
     try:
         kwargs = {"usecols": list(usecols)} if usecols else {}
-        return reader(tmp_path, **kwargs)
+        data, meta = reader(tmp_path, **kwargs)
+        if ext in (".sav", ".zsav"):
+            # The normal read masks user-missing values correctly but omits their declarations.
+            # Read header metadata separately: retaining raw missing codes in the data would
+            # change every denominator and statistic, whereas only the audit needs the ranges.
+            _, declared = reader(tmp_path, metadataonly=True, user_missing=True)
+            meta.missing_ranges = declared.missing_ranges
+        return data, meta
     finally:
         _remove_quietly(tmp_path)
 

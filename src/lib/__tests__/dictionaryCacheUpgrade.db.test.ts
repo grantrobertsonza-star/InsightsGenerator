@@ -74,7 +74,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     run = (await db.pool.query(`insert into runs (tenant_id, project_name) values ($1, 'P') returning id`, [tenant])).rows[0].id;
 
     const fresh = realDictionary(WIDE, "columns_are_cases") as { version: number; variables: Variable[]; layout?: string };
-    expect(fresh.version).toBe(8);
+    expect(fresh.version).toBe(9);
     expect(variable(fresh, "RespID")).toMatchObject({ numeric: false, text: true });
     // What the old engine cached for this file: version 7, the identifier typed as a number.
     const stale = structuredClone(fresh) as typeof fresh;
@@ -117,7 +117,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     expect(variable(first as unknown as { variables: Variable[] }, "RespID")).toMatchObject({ numeric: false, text: true });
 
     const stored = (await db.pool.query(`select variable_dictionary, variable_overrides from documents where id = $1`, [flippedDoc])).rows[0];
-    expect(stored.variable_dictionary.version).toBe(8);
+    expect(stored.variable_dictionary.version).toBe(9);
     expect(stored.variable_overrides).toEqual(correction);
 
     // As after a reload: the cache is now current, so no engine call, and the correction reads back.
@@ -135,6 +135,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     expect((d as unknown as { version: number }).version).toBe(7);
     expect(minimumDictionaryVersion("rows_are_cases")).toBe(7);
     expect(minimumDictionaryVersion("columns_are_cases")).toBe(8);
+    expect(minimumDictionaryVersion("rows_are_cases", "declared.sav")).toBe(9);
+    expect(minimumDictionaryVersion("rows_are_cases", "ordinary.csv")).toBe(7);
   });
 
   it("failed upgrade preserves the old cache and correction, then a retry repairs typing", async () => {
@@ -152,8 +154,26 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     engineOutput.set(file, fresh);
     await loadVariableDictionary(tenant, run, flippedDoc);
     const retried = (await db.pool.query("select variable_dictionary, variable_overrides from documents where id = $1", [flippedDoc])).rows[0];
-    expect(retried.variable_dictionary.version).toBe(8);
+    expect(retried.variable_dictionary.version).toBe(9);
     expect(retried.variable_overrides).toEqual(correction);
+  });
+  it("Import retains the original group definition while corrected calculations and clear/retry use one authoritative dictionary", async () => {
+    const dictionary = realDictionary("Q1_1,Q1_2\n1,0\n0,1\n1,1\n0,0\n", "rows_are_cases");
+    const id = (await db.pool.query(
+      "insert into documents(tenant_id,run_id,kind,ingestion_type,source_filename,storage_path,data_setup,variable_dictionary,variable_overrides) values($1,$2,'table','raw','groups.csv','synthetic-groups',$3,$4,$5) returning id",
+      [tenant,run,JSON.stringify({layout:"rows_are_cases"}),JSON.stringify(dictionary),JSON.stringify({Q1_1:{questionType:"single"}})],
+    )).rows[0].id;
+    const { loadImportQuestionDefinitions } = await import("../importQuestionDefinitions");
+    const { loadVariableDictionary } = await import("../crosstabs");
+    const { saveVariableOverride } = await import("../variableOverrides");
+    expect(await loadImportQuestionDefinitions(tenant,run,id)).toEqual({types:{Q1_1:"multi",Q1_2:"multi"},error:null});
+    expect((await loadVariableDictionary(tenant,run,id)).sets).toEqual([]);
+    await saveVariableOverride(tenant,run,id,"Q1_1",{questionType:null});
+    expect((await loadVariableDictionary(tenant,run,id)).sets?.[0].vars).toEqual(["Q1_1","Q1_2"]);
+    const missing = await loadImportQuestionDefinitions(tenant,run,randomUUID());
+    expect(missing.error).toBeTruthy();
+    expect(missing.types).toEqual({});
+    expect((await loadImportQuestionDefinitions(tenant,run,id)).error).toBeNull();
   });
 });
 

@@ -371,3 +371,18 @@ Task D now passes its strengthened native replay smoke,including exact eligible 
 Task B native upload/layout/accept/reload reaches120 cases;its transposed text-valued/codebook combination exposes no usable weight or MR set,so downstream requirements remain unexecuted. Six primary engine references match only under explicit arguments;controls are not substituted for primary completion. Selected asymmetric reversed/declared-zero supplemental checks match actual engine,saved native table and spreadsheet. Original fixtures/hash histories preserved. Tooling,fixture compatibility and unexecuted requirements remain separate from defects.
 
 Evidence retained before exact disposable cleanup;no app repairs,live/development writes,push or deployment. Prior closures and original golden-thread evidence preserved. The Research Quality Review brief is a separate design-only deliverable. Status partition unchanged **12 Closed /18 Implemented /2 Confirmed /5 Untested /6 Blocked=43**;priorities34/9/0. Security/deployment gates unchanged. Previous canonical baseline retained byte-for-byte as v25.
+
+
+## Authorised milestone follow-up — 2026-10-16
+
+Operational completion and exact evidence remain in [current engineering status](current-engineering-status.md).
+Codex integrated Repair7 and repaired bounded metadata/recovery/semantic failures; these are
+self-validation results, not independent closures. Final strict validation:107 files,804 passes,
+33 explicit skips, with real PostgreSQL/Python prerequisites executed. Prior closures and the
+43-row partition are preserved pending independent disposition.
+
+Grant approved20,000,000bytes and100,000cases per file, SAS exclusion pending verification, and
+exclusion of columns-as-cases workbooks requiring a separate Codebook for weight/MR metadata.
+The primary TaskB combination remains unverified; controls are not substitutes. User-facing
+import guidance records these boundaries. Separate deployed security/process gates remain.
+Cumulative model spend:US$3.817316 ofUS$10; gateway disabled/stopped and key cleared.

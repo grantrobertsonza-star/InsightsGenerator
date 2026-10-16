@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CODEX_WORKING** — Repair7 ownership accepted by Codex, 2026-10-16.
+State: **CODEX_WORKING** — milestone complete; Codex retains ownership and Claude remains paused, 2026-10-16.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 

@@ -209,6 +209,17 @@ export default function InstrumentCard({
         </div>
       )}
 
+      {read && (
+        <button className={btn} disabled={pending} onClick={() => run(
+          () => readInstrumentAction(runId, documentId),
+          r => r.complete
+            ? `Read ${r.items} items.`
+            : `Read incomplete: ${r.failedChunks ?? 0} unread parts and ${r.incompleteItems ?? 0} incomplete items. Previously confirmed links were preserved.`,
+        )}>
+          {pending ? "Reading..." : "Read again"}
+        </button>
+      )}
+
       {read && isGuide && (
         <div className="space-y-2">
           <p className="text-muted">

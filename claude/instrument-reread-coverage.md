@@ -13,3 +13,11 @@ without a readable coverage record are explicitly unknown; their links are prese
 with controlled extraction/model responses: complete read, partial reread, stable confirmed IDs,
 repeated partial read and successful recovery without duplicates. Native interaction remains a
 separate evidence level. No questionnaire capability expansion or deployment change is implied.
+
+
+The native card now offers Read again after items exist. Previously the durable coverage warning
+named a retry that could not be invoked from that state. The action uses the existing read path and
+preserves pending/error handling. A native synthetic PDF and controlled chunk responses exercise
+complete read, same-code confirmation, partial chunk failure, hard reload and corrected reread:
+item/link IDs and confirmations remain unchanged, incomplete coverage survives reload, and successful
+retry clears it. This is orchestration/persistence evidence, not real-provider interpretation proof.

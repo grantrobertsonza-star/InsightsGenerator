@@ -109,6 +109,12 @@ export function createFakeObjectiveDb(initial: Partial<ObjStore> = {}, options: 
       if (s.startsWith("select id, source_filename, ingestion_type from documents where run_id = $1 and kind = 'table'")) {
         return after(db.documents.filter((d) => d.run_id === params[0] && d.kind === "table"));
       }
+      if (s.startsWith("select id from objective_evidence where run_id = $1 and excluded = false")) {
+        return after(db.evidence.filter(e => e.run_id === params[0] && !e.excluded).map(e => ({id:e.id})));
+      }
+      if (s.startsWith("select evidence_id, document_id, had_table, table_id from objective_evidence_results") || s.startsWith("select evidence_id, document_id, table_id from objective_evidence_results")) {
+        return after(db.results.filter(r => r.run_id === params[0]));
+      }
       if (s.startsWith("select id, item_kind, item_order, item_text, objective_candidate_id, decision_candidate_id, origin_candidate_id, origin_recorded from objective_evidence where run_id = $1 and (source <> 'auto' or excluded = true)")) {
         return after(db.evidence.filter((e) => e.run_id === params[0] && (e.source !== "auto" || e.excluded === true)));
       }

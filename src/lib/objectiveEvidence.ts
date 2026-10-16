@@ -272,17 +272,18 @@ function shape(r: Record<string, unknown>, results: DatasetResult[]): EvidenceQu
 export type EvidenceDataset = { id: string; name: string };
 
 /** The data files in the project that questions are asked of: SPSS, Stata or SAS files, and raw case tables. */
+async function readEvidenceDatasets(client: PoolClient, runId: string): Promise<EvidenceDataset[]> {
+  const result = await client.query<{ id: string; source_filename: string; ingestion_type: string | null }>(
+    "select id, source_filename, ingestion_type from documents where run_id = $1 and kind = 'table' order by source_filename",
+    [runId],
+  );
+  return result.rows
+    .filter(d => isStatsFileName(d.source_filename) || (d.ingestion_type === "raw" && isCaseTableFileName(d.source_filename)))
+    .map(d => ({ id: d.id, name: d.source_filename }));
+}
+
 export async function evidenceDatasets(tenantId: string, runId: string): Promise<EvidenceDataset[]> {
-  const rows = await withTenant(tenantId, async (client) => {
-    const r = await client.query<{ id: string; source_filename: string; ingestion_type: string | null }>(
-      "select id, source_filename, ingestion_type from documents where run_id = $1 and kind = 'table' order by source_filename",
-      [runId],
-    );
-    return r.rows;
-  });
-  return rows
-    .filter((d) => isStatsFileName(d.source_filename) || (d.ingestion_type === "raw" && isCaseTableFileName(d.source_filename)))
-    .map((d) => ({ id: d.id, name: d.source_filename }));
+  return withTenant(tenantId, client => readEvidenceDatasets(client, runId));
 }
 
 /** Stated objectives and confirmed decisions. Ones the app inferred from this project's own data are left out: reading the data against them would be circular. */
@@ -429,7 +430,7 @@ export async function listObjectiveEvidence(tenantId: string, runId: string): Pr
 export async function loadObjectiveEvidenceAndCoverage(
   client: PoolClient,
   runId: string,
-): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean }> {
+): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean; remaining: number }> {
   await client.query("savepoint objective_evidence_coverage_read");
   let variablesTruncated: boolean | null;
   try {
@@ -450,13 +451,14 @@ export async function loadObjectiveEvidenceAndCoverage(
   // it never becomes an empty or all-orphaned result.
   const currentItems = await readCurrentEvidenceItems(client, runId);
   const { questions, originAvailable } = await fetchObjectiveEvidenceRows(client, runId);
-  return { questions, variablesTruncated, currentItems, originAvailable };
+  const remaining = (await pendingPairsForClient(client, runId)).length;
+  return { questions, variablesTruncated, currentItems, originAvailable, remaining };
 }
 
 export async function loadObjectiveEvidenceWithCoverage(
   tenantId: string,
   runId: string,
-): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean }> {
+): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean; remaining: number }> {
   return withTenantRepeatableRead(tenantId, (client) => loadObjectiveEvidenceAndCoverage(client, runId));
 }
 
@@ -1293,8 +1295,11 @@ export async function evaluateEvidenceQuestion(tenantId: string, runId: string, 
 
 /** Question and data-file pairs with no answer yet (a stored error counts as answered until retried). */
 async function pendingPairs(tenantId: string, runId: string): Promise<{ id: string; ds: EvidenceDataset }[]> {
-  const datasets = await evidenceDatasets(tenantId, runId);
-  return withTenant(tenantId, async (client) => {
+  return withTenant(tenantId, client => pendingPairsForClient(client, runId));
+}
+
+async function pendingPairsForClient(client: PoolClient, runId: string): Promise<{ id: string; ds: EvidenceDataset }[]> {
+  const datasets = await readEvidenceDatasets(client, runId);
     const qs = await client.query<{ id: string }>(
       "select id from objective_evidence where run_id = $1 and excluded = false order by item_kind desc, item_order, created_at",
       [runId],
@@ -1330,7 +1335,6 @@ async function pendingPairs(tenantId: string, runId: string): Promise<{ id: stri
     const out: { id: string; ds: EvidenceDataset }[] = [];
     for (const q of qs.rows) for (const ds of datasets) if (!have.has(`${q.id}:${ds.id}`)) out.push({ id: q.id, ds });
     return out;
-  });
 }
 
 /** Answers up to `limit` question and file pairs. Returns how many remain, so the caller can keep going. */

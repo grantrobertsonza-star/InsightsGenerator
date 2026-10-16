@@ -548,6 +548,9 @@ function runLoad(
       if (sql.includes("from objective_candidates where run_id = $1") || sql.includes("from decision_candidates where run_id = $1")) {
         return { rows: [] };
       }
+      if (sql.includes("from documents where run_id = $1")) return { rows: [] };
+      if (sql.startsWith("select id from objective_evidence where run_id = $1 and excluded = false")) return { rows: working.evidence.filter(e => !e.excluded).map(e => ({id:e.id})) };
+      if (sql.startsWith("select evidence_id, document_id, had_table, table_id from objective_evidence_results")) return { rows: working.results };
       if (sql.includes("from objective_evidence_generations")) {
         const row = working.generations.find((g) => g.run_id === runId && g.is_current);
         const rows = row ? [{ variables_truncated: row.variables_truncated }] : [];

@@ -229,13 +229,9 @@ export default function ObjectiveEvidence({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  // Set only when answerRest stops at its runaway guard with real work still pending
-  // (OBJ-REV-009): this drives a genuine "Continue reading" action distinct from "Gather
-  // again" - the note alone used to say "click again to continue", but the only button in
-  // reach was "Gather again", which calls generateObjectiveEvidenceAction first and
-  // regenerates the evidence questions from scratch, orphaning whatever had already been
-  // answered and restarting the exact same incomplete run rather than continuing it.
-  const [truncated, setTruncated] = useState(false);
+  // Reload reads the evaluator's pending count, so continuation answers existing questions
+  // instead of requiring Gather again, which would replace their generation.
+  const [hasPending, setHasPending] = useState(false);
   // Counter-review on OBJ-REV-009: this is the DURABLE counterpart to the `note` set inline
   // by gather() below - that one-shot note vanishes on reload, this is read back from the
   // database on every load (loadObjectiveEvidenceAction/getLatestVariablesTruncated), so the
@@ -254,6 +250,7 @@ export default function ObjectiveEvidence({
       setItems(r.items);
       setVariablesTruncated(r.variablesTruncated);
       setOriginAvailable(r.originAvailable);
+      setHasPending(r.remaining > 0);
     } else setError(r.error);
   }
   // The first time a project has objectives and data but no evidence yet, gather it
@@ -268,6 +265,7 @@ export default function ObjectiveEvidence({
       setItems(r.items);
       setVariablesTruncated(r.variablesTruncated);
       setOriginAvailable(r.originAvailable);
+      setHasPending(r.remaining > 0);
       const none = r.items.reduce((n, i) => n + i.questions.length, 0) === 0;
       if (!none || !hasObjectiveOrDecision || dataFiles.length === 0) return;
       const flag = `evidence-auto-${runId}`;
@@ -286,7 +284,7 @@ export default function ObjectiveEvidence({
   async function gather() {
     setError(null);
     setNote(null);
-    setTruncated(false);
+    setHasPending(false);
     setBusy("Writing the evidence questions...");
     const g = await generateObjectiveEvidenceAction(runId);
     if (!g.ok) {
@@ -333,7 +331,7 @@ export default function ObjectiveEvidence({
     // remain" - say so when it's actually what stopped this, rather than
     // leaving the researcher thinking every question was read.
     const stillTruncated = guard >= GUARD_LIMIT && stillRemaining > 0;
-    setTruncated(stillTruncated);
+    setHasPending(stillTruncated);
     if (stalledOnPersistence) {
       setError(
         `Could not save an answer for ${stillRemaining} question(s) still unread - something is preventing results from being stored. Try Continue reading again; if it keeps stalling, this needs attention before more progress can be made.`,
@@ -396,7 +394,7 @@ export default function ObjectiveEvidence({
           <button className={btn} disabled={busy !== null || !hasObjectiveOrDecision} onClick={() => void gather()}>
             {busy ?? (total > 0 ? "Gather again" : "Gather evidence")}
           </button>
-          {truncated && (
+          {hasPending && (
             <button className={btn} disabled={busy !== null} onClick={() => void continueReading()}>
               {busy ?? "Continue reading"}
             </button>

@@ -55,6 +55,9 @@ function fakeClient() {
       }
       if (s.startsWith("select id, candidate_text, source from objective_candidates")) return { rows: world.objectiveCandidates };
       if (s.startsWith("select id, candidate_text, source from decision_candidates")) return { rows: world.decisionCandidates };
+      if (s.startsWith("select id, source_filename, ingestion_type from documents")) return { rows: [] };
+      if (s.startsWith("select id from objective_evidence where run_id = $1 and excluded = false")) return { rows: world.evidence.filter(e => !e.excluded).map(e => ({id:e.id})) };
+      if (s.startsWith("select evidence_id, document_id, had_table, table_id from objective_evidence_results")) return { rows: world.results };
       if (s.startsWith("select id, item_kind, item_order, objective_candidate_id")) return { rows: world.evidence };
       if (s.includes("from objective_evidence_results")) return { rows: world.results };
       if (s.includes("from objective_evidence_generations")) return { rows: [] };

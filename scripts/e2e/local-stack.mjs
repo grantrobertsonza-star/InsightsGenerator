@@ -105,6 +105,10 @@ const storage = http.createServer(async (req, res) => {
     res.end(type === "application/json" ? JSON.stringify(value) : value);
   };
   const p = decodeURIComponent(url.pathname.replace(/^\/storage\/v1/, ""));
+  const readFaultFile = path.join(outDir, "storage-fault.json");
+  if (req.method === "GET" && existsSync(readFaultFile) && JSON.parse(readFileSync(readFaultFile, "utf8")).get === true) {
+    return send(503, { message: "Synthetic storage read outage" });
+  }
   let m;
   if (req.method === "POST" && (m = /^\/object\/sign\/(.+)$/.exec(p))) {
     const token = randomBytes(8).toString("hex");
@@ -140,7 +144,7 @@ await new Promise((r) => storage.listen(0, "127.0.0.1", r));
 const storageUrl = `http://127.0.0.1:${storage.address().port}`;
 
 // ---- model replay
-const replay = createModelReplay();
+const replay = createModelReplay(path.join(outDir, "model-fixture.json"));
 await new Promise((r) => replay.server.listen(0, "127.0.0.1", r));
 const gateway = process.env.E2E_MODEL_GATEWAY;
 if (gateway && gateway !== "http://127.0.0.1:55017") throw new Error("Only the authorised loopback budget gateway is supported for real-model verification.");

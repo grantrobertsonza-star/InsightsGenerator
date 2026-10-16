@@ -162,7 +162,7 @@ print(json.dumps(out))
     for (const k of ["full", "gap", "mixed_sign", "edge"]) {
       const flipped = byCase(k);
       const rows = out[`${k}/rows_are_cases`];
-      expect(flipped.version).toBe(8);
+      expect(flipped.version).toBe(9);
       for (const [c] of flipped.codes) expect(c.startsWith("-") && k !== "mixed_sign" && k !== "edge", `${k}: ${c}`).toBe(false);
       // Same values and type as the rows-as-cases read. (A blank cell is a separate, unchanged
       // rows-as-cases difference: there it is listed as an empty code, here as missing.)
@@ -191,6 +191,35 @@ print(json.dumps({
     expect([...out.wide_csv].sort()).toEqual([...want].sort());
     expect([...out.wide_xlsx].sort()).toEqual([...want].sort());
     expect([...out.rows_csv].sort()).toEqual([...want].sort());
+  });
+});
+
+describe.skipIf(!PYTHON_OK)("engine: native missing declarations", () => {
+  it("SAV declarations survive single/range/control reads without changing masked bases or means; malformed input refuses and retry recovers", () => {
+    const out = runDriver(PRELUDE + String.raw`
+import pandas as pd, pyreadstat
+out = {}
+for name, missing, values in [('single', [-99.], [1.,2.,3.,4.,5.,-99.,None]), ('range', [{'lo':-99.,'hi':-98.}], [1.,2.,3.,4.,5.,-99.,-98.,None]), ('ordinary', None, [1.,2.,3.,4.,5.,-99.,None])]:
+    p = os.path.join(tmp, name+'.sav')
+    kwargs = {'missing_ranges':{'q':missing}} if missing else {}
+    pyreadstat.write_sav(pd.DataFrame({'q':values}),p,variable_measure={'q':'ordinal'},variable_value_labels={'q':{1.:'Very dissatisfied',2.:'Dissatisfied',3.:'Neutral',4.:'Satisfied',5.:'Very satisfied',-99.:'Not applicable'}},**kwargs)
+    b = open(p,'rb').read()
+    d = eng.dictionary(b,name+'.sav',{})
+    q = eng.crosstab(b,name+'.sav',{'rowItems':[{'key':'q','label':'q','vars':['q']}],'columnVars':[]})['questions'][0]
+    out[name] = {'declared':d['audit']['dk']['declaredMissing'],'valid':d['variables'][0]['nValid'],'base':q['desc']['n'],'mean':q['desc']['mean']}
+try:
+    eng.dictionary(b'bad SAV bytes','bad.sav',{})
+    out['refused'] = False
+except Exception:
+    out['refused'] = True
+out['retry'] = eng.dictionary(open(os.path.join(tmp,'single.sav'),'rb').read(),'single.sav',{})['audit']['dk']['declaredMissing']
+print(json.dumps(out))
+`) as Record<string, unknown>;
+    expect(out.single).toEqual({declared:1,valid:5,base:5,mean:3});
+    expect(out.range).toEqual({declared:1,valid:5,base:5,mean:3});
+    expect(out.ordinary).toEqual({declared:0,valid:6,base:5,mean:3});
+    expect(out.refused).toBe(true);
+    expect(out.retry).toBe(1);
   });
 });
 

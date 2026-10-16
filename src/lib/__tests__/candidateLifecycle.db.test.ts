@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
 
 const state = vi.hoisted(() => ({ failRefresh: false }));
@@ -137,6 +139,21 @@ describe.skipIf(!TEST_DATABASE_URL)("candidate lifecycle persistence (real datab
     expect((await candidates("objective")).filter(r => r.candidate_text === "Fallback objective")).toHaveLength(1);
     await a.addOwnObjectiveCandidate(run, "Fallback objective");
     expect((await candidates("objective")).filter(r => r.candidate_text === "Fallback objective")).toHaveLength(1);
+  });
+  it("SET-003 legacy seed backfill prevents old upfront wording returning after regeneration or deletion", async () => {
+    const legacy = (await db.pool.query("insert into runs(tenant_id,initial_research_objective,stated_objectives_text,objective_candidates_seeded) values($1,'Legacy A','Legacy C',false) returning id", [tenant])).rows[0].id;
+    const candidate = (await db.pool.query("insert into objective_candidates(tenant_id,run_id,candidate_text,rationale,source,status,edited) values($1,$2,'Legacy C','Synthetic researcher wording','researcher_authored','accepted',true) returning id",[tenant,legacy])).rows[0].id;
+    await db.pool.query("insert into findings(tenant_id,run_id,origin,finding_text) values($1,$2,'generated','Synthetic legacy evidence')",[tenant,legacy]);
+    await db.pool.query(readFileSync(path.join(process.cwd(),"supabase/migrations/0084_objective_candidates_seeded.sql"),"utf8"));
+    expect((await db.pool.query("select objective_candidates_seeded from runs where id=$1",[legacy])).rows[0].objective_candidates_seeded).toBe(true);
+    const { generateObjectiveCandidates } = await import("../objectiveFramer");
+    const { deleteObjectiveCandidate } = await import("../objectiveCandidateActions");
+    await generateObjectiveCandidates(tenant,legacy);
+    expect((await db.pool.query("select candidate_text from objective_candidates where id=$1",[candidate])).rows[0].candidate_text).toBe("Legacy C");
+    await deleteObjectiveCandidate(legacy,candidate);
+    await generateObjectiveCandidates(tenant,legacy);
+    expect((await db.pool.query("select candidate_text from objective_candidates where run_id=$1 and candidate_text in ('Legacy A','Legacy C')",[legacy])).rows).toEqual([]);
+    expect((await db.pool.query("select initial_research_objective from runs where id=$1",[legacy])).rows[0].initial_research_objective).toBe("Legacy A");
   });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("candidate lifecycle persistence (real database; model refresh controlled)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

@@ -12,6 +12,7 @@
 // input_schema allows (empty arrays, first enum value, empty strings), which the app treats as
 // "nothing usable came back"; a text-only request gets a one-line reply.
 import http from "node:http";
+import { existsSync, readFileSync } from "node:fs";
 
 const numbered = (text, marker) =>
   [...text.matchAll(new RegExp(`^(\\d+)\\. ${marker}(.*)$`, "gm"))].map((m) => ({ index: Number(m[1]), line: m[2].trim() }));
@@ -107,7 +108,7 @@ const handlers = {
   },
 };
 
-export function createModelReplay() {
+export function createModelReplay(fixturePath) {
   const log = [];
   const server = http.createServer(async (req, res) => {
     const chunks = [];
@@ -116,10 +117,17 @@ export function createModelReplay() {
     const name = body.tool_choice?.name;
     const content = (body.messages ?? []).map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).join("\n");
     const system = typeof body.system === "string" ? body.system : JSON.stringify(body.system ?? "");
+    const fixture = fixturePath && existsSync(fixturePath) ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
+    const override = fixture?.tools?.[name]?.find(rule => content.includes(rule.match));
+    if (override?.status) {
+      log.push({ at: new Date().toISOString(), tool: name, scripted: true, injectedStatus: override.status });
+      res.writeHead(override.status, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: { type: "api_error", message: "Synthetic model chunk outage" } }));
+    }
     let blocks;
     if (name) {
       const tool = (body.tools ?? []).find((t) => t.name === name);
-      const input = handlers[name] ? handlers[name](content, system) : minimal(tool?.input_schema);
+      const input = override?.input ?? (handlers[name] ? handlers[name](content, system) : minimal(tool?.input_schema));
       blocks = [{ type: "tool_use", id: `toolu_replay_${log.length}`, name, input }];
     } else {
       blocks = [{ type: "text", text: "Replay: no change made." }];

@@ -54,7 +54,7 @@ function explain(error: unknown): string {
 export async function loadObjectiveEvidenceAction(
   runId: string,
 ): Promise<
-  | { ok: true; questions: EvidenceQuestion[]; items: ItemEvidence[]; variablesTruncated: boolean | null; originAvailable: boolean }
+  | { ok: true; questions: EvidenceQuestion[]; items: ItemEvidence[]; variablesTruncated: boolean | null; originAvailable: boolean; remaining: number }
   | Fail
 > {
   try {
@@ -75,9 +75,9 @@ export async function loadObjectiveEvidenceAction(
     // questions, and grouping/orphan classification here is pure over that returned data.
     // originAvailable = false (migration 0095 not applied) is passed through so the panel can say
     // so; a failed read throws into the catch below, never an empty or all-orphaned success.
-    const { questions, variablesTruncated, currentItems, originAvailable } = await loadObjectiveEvidenceWithCoverage(TENANT_ID, runId);
+    const { questions, variablesTruncated, currentItems, originAvailable, remaining } = await loadObjectiveEvidenceWithCoverage(TENANT_ID, runId);
     const currentKeys = new Set(currentItems.map(currentItemKey));
-    return { ok: true, questions, items: rollUp(questions, currentKeys), variablesTruncated, originAvailable };
+    return { ok: true, questions, items: rollUp(questions, currentKeys), variablesTruncated, originAvailable, remaining };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }

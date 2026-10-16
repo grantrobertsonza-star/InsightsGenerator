@@ -120,6 +120,7 @@ for name, b, layout in (("long", long, "rows_are_cases"), ("wide", wide, "column
         "cases": d.get("nCases"),
         "gender": sorted((c["label"], c["n"]) for c in eng.categories(b, "f.xlsx", "Gender", layout=layout, selected_sheet="Data")["categories"]),
         "region": sorted((str(c["label"]), c["n"]) for c in eng.categories(b, "f.xlsx", "Region", layout=layout, selected_sheet="Data")["categories"]),
+        "driverInputs": eng.driver_columns(b, "f.xlsx", {"layout":layout,"selectedSheet":"Data","outcome":"Score","predictors":["Region"]}),
     }
 print(json.dumps(out))
 `;
@@ -132,6 +133,8 @@ print(json.dumps(out))
     expect(out.wide).toEqual(out.long);
     expect(out.long.cases).toBe(5);
     expect(out.long.gender).toEqual([["Female", 3], ["Male", 2]]);
+    expect(out.long.driverInputs.y).toEqual([4,5,3,5,4]);
+    expect(out.long.driverInputs.x).toEqual([[1],[2],[1],[2],[1]]);
   });
 });
 

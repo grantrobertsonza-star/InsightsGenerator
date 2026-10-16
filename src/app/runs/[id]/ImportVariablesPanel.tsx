@@ -158,7 +158,8 @@ export default function ImportVariablesPanel({
           const name = canonicalName(header);
           return name ? effectiveRowOverride(localEdits, saved, `${table.documentId}:${name}`)?.type ?? inferred : inferred;
         }
-        function effectiveQuestionType(header: string): QuestionType {
+        function effectiveQuestionType(header: string): QuestionType | "" {
+          if (table.questionTypeError) return "";
           const name = canonicalName(header);
           if (!name) return "single";
           return (
@@ -209,6 +210,7 @@ export default function ImportVariablesPanel({
                       const key = name ? `${table.documentId}:${name}` : null;
                       const type = effectiveType(v.name, v.type);
                       const questionType = effectiveQuestionType(v.name);
+                      const correction = key ? effectiveRowOverride(localEdits, saved, key) : undefined;
                       return (
                         <tr key={v.name} className="border-b border-border last:border-0">
                           <td className="max-w-xs truncate py-1 pr-3 text-foreground" title={v.name}>
@@ -231,6 +233,17 @@ export default function ImportVariablesPanel({
                                 </option>
                               ))}
                             </select>
+                            {key && name && correction && Object.keys(correction).length > 0 && (
+                              <button
+                                type="button"
+                                aria-label={`Clear corrections: ${v.name}`}
+                                disabled={pending.has(key)}
+                                className="mt-1 block text-[10px] text-primary underline disabled:opacity-50"
+                                onClick={() => save(table.documentId, name, { type: null, questionType: null })}
+                              >
+                                Use imported definitions
+                              </button>
+                            )}
                           </td>
                           <td className="py-1 pr-3">
                             <select
@@ -238,17 +251,19 @@ export default function ImportVariablesPanel({
                               className={selectClass}
                               title={unresolved ? "This column's name is ambiguous in this file, so its question type can't be corrected safely." : undefined}
                               value={questionType}
-                              disabled={unresolved || pending.has(key ?? "")}
+                              disabled={unresolved || !!table.questionTypeError || pending.has(key ?? "")}
                               onChange={(e) =>
                                 name && save(table.documentId, name, { questionType: e.target.value as QuestionType })
                               }
                             >
+                              {table.questionTypeError && <option value="">Not checked</option>}
                               {QUESTION_TYPES.map((qt) => (
                                 <option key={qt} value={qt}>
                                   {QUESTION_TYPE_LABEL[qt]}
                                 </option>
                               ))}
                             </select>
+                            {table.questionTypeError && <p role="alert" className="mt-1 text-[10px] text-danger">Question definitions could not be checked. Retry loading this file. {table.questionTypeError}</p>}
                             {unresolved && (
                               <div className="mt-0.5 text-[10px] text-danger">Ambiguous column name - corrections disabled.</div>
                             )}

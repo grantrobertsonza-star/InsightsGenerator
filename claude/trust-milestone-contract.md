@@ -28,3 +28,10 @@ See the separate import-resource-boundary and document-storage-cleanup briefs fo
 The role/backup checks use disposable setup-created roles; authentication, real bucket authorization,
 deployed-role equivalence and migration-runner certification still require their separate evidence.
 Codex's changes and checks are self-validation. Independent review must use the frozen checkpoint.
+
+The evidence panel loads pending-pair count from the same repeatable-read client as questions and
+coverage. Continue therefore survives reload after a failed durable write without regenerating
+questions or introducing a second snapshot. Imported question definitions are loaded separately
+from researcher corrections so clearing a correction restores the declared definition; failure is
+visibly unknown. Driver requests refuse unavailable saved layout before dispatch rather than
+substituting rows-as-cases.

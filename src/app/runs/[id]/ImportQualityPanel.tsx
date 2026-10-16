@@ -35,6 +35,7 @@ export type ImportQualityTable = {
   stated?: StatedRouting[];
   /** multi/grid/battery membership from the variable dictionary; absent means a single-mention question. */
   questionTypeByVariable?: Record<string, QuestionType>;
+  questionTypeError?: string | null;
   /** The researcher's corrections to what import inferred, keyed by variable name. */
   overrides?: VariableOverrides;
   /**

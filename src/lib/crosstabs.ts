@@ -181,17 +181,27 @@ export async function loadVariableDictionaryWithStatus(
   return { ok: true, dictionary };
 }
 
+// Import must know the underlying definition when a researcher clears a correction. Reading an
+// already-corrected dictionary here would make the old correction look like the imported default.
+export async function loadImportedVariableDictionary(tenantId: string, runId: string, documentId: string): Promise<VariableDictionary> {
+  const status = await loadDataSetupWithStatus(tenantId, documentId);
+  if (!status.ok) throw new Error(status.error);
+  return buildVariableDictionaryForSetup(tenantId, runId, documentId, status.setup, false);
+}
+
 /**
- * The oldest cached dictionary version still valid for a layout. Version 8 (engine
- * DICTIONARY_VERSION) changed how a columns-as-cases file is typed after its flip: identifiers keep
+ * The oldest cached dictionary version still valid for this layout and format. Version 8 changed
+ * how a columns-as-cases file is typed after its flip: identifiers keep
  * their literal text, and whole numbers beyond the 64-bit range stay exact instead of wrapping
  * negative. A version-7 cache of such a file may list an identifier as numeric, so it is rebuilt
  * from the file on its next read; rows-as-cases typing did not change, so its version-7 caches stay
- * valid and are not recomputed. Rebuilding only replaces documents.variable_dictionary: the
+ * valid except for SAV/ZSAV: version 9 preserves their user-missing declarations in the audit.
+ * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
-export function minimumDictionaryVersion(layout: DataSetup["layout"]): number {
+export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
+  if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 8 : 7;
 }
 
@@ -200,6 +210,7 @@ async function buildVariableDictionaryForSetup(
   runId: string,
   documentId: string,
   setup: DataSetup,
+  applyCorrections = true,
 ): Promise<VariableDictionary> {
   // Hoisted ahead of the cache check (previously loaded only on a cache miss): IMP-SHIP-001
   // (Codex round 2, "bind dictionary caches ... to selected-sheet identity") needs the
@@ -247,7 +258,7 @@ async function buildVariableDictionaryForSetup(
     const sheetMatches = !doc.selected_sheet || cachedSheet === doc.selected_sheet;
     // IMP-015: version 7 shows conflicting label definitions as conflicts; an older cache may
     // carry a silently chosen label, so it is recomputed.
-    if (cached && cached.sets && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout) && cachedLayout === setup.layout && sheetMatches) {
+    if (cached && cached.sets && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && sheetMatches) {
       dictionary = cached;
     }
   } catch {
@@ -293,6 +304,7 @@ async function buildVariableDictionaryForSetup(
   }
   const overlay = await overlayFor(tenantId, runId, documentId);
   const withOverlay = overlay ? enrichDictionary(dictionary, overlay) : dictionary;
+  if (!applyCorrections) return withOverlay;
   // A researcher's saved question-type correction (Import screen) applies
   // here too, not only to the report shown on that screen: this is the one
   // place crosstab building, the categories list and the variable picker

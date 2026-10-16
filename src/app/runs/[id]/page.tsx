@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { withTenant, withTenantRead } from "@/lib/db";
+import { loadImportQuestionDefinitions } from "@/lib/importQuestionDefinitions";
 import { extractFindingsFromDocument, readContextDocument } from "@/lib/extractFindings";
 import { findingProvenanceAvailable } from "@/lib/findingProvenance";
 import { processTableDocument } from "@/lib/documentTables";
@@ -3265,6 +3266,9 @@ export default async function RunPage({
   // file, not only ones too wide to store whole, so these are loaded for
   // every raw document shown here (a single small jsonb read each).
   const rawDocIds = [...new Set(importQualityBase.filter((t) => t.ingestion_type === "raw").map((t) => t.document_id))];
+  const questionDefinitionsByDoc = new Map(await Promise.all(rawDocIds.map(async documentId =>
+    [documentId, await loadImportQuestionDefinitions(TENANT_ID, id, documentId)] as const,
+  )));
   const overridesByDoc = new Map(
     await Promise.all(
       rawDocIds.map(
@@ -3353,7 +3357,8 @@ export default async function RunPage({
         unmatchedLabelVariables: labelDiagnosticsByDoc.get(t.document_id)?.unmatched ?? [],
         fullyCovered: !!full,
         stated: statedRoutingByDoc.get(t.document_id) ?? [],
-        questionTypeByVariable: full?.questionTypeByVariable,
+        questionTypeByVariable: questionDefinitionsByDoc.get(t.document_id)?.types ?? full?.questionTypeByVariable,
+        questionTypeError: questionDefinitionsByDoc.get(t.document_id)?.error,
         overrides: overridesByDoc.get(t.document_id),
         canonicalNameByHeader: canonicalMapByDoc.get(t.document_id)?.map,
         claimedCanonicalNames: canonicalMapByDoc.get(t.document_id)?.allNames,
