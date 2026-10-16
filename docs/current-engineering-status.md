@@ -77,3 +77,30 @@ Final finite native checks, evidence retention and owned-resource shutdown compl
 Cleanup completed after retention: all referenced objects from the remaining stacks (31) retained without missing objects; earlier stacks separately retained. Disposable database dumps and password-free role evidence are local.31 verified owned stack processes stopped, labelled test container stopped/removed, and0 listeners remained on recorded app/storage/replay/gateway/database ports. Frozen source copies and generated evidence remain local, excluded from Git.
 
 Final reviewed source checkpoint: `17833030c1647706322050f5b17cb0eed3cc9cc5` on `checkpoint/trust-hardening-20261016`.32 follow-up paths; exact staged scope/secret check clean; authoritative lockfile unchanged; no generated/runtime evidence or parked hydration bytes staged. Final production build completed successfully against migrated synthetic DB (existing unpdf/import.meta dependency warning retained). All source changes committed; unrelated pre-existing untracked evidence remains local. This status-only recording does not change tested application bytes.
+
+
+## Conditional exclusion guard — 2026-10-16
+
+Grant's exclusion is conditional on detection, not documentation alone. The engine now inspects
+other workbook sheets before flipping and refuses declared weights/MR sets, including role-based
+weight declarations and hyphenated MR headers. Dictionary, categories, crosstab and driver requests
+share that reader, so they cannot silently substitute an unweighted or ungrouped result. The error
+names the sheet and directs a row-per-respondent re-export retaining definitions, reupload and
+verification of weights/MR setup. Label-only and empty-definition controls remain allowed; metadata
+read failure fails closed. Flipped caches older than dictionary10 require reinspection; failed
+upgrade preserves the prior cache/corrections and visibly refuses.
+
+Focused final checks:16 passes/3 explicit skips across actual-engine orientation/refusal and
+actual-PostgreSQL cache upgrade/recovery tests. Five metadata fixtures exercise all four analytical
+entry points (20 refusal assertions), label-only/empty controls and corrected-layout recovery.
+User-facing Limits and raw-data guidance disclose exclusion and recovery. Full support remains
+backlog work. No native browser run or new paid model call was needed for this engine boundary.
+Earlier full-gate attempts retained the test-regex target error and isolated cluster authentication
+setup failures; neither is relabelled green. The final configured gate result is recorded below.
+
+Final guard validation:107 files/805 passes/33 explicit skips, route type generation and full
+typecheck pass. Required actual PostgreSQL/Python suites ran with no NOT RUN placeholders
+(`repair7/flipped-codebook-guard-validate-pass.log`). The final focused run passes16 checks with
+3 explicit skips. The owned guard-test database was retained without role passwords and stopped.
+No model spend, push or deployment; Claude remains paused. These are Codex self-validation
+results. Full separate-Codebook/flip support remains excluded and in the backlog.

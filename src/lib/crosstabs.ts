@@ -196,13 +196,15 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * negative. A version-7 cache of such a file may list an identifier as numeric, so it is rebuilt
  * from the file on its next read; rows-as-cases typing did not change, so its version-7 caches stay
  * valid except for SAV/ZSAV: version 9 preserves their user-missing declarations in the audit.
+ * Version10 rechecks flipped workbooks for unsupported separate-Codebook weight/MR definitions,
+ * so an older dictionary cannot bypass the refusal by serving already-cached variable metadata.
  * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
-  return layout === "columns_are_cases" ? 8 : 7;
+  return layout === "columns_are_cases" ? 10 : 7;
 }
 
 async function buildVariableDictionaryForSetup(

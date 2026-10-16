@@ -162,7 +162,7 @@ print(json.dumps(out))
     for (const k of ["full", "gap", "mixed_sign", "edge"]) {
       const flipped = byCase(k);
       const rows = out[`${k}/rows_are_cases`];
-      expect(flipped.version).toBe(9);
+      expect(flipped.version).toBe(10);
       for (const [c] of flipped.codes) expect(c.startsWith("-") && k !== "mixed_sign" && k !== "edge", `${k}: ${c}`).toBe(false);
       // Same values and type as the rows-as-cases read. (A blank cell is a separate, unchanged
       // rows-as-cases difference: there it is listed as an empty code, here as missing.)

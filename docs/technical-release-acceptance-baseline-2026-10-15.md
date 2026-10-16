@@ -42,7 +42,7 @@ Routine repairs within the agreed contract proceed without repeated planning app
 
 Latest authorities: [workflow/tenant review](workflow-tenant-staged-review-2026-10-16.md) (WT), [engine review](staged-engine-identity-review-2026-10-16.md) (EI), [exportfix64](exportfix64-consolidated-review-2026-10-16.md) (EX), [stable77](repair6-consolidated-review-2026-10-16.md) (R77), [final68](trust-final68-review-2026-10-16.md) (F68). E/T/A coverage means the existing [closing checklist](../scripts/workflow-tenant-review/repair-closing-checklist.md); these are test labels, **not new defect IDs**. Owners below distinguish implementation (Claude), independent verification (Codex), and release/deployment decisions (Grant). Assignment does not authorise execution or deployment.
 
-**Codex integration milestone:** Repair7 is integrated after matching27 released base/archive hashes. Claude remains paused; implementation ownership labels below are superseded by [the explicit handoff](agent-handoff.md). Codex follow-up fixes are **self-validation**, not independent closure. [Shared status](current-engineering-status.md) records799passed/33skipped, final build, native replay/downloads, upload cleanup fault/retry, objective/business transitions and representative body/design handovers. Approved scope is20,000,000bytes and100,000cases/file; exact/one-over/recovery and two concurrent native exact-limit imports pass. SAS is excluded pending verification. The43-row partition remains unchanged pending required independent evidence/disposition; historical failed invocations are retained.
+**Codex integration milestone:** Repair7 is integrated after matching27 released base/archive hashes. Claude remains paused; implementation ownership labels below are superseded by [the explicit handoff](agent-handoff.md). Codex follow-up fixes are **self-validation**, not independent closure. [Shared status](current-engineering-status.md) records805passed/33skipped, final build, native replay/downloads, upload cleanup fault/retry, objective/business transitions and representative body/design handovers. Approved scope is20,000,000bytes and100,000cases/file; exact/one-over/recovery and two concurrent native exact-limit imports pass. SAS is excluded pending verification. The43-row partition remains unchanged pending required independent evidence/disposition; historical failed invocations are retained.
 
 ### 1. Demonstrated defects requiring repair
 
@@ -386,3 +386,10 @@ exclusion of columns-as-cases workbooks requiring a separate Codebook for weight
 The primary TaskB combination remains unverified; controls are not substitutes. User-facing
 import guidance records these boundaries. Separate deployed security/process gates remain.
 Cumulative model spend:US$3.817316 ofUS$10; gateway disabled/stopped and key cleared.
+
+
+Conditional exclusion follow-up: flipped workbooks with separate Codebook weight/MR declarations
+are refused at the shared engine read boundary, with visible re-export/reupload/setup-verification
+recovery. Dictionary10 requires reinspection of older flipped caches. User-facing Limits records
+the exclusion; full support remains backlog work. Focused actual-engine and disposable-DB checks
+are recorded as Codex self-validation in the existing shared status; no43-row closure is inferred.

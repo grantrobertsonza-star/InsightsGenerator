@@ -18,6 +18,14 @@ multiple-response metadata pending verification. The primary Task B fixture and 
 conditional-inference, small-base and downstream model chain remain unverified; passing control
 datasets are not substitutes. Import guidance discloses the boundary.
 
+The engine inspects all other sheets before flipping or matching metadata to case-column names.
+Nonempty weight/MR declaration columns, weight roles and explicit weight-variable declarations
+refuse dictionary/category/driver reads with a row-per-respondent re-export recovery message.
+Empty declarations and label-only sheets remain allowed. Unreadable metadata fails rather than
+being treated as absent. Dictionary10 is the minimum for flipped files so older saved dictionaries
+cannot bypass this guard; ordinary row-oriented and SAV missing-audit minimums remain unchanged.
+Full support for retargeting separate-Codebook research metadata remains backlog work.
+
 SAV/ZSAV readers retain formal missing declarations through metadata-only user-missing access,
 while the data reader continues masking those values. Dictionary version9 is required only for
 those formats; rows-oriented CSV/XLSX caches need not be reparsed for this metadata fix. Failed

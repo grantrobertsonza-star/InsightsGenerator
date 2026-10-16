@@ -7,7 +7,7 @@ import { PYTHON } from "./helpers/pythonEngine";
 // replaced, by a stub that returns that real engine output and records each call.
 //   - a version-7 cache of a columns-as-cases file (identifier typed as a number, as the old flip
 //     typing left it) is not reused: the engine is called, the identifier comes back as text, and
-//     the version-8 result replaces the cache; the next read reuses it without an engine call
+//     the current-version result replaces the cache; the next read reuses it without an engine call
 //   - the researcher's saved correction (documents.variable_overrides) is unchanged by the rebuild
 //     and still read back after it, as after a reload
 //   - a version-7 cache of a rows-as-cases file is still reused (its typing did not change)
@@ -74,7 +74,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     run = (await db.pool.query(`insert into runs (tenant_id, project_name) values ($1, 'P') returning id`, [tenant])).rows[0].id;
 
     const fresh = realDictionary(WIDE, "columns_are_cases") as { version: number; variables: Variable[]; layout?: string };
-    expect(fresh.version).toBe(9);
+    expect(fresh.version).toBe(10);
     expect(variable(fresh, "RespID")).toMatchObject({ numeric: false, text: true });
     // What the old engine cached for this file: version 7, the identifier typed as a number.
     const stale = structuredClone(fresh) as typeof fresh;
@@ -117,7 +117,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     expect(variable(first as unknown as { variables: Variable[] }, "RespID")).toMatchObject({ numeric: false, text: true });
 
     const stored = (await db.pool.query(`select variable_dictionary, variable_overrides from documents where id = $1`, [flippedDoc])).rows[0];
-    expect(stored.variable_dictionary.version).toBe(9);
+    expect(stored.variable_dictionary.version).toBe(10);
     expect(stored.variable_overrides).toEqual(correction);
 
     // As after a reload: the cache is now current, so no engine call, and the correction reads back.
@@ -134,17 +134,17 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     expect(engineCalls.length).toBe(before);
     expect((d as unknown as { version: number }).version).toBe(7);
     expect(minimumDictionaryVersion("rows_are_cases")).toBe(7);
-    expect(minimumDictionaryVersion("columns_are_cases")).toBe(8);
+    expect(minimumDictionaryVersion("columns_are_cases")).toBe(10);
     expect(minimumDictionaryVersion("rows_are_cases", "declared.sav")).toBe(9);
     expect(minimumDictionaryVersion("rows_are_cases", "ordinary.csv")).toBe(7);
   });
 
-  it("failed upgrade preserves the old cache and correction, then a retry repairs typing", async () => {
+  it("a pre-guard version9 cache cannot bypass reinspection; failed upgrade preserves corrections and retry recovers", async () => {
     const { loadVariableDictionary } = await import("../crosstabs");
     const file = `${tenant}/${run}/wide.csv`;
     const fresh = engineOutput.get(file);
     const old = structuredClone(fresh) as { version: number };
-    old.version = 7;
+    old.version = 9;
     await db.pool.query("update documents set variable_dictionary = $2 where id = $1", [flippedDoc, JSON.stringify(old)]);
     engineOutput.delete(file);
     await expect(loadVariableDictionary(tenant, run, flippedDoc)).rejects.toThrow(/no engine output/);
@@ -154,7 +154,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     engineOutput.set(file, fresh);
     await loadVariableDictionary(tenant, run, flippedDoc);
     const retried = (await db.pool.query("select variable_dictionary, variable_overrides from documents where id = $1", [flippedDoc])).rows[0];
-    expect(retried.variable_dictionary.version).toBe(9);
+    expect(retried.variable_dictionary.version).toBe(10);
     expect(retried.variable_overrides).toEqual(correction);
   });
   it("Import retains the original group definition while corrected calculations and clear/retry use one authoritative dictionary", async () => {

@@ -10,6 +10,15 @@ export default function LimitsPage() {
         with knowing exactly where that trust should stop.
       </Lede>
 
+      <H2>Initial import exclusions</H2>
+      <P>
+        SAS files and columns-as-cases workbooks with a separate Codebook declaring weights or
+        multiple-response sets are excluded pending verification. The latter combination is refused
+        before analytical results are produced. Re-export with one row per respondent, retain the
+        Codebook definitions, upload again and verify the weight and multiple-response setup.
+        Removing those definitions to bypass the check is not a supported recovery.
+      </P>
+
       <H2>No memory across engagements, yet</H2>
       <P>
         Checking happens within a single run, against the material you&apos;ve supplied for that run.

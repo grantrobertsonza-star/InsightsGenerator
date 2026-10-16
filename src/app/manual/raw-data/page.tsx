@@ -52,6 +52,9 @@ export default function RawDataPage() {
         Initial release scope excludes columns-as-cases workbooks that require a separate Codebook
         to define weights or multiple-response sets, pending verification. Those definitions must
         not be assumed absent or replaced with an unweighted calculation.
+        The app refuses analytical requests when that separate sheet declares those definitions.
+        Re-export with one row per respondent and retain the Codebook, then upload again and
+        verify the weight and multiple-response setup before calculating.
       </P>
       <P>
         If your raw data comes from labelled statistical software, a <code>.sav</code> or <code>.dta</code> file (SAS is excluded pending verification), the app reads it directly, including the variable labels (so a

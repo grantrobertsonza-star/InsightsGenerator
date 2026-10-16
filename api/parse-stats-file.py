@@ -280,8 +280,8 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 8: columns-as-cases files typed per variable after the flip (_flip_types): exact large integers,
 #    identifiers kept literally. Only that layout's cached copies need rebuilding; crosstabs.ts asks
 #    for 8 there and still accepts 7 for rows-as-cases, whose typing did not change.
-DICTIONARY_VERSION = 9
-ENGINE_VERSION = "2026.10.16-11"  # preserves SAV missing declarations while retaining masked data
+DICTIONARY_VERSION = 10
+ENGINE_VERSION = "2026.10.16-12"  # refuses unsupported flipped workbook research metadata
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -521,7 +521,7 @@ def _excel_labels(xl, other_sheets, data_columns, numeric_cols):
 _CB_VAR_RE = re.compile(r"variable", re.I)
 _CB_LABEL_RE = re.compile(r"label|question|wording|description", re.I)
 _CB_CODES_RE = re.compile(r"response code|value code|missing value|coded value|value label", re.I)
-_CB_SET_RE = re.compile(r"multiple response|mr ?set|multi.?response|question group", re.I)
+_CB_SET_RE = re.compile(r"multiple[ _-]?response|mr ?set|multi.?response|question group", re.I)
 # Finds "N=label" entries in a packed codes cell such as
 # "0=Not selected; 1=Selected" or "0=None of listed brands used. 1=Platō Coffee.
 # 2=Mugg & Bean", splitting on whichever separator (; or .) sits before the
@@ -543,6 +543,40 @@ def _parse_code_entries(text):
         except ValueError:
             continue
     return out
+
+
+def _refuse_flipped_codebook_metadata(xl, other_sheets):
+    """Inspect before matching variable names: pre-flip names are case IDs, not variables."""
+    import pandas as pd
+
+    for sheet in other_sheets:
+        raw = xl.parse(sheet, header=0, dtype=object)
+        columns = {str(c).strip().lower(): c for c in raw.columns}
+        metadata_columns = [
+            c for name, c in columns.items()
+            if _CB_SET_RE.search(name) or re.search(r"\bweights?\b|weighting", name)
+        ]
+        # A role/type column can declare a weight without a dedicated Weight column.
+        role_columns = [c for name, c in columns.items() if re.search(r"role|type|purpose", name)]
+        variable_columns = [c for name, c in columns.items() if _VAR_COL_RE.match(name)]
+        declared = any(
+            not pd.isna(value) and str(value).strip().lower() not in ("", "none", "no", "false", "n/a", "na", "-")
+            for c in metadata_columns for value in raw[c]
+        ) or any(
+            not pd.isna(value) and re.search(r"\bweights?\b|weighting|multiple.response|mr.?set", str(value), re.I)
+            for c in role_columns for value in raw[c]
+        ) or any(
+            not pd.isna(value) and re.fullmatch(r"weight(?:_var(?:iable)?)?|wgt|case_weight|survey_weight", str(value).strip(), re.I)
+            for c in variable_columns for value in raw[c]
+        )
+        if declared:
+            raise ValueError(
+                f'Unsupported flipped workbook: separate Codebook/metadata sheet "{sheet}" declares '
+                'weights or multiple-response sets. No analytical result was produced. '
+                'Re-export as one row per respondent with the Codebook definitions retained, '
+                'then upload again and verify the weight and multiple-response setup. '
+                'Full support for this combination is pending verification.'
+            )
 
 
 def _excel_codebook(xl, other_sheets, data_columns):
@@ -1013,6 +1047,12 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         else:
             candidates = [n for n in sheets if not _DICT_SHEET_RE.search(n)] or sheets
             data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
+        if layout == "columns_are_cases":
+            try:
+                _refuse_flipped_codebook_metadata(xl, [n for n in sheets if n != data_sheet])
+            except Exception:
+                xl.close()
+                raise
         # IMP-003: same reasoning as the CSV branch above - xl.parse(..., header=0) would let
         # pandas mangle a duplicate header to its own "name"/"name.1" convention before this
         # file's own _dedupe_header_names ever ran. header=None + nrows=1 reads the header
@@ -1086,8 +1126,8 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         # instead of silently reading the original, unflipped orientation as before this fix.
         # Any variable/value labels read above came from the ORIGINAL (pre-flip) column names and
         # are not re-targeted at the new ones; a workbook that both needs this flip and carries a
-        # separate codebook sheet is a narrow enough combination that this is a known, documented
-        # gap rather than a blocker on the much more common single-orientation-mismatch case.
+        # separate Codebook declaring weights/MR is refused above until metadata retargeting is
+        # supported; a label-only sheet does not claim those research definitions.
         key_col = df.columns[0]
         # Same collision this file's plain-header renamer had (see the `used` set above): counting
         # occurrences of a base name alone can generate "X (2)" for a second "X" even when a real,

@@ -83,7 +83,7 @@ describe.skipIf(!PYTHON_OK)("IMP-015: conflicting label definitions (actual engi
     expect(code1).toMatchObject({ variable: "q", keptSheet: "Labels B", discardedSheet: "Labels A", resolution: "shown_as_conflict" });
     const code2 = c.labelConflicts!.find((x) => x.kind === "value_label" && x.value === 2)!;
     expect(code2).toMatchObject({ keptSheet: "Labels B", discardedSheet: "Labels A" });
-    expect(c.version).toBe(9); // Current dictionary release includes exact flipped identifier typing.
+    expect(c.version).toBe(10); // Current dictionary release includes exact flipped identifier typing.
   });
 
   it("control: one label sheet keeps its labels, no conflict, and the question is not titled with an answer label", () => {

@@ -99,6 +99,54 @@ const probe = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], {
 const PYTHON_OK = probe.status === 0;
 
 describe.skipIf(!PYTHON_OK)("IMP-009 (b): the actual engine reads both orientations identically", () => {
+  it("refuses flipped separate-Codebook weight/MR declarations before dictionary, categories or driver results; corrected re-export recovers", () => {
+    const source = String.raw`
+import importlib.util, io, json, sys
+from openpyxl import Workbook
+spec=importlib.util.spec_from_file_location("engine",sys.argv[1]); eng=importlib.util.module_from_spec(spec); spec.loader.exec_module(eng)
+def book(metadata, flipped=True):
+    wb=Workbook(); ws=wb.active; ws.title="Data"
+    rows=([["Variable","Case1","Case2"],["q",1,2],["wgt",1,2]] if flipped else [["q","wgt"],[1,1],[2,2]])
+    for row in rows: ws.append(row)
+    if metadata is not None:
+        cb=wb.create_sheet("Codebook")
+        for row in metadata: cb.append(row)
+    b=io.BytesIO(); wb.save(b); return b.getvalue()
+declarations=[
+ [["Variable","Multiple response set"],["q","Preferences"]],
+ [["Variable","Multiple-response set"],["q",0]],
+ [["Variable","Weight"],["q","wgt"]],
+ [["Variable","Role"],["wgt","case weight"]],
+ [["Variable","Variable label"],["wgt","Analysis weight"]],
+]
+errors=[]
+for metadata in declarations:
+    b=book(metadata)
+    calls=[lambda:eng.dictionary(b,"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data"}),
+           lambda:eng.categories(b,"guard.xlsx","q",layout="columns_are_cases",selected_sheet="Data"),
+           lambda:eng.driver_columns(b,"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data","outcome":"q","predictors":["wgt"]}),
+           lambda:eng.crosstab(b,"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data","columnVars":["wgt"],"rowItems":[{"key":"q","label":"Question","vars":["q"]}]})]
+    for call in calls:
+        try: call(); raise AssertionError("silently produced unsupported analytical output")
+        except ValueError as e: errors.append(str(e))
+# Empty declarations and label-only sheets do not claim weight/MR meaning.
+controls=[None, [["Variable","Multiple response set","Weight"],["q",None,None]], [["Variable","Variable label"],["q","Question"]]]
+counts=[eng.dictionary(book(m),"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data"})["nCases"] for m in controls]
+# Recovery uses the same filename: a refusal must not poison the parsed-data cache.
+recovered=eng.dictionary(book(declarations[0],False),"guard.xlsx",{"layout":"rows_are_cases","selectedSheet":"Data"})
+print(json.dumps({"errors":errors,"counts":counts,"recovered":recovered["nCases"]}))
+`;
+    const dir = mkdtempSync(path.join(tmpdir(), "imp009-guard-"));
+    const file = path.join(dir, "guard.py"); writeFileSync(file, source);
+    const result = spawnSync(PYTHON, ["-I", file, ENGINE], { encoding: "utf8", timeout: 120_000 });
+    if (result.status !== 0) throw new Error(result.stderr);
+    const output = JSON.parse(result.stdout.trim().split("\n").pop()!);
+    expect(output.errors).toHaveLength(20);
+    for (const message of output.errors) expect(message).toMatch(/Unsupported flipped workbook.*No analytical result.*Re-export as one row per respondent/);
+    expect(output.counts).toEqual([2, 2, 2]);
+    expect(output.recovered).toBe(2);
+  });
+
   it("variables, case counts and category counts match", () => {
     const driver = String.raw`
 import importlib.util, io, json, sys
