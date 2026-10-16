@@ -605,3 +605,79 @@ See `docs/validation.md`, section "App-owned browser checks". In short:
 3. `E2E_NEXT_START=<built copy> E2E_STORAGE_PORT=39123 E2E_ADMIN_DATABASE_URL=... npm run e2e:stack`.
 4. `GOLDEN_SMOKE_TARGET_MANIFEST=e2e-results/target-manifest.json npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1`, then the smoke, adapter (with `TASK_B_FIXTURE_DIR`) and objective-script commands above.
 5. Stop the stack with Ctrl+C (or SIGINT to its PID) and confirm no `ie_e2e_*` database or role remains.
+
+## Codex independent review of overnight HEAD 0b7fb30 — 2026-10-16
+
+Accepted the clean tracked release at 0b7fb30819dea22de20583069c71adf687a514d3 and recorded CODEX_WORKING before review. Reviewed the 43-path difference from 4ba581d, including 7a6ab5d, a00dc0c, d72b150, 110183a and d5cbc6f. Application source remains read-only. No author/history rewrite, push, deployment or paid model call. This review is an active execution, not a configured recurring task.
+
+### Independently executed checks
+
+Local evidence: scripts/workflow-tenant-review/overnight-codex/. The isolated source copy excludes environment files, reuses installed dependencies through a junction and changes only native fixture-generator calls from python3 to the installed python command. PostgreSQL is a new labelled loopback container on 55515 (17.11, not the reported cloud PG16); browser app port 3234 uses webpack development mode, a nonowner disposable role, synthetic data, local storage stand-in and explicit model replay. No development or hosted services are targets.
+
+- focused.log: four suites, 9 passes / 2 inactive placeholders skipped. Real narrative generator persistence stores the wrong-group draft needs_review and the correct group traced; the loader projects it. Conflicting duplicate validations refuse and preserve the prior batch; identical repeats deduplicate; distinct new wording establishes that valid indices alongside extras publish the new batch. Actual coverage component and action-failure helper pass.
+- affected.log: five suites, 18 passes / 3 inactive placeholders skipped. Actual objective recovery/review persistence, human provenance and hydration guards retain their scoped passes.
+- semantic.log: narrativeFigureTrace, 22 passes. The other supplied filename filters matched no suite and are not additional executed coverage.
+- identity.log: three suites, 31 passes for response selection and evidence identity. Earlier independent 34cb123 raw-identity/multiplicity/output dispositions remain preserved; no legacy backfill is inferred.
+- native-tests-attempt2.log: six native checks pass: coverage degradation/reload/healthy reassessment; corrected-group calculation and clearing/reload; zero-progress write refusal/reload followed by exactly one computed retry; evidence editor refusal/retry; Review refused actions/draft preservation; Setup refused edit/delete/draft preservation/retry. Scripted planner/coverage answers are disclosed and are not provider-quality results.
+
+The first native invocation ran before the target manifest existed and executed no checks (native-tests.log). It remains a setup failure. Attempt 2's log records six passes; its PowerShell wrapper returned 1 after stderr warning formatting, so the browser report, rather than that wrapper code alone, establishes the six test outcomes. No full 833-test/build or production concurrency rerun is claimed here.
+
+### Evidence and code review findings
+
+1. **IMP-010 regression evidence overclaims no reparse (deferrable evidence gap).** e2e/ui/raw-file-reopen.check.mjs records id, created_at and row count and says a reread replaces the table. Actual src/lib/documentTables.ts uses ON CONFLICT DO UPDATE, deliberately preserving id and creation time; an identical reread also preserves count. Production action-name logging is expressly absent. Therefore those assertions cannot establish the production no-reparse claim. Keep bounded-preview/count assertions; correct the comment and observe parser/read calls or storage reads directly, or use another demonstrated signal that changes on every read. This is not evidence that the application reparses.
+2. **Existing locale hydration mismatch, separate from the overnight repair results.** src/app/runs/[id]/TranscriptSetup.tsx:265 renders toLocaleDateString() without an explicit locale. The native app log shows server 2026/10/16 versus browser 10/16/2026, and React regenerates the client tree. The affected native assertions still pass; no lost work or incorrect statistic is established by this observation. A bounded presentation correction should render a deterministic date and verify different server/browser locales. Do not count it as a new canonical row or infer a new release blocker without a material supported-workflow consequence.
+
+The installed Next 16.3.6 error-file guide explicitly supports retry (stable since 16.3.0); the new boundary uses that API correctly. Changed UI delegates persistence/statistics to existing lib actions. attempt handles rejecting void actions; inspected call sites do not incorrectly feed resolved failure-result actions into it. The Setup result wrapper uses the existing authoritative edit implementation. The wave state adjustment remains conditional on a changed source wave; the polled-time change compares against the successful response timestamp. No measured performance improvement or whole-codebase maintainability certification is inferred from these lint changes. Existing lint-policy decisions remain explicit.
+
+### Four smaller limits — updated independent disposition
+
+| Scope | Disposition |
+|---|---|
+| OBJ-REV-004 direct overview Accept/status comparison | Earlier independent finite accepted-state boundary preserved; new refused-edit controls pass. No all-state UI permutation claim. |
+| IMP-005 group calculation | **Verified at the supplied native fixture scope:** saved single-question correction computes code 1 at 60%; clear/reload restores the imported MR set and its 60% member; prior corrected table is visibly outdated. |
+| OBJ-REV-012 coverage warning | **Repaired and independently verified:** actual permission failure persists degradation; coverage renders it after reload; healthy reassessment clears it without changing conclusion/status. Prior qualified DOCX/PPTX evidence preserved. |
+| OBJ-REV-013 computed native retry | **Verified at the disclosed native scripted-planner scope:** write refusal leaves zero durable answers/pending work, reload retains Continue, healthy retry computes exactly one current result and clears pending. Failed-action-round and 60-round-cap branches remain unexecuted UI limits, distinct from this passing persistence-stall case. |
+
+No automatic canonical status/count promotion: 12 Closed / 18 Awaiting / 2 Confirmed / 5 Untested / 6 Blocked = 43, priorities 34/9/0. Overall acceptance remains incomplete. The original IMP-017 v12 failure and unproven cause, failed Probe B browser PPTX event, HTTP continuations, approved exclusions, historical definitions, numeric-only scale policy, M04, hosted storage/identity/deployed-role/runner security and real Office/model boundaries all remain explicit. A successful later run never turns a failed invocation into a pass.
+
+### Affected-row disposition after the overnight independent review
+
+| Existing row | Independent disposition and remaining limit |
+|---|---|
+| IMP-004 | Earlier saved scale/missing-audit evidence preserved. Numeric-only scale mean remains an owner policy decision, not a newly demonstrated arithmetic failure. |
+| IMP-005 | New group-calculation and clear/reload assertion verified above. Prior downstream correction/human-work boundaries preserved. |
+| IMP-007 | Earlier actual DB cleanup scope preserved; hosted storage authorisation remains external. New native recovery outcome is reported separately below. |
+| IMP-009 | Prior identity/cache/excluded-Codebook refusal dispositions preserved; no additional support for the excluded combination. |
+| IMP-010 | Bounded preview/count check assessed separately below. Production no-reparse proof remains insufficient; >100 MB trimmed-wide branch unexecuted. Deferrable. |
+| IMP-015 | New Excel conflict-label and saved-content assertion assessed separately below; no automatic pre-dictionary notice or in-place replacement claim. |
+| IMP-017 | Unresolved original v12 outcome/cause remains failed/unknown as previously reconciled. New production concurrency checks are inspected Claude evidence, not an independently re-executed hosted capacity certification. Safe failed-or-complete checks do not prove every exact-limit request completes. |
+| IMP-018 | Valid/truncated SAV and DTA, visible reload error, no partial table, supported deletion/reupload and recovered calculation independently pass together in this review. SAS exclusion preserved. |
+| OBJ-SET-001 | Refused Setup/Review editing and draft recovery independently verified; prior cross-module identity chain preserved. |
+| OBJ-SET-002 | Earlier independent DB concurrency/fallback scope preserved; no reopened REV-009 matrix. |
+| OBJ-SET-003 | New native regeneration independently passes with fixture-supplied usable answers, rejected wording retained, edited own wording retained, deleted own objective absent and original brief unchanged. |
+| OBJ-SET-M02 | New marker-variant native dual-module edit/delete/reload independently passes with stable identities. Historical normalization harness hashes and any unexecuted variants remain explicit, not additional defects. |
+| OBJ-REV-004 | New refused-save/draft preservation and regeneration assertions verified; prior whitespace rejection controls preserved. |
+| OBJ-REV-005 | New-conclusion multiplicity qualification and legacy-rerun requirement preserved from the prior independent review. No multiplicity-adjusted intervals claimed. |
+| OBJ-REV-006 | Previous durable raw-identity and explicit/ambiguous selector evidence preserved; 10 selector controls pass again. Historical inconclusive provider attempt remains inconclusive. |
+| OBJ-REV-007 | Actual edit/source-removal protocol controls and native refused question-edit/leave-out/recovery pass. |
+| OBJ-REV-008 | Real-DB duplicate conflict/preservation and distinct-wording extras publication independently pass. |
+| OBJ-REV-012 | Coverage warning defect repaired and independently verified above; prior nonowner, reload and output evidence preserved. |
+| OBJ-REV-013 | Native computed persistence retry independently verified. Failed-action-round and 60-round guard are still code-inspected, not executed native assertions. |
+| OBJ-REV-M04 | Deferred guard/load-failure documentation and execution limits preserved. |
+| Business-decisions remainder | Native refused list/card paths exercised by review-action-failure pass at their supplied scope. This does not establish every mutation's post-commit refresh-failure reconciliation. Prior finite transitions/provenance preserved. |
+| FND-001 / REP-OUT-001 | Real generator plus PostgreSQL wrong-group qualification/right-group traced control independently verified; 22 figure controls pass. Qualified save is not refusal. Prior handover results remain; failed Probe B browser deck event is not replaced by its successful HTTP continuation. |
+| ANA-NPS-003 downstream handover | Previous independent design-trigger/output fixture disposition preserved. No further model or all-consumer certification added. |
+
+All twelve closed rows retain their agreed finite closures; no unaffected row is reopened. Five missing historical definitions, approved SAS/flipped-Codebook exclusions, design-only Research Quality Review, Office rendering limits and deployed security/process requirements remain as previously disposed. The above are evidence-level dispositions, not a silent rewrite of the canonical partition.
+
+### Final native continuation and resource disposition
+
+remainders.log records 7 passes, confirmed Playwright exit code 0: SAV/DTA valid/truncated/replacement; marker dual-UI lifecycle; native usable-answer regeneration; raw bounded preview and true count; reference mean/top-box/share saved-table content after reload; conflicting labels in Excel and saved-table reload; upload drops both before and after storage followed by healthy exactly-once retry. The raw-file check also observes absence of the named readDataFileAction in development logs; that narrows this independent no-read observation to the dev/action boundary and does not repair the production identity-only proof described above.
+
+Across the distinct targeted suites: **80 passed / 5 explicit inactive placeholders skipped**; native **13 passed** across two invocations. The earlier standalone 6 rendering/helper passes overlap focused.log and are not added again. Full validation/build, production concurrent limits, smoke and adapter matrices were not independently rerun in this review. Their unchanged reported evidence is preserved at its original authorship/scope.
+
+Thus IMP-004 saved reference-content, IMP-007 local failure/retry, IMP-015 conflict-label Excel/reload and IMP-018 supported format recovery gain independent native evidence at the supplied scopes. IMP-010 gains a native bounded preview/count pass and dev named-action no-read observation; the production no-reparse test limitation and trimmed-wide branch stay deferred. No required missing assertion is silently closed.
+
+Eleven complete synthetic storage objects and inventory/checksums, a password-free database dump, logs and the final browser JSON report are retained locally. The initial source-copy attempt was denied Temp filesystem access; an explicitly scoped escalated copy succeeded (environment failure, no application result). The verified PID tree and labelled codex-overnight-review-20261016 container were stopped after retention; ports 3234/55515/63772 have no listeners. No development services were stopped. Model replay shutdown log was not produced by forced process shutdown; do not cite one as retained evidence. No paid calls; cumulative US$3.817316 unchanged.
+
+Codex releases the bounded follow-up to Claude through the handoff: correct/strengthen the raw-file proof and address the deterministic date rendering observation with targeted evidence, then only specifically missing failed-round/guard assertions if feasible. No full audit or repeated closed matrices. Overall acceptance remains incomplete, with unchanged 43-row counts.

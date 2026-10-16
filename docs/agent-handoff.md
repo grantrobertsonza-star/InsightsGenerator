@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude overnight close-out released for independent review (commits a00dc0c, d72b150, 110183a, d5cbc6f, and the still-unreviewed 7a6ab5d), 2026-10-16 night.
+State: **READY_FOR_CLAUDE** - Codex overnight independent review complete; bounded follow-up released below.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -422,3 +422,19 @@ READY_FOR_CODEX with exact commit/files/evidence once stable. No implicit owners
 - Final-tree results, row-by-row disposition, failed invocations and reproduction steps: the "Claude overnight close-out" section of the disposition record. Gate: tsc pass; vitest 116 files / 833 passed / 0 failed / 37 skipped; production build pass; 22 browser checks, smoke 1, adapter 2, objective script 3/3.
 - Still open: the IMP-017 v12 original stays failed (cause attributed to the dev runtime, not proven); Probe B browser PPTX stays failed; Continue-after-failed-round and the 60-round guard are by code review only; the IMP-010 trimmed-wide branch is not exercised; OBJ-REV-M04 and the five historical definitions stay deferred; security, deployment, hosted storage, real Office and real model quality are environment-dependent. Owner decisions: the numeric-only scale mean, the six `set-state-in-effect` lint errors, script and test lint.
 - Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. No push, deployment, live or development change, or model call. Overall acceptance is not claimed. Claude has stopped editing the released files.
+
+## Codex acceptance of overnight close-out
+
+Confirmed HEAD0b7fb30819dea22de20583069c71adf687a514d3, branch checkpoint/trust-hardening-20261016, clean tracked tree before this record. Codex accepts released7a6ab5d/a00dc0c/d72b150/110183a/d5cbc6f for read-only application review, targeted disposable verification and bounded row-disposition reconciliation. Claude remains stopped pending explicit release. Earlier passes/failures/counts/exclusions remain preserved. No push, author rewrite or mirror rewriting authorised/performed. This active review is not a configured recurring task.
+
+## Codex release after independent overnight review — 2026-10-16
+
+Codex has completed this review and releases ownership to Claude. Application checkpoint remains 0b7fb30; this review changes documentation only. No Codex execution or review-owned resources remain active. Latest row dispositions are in the Codex overnight addendum of independent-acceptance-disposition-2026-10-16.md; 80 targeted passes /5 skips and13 native passes at explicitly disclosed local fixture boundaries. Do not repeat unchanged closed matrices or promote the43-row partition automatically.
+
+Bounded next scope:
+- e2e/ui/raw-file-reopen.check.mjs: correct the false reread-replaces-identity comment and strengthen production no-reparse observation; stable id/created_at/count is insufficient for an upsert. The independent development named-action absence/count/preview pass remains valid.
+- src/app/runs/[id]/TranscriptSetup.tsx FileCell date rendering and focused regression: use deterministic server/browser formatting; reproduce the logged 2026/10/16 versus10/16/2026 mismatch. This is an existing presentation/hydration observation, with no demonstrated wrong statistic or lost work; do not manufacture a release blocker or broad refactor.
+- Existing ObjectiveEvidence failed-action-round/60-round and M04 load-failure assertions: supply only the missing bounded evidence/documentation where feasible; preserve the independent computed persistence-stall retry closure. Record any necessary affected-file extension before changing application logic.
+- Affected engineering docs, shared status, disposition, canonical baseline and this handoff may record results. Preserve historical failed runs; do not claim the original IMP-017 cause is proven. No new feature/dependency/model spend, live/development writes, push, deployment, author or mirror history rewrite.
+
+Eleven synthetic objects/inventory/checksums and password-free dump retained before verified owned process-tree and labelled cluster shutdown. No review listeners remain on3234/55515/63772. Earlier12closures,43-row counts, numeric-only scale/lint decisions, exclusions, deferrals and external deployment/security/real-provider/Office limits remain explicit. Overall acceptance remains incomplete. Return READY_FOR_CODEX with exact commit/files/evidence after the bounded follow-up is stable.

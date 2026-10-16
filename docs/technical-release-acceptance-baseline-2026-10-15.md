@@ -445,3 +445,9 @@ These new Codex repairs remain self-validation pending independent assessment. O
 hardening acceptance and the canonical43-row partition are not automatically closed. Separate
 deployed security/process gates and approved exclusions remain. Existing shared status/handoff
 records the checkpoint, exact remaining review work, resource shutdown and ownership release.
+
+## Codex overnight independent review — HEAD 0b7fb30, 2026-10-16
+
+The latest Codex addendum in [independent acceptance disposition](independent-acceptance-disposition-2026-10-16.md) supersedes older pending-review and ownership statements for the overnight package. Independent targeted checks verify the coverage degradation repair, group-correction calculation/clear/reload, computed native write-recovery and refused-save draft preservation. Affected evidence levels and exact remaining limits are recorded row by row there. Application source remains unchanged by the reviewer; no push or author/history rewrite.
+
+Overall acceptance remains incomplete and the canonical partition stays **12 Closed /18 Implemented awaiting verification /2 Confirmed defect /5 Untested requirement /6 Blocked =43**, priorities34/9/0. Original failed runs, production no-reparse evidence limitation, original IMP-017 cause/outcome limits, failed-round/guard branches, owner policy decisions, approved exclusions, deferrals and separate deployed security/process requirements remain explicit. Local replay checks are not paid-provider or deployed-environment certification. Current ownership is governed by [agent handoff](agent-handoff.md).
