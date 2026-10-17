@@ -94,11 +94,12 @@ export function createFakeObjectiveDb(initial: Partial<ObjStore> = {}, options: 
         return after(db.runs.filter((r) => r.id === params[0]).map((r) => ({ research_objective: r.research_objective ?? null, decision_statement: r.decision_statement ?? null })));
       }
       for (const table of ["objective_candidates", "decision_candidates"] as const) {
-        if (s === `select id, candidate_text, source from ${table} where run_id = $1 and status = 'accepted' order by created_at`) {
+        if (s === `select id, candidate_text, source from ${table} where run_id = $1 and status = 'accepted' order by created_at, id`) {
+          // Same order as the real query: creation time, then id for a tie.
           return after(
             db[table]
               .filter((c) => c.run_id === params[0] && c.status === "accepted")
-              .sort((a, b) => (a.created_seq as number) - (b.created_seq as number))
+              .sort((a, b) => (a.created_seq as number) - (b.created_seq as number) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
               .map((c) => ({ id: c.id, candidate_text: c.candidate_text, source: c.source })),
           );
         }

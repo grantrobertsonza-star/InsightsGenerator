@@ -100,12 +100,12 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     );
 
     const candidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
+      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
       [runId]
     );
 
     const decisionCandidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
+      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
       [runId]
     );
 

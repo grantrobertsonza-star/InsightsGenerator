@@ -233,11 +233,11 @@ export async function readCurrentEvidenceItems(client: PoolClient, runId: string
   );
   if (run.rows.length === 0) throw new Error("Project not found");
   const oc = await client.query<{ id: string; candidate_text: string }>(
-    "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
+    "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
     [runId],
   );
   const dc = await client.query<{ id: string; candidate_text: string }>(
-    "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
+    "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
     [runId],
   );
   const pick = (kind: "objective" | "decision", cands: { id: string; candidate_text: string }[], text: string | null): CurrentEvidenceItem[] =>
@@ -294,11 +294,11 @@ async function loadItems(tenantId: string, runId: string): Promise<{ items: RawI
       [runId],
     );
     const oc = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at",
+      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
       [runId],
     );
     const dc = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
+      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
       [runId],
     );
     return { run: run.rows[0], oc: oc.rows, dc: dc.rows };

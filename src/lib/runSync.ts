@@ -10,7 +10,10 @@ import type { PoolClient } from "pg";
  * agent all read as "the objective(s)/decision(s) this project is judged
  * against". These two helpers keep each column in sync with whichever
  * candidates are currently accepted: their text joined together (numbered
- * once there's more than one), or null once none are accepted.
+ * once there's more than one), or null once none are accepted. Ties on created_at (two saved
+ * in the same instant) are broken by id, so the numbering does not change between syncs; the
+ * objective and decision loaders in objectiveValidator.ts and objectiveEvidence.ts use the same
+ * tie-break.
  *
  * Shared between the candidate-action files (a researcher accepting,
  * rejecting, or restoring one by hand) and the framers themselves (which
@@ -22,7 +25,7 @@ import type { PoolClient } from "pg";
  */
 export async function syncResearchObjective(client: PoolClient, runId: string) {
   const result = await client.query<{ candidate_text: string }>(
-    "select candidate_text from objective_candidates where run_id = $1 and status = 'accepted' order by (source = 'ai_suggested'), created_at",
+    "select candidate_text from objective_candidates where run_id = $1 and status = 'accepted' order by (source = 'ai_suggested'), created_at, id",
     [runId]
   );
   const texts = result.rows.map((r) => r.candidate_text);
@@ -41,7 +44,7 @@ export async function syncResearchObjective(client: PoolClient, runId: string) {
 
 export async function syncDecisionStatement(client: PoolClient, runId: string) {
   const result = await client.query<{ candidate_text: string }>(
-    "select candidate_text from decision_candidates where run_id = $1 and status = 'accepted' order by created_at",
+    "select candidate_text from decision_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
     [runId]
   );
   const texts = result.rows.map((r) => r.candidate_text);

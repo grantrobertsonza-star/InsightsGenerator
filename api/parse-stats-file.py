@@ -3367,7 +3367,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         "skipped": skipped,
         "notes": {
             "test": "No banner variable was chosen, so this table describes all respondents and has no comparison tests." if overall else "Each column is compared with all other cases in the same banner variable ("
-            + ("t-test (design degrees of freedom) on the linearised difference of two domain estimates" if dsg is not None else "two-proportion z-test on effective bases")
+            + ("t-test (design degrees of freedom) on the linearised difference of two domain estimates" if dsg is not None else "two-proportion z-test with unpooled standard errors on effective bases")
             + "; difference of means for averages), 95% level, "
             + {
                 "none": "not corrected for multiple comparisons.",
