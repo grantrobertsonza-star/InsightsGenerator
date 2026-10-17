@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
 import { convertOfficeDocToPdf } from "@/lib/convertToPdf";
-import { addCrosstabSlides } from "@/lib/crosstabSlides";
+import { addCrosstabSlides, CrosstabLayoutError } from "@/lib/crosstabSlides";
 import type { CrosstabResult, CrosstabRow } from "@/lib/parseStatsFile";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
@@ -268,8 +268,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
     for (const t of usable) {
-      // GT-005: the layout is planned to fit the slide (src/lib/crosstabSlides.ts).
-      addCrosstabSlides(pptx, t.label ?? "Crosstab", t.crosstab as CrosstabResult);
+      // GT-005: the layout is planned to fit the slide (src/lib/crosstabSlides.ts). A table that
+      // cannot be laid out without losing content is refused by name, never exported clipped.
+      try {
+        addCrosstabSlides(pptx, t.label ?? "Crosstab", t.crosstab as CrosstabResult);
+      } catch (error) {
+        if (!(error instanceof CrosstabLayoutError)) throw error;
+        return NextResponse.json(
+          { error: `"${t.label ?? "Crosstab"}" cannot be laid out on slides without losing content (${error.message}) Export it to Excel instead, or shorten its name or labels.` },
+          { status: 422 },
+        );
+      }
     }
     const pptxBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
     if (format === "pptx") {

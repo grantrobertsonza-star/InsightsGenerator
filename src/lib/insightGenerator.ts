@@ -101,12 +101,23 @@ export async function generateInsights(tenantId: string, runId: string): Promise
   const eligible = await withTenant(tenantId, async (client) => {
     // FND-001 for pre-insights (0103): the finding's fingerprint is read with the text the prompt
     // uses, in the same statement, so the stored snapshot is what the model actually saw.
+    // Eligibility, the prompt's verdict and rationale, and the snapshot all use the one LATEST
+    // verdict per finding, in the order finding_support_parts() uses (created_at desc, id desc).
+    // Joining every verdict let an older robust verdict qualify a finding whose latest verdict
+    // refuses it (not_supported, insufficient_information), and could draft one finding twice when
+    // it had several qualifying verdicts (Codex review of ffa7adc, GT-006).
     const recordSupport = await preInsightSupportSnapshotAvailable(client);
     const result = await client.query<VerifiedFinding>(
       `select f.id, f.finding_text, f.theme, v.verdict_tier, v.rationale as verdict_rationale,
               f.origin, f.pattern_type, f.stated_stats${recordSupport ? ", finding_support_parts(f.id) as support_parts" : ""}
        from findings f
-       join verdicts v on v.finding_id = f.id
+       join lateral (
+         select lv.verdict_tier, lv.rationale
+         from verdicts lv
+         where lv.finding_id = f.id
+         order by lv.created_at desc, lv.id desc
+         limit 1
+       ) v on true
        where f.run_id = $1
          and f.status != 'rejected'
          and v.verdict_tier in ('robust', 'use_with_caution')

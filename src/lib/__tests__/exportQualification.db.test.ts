@@ -10,6 +10,12 @@
 // routes. Controls: an unchanged pre-insight stays current; a legacy pre-insight (no snapshot)
 // reads not recorded, never current; researcher-written and current recommendations carry no
 // decision qualification; nothing is reworded.
+//   Latest verdict (Codex review of ffa7adc): the generator joined every verdict, so an older
+//     robust verdict drafted an insight for a finding whose latest verdict refuses it, and its
+//     snapshot (the latest verdict) then read as current. Eligibility, the prompt's verdict and
+//     rationale and the snapshot now use one latest verdict (created_at desc, id desc, the order
+//     finding_support_parts uses). Controls: both refusal tiers, an older refusal with a latest
+//     robust verdict, several qualifying verdicts (one insight), and a same-instant tie.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import JSZip from "jszip";
@@ -95,6 +101,92 @@ describe.skipIf(!TEST_DATABASE_URL)("exports qualify stale pre-insights and reco
     const names = Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n));
     return (await Promise.all(names.map(async (n) => (await zip.files[n].async("string")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")))).join(" | ");
   };
+
+  const getFor = async (runId: string, route: string, query = "") => {
+    const mod = await import(`../../app/api/runs/[id]/${route}/route`);
+    return mod.GET(new Request(`http://local/x${query}`), { params: Promise.resolve({ id: runId }) }) as Promise<Response>;
+  };
+  /** A fresh run with one accepted finding and the given verdicts (oldest first). */
+  const latestVerdictRun = async (verdicts: { tier: string; rationale: string; at: string; id?: string }[]) => {
+    const r = (await db.pool.query("insert into runs(tenant_id,project_name,entry_point) values($1,'Latest verdict','generate') returning id", [tenant])).rows[0].id as string;
+    const f = (await db.pool.query("insert into findings(tenant_id,run_id,origin,finding_text,status,theme) values($1,$2,'generated','Finding with several verdicts','accepted','Theme') returning id", [tenant, r])).rows[0].id as string;
+    for (const v of verdicts) {
+      await db.pool.query(
+        "insert into verdicts(id,tenant_id,finding_id,verdict_tier,rationale,verification_method,corroboration_level,created_at) values(coalesce($1::uuid, gen_random_uuid()),$2,$3,$4,$5,'single_pass','single_source',$6)",
+        [v.id ?? null, tenant, f, v.tier, v.rationale, v.at],
+      );
+    }
+    return { run: r, finding: f };
+  };
+  const promptsSince = async (count: number) => {
+    const { anthropic } = await import("../anthropic");
+    const calls = (anthropic.messages.create as unknown as { mock: { calls: { messages: { content: string }[] }[][] } }).mock.calls;
+    return calls.slice(count).map((c) => c[0].messages[0].content);
+  };
+  const callCount = async () => {
+    const { anthropic } = await import("../anthropic");
+    return (anthropic.messages.create as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+  };
+
+  it.each(["not_supported", "insufficient_information"])("latest verdict %s: no pre-insight is drafted from an older robust verdict", async (tier) => {
+    const { run: r, finding } = await latestVerdictRun([
+      { tier: "robust", rationale: "Older robust reason", at: "2026-01-01" },
+      { tier, rationale: "Latest refusing reason", at: "2026-01-02" },
+    ]);
+    const { generateInsights } = await import("../insightGenerator");
+    const before = await callCount();
+    await generateInsights(tenant, r);
+    expect((await db.pool.query("select count(*)::int as n from insights where finding_id=$1", [finding])).rows[0].n).toBe(0);
+    expect(await promptsSince(before)).toEqual([]);
+    const book = XLSX.read(new Uint8Array(await (await getFor(r, "insights/export")).arrayBuffer()), { type: "array" });
+    expect(XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]])).toEqual([]);
+  });
+
+  it("an older refusal with a latest robust verdict drafts one current pre-insight from the latest verdict's rationale", async () => {
+    const { run: r, finding } = await latestVerdictRun([
+      { tier: "not_supported", rationale: "Older refusal reason", at: "2026-01-01" },
+      { tier: "robust", rationale: "Latest robust reason", at: "2026-01-02" },
+    ]);
+    const { generateInsights } = await import("../insightGenerator");
+    const before = await callCount();
+    await generateInsights(tenant, r);
+    const rows = (await db.pool.query("select support_snapshot->>'verdict' as verdict from insights where finding_id=$1", [finding])).rows;
+    expect(rows).toEqual([{ verdict: "robust" }]);
+    const prompts = await promptsSince(before);
+    expect(prompts.length).toBe(1);
+    expect(prompts[0]).toContain("Latest robust reason");
+    expect(prompts[0]).not.toContain("Older refusal reason");
+    const book = XLSX.read(new Uint8Array(await (await getFor(r, "insights/export")).arrayBuffer()), { type: "array" });
+    const out = XLSX.utils.sheet_to_json<Record<string, string>>(book.Sheets[book.SheetNames[0]]);
+    expect(out.map((x) => [x.Robustness, x.Support])).toEqual([["Robust", "Support current"]]);
+  });
+
+  it("several qualifying verdicts draft the finding once, from the latest", async () => {
+    const { run: r, finding } = await latestVerdictRun([
+      { tier: "robust", rationale: "First robust reason", at: "2026-01-01" },
+      { tier: "robust", rationale: "Second robust reason", at: "2026-01-02" },
+      { tier: "use_with_caution", rationale: "Latest caution reason", at: "2026-01-03" },
+    ]);
+    const { generateInsights } = await import("../insightGenerator");
+    const before = await callCount();
+    await generateInsights(tenant, r);
+    expect((await db.pool.query("select support_snapshot->>'verdict' as verdict from insights where finding_id=$1", [finding])).rows).toEqual([{ verdict: "use_with_caution" }]);
+    const prompts = await promptsSince(before);
+    expect(prompts.length).toBe(1);
+    expect((prompts[0].match(/^\d+\. \[/gm) ?? []).length).toBe(1);
+    expect(prompts[0]).toContain("Latest caution reason");
+  });
+
+  it("verdicts saved in the same instant: the larger id is the latest, as in finding_support_parts", async () => {
+    const { run: r, finding } = await latestVerdictRun([
+      { tier: "robust", rationale: "Robust, smaller id", at: "2026-01-01", id: "00000000-0000-4000-8000-000000000001" },
+      { tier: "not_supported", rationale: "Refusal, larger id", at: "2026-01-01", id: "ffffffff-ffff-4fff-bfff-fffffffffff1" },
+    ]);
+    const { generateInsights } = await import("../insightGenerator");
+    await generateInsights(tenant, r);
+    expect((await db.pool.query("select count(*)::int as n from insights where finding_id=$1", [finding])).rows[0].n).toBe(0);
+    expect((await db.pool.query("select finding_support_parts($1)->>'verdict' as v", [finding])).rows[0].v).toBe("not_supported");
+  });
 
   it("the generator records each pre-insight's finding fingerprint as the prompt read it", async () => {
     const r = await db.pool.query("select i.support_snapshot = finding_support_parts(i.finding_id) as same from insights i where i.id = any($1::uuid[])", [[ids.insight_kept, ids.insight_rejected, ids.insight_reworded]]);
