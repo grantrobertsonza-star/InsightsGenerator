@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { withTenant, withTenantRead } from "./db";
-import { writtenForEarlierDecisionsSql } from "./decisionContext";
+import { recommendationDecisionContextAvailable, recommendationDecisionStateSql, writtenForEarlierDecisionsSql } from "./decisionContext";
 import { refreshInsights } from "./insightGenerator";
 import { refreshRecommendations } from "./recommendationAgent";
 
@@ -58,33 +58,36 @@ export async function refreshDecisionDependants(tenantId: string, runId: string)
  * Whether the insights and recommendations are still owed a refresh after a decision change.
  * null when this could not be checked: unknown is shown as unknown, never as up to date.
  */
-export type EarlierDecisionCounts = { insights: number; recommendations: number };
+/**
+ * Existing artifacts that may not reflect the current accepted decisions (rules in
+ * decisionContext.ts): insights (per-finding and synthesized) written for earlier decisions, and
+ * AI recommendations whose own recorded decisions differ ("earlier") or were never recorded
+ * ("unknown"). recommendations counts both; recommendationsUnknown is the unknown part.
+ */
+export type EarlierDecisionCounts = { insights: number; recommendations: number; recommendationsUnknown: number };
 
 /**
- * How many existing insights (per-finding and synthesized) and the recommendations built on them
- * were written for earlier accepted decisions (rule in decisionContext.ts). A successful refresh
- * does not rewrite these, so this is reported separately from the marker above and stays until
- * the decisions match again. null when this could not be checked.
+ * Counts the artifacts above for one run. A successful refresh does not rewrite these, so this is
+ * reported separately from the marker and stays until the decisions match again. null when this
+ * could not be checked.
  */
 export async function decisionContextMismatch(tenantId: string, runId: string): Promise<EarlierDecisionCounts | null> {
   const stale = (alias: string) => writtenForEarlierDecisionsSql(`${alias}.decision_context`, "r.decision_statement");
   try {
     return await withTenantRead(tenantId, async (client) => {
-      const r = await client.query<{ insights: number; recommendations: number }>(
-        `with s as (
-           select i.id as insight_id, null::uuid as synthesized_id from insights i join runs r on r.id = i.run_id
-            where i.run_id = $1 and ${stale("i")}
-           union all
-           select null, si.id from synthesized_insights si join runs r on r.id = si.run_id
-            where si.run_id = $1 and ${stale("si")}
-         )
-         select (select count(*) from s)::int as insights,
-                (select count(*) from recommendations rec
-                  where rec.insight_id in (select insight_id from s where insight_id is not null)
-                     or rec.synthesized_insight_id in (select synthesized_id from s where synthesized_id is not null))::int as recommendations`,
+      const recommendationState = recommendationDecisionStateSql("rec", "r.decision_statement", await recommendationDecisionContextAvailable(client));
+      const r = await client.query<EarlierDecisionCounts>(
+        `select (select count(*) from insights i join runs r on r.id = i.run_id where i.run_id = $1 and ${stale("i")})::int
+              + (select count(*) from synthesized_insights si join runs r on r.id = si.run_id where si.run_id = $1 and ${stale("si")})::int
+                  as insights,
+                count(*) filter (where s.state is not null)::int as recommendations,
+                count(*) filter (where s.state = 'unknown')::int as "recommendationsUnknown"
+           from (select ${recommendationState} as state
+                   from recommendations rec join runs r on r.id = rec.run_id
+                  where rec.run_id = $1 and rec.status <> 'rejected') s`,
         [runId],
       );
-      return r.rows[0] ?? { insights: 0, recommendations: 0 };
+      return r.rows[0] ?? { insights: 0, recommendations: 0, recommendationsUnknown: 0 };
     });
   } catch {
     return null;

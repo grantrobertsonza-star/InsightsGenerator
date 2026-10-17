@@ -182,7 +182,7 @@ describe.skipIf(!TEST_DATABASE_URL)("decision changes reconcile after a failed r
     // Written for the current decision; carries a recommendation the researcher reworded.
     const framed = await insight(r3, await finding(r3, "Framed finding"), "Decision one", "Framed headline");
     await db.pool.query(
-      "insert into recommendations(tenant_id,run_id,insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status,edited) values($1,$2,$3,'Researcher wording','o','f','t','m','medium','a','b','ai_suggested','accepted',true)",
+      "insert into recommendations(tenant_id,run_id,insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status,edited,decision_context) values($1,$2,$3,'Researcher wording','o','f','t','m','medium','a','b','ai_suggested','accepted',true,'Decision one')",
       [tenant, r3, framed],
     );
     // Control: written before any decision existed (no recorded context), never marked.
@@ -191,11 +191,11 @@ describe.skipIf(!TEST_DATABASE_URL)("decision changes reconcile after a failed r
     // Control in another run: its own mismatch must not count here.
     await insight(other, await finding(other, "Other finding"), "Some other decision", "Other headline");
 
-    expect(await decisionContextMismatch(tenant, r3), "whitespace alone is not a change").toEqual({ insights: 0, recommendations: 0 });
+    expect(await decisionContextMismatch(tenant, r3), "whitespace alone is not a change").toEqual({ insights: 0, recommendations: 0, recommendationsUnknown: 0 });
     expect(await a.acceptDecisionCandidate(r3, (await rows(r3)).find((x) => x.candidate_text === "Decision two")!.id)).toEqual({ ok: true, refreshError: null });
     expect(await statement(r3)).toBe("1. Decision one\n2. Decision two");
     expect(await (await import("../decisionRefresh")).decisionRefreshPending(tenant, r3), "the refresh succeeded").toBe(false);
-    expect(await decisionContextMismatch(tenant, r3), "still described by the earlier decision").toEqual({ insights: 2, recommendations: 1 });
+    expect(await decisionContextMismatch(tenant, r3), "still described by the earlier decision").toEqual({ insights: 2, recommendations: 1, recommendationsUnknown: 0 });
     const kept = (await db.pool.query("select i.headline, i.decision_context, r.action_text, r.edited from insights i join recommendations r on r.insight_id=i.id where i.id=$1", [framed])).rows[0];
     expect(kept).toEqual({ headline: "Framed headline", decision_context: "Decision one", action_text: "Researcher wording", edited: true });
 
@@ -211,7 +211,7 @@ describe.skipIf(!TEST_DATABASE_URL)("decision changes reconcile after a failed r
     // Back to the decisions they were written for: nothing is marked any more.
     expect(await a.unacceptDecisionCandidate(r3, (await rows(r3)).find((x) => x.candidate_text === "Decision two")!.id)).toEqual({ ok: true, refreshError: null });
     expect(await statement(r3)).toBe("Decision one");
-    expect(await decisionContextMismatch(tenant, r3)).toEqual({ insights: 0, recommendations: 0 });
+    expect(await decisionContextMismatch(tenant, r3)).toEqual({ insights: 0, recommendations: 0, recommendationsUnknown: 0 });
     // Unknown stays unknown.
     state.readFail = true;
     expect(await decisionContextMismatch(tenant, r3)).toBeNull();

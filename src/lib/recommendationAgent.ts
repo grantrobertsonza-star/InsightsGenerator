@@ -7,6 +7,7 @@ import { withTenant } from "./db";
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { mapWithConcurrency } from "./concurrency";
 import { figureCheck, type FigureCheck } from "./numberTrace";
+import { recommendationDecisionContextAvailable } from "./decisionContext";
 import { figureCheckAvailable } from "./figureChecks";
 
 const MAX_INSIGHTS_FOR_PROMPT = 60;
@@ -125,6 +126,9 @@ type RecommendationFields = {
  *      meanwhile, or not in this run) is skipped and stays reported as missing;
  *   2. insert only if the anchor still has no recommendation of any kind - the same rule the
  *      eligibility query uses, so a researcher's own recommendation is never duplicated or replaced.
+ * decisionContext is the decision statement the caller's prompt was built from (read before the
+ * model call, so a decision change committed meanwhile is not mistaken for what the model saw);
+ * it is stored with each row when migration 0102 is applied (decisionContext.ts uses it).
  * The anchor lock serialises two runs drafting for the same insight, so the second one sees the
  * first one's row. Returns the anchors that now have a recommendation (written here or already
  * present), which is what the run's coverage report counts.
@@ -136,10 +140,12 @@ async function insertOncePerAnchor(
   tenantId: string,
   runId: string,
   rows: { anchorId: string; fields: RecommendationFields }[],
+  decisionContext: string,
 ): Promise<string[]> {
   const covered: string[] = [];
   const seen = new Set<string>();
   const storeCheck = await figureCheckAvailable(client);
+  const storeContext = await recommendationDecisionContextAvailable(client);
   // Locks are taken in id order so two concurrent runs over overlapping anchors cannot deadlock.
   const ordered = [...rows].sort((a, b) => (a.anchorId < b.anchorId ? -1 : a.anchorId > b.anchorId ? 1 : 0));
   for (const { anchorId, fields } of ordered) {
@@ -150,8 +156,8 @@ async function insertOncePerAnchor(
     await client.query(
       `insert into recommendations
          (tenant_id, run_id, ${anchorColumn}, action_text, owner_role, owner_feasibility_note, timeline,
-          metric, priority, assumptions_and_risks, alternatives_considered, source, status${storeCheck ? ", figure_check" : ""})
-       select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ai_suggested', 'accepted'${storeCheck ? ", $12::jsonb" : ""}
+          metric, priority, assumptions_and_risks, alternatives_considered, source, status${storeCheck ? ", figure_check" : ""}${storeContext ? ", decision_context" : ""})
+       select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ai_suggested', 'accepted'${storeCheck ? ", $12::jsonb" : ""}${storeContext ? `, $${storeCheck ? 13 : 12}::text` : ""}
        where not exists (select 1 from recommendations r where r.${anchorColumn} = $3)`,
       [
         tenantId,
@@ -166,6 +172,7 @@ async function insertOncePerAnchor(
         fields.assumptions_and_risks,
         fields.alternatives_considered,
         ...(storeCheck ? [fields.figureCheck ? JSON.stringify(fields.figureCheck) : null] : []),
+        ...(storeContext ? [decisionContext] : []),
       ]
     );
     covered.push(anchorId);
@@ -231,6 +238,8 @@ export async function generateRecommendations(tenantId: string, runId: string): 
   if (!run.decision_statement) {
     return;
   }
+  // The decisions this prompt is built from; stored with each recommendation written below.
+  const decisionStatement = run.decision_statement;
 
   const eligible = await withTenant(tenantId, async (client) => {
     const result = await client.query<EligibleInsight>(
@@ -444,7 +453,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
       }
 
       const coveredIds = await withTenant(tenantId, (client) =>
-        insertOncePerAnchor(client, "insights", "insight_id", tenantId, runId, prepared.map((p) => ({ anchorId: p.insightId, fields: p })))
+        insertOncePerAnchor(client, "insights", "insight_id", tenantId, runId, prepared.map((p) => ({ anchorId: p.insightId, fields: p })), decisionStatement)
       );
 
       return figureRefusals.length > 0
@@ -504,6 +513,8 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
 
   if (!run) return;
   if (!run.decision_statement) return;
+  // The decisions this prompt is built from; stored with each recommendation written below.
+  const decisionStatement = run.decision_statement;
 
   const acceptedEligible = await withTenant(tenantId, async (client) => {
     const result = await client.query<EligibleSynthesizedInsight>(
@@ -740,7 +751,8 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
           "synthesized_insight_id",
           tenantId,
           runId,
-          prepared.map((p) => ({ anchorId: p.synthesizedInsightId, fields: p }))
+          prepared.map((p) => ({ anchorId: p.synthesizedInsightId, fields: p })),
+          decisionStatement
         )
       );
 

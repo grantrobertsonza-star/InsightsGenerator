@@ -18,6 +18,11 @@
 //      not rewrite the existing insight, so the panel, the pre-insight card and the pre-insights
 //      Excel export mark it "Written for earlier decisions", after a reload too, and its text is unchanged.
 // Third test: the same replay for a "generate" run with an existing insight and recommendation.
+// Fourth test (independent review 2026-10-17, release 9225d95): on a "generate" run a pre-decision
+// insight (no decision context) gets a recommendation from the ACTUAL generator while Decision A is
+// accepted (model answer scripted); it records Decision A. Rewording A to C natively: after a
+// reload the panel counts it as written for earlier decisions, its text is unchanged; rewording
+// back to A clears the notice after a reload.
 // Second test, the panel's own callers with reload (no failure injected): add your own decision,
 // delete it, "Accept all" on two pending ones; after each reload the panel, the stored statuses
 // and the decision statement agree, and nothing is left owed.
@@ -145,9 +150,10 @@ test("generate mode: an existing insight written for an earlier decision stays m
     await db.query("update runs set entry_point='generate', decision_statement=$2 where id=$1", [run.id, "1. Decision A\n2. Decision B"]);
     const finding = (await db.query("insert into findings(tenant_id,run_id,origin,finding_text,status) values($1,$2,'generated','Synthetic finding for the generate check','accepted') returning id", [t, run.id])).rows[0].id;
     await db.query("insert into verdicts(tenant_id,finding_id,verdict_tier,rationale,verification_method,corroboration_level) values($1,$2,'robust','Synthetic','single_pass','single_source')", [t, finding]);
-    // An existing recommendation too, so the refresh has nothing to add (no model call needed).
+    // An existing recommendation too, so the refresh has nothing to add (no model call needed). It
+    // records the decisions it was generated for, as the generator does since migration 0102.
     const insight = (await db.query("insert into insights(tenant_id,run_id,finding_id,decision_context,headline,observation,tension,implication) values($1,$2,$3,$4,'Existing generate headline','o','t','i') returning id", [t, run.id, finding, "1. Decision A\n2. Decision B"])).rows[0].id;
-    await db.query("insert into recommendations(tenant_id,run_id,insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status,edited) values($1,$2,$3,'Researcher wording','o','f','t','m','medium','a','b','ai_suggested','accepted',true)", [t, run.id, insight]);
+    await db.query("insert into recommendations(tenant_id,run_id,insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status,edited,decision_context) values($1,$2,$3,'Researcher wording','o','f','t','m','medium','a','b','ai_suggested','accepted',true,$4)", [t, run.id, insight, "1. Decision A\n2. Decision B"]);
     const pendingMarkers = async () => Number((await db.query("select count(*) from trace where run_id=$1 and event='decision_refresh_pending'", [run.id])).rows[0].count);
     const openDecisions = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
@@ -209,6 +215,65 @@ test("own add, own delete and accept all agree with the database and the stateme
     expect(await owed()).toBe(0);
     await expect(page.getByRole("status").filter({ hasText: /insights and recommendations/ })).toHaveCount(0);
   } finally {
+    await db.end();
+  }
+});
+
+test("generate mode: a recommendation generated for Decision A on a no-context insight is qualified after A is reworded, and clears when A is restored", async ({ page }, testInfo) => {
+  test.setTimeout(6 * 60_000);
+  const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
+  await db.connect();
+  try {
+    writeFileSync(fixtureFile, JSON.stringify({
+      tools: { record_recommendations: [{ match: "", input: { recommendations: [{ index: 0, action_text: "Action framed for Decision A", owner_role: "Owner", owner_feasibility_note: "Feasible", timeline: "Soon", metric: "Measure", priority: "medium", assumptions_and_risks: "None", alternatives_considered: "None" }] } }] },
+    }));
+    const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+    const ui = await bind({ page, target, testInfo });
+    const run = await ui.createRun({ name: `recommendation-context-${Date.now()}` });
+    const t = target.tenantId;
+    await db.query("update runs set entry_point='generate', decision_statement='Decision A' where id=$1", [run.id]);
+    await db.query("insert into decision_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Decision A','r','ai_suggested','accepted')", [t, run.id]);
+    const f = (await db.query("insert into findings(tenant_id,run_id,origin,finding_text,status) values($1,$2,'generated','Evidence written before any decision','accepted') returning id", [t, run.id])).rows[0].id;
+    await db.query("insert into verdicts(tenant_id,finding_id,verdict_tier,rationale,verification_method,corroboration_level) values($1,$2,'robust','Synthetic','single_pass','single_source')", [t, f]);
+    const i = (await db.query("insert into insights(tenant_id,run_id,finding_id,decision_context,headline,observation,tension,implication) values($1,$2,$3,null,'Evidence before decisions','o','t','i') returning id", [t, run.id, f])).rows[0].id;
+    const recs = async () => (await db.query("select id, action_text, decision_context from recommendations where insight_id=$1 order by id", [i])).rows;
+    const pendingMarkers = async () => Number((await db.query("select count(*) from trace where run_id=$1 and event='decision_refresh_pending'", [run.id])).rows[0].count);
+    const open = async (decision) => {
+      await page.goto(run.url, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Business decisions/ }).first().click();
+      await expect(page.getByText(decision, { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+    };
+    const earlier = page.getByRole("status").filter({ hasText: "written for earlier ones" });
+    const reword = async (from, to) => {
+      const card = page.locator("div", { has: page.getByText(from, { exact: true }) }).filter({ has: page.getByRole("button", { name: "Edit", exact: true }) }).last();
+      await card.getByRole("button", { name: "Edit", exact: true }).click();
+      const save = page.getByRole("button", { name: "Save and accept", exact: true });
+      await save.locator("..").locator("..").locator("textarea").fill(to);
+      await save.click();
+      await expect.poll(async () => (await db.query("select decision_statement from runs where id=$1", [run.id])).rows[0].decision_statement, { timeout: 120_000 }).toBe(to);
+      await expect.poll(pendingMarkers, { timeout: 120_000 }).toBe(0);
+    };
+
+    // The page's own background refresh runs the actual generator for the no-context insight.
+    await open("Decision A");
+    await expect.poll(async () => (await recs()).length, { timeout: 120_000 }).toBe(1);
+    const before = await recs();
+    expect(before[0]).toMatchObject({ action_text: "Action framed for Decision A", decision_context: "Decision A" });
+    await open("Decision A");
+    await expect(earlier).toHaveCount(0);
+
+    await reword("Decision A", "Decision C replaces Decision A");
+    await open("Decision C replaces Decision A");
+    await expect(earlier.first()).toContainText("1 recommendation was written for earlier ones", { timeout: 60_000 });
+    expect(await recs(), "kept as it was").toEqual(before);
+    expect((await db.query("select decision_context from insights where id=$1", [i])).rows[0].decision_context).toBeNull();
+
+    await reword("Decision C replaces Decision A", "Decision A");
+    await open("Decision A");
+    await expect(earlier).toHaveCount(0);
+    expect(await recs()).toEqual(before);
+  } finally {
+    rmSync(fixtureFile, { force: true });
     await db.end();
   }
 });

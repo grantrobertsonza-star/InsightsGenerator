@@ -217,8 +217,8 @@ export default function DecisionBriefReview({
   // Whether the insights and recommendations are still owed a refresh after a decision change
   // (null: could not be checked). Read on the server from the persisted marker.
   refreshPending: boolean | null;
-  // Existing insights, and the recommendations built on them, written for accepted decisions that
-  // have since changed (null: could not be checked). A refresh does not rewrite these.
+  // Existing insights and AI recommendations that may not reflect the current accepted decisions
+  // (null: could not be checked). A refresh does not rewrite these.
   earlierDecisions: EarlierDecisionCounts | null;
   // Whether this run has any findings yet, i.e. whether the framer has had
   // anything to read. Passed from the server component since that check
@@ -474,38 +474,47 @@ export default function DecisionBriefReview({
   );
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Says when existing insights or AI recommendations may not reflect the current accepted
+ * decisions (rules in decisionContext.ts): written for earlier decisions, or, for recommendations
+ * written before their decisions were recorded, unknown. These are kept as they are (rewriting
+ * would discard reviewed wording, recommendations and support links), so this is a standing
+ * qualification rather than something "Update them now" can clear. Pre-insights also carry the
+ * mark in their list and Excel export; other screens rely on this count (limitations recorded).
+ */
+function EarlierDecisionsNotice({ counts }: { counts: EarlierDecisionCounts | null }) {
+  if (counts === null) {
+    return (
+      <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        Could not check whether the existing insights and recommendations were written for the current accepted decisions.
+      </p>
+    );
+  }
+  const earlierRecommendations = counts.recommendations - counts.recommendationsUnknown;
+  const parts = [
+    counts.insights > 0 ? `${plural(counts.insights, "insight was", "insights were")} written for earlier ones` : null,
+    earlierRecommendations > 0 ? `${plural(earlierRecommendations, "recommendation was", "recommendations were")} written for earlier ones` : null,
+    counts.recommendationsUnknown > 0
+      ? `${plural(counts.recommendationsUnknown, "recommendation was", "recommendations were")} written before the decisions behind them were recorded, so whether they match is unknown`
+      : null,
+  ].filter((p): p is string => p !== null);
+  if (parts.length === 0) return null;
+  return (
+    <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      {`The existing insights and recommendations do not all reflect the current accepted decisions: ${parts.join("; ")}. ` +
+        "They have not been rewritten, so your review work is kept." +
+        (counts.insights > 0 ? ` Pre-insights are marked "${EARLIER_DECISIONS_LABEL}" in the pre-insights list and its Excel export.` : "")}
+    </p>
+  );
+}
+
 /**
  * Says when the insights and recommendations do not yet reflect the accepted decisions: right
  * after a saved change whose update failed (with the reason), and on any later visit while the
  * persisted marker says an update is still owed. Unknown is said as unknown.
  */
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/**
- * Says when existing insights were written for earlier accepted decisions. These are kept as they
- * are (rewriting would discard reviewed recommendations and support links), so this is a standing
- * qualification rather than something "Update them now" can clear; each such insight carries the
- * same mark in the pre-insights list and its Excel export. Synthesized insights are counted
- * here but carry no per-card mark (see decisionContext.ts, limitations).
- */
-function EarlierDecisionsNotice({ counts }: { counts: EarlierDecisionCounts | null }) {
-  const message =
-    counts === null
-      ? "Could not check whether the existing insights were written for the current accepted decisions."
-      : counts.insights > 0
-        ? "The existing insights and recommendations do not all reflect the current accepted decisions: " +
-          `${plural(counts.insights, "insight was", "insights were")} written for earlier ones, with ` +
-          `${plural(counts.recommendations, "recommendation", "recommendations")} built on them. They have not been ` +
-          `rewritten, so your review work is kept. Pre-insights are marked "${EARLIER_DECISIONS_LABEL}" in the pre-insights list and its Excel export.`
-        : null;
-  if (!message) return null;
-  return (
-    <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      {message}
-    </p>
-  );
-}
-
 function DecisionRefreshNotice({ problem, pending, busy, onRetry }: { problem: string | null; pending: boolean | null; busy: boolean; onRetry: () => void }) {
   const message = problem
     ? `Saved. The insights and recommendations were not updated to match: ${problem}`
