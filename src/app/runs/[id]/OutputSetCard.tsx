@@ -11,6 +11,7 @@ import {
 import type { StoredChecks } from "@/lib/outputAnalysisRun";
 import { KIND_LABEL, ROLE_LABEL, roleCounts, type OutputRole } from "@/lib/outputClassify";
 import type { OutputFile, OutputSet } from "@/lib/outputSets";
+import { actionFailureMessage } from "./actionFailure";
 
 const roleClass: Record<OutputRole, string> = {
   evidence: "bg-blue-50 text-blue-700",
@@ -88,7 +89,7 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
         setChecks(r.checks);
         if (kind === "findings") setMade(r.checks.findings);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(actionFailureMessage(e)))
       .finally(() => setBusy(null));
   }
 

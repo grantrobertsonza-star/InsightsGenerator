@@ -1,13 +1,15 @@
 "use client";
 
 import { TrashIcon } from "@/components/icons";
+import { deleteDocumentConfirmation } from "@/lib/documentDeletionMessage";
 
-export default function DeleteDocumentButton() {
+/** GT-010: `confirmMessage` names what goes with this document; without it, general wording. */
+export default function DeleteDocumentButton({ confirmMessage }: { confirmMessage?: string } = {}) {
   return (
     <button
       type="submit"
       onClick={(e) => {
-        if (!confirm("Delete this document and any findings extracted from it? This can't be undone.")) {
+        if (!confirm(confirmMessage ?? deleteDocumentConfirmation(null))) {
           e.preventDefault();
         }
       }}

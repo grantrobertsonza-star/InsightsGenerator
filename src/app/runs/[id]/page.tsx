@@ -88,6 +88,8 @@ import {
 } from "./RunShell";
 import type { FindingKind } from "@/lib/findingActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
+import { impactFor, loadDocumentDeletionImpact } from "@/lib/documentDeletionImpact";
+import { deleteDocumentConfirmation } from "@/lib/documentDeletionMessage";
 import SubmitButton from "@/components/SubmitButton";
 import { Pane, ThreePane } from "./ThreePane";
 import RerunExtractButton from "./RerunExtractButton";
@@ -165,6 +167,8 @@ import {
 import {
   type CrossTabPreviewTable,
 } from "@/lib/crossTabPreview";
+import { latestVerdictLateral } from "@/lib/latestVerdict";
+import { getSampleFailedVerdicts, getVerdictSummary } from "@/lib/verdictSummary";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -1044,13 +1048,7 @@ async function getInsights(runId: string): Promise<InsightRow[]> {
        from insights i
        join runs r on r.id = i.run_id
        join findings f on f.id = i.finding_id
-       join lateral (
-         select vv.verdict_tier, vv.verification_basis, vv.statistical_checks
-           from verdicts vv
-          where vv.finding_id = f.id
-          order by vv.created_at desc
-          limit 1
-       ) v on true
+       join ${latestVerdictLateral("f.id", ["verdict_tier", "verification_basis", "statistical_checks"])} v on true
        where i.run_id = $1
        order by f.theme nulls last, i.created_at`,
       [runId],
@@ -1151,63 +1149,6 @@ async function getSynthesizedInsights(
 // enough to say which one it is: how many findings have a verdict at all
 // yet, how many of those passed, and the most recent failure (if any) from
 // the automatic pipeline (verification or insight generation) for this run.
-type VerdictSummary = {
-  verdictedCount: number;
-  passedCount: number;
-};
-
-async function getVerdictSummary(runId: string): Promise<VerdictSummary> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<{ tier: string; count: string }>(
-      `select v.verdict_tier as tier, count(*) as count
-       from verdicts v
-       join findings f on f.id = v.finding_id
-       where f.run_id = $1
-       group by v.verdict_tier`,
-      [runId],
-    );
-    let verdictedCount = 0;
-    let passedCount = 0;
-    for (const row of result.rows) {
-      const count = Number(row.count);
-      verdictedCount += count;
-      if (row.tier === "robust" || row.tier === "use_with_caution") {
-        passedCount += count;
-      }
-    }
-    return { verdictedCount, passedCount };
-  });
-}
-
-type FailedVerdictSample = {
-  finding_text: string;
-  verdict_tier: string;
-  rationale: string;
-};
-
-// A count alone ("0 of 58 passed") says something is off but not what,
-// verification is a model judgment call, not a fixed rule, so seeing a
-// couple of its actual rationales is the fastest way to tell "this
-// evidence genuinely is that weak" apart from "the verifier is being
-// unreasonably strict here". Only worth fetching when nothing passed at
-// all; once some findings are passing, the ones that didn't are a much
-// less urgent question.
-async function getSampleFailedVerdicts(
-  runId: string,
-): Promise<FailedVerdictSample[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<FailedVerdictSample>(
-      `select f.finding_text, v.verdict_tier, v.rationale
-       from verdicts v
-       join findings f on f.id = v.finding_id
-       where f.run_id = $1 and v.verdict_tier in ('not_supported', 'insufficient_information')
-       order by v.id
-       limit 3`,
-      [runId],
-    );
-    return result.rows;
-  });
-}
 
 // One row per stated_insight finding (the report's own higher-order
 // claims), left-joined to its chain-trace verdict (null until the
@@ -1242,7 +1183,7 @@ async function getStatedInsightValidations(
                 )
               ), array[]::text[]) as relied_texts
        from findings f
-       left join verdicts v on v.finding_id = f.id
+       left join ${latestVerdictLateral("f.id", ["verdict_tier", "rationale", "verification_basis", "due_care"])} v on true
        left join insights i on i.finding_id = f.id
        where f.run_id = $1 and f.finding_kind = 'stated_insight' and f.status != 'rejected'
        order by f.created_at`,
@@ -3121,6 +3062,7 @@ export default async function RunPage({
     waveFilesResult,
     decisionRefreshIsPending,
     earlierDecisionCounts,
+    deletionImpact,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3161,6 +3103,8 @@ export default async function RunPage({
     timing("waveFiles", listWaveFilesAction(id)),
     timing("decisionRefreshPending", decisionRefreshPending(TENANT_ID, id)),
     timing("decisionContextMismatch", decisionContextMismatch(TENANT_ID, id)),
+    // GT-010: what deleting each document takes with it, for its confirmation.
+    timing("deletionImpact", loadDocumentDeletionImpact(TENANT_ID, id)),
   ]);
   if (!run) {
     notFound();
@@ -3182,7 +3126,7 @@ export default async function RunPage({
       "findingCodingCounts",
       getFindingCodingCounts(TENANT_ID, id, codingAnalysis),
     ),
-    needsVerdictSummary ? getVerdictSummary(id) : Promise.resolve(null),
+    needsVerdictSummary ? getVerdictSummary(TENANT_ID, id) : Promise.resolve(null),
     needsVerdictSummary
       ? getLatestTraceMessage(id, [
           "insight_generator_error",
@@ -3203,7 +3147,7 @@ export default async function RunPage({
     verdictSummary &&
     verdictSummary.verdictedCount > 0 &&
     verdictSummary.passedCount === 0
-      ? await getSampleFailedVerdicts(id)
+      ? await getSampleFailedVerdicts(TENANT_ID, id)
       : [];
   timing.done();
   const wordingEdits = await getWordingEdits(id);
@@ -3522,6 +3466,7 @@ export default async function RunPage({
             filename: x.source_filename,
             summary: instrumentSummaries.get(x.id)!,
             deleteAction: deleteDocument.bind(null, id, x.id),
+            deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, x.id)),
           }))}
           targetId={d.kind === "table" ? d.id : undefined}
           dataDocs={d.kind === "table" ? rawDataDocs.map((r) => ({ id: r.id, name: r.source_filename })) : undefined}
@@ -4375,7 +4320,7 @@ export default async function RunPage({
                                     action={deleteAction}
                                     className="shrink-0"
                                   >
-                                    <DeleteDocumentButton />
+                                    <DeleteDocumentButton confirmMessage={deleteDocumentConfirmation(impactFor(deletionImpact, doc.id))} />
                                   </form>
                                 </div>
                                 {doc.kind === "report" && (
@@ -5274,6 +5219,7 @@ export default async function RunPage({
                     accent:
                       DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
                     deleteAction: deleteDocument.bind(null, id, d.id),
+                    deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, d.id)),
                   }))}
                 />
               </div>

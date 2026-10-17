@@ -4,6 +4,7 @@ import { useState } from "react";
 import { compareWavesAction, mergeOutputSetsAction } from "@/lib/outputSetActions";
 import { suggestRelated } from "@/lib/outputWaves";
 import type { OutputSet } from "@/lib/outputSets";
+import { actionFailureMessage } from "./actionFailure";
 
 const select = "rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground";
 const labelOf = (s: OutputSet) => (s.waveLabel ? `${s.name} (${s.waveLabel})` : s.name);
@@ -34,7 +35,7 @@ export default function RelatedOutputSets({ runId, sets }: { runId: string; sets
         }
         setMessage(`${r.findings} change finding${r.findings === 1 ? "" : "s"} made.${r.notes.length ? ` ${r.notes.join(" ")}` : ""}`);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(actionFailureMessage(e)))
       .finally(() => setBusy(false));
   }
 
@@ -48,7 +49,7 @@ export default function RelatedOutputSets({ runId, sets }: { runId: string; sets
         if (!r.ok) setError(r.error);
         else setMessage(`${r.moved} files moved into one set.`);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(actionFailureMessage(e)))
       .finally(() => setBusy(false));
   }
 

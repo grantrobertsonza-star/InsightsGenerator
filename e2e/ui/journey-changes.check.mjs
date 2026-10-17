@@ -28,8 +28,8 @@ if (target.disposable !== true || !/^\/ie_e2e_[a-f0-9]{10}$/.test(dbUrl.pathname
 const FIXTURE = path.resolve("fixtures/golden-thread-1");
 const WORKBOOK = path.join(FIXTURE, "golden-survey-documented.xlsx");
 const QUALIFIER = /no longer valid|no longer current|left out|needs review|may be out of date|excluded from this report|changed since|support changed|could not be checked/i;
-// The deck's "Evidence qualifications" slide lists every item with its design caveat; the support
-// status is disclosed per item elsewhere and on the "Evidence status" slide. It is recorded, not failed.
+// The deck's "Evidence qualifications" slide lists every item with its design caveat. Since GT-009 it
+// also carries the item's support status; C5 asserts that. C1 and C6 still read it separately.
 const QUALIFICATIONS_SLIDE = /^EVIDENCE QUALIFICATIONS/;
 const squash = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const xmlText = (xml) => squash(xml.replace(/<[^>]+>/g, " ").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
@@ -97,6 +97,9 @@ test("C1 deleting the data file after downstream work: what is removed, what is 
     await page.getByRole("button", { name: "Delete document", exact: true }).first().click();
     await expect.poll(async () => Number((await client.query("select count(*) from documents where run_id=$1", [t.run.id])).rows[0].count), { timeout: 120_000 }).toBe(0);
     await page.reload({ waitUntil: "networkidle" });
+    // GT-010: the confirmation names the reviewed work and the insights whose support goes with the file.
+    expect.soft(obs.confirm, "confirmation names the researcher note").toMatch(/researcher note/);
+    expect.soft(obs.confirm, "confirmation names the insights left without support").toMatch(/insights? rests? on them and will show (its|their) support as no longer valid/);
     obs.findingsLeft = Number((await client.query("select count(*) from findings where run_id=$1", [t.run.id])).rows[0].count);
     obs.synth = (await client.query("select id, review_status from synthesized_insights where run_id=$1", [t.run.id])).rows;
     obs.recommendation = (await client.query("select action_text from recommendations where id=$1", [t.recommendation.id])).rows[0];
@@ -190,6 +193,9 @@ test("C3 a save lost in transit is not shown as saved, and a retry saves once", 
     obs.afterDrop = { stored: (await client.query("select action_text from recommendations where id=$1", [t.recommendation.id])).rows[0].action_text, alert: await page.getByRole("alert").allInnerTexts(), draftKept: await card.locator("textarea").count() };
     expect.soft(obs.afterDrop.stored, "nothing stored when the request never arrived").toBe(t.action);
     expect.soft(obs.afterDrop.draftKept, "the researcher's draft is still open to retry").toBeGreaterThan(0);
+    // GT-008: the researcher reads a plain message, not the browser's raw "Failed to fetch".
+    expect.soft(obs.afterDrop.alert.join(" "), "plain connection message").toMatch(/connection to the server was interrupted, so this may not have been saved/);
+    expect.soft(obs.afterDrop.alert.join(" "), "no raw browser error").not.toMatch(/Failed to fetch/);
     // Retry succeeds once.
     await card.getByRole("button", { name: /^Save/ }).first().click();
     await expect.poll(async () => (await client.query("select action_text from recommendations where id=$1", [t.recommendation.id])).rows[0].action_text, { timeout: 60_000 }).toBe(edited);
@@ -289,6 +295,8 @@ test("C5 a data correction behind an accepted finding after downstream work: sta
       const parts = await officeParts(ex[key].body);
       const headline = t.insight.headline.replace(/…$/, "").slice(0, 50);
       obs[`${key}QualificationsSlideOnly`] = parts.filter((p) => p.text.includes(headline) && !QUALIFIER.test(p.text) && QUALIFICATIONS_SLIDE.test(p.text)).map((p) => p.name);
+      // GT-009: the evidence-qualifications slide now carries the support status too.
+      expect.soft(obs[`${key}QualificationsSlideOnly`], `${key}: the qualifications slide states the stale insight's support`).toEqual([]);
       obs[`${key}Unqualified`] = parts.filter((p) => p.text.includes(headline) && !QUALIFIER.test(p.text) && !QUALIFICATIONS_SLIDE.test(p.text)).map((p) => p.name);
       expect.soft(obs[`${key}Unqualified`], `${key}: the stale insight is never presented unqualified`).toEqual([]);
     }

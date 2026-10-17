@@ -4,6 +4,7 @@ import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
 import { applyRecordedContradictions, recordContradiction } from "./contradictionDetector";
 import { verificationBasisFor, type VerificationBasis } from "./discoveryClassification";
+import { latestVerdictLateral } from "./latestVerdict";
 
 // How many of a claim's evidence pool get shown to the model at once. A
 // claim with dozens of theme-matching findings in a large run would blow
@@ -194,8 +195,11 @@ async function chainCheckOneClaim(
     const result = await client.query<EvidenceRow>(
       `select f.id, f.origin, f.finding_text, f.finding_kind, f.theme, v.verdict_tier
        from findings f
-       join verdicts v on v.finding_id = f.id
-       where f.run_id = $1 and f.finding_kind != 'stated_insight' and f.status != 'rejected'
+       join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
+       -- "is distinct from", not "!=": findings computed from data tables have no finding_kind
+       -- (null), and null != 'stated_insight' is null, which silently left every computed finding
+       -- out of the evidence a report's interpretive claim is checked against.
+       where f.run_id = $1 and f.finding_kind is distinct from 'stated_insight' and f.status != 'rejected'
        order by
          case when f.id = any($2::uuid[]) then 0 else 1 end,
          case when f.theme is not distinct from $3 then 0 else 1 end,

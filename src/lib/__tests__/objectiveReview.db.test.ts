@@ -27,6 +27,7 @@ vi.mock("@/lib/discoveryReport", async () => ({
 vi.mock("@/lib/exportChartImages", () => ({ buildChartImagesByTheme: vi.fn(async () => []) }));
 vi.mock("@/lib/figureChecks", async () => await import("../figureChecks"));
 vi.mock("@/lib/numberTrace", async () => await import("../numberTrace"));
+vi.mock("@/lib/latestVerdict", async () => await import("../latestVerdict"));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../anthropic", () => ({ anthropic: {}, CLAUDE_MODEL: "test-model" }));
 

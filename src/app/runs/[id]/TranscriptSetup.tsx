@@ -82,6 +82,8 @@ type Row = {
   hasCoding: boolean;
   accent: { border: string; dot: string };
   deleteAction: () => Promise<void>;
+  /** GT-010: the delete confirmation for this file, naming what goes with it. */
+  deleteConfirm?: string;
 };
 
 type Choice = {
@@ -272,7 +274,7 @@ function FileCell({ row }: { row: Row }) {
 function DeleteCell({ row }: { row: Row }) {
   return (
     <form action={row.deleteAction} className="justify-self-end">
-      <DeleteDocumentButton />
+      <DeleteDocumentButton confirmMessage={row.deleteConfirm} />
     </form>
   );
 }

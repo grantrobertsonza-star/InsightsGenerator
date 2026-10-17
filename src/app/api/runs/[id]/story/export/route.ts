@@ -36,6 +36,7 @@ import { applySupportToDiscovery, discoveryInsightIds, loadDiscoveryReportData }
 import { narrativeFramingQualification } from "@/lib/narrativeSupportSummary";
 import { buildChartImagesByTheme } from "@/lib/exportChartImages";
 import type { ChartableFinding } from "@/lib/findingsChartData";
+import { latestVerdictLateral } from "@/lib/latestVerdict";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -314,7 +315,7 @@ export async function GET(
     const findingsResult = await client.query<ChartableFinding>(
       `select f.id, f.origin, f.pattern_type, f.status, f.stated_stats, f.theme
        from findings f
-       join verdicts v on v.finding_id = f.id
+       join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
        where f.run_id = $1 and f.status = 'accepted' and v.verdict_tier in ('robust', 'use_with_caution')
        order by f.theme nulls last, f.created_at`,
       [runId],
@@ -961,15 +962,22 @@ export async function GET(
   // findings renders no extra slide, and never merged into the prose above - a reader must not
   // mistake "this insight is stale" (the per-pillar note above) for "this insight is current but
   // qualified" (this slide).
-  const insightQualifications = Array.from(insightsById.values())
-    .map((insight) => ({
-      headline: insight.headline,
+  // GT-009: a line here restates an insight (or a recommendation on one), so it carries that
+  // insight's support status in the same words as its evidence card ("SUPPORT CHANGED", "SUPPORT
+  // NOT CHECKED"); before, a stale insight appeared here with only its design caveat.
+  const supportTagFor = (insightId: string) => {
+    const tag = SUPPORT_BADGE_SUFFIX[supportOf(insightId).status];
+    return tag ? ` [${tag}]` : "";
+  };
+  const insightQualifications = Array.from(insightsById.entries())
+    .map(([id, insight]) => ({
+      headline: `${insight.headline}${supportTagFor(id)}`,
       caveats: exportCaveatLabels(insight.caveat_tags),
     }))
     .filter((entry) => entry.caveats.length > 0);
   const recommendationQualifications = recommendations
     .map((rec) => ({
-      headline: rec.action_text,
+      headline: `${rec.action_text}${supportTagFor(rec.synthesized_insight_id)}`,
       caveats: exportCaveatLabels(rec.caveat_tags),
     }))
     .filter((entry) => entry.caveats.length > 0);

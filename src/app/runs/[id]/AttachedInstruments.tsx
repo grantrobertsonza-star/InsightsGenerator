@@ -9,6 +9,8 @@ export type AttachedInstrumentInfo = {
   filename: string;
   summary: InstrumentSummary;
   deleteAction: () => Promise<void>;
+  /** GT-010: the delete confirmation for this file, naming what goes with it. */
+  deleteConfirm?: string;
 };
 
 const guideTypes = ["interview_guide", "focus_group_guide"];
@@ -65,7 +67,7 @@ export default function AttachedInstruments({
               </div>
             </details>
             <form action={i.deleteAction}>
-              <DeleteDocumentButton />
+              <DeleteDocumentButton confirmMessage={i.deleteConfirm} />
             </form>
           </div>
         );

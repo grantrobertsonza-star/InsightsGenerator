@@ -41,6 +41,7 @@ vi.mock("@/lib/discoveryReport", async () => ({
   loadDiscoveryReportData: vi.fn(async () => ({ inputState: "complete", netNewSources: [], verificationNote: null, netNewInsights: [], netNewFindings: [], netNewFindingsOmitted: 0, contradictions: [] })),
 }));
 vi.mock("@/lib/exportChartImages", () => ({ buildChartImagesByTheme: vi.fn(async () => []) }));
+vi.mock("@/lib/latestVerdict", async () => await import("../latestVerdict"));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../recommendationQualityScorer", () => ({ refreshRecommendationQuality: vi.fn() }));

@@ -20,6 +20,7 @@ import { loadInsightSupportOrUnchecked } from "@/lib/supportStatus";
 import { summariseSupport, type InsightSupport } from "@/lib/supportStatusShared";
 import { figureCheckLoadErrorNote, joinNotes, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
+import { latestVerdictLateral } from "@/lib/latestVerdict";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -236,7 +237,7 @@ export async function GET(
       `select f.id, f.origin, f.pattern_type, f.status, f.stated_stats,
               f.finding_text, f.theme, v.verdict_tier
        from findings f
-       join verdicts v on v.finding_id = f.id
+       join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
        where f.run_id = $1 and f.status = 'accepted' and v.verdict_tier in ('robust', 'use_with_caution')
        order by f.theme nulls last, f.created_at`,
       [runId],

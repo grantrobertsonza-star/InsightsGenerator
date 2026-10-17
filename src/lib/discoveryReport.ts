@@ -9,6 +9,7 @@ import {
 import { loadInputCompleteness } from "./inputCompleteness";
 import { findingSourceSql, formatFindingSource } from "./sourceAttribution";
 import { SUPPORT_STATUS_LABEL, summariseSupport, type InsightSupport, type SupportStatus } from "./supportStatusShared";
+import { latestVerdictLateral } from "./latestVerdict";
 
 // A report that lists every net-new finding would bury its own argument.
 // The Findings section already carries each verified finding; this section's
@@ -131,7 +132,7 @@ export async function loadDiscoveryReportData(
   }>(
     `select f.finding_text, f.theme, v.verdict_tier, ${src.columns}
      from findings f
-     join verdicts v on v.finding_id = f.id
+     join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
      ${src.join}
      where f.run_id = $1
        and f.origin = 'generated'

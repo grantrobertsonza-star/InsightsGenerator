@@ -9,6 +9,7 @@ import {
   type ContradictorKind,
   type VerificationBasis,
 } from "./discoveryClassification";
+import { latestVerdictOrder } from "./latestVerdict";
 
 // Bounds one pass: each insight is its own call (the model has to hold one
 // insight against the whole list of claims, and mixing several insights in
@@ -75,7 +76,7 @@ export async function downgradeContradictedOriginal(
     verification_basis: string | null;
   }>(
     `select id, verdict_tier, rationale, corroboration_level, due_care, verification_basis
-     from verdicts where finding_id = $1 order by created_at desc limit 1`,
+     from verdicts where finding_id = $1 order by ${latestVerdictOrder("verdicts")} limit 1`,
     [args.findingId],
   );
   const row = existing.rows[0];

@@ -4,6 +4,7 @@ import { withTenant } from "./db";
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
 import { loadNarrativeEvidence, narrativeFigureCheck } from "./storyNarrative";
 import { figureCheckAvailable } from "./figureChecks";
+import { latestVerdictLateral } from "./latestVerdict";
 
 const MAX_FINDINGS_FOR_CONTEXT = 80;
 const MAX_INSIGHTS_FOR_CONTEXT = 60;
@@ -126,7 +127,7 @@ async function loadContext(tenantId: string, runId: string) {
     }>(
       `select f.finding_text, f.theme, v.verdict_tier
        from findings f
-       join verdicts v on v.finding_id = f.id
+       join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
        where f.run_id = $1 and f.status = 'accepted' and v.verdict_tier in ('robust', 'use_with_caution')
        order by f.theme nulls last, f.created_at
        limit $2`,

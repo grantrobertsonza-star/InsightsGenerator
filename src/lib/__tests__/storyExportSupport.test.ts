@@ -35,6 +35,7 @@ vi.mock("@/lib/discoverySlides", () => ({ addDiscoverySlides: vi.fn() }));
 vi.mock("@/lib/exportChartImages", () => ({ buildChartImagesByTheme: vi.fn(async () => []) }));
 vi.mock("@/lib/figureChecks", async () => await import("../figureChecks"));
 vi.mock("@/lib/numberTrace", async () => await import("../numberTrace"));
+vi.mock("@/lib/latestVerdict", async () => await import("../latestVerdict"));
 vi.mock("../crosstabs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../crosstabs")>()),
   resolveCurrentDesignSnapshotStatus: vi.fn(async () => ({ ok: true, snapshot: "null" })),
