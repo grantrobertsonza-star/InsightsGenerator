@@ -12,6 +12,7 @@ At application `8fa326c`, production build, disposable PostgreSQL 16, real Pytho
 - Native: 30/30 UI checks, smoke 1, adapter 2, objective review acceptance 3 on the production build.
 - Integrity audit over the 38 runs the suite created: 0 violations (tenant consistency on every run-scoped table, cross-run links, recommendation anchors, decision statement equals accepted decisions, generator recommendations record decisions, no stored unsupported AI output, every insight has a verdict). Migration 0102 re-applies as a no-op.
 - Observations (S5, not blockers): the significance note does not name the unpooled SE form; decision statements order accepted decisions by `created_at` only (no `id` tie-break).
+- Migration `0102`: Grant reported on 2026-10-17 (11:31 SAST) that he has run it; not independently verified by Claude.
 - Not executed: model-judged stages (claim verdicts, missed insights, synthesis and narrative quality) need an authorised real-model pass; Office layout checked as text only.
 
 ## Latest independent recommendation-currentness review
