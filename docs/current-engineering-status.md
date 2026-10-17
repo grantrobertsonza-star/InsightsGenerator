@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude remainder repairs `7d12593` and GT-007 main recommendation exports `c00e5d1`, for independent verification.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude follow-ups `4475adc` (latest verdict in every reader, GT-008 to GT-010, release-gate storage check); real-model pass waiting on Grant.
 
 
 
@@ -8,6 +8,46 @@ Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude remainder repairs `7d125
 
 
 
+
+
+## Claude follow-ups 1, 2 and 5 of Grant's five (2026-10-17; commit `4475adc`)
+
+Implemented, ready for Codex's independent verification. Parent `83825c2`; application base `c00e5d1`. 28 paths; committed bytes match the package hashes (0 mismatches). No migration. Grant reports migrations `0102` and `0103` applied (item 3; his statement, not checked from here).
+
+**1. One latest verdict in every remaining reader.**
+- New `src/lib/latestVerdict.ts`: `created_at desc, id desc`, the order `finding_support_parts` records.
+- Used in both narrative exports (the findings charted and listed), `discoveryReport.ts`, `researchAssistant.ts`, `validateStatedInsights.ts` (the evidence pool), the run page's stated-insight and pre-insight lists, and `contradictionDetector.ts` (id tie-break).
+- The verification summary and the failed-verdict sample moved to `src/lib/verdictSummary.ts`, so they are tested. They now count one row per finding by its latest verdict, not one per verdict row.
+- Effect: an older robust verdict no longer qualifies a finding whose latest verdict refuses it, and a finding with several verdicts appears once.
+- Found while testing, generic: the stated-insight chain check filtered its evidence with `finding_kind != 'stated_insight'`. Findings computed from data tables have no `finding_kind` (null), so `null != ...` silently left every computed finding out of the evidence a report's interpretive claim is checked against. It is now `is distinct from`.
+
+**2. GT-008 to GT-010.**
+- GT-008: a request lost in transit (Chrome "Failed to fetch", Firefox "NetworkError when attempting to fetch resource.", Safari "Load failed") reads: "The connection to the server was interrupted, so this may not have been saved. Your changes are still here: check your connection and try again. Reloading the page shows what was saved." It is in the shared `actionFailure.ts`, and two fetch panels (`OutputSetCard`, `RelatedOutputSets`) now use it. Other TypeErrors and server messages keep their own text.
+- GT-009: each line of the narrative deck's "Evidence qualifications" slide carries its insight's support status in the evidence card's words (for example "[SUPPORT CHANGED]").
+- GT-010: the delete confirmation names, for that file, its findings, the review decisions and researcher notes on them, and the insights that will show "support no longer valid" (`documentDeletionImpact.ts`, `documentDeletionMessage.ts`). It is used in all three delete controls. When the counts cannot be read, it uses general wording, never "0", and logs why.
+
+**5. Release-gate checks (`scripts/release-gate/`).**
+- `check-storage-privacy.mjs` checks, read-only: the bucket is private, there is no read through the public URL or with the publishable key, and a signed link expires.
+- `README.md` is the runbook for gates G1 to G6. G6, deployed identity, is stated as missing functionality (the app has no sign-in; every request is the `DEFAULT_TENANT_ID` organisation), not as a check.
+- Not run against a deployed environment: neither the cloud workspace nor the laptop's Linux shell can reach Supabase or the local Docker database. `check-tenant-isolation.mjs` from the laptop shell failed with ECONNREFUSED (local) and EAI_AGAIN (cloud). Grant runs these from Windows.
+
+Tests:
+- `latestVerdictReaders.db.test.ts` (real PostgreSQL; the actual routes and functions; model and chart rendering mocked, prompts captured): fixture findings with a later refusal, a later recovery, three verdicts, a same-instant tie and a control. All 5 behavioural cases fail on the previous code.
+- `documentDeletion.db.test.ts`: counts on a real database, a real failure, and the pure message.
+- `actionFailure.test.ts`: +2.
+- `releaseGateStorage.test.ts`: the actual script as a process against a Storage stand-in, with 1 passing, 4 failing and 2 could-not-check cases.
+- `journey-changes` C1, C3 and C5 assert GT-010, GT-008 and GT-009 in the browser. Observed C1 confirmation: "Delete this document? This also deletes 8 findings, with 1 review decision you made and 1 researcher note. 10 insights rest on them and will show their support as no longer valid. This can't be undone."
+
+Checks: `npx tsc --noEmit -p .` pass; ESLint 0 errors on the changed files (pre-existing warnings only); `vitest run src/lib/__tests__ --pool=forks` 130 files, **920 passed, 0 failed, 46 skipped**; production `next build --webpack` pass; browser **39/39**; smoke 1, adapter 2, objective acceptance passed.
+
+Failed invocations (retained):
+- The first vitest gate had 10 failures in 4 files from a missing `@/lib/latestVerdict` alias mock (test harness); mocks added.
+- `documentDeletion.db.test.ts` first failed in `beforeAll` on the review-action check constraint (the fixture used `accepted`, the constraint wants `accept`). Vitest listed those tests as skipped, not failed; the file was reported failed.
+- The first browser run failed C1: the Import data list (`TranscriptSetup`) and attached instruments had their own delete buttons that did not yet receive the message; both now do.
+
+Not in this commit: item 4 (the real-model pass) waits for Grant's choice on how the API key is used.
+
+Limits: the "insights" count in the confirmation counts per-finding and synthesized insights together. Readers that copy verdict history (`findingArchive.ts`) still read every verdict, on purpose. The insight generator and the pre-insight exports already used the same order inline and are unchanged.
 
 ## Claude implementation of GT-007, main Recommendations list exports (2026-10-17; commit `c00e5d1`)
 

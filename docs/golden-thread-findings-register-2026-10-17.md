@@ -146,3 +146,16 @@ Authoritative exact report: [final-export-independent-acceptance-2026-10-17.md](
 Evidence: exact7d repair3files19pass/3skip; final strict127files898pass/46explicit-skips with actual prerequisites; independent main/RLS2files15pass/3skip; production build exit0; native primary4pass/1converter failure followed by separately retained GT-007 continuation1pass;271 rendered-content assertions plus4 direct refusal/recovery controls; actual HTTP422/Excel fallback/corrected retry and original native crosstab reference values pass. No relabelled failed run. Restricted-admin first gate, converter crash at original path, empty-helper regex and inspection encoding errors remain retained; exact same downloaded deck independently converts at a short isolated path, precise crash cause unproved.
 
 GT-008–GT-010 remain open, deferrable and unrepaired. Approved SAS/flipped separate-Codebook exclusions, six blocked security/archived-definition rows and replay-only fresh-model-quality limitation remain separate. All earlier failed history is preserved. No overall acceptance/public release, paid calls, push, deployment or history rewrite. Evidence root:scripts/workflow-tenant-review/final-export-review-20261017/.
+
+## Claude follow-ups after final acceptance (2026-10-17; commit `4475adc`)
+
+| ID | Change | Retained check |
+|---|---|---|
+| FND (latest verdict, remaining readers) | One latest verdict in the narrative exports, discovery, research assistant, stated-insight evidence, page summary and lists | `latestVerdictReaders.db.test.ts` (5 behavioural cases fail on the previous code) |
+| New, found while testing | Stated-insight evidence pool excluded every computed finding (`finding_kind != ...` on null); now `is distinct from` | same test (an empty prompt before the fix) |
+| GT-008 | Plain connection-lost message instead of "Failed to fetch" | `actionFailure.test.ts`; `journey-changes` C3 |
+| GT-009 | Support status on each evidence-qualifications line | `journey-changes` C5 |
+| GT-010 | Delete confirmation names findings, review decisions, notes and affected insights; general wording when counts are unavailable | `documentDeletion.db.test.ts`; `journey-changes` C1 |
+| IMP-001/016 (prep) | Storage privacy check and release-gate runbook | `releaseGateStorage.test.ts`; not run against a deployment |
+
+Status: implemented, awaiting Codex verification. Counts unchanged.

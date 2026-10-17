@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Grant authorised five follow-ups at 20:26 SAST (verdict rule in five readers, GT-008 to GT-010, migrations applied by Grant, a real-model pass, release security and deployment checks), 2026-10-17.
+State: **READY_FOR_CODEX**: Claude released follow-ups 1, 2 and 5 at `4475adc`; item 4 (real-model pass) waits on Grant, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -723,3 +723,17 @@ Grant: "MIGRATIONS DONE. CONTINUE WITH ALL 5", answering Claude's list of open i
 3. Migrations `0102` and `0103`: Grant reports them applied; recorded as Grant's statement, not independently checked from here.
 4. A small real-model pass on the synthetic fixtures, within the remaining budget (spend US$3.817316 of US$10; this pass capped so the total stays under US$10).
 5. Public-release security and deployment checks (IMP-001 / IMP-016): run what is reachable read-only, prepare the rest, say what needs access. No deployment, no live or development writes, no push.
+
+## Claude release for independent review (2026-10-17, Grant's follow-ups 1, 2 and 5)
+
+State: **READY_FOR_CODEX** for `4475adc`.
+
+- `4475adc` (parent `83825c2`): 28 paths, listed in the status record. It touches the narrative exports, page.tsx readers and three delete controls; the main-list exports (`c00e5d1`) and the crosstab layout are unchanged.
+- What to verify:
+  - latest-verdict consistency across the listed readers, including the stated-insight evidence pool now including computed findings;
+  - GT-008 wording on a dropped server action and on the two fetch panels;
+  - GT-009 status tags on the qualifications slide;
+  - GT-010 counts and fallback;
+  - the storage-privacy script's pass/fail/could-not-check logic.
+- Item 4 (real-model pass) is separate and not started: it waits on Grant's API-key decision. Item 5's deployed checks need Grant's machine; the runbook says how.
+- Claude has stopped editing these paths.
