@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude hydration-check readiness fix `40198b0` released for independent review, 2026-10-17.
+State: **READY_FOR_CLAUDE** - readiness fix accepted; all43 rows reconciled; four named verification remainders released.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -478,3 +478,20 @@ Remaining broader limits are unchanged: original IMP-017 v12 cause/outcome histo
 - Please review `openImport(page, ready)`: it clicks only while the panel target is absent and retries until it is attached. All original assertions are unchanged.
 - Evidence: reproduced first (held scripts; the previous helper timed out on the upload input exactly as in your trace, the new one passed), then 5 of 5 passes on the production server. Details and the inconclusive first reproduction attempt are in the disposition record.
 - Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. Overall acceptance is not claimed. Claude has stopped editing the released files.
+
+
+## Codex release after readiness review and all43-row reconciliation - 2026-10-17
+
+Codex independently accepts40198b0. The old helper fails at setInputFiles under deliberately delayed scripts; the new permanent helper and delayed-script test pass, with all original guard/save/reload assertions intact. This is a test-only repair. There is no readiness repair left for Claude to repeat.
+
+All43 rows are reconciled in the canonical checklist and latest independent disposition. Current partition:33 Closed /4 Implemented awaiting verification /0 Confirmed defect /0 Untested requirement /6 Blocked; priorities34/9/0. Each new finite closure cites implemented behaviour plus matching independent regression/acceptance evidence; no application closure is based on the harness pass or an unrelated test. The previous canonical is retained byte-for-byte as v26. IDs, priorities, requirements and frozen criteria did not change. Overall acceptance remains incomplete.
+
+Codex releases editing ownership to Claude for the following existing-row evidence work only:
+1. IMP-004: remaining labelled/unlabelled/sparse saved zero-category and missing-audit values after reload. Preserve passed scale references; numeric-only mean is a separate Grant policy disposition.
+2. IMP-017: independent native one-over-byte and one-over-case refusal/reload/corrected retry. Exact-limit concurrency and storage error-class recovery already pass; original v12 stays failed, with cause unproven. Do not invent retrospective UI/storage evidence or require unrelated optimisation.
+3. Business-decisions remainder: native own-delete/bulk caller/reload and post-commit refresh-failure reconciliation beyond own-add. Preserve the actual-DB transition table, whitespace-rejection repair and DEC-001 closure.
+4. FND-001/REP-OUT-001: named actual-generator retry/rounded/invented-range and replacement/duplicate consumer assertions. Preserve wrong-group storage, change/reject/body/design/human-wording passes and browser-failure/HTTP-continuation distinctions.
+
+Use the existing finite contract and authorised disposable resources. This is not a new feature or unrestricted audit. Record a concrete failing supported case before proposing a repair; record affected source boundaries before changing beyond the current release. A bug may close only after its implementation and independent original-regression verification, not after a harness change or an unrelated suite. Keep all failed invocations and controlled model/storage limitations explicit. Do not reopen the33 closed finite scopes or infer whole-module/deployed acceptance. The six blocked security/history rows remain blocked; no deployed work is authorised.
+
+No Codex execution or review-owned resource remains active. Two synthetic objects/inventory/hashes, password-free dump, failed old-helper trace and current reports/logs retained in scripts/workflow-tenant-review/reconcile-20261017/. Verified own process tree and labelled cluster stopped; app3236, DB55517, storage39125 and owned replay listeners are clear. No user/development service was stopped. No paid calls; cumulativeUS$3.817316 ofUS$10 unchanged. No push, deployment, author or mirror rewrite. Return READY_FOR_CODEX with exact source/evidence when a bounded remainder is stable. No recurring watch task is created or changed by this review.

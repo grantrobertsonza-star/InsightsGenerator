@@ -1,16 +1,16 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude hydration-check readiness fix `40198b0` awaits independent review.
+Updated: 2026-10-17. State: **READY_FOR_CLAUDE** - readiness repair independently accepted; all43 rows reconciled, four named verification remainders released.
 
 ## Active version and ownership
 
-- Dedicated local branch: `checkpoint/trust-hardening-20261016`; source checkpoint `b5a2a4dd198f384b7cd0c5ccb67fde37d892a673`. It retains accumulated pre-existing application implementation plus the bounded milestone fixes; unrelated local diagnostics/evidence remain outside Git.
-- Repair7 accepted and27 manifest files integrated after full base/archive/hash reconciliation. Both separately released legacy-test bases match. Authoritative lockfile unchanged. [agent-handoff.md](agent-handoff.md) records Codex ownership and exact manifests.
+- Dedicated local branch: `checkpoint/trust-hardening-20261016`; accepted source/testing checkpoint `40198b015c406be699326c7e0115037d2c1a1275`, with docs-only release `460815c`. Application bytes are unchanged from the independently built/reviewed `5f63038` source. The following local Codex checkpoint records this reconciliation; runtime and unrelated diagnostics stay outside Git.
+- Repair7 accepted and27 manifest files integrated after full base/archive/hash reconciliation. Both separately released legacy-test bases match. Authoritative lockfile unchanged. [agent-handoff.md](agent-handoff.md) records current ownership and the retained exact manifests.
 - Integration evidence: `scripts/workflow-tenant-review/repair7/integration-comparison.json` and `applied.json`. Parked hydration archive excluded. Recorded bounded fixes and self-validation remain valid at their exact scopes; overall trust-hardening acceptance is incomplete as reconciled below.
 
 ## Working queue
 
-Use the existing [canonical baseline](technical-release-acceptance-baseline-2026-10-15.md), section “Consolidated outstanding work — 2026-10-16”, as the reconciled requirement/evidence inventory. Do not duplicate its rows here. This file is the single operational status; older reports remain immutable evidence at their recorded scopes.
+Use the existing [canonical baseline](technical-release-acceptance-baseline-2026-10-15.md), current Row-level reconciliation 2026-10-17 and finite43-row checklist. It records33 Closed /4 awaiting verification /6 Blocked. Older dated queues and count notices are historical where superseded. This file is the operational status; the handoff is authoritative for editing ownership.
 
 After takeover, coherent batches are:
 
@@ -513,3 +513,16 @@ Twelve complete synthetic objects/hashes, counters, password-free database dump 
 ## Claude hydration-check readiness fix complete (2026-10-17)
 
 Commit `40198b0` (1 path, `e2e/ui/data-setup-hydration.check.mjs`) over `3753371`, plus the following docs-only commit. Local and unpushed. Reproduced first with the previous helper, then fixed; 5 of 5 passes on the production server. Details: the "Claude readiness fix for the hydration check" section of the disposition record. No application change; partition unchanged; overall acceptance incomplete.
+
+
+## All43-row independent reconciliation - 2026-10-17
+
+Reviewed HEAD460815c and readiness repair40198b0. The old helper independently fails under delayed scripts at the original upload-input step; the new permanent check and delayed-script comparison both pass with original assertions unchanged. This closes the test defect only. No application row is promoted because of this harness fix.
+
+Every canonical row is individually disposed in the latest independent-acceptance-disposition-2026-10-16.md and updated finite checklist. Current partition: **33 Closed /4 Implemented awaiting verification /0 Confirmed defect /0 Untested requirement /6 Blocked =43**, priorities34/9/0. The original12closures remain;21 further finite criteria close on matching independent original-regression/acceptance evidence, not suite totals. IDs, requirements, priorities and frozen criteria are unchanged. Previous canonical preserved byte-for-byte as v26; verification metadata is in scripts/workflow-tenant-review/reconcile-20261017/canonical-reconciliation-check.json.
+
+Remaining technical rows: IMP-004 saved zero/missing-audit values and separate scale policy; IMP-017 independent native one-over boundary/reload/corrected retry; business native own-delete/bulk and broader post-commit refresh reconciliation; FND named generator and replacement/duplicate consumer assertions. Six blocked rows are deployed security plus five historical-definition gaps. Missing evidence is not a new defect. No overall, module or public-release acceptance is inferred.
+
+Executed current targeted evidence: row regressions45 passes/9 skipped; mechanism run12 passes/1 cache runner timeout/5 skipped; separate unchanged cache continuation4 passes/1 skipped with60-second allowance. Actual Python/DB edit races and exact original two-channel selector persistence controls pass. Native old-helper control fails as expected; fixed readiness two cases pass; objective detail/overview assertions pass3/3, with usable generation supplied by its separately retained relevant native proof. All failed invocations remain failed. Application source matches the prior independently built snapshot across521 paths; no build or full837-suite rerun claimed.
+
+Two complete synthetic objects/hashes, password-free UTF-8 cluster dump, old failing trace, reports, source comparisons and logs retained locally. Verified own PID tree and labelled codex-reconcile-20261017 cluster stopped; owned listeners clear, user/development services untouched. No application edit, paid model call, push, deployment or author/history rewrite. Handoff releases only the four named bounded verification remainders, with repair only on a concrete failure and independent verification before any subsequent bug closure.
