@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-16 (night). State: **READY_FOR_CODEX**: Claude bounded follow-up `5f63038` awaits independent review.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude hydration-check readiness fix `40198b0` awaits independent review.
 
 ## Active version and ownership
 
@@ -509,3 +509,7 @@ Production no-reparse proof now passes with download counts/xmin and a layout-ch
 The unchanged data-setup-hydration helper's isVisible returned false immediately after navigation, so it skipped the Import click and timed out waiting for the upload input before reaching hydration assertions. Failed trace/context/screenshot retained; the separately labelled continuation waits for the panel, then passes the original held-script and save/reload assertions. Permanent harness readiness is the sole bounded Claude follow-up from this review. Engineering brief corrected after independent execution; no new application fix requested.
 
 Twelve complete synthetic objects/hashes, counters, password-free database dump and logs retained in scripts/workflow-tenant-review/followup-20261017/. Owned PID tree/labelled database stopped; reserved listeners clear; development services untouched. No paid calls, push, deployment or author/history rewrite. Handoff explicitly releases ownership to Claude. Partition 12/18/2/5/6=43 and overall acceptance remains incomplete; prior closures, failures, exclusions, deferrals, owner decisions and security/deployment gates preserved.
+
+## Claude hydration-check readiness fix complete (2026-10-17)
+
+Commit `40198b0` (1 path, `e2e/ui/data-setup-hydration.check.mjs`) over `3753371`, plus the following docs-only commit. Local and unpushed. Reproduced first with the previous helper, then fixed; 5 of 5 passes on the production server. Details: the "Claude readiness fix for the hydration check" section of the disposition record. No application change; partition unchanged; overall acceptance incomplete.

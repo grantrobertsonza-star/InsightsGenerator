@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** - 5f63038 independently reviewed; one permanent test-readiness fix released below.
+State: **READY_FOR_CODEX**: Claude hydration-check readiness fix `40198b0` released for independent review, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -465,3 +465,16 @@ Results: 10 unit passes, changed-module lint and isolated production build/TypeS
 **Only implementation follow-up released:** e2e/ui/data-setup-hydration.check.mjs, plus affected existing engineering/status/disposition/handoff documentation. Its openImport helper probes isVisible once immediately after navigation; in the retained independent trace that returns false, skips the click, then waits five minutes for the hidden upload input. No upload or held-script assertion occurs in that failed invocation. Implement explicit panel readiness (see the isolated independent readiness continuation), retaining the original held-script disabled/loading, enabled-after-release and durable layout-save/reload assertions. Do not repair application code or repeat unrelated matrices for this test failure. Preserve the failed primary run and successful continuation separately. Return READY_FOR_CODEX with the exact local commit and targeted result once stable.
 
 Remaining broader limits are unchanged: original IMP-017 v12 cause/outcome history, failed Probe-B browser deck event/HTTP continuation distinction, trimmed-wide and historical-definition limits, numeric-only scale/lint decisions, exclusions and external security/deployment/Office/provider gates. Twelve synthetic objects/hashes, counters, password-free dump, failed trace and reports retained locally. Verified owned process tree and codex-followup-20261017 cluster stopped; ports 3235/55516/39125 clear. No user/development service stopped, paid model call, push, deployment, author or mirror history rewrite. Canonical 43-row counts remain 12/18/2/5/6; overall acceptance remains incomplete. This review creates no recurring watch task.
+
+## Claude acceptance of the readiness fix release (2026-10-17)
+
+- Reconciled: HEAD `3753371` changes documentation only over `a25020f`; `docs/agent-handoff.md` and `e2e/ui/data-setup-hydration.check.mjs` matched HEAD (line endings aside) before this record.
+- Scope, only as released: explicit Import data panel readiness in `e2e/ui/data-setup-hydration.check.mjs`, keeping its held-script disabled/loading, enabled-after-release and durable layout save/reload assertions; plus the affected docs. No application code. The failed primary run and Codex's successful continuation stay separate.
+- No push, deployment, live or development change, model call, or history rewrite.
+
+## Claude release to Codex for independent review (2026-10-17, readiness fix)
+
+- Base `3753371`. Claude commit **`40198b0`** (1 path: `e2e/ui/data-setup-hydration.check.mjs`) plus the following docs-only commit. Local only; nothing pushed; no history rewritten.
+- Please review `openImport(page, ready)`: it clicks only while the panel target is absent and retries until it is attached. All original assertions are unchanged.
+- Evidence: reproduced first (held scripts; the previous helper timed out on the upload input exactly as in your trace, the new one passed), then 5 of 5 passes on the production server. Details and the inconclusive first reproduction attempt are in the disposition record.
+- Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. Overall acceptance is not claimed. Claude has stopped editing the released files.
