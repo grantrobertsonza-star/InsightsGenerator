@@ -54,6 +54,7 @@ import {
 } from "@/lib/discoveryClassification";
 import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
+import { decisionRefreshPending } from "@/lib/decisionRefresh";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
 import UploadForm from "./UploadForm";
@@ -3095,6 +3096,7 @@ export default async function RunPage({
     outputSets,
     reportReadStats,
     waveFilesResult,
+    decisionRefreshIsPending,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3133,6 +3135,7 @@ export default async function RunPage({
     timing("outputSets", getOutputSets(TENANT_ID, id)),
     timing("reportReadStats", getReportReadStats(id)),
     timing("waveFiles", listWaveFilesAction(id)),
+    timing("decisionRefreshPending", decisionRefreshPending(TENANT_ID, id)),
   ]);
   if (!run) {
     notFound();
@@ -3412,7 +3415,10 @@ export default async function RunPage({
     refreshInBackground(
       id,
       recommendationRefreshesInFlight,
-      () => refreshRecommendations(TENANT_ID, id),
+      // Background refresh: failures are already logged by refreshRecommendations.
+      async () => {
+        await refreshRecommendations(TENANT_ID, id);
+      },
       `recommendation:${id}`,
     );
   }
@@ -3520,6 +3526,7 @@ export default async function RunPage({
         candidates={decisionCandidates}
         hasFindings={findings.length > 0}
         evidenceSynthesis={run.evidence_synthesis}
+        refreshPending={decisionRefreshIsPending}
       />
     </div>
   );

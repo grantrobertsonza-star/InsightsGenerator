@@ -13,6 +13,8 @@ import {
   regenerateDecisionCandidates,
   acceptAllDecisionCandidates,
   deleteAllDecisionCandidates,
+  retryDecisionRefresh,
+  type DecisionChangeResult,
 } from "@/lib/decisionCandidateActions";
 import { TrashIcon } from "@/components/icons";
 
@@ -33,19 +35,29 @@ const sourceLabel: Record<DecisionCandidate["source"], string> = {
 const textareaClass =
   "w-full resize-none rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 
-function CandidateCard({ runId, candidate }: { runId: string; candidate: DecisionCandidate }) {
+// A decision change that was saved reports whether the insights and recommendations were updated
+// to match; the list shows that outcome (see DecisionRefreshNotice).
+type OnChanged = (result: DecisionChangeResult | void) => void;
+
+function CandidateCard({ runId, candidate, onChanged }: { runId: string; candidate: DecisionCandidate; onChanged: OnChanged }) {
   const [isPending, startTransition] = useTransition();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(candidate.candidate_text);
   // Each action reports its failure here instead of throwing out of the transition, which
   // replaced the page and lost an open edit; a failed save keeps the editor and draft.
   const [error, setError] = useState<string | null>(null);
-  const run = (action: () => Promise<unknown>, after?: () => void) =>
+  const run = (action: () => Promise<DecisionChangeResult | void>, after?: () => void) =>
     startTransition(async () => {
       setError(null);
-      const failure = await attempt(action);
+      let result: DecisionChangeResult | void = undefined;
+      const failure = await attempt(async () => {
+        result = await action();
+      });
       if (failure) setError(failure);
-      else after?.();
+      else {
+        onChanged(result);
+        after?.();
+      }
     });
 
   const isAccepted = candidate.status === "accepted";
@@ -195,9 +207,13 @@ export default function DecisionBriefReview({
   candidates,
   hasFindings,
   evidenceSynthesis,
+  refreshPending,
 }: {
   runId: string;
   candidates: DecisionCandidate[];
+  // Whether the insights and recommendations are still owed a refresh after a decision change
+  // (null: could not be checked). Read on the server from the persisted marker.
+  refreshPending: boolean | null;
   // Whether this run has any findings yet, i.e. whether the framer has had
   // anything to read. Passed from the server component since that check
   // reads the findings table, not the candidate list.
@@ -213,12 +229,21 @@ export default function DecisionBriefReview({
   // List-level actions (add your own, accept all, delete all) report failure here; a failed add
   // keeps the typed text.
   const [actionError, setActionError] = useState<string | null>(null);
-  const runListAction = (action: () => Promise<unknown>, after?: () => void) =>
+  // The reason the last saved change's insight and recommendation update failed, if it did.
+  const [refreshProblem, setRefreshProblem] = useState<string | null>(null);
+  const onChanged: OnChanged = (result) => setRefreshProblem(result ? result.refreshError : null);
+  const runListAction = (action: () => Promise<DecisionChangeResult | void>, after?: () => void) =>
     startTransition(async () => {
       setActionError(null);
-      const failure = await attempt(action);
+      let result: DecisionChangeResult | void = undefined;
+      const failure = await attempt(async () => {
+        result = await action();
+      });
       if (failure) setActionError(failure);
-      else after?.();
+      else {
+        onChanged(result);
+        after?.();
+      }
     });
   const [rejectedOpen, setRejectedOpen] = useState(false);
 
@@ -317,6 +342,12 @@ export default function DecisionBriefReview({
           Not saved: {actionError}
         </p>
       )}
+      <DecisionRefreshNotice
+        problem={refreshProblem}
+        pending={refreshPending}
+        busy={isPending}
+        onRetry={() => runListAction(() => retryDecisionRefresh(runId))}
+      />
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           <span>Couldn&apos;t generate suggestions right now: {regenerateError}</span>
@@ -343,7 +374,7 @@ export default function DecisionBriefReview({
       {accepted.length > 0 && (
         <div className="space-y-2">
           {accepted.map((candidate) => (
-            <CandidateCard key={candidate.id} runId={runId} candidate={candidate} />
+            <CandidateCard key={candidate.id} runId={runId} candidate={candidate} onChanged={onChanged} />
           ))}
         </div>
       )}
@@ -379,7 +410,7 @@ export default function DecisionBriefReview({
             </div>
           </div>
           {pending.map((candidate) => (
-            <CandidateCard key={candidate.id} runId={runId} candidate={candidate} />
+            <CandidateCard key={candidate.id} runId={runId} candidate={candidate} onChanged={onChanged} />
           ))}
         </div>
       )}
@@ -424,7 +455,7 @@ export default function DecisionBriefReview({
                 </p>
               )}
               {rejected.map((candidate) => (
-                <CandidateCard key={candidate.id} runId={runId} candidate={candidate} />
+                <CandidateCard key={candidate.id} runId={runId} candidate={candidate} onChanged={onChanged} />
               ))}
             </div>
           )}
@@ -433,5 +464,29 @@ export default function DecisionBriefReview({
         </Pane>
       }
     />
+  );
+}
+
+/**
+ * Says when the insights and recommendations do not yet reflect the accepted decisions: right
+ * after a saved change whose update failed (with the reason), and on any later visit while the
+ * persisted marker says an update is still owed. Unknown is said as unknown.
+ */
+function DecisionRefreshNotice({ problem, pending, busy, onRetry }: { problem: string | null; pending: boolean | null; busy: boolean; onRetry: () => void }) {
+  const message = problem
+    ? `Saved. The insights and recommendations were not updated to match: ${problem}`
+    : pending === true
+      ? "The insights and recommendations have not been updated since the accepted decisions last changed."
+      : pending === null
+        ? "Could not check whether the insights and recommendations match the accepted decisions."
+        : null;
+  if (!message) return null;
+  return (
+    <div role="status" className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <span>{message}</span>
+      <button type="button" disabled={busy} onClick={onRetry} className="shrink-0 font-medium underline disabled:opacity-50">
+        {busy ? "Updating..." : "Update them now"}
+      </button>
+    </div>
   );
 }

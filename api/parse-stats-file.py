@@ -2161,10 +2161,33 @@ _ORDER_RE = re.compile(
     r"increase|decrease|frequent|rarely|high|low", re.I)
 
 
+# A label that is just a number ("7", "7.0"), or a number followed by anchor wording
+# ("0 - Not at all likely", "10 = Extremely likely").
+_NUMBER_LABEL_RE = re.compile(r"^\s*[-+]?\d+(?:\.\d+)?\s*$")
+_NUMBER_LED_LABEL_RE = re.compile(r"^\s*[-+]?\d+(?:\.\d+)?(?:\s*[-=:.)]\s*|\s+)\S")
+# Owner decision, 2026-10-17: a numbered scale of this many points or more gets a mean by default.
+# Researchers who want the distribution instead read the frequencies, nets or top/bottom boxes,
+# which are always shown alongside.
+_NUMBERED_SCALE_MIN_POINTS = 10
+
+
+def _is_numbered_scale(subst):
+    """True for a numbered rating scale such as 0 to 10 or 1 to 10: at least
+    _NUMBERED_SCALE_MIN_POINTS substantive answers whose labels are bare numbers, with at most the
+    two end points carrying anchor wording after their number. A numbered list of named categories
+    ("1. Gauteng", "2. Western Cape", ...) is not a scale: there every label carries wording."""
+    if len(subst) < _NUMBERED_SCALE_MIN_POINTS:
+        return False
+    bare = sum(1 for v in subst if _NUMBER_LABEL_RE.match(v))
+    anchored = sum(1 for v in subst if not _NUMBER_LABEL_RE.match(v) and _NUMBER_LED_LABEL_RE.match(v))
+    return anchored <= 2 and bare + anchored == len(subst)
+
+
 def _is_ordered_scale(var, labels, measures):
     """True when the coded answers of a single question form an ordered scale, so the mean and
     spread of the codes are meaningful. Uses the measurement level stored in the file when it says
-    nominal or ordinal; otherwise it falls back to the wording of the answer labels."""
+    nominal or ordinal; otherwise a numbered scale of 10 or more points (see _is_numbered_scale),
+    and otherwise the wording of the answer labels."""
     m = str((measures or {}).get(var) or "").lower()
     if m == "nominal":
         return False
@@ -2174,6 +2197,8 @@ def _is_ordered_scale(var, labels, measures):
     subst = [str(v) for v in (labels or {}).values() if not _DK_RE.match(str(v).strip())]
     if len(subst) < 3:
         return False
+    if _is_numbered_scale(subst):
+        return True
     return sum(1 for v in subst if _ORDER_RE.search(v)) >= max(2, len(subst) // 2)
 
 

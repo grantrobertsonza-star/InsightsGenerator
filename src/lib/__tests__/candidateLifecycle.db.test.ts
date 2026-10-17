@@ -120,7 +120,8 @@ describe.skipIf(!TEST_DATABASE_URL)("candidate lifecycle persistence (real datab
   it("business failed-refresh retry never duplicates an already persisted researcher decision", async () => {
     const a = await import("../decisionCandidateActions");
     state.failRefresh = true;
-    await expect(a.addOwnDecisionCandidate(run, "Retry this decision")).rejects.toThrow("refresh unavailable");
+    // The addition commits; the failed refresh is reported, not thrown (decisionRefresh.ts).
+    expect(await a.addOwnDecisionCandidate(run, "Retry this decision")).toEqual({ ok: true, refreshError: "refresh unavailable" });
     state.failRefresh = false;
     await a.addOwnDecisionCandidate(run, "Retry this decision");
     expect((await candidates("decision")).filter(r => r.candidate_text === "Retry this decision")).toHaveLength(1);

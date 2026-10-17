@@ -768,14 +768,18 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
  * insights themselves. The two are wrapped separately so a failure in one
  * never blocks the other.
  */
-export async function refreshRecommendations(tenantId: string, runId: string): Promise<void> {
+export async function refreshRecommendations(tenantId: string, runId: string): Promise<string[]> {
+  // Failures are logged and returned, never thrown (see refreshInsights for why both).
+  const failures: string[] = [];
   try {
     await generateRecommendations(tenantId, runId);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failures.push(message);
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'recommendation_agent_error', $3)`,
-        [tenantId, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
+        [tenantId, runId, JSON.stringify({ message })]
       );
     });
   }
@@ -783,10 +787,12 @@ export async function refreshRecommendations(tenantId: string, runId: string): P
   try {
     await generateSynthesizedRecommendations(tenantId, runId);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failures.push(message);
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'synthesized_recommendation_agent_error', $3)`,
-        [tenantId, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
+        [tenantId, runId, JSON.stringify({ message })]
       );
     });
   }
@@ -796,4 +802,5 @@ export async function refreshRecommendations(tenantId: string, runId: string): P
   // fail the step that called this.
   await refreshRecommendationQuality(tenantId, runId);
   await refreshObjectiveQuality(tenantId, runId);
+  return failures;
 }

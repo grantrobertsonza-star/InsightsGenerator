@@ -3,9 +3,26 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateDecisionCandidates } from "./decisionFramer";
-import { refreshInsights } from "./insightGenerator";
-import { refreshRecommendations } from "./recommendationAgent";
+import { markDecisionRefreshPending, refreshDecisionDependants } from "./decisionRefresh";
 import { syncDecisionStatement } from "./runSync";
+
+/**
+ * What a decision change reports back. The change itself either committed (this result) or
+ * threw. refreshError is set when the change was saved but the insights and recommendations
+ * could not be updated to match it; they stay marked as owed a refresh (see decisionRefresh.ts).
+ */
+export type DecisionChangeResult = { ok: true; refreshError: string | null };
+
+async function afterDecisionChange(runId: string): Promise<DecisionChangeResult> {
+  const refreshError = await refreshDecisionDependants(TENANT_ID, runId);
+  revalidatePath(`/runs/${runId}`);
+  return { ok: true, refreshError };
+}
+
+/** Retries the insight and recommendation refresh owed after an earlier decision change. */
+export async function retryDecisionRefresh(runId: string): Promise<DecisionChangeResult> {
+  return afterDecisionChange(runId);
+}
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -44,24 +61,13 @@ export async function acceptDecisionCandidate(runId: string, candidateId: string
       [finalText, wasEdited, candidateId]
     );
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-
-  // For a "validate" run, this is the moment generateInsights stops being a
-  // no-op: it reads runs.decision_statement, which just changed. For a
-  // "generate" run, insights were already generated earlier from the
-  // findings alone, so this is a no-op there (nothing new to cover) unless
-  // documents are reprocessed later.
-  await refreshInsights(TENANT_ID, runId);
-
-  // Also the moment recommendations stop being a no-op, in both modes: an
-  // action is judged against a confirmed decision either way, and this is
-  // where runs.decision_statement first becomes non-null for a "generate"
-  // run (it was already set for "validate" before this call, but a
-  // decision can be re-accepted with edited text, so this still needs to
-  // run every time, not just the first).
-  await refreshRecommendations(TENANT_ID, runId);
-
-  revalidatePath(`/runs/${runId}`);
+  // For a "validate" run this is the moment insight generation stops being a no-op (it reads the
+  // decision statement that just changed); for a "generate" run it usually is one. Recommendations
+  // are judged against the confirmed decisions in both modes, and a decision can be re-accepted
+  // with edited text, so both refreshes run on every accept, not only the first.
+  return afterDecisionChange(runId);
 }
 
 /**
@@ -75,12 +81,9 @@ export async function acceptAllDecisionCandidates(runId: string) {
       runId,
     ]);
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-
-  await refreshInsights(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-
-  revalidatePath(`/runs/${runId}`);
+  return afterDecisionChange(runId);
 }
 
 /**
@@ -102,10 +105,9 @@ export async function rejectDecisionCandidate(runId: string, candidateId: string
       runId,
     ]);
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-  await refreshInsights(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-  revalidatePath(`/runs/${runId}`);
+  return afterDecisionChange(runId);
 }
 
 /**
@@ -121,12 +123,9 @@ export async function restoreDecisionCandidate(runId: string, candidateId: strin
       runId,
     ]);
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-
-  await refreshInsights(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-
-  revalidatePath(`/runs/${runId}`);
+  return afterDecisionChange(runId);
 }
 
 /**
@@ -141,12 +140,9 @@ export async function unacceptDecisionCandidate(runId: string, candidateId: stri
       runId,
     ]);
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-
-  await refreshInsights(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-
-  revalidatePath(`/runs/${runId}`);
+  return afterDecisionChange(runId);
 }
 
 /**
@@ -178,12 +174,9 @@ export async function addOwnDecisionCandidate(runId: string, candidateText: stri
       );
     }
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-
-  await refreshInsights(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-
-  revalidatePath(`/runs/${runId}`);
+  return afterDecisionChange(runId);
 }
 
 /**
@@ -197,10 +190,9 @@ export async function deleteDecisionCandidate(runId: string, candidateId: string
   await withTenant(TENANT_ID, async (client) => {
     await client.query("delete from decision_candidates where id = $1 and run_id = $2", [candidateId, runId]);
     await syncDecisionStatement(client, runId);
+    await markDecisionRefreshPending(client, TENANT_ID, runId);
   });
-  await refreshInsights(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-  revalidatePath(`/runs/${runId}`);
+  return afterDecisionChange(runId);
 }
 
 /**

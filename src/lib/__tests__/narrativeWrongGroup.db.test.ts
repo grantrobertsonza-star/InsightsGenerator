@@ -9,7 +9,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 
 const TENANT = "00000000-0000-4000-8000-0000000000d1";
-const model = vi.hoisted(() => ({ soWhat: "" }));
+// soWhat is the pillar's "so what" for every draft; queue, when not empty, supplies one per attempt
+// first (the generator retries a draft whose figures are unsupported). prompts records each request.
+const model = vi.hoisted(() => ({ soWhat: "", queue: [] as string[], prompts: [] as string[] }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
@@ -37,7 +39,10 @@ vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "test-model",
   anthropic: {
     messages: {
-      create: vi.fn(async (req: { tool_choice?: { name?: string } }) => ({
+      create: vi.fn(async (req: { tool_choice?: { name?: string }; messages?: unknown }) => {
+        model.prompts.push(JSON.stringify(req.messages ?? ""));
+        const soWhat = model.queue.length > 0 ? model.queue.shift()! : model.soWhat;
+        return {
         stop_reason: "tool_use",
         usage: {},
         content: [
@@ -50,20 +55,21 @@ vi.mock("../anthropic", () => ({
               complication: "Advocacy is modest.",
               question: "Whether to invest in advocacy",
               governing_thought: "Advocacy is a modest asset worth building on.",
-              pillars: [{ theme: "Advocacy", headline: "Leadership NPS is 25.", so_what: model.soWhat, insight_indices: [0] }],
+              pillars: [{ theme: "Advocacy", headline: "Leadership NPS is 25.", so_what: soWhat, insight_indices: [0] }],
               recommendations_intro: "The actions follow.",
               caveats: ["Only one insight is available."],
             },
           },
         ],
-      })),
+        };
+      }),
     },
   },
 }));
 
 vi.setConfig({ testTimeout: 60000 });
 
-describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding (real database)", () => {
+describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding, generator retry, rounding and invented ranges (real database)", () => {
   let db: DisposableDb;
   const q = async <T = Record<string, unknown>>(sql: string, p: unknown[] = []) => (await db.pool.query(sql, p)).rows as T[];
   const one = async (sql: string, p: unknown[]) => (await q<{ id: string }>(sql, p))[0].id;
@@ -111,5 +117,64 @@ describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding (real datab
     expect((await stored()).figure_check.status).toBe("traced");
     expect(await q(`select count(*)::int as n from deck_narratives where run_id = $1`, [run])).toEqual([{ n: 1 }]);
   });
+
+  // Same real generator and database as above. Insight: "Leadership NPS is 25.4 (95% interval 14.4
+  // to 35.6, base 200)". References:
+  //   rounded      "NPS is 25" is the cited 25.4 at the output's own precision -> traced
+  //   invented     "between 20 and 30" is a range the insight never states -> unsupported, so the
+  //                draft is refused and retried with feedback naming that figure
+  //   retry        an invented draft followed by a faithful one saves the faithful one (traced)
+  //   exhausted    three invented drafts save nothing; the previous narrative stays unchanged
+  async function runWithInsight(text: string) {
+    const run = await one(`insert into runs (tenant_id, decision_statement, project_name) values ($1, 'Decide', 'Retry') returning id`, [TENANT]);
+    const f = await one(`insert into findings (tenant_id, run_id, origin, finding_text, status, theme) values ($1, $2, 'stated', $3, 'accepted', 'T') returning id`, [TENANT, run, text]);
+    await q(`insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks, verification_method, corroboration_level, due_care) values ($1, $2, 'robust', 'Checked.', '{}', 'single_pass', 'single_source', '{}')`, [TENANT, f]);
+    const pi = await one(`insert into insights (tenant_id, run_id, finding_id, headline, observation, tension, implication) values ($1, $2, $3, 'Leadership NPS', $4, 't', 'i') returning id`, [TENANT, run, f, text]);
+    const si = await one(
+      `insert into synthesized_insights (tenant_id, run_id, headline, observation, tension, implication, triangulation_count, source_theme_count, review_status, action_plan_status)
+       values ($1, $2, 'Leadership NPS', $3, 't', 'i', 1, 1, 'accepted', 'has_action') returning id`,
+      [TENANT, run, text],
+    );
+    await q(`insert into synthesized_insight_sources (tenant_id, synthesized_insight_id, pre_insight_id) values ($1, $2, $3)`, [TENANT, si, pi]);
+    return run;
+  }
+  const stored = async (run: string) =>
+    (await q<{ so_what: string; figure_check: { status: string } }>(`select pillars->0->>'so_what' as so_what, figure_check from deck_narratives where run_id = $1`, [run]))[0];
+  const INSIGHT = "Leadership NPS is 25.4 (95% interval 14.4 to 35.6, base 200).";
+  const INVENTED = "Leadership NPS lies between 20 and 30.";
+
+  it("a figure rounded to the output's precision is traced", async () => {
+    const run = await runWithInsight(INSIGHT);
+    model.queue = []; model.soWhat = "Leadership NPS is 25.";
+    const { generateStoryNarrative } = await import("../storyNarrative");
+    await generateStoryNarrative(TENANT, run);
+    expect((await stored(run)).figure_check.status).toBe("traced");
+  });
+
+  it("an invented range is refused and retried with feedback; the faithful retry is saved traced", async () => {
+    const run = await runWithInsight(INSIGHT);
+    model.prompts = []; model.queue = [INVENTED]; model.soWhat = "Leadership NPS is 25.4.";
+    const { generateStoryNarrative } = await import("../storyNarrative");
+    await generateStoryNarrative(TENANT, run);
+    expect(model.prompts.length).toBe(2);
+    expect(model.prompts[1]).toMatch(/does not support/);
+    expect(model.prompts[1]).toMatch(/Do not compute new ranges/);
+    const saved = await stored(run);
+    expect(saved.so_what).toBe("Leadership NPS is 25.4.");
+    expect(saved.figure_check.status).toBe("traced");
+  });
+
+  it("when every attempt invents a range nothing is saved and the previous narrative is unchanged", async () => {
+    const run = await runWithInsight(INSIGHT);
+    model.queue = []; model.soWhat = "Leadership NPS is 25.4.";
+    const { generateStoryNarrative } = await import("../storyNarrative");
+    await generateStoryNarrative(TENANT, run);
+    const before = await stored(run);
+    model.prompts = []; model.queue = [INVENTED, INVENTED, INVENTED];
+    await expect(generateStoryNarrative(TENANT, run)).rejects.toThrow(/does not support/);
+    expect(model.prompts.length).toBe(3);
+    expect(await stored(run)).toEqual(before);
+    expect(await q(`select count(*)::int as n from deck_narratives where run_id = $1`, [run])).toEqual([{ n: 1 }]);
+  });
 });
-describe.skipIf(!!TEST_DATABASE_URL)("narrative wrong-group grounding (real database)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });
+describe.skipIf(!!TEST_DATABASE_URL)("narrative wrong-group grounding, generator retry, rounding and invented ranges (real database)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

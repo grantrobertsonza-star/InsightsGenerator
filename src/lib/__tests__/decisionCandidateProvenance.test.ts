@@ -4,13 +4,16 @@
 // regeneration." This exercises the actual acceptDecisionCandidate and generateDecisionCandidates
 // entry points against one shared in-memory fake Postgres client, not reimplementations of
 // either function's logic. Only the LLM call (anthropic.messages.create) and the two other
-// pipeline side effects not under test (refreshInsights, refreshRecommendations) are mocked.
+// pipeline side effects not under test (refreshInsights, refreshRecommendations and the refresh-owed
+// marker) are mocked.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("../anthropic", () => ({ anthropic: { messages: { create: vi.fn() } }, CLAUDE_MODEL: "test-model" }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../insightGenerator", () => ({ refreshInsights: vi.fn() }));
 vi.mock("../recommendationAgent", () => ({ refreshRecommendations: vi.fn() }));
+// The refresh-owed marker and the post-commit refresh are covered by decisionRefreshReconciliation.db.test.ts.
+vi.mock("../decisionRefresh", () => ({ markDecisionRefreshPending: vi.fn(), refreshDecisionDependants: vi.fn(async () => null) }));
 vi.mock("../db", () => ({ withTenant: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 

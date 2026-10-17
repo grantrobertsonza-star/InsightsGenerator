@@ -360,23 +360,29 @@ async function generateInsightsForChunk(
 /**
  * Safe wrapper for every automatic trigger point, same reasoning as
  * refreshVerdicts: an insight-generation failure never blocks whatever the
- * researcher actually clicked. Also the one this app calls from
+ * researcher actually clicked. Returns null on success or the failure's message. Also the one this app calls from
  * acceptDecisionCandidate, since for a "validate" run that's the moment
  * generateInsights stops being a no-op.
  */
-export async function refreshInsights(tenantId: string, runId: string): Promise<void> {
+export async function refreshInsights(tenantId: string, runId: string): Promise<string | null> {
   try {
     // Wide findings can run past one pass; keep going until nothing is left (at most 8 passes).
     for (let pass = 0; pass < 8; pass++) {
       const more = await generateInsights(tenantId, runId);
       if (!more) break;
     }
+    return null;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'insight_generator_error', $3)`,
-        [tenantId, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
+        [tenantId, runId, JSON.stringify({ message })]
       );
     });
+    // Still never thrown (automatic triggers must not fail what the researcher clicked), but
+    // returned, so a caller that must know whether insights are current can tell
+    // (decisionRefresh.ts: a decision change keeps its "refresh owed" marker on failure).
+    return message;
   }
 }
