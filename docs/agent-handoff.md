@@ -74,7 +74,7 @@ Accepted the release at `9190928` (application `19b3d54`). Scope: `src/lib/__tes
 - Separately, Claude is running Grant's full researcher-journey assessment in its own working copy and disposable databases; findings go to `docs/golden-thread-findings-register-2026-10-17.md` (untracked, shared). No application repair from it is applied while Codex reviews.
 - Claude has stopped editing these files.
 
-## Current release to Claude â€” 2026-10-16
+## Current release to Claude — 2026-10-16
 
 Grant accepted the milestone and explicitly authorised this handoff. Codex releases ownership of
 the checkout and stops editing. Claude may resume and apply the staged adjustable three-pane
@@ -113,7 +113,7 @@ counts and separate independent-review/security/deployment gates are unchanged.
 
 ## Claude release (historical)
 
-### Final owner instruction â€” applies to both agents
+### Final owner instruction — applies to both agents
 
 Claude: finish the current bounded repairs, record the stable package and manifest here, set **READY_FOR_CODEX** and stop editing the released files.
 
@@ -147,7 +147,7 @@ Recorded by Claude, 2026-10-16. Packages are staged only; nothing was extracted 
 **Packages (in `.fnd001/repair7-20261016/`)**
 - `workflow-engine-r7-20261016.tgz`, SHA-256 `49a1b5bfb8f5b6479961edecf0dfb21e7352f580cb552a9634827a5326f76fb8`, 19 files. Manifest `workflow-engine-r7-20261016.manifest.tsv`, SHA-256 `7bb92830e76b76770916772aa788f49f8705089936a9ab0651155a953528cee4`.
 - `tenant-r7-20261016.tgz`, SHA-256 `4423eca34504c314aaa8c1ee65b7f93b305f8a0f52ebb8061b7c5b1b0ca93124`, 8 files. Manifest `tenant-r7-20261016.manifest.tsv`, SHA-256 `7c436fe7a7a236540468d7a3907fbec3faf2411df1f17cd70f83bdb8882d2b01`.
-- These supersede the staged workflow package (`4ef4caeeâ€¦`) and tenant package (`4a2e2bb5â€¦`).
+- These supersede the staged workflow package (`4ef4caee…`) and tenant package (`4a2e2bb5…`).
 - Lockfile: device `package-lock.json` `a6685ab173aa33243bca87a69d997515f55e99443f76c986f1b667c76870f4f2` is authoritative; it is not included and no dependency was added.
 - Checkout HEAD when the bases were measured: `3c29e02e024ff97bf6cfb1759b965601563d6866`.
 
@@ -174,19 +174,19 @@ Claude has stopped editing all files listed above and will not edit them again w
 
 ## Claude acceptance of the release (2026-10-16)
 
-Claude accepted the release above and owns only the files it lists, for applying `.fnd001/staged-three-pane-20261016`. Reconciled on the device before any change: branch `checkpoint/trust-hardening-20261016`, HEAD `8c2e1de` (documentation-only, on application checkpoint `2330179`). `src/app/runs/[id]/ThreePane.tsx` = base `80af31cc0e597e3bb663948b19f673effdcb859d33416bc152d0d0c87b928090`. Archive `2ad7defaâ€¦31cc` and manifest `5e1aad3dâ€¦3f82` match. Both `e2e/ui/` paths absent. No commit, push, deployment or model call. Results are recorded below when the checks finish.
+Claude accepted the release above and owns only the files it lists, for applying `.fnd001/staged-three-pane-20261016`. Reconciled on the device before any change: branch `checkpoint/trust-hardening-20261016`, HEAD `8c2e1de` (documentation-only, on application checkpoint `2330179`). `src/app/runs/[id]/ThreePane.tsx` = base `80af31cc0e597e3bb663948b19f673effdcb859d33416bc152d0d0c87b928090`. Archive `2ad7defa…31cc` and manifest `5e1aad3d…3f82` match. Both `e2e/ui/` paths absent. No commit, push, deployment or model call. Results are recorded below when the checks finish.
 
 ### Three-pane package applied (Claude, 2026-10-16)
 
 - **Applied in the device checkout, uncommitted, on HEAD `8c2e1de`:**
-  - `src/app/runs/[id]/ThreePane.tsx` â†’ `38a5fc02e86cac1c9b9ace72e27e4e27e3938a90c78217fc261eabab14c26e11`. Overwritten in place; the extracted file could not replace it, because deletes are not permitted.
-  - `e2e/ui/ui-check.config.mjs` â†’ `477ec5b542f9b0a60d3a18a061994c06577c120afbf312905236384e06e2ffae` (new).
-  - `e2e/ui/three-pane.check.mjs` â†’ `4f36c03eeb82a2feff700780f2ee1cff8c9a90602c26a922c0a8e8944d7b055b` (new).
+  - `src/app/runs/[id]/ThreePane.tsx` → `38a5fc02e86cac1c9b9ace72e27e4e27e3938a90c78217fc261eabab14c26e11`. Overwritten in place; the extracted file could not replace it, because deletes are not permitted.
+  - `e2e/ui/ui-check.config.mjs` → `477ec5b542f9b0a60d3a18a061994c06577c120afbf312905236384e06e2ffae` (new).
+  - `e2e/ui/three-pane.check.mjs` → `4f36c03eeb82a2feff700780f2ee1cff8c9a90602c26a922c0a8e8944d7b055b` (new).
   - These match the package manifest. No other application file was touched.
 - **Verified on the exact checkpoint tree:** `git archive 8c2e1de` plus the three files, in the cloud workspace. Locked dependency versions were identical to the installed set.
   - `npx next typegen` then `npx tsc --noEmit -p .`: exit 0.
   - ESLint on the changed files: clean.
-  - `TEST_DATABASE_URL=â€¦ npx vitest run src/lib/__tests__ --pool=forks` (disposable PostgreSQL 16 and real Python): **107 files, 805 passed, 33 skipped**, the same as Codex's final gate.
+  - `TEST_DATABASE_URL=… npx vitest run src/lib/__tests__ --pool=forks` (disposable PostgreSQL 16 and real Python): **107 files, 805 passed, 33 skipped**, the same as Codex's final gate.
 - **Disposable local stack:** non-owner restricted role, local storage stand-in, model replay, webpack. Turbopack refuses an out-of-root `node_modules` symlink.
   - `npx playwright test -c e2e/ui/ui-check.config.mjs three-pane`: **2 passed**.
   - Codex's unchanged `e2e/golden-thread-smoke.spec.mjs`: **1 passed** (3.5 minutes).
@@ -218,7 +218,7 @@ Grant asked for a local checkpoint of the three-pane package and a handback for 
 - **Local checkpoint:** `7ec3f3062aff2f62650d7405951ee23025834f76`, parent `8c2e1de`. This line was added in the documentation-only commit that follows it.
 
 
-## Codex acceptance of pane handback â€” 2026-10-16
+## Codex acceptance of pane handback — 2026-10-16
 
 Confirmed branch `checkpoint/trust-hardening-20261016`, application package commit
 `7ec3f3062aff2f62650d7405951ee23025834f76` and documentation handback
@@ -228,7 +228,7 @@ and status reconciliation. No implementation is released back to Claude by this 
 Parked layout-loading guard and `TranscriptSetup.tsx` remain excluded and unmodified.
 
 
-## Pane review completed; ownership retained â€” 2026-10-16
+## Pane review completed; ownership retained — 2026-10-16
 
 Independent review of7ec3f30/badcd13 is complete. Required pane changes: blocked-storage
 interactions lose in-page layout changes (independently reproduced), and separator ARIA
@@ -240,7 +240,7 @@ pending diagnosis/disposition. The additional browser harness is stopped; no new
 disposable resource remains. No application code, release counts, spend or deployment changed.
 
 
-## Overall register reconciliation â€” 2026-10-16
+## Overall register reconciliation — 2026-10-16
 
 Pane review remains complete with two unresolved findings. Codex reconciled all entries of the
 existing canonical consolidated outstanding register against retained milestone evidence; the
@@ -494,7 +494,7 @@ READY_FOR_CODEX with exact commit/files/evidence once stable. No implicit owners
 
 Confirmed HEAD0b7fb30819dea22de20583069c71adf687a514d3, branch checkpoint/trust-hardening-20261016, clean tracked tree before this record. Codex accepts released7a6ab5d/a00dc0c/d72b150/110183a/d5cbc6f for read-only application review, targeted disposable verification and bounded row-disposition reconciliation. Claude remains stopped pending explicit release. Earlier passes/failures/counts/exclusions remain preserved. No push, author rewrite or mirror rewriting authorised/performed. This active review is not a configured recurring task.
 
-## Codex release after independent overnight review â€” 2026-10-16
+## Codex release after independent overnight review — 2026-10-16
 
 Codex has completed this review and releases ownership to Claude. Application checkpoint remains 0b7fb30; this review changes documentation only. No Codex execution or review-owned resources remain active. Latest row dispositions are in the Codex overnight addendum of independent-acceptance-disposition-2026-10-16.md; 80 targeted passes /5 skips and13 native passes at explicitly disclosed local fixture boundaries. Do not repeat unchanged closed matrices or promote the43-row partition automatically.
 
