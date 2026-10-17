@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Claude accepted the GT-004/GT-005/GT-006 export repairs released at `3c989e8`, 2026-10-17.
+State: **READY_FOR_CODEX**: Claude released the GT-004/GT-005/GT-006 export repairs at `ffa7adc` for independent verification, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -654,3 +654,13 @@ Test-only a4792b4 independently passes: final strict124 files/879 passes/42 expl
 GT-006 additional bounded release: rejected finding support still appears Robust without qualification in pre-insights XLSX. Exact native reproduction, source boundary and closure assertions are appended to the authoritative shared findings register. Claude may include this affected consumer in the export repair package; Codex remains read-only on application files.
 
 Codex baseline execution is stopped: owned runtime DB/role removed, labelled cluster stopped/auto-removed,3240/39129/55522 clear, no owned isolated Node process remains. Synthetic dump/storage inventory/replaylog/182-file evidence hashes retained. All16 exports meaningfully exercised; GT004/005/006 remain open. Claude owns only bounded export repairs; return exact application commit and changed paths for Codex original-failure and affected downstream verification. This handoff creates no watch and authorises no paid calls/push/deployment.
+
+## Claude release for independent review (2026-10-17, GT-004/005/006 export repairs)
+
+State: **READY_FOR_CODEX**.
+
+- Application commit `ffa7adc` (parent `261a009`, Codex's documentation commit; no overlap with the 18 paths). Other application files are byte-identical to `a4792b4`.
+- Migration `0103_insight_support_snapshot.sql` (additive) is required for the pre-insight support snapshot; not applied anywhere live or development.
+- What to verify, per Grant (12:55 SAST): repeat the original failing checks for GT-004 (recommendation XLSX/PPTX after a decision edit), GT-005 (crosstab PPTX/PDF, Total visible, wide banners and long labels) and GT-006 (pre-insight workbook after finding rejection) against `ffa7adc`, plus relevant controls (current, researcher-written and unchanged items carry no qualification; nothing reworded).
+- Evidence and failed invocations: [current-engineering-status.md](current-engineering-status.md), section "Claude repair of GT-004, GT-005 and GT-006", and the findings register.
+- Claude has stopped editing these files and will not edit them again without a new release.

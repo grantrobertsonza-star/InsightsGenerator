@@ -1,10 +1,26 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude reference-test follow-up `a4792b4` (test-only), for one review.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude export repairs `ffa7adc` (GT-004, GT-005, GT-006), for independent verification.
 
 
 
 
+
+
+## Claude repair of GT-004, GT-005 and GT-006 (2026-10-17; commit `ffa7adc`)
+
+Implemented, ready for Codex's independent verification. Parent `261a009`; application base `19b3d54`/`a4792b4`. 18 paths, all new or changed in `ffa7adc` only (byte hashes in `.fnd001/overnight/b16/hashes.txt`, committed bytes match: 0 mismatches):
+
+- Migration: `supabase/migrations/0103_insight_support_snapshot.sql` (new, additive, idempotent: `insights.support_snapshot jsonb`). Must be applied where the app runs; without it pre-insights read "Support not checked" (unknown, never current). Not applied to any live or development database.
+- Shared rules: `src/lib/supportStatus.ts` (`loadPreInsightSupport`, same `classifyInsightSupport` rule as synthesized insights), `src/lib/insightGenerator.ts` (records the snapshot in the statement that reads the prompt text), `src/lib/recommendationQualification.ts` (new, one wording for XLSX and PPTX), `src/lib/crosstabSlides.ts` (new, fitted layout).
+- Consumers: crosstab export route; insights export and export-deck; recommendations export and export-deck; `runs/[id]/page.tsx` and `InsightsReview.tsx` (pre-insight card shows the same support status).
+- Tests: `crosstabSlides.test.ts`, `exportQualification.db.test.ts` (new); alias mocks added to `preInsightDeck.db.test.ts` and `decisionRefreshReconciliation.db.test.ts`; browser checks `e2e/ui/journey-exports.check.mjs` and `journey-changes.check.mjs` (new).
+
+Per-finding repair, regression and the failure shown on the previous code: [golden-thread-findings-register-2026-10-17.md](golden-thread-findings-register-2026-10-17.md), section "Claude repair of GT-004, GT-005 and GT-006".
+
+Checks on the final tree (cloud workspace, disposable PostgreSQL 16, real Python engine, model replay only, no paid calls): `npx tsc --noEmit -p .` pass; ESLint 0 errors (6 pre-existing warnings); `vitest run src/lib/__tests__ --pool=forks` 126 files, **886 passed, 0 failed, 43 skipped**; production `next build --webpack` pass; browser 39/39 on that build; smoke 1, adapter 2, objective acceptance passed. Counterfactual: the three `exportQualification` cases fail on the previous export and generator code; the previous crosstab layout puts the table's right edge at 14.2 in against a 12.94 in limit.
+
+Limits: GT-007 to GT-010 are not repaired (product decision and wording candidates). Model quality remains unverified (replay only). Canonical partition unchanged at 36 Closed / 1 Confirmed / 6 Blocked = 43 until Codex verifies. No push, deployment or database change.
 
 ## Claude reference-test follow-up (2026-10-17; commit `a4792b4`)
 
