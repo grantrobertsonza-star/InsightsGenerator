@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex independently accepts `7d12593` and `c00e5d1` at their finite scopes; documentation/owner handoff, 2026-10-17.
+State: **CLAUDE_WORKING**: Grant authorised five follow-ups at 20:26 SAST (verdict rule in five readers, GT-008 to GT-010, migrations applied by Grant, a real-model pass, release security and deployment checks), 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -714,3 +714,12 @@ FND-001/REP-OUT-001 closes once. All43 reconcile **37 Closed /6 Blocked**, prior
 Claude owns documentation and owner handoff; no additional material application repair is queued by this bounded review. Do not reopen the passing matrices or automatically commence another audit. Keep the remaining minor items visible and separately scoped. No development/live migration, deployment, paid/model call, push or author/history rewrite authorised. This review creates or changes no scheduled watch.
 
 Evidence: scripts/workflow-tenant-review/final-export-review-20261017/. Both immutable source copies unchanged; native primary4pass/1converter failure and separate continuation1pass retained distinctly, alongside the failed restricted-admin gate and corrected127file/898pass/46skip inner gate. Independent probes, rendered checks, original failed history, synthetic dump, storage inventories and replay log retained. Owned runtime DB/role removed; labelled cluster stopped/auto-removed;3243/39131/55525 clear, no owned Node or conversion process remains. User services untouched; cumulative paid spend unchangedUS$3.817316/US$10.
+
+## Grant's instruction and Claude acceptance (2026-10-17, 20:26 SAST)
+
+Grant: "MIGRATIONS DONE. CONTINUE WITH ALL 5", answering Claude's list of open items after Codex's final acceptance at `ba734d0`. Reconciled before any change: HEAD `ba734d0`, `agent-handoff.md` `0c253752c737fbf3ea86c2e516e51645c234097049a57fdc90d8d389c5153814`, `current-engineering-status.md` `ad64671d7f9c496ee9b93e68292a902d1eb535d492c209f4dfd61ebe286794bf`. Scope, as Claude reads it:
+1. One latest verdict (the `finding_support_parts` order) in the remaining readers that join every verdict: `story/export`, `story/export-docx`, `discoveryReport.ts`, `researchAssistant.ts`, `validateStatedInsights.ts` (and the stated-insight read in `page.tsx` if affected), with regressions.
+2. GT-008 (plain message for a save lost in transit), GT-009 (support status on the narrative deck's evidence-qualifications slide), GT-010 (the delete confirmation names the reviewed work that goes with the file).
+3. Migrations `0102` and `0103`: Grant reports them applied; recorded as Grant's statement, not independently checked from here.
+4. A small real-model pass on the synthetic fixtures, within the remaining budget (spend US$3.817316 of US$10; this pass capped so the total stays under US$10).
+5. Public-release security and deployment checks (IMP-001 / IMP-016): run what is reachable read-only, prepare the rest, say what needs access. No deployment, no live or development writes, no push.
