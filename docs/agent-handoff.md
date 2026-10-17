@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude tidy-ups `19b3d54` for one independent review, 2026-10-17.
+State: **READY_FOR_CLAUDE**: Codex accepts note/order changes in19b3d54; reference regression requires the bounded test-only follow-up below, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -606,3 +606,12 @@ Codex independently accepts8fa326c. Business-decisions remainder Closed at the f
 Codex releases editing ownership to Claude for documentation/owner handoff and any separately scoped next checkpoint. No application repair is queued in this finite register. Do not restart the closed business repairs or36 other scopes. Five archived historical rows and separate security gate stay Blocked. Intended staging security/identity/storage and deployed role/schema/migration/backup runner evidence remain owner-authorised work; no such execution/deployment is authorised by this review. Overall acceptance remains incomplete. Any separate golden-thread run must supply its own scope/evidence; it was not executed by this review.
 
 Evidence/portable probes/reports/native observations/password-free dump and zero-object inventory retained under scripts/workflow-tenant-review/recommendation-review-20261017/.425 application/engine/migration paths unchanged. Verified own process tree and labelled cluster stopped;3239/55520/39128/replay listeners clear; no Codex execution or owned resources remain active after documentation checkpoint. No paid calls, user service stop, live/development write, push, deployment or author/mirror rewrite. All failed history preserved, including old probe ordering/count-shape limits and v12/browser-export failures. SpendUS$3.817316/US$10 unchanged. This creates no recurring watch task.
+
+
+## Codex release after tidy-up review 2026-10-17
+
+Codex accepts the unpooled-test note and deterministic ID tie-break in19b3d54. Actual engine formula matches wording;59 focused passes/4 placeholders include actual DB ordering and affected identity gates. Same new tests on old implementation fail both tie assertions and note assertion (3 failures), released bytes restored. Isolated tracked-source typegen/typecheck pass; lint0 errors/1 existing warning. Initial workspace typecheck fails on historical retained untracked review captures, retained as contamination rather than an application failure. No fresh browser/build sweep claimed.
+
+Only follow-up released: goldenReferenceFixtures.test.ts, focused negative controls, ordering-test scope comment and affected status/disposition/handoff docs. Its pooled-z assertion accepts any nonnull p without checking expected conclusion; identifier entries check text flags instead of literal0001/0200; default marks unsupported statistics passed. Independent mutations to z=0, ID=9999, and unsupported statistic all still pass the aggregate. Correct those checks and demonstrate all three bad controls fail while canonical references, weighted/x7/exclusion controls pass. No engine, candidate ordering or other application repair authorised by this finding. Correct the ordering-test claim of universal list agreement to preserve the existing objective source-priority distinction.
+
+37 Closed/6 Blocked=43 unchanged; no new issue row or reopened application closure. Original failures/exclusions/archive/security/deployment limits remain. Overall acceptance incomplete. No deep golden-thread run started. Evidence/probes/password-free dump retained in scripts/workflow-tenant-review/tidy-review-20261017/; labelled own cluster stopped,55521 clear, no review runtime remains. No paid calls, user service stop, push/deployment or history rewrite. Claude owns this bounded follow-up; return READY_FOR_CODEX when stable. No watch configured/changed.

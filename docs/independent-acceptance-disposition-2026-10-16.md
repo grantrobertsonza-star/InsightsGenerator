@@ -1104,3 +1104,38 @@ Important boundary:0102 is required to record new recommendation contexts. Exist
 Evidence root:`scripts/workflow-tenant-review/recommendation-review-20261017/`: source/hash comparison, portable original/added migration probes, logs/reports, native observations, full zero-object storage inventory and password-free synthetic dump retained. Shutdown-only model replay log is not claimed retained after process termination. Verified process tree39116/39864 and labelled `codex-rec-review-20261017` stopped; app3239/DB55520/storage39128 and owned replay ports clear. No user/development service stopped; cumulative spend unchangedUS$3.817316/US$10.
 
 Codex releases ownership to Claude for documentation/owner handoff and any separately scoped next checkpoint; there is no remaining application repair under this finite register. This review authorises no staging/live/deployment operation or paid call and creates no recurring watch. No Codex execution/resource remains active after this documentation checkpoint. Overall acceptance is not marked complete.
+
+
+## Codex independent review of tidy-ups 2026-10-17
+
+Reviewed initially clean HEAD `a345fd3`, released `19b3d54` (7 paths), parent `f263193`. Handoff CODEX_WORKING recorded before review. Application and released test source remained read-only; source manifest/comparison retained. This is the three requested changes only, not the next golden-thread run. No paid calls, live/development writes, dependency installation, push/deployment or author/mirror rewrite.
+
+**Disposition: accept significance-note wording and same-timestamp ordering repair; permanent reference regression requires a bounded test-only follow-up. Canonical43 statuses remain37 Closed/6 Blocked, priorities34/9/0.** No new release row or application defect is inferred from the test-coverage finding below. Prior closures, approved exclusions, archived definitions and security/deployment limits preserved. Overall acceptance incomplete.
+
+### Independently verified application changes
+
+- Engine source at the column/complement comparison computes `sqrt(pj*(1-pj)/n_eff + pc*(1-pc)/c_eff)`, an unpooled standard error; the new note describes it accurately. Calculation code is unchanged; design-based t-test wording and no-banner path remain unchanged. Existing saved notes are not rewritten; recalculation needed for new wording.
+- ID resolves equal created_at ordering deterministically in both statement synchronisers, validator and both evidence loaders. Source-priority ordering in syncResearchObjective is deliberately preserved; no position is newly used as candidate identity. Existing candidate-ID identity/reorder/origin/publish and duplicate-index cases pass.
+- `focused.log`:7 files,59 passes/4 inactive placeholders, actual Python and PostgreSQL17. Includes both new tie-order cases, reference/weighted/rescaling/exclusion checks and affected objective identity/publishing/index controls.
+- `counterfactual-previous.log`:same new tests against the actual previous implementation in an isolated copy:3 expected failures (both tie-order assertions and the new note),4 passes/2 placeholders. Released bytes restored afterwards and hash-checked. This confirms the new repair assertions reach the old failures; it does not establish the untested reference assertions below.
+- Isolated tracked-source Next type generation and full TypeScript pass. Lint0 errors/1 existing `_hadTable` warning. The initial workspace typecheck fails on historical untracked review `.ts` captures with relative imports outside their original test directory (`typecheck.log`); this is review-artifact contamination, not an app defect. The isolated continuation excludes those captures without changing application/source config and passes (`typecheck-isolated.log`, `typegen.log`). Both runs retained separately. No fresh production/browser sweep claimed; UI code did not change, and Claude's875/42/build/30-browser reports remain separate self-validation.
+
+### Permanent reference regression coverage finding
+
+`src/lib/__tests__/goldenReferenceFixtures.test.ts` cannot yet substantiate its all31-reference assertion claim:
+
+1. `pooled_two_proportion_z` branch (around95) sets expectedP=null and therefore accepts any nonnull application p-value. It never compares the expected z's significance conclusion. Isolated negative control changes Purchase-z from2.8284 to0 (opposite conclusion) and the aggregate assertion still passes, logging expected0/observed0.0039/ok=true.
+2. `identifier` branch (around63) checks text/numeric metadata only, not expected endpoint values0001/0200. Driver reads the first ID but that value is unused. Isolated negative control changes id-first expected value to9999; aggregate assertion still passes. Metadata text type alone does not prove canonical identity or leading-zero preservation.
+3. Default branch records an unsupported statistic as `not checked` with ok=true, while result length still equals31. Changing Purchase-z statistic to unsupported-new-statistic produces a passing aggregate assertion. This lets future fixture additions silently weaken coverage.
+
+Evidence:`negative-controls.log` has2 passing mutated aggregate tests/10 deliberately deselected tests; `negative-identifier.log`1 passing mutated aggregate/5 deselected. These are NEGATIVE controls unexpectedly accepted by the harness, not evidence the incorrect references are valid or app arithmetic wrong. Portable mutated test sources retained with exact fixture/source hashes. Current dataset's remaining value/conclusion checks pass; no actual engine numerical defect is demonstrated.
+
+Smallest follow-up: only goldenReferenceFixtures.test.ts plus its focused tests/docs. Check abs(expected z) against the declared two-sided alpha threshold, or derive its expected p/conclusion independently, respecting the explicitly allowed pooled/unpooled method difference; compare real first/last IDs to their expected literal values; reject unsupported statistic types rather than counting success. Add negative controls proving contradictory z conclusion, wrong endpoint ID and unsupported assertion fail; correct references still pass, weighted x7 and visible exclusion preserved. Do not change engine arithmetic or accepted identity code to satisfy a test.
+
+Nonblocking documentation detail: new ordering-test commentary says statements and evidence order agree universally, but objective statements retain the pre-existing source-priority prefix while loaders order chronologically. Current same-source tie test establishes a tie-break, not universal mixed-source order equality. Correct that comment to its actual finite scope; do not remove source priority or invent another application repair.
+
+### Retention and ownership
+
+Evidence root:`scripts/workflow-tenant-review/tidy-review-20261017/`: frozen manifest, source comparisons, focused/counterfactual/type/lint/negative-control logs, portable probes and password-free disposable dump retained. Owned labelled codex-tidy-review-20261017 stopped; DB55521 clear; no browser/storage/model service started. User services untouched. Spend unchangedUS$3.817316/US$10.
+
+Claude is released for the reference-test follow-up and comment/docs only; two application changes accepted,37 finite closures retained. No Codex execution/resource remains active after documentation checkpoint. Return READY_FOR_CODEX once the corrected reference harness is stable; next golden-thread run remains separate and was not started here. No recurring watch created or changed.

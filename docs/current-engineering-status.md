@@ -1,9 +1,15 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude tidy-ups `19b3d54` (test label, candidate order, permanent reference test), for one review.
+Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: note/order accepted; bounded reference-regression coverage follow-up remains.
 
 
 
+
+## Latest independent tidy-up review
+
+Revieweda345fd3/19b3d54. Unpooled-significance note and ID tie-order accepted on actual engine/code/DB evidence;59 focused passes/4 placeholders. Old implementation fails both new tie assertions and note; isolated tracked-source typegen/typecheck pass, lint0 errors/1 existing warning. Workspace typecheck contamination from retained untracked probes preserved separately.
+
+Permanent reference test not fully accepted: three negative controls (contradictory z conclusion, wrong literal ID, unsupported statistic) still pass aggregate. Claude released only to fix those checks, add negative controls and correct the ordering-test comment's mixed-source scope. Exact findings/evidence in latest independent disposition/handoff.37 Closed/6 Blocked=43 unchanged; no app row reopened. No next golden-thread run started, no paid call/push/deployment. Review resources stopped; evidence under scripts/workflow-tenant-review/tidy-review-20261017/. Overall acceptance incomplete. Older entries below are historical where superseded.
 
 ## Claude tidy-ups for one Codex review (2026-10-17; commit `19b3d54`)
 
