@@ -1,9 +1,12 @@
 // Deep golden-thread check observation (2026-10-17): accepted objectives and decisions were
 // ordered by created_at only, so two saved in the same instant had no defined order and their
 // numbering in runs.decision_statement / runs.research_objective could change between syncs.
-// They are now ordered by created_at, then id, everywhere the accepted list is read: runSync.ts
-// (the statements) and the objective evidence loader (readCurrentEvidenceItems), so the
-// statement's numbering and the evidence items' order agree.
+// Every place that reads the accepted list now breaks a created_at tie by id: runSync.ts (the
+// statements), objectiveValidator.ts and objectiveEvidence.ts (readCurrentEvidenceItems and the
+// evidence loader). The lists still differ in one deliberate way: the research objective statement
+// puts researcher-written objectives before AI-suggested ones, while the evidence loaders order by
+// time only. So the statement's numbering and the evidence items' order agree here only because
+// both fixtures share one source; this test checks the tie-break, not universal list agreement.
 // Real disposable PostgreSQL. The rows with the larger id are inserted first, so the physical
 // (heap) order a tie used to fall back to is the opposite of the id order now required.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -53,7 +56,7 @@ describe.skipIf(!TEST_DATABASE_URL)("accepted objectives and decisions saved in 
     }
   });
 
-  it("the evidence items follow the same order as the statements", async () => {
+  it("the evidence items break the same tie by id (same source, so the order matches the statements here)", async () => {
     const client = await db.pool.connect();
     try {
       const items = await readCurrentEvidenceItems(client, run);
