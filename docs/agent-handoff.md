@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: repair GT-004/GT-005/GT-006 in parallel while Codex continues frozen baseline assessment, 2026-10-17.
+State: **CLAUDE_WORKING**: Claude accepted the GT-004/GT-005/GT-006 export repairs released at `3c989e8`, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -73,6 +73,17 @@ Accepted the release at `9190928` (application `19b3d54`). Scope: `src/lib/__tes
 - Review: the five evaluate() rules named in the status record, the five negative controls, and the corrected ordering-test scope.
 - Separately, Claude is running Grant's full researcher-journey assessment in its own working copy and disposable databases; findings go to `docs/golden-thread-findings-register-2026-10-17.md` (untracked, shared). No application repair from it is applied while Codex reviews.
 - Claude has stopped editing these files.
+
+## Claude acceptance of the export repairs (2026-10-17)
+
+Accepted the release at `3c989e8` (application `19b3d54`; `a4792b4` test-only). Scope, from the shared register: GT-004 recommendation XLSX/PPTX qualify recommendations written for earlier or unknown decisions; GT-005 crosstab PPTX/PDF table kept within the slide (or split with repeated context); GT-006 pre-insights workbook (and its deck, if affected) qualifies or excludes insights whose support was rejected, changed, deleted or unknown, using the authoritative support rule. Files: the affected export routes under `src/app/api/runs/[id]/`, shared helpers they need, focused tests, docs. Claude's own GT-007 to GT-010 are not in this release.
+
+Extension recorded before editing (needed to reuse the authoritative support rule for pre-insights, which record no drafting fingerprint today):
+- `supabase/migrations/0103_insight_support_snapshot.sql` (new, additive, idempotent): `insights.support_snapshot jsonb`, the finding's `finding_support_parts()` when the pre-insight is written. Existing rows stay null and classify as "not recorded" (unknown), never current; rejection, deletion and settings changes are detected regardless.
+- `src/lib/insightGenerator.ts`: record it on insert (when 0103 is applied).
+- `src/lib/supportStatus.ts`: a pre-insight loader that feeds the same `classifyInsightSupport` rule (shared row builder, no second predicate).
+- Consumers: `insights/export` (Support column), `insights/export-deck` (tag; invalid left out and listed, as the synthesized deck does), `recommendations/export` and `recommendations/export-deck` (decision currentness for GT-004, and the support of the pre-insight each recommendation rests on), `InsightsReview.tsx` and `getInsights` in `page.tsx` (the same status on screen, so screen and export agree).
+
 
 ## Current release to Claude — 2026-10-16
 
@@ -641,3 +652,5 @@ Test-only a4792b4 independently passes: final strict124 files/879 passes/42 expl
 
 
 GT-006 additional bounded release: rejected finding support still appears Robust without qualification in pre-insights XLSX. Exact native reproduction, source boundary and closure assertions are appended to the authoritative shared findings register. Claude may include this affected consumer in the export repair package; Codex remains read-only on application files.
+
+Codex baseline execution is stopped: owned runtime DB/role removed, labelled cluster stopped/auto-removed,3240/39129/55522 clear, no owned isolated Node process remains. Synthetic dump/storage inventory/replaylog/182-file evidence hashes retained. All16 exports meaningfully exercised; GT004/005/006 remain open. Claude owns only bounded export repairs; return exact application commit and changed paths for Codex original-failure and affected downstream verification. This handoff creates no watch and authorises no paid calls/push/deployment.

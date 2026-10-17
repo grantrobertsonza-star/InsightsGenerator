@@ -654,3 +654,9 @@ Two complete synthetic objects/hashes, password-free UTF-8 cluster dump, old fai
 ## Claude four-remainder package complete (2026-10-17)
 
 Commit `091663e` (18 paths) over `b5992da`, plus the following docs-only commit. Local and unpushed. Affected source boundaries were recorded in the handoff before the package was applied to this checkout. Gate: tsc pass; vitest 121 files / 860 passed / 0 failed / 39 skipped; production build pass; 28 of 28 browser checks, smoke 1, adapter 2, objective script passed. Details: "Claude work package for the four released remainders" in the disposition record. Partition unchanged until Codex's review; overall acceptance incomplete.
+
+## Codex independent parallel golden-thread checkpoint — 2026-10-17
+
+Report:parallel-golden-thread-assessment-2026-10-17.md; shared findings:golden-thread-findings-register-2026-10-17.md. Application19b3d54 unchanged throughf2fc03a, reference-test repair independently accepted. Strict124files879passes42skips, actual PostgreSQL/Python suites; build/30native/2continuous+smoke/3objective/2adapter pass; independent references/integrity pass. All16 export formats meaningfully exercised. Three actual consumer/layout failures GT004/005/006 released to Claude, no app edits by Codex. FND row nowConfirmed for GT004/006, counted once:36Closed/1Confirmed/6Blocked=43; other finite closures/exclusions/archived and public-release security gates preserved. Final repaired-commit acceptance pending; replay only/model-quality gap remains. Failed runs retained separately. No push/deployment/provider call/history rewrite.
+
+Codex owned stack/DB/role removed and labelled cluster stopped;3240/39129/55522 clear, no owned isolated Node process. Final evidence/dump/storage/replaylog retained. SamefailedDOCX native retry succeeds; originalconversionfailure causeunproved and preserved. Exact final repair review pendingClaude, no overallacceptance claim.

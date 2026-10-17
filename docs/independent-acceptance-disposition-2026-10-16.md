@@ -1139,3 +1139,22 @@ Nonblocking documentation detail: new ordering-test commentary says statements a
 Evidence root:`scripts/workflow-tenant-review/tidy-review-20261017/`: frozen manifest, source comparisons, focused/counterfactual/type/lint/negative-control logs, portable probes and password-free disposable dump retained. Owned labelled codex-tidy-review-20261017 stopped; DB55521 clear; no browser/storage/model service started. User services untouched. Spend unchangedUS$3.817316/US$10.
 
 Claude is released for the reference-test follow-up and comment/docs only; two application changes accepted,37 finite closures retained. No Codex execution/resource remains active after documentation checkpoint. Return READY_FOR_CODEX once the corrected reference harness is stable; next golden-thread run remains separate and was not started here. No recurring watch created or changed.
+
+## Codex parallel golden-thread disposition — 2026-10-17
+
+Independent frozen baseline9190928852496d02306c3a6834023670908d0f06, application19b3d54, and test-only follow-up a4792b4/f2fc03a. [Report](parallel-golden-thread-assessment-2026-10-17.md); [shared exact reproductions](golden-thread-findings-register-2026-10-17.md). This supersedes the prior37/6 current summary only at the newly demonstrated FND consumer boundary; old bounded passes remain valid historical evidence.
+
+| Existing scope | Disposition | Exact evidence/remainder |
+|---|---|---|
+| FND-001/REP-OUT-001 | Confirmed defect | GT-004 actual recommendation generated for A, native accepted decision reword to C/reload, XLSX unqualified and deck old Action A under current Decision C. GT-006 actual native finding rejection, pre-insight workbook still Robust without support qualification. Claude repair; Codex original-failure/boundary/recovery verification on exact commit required. |
+| Business-decisions remainder | Preserve finite Closed | Original panel/currentness containment and recorded prompt snapshot remain accepted. New export consumers are counted once under FND, not a second canonical defect row. |
+| Existing Office/export rendering acceptance limit | Confirmed GT-005, not new row | Actual PDF loses Total200/50%/50%; PPTX explicit table geometry exceeds slide. Requires layout repair and actual PDF/PPTX rendered completeness/wide/long-label controls. |
+| Other35 Closed rows | Preserve Closed at their established finite scopes | No new demonstrated row failure; full strict gates actual PostgreSQL/Python, native30/30, continuous2journeys, objective/adapter/integrity and reference assertions retained at exact boundaries. Passing unrelated tests do not close GT-004/005/006. |
+| IMP-001/016 | Blocked, public-release prerequisite | Deployed two-user/two-tenant identity/storage/roles/schema/runner/backup gates remain unexecuted and separately authorised. Local disposable pass cannot certify them. |
+| SET004/005, REV003/010/M03 | Five Blocked archived evidence rows, deferrable | Owner historical definition recovery or explicit archived disposition remains required; no invented requirement or repair. |
+| Approved SAS / flipped separate-Codebook exclusions | Preserve explicit exclusions | Not silently counted as supported passes or unresolved mandatory feature support. |
+| a4792b4 reference harness | Independently verified | Canonical/focused positive passes; all three external false-green mutations now fail as expected; full final strict124 files879passes42skips actual prerequisites. No engine arithmetic changed. |
+
+All43 reconcile36 Closed/0 awaiting/1 Confirmed/0 Untested/6 Blocked, priorities34/9/0. GT004/006 count once; GT005 adds no release ID. Previous canonical retained byte-for-byte asv30. No technical or overall acceptance claim while these actual export failures remain. Final consolidated repaired-commit report pending Claude release and independent affected execution.
+
+Replay only as Grant selected; provider-quality gap remains explicit. No paid call, push, deployment, author/mirror rewrite or live/development write. Initial test navigation/provenance/EOL metadata assumptions are retained as harness failures. Actual DOCX conversion failure remains distinct from supported plain-text continuation; independently converting the same DOCX with a unique profile succeeds, which establishes file validity but not application retry or the cause of the earlier failure. Exact artifacts/limits in report. Cumulative spend unchangedUS$3.817316/US$10.
