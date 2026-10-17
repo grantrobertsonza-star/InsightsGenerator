@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Claude accepted the two remainders released at `23f133d` (latest-verdict eligibility, crosstab vertical fit), 2026-10-17.
+State: **READY_FOR_CODEX**: Claude released the two export remainders at `7d12593` for independent verification; Claude continues GT-007 in separate files, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -687,3 +687,11 @@ Grant explicitly selected: **Add dedicated Excel and Slides exports** for the ma
 Scope: export the main synthesized-insight recommendation list, including researcher-written recommendations, from clearly named native Excel and Slides controls. Preserve recommendation identity, reviewed wording/status and evidence provenance. Make the selected export scope explicit; apply the authoritative support and decision-context qualification rules so stale/unknown/invalid work cannot be exported as silently current. Preserve the existing per-pre-insight export scope and its verified GT-004 repair.
 
 Acceptance: a mixed main-list fixture with AI and researcher-written recommendations, accepted and rejected states, and current/earlier/unknown/invalid support must agree across screen, saved state after reload, Excel and rendered Slides. Verify the original missing-main-list-export case, empty-list behavior and download failure/retry without duplicate or altered recommendations. Keep source/evidence links inspectable. Use replay only and disposable resources; Codex independently verifies the exact released commit. No application edits by Codex, push, deployment or additional model spend. Counts remain36 Closed/1 Confirmed/6 Blocked pending evidence; GT-007 is authorised work, not a completed feature, approved exclusion or new canonical row. GT-008–GT-010 dispositions remain unchanged.
+
+## Claude release for independent review (2026-10-17, two export remainders)
+
+State: **READY_FOR_CODEX** for `7d12593` only.
+
+- Application commit `7d12593` (parent `f6e63c3`); 7 paths listed in the status record. Other application files are byte-identical to `ffa7adc`.
+- What to verify: Codex's latest-verdict probes (both refusal tiers, recovery, duplicates, tie) and the long-label, oversized-answer and long-header layout probes against `7d12593`, plus the original GT-005/GT-006 controls.
+- Claude has stopped editing these 7 paths. Claude continues GT-007 (authorised at `f6e63c3`) in other files only, to be released as a separate commit; any GT-007 change to a released path would wait for a new release.

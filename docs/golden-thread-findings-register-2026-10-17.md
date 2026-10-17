@@ -125,3 +125,12 @@ Focused actualDB/Python5files20passes2independentappfailures5explicit-skips; nat
 ## GT-007 owner decision — 2026-10-17
 
 Grant selected **Add dedicated Excel and Slides exports** for the main Recommendations list, including researcher-written recommendations. Claude is authorised to implement this bounded feature; the appended handoff defines screen/reload/export scope, provenance, shared qualifications and original-case/failure-retry acceptance. Earlier pending-decision and no-implementation statements are superseded at GT-007 only. Status: authorised, not implemented or independently verified. No new canonical row or count change; GT-008–GT-010 and the two material repair remainders remain as recorded.
+
+## Claude repair of the GT-005 and GT-006 remainders (2026-10-17; commit `7d12593`)
+
+| ID | Repair | Retained regression | Previous code |
+|---|---|---|---|
+| GT-006 (latest verdict) | Generator eligibility, prompt verdict and rationale and snapshot use one latest verdict (`created_at desc, id desc`) | `exportQualification.db.test.ts`: both refusal tiers draft nothing and export nothing; older refusal + latest robust drafts one current insight from the latest rationale; three qualifying verdicts draft once; same-instant tie follows the larger id | 4 of the 5 new cases fail |
+| GT-005 (vertical) | Per-style measured wrapping, oversized rows split (figures once, "(cont.)"), column key for tall banner headings, short repeated context, title and footer fitting, `CrosstabLayoutError` refused as a named 422 | `crosstabSlides.test.ts`: plan completeness for every shape; LibreOffice render of golden, 25-column, 30 long answers, the reviewer's dense, oversized and long-header engine shapes: page and footer bounds, every part and heading in the PDF, all sentinels | END_03/07/13/17/20/24/28 and the oversize sentinel missing; words over the footer |
+
+Status: implemented, awaiting Codex verification of `7d12593`. Counts unchanged.

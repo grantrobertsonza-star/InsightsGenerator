@@ -1,11 +1,28 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude export repairs `ffa7adc` (GT-004, GT-005, GT-006), for independent verification.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude remainder repairs `7d12593` (latest verdict, crosstab vertical fit), for independent verification; GT-007 in progress separately.
 
 
 
 
 
+
+
+## Claude repair of the two export remainders (2026-10-17; commit `7d12593`)
+
+Implemented, ready for Codex's independent verification. Parent `f6e63c3`; application base `ffa7adc`. 7 paths, committed bytes match the package hashes (0 mismatches):
+
+- `src/lib/insightGenerator.ts`: eligibility, the prompt's verdict and rationale and the snapshot use one latest verdict per finding (lateral `order by created_at desc, id desc limit 1`, the order `finding_support_parts` uses). A latest `not_supported` or `insufficient_information` verdict is never bypassed by an older robust one, and a finding with several qualifying verdicts is drafted once.
+- `src/lib/crosstabSlides.ts`: per-style advance widths (Carlito, metric-compatible with Calibri; `scripts/crosstab-slides/font-metrics.py`, new) and explicit cell margins; a row too tall for any slide is split at its wrap points (first part fills the room left, figures once, later parts marked "(cont.)", joined parts equal the label); banner headings too tall for the header go to a column key slide; repeated context is kept to two lines; long titles get a smaller font and a lower table; a long source name is shortened in the middle with "...". What cannot be laid out throws `CrosstabLayoutError`.
+- `src/app/api/runs/[id]/crosstab/export/route.ts`: that error becomes a 422 naming the table and pointing to Excel, never a clipped deck.
+- Comments: `decisionContext.ts` (which exports carry the per-item decision mark), `crosstabSlides.ts` (what is and is not guaranteed).
+- Tests: `exportQualification.db.test.ts` +5 (both refusal tiers, older refusal with latest robust and its prompt rationale, several qualifying verdicts once, same-instant tie by id), `crosstabSlides.test.ts` rewritten (complete-content plan check for every shape; LibreOffice render of the golden table and the reviewer's three engine-built shapes: inside page, nothing over the footer, every planned part and banner heading in the PDF, all END_nn and the oversize sentinel).
+
+Counterfactual on the previous code: the new generator cases fail 4 of 5 (the recovery control passes on both); the reviewer's shapes rendered with the ffa7adc layout lose END_03, 07, 13, 17, 20, 24, 28 and the oversize sentinel, with 12, 7 and 130 words over the footer line. With this commit: none missing, 0 over the footer, 0 beyond the page.
+
+Checks (cloud workspace, disposable PostgreSQL 16, real Python engine, LibreOffice 7 render, model replay only): `npx tsc --noEmit -p .` pass; ESLint clean on the changed files; `vitest run src/lib/__tests__ --pool=forks` 126 files, **893 passed, 0 failed, 43 skipped**; production `next build --webpack` pass; browser 38/38 on that build (30 UI, journey with crosstab PDF, C1-C7), smoke 1, adapter 2, objective acceptance passed. Codex's GT-004 probe was not rerun (no GT-004 path changed).
+
+Limits: the layout estimate is checked against LibreOffice with Carlito; a viewer's PowerPoint substituting another font for Calibri is not tested. Same "join every verdict" pattern remains in `story/export*.ts`, `discoveryReport.ts`, `researchAssistant.ts` and `validateStatedInsights.ts`: outside this release, not changed, recorded for a decision. A 422 refusal is shown as the route's JSON error, like the existing PDF conversion failure. GT-007 (authorised by Grant at `f6e63c3`) is separate work in progress; GT-008 to GT-010 unchanged. Counts unchanged until Codex verifies.
 
 ## Claude repair of GT-004, GT-005 and GT-006 (2026-10-17; commit `ffa7adc`)
 
