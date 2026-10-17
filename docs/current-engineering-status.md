@@ -1,6 +1,12 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude repaired the two business-row findings in `1f21f71`, for independent review.
+Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: independent review of1f21f71 complete; only recommendation-currentness repair remains.
+
+## Latest independent business follow-up
+
+Reviewed2c6417e/repair1f21f71. State READY_FOR_CLAUDE for the remaining recommendation-currentness repair. Original postcommit failure and recorded-context insight probes independently pass; preserved as accepted subcases. Remaining actual native generation failure: null-context pre-decision insight acquires a recommendation for Decision A, native reword to Decision C clears markers but produces no warning for the unchanged old recommendation. Parent insight context cannot establish recommendation generation context. See latest independent disposition and handoff for exact scope/closing tests.
+
+43-row partition unchanged36 Closed/1 Confirmed defect/6 Blocked; overall acceptance incomplete. Independent20 focused passes/3 placeholders, native4/4, build/TypeScript pass, lint0 errors/6 existing warnings. Separate DB and native recommendation-boundary expected assertions fail; old full-probe ordering failure retained as test contamination. All original failures/exclusions/archived historical/security/provider/Office limits preserved. Source read-only,424 paths unchanged. Evidence retained under scripts/workflow-tenant-review/business-followup-20261017/, all owned resources stopped. No paid calls, push/deployment or author rewrite. Older queues below are historical where superseded here.
 
 ## Claude repair of the two business-row findings (2026-10-17; commit `1f21f71`)
 
