@@ -34,7 +34,8 @@ import {
 import { refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
 import { generateStoryNarrative, type DeckPillar } from "@/lib/storyNarrative";
-import { loadInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
+import { loadInsightSupportOrUnchecked, loadPreInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
+import { summariseSupport } from "@/lib/supportStatusShared";
 import { NarrativeSupportBanner } from "./NarrativeSupportBanner";
 import { loadWordingEdits } from "@/lib/findingWording";
 import { loadRunFigureChecks, type RunFigureChecks } from "@/lib/figureChecks";
@@ -1020,6 +1021,9 @@ type InsightRow = {
   caveats: string[];
   // Written for accepted decisions that have since changed (rule in decisionContext.ts).
   written_for_earlier_decisions: boolean;
+  // GT-006: the pre-insight's support (shared rule), so the card says what the exports say.
+  support_status: "current" | "stale" | "invalid" | "unknown";
+  support_summary: string | null;
 };
 
 // Sorted by quality_score first (highest first, unscored insights last via
@@ -1029,8 +1033,8 @@ type InsightRow = {
 // that hasn't been scored yet, or that scored low, still appears, it just
 // sorts lower.
 async function getInsights(runId: string): Promise<InsightRow[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<InsightRow>(
+  const rows = await withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<Omit<InsightRow, "support_status" | "support_summary">>(
       `select i.id, i.headline, i.observation, i.tension, i.implication, i.decision_context,
               f.finding_text, f.theme, v.verdict_tier, v.verification_basis,
               (f.origin in ('stated', 'coded')
@@ -1052,6 +1056,11 @@ async function getInsights(runId: string): Promise<InsightRow[]> {
       [runId],
     );
     return result.rows;
+  });
+  const support = await loadPreInsightSupportOrUnchecked(TENANT_ID, runId, rows.map((row) => row.id));
+  return rows.map((row) => {
+    const s = support.statusOf(row.id);
+    return { ...row, support_status: s.status, support_summary: s.status === "current" ? null : summariseSupport(s) };
   });
 }
 

@@ -8,6 +8,7 @@ import {
 } from "@/lib/discoveryClassification";
 import { CAVEAT_LABELS, caveatLabel } from "@/lib/caveatLabels";
 import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
+import { SUPPORT_STATUS_LABEL } from "@/lib/supportStatusShared";
 import { FigureCheckFor } from "./FigureCheckNotice";
 
 type VerdictTier = "robust" | "use_with_caution";
@@ -28,6 +29,9 @@ type Insight = {
   verification_basis: VerificationBasis;
   caveats: string[];
   written_for_earlier_decisions: boolean;
+  // GT-006: the pre-insight's support from the shared rule; summary is null when current.
+  support_status: "current" | "stale" | "invalid" | "unknown";
+  support_summary: string | null;
 };
 
 // Short, plain-language labels for the fixed caveat vocabulary (see the
@@ -292,6 +296,18 @@ export default function InsightsReview({
                     {caveatLabel(caveat)}
                   </span>
                 ))}
+                {insight.support_status !== "current" && (
+                  <span
+                    data-testid="pre-insight-support"
+                    data-support-status={insight.support_status}
+                    title={insight.support_summary ?? undefined}
+                    className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      insight.support_status === "invalid" ? "bg-danger-light text-danger" : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {SUPPORT_STATUS_LABEL[insight.support_status]}
+                  </span>
+                )}
                 {insight.written_for_earlier_decisions && (
                   <span
                     title="The accepted decisions changed after this insight was written; it has not been rewritten for the current ones."

@@ -20,6 +20,8 @@ vi.mock("@/lib/sourceAttribution", async () => await import("../sourceAttributio
 vi.mock("@/lib/preInsightDeckEligibility", async () => await import("../preInsightDeckEligibility"));
 vi.mock("@/lib/figureChecks", async () => await import("../figureChecks"));
 vi.mock("@/lib/numberTrace", async () => await import("../numberTrace"));
+vi.mock("@/lib/supportStatus", async () => await import("../supportStatus"));
+vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusShared"));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 
 const TENANT = "00000000-0000-4000-8000-0000000000f1";

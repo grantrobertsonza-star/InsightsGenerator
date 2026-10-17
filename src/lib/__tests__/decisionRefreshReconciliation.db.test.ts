@@ -38,6 +38,10 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 // The insights export route imports through the app alias, which vitest does not resolve here.
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/decisionContext", async () => await import("../decisionContext"));
+// The insights export route now reads support (supportStatus.ts), which loads the storage client.
+vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
+vi.mock("@/lib/supportStatus", async () => await import("../supportStatus"));
+vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusShared"));
 vi.mock("../insightGenerator", () => ({
   refreshInsights: vi.fn(async () => {
     state.insightRuns += 1;

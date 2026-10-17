@@ -1,5 +1,5 @@
-// FND-001 / REP-OUT-001 and ANA-NPS-003 downstream freshness: server-side loader for synthesized
-// insight support status. The rule itself lives in supportStatusShared.ts (classifyInsightSupport);
+// FND-001 / REP-OUT-001 and ANA-NPS-003 downstream freshness: server-side loaders for the support
+// status of synthesized insights and (golden-thread GT-006) pre-insights. The rule itself lives in supportStatusShared.ts (classifyInsightSupport);
 // this file only gathers the inputs. Read-only: it never writes, deletes or rewrites anything.
 //
 // Inputs, per insight and source link: the support_snapshot recorded when the insight was drafted
@@ -18,6 +18,7 @@
 // (unknown, with the reason). Anything else that fails makes loadInsightSupport throw. Callers that must still render (the run page, exports) use
 // loadInsightSupportOrUnchecked, which turns a failed check into "unknown" WITH the error
 // attached - visible and qualified, never silently "current" and never an empty success.
+import type { PoolClient } from "pg";
 import { withTenantRead } from "./db";
 import { designFreshnessStatus, resolveCurrentDesignSnapshotStatus } from "./crosstabs";
 import { loadVariableOverrides } from "./variableOverrides";
@@ -147,6 +148,11 @@ export async function loadInsightSupport(
     return { rows: result.rows, snapshotsAvailable: available };
   });
 
+  return classifyRows(tenantId, runId, rows, snapshotsAvailable);
+}
+
+/** Builds the per-insight link rows and classifies each with the one shared rule. */
+async function classifyRows(tenantId: string, runId: string, rows: RawRow[], snapshotsAvailable: boolean): Promise<InsightSupportResult> {
   const byInsight = new Map<string, SupportLinkRow[]>();
   for (const r of rows) {
     const row: SupportLinkRow = {
@@ -202,6 +208,66 @@ export async function loadInsightSupportOrUnchecked(
 ): Promise<InsightSupportResult> {
   try {
     return await loadInsightSupport(tenantId, runId, insightIds);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const unchecked = uncheckedSupport(message);
+    return { statusOf: () => unchecked, snapshotsAvailable: false, error: message };
+  }
+}
+
+let preInsightSnapshotConfirmed = false;
+/**
+ * Whether pre-insights can record their finding's fingerprint: insights.support_snapshot
+ * (migration 0103) and finding_support_parts() (0096) both exist. Positive result cached.
+ */
+export async function preInsightSupportSnapshotAvailable(client: PoolClient): Promise<boolean> {
+  if (preInsightSnapshotConfirmed) return true;
+  const r = await client.query<{ available: boolean }>(
+    `select (exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'insights' and column_name = 'support_snapshot')
+             and to_regprocedure('finding_support_parts(uuid)') is not null) as available`,
+  );
+  preInsightSnapshotConfirmed = r.rows[0]?.available === true;
+  return preInsightSnapshotConfirmed;
+}
+
+/**
+ * Support status for pre-insights (one per finding; golden-thread GT-006). Each pre-insight is
+ * treated as an insight with one source link, its own finding, and classified by the same rule
+ * as synthesized insights: rejected finding -> invalid; finding changed in place since the
+ * pre-insight was drafted (0103 snapshot) -> stale; calculation settings behind it changed ->
+ * stale; nothing recorded (written before 0103) or a lookup failed -> unknown, never current.
+ * A deleted finding takes its pre-insight with it (cascade), so there is nothing left to qualify.
+ * Throws on failure; exports use loadPreInsightSupportOrUnchecked.
+ */
+export async function loadPreInsightSupport(tenantId: string, runId: string, insightIds?: string[]): Promise<InsightSupportResult> {
+  const { rows, snapshotsAvailable } = await withTenantRead(tenantId, async (client) => {
+    const available = await preInsightSupportSnapshotAvailable(client);
+    const snapshotColumns = available
+      ? "i.support_snapshot, finding_support_parts(f.id) as current_parts"
+      : "null::jsonb as support_snapshot, null::jsonb as current_parts";
+    const filter = insightIds ? "and i.id = any($2::uuid[])" : "";
+    const result = await client.query<RawRow>(
+      `select i.id as insight_id, 1 as triangulation_count, i.id as link_id,
+              f.id as finding_id, f.status as finding_status, f.finding_text,
+              ${snapshotColumns},
+              case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
+              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request
+       from insights i
+       join findings f on f.id = i.finding_id
+       left join document_tables dt on dt.id = f.source_table_id
+       where i.run_id = $1 ${filter}
+       order by i.id`,
+      insightIds ? [runId, insightIds] : [runId],
+    );
+    return { rows: result.rows, snapshotsAvailable: available };
+  });
+  return classifyRows(tenantId, runId, rows, snapshotsAvailable);
+}
+
+/** loadPreInsightSupport, but a failed check reads "unknown" with the error on every pre-insight. */
+export async function loadPreInsightSupportOrUnchecked(tenantId: string, runId: string, insightIds?: string[]): Promise<InsightSupportResult> {
+  try {
+    return await loadPreInsightSupport(tenantId, runId, insightIds);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const unchecked = uncheckedSupport(message);

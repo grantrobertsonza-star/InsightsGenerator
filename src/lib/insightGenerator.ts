@@ -5,6 +5,7 @@ import { mapWithConcurrency } from "./concurrency";
 import { BASIS_LABEL, findingBasis } from "./findingBasis";
 import { figureCheck, type FigureCheck } from "./numberTrace";
 import { figureCheckAvailable } from "./figureChecks";
+import { preInsightSupportSnapshotAvailable } from "./supportStatus";
 
 const MAX_FINDINGS_FOR_INSIGHT = 60;
 
@@ -31,6 +32,8 @@ type VerifiedFinding = {
   origin?: "stated" | "generated" | "coded";
   pattern_type?: string | null;
   stated_stats?: Record<string, unknown> | null;
+  /** finding_support_parts() as this pass read the finding (0103 applied), else undefined. */
+  support_parts?: unknown;
 };
 
 type PreparedInsight = {
@@ -40,6 +43,8 @@ type PreparedInsight = {
   tension: string;
   implication: string;
   figureCheck: FigureCheck;
+  /** The finding's fingerprint as read for the prompt (0103); undefined when not recorded. */
+  supportParts?: unknown;
 };
 
 /**
@@ -94,9 +99,12 @@ export async function generateInsights(tenantId: string, runId: string): Promise
   }
 
   const eligible = await withTenant(tenantId, async (client) => {
+    // FND-001 for pre-insights (0103): the finding's fingerprint is read with the text the prompt
+    // uses, in the same statement, so the stored snapshot is what the model actually saw.
+    const recordSupport = await preInsightSupportSnapshotAvailable(client);
     const result = await client.query<VerifiedFinding>(
       `select f.id, f.finding_text, f.theme, v.verdict_tier, v.rationale as verdict_rationale,
-              f.origin, f.pattern_type, f.stated_stats
+              f.origin, f.pattern_type, f.stated_stats${recordSupport ? ", finding_support_parts(f.id) as support_parts" : ""}
        from findings f
        join verdicts v on v.finding_id = f.id
        where f.run_id = $1
@@ -306,7 +314,7 @@ async function generateInsightsForChunk(
         skippedFigures.push(...check.figures.filter((x) => x.status === "unsupported").map((x) => `${x.text}: ${x.reason}`));
         continue;
       }
-      prepared.push({ findingId: f.id, headline, observation, tension, implication, figureCheck: check });
+      prepared.push({ findingId: f.id, headline, observation, tension, implication, figureCheck: check, supportParts: f.support_parts ?? undefined });
     }
 
     if (prepared.length === 0) {
@@ -331,8 +339,8 @@ async function generateInsightsForChunk(
           // constraint (see 0022_dedupe_insights.sql) this silently keeps
           // whichever insert won instead of throwing, rather than failing
           // the whole chunk over a race neither side could see coming.
-          `insert into insights (tenant_id, run_id, finding_id, decision_context, headline, observation, tension, implication${storeCheck ? ", figure_check" : ""})
-           values ($1, $2, $3, $4, $5, $6, $7, $8${storeCheck ? ", $9" : ""})
+          `insert into insights (tenant_id, run_id, finding_id, decision_context, headline, observation, tension, implication${storeCheck ? ", figure_check" : ""}${insight.supportParts !== undefined ? ", support_snapshot" : ""})
+           values ($1, $2, $3, $4, $5, $6, $7, $8${storeCheck ? ", $9" : ""}${insight.supportParts !== undefined ? `, $${storeCheck ? 10 : 9}::jsonb` : ""})
            on conflict (finding_id) do nothing`,
           [
             tenantId,
@@ -344,6 +352,7 @@ async function generateInsightsForChunk(
             insight.tension,
             insight.implication,
             ...(storeCheck ? [JSON.stringify(insight.figureCheck)] : []),
+            ...(insight.supportParts !== undefined ? [JSON.stringify(insight.supportParts)] : []),
           ]
         );
       }

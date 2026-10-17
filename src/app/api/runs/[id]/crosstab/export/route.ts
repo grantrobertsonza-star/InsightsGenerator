@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
 import { convertOfficeDocToPdf } from "@/lib/convertToPdf";
+import { addCrosstabSlides } from "@/lib/crosstabSlides";
 import type { CrosstabResult, CrosstabRow } from "@/lib/parseStatsFile";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
@@ -233,94 +234,6 @@ function tableSheet(label: string, r: CrosstabResult, opts: ExportOpts): XLSX.Wo
   return ws;
 }
 
-const ROWS_PER_SLIDE = 14;
-
-/**
- * One table as one or more slides: a title, the primary figure (column % for a question tabulated
- * as percentages, the mean for an average) in a native PowerPoint table so it stays editable, a
- * base row, and a footer with the whole-table test and the source note. A table with more answer
- * rows than fit on one slide continues onto further slides headed "(continued)", each repeating
- * the banner header row. This is a plain working table, not the branded narrative deck findings
- * get (deckSlides.ts): the point here is the numbers, laid out exactly as the workspace shows them.
- */
-function tableSlides(pptx: PptxGenJS, label: string, r: CrosstabResult): void {
-  const cols = r.columns;
-  const header = ["Answer", ...cols.map((c) => (c.letter ? `${c.letter}: ${c.name}` : c.name)), "Total"];
-  type Line = { label: string; cells: string[]; bold?: boolean; italic?: boolean };
-  const lines: Line[] = [];
-  const baseRow = r.questions[0]?.rows.find((x) => x.isBase);
-  for (const q of r.questions) {
-    lines.push({ label: q.label, cells: header.slice(1).map(() => ""), bold: true });
-    const tt = q.tableTests?.[0];
-    if (tt) {
-      lines.push({
-        label: `Whole-table test: ${tt.label} ${tt.p < 0.001 ? "p<0.001" : `p=${tt.p}`} (chi-square ${tt.chi2}, df ${tt.df})`,
-        cells: header.slice(1).map(() => ""),
-        italic: true,
-      });
-    }
-    const asPct = q.kind === "single" || q.kind === "multi";
-    for (const row of q.rows) {
-      if (row.isBase) {
-        if (row.isEffBase) continue; // one base row per question is enough on a slide
-        lines.push({
-          label: row.label,
-          cells: [...cols.map((_c, j) => String(row.count[j] ?? "")), String(row.total.count ?? "")],
-          italic: true,
-        });
-        continue;
-      }
-      const rowAsPct = asPct && !row.isScore;
-      const fmt = (v: number | null | undefined): string => {
-        if (v === null || v === undefined) return "-";
-        if (!rowAsPct) return row.isMean ? v.toFixed(2) : `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
-        return `${v}%`;
-      };
-      lines.push({
-        label: row.label,
-        cells: [...cols.map((_c, j) => fmt(row.pct[j])), fmt(row.total.pct)],
-      });
-    }
-  }
-
-  const rowsOf = (chunk: Line[]): PptxGenJS.TableRow[] => [
-    header.map((h) => ({ text: h, options: { bold: true, fill: { color: "EEF2FF" }, color: "1E2761" } })),
-    ...chunk.map((ln) => [
-      { text: ln.label, options: { bold: !!ln.bold, italic: !!ln.italic, align: "left" as const } },
-      ...ln.cells.map((c) => ({ text: c, options: { italic: !!ln.italic, align: "right" as const } })),
-    ]),
-  ];
-  const colW = [3.4, ...cols.map(() => 9.4 / Math.max(cols.length, 1)), 1.0];
-
-  for (let start = 0; start < lines.length; start += ROWS_PER_SLIDE) {
-    const chunk = lines.slice(start, start + ROWS_PER_SLIDE);
-    const slide = pptx.addSlide();
-    slide.addText(start === 0 ? label : `${label} (continued)`, {
-      x: 0.4, y: 0.25, w: 12.5, h: 0.6, fontSize: 18, bold: true, color: "1E2761", fontFace: "Calibri",
-    });
-    slide.addTable(rowsOf(chunk), {
-      x: 0.4,
-      y: 0.95,
-      w: 12.5,
-      colW,
-      fontSize: 9,
-      fontFace: "Calibri",
-      border: { type: "solid", color: "CBD5E1", pt: 0.5 },
-      autoPage: false,
-    });
-    if (start + ROWS_PER_SLIDE >= lines.length) {
-      const note = [
-        r.weightVar ? `Weighted by ${r.weightLabel ?? r.weightVar}` : "Unweighted",
-        baseRow ? `base ${baseRow.total.count ?? "?"}` : "",
-        r.provenance?.sourceFile ? `source: ${r.provenance.sourceFile}` : "",
-      ].filter(Boolean).join(" · ");
-      if (note) {
-        slide.addText(note, { x: 0.4, y: 7.05, w: 12.5, h: 0.3, fontSize: 8, color: "64748B", fontFace: "Calibri" });
-      }
-    }
-  }
-}
-
 /** All saved crosstabs for a run (or one, with ?tableId=) as an Excel workbook. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: runId } = await params;
@@ -355,7 +268,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
     for (const t of usable) {
-      tableSlides(pptx, t.label ?? "Crosstab", t.crosstab as CrosstabResult);
+      // GT-005: the layout is planned to fit the slide (src/lib/crosstabSlides.ts).
+      addCrosstabSlides(pptx, t.label ?? "Crosstab", t.crosstab as CrosstabResult);
     }
     const pptxBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
     if (format === "pptx") {

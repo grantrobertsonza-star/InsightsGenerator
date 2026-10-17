@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
+import { recommendationDecisionContextAvailable, recommendationDecisionStateSql } from "@/lib/decisionContext";
+import { decisionsWrittenFor } from "@/lib/recommendationQualification";
+import { loadPreInsightSupportOrUnchecked } from "@/lib/supportStatus";
+import { SUPPORT_STATUS_LABEL, summariseSupport } from "@/lib/supportStatusShared";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
 type ExportRow = {
+  insight_id: string;
+  source: string;
+  decision_context: string | null;
+  decision_state: "earlier" | "unknown" | null;
   theme: string | null;
   insight_headline: string;
   action_text: string;
@@ -36,11 +44,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       "select project_name, decision_statement from runs where id = $1",
       [runId]
     );
+    // GT-004: each recommendation's own record of the decisions it was written for (0102), judged
+    // by the shared rule in decisionContext.ts, so the export carries the qualification the
+    // decisions panel shows.
+    const recorded = await recommendationDecisionContextAvailable(client);
     const recommendationsResult = await client.query<ExportRow>(
-      `select f.theme, i.headline as insight_headline, r.action_text, r.owner_role,
+      `select r.insight_id, r.source, ${recorded ? "r.decision_context" : "null::text as decision_context"},
+              ${recommendationDecisionStateSql("r", "run.decision_statement", recorded)} as decision_state,
+              f.theme, i.headline as insight_headline, r.action_text, r.owner_role,
               r.owner_feasibility_note, r.timeline, r.metric, r.priority,
               r.assumptions_and_risks, r.alternatives_considered, r.status
        from recommendations r
+       join runs run on run.id = r.run_id
        join insights i on i.id = r.insight_id
        join findings f on f.id = i.finding_id
        where r.run_id = $1${onlyAccepted ? " and r.status = 'accepted'" : ""}
@@ -54,6 +69,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
+  // The support of the pre-insight each recommendation rests on (GT-006 rule), stated per row.
+  const support = await loadPreInsightSupportOrUnchecked(TENANT_ID, runId, Array.from(new Set(rows.map((row) => row.insight_id))));
   const sheetRows = rows.map((row) => ({
     Theme: row.theme ?? "No theme",
     Priority: row.priority.charAt(0).toUpperCase() + row.priority.slice(1),
@@ -65,6 +82,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     "Assumptions & risks": row.assumptions_and_risks,
     "Alternatives considered": row.alternatives_considered,
     Status: row.status.charAt(0).toUpperCase() + row.status.slice(1),
+    "Decisions written for": decisionsWrittenFor(row),
+    Support: (() => {
+      const s = support.statusOf(row.insight_id);
+      return s.status === "current" ? SUPPORT_STATUS_LABEL.current : summariseSupport(s);
+    })(),
     "From insight": row.insight_headline,
   }));
 
@@ -80,6 +102,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     { wch: 45 }, // Assumptions & risks
     { wch: 45 }, // Alternatives considered
     { wch: 10 }, // Status
+    { wch: 50 }, // Decisions written for
+    { wch: 50 }, // Support
     { wch: 40 }, // From insight
   ];
   const workbook = XLSX.utils.book_new();

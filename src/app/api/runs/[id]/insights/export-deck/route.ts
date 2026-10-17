@@ -6,6 +6,8 @@ import { findingSourceSql, formatFindingSource, sourceLine } from "@/lib/sourceA
 import { placePreInsight, type DeckPlacement } from "@/lib/preInsightDeckEligibility";
 import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
+import { loadPreInsightSupportOrUnchecked } from "@/lib/supportStatus";
+import { summariseSupport, type SupportStatus } from "@/lib/supportStatusShared";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -76,7 +78,22 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     audience: run.audience,
   });
 
-  const placed = insights.map((insight) => ({ insight, placement: placePreInsight(insight) }));
+  // GT-006 (FND-001 for pre-insights): the shared support rule beside the verdict rule. Support no
+  // longer valid leaves a card out, listed with its reason on the closing slide; changed or
+  // uncheckable support stays, tagged in words, as the synthesized-insights deck does.
+  const support = await loadPreInsightSupportOrUnchecked(TENANT_ID, runId, insights.map((i) => i.id));
+  const supportTag: Record<SupportStatus, string> = {
+    current: "",
+    stale: " · SUPPORT CHANGED",
+    unknown: " · SUPPORT NOT CHECKED",
+    invalid: " · SUPPORT NO LONGER VALID",
+  };
+  const placed = insights.map((insight): { insight: ExportInsight; placement: DeckPlacement } => {
+    const placement = placePreInsight(insight);
+    const s = support.statusOf(insight.id);
+    if (placement.include && s.status === "invalid") return { insight, placement: { include: false, reason: summariseSupport(s) } };
+    return { insight, placement };
+  });
   // Numerical traceability (0101): a card whose figures need review says so under its source.
   const figures = await loadRunFigureChecksForExport((fn) => withTenant(TENANT_ID, fn), runId);
   const included = placed.filter(
@@ -147,7 +164,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         });
         slide.addShape("rect", { x, y, w: 0.06, h: CARD_H, fill: { color: accent }, line: { type: "none" } });
 
-        slide.addText(placement.label.toUpperCase(), {
+        slide.addText(`${placement.label.toUpperCase()}${supportTag[support.statusOf(insight.id).status]}`, {
           x: x + 0.15,
           y: y + 0.08,
           w: CARD_W - 0.3,
