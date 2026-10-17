@@ -2,7 +2,7 @@
 
 Canonical finite release baseline:43 existing rows. This is technical functionality consolidation,
 not public-release authorization or an unrestricted audit. The previous document is retained byte-for-byte
-as [v28](technical-release-acceptance-baseline-2026-10-15.v28.md); earlier evidence/history remains local.
+as [v29](technical-release-acceptance-baseline-2026-10-15.v29.md); earlier evidence/history remains local.
 
 Current outstanding work is reconciled in [the row-level reconciliation below](#row-level-reconciliation-2026-10-17). Older statements about pending banners, keys, tooling and repaired mechanisms are historical where superseded there.
 
@@ -10,7 +10,7 @@ Current outstanding work is reconciled in [the row-level reconciliation below](#
 
 - [Resumed golden-thread walkthrough](golden-thread-walkthrough-2026-10-15.md), unchanged checkpoint3c29e02: real model-backed narrative exports and independent A/C probes executed. Original lookup and handover/verdict failures remain historical evidence. The body editor, later passing handovers and exact remaining FND assertions are reconciled below; no old blocked claim overrides them. Prior closures are preserved.
 
-**36 Closed /0 Implemented awaiting verification /1 Confirmed defect /0 Untested requirement /
+**37 Closed /0 Implemented awaiting verification /0 Confirmed defect /0 Untested requirement /
 6 Blocked =43.** Priority is independent:34 release-priority (33 technical + separate security1),
 9 important but deferrable,0 optional. Verification work is not a count of repairs.
 
@@ -38,20 +38,20 @@ Routine repairs within the agreed contract proceed without repeated planning app
 
 ## Row-level reconciliation 2026-10-17
 
-Current independent disposition of HEAD `2c6417e` / Claude repair `1f21f71`. Previous canonical retained byte-for-byte as v28. Both previous original business counterexamples now pass; the recommendation-currentness boundary below remains defective. The [latest independent review](independent-acceptance-disposition-2026-10-16.md#codex-independent-business-follow-up-2026-10-17) records all 43 dispositions and exact boundaries. IDs, requirements, priorities and frozen criteria are unchanged.
+Current independent disposition of HEAD `9316946` / Claude repair `8fa326c`. Previous canonical retained byte-for-byte as v29. The [latest independent review](independent-acceptance-disposition-2026-10-16.md#codex-independent-recommendation-currentness-review-2026-10-17) accepts the recommendation-specific context repair after the original failing probes pass. All43 rows are reconciled: prior36 closures and six blocked rows preserved, business remainder now Closed at the finite local evidence boundary. IDs, requirements, priorities and frozen criteria are unchanged.
 
-**36 Closed /0 Implemented awaiting verification /1 Confirmed defect /0 Untested requirement /6 Blocked =43.** Priorities remain34/9/0. The prior33 finite closures are preserved. Three remainders now close on matching independent evidence, not on the readiness harness repair or unrelated tests:
+**37 Closed /0 Implemented awaiting verification /0 Confirmed defect /0 Untested requirement /6 Blocked =43.** Priorities remain34/9/0. The prior33 finite closures are preserved. The four technical remainders now close on matching independent evidence, not on the readiness harness repair or unrelated tests:
 
 | Existing row | Independent disposition |
 |---|---|
 | IMP-004 | Closed: actual-engine numbered-scale references and controls pass under Grant's explicit policy; native labelled/unlabelled/sparse zero categories, missing exclusions, means/top boxes and missing audit survive saved-table reload. |
 | IMP-017 | Closed at the agreed local finite boundary: native one-over-byte/case refusal, reload and corrected exact-limit imports pass; reuse prior independent concurrent exact-limit and injected-error recovery. Original v12 stays failed, cause/outcome limits unproven. No deployed throughput claim. |
 | FND-001 / REP-OUT-001 | Closed at the agreed finite handover boundary: actual-generator persisted wrong-group/rounded/retry/invented-range refusal and replacement/duplicate consumer checks pass; prior independent change/reject/body/design/human-wording evidence preserved. Scripted model/storage and protected-reread boundaries remain explicit. |
-| Business-decisions remainder | Confirmed defect retained, narrowed: original post-commit error and recorded-context insight probes now pass. Actual native generation of a recommendation for Decision A from an unframed insight, followed by native rewording to Decision C, still clears the marker and displays no qualification after reload. Recommendation currentness cannot be inferred solely from its parent insight context. |
+| Business-decisions remainder | Closed: original saved-change, recorded-context insight and actual-generator no-context recommendation probes pass. Both recommendation generators store their own prompt-time decisions; missing records remain qualified unknown. Actual DB revert/different-generation-time/synthesized/concurrent/human-wording/retry controls and native reload/own-delete/bulk checks pass. No automatic rewriting or whole-consumer certification. |
 
 Six blocked rows remain: separate IMP-001/016 deployed security and five missing historical definitions (OBJ-SET-004/005, OBJ-REV-003/010/M03). Grant explicitly archived those five as unsubstantiated; they stay Blocked, not fixed. Staging security work remains last and requires authorisation. Approved SAS/flipped-separate-Codebook exclusions, deferred capabilities and deployment/identity/storage/Office/provider limitations remain. **Overall acceptance remains incomplete.**
 
-Latest independent checks:20 focused passes/3 inactive placeholders; original post-commit assertion passes unchanged; fresh production build/TypeScript pass; changed-module lint0 errors/6 existing warnings; released native3/3 and unchanged original native probe1/1 pass. Separate DB and actual-generator native no-context recommendation probes fail the expected qualification assertion; materially reworded-decision and added-decision cases retained separately. The old DB probe's subsequent precommit case fails from its inherited pending marker, a test-order issue; the released precommit/retry regression passes. Prior failed history remains unchanged. Current ownership is in [agent handoff](agent-handoff.md). Dated registers below are historical where superseded.
+Latest independent checks:23 focused passes/3 inactive placeholders; both original DB assertions plus independent migration rollback/rerun/legacy recovery pass (3 selected passes;19 other assertions deliberately deselected). Fresh production build/TypeScript and changed-module lint pass. Native7/7, including all three retained independent probes; only target-port guards adapted where necessary. Full868-test/30-browser claims remain Claude's separate results. Original failed runs, probe-ordering and old-count-shape contract limits remain history, not retroactive passes. Current ownership is in [agent handoff](agent-handoff.md). Dated registers below are historical where superseded.
 
 ## Consolidated outstanding work — 2026-10-16
 
@@ -213,7 +213,7 @@ Current row-level dispositions are reconciled on2026-10-17. All43 IDs, prioritie
 | OBJ-REV-M03 | Exact original comment/test finding unavailable. | Blocked | Important but deferrable | 2026-10-17 independent reconciliation: Original OBJ-REV-M03 comment/test definition remains unrecovered. | Recover definition or preserve unsubstantiated record. | Evidence recovery/archive only; no invented code change. |
 | OBJ-REV-M04 | Processing-limit and failure comments match continuation/error behavior. | Closed | Important but deferrable | 2026-10-17 independent reconciliation: Exactly60 controlled response rounds stop visibly pending, Continue operates existing questions, and real permission-revoked load fails visibly then recovers; engineering comment/brief now match. | Guard leaves visible pending work; Continue evaluates existing questions without regeneration; load failure is surfaced. | Finite guard/load contract closes; not60 rounds of real-provider computation. |
 | DEC-001 | Reaccepting human-edited decisions preserves wording/provenance through regeneration. | Closed | Release blocker | 2026-10-17 independent reconciliation: Independent finite human-edit/reaccept/regenerate provenance closure unchanged; retained actual callers still preserve it. | Agreed editâ†’reacceptâ†’regenerate cycle and untouched-AI replacement passed. | No whole-business-workflow closure inferred. |
-| Business-decisions remainder (unassigned acceptance requirement; not a new defect ID) | Reject/restore/unaccept, own add/delete/bulk and decision_statement synchronization agree after reload. | Confirmed defect | Release blocker | Independent1f21f71 review: original saved-error DB probe and recorded-context native insight probe now pass; supplied recovery/transition/human-wording/export controls pass. Remaining concrete failure: recommendation actually generated for Decision A from a null-context insight stays unqualified after native rewording to Decision C and reload; marker/counts0. | Finite transition table: intended row/run only, status-only operations preserve wording/source, statement equals accepted set; failed refresh/retry visibly reconciles; bulk reload agrees. | Claude: track or safely qualify recommendation currentness independently of the parent insight snapshot, including no-context and different-generation-time cases; preserve human work. Replay exact DB/native failures, recovery/revert/unaffected/unknown/concurrent controls. No automatic rewriting or broad reporting redesign required. |
+| Business-decisions remainder (unassigned acceptance requirement; not a new defect ID) | Reject/restore/unaccept, own add/delete/bulk and decision_statement synchronization agree after reload. | Closed | Release blocker | Independent8fa326c review: original postcommit and framed-insight probes preserved; actual-generator null/different-parent-context recommendation, both generator paths, prompt-time concurrent snapshot, unknown legacy, revert/human-wording/current controls pass. Native original probes/reload/own-delete/bulk and real-DB finite transitions/retry pass.0102 additive rollback/rerun and pre-migration unknown-to-recording recovery independently checked. | Finite transition table: intended row/run only, status-only operations preserve wording/source, statement equals accepted set; failed refresh/retry visibly reconciles; bulk reload agrees. | No further repair for the finite business contract.0102 needed for recording new contexts; without it or for legacy AI rows, show unknown. No automatic rewrite action or per-item deck/narrative qualification claimed; preserve separate deployment/process limits. |
 | ANA-NPS-003 calculation-input subcase | NPS/Objectives/chart requests never calculate with unavailable required saved layout/design inputs. | Closed | Release blocker | 2026-10-17 independent reconciliation: Independent Brief38 strict setup/lower-builder/cache-miss refusal closure preserved. | Strict success followed by lower-level failure blocks engine/save for ordinary, explicit-design and explicit-no-design requests; cache-miss path likewise safe. | No new arbitrary default or public-release claim. |
 | ANA-NPS-003 / IMP-005 findings freshness subcase | Findings with changed/uncheckable design are visibly stale/unknown; no-source remains not applicable. | Closed | Release blocker | 2026-10-17 independent reconciliation: Independent current/stale/unknown/no-source and missing-snapshot/migration lookup closure preserved. | Actual loader returns current/stale/unknown/null correctly; missing snapshot/migration and lookup failure with a source table show unknown badge after reload. | Shared deeper consumers remain FND scope. |
 | FND-001 / REP-OUT-001 necessary handover only | Changed/rejected/deleted/replaced support cannot remain silently valid in outputs consuming these modules. | Closed | Release blocker | 2026-10-17 independent actual-generator wrong-group storage, rounded25.4-to25, invented-range feedback/retry and exhausted-retry preservation pass. Actual reread/deletion/export duplicate support controls pass with protected findings retained; prior independent change/reject/body/design/human-wording cases preserved. Model/storage controlled. | In-place change, delete, replacement and duplicates invalidate/qualify affected dependent artifact; unchanged support stays eligible; human wording survives. | No further repair for the named finite support handover; preserve protected-reread scope and browser-failure/HTTP-continuation distinction. No broader provider/Office certification. |
@@ -226,27 +226,27 @@ Current row-level dispositions are reconciled on2026-10-17. All43 IDs, prioritie
 |---|---:|---:|---:|---:|---:|
 | Import (including separate security) |16|0|0|0|1|
 | Setup/Review Objectives |15|0|0|0|5 historical gaps|
-| Business decisions |1|0|1|0|0|
+| Business decisions |2|0|0|0|0|
 | Cross-tabs/necessary shared handovers |4|0|0|0|0|
-| **Total** |**36**|**0**|**1**|**0**|**6**|
+| **Total** |**37**|**0**|**0**|**0**|**6**|
 
 Finite row closures do not imply whole-module, overall technical or public-release sign-off.
-The one confirmed business row and separate security/environment gates remain explicit.
+The separate security/environment gates and disclosed supported-scope limits remain explicit.
 Shared assertions are counted once under their existing row identities.
 
 ## Remaining work, separated by evidence
 
-**One confirmed technical row:** business-decisions remainder. Repair the two independently reproduced post-commit/currentness failures within the existing contract; preserve DEC-001 and all passing transitions. Missing evidence and historical harness failures are separate from these demonstrated application failures.
+**No outstanding defect or verification row remains in the defined local technical partition:**37 finite rows Closed. This is acceptance at the named code/disposable/native boundaries, not an unrestricted audit, whole-module or public-release certification. Business decision currentness uses visible qualification, preserves human wording and does not rewrite existing artifacts. Legacy AI recommendations without recorded context remain unknown;0102 enables recording on new generations.
 
-**Six blocked rows:** deployed IMP-001/016 security plus five historical definitions explicitly archived by Grant as unsubstantiated, retaining Blocked. Four of9 deferrable-priority rows have finite closure; five are those historical gaps. Research Quality Review remains design-only; approved exclusions and capability limits remain explicit.
+**Six blocked rows:** deployed IMP-001/016 security plus five historical definitions explicitly archived by Grant as unsubstantiated, retaining Blocked. Four of9 deferrable-priority rows have finite closure; five are those historical gaps. Research Quality Review remains design-only; approved SAS/flipped-separate-Codebook exclusions and other documented capability/Office/provider limits remain explicit.
 
-**Separate pre-public gate:** intended user/tenant identity, real storage privacy/signed links, final role/schema and migration/backup runner equivalence require authorised staging/deployment evidence. Local results do not authorise release or deployment.
+**Separate pre-public gate:** intended user/tenant identity, real storage privacy/signed links, final role/schema and migration/backup runner equivalence require authorised staging/deployment evidence. No local result authorises public release, staging writes or deployment. Overall acceptance remains incomplete.
 
 ## Ordered bounded remainders
 
-1. Preserve the independently verified post-commit containment and recorded-context insight qualification in1f21f71. Do not repeat those repairs.
-2. Repair only the remaining business recommendation-currentness gap: a recommendation generated under a decision need not share its parent insight's decision snapshot. Null parent context is a normal generate workflow, not proof the recommendation is decision-independent. Retain visible qualification/unknown when currentness cannot be established; preserve human wording. Independently replay native Decision A-to-C/reload with an actually generated recommendation, then recovery/revert/unaffected/concurrent controls.
-3. Keep authorised staging security gates and the five archived historical rows explicit. Overall acceptance remains incomplete. No broad audit, repeated closed matrices, paid model call, push or deployment is implied.
+1. Preserve37 finite closures and original failing history; no application repair is currently queued under the reconciled43 rows.
+2. Owner-authorised staging security/identity/storage and deployment/process equivalence remain separate.0102 has been exercised only in disposable environments; no live/development migration is applied.
+3. Any separate golden-thread/product checkpoint must report its own source, environment and evidence; it was not run or certified by this bounded review. Do not infer new feature work, paid model calls, broad audits, push or deployment from this closure.
 
 ## Supported-scope proposal and stopping rule
 

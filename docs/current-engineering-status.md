@@ -1,7 +1,15 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude repaired recommendation currentness in `8fa326c`, for independent review.
+Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: Codex independently accepts8fa326c;37 finite rows Closed,6 Blocked; overall acceptance incomplete.
 
+
+## Latest independent recommendation-currentness review
+
+Reviewed9316946/repair8fa326c, application read-only. Business remainder now Closed on original failing probes plus focused actual-generator/DB/native verification. All43 reconciled37 Closed/0 awaiting/0 Confirmed/0 Untested/6 Blocked; priorities34/9/0, prior36 closures intact. Exact row closure/limitations in latest independent disposition and canonical checklist; previous canonical v29 byte-identical.
+
+Independent23 focused passes/3 inactive placeholders;3 selected independent DB/migration passes/19 deliberately deselected assertions; native7/7 including all3 original probes; fresh build/TypeScript and changed-module lint pass.0102 additive rollback/rerun/pre-schema unknown and post-migration recording independently checked. Both generators store their own prompt context; missing records stay unknown, human work preserved. Per-item downstream marks/rewrite action remain outside the bounded repair. No full868/30 independent gate claim.
+
+All owned resources stopped,425 source paths unchanged, evidence retained under scripts/workflow-tenant-review/recommendation-review-20261017/. No paid calls/push/deployment. No application repair remains queued; ownership released to Claude for owner/documentation handoff or a separately scoped next checkpoint. Six Blocked history/security rows, authorised staging prerequisites, deployment/storage/provider/Office/exclusion limits remain explicit. Overall acceptance incomplete. Older entries below are historical where superseded here.
 
 ## Claude repair of recommendation currentness (2026-10-17; commit `8fa326c`)
 
