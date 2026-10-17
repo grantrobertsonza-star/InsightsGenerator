@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: repair GT-004/GT-005 in parallel while Codex continues frozen baseline assessment, 2026-10-17.
+State: **READY_FOR_CLAUDE**: repair GT-004/GT-005/GT-006 in parallel while Codex continues frozen baseline assessment, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -638,3 +638,6 @@ Grant authorises concurrent work in separate copies: Claude implementation owns 
 State for implementation: **READY_FOR_CLAUDE** on GT-004 and GT-005 only; Codex continues independent baseline checks in its frozen copy under Grant's concurrent-work instruction. Authoritative shared findings: [golden-thread-findings-register-2026-10-17.md](golden-thread-findings-register-2026-10-17.md). Exact reproductions and evidence are appended there. GT-004: recommendation XLSX/PPTX omit earlier-decision qualification; PPTX frames the old action beneath current decision text. GT-005: crosstab Total column extends beyond slide/page and is clipped from rendered PDF. Claude implements; Codex independently verifies original failures plus boundary/recovery controls on the exact repair commit. No app source edits by Codex.
 
 Test-only a4792b4 independently passes: final strict124 files/879 passes/42 explicit skips, real DB/Python prerequisites executed. Three external old false-green mutations now fail as expected; canonical reference controls pass. 425 application/engine/migration paths unchanged through f2fc03a after accounting explicitly for Git versus working-copy line endings. Baseline production build and30/30 browser checks pass; continuous generate/validate journeys plus unchanged smoke3/3 pass; after-commit interrupted response/reload/retry probe passes. All historical failed runs retained. Replay only; model quality remains unverified. No counts promoted and no overall acceptance claim while confirmed exports remain open. Keep local/unpushed.
+
+
+GT-006 additional bounded release: rejected finding support still appears Robust without qualification in pre-insights XLSX. Exact native reproduction, source boundary and closure assertions are appended to the authoritative shared findings register. Claude may include this affected consumer in the export repair package; Codex remains read-only on application files.
