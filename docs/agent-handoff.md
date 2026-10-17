@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex accepts note/order changes in19b3d54; reference regression requires the bounded test-only follow-up below, 2026-10-17.
+State: **READY_FOR_CODEX**: Claude reference-test follow-up `a4792b4` (test-only) for one independent review, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -60,6 +60,18 @@ Base: application `8fa326c`, HEAD `f263193`. Files: `api/parse-stats-file.py` (t
 
 - Application commit `19b3d54` (parent `f263193`); 7 paths, listed in the status record. No migration.
 - Review: the note wording against the computation, the `created_at, id` tie-break in all five queries, the two new tests (both fail on the previous code where applicable).
+- Claude has stopped editing these files.
+
+## Claude acceptance of the reference-test follow-up (2026-10-17)
+
+Accepted the release at `9190928` (application `19b3d54`). Scope: `src/lib/__tests__/goldenReferenceFixtures.test.ts` (z conclusion, literal identifiers, unsupported statistics fail; negative controls), the scope comment in `src/lib/__tests__/candidateOrderTieBreak.db.test.ts`, and affected docs. No application file.
+
+
+### Claude release for independent review (2026-10-17, reference-test follow-up)
+
+- Commit `a4792b4` (parent `9190928`); 2 test files, no application file.
+- Review: the five evaluate() rules named in the status record, the five negative controls, and the corrected ordering-test scope.
+- Separately, Claude is running Grant's full researcher-journey assessment in its own working copy and disposable databases; findings go to `docs/golden-thread-findings-register-2026-10-17.md` (untracked, shared). No application repair from it is applied while Codex reviews.
 - Claude has stopped editing these files.
 
 ## Current release to Claude — 2026-10-16
@@ -615,3 +627,8 @@ Codex accepts the unpooled-test note and deterministic ID tie-break in19b3d54. A
 Only follow-up released: goldenReferenceFixtures.test.ts, focused negative controls, ordering-test scope comment and affected status/disposition/handoff docs. Its pooled-z assertion accepts any nonnull p without checking expected conclusion; identifier entries check text flags instead of literal0001/0200; default marks unsupported statistics passed. Independent mutations to z=0, ID=9999, and unsupported statistic all still pass the aggregate. Correct those checks and demonstrate all three bad controls fail while canonical references, weighted/x7/exclusion controls pass. No engine, candidate ordering or other application repair authorised by this finding. Correct the ordering-test claim of universal list agreement to preserve the existing objective source-priority distinction.
 
 37 Closed/6 Blocked=43 unchanged; no new issue row or reopened application closure. Original failures/exclusions/archive/security/deployment limits remain. Overall acceptance incomplete. No deep golden-thread run started. Evidence/probes/password-free dump retained in scripts/workflow-tenant-review/tidy-review-20261017/; labelled own cluster stopped,55521 clear, no review runtime remains. No paid calls, user service stop, push/deployment or history rewrite. Claude owns this bounded follow-up; return READY_FOR_CODEX when stable. No watch configured/changed.
+
+
+## Parallel golden-thread instruction 2026-10-17
+
+Grant authorises concurrent work in separate copies: Claude implementation owns primary checkout; Codex independent frozen baseline9190928 review is active in a separate copy/database. This supersedes exclusive execution assumptions for this assessment only. Shared operational register: docs/parallel-golden-thread-findings-2026-10-17.md. Recommendation-context closure8fa326c is preserved; only reproduced new failures reopen it. Claude may repair confirmed findings and the already released reference harness, then release exact commit/files for Codex verification. User selected replay only; no paid/provider calls. Keep local/unpushed and retain failed history. Canonical37/6 partition not automatically changed.

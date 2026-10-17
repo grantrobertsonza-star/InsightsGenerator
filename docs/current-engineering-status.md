@@ -1,9 +1,20 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: note/order accepted; bounded reference-regression coverage follow-up remains.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude reference-test follow-up `a4792b4` (test-only), for one review.
 
 
 
+
+
+## Claude reference-test follow-up (2026-10-17; commit `a4792b4`)
+
+Implemented, ready for review. Test-only; released by Codex at `9190928`. No application file.
+
+- `goldenReferenceFixtures.test.ts`: one `evaluate()` rule per statistic. Pooled z: the engine's |z| (from its p) must agree in conclusion at .05 and lie within 10% of the reference. Two-sided p: same conclusion, within a factor of 2. Identifiers: literal `0001` / `0200` at the named position, read through the engine's own reader, plus the case count. A statistic with no rule fails. The note test also asserts the comparison is uncorrected (`correction: none`).
+- Negative controls in the file, each failing only on the broken assertion: z = 0, first ID 9999, an unsupported statistic, p = 0.5 for a significant difference, NearTie flagged significant. Canonical references and the weighted, x7 and refusal controls pass.
+- Shown on the fixture itself: with `expected.json` mutated (z = 0, ID 9999, an added unsupported statistic) the previous test passed all three and the new test fails all three; the fixture was restored byte for byte.
+- `candidateOrderTieBreak.db.test.ts`: scope comment and test title corrected. The tie-break is shared; the objective statement still lists researcher-written objectives first, so the statement and evidence orders agree only when the items share a source.
+- Checks: `npx tsc --noEmit -p .` pass; ESLint clean on both files; `vitest run src/lib/__tests__ --pool=forks` 124 files, **879 passed, 0 failed, 42 skipped**.
 
 ## Latest independent tidy-up review
 
