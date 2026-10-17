@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex reviewed `1f21f71`; original two probes pass, remaining recommendation-currentness repair released below, 2026-10-17.
+State: **READY_FOR_CODEX**: Claude repair `8fa326c` of recommendation currentness, for one independent review, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -23,6 +23,23 @@ No regeneration, deletion or rewording of existing insights or recommendations. 
 - Application commit `1f21f71` (parent `6dba539`); 9 paths, listed in the status record. Application files outside those paths are byte-identical to `091663e`.
 - What to review: the post-commit containment in `afterDecisionChange`; the earlier-decisions rule and where it is and is not shown (limitations recorded); the retained DB and native regressions; Codex's original probes, which pass unchanged except the probe-ordering case noted.
 - Evidence and failed invocations: [current-engineering-status.md](current-engineering-status.md), section "Claude repair of the two business-row findings".
+- Claude has stopped editing these files and will not edit them again without a new release.
+
+## Claude acceptance of the recommendation-currentness release (2026-10-17)
+
+Accepted the release at `9225d95` (application `1f21f71`; `2c6417e`, `9225d95` documentation-only). Reconciled before any change: HEAD `9225d95`, `agent-handoff.md` `2c8a5bffaf3c0ba9c94086b64cc2d6cd22cf2c5d972c5c582727bd720c36726a`, `current-engineering-status.md` `81a2f12d345a28a73596ba9fbe05843c06b463b0bd85509dec4f2ca254b3817d`. Scope: only recommendation currentness.
+
+Schema/source extension recorded before editing:
+- `supabase/migrations/0102_recommendation_decision_context.sql` (new, additive, idempotent): `recommendations.decision_context text`, the decisions an AI recommendation was generated for. Existing rows stay null (not recorded).
+- `src/lib/recommendationAgent.ts`: both generators store the decision statement their prompt used.
+- Plus the released boundaries (`decisionContext.ts`, `decisionRefresh.ts`, `DecisionBriefReview.tsx`, `page.tsx`, focused tests, docs). No rewrite, deletion or rewording of existing recommendations.
+
+
+### Claude release for independent review (2026-10-17, recommendation currentness)
+
+- Application commit `8fa326c` (parent `9225d95`); 8 paths, including the new migration `0102`. Other application files are byte-identical to `1f21f71`.
+- What to review: the recorded-context rule and its unknown branch, the prompt-time snapshot in both generators, the panel wording, the retained DB and native regressions, Codex's probes (results and the one intended contract change noted in the status record).
+- Evidence and failed invocations: [current-engineering-status.md](current-engineering-status.md), section "Claude repair of recommendation currentness".
 - Claude has stopped editing these files and will not edit them again without a new release.
 
 ## Current release to Claude — 2026-10-16

@@ -1,6 +1,39 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: independent review of1f21f71 complete; only recommendation-currentness repair remains.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude repaired recommendation currentness in `8fa326c`, for independent review.
+
+
+## Claude repair of recommendation currentness (2026-10-17; commit `8fa326c`)
+
+Implemented, ready for review. Base: application `1f21f71`, docs `9225d95`. Scope: only the recommendation-currentness gap, with the schema extension recorded in the handoff before editing.
+
+**Reproduced first.** Codex's DB probe assertion (`independentRecommendationContext.db.test.ts`, no-context insight with an older recommendation) fails on the previous code with `expected 0 to be greater than 0`; the native generator replay was already recorded failing by Codex (`native-unframed-reworded.log`, `native-unframed.log`).
+
+**Repair.**
+- Migration `0102_recommendation_decision_context.sql` (additive, idempotent): `recommendations.decision_context`. Existing rows stay null.
+- `recommendationAgent.ts`: both generators (per-finding and synthesized) store the decision statement their prompt was built from. It is read before the model call, so a change committed during drafting is not mistaken for what the model saw. Stored only when 0102 is applied.
+- `decisionContext.ts`: recommendations are judged on their own record, never inferred from their insight. With a record: "earlier" when it differs from the current statement (whitespace ignored). AI recommendation without a record: "unknown", counted and said as unknown, never assumed current. Without 0102 applied, every AI recommendation is unknown. Researcher-written and rejected recommendations are not counted.
+- `decisionRefresh.ts`: `decisionContextMismatch` now returns `{ insights, recommendations, recommendationsUnknown }`; recommendations counts earlier plus unknown.
+- `DecisionBriefReview.tsx`: the standing notice names earlier insights, earlier recommendations and unknown recommendations separately, after reload too; "Could not check" when the lookup fails. The misplaced comment Codex noted is moved back above `DecisionRefreshNotice`.
+- Nothing is rewritten, deleted or reworded.
+
+**Migration.** `0102` must be applied wherever the app runs before new recommendations carry a record; until then every AI recommendation shows as unknown (conservative). Not applied to any live or development database (not authorised).
+
+**Limitations.** Existing AI recommendations written before 0102 stay "unknown" until rewritten; there is no rewrite action (a product decision). Recommendation lists, synthesized-insight cards, decks and the narrative still carry no per-item mark; the panel count is their qualification.
+
+**Checks on the final tree (cloud workspace, disposable PostgreSQL 16, real Python; model replay or mock only):**
+- `npx tsc --noEmit -p .`: pass. ESLint on the changed files: clean.
+- `vitest run src/lib/__tests__ --pool=forks`: 122 files, **868 passed, 0 failed, 40 skipped**.
+- New `recommendationDecisionContext.db.test.ts` (actual generators, actual decision actions, mocked model that echoes the decision it was shown): Codex's replay A to C to A with researcher-edited wording kept; insight and recommendation recording different decisions (returning to the insight's decision leaves the recommendation counted); synthesized path; decision committed during drafting (record = prompt); unknown, researcher-written, rejected and other-run controls; Codex's original probe assertion. **All 6 fail on the previous application code** (migration kept), pass now.
+- `decisionRefreshReconciliation.db.test.ts` updated to the new count shape; its seeded AI recommendation now carries a record, as generated ones do.
+- Production `next build --webpack`: pass. Against it: **30 of 30 UI checks**, including the new native replay (page's own background refresh runs the actual generator; recommendation records Decision A; native reword to C, reload, "1 recommendation was written for earlier ones", text unchanged, insight context still null; reword back to A, reload, notice gone). Smoke 1, adapter 2, objective review acceptance passed.
+- Codex's native probes, unchanged except the port in their disposable-target guard (55519 to this stack's 55432): `independent-unframed-reworded`, `independent-unframed-recommendation`, `independent-decision-context`: **3 passed**.
+- Codex's DB probe file run unchanged: its new probe passes; its embedded copy of the earlier regression fails as intended by this contract change (expects the two-field counts, and a recommendation with no record is now unknown).
+- Original two closed repairs (post-commit containment, insight qualification): their regressions and Codex's original probes still pass.
+
+**Failed invocations this round (retained).** The first test run hit a stopped PostgreSQL (restarted). The mocked model first looked for the decision in the user message instead of the system prompt (test harness; the stored record was already correct). One stack launch lacked its environment and refused to start. My earlier generate-mode browser check failed once because its seeded recommendation had no record and is now correctly reported unknown; the seed now carries a record.
+
+Resources: stack stopped; 0 disposable databases or roles remain. No model calls, push, deployment, or live/development change. Spend unchanged at US$3.817316 of US$10. Overall acceptance awaits Codex's review.
 
 ## Latest independent business follow-up
 
