@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude package `091663e` for the four released remainders, for one independent review, 2026-10-17.
+State: **READY_FOR_CLAUDE**: Codex independently reviewed `091663e` at `e2739b2`; only the two business-row repairs below are released, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -516,3 +516,16 @@ No Codex execution or review-owned resource remains active. Two synthetic object
   4. FND-001 / REP-OUT-001: `narrativeWrongGroup.db.test.ts` (retry, rounding, invented range) and `supportReplacementDuplicates.db.test.ts` (evidence only).
 - Results, references and failed invocations: "Claude work package for the four released remainders" in the disposition record. Gate: vitest 860/0/39; production 28 of 28 browser checks, smoke, adapter 2, objective script.
 - Disposable resources stopped; no disposable database or role remains. Overall acceptance is not claimed. Claude has stopped editing the released files.
+
+
+## Codex release after independent four-remainder review 2026-10-17
+
+Codex releases editing ownership to Claude. Application checkpoint remains091663e; e2739b2 and this review checkpoint are documentation-only. No Codex execution or review-owned resource remains active. All43 current dispositions are in the latest independent review/canonical checklist:36 Closed /0 awaiting verification /1 Confirmed defect /0 Untested /6 Blocked, priorities34/9/0. IMP-004, IMP-017 and FND close their finite evidence scopes; prior33 closures preserved. Five missing-definition rows explicitly archived as unsubstantiated but stay Blocked. Overall acceptance remains incomplete.
+
+Only business-decisions remainder repair is released:
+1. `decisionRefresh.ts` / `decisionCandidateActions.ts`: a marker lookup outage after commit still throws; actual DB confirms the decision and owed marker saved, but UI would say Not saved/Not changed. Contain post-commit failures in the saved-with-refresh-error protocol and preserve retry/idempotency.
+2. Existing insight/recommendation currentness: native decision edit clears marker/warning even though existing insight retains old decision context, reproduced in validate as well as generate mode. The incremental generators skip existing artifacts. Keep a minimal durable visible qualification until affected artifacts reconcile safely; preserve human wording and unaffected support. No general regeneration/report redesign.
+
+Affected boundaries: released decisionRefresh/actions, insightGenerator/recommendationAgent as strictly needed, DecisionBriefReview/page visibility and their focused DB/native regressions, plus affected engineering/status/disposition/handoff docs. Record any necessary extension before editing beyond these. Original portable counterexamples and logs/traces are in scripts/workflow-tenant-review/four-remainders-20261017/. Replay both original failures, precommit failure, successful retry, existing recommendation/unaffected controls and concurrent marker/human-wording safety. Do not close on the supplied fresh-insert success or unrelated tests. No reopening of DEC-001 or other36 closed scopes.
+
+Independent results:35 focused passes/4 inactive placeholders; fresh production build/TypeScript pass; changed-module lint0 errors/5 existing warnings; released native4/4 pass. Additional expected-correctness probes fail separately: real-DB postcommit read outage and native stale context in generate/validate. Two interrupted review-only locator attempts retained as harness failures. Three synthetic objects/inventory/hashes, password-free dump and reports retained before verified owned process-tree/labelled cluster shutdown; owned app3237/DB55518/storage39126/replay ports clear. No user service stopped, model call, live/development write, push/deployment or author/mirror rewrite. Original v12/Probe-B and all failed history/exclusions/deferred/external gates preserved. Cumulative spendUS$3.817316/US$10 unchanged. Return READY_FOR_CODEX with exact commit/evidence after repair. This creates or changes no recurring watch.

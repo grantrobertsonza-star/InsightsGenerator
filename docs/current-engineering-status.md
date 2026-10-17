@@ -1,6 +1,14 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude package `091663e` for the four released remainders awaits independent review.
+Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: Codex review of `091663e` complete; two business-row defects released for bounded repair.
+
+## Latest independent four-remainder review
+
+Current release091663e / reviewed HEAD e2739b2. Canonical43 rows:36 Closed /0 awaiting verification /1 Confirmed defect /0 Untested /6 Blocked; priorities34/9/0. IMP-004, IMP-017 and FND finite remainders independently verified; business refresh partly repaired but two original failure probes demonstrate unresolved saved-result/currentness defects. Exact repros, source references, closing tests and all43 dispositions are in the latest independent disposition. Prior33 closures, approved exclusions and failed history preserved. Five missing definitions explicitly archived as unsubstantiated, remain Blocked; security/staging gates remain unauthorised and separate. Overall acceptance incomplete.
+
+Independent35 passes/4 inactive placeholders; production build/TypeScript pass; lint0 errors/5 existing warnings; released native4/4. Separate real-DB saved-then-read-outage assertion and native existing-insight decision edit/currentness assertions fail in generate/validate mode. Two review-locator interruptions are harness failures only. Application source read-only,423 paths match. Local evidence retained in scripts/workflow-tenant-review/four-remainders-20261017/. All owned resources stopped. No paid model calls/push/deployment. Claude released only for the two business repairs and their exact closing regressions; see authoritative handoff.
+
+Earlier version/queues below are historical where superseded by this section.
 
 ## Active version and ownership
 

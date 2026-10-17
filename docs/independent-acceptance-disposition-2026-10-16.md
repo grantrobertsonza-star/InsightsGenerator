@@ -891,3 +891,88 @@ Also added: `objectiveEvidenceReference.db.test.ts` (OBJ-REV-005 reference cases
 - `narrativeWrongGroup`: a second describe block closed the shared pool; merged into one block.
 - `supportReplacementDuplicates`: a raw SQL document delete was refused by a foreign key; the test uses the app's `deleteDocument`.
 - `scale-missing-reload`: the base-row locator missed the row (it starts with a hide control); a run was cut by a 590 s wrapper; one failed because the audit sits inside the collapsed "Data quality" section.
+
+
+## Codex independent review of four remainders 2026-10-17
+
+Reviewed laptop HEAD `e2739b2` / released Claude source `091663e`, base `b5992da`. Initial tracked tree was clean; handoff READY_FOR_CODEX was changed to CODEX_WORKING before review. Application source stayed read-only:423 source/engine/migration paths match the review manifest at completion. New isolated production build uses Next16.3.6, real PostgreSQL17 and actual Python/pandas/pyreadstat; Claude's PG16 evidence is separate. No live/development writes, dependency installation, paid model call, push, deployment, author/mirror rewrite or recurring schedule change.
+
+**Disposition:36 Closed /0 Implemented awaiting verification /1 Confirmed defect /0 Untested requirement /6 Blocked =43; priorities34/9/0. Overall acceptance remains incomplete.** Prior33 closures preserved. IMP-004, IMP-017 and FND/REP-OUT close only at the evidence levels below. The business remainder is now a confirmed defect under its existing identity; detailed findings are not additional rows. Canonical prior version retained byte-for-byte as v27.
+
+### Independent execution and original-behaviour checks
+
+- `regressions.log`:7 focused files,35 passes/4 explicitly inactive placeholders. Real DB tests executed; actual engine executed with PYTHON_EXECUTABLE=python. Covers numbered-scale policy references/controls; candidate lifecycle/DEC-001; all supplied refresh transitions/retry; actual narrative generator persistence/rounded25.4-to25/invented-range feedback and exhausted retry; actual reread/delete and CSV/deck duplicate support consumers. OBJ-REV-005 reference tests are preservation controls, not another closure.
+- `build.log`:isolated production build and TypeScript pass. Offline font mock is a compile boundary; existing unpdf import.meta warning retained. `changed-module-lint.log`:0 errors/5 existing page.tsx warnings. No measured performance problem inferred from source shape.
+- `native-primary-report.json` / `native-primary.log`:4/4 pass on fresh production build. Scale test checks labelled mean2.5/base40/top-two25%/declared5 count0, unlabelled base40 and code4 count10, sparse mean5.8/declared0 count0, identical saved figures after reload and two persisted missing-value declarations. The isolated Python fixture launcher alone changed python3 to python; all assertions retained.
+- Native resource test independently establishes20,000,001-byte refusal/no document/object/cleanup, corrected20,000,000-byte import;100,001-case visible refusal/reload/no table, supported deletion and100,000-case corrected import. Reuse earlier independent exact-limit concurrent and storage-error recovery. Original v12 remains failed, cause unproven and failed-page/storage outcome not retroactively established; no deployed throughput certification.
+- Supplied business native tests pass:real refused insight insert reports saved-not-updated, survives reload and retries safely; native own-add/own-delete/accept-all/status/statement reload agree. These do not cover the two counterexamples below.
+- FND replacement evidence retains protected finding ID/wording and live usable support when reread omits it; unprotected retired claim/new claim once; actual deletion of one duplicate source invalidates affected support in CSV/deck while preserving human wording and unaffected control. This is the implemented REP-IN protection contract, not a claim every omitted protected finding is deleted. Reuse independently verified wrong-group, change/reject/body/design and export qualifications. Model calls scripted/storage controlled; original Probe-B browser deck timeout and HTTP continuation remain distinct.
+
+### Correctness findings within the business-decisions remainder
+
+1. **Saved change still throws on marker lookup failure.** `src/lib/decisionRefresh.ts:29` awaits withTenantRead before its try/catch; `decisionCandidateActions.ts:17` propagates it after the transaction commits. Independent `independentDecisionLookup.db.test.ts` injects only that read outage; real PostgreSQL confirms the own decision accepted and pending marker durable, then the action throws `Synthetic marker lookup outage` instead of returning saved-with-refresh-error. Expected correct-behaviour assertion fails in `independent-lookup.log`. Candidate/list UI treats thrown action failures as Not changed/Not saved; a user can retry an already committed action. Smallest fix: contain all post-commit refresh bookkeeping failures in the saved-result protocol, retain the owed marker and actionable retry. Closing tests: replay this exact original counterexample, precommit failure still unsaved, successful retry/currentness, no duplicate own decision, and unchanged concurrent marker protection.
+2. **Refresh completion falsely clears existing stale decision context.** `decisionRefresh.ts:46` clears markers after successful wrapper returns, but `insightGenerator.ts:105` excludes findings with existing insights; recommendation generation similarly excludes existing anchors (`recommendationAgent.ts:241,518`). Native researcher accept/edit/Save and accept/reload in both generate and validate workflows persists `Decision B materially revised`, while the same insight keeps `Decision A / Decision B`; marker0 and panel warning0. `native-context-final.log` and `native-context-validate.log` fail the correct-behaviour assertion; exact DB rows in `context-database-observation.json`, traces/screenshots in context-generate-output and context-validate-output. No app source or SQL mutation performs the tested decision edit. Smallest safe repair: do not equate incremental generation with reconciled existing artifacts; preserve a durable visible qualification until they are reviewed/reconciled against current decisions, preserving human wording. Closing tests: original native validate-mode existing-insight edit/reload, existing recommendation control, unaffected artifact, human wording, successful review/retry and a concurrent decision change whose marker stays owed. Do not silently overwrite human artifacts or add a general report redesign.
+
+The supplied fresh-insert/retry passes are preserved; they do not disprove either original counterexample. No overall business closure. Both findings share the one existing business row; DEC-001 stays closed.
+
+### Standard, failures and limits
+
+UI/business/persistence layers remain separated; the pending rule is shared in decisionRefresh.ts. No parallel rule or measured performance concern identified. Correctness above comes first. Comments/types claiming a thrown action means uncommitted, and successful refresh means dependants match, must be corrected with those behaviours; wrapper comments saying never throw must acknowledge or contain logging failures. These are consequences of the demonstrated defects, not extra release rows.
+
+Two additional review-only native attempts were interrupted before edit/save because the review locator lost its text anchor, then selected the button toolbar instead of the editor card. Both logs/process records retained (`context-first-interrupted.txt`, `context-second-interrupted.txt`); these are harness failures, not application results. Corrected probes reach and fail the original currentness assertion in5.5s and the separate validate invocation. A first sandbox-denied attempt to edit the Temp probe changed no source; rerun with scoped access. The first docker inspect formatting command failed; JSON inspection then verified the exact container ID/label before shutdown. None is relabelled as a passing app run. Historical Claude failures and prior independent failed runs remain unchanged.
+
+Owner decisions: numeric-only numbered scales10+ explicitly approved; declared nominal/named categories/9-point controls stay without a mean. Five missing-definition rows explicitly archived as unsubstantiated, retained Blocked. SAS and flipped/separate-Codebook weight/MR exclusion remain visible. Staging security/identity last and unauthorised now; real storage/signed links/deployed roles/schema/runner, real-provider quality and Office limits remain separate. Research Quality Review stays design-only. No new issue IDs.
+
+### All43 current dispositions
+
+Each retained closure refers to the matching independent mechanisms/regressions in the preceding row-level reconciliation; no unchanged row is promoted by the harness or unrelated suite.
+
+| Existing row | Current disposition | Basis / next action |
+|---|---|---|
+| IMP-001 / IMP-016 | Blocked | Separate authorised staging identity/storage/security and deployment evidence required; no deployment authorised. |
+| IMP-002 (includes IMP-SHIP-001/002) | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-003 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-004 | Closed | New finite closure: actual-engine references and supported native saved scales/missing audit/reload pass; approved policy explicit. |
+| IMP-005 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-006 / REP-IN-001; REP-IN-002 preservation dependency | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-007 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-008 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-009 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-010 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-011 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-012 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-013 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-014 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-015 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| IMP-017 | Closed | New finite local closure: one-over/refusal/reload/corrected retry plus prior concurrency/error recovery; v12 failure preserved. |
+| IMP-018 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-SET-001 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-SET-002 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-SET-003 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-SET-004 | Blocked | Owner archived original definition as unsubstantiated; stays Blocked, not repaired or verified. |
+| OBJ-SET-005 | Blocked | Owner archived original definition as unsubstantiated; stays Blocked, not repaired or verified. |
+| OBJ-SET-M02 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-001 / OBJ-REV-002 recovered identity overlap | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-003 | Blocked | Owner archived original definition as unsubstantiated; stays Blocked, not repaired or verified. |
+| OBJ-REV-004 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-005 / ANA-XTAB-001 dependency | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-006 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-007 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-008 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-009 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-010 | Blocked | Owner archived original definition as unsubstantiated; stays Blocked, not repaired or verified. |
+| OBJ-REV-011 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-012 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-013 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| OBJ-REV-M03 | Blocked | Owner archived original definition as unsubstantiated; stays Blocked, not repaired or verified. |
+| OBJ-REV-M04 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| DEC-001 | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| Business-decisions remainder (unassigned acceptance requirement; not a new defect ID) | Confirmed defect | Partially repaired/verified; two independent original counterexamples remain. Claude repair then independent verification required. |
+| ANA-NPS-003 calculation-input subcase | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| ANA-NPS-003 / IMP-005 findings freshness subcase | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+| FND-001 / REP-OUT-001 necessary handover only | Closed | New finite closure: actual-generator persistence/retry/rounding/range refusal and replacement/duplicate consumers plus prior handovers. |
+| ANA-NPS-003 downstream freshness handover | Closed | Retain prior independent finite closure and limitations; no affected-source counterexample demonstrated. |
+
+### Retention and ownership
+
+Evidence root:`scripts/workflow-tenant-review/four-remainders-20261017/`. Three synthetic objects/full inventory/SHA256, password-free dump, focused and failed native reports/traces, portable counterexample source and source comparisons retained. Storage read counters were captured after retention downloads, not claimed pristine. Verified own process tree33520/18164 and labelled `codex-four-review-20261017` stopped; app3237/DB55518/storage39126 and owned replay listeners clear. User/development services untouched. Cumulative model spend unchangedUS$3.817316/US$10. Claude is released for the two business-row repairs only, with affected source boundaries and closing tests above; no Codex execution/resource remains active after this documentation checkpoint. Return READY_FOR_CODEX after a stable bounded repair. No automatic continuation or recurring watch is claimed.
