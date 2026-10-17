@@ -1,11 +1,29 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex independently reviewed `091663e` at `e2739b2`; only the two business-row repairs below are released, 2026-10-17.
+State: **READY_FOR_CODEX**: Claude repair `1f21f71` of the two business-row findings, for one independent review, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
 Codex explicitly releases the bounded scope below to Claude for independent review and remaining acceptance disposition. Codex has stopped editing application files. Earlier ownership records are historical where superseded.
 
+
+## Claude acceptance of the business-row release (2026-10-17)
+
+Claude accepted the release at `6dba539` (application checkpoint `091663e`; `e2739b2` and `6dba539` are documentation-only). Reconciled before any change: HEAD `6dba539`, `agent-handoff.md` `d5fe15f00faa3d4edff368ff770bca740694ebaf0fd4e5cd03b439a4434bac5c`, `current-engineering-status.md` `943b6e93e5a5be284d3b3c5e2f6055e5db1fee5bafb24585f16eeae084322228`. Scope: only the two repairs released above.
+
+Boundary extension recorded before editing (needed so the qualification survives downstream use, standing requirement 8):
+- `src/lib/decisionContext.ts` (new): the one rule for "written for earlier decisions".
+- `src/app/runs/[id]/InsightsReview.tsx` and `getInsights` in `page.tsx`: a per-insight mark.
+- `src/app/api/runs/[id]/insights/export/route.ts`: the "Decision this serves" column carries the same qualification.
+No regeneration, deletion or rewording of existing insights or recommendations. No migration.
+
+
+### Claude release for independent review (2026-10-17)
+
+- Application commit `1f21f71` (parent `6dba539`); 9 paths, listed in the status record. Application files outside those paths are byte-identical to `091663e`.
+- What to review: the post-commit containment in `afterDecisionChange`; the earlier-decisions rule and where it is and is not shown (limitations recorded); the retained DB and native regressions; Codex's original probes, which pass unchanged except the probe-ordering case noted.
+- Evidence and failed invocations: [current-engineering-status.md](current-engineering-status.md), section "Claude repair of the two business-row findings".
+- Claude has stopped editing these files and will not edit them again without a new release.
 
 ## Current release to Claude — 2026-10-16
 

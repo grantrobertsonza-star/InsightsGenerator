@@ -1,6 +1,34 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: Codex review of `091663e` complete; two business-row defects released for bounded repair.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude repaired the two business-row findings in `1f21f71`, for independent review.
+
+## Claude repair of the two business-row findings (2026-10-17; commit `1f21f71`)
+
+Implemented, ready for review. Base: application checkpoint `091663e`, docs `6dba539`. Scope: only the two repairs Codex released, plus the boundary extension recorded in the handoff before editing.
+
+**1. Saved change reported as not saved after a post-commit failure.** `afterDecisionChange` (`src/lib/decisionCandidateActions.ts`) runs only after the change committed and now never throws: a failure in the marker lookup, the refreshes or revalidation is returned as `{ ok: true, refreshError }`. The committed marker stays, so the panel keeps offering "Update them now", and a retry takes the same path. A change that fails before commit still throws and marks nothing.
+
+**2. Warning cleared while existing insights kept the old decision context.** The refresh only writes insights for findings that have none. Rewriting or deleting existing insights would discard reviewed recommendations and the synthesized-insight support links (cascade), so no regeneration was added. Instead:
+- One rule, `src/lib/decisionContext.ts`: an insight is "written for earlier decisions" when it recorded a decision context and that differs from the run's current statement (whitespace ignored). No recorded context (generate run before any decision) is not marked.
+- `decisionContextMismatch` (`src/lib/decisionRefresh.ts`) counts per-finding and synthesized insights under that rule, plus the recommendations built on them; null when it cannot be checked.
+- The decisions panel shows a standing amber notice with those counts (separate from the refresh notice; "Update them now" does not claim to clear it). Each pre-insight card carries "Written for earlier decisions". The pre-insights Excel export qualifies the "Decision this serves" cell the same way.
+- Derived from data, so it survives reloads and clears by itself when the decisions match again. No migration. Insight text and human recommendation wording are untouched.
+
+**Limitations (not fixed here).** Recommendations store no decision snapshot; each inherits the mark of its insight. Synthesized-insight cards, recommendation lists, decks and the narrative carry no per-item mark; the panel count is their only qualification. A way to rewrite affected insights safely is a separate product decision.
+
+**Changed files.** `src/lib/decisionContext.ts` (new), `src/lib/decisionRefresh.ts`, `src/lib/decisionCandidateActions.ts`, `src/app/runs/[id]/DecisionBriefReview.tsx`, `src/app/runs/[id]/page.tsx` (`getInsights` flag; panel prop), `src/app/runs/[id]/InsightsReview.tsx`, `src/app/api/runs/[id]/insights/export/route.ts`, `src/lib/__tests__/decisionRefreshReconciliation.db.test.ts`, `e2e/ui/decision-refresh-failure.check.mjs`.
+
+**Checks run on the final tree (cloud workspace, disposable PostgreSQL 16, real Python engine; model replay only):**
+- `npx tsc --noEmit -p .`: pass. ESLint on the changed files: 0 errors, 6 warnings, all pre-existing (unused imports in `page.tsx` and `InsightsReview.tsx`).
+- `vitest run src/lib/__tests__ --pool=forks`: 121 files, **862 passed, 0 failed, 39 skipped**.
+- New real-database cases: post-commit lookup outage on add (saved, owed, statement updated), the retry itself meeting the outage (reported, not thrown), idempotent re-add then reconcile; existing insight plus a synthesized insight written for "Decision one", a researcher-edited recommendation, a no-context control and another run's control. After a successful accept: refresh clean, marker clear, mismatch {2 insights, 1 recommendation}, wording unchanged; the real export route qualifies the framed row and leaves the control empty; unaccepting back to "Decision one" gives 0; a read outage gives null.
+- Counterfactual: both new cases fail on the previous `decisionCandidateActions.ts` / `decisionRefresh.ts`.
+- `next build --webpack` (production): pass. Against that server: **29 of 29 UI checks** (including the decision-refresh check's validate replay and new generate replay: panel notice before and after reload, pre-insight card mark, Excel cell, unchanged insight row), Codex's unchanged `independent-decision-context.check.mjs`: **passed**, smoke 1 passed, adapter 2 passed, objective review acceptance passed (3 checks).
+- Codex's `independentDecisionLookup.db.test.ts` run unchanged: its post-commit case now passes; its following "cannot commit marks nothing" case fails only because its post-commit case leaves the owed marker without a retry (test ordering inside the probe). The retained regression covers the same case with a retry.
+
+**Failed invocations this round (retained).** First native run: the check waited for the literal "Decision B" after rewording it, a harness locator error. Second: it opened the synthesized Insights section instead of Working data, Pre-insights. Both fixed in the check; the app output was correct in the failure snapshots. Smoke and adapter were first launched without their manifest and fixture variables (not run, skipped); rerun with them and passed. The historical `scripts/verification-objective-addition/checks.cjs` and `error-mapping.cjs` fail identically on the unchanged base (stale fakes for an earlier SQL shape); not part of this gate.
+
+Resources: stack stopped; 0 disposable databases or roles remain. No model calls, push, deployment, or live/development change. Spend unchanged at US$3.817316 of US$10. Overall acceptance awaits Codex's review.
 
 ## Latest independent four-remainder review
 
