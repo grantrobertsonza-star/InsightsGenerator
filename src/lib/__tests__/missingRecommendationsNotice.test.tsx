@@ -8,6 +8,7 @@ vi.mock("@/lib/recommendationActions", () => ({}));
 vi.mock("@/lib/qualityActions", () => ({}));
 vi.mock("@/components/icons", async () => await import("../../components/icons"));
 vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusShared"));
+vi.mock("@/lib/recommendationQualification", async () => await import("../recommendationQualification"));
 vi.mock("@/lib/figureChecks", async () => await import("../figureChecks"));
 vi.mock("@/lib/numberTrace", async () => await import("../numberTrace"));
 

@@ -14,6 +14,7 @@ import {
 } from "@/lib/recommendationActions";
 import { TrashIcon } from "@/components/icons";
 import type { InsightSupport } from "@/lib/supportStatusShared";
+import { decisionsWrittenFor } from "@/lib/recommendationQualification";
 import { SupportStatusNotice } from "./SupportStatusNotice";
 import { scoreRecommendationsAction } from "@/lib/qualityActions";
 import { FigureCheckFor } from "./FigureCheckNotice";
@@ -44,6 +45,9 @@ type Recommendation = {
   quality_tier: QualityTier | null;
   /** FND-001: inherited from the anchor insight's support status (supportStatus.ts). */
   support?: InsightSupport;
+  /** GT-007: decisions it was written for (decisionContext.ts rule), as the main-list exports say it. */
+  decision_context?: string | null;
+  decision_state?: "earlier" | "unknown" | null;
   // The recommendation's own quality scores (migration 0045). Impact is
   // shown beside the total, not in it.
   rec_actionability_score?: number | null;
@@ -475,6 +479,9 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
       data-recommendation-id={recommendation.id}
       data-insight-id={recommendation.synthesized_insight_id}
       data-source={recommendation.source}
+      data-status={recommendation.status}
+      data-support-status={recommendation.support?.status ?? "unknown"}
+      data-decision-state={recommendation.decision_state ?? "current"}
       className={`card-surface flex flex-col gap-4 rounded-xl border bg-white p-5 ${
         isAccepted ? "border-success" : isRejected ? "border-border opacity-50" : "border-border"
       }`}
@@ -544,6 +551,15 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
             From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
           </p>
           {recommendation.support && <SupportStatusNotice support={recommendation.support} subject="recommendation" />}
+          {recommendation.decision_state && (
+            <p data-testid="recommendation-decision-note" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {decisionsWrittenFor({
+                source: recommendation.source,
+                decision_context: recommendation.decision_context ?? null,
+                decision_state: recommendation.decision_state,
+              })}
+            </p>
+          )}
           <FigureCheckFor kind="recommendations" id={recommendation.id} />
 
           <div className="h-px bg-border" />

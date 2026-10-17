@@ -25,13 +25,13 @@ import type { PoolClient } from "pg";
 // Rejected recommendations are out of use and not counted.
 //
 // Where it is shown: the decisions panel (counts of per-finding and synthesized insights, and of
-// recommendations, earlier or unknown), each pre-insight card, the pre-insights Excel export, and
-// each recommendation in the pre-insight recommendation Excel and Slides exports (GT-004; one
-// wording for both, in recommendationQualification.ts).
+// recommendations, earlier or unknown), each pre-insight card, the pre-insights Excel export,
+// each recommendation in the pre-insight recommendation Excel and Slides exports (GT-004), and
+// each card of the main recommendation list and its Excel and Slides exports (GT-007). One wording
+// for all of them, in recommendationQualification.ts.
 //
-// Limitations: synthesized-insight cards, the main recommendation list, the pre-insights deck and
-// the narrative do not carry a per-item decision mark; the panel count is their only
-// qualification.
+// Limitations: synthesized-insight cards, the pre-insights deck and the narrative do not carry a
+// per-item decision mark; the panel count is their only qualification.
 
 /** SQL predicate over an insight's decision_context column and the run's decision_statement. */
 export function writtenForEarlierDecisionsSql(contextColumn: string, statementColumn: string): string {

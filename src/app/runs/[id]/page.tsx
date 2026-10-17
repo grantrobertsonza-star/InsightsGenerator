@@ -56,7 +56,7 @@ import {
 import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
 import { decisionContextMismatch, decisionRefreshPending } from "@/lib/decisionRefresh";
-import { writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
+import { recommendationDecisionContextAvailable, recommendationDecisionStateSql, writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
 import UploadForm from "./UploadForm";
@@ -1598,6 +1598,9 @@ type SynthesizedRecommendation = {
   quality_tier: "finding" | "partial" | "qualified" | null;
   /** FND-001: inherited from the anchor insight (supportStatus.ts). */
   support?: import("@/lib/supportStatusShared").InsightSupport;
+  /** GT-007: the decisions it was written for, and whether they are earlier or unrecorded. */
+  decision_context: string | null;
+  decision_state: "earlier" | "unknown" | null;
 };
 
 type RecommendationQuality = {
@@ -1680,16 +1683,22 @@ async function getSynthesizedRecommendations(
   supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedRecommendation[]> {
   const rows = await withTenantRead(TENANT_ID, async (client) => {
+    // GT-007: each card states the decisions it was written for by the same rule the main-list
+    // exports use (decisionContext.ts), so screen and files agree. Same order as the exports.
+    const recorded = await recommendationDecisionContextAvailable(client);
     const result = await client.query<SynthesizedRecommendation>(
       `select r.id, r.synthesized_insight_id, si.headline as synthesized_insight_headline, r.action_text,
               r.owner_role, r.owner_feasibility_note, r.timeline, r.metric, r.priority,
               r.assumptions_and_risks, r.alternatives_considered, r.source, r.status, r.edited,
-              si.confidence_tier, si.quality_score, si.quality_tier
+              si.confidence_tier, si.quality_score, si.quality_tier,
+              ${recorded ? "r.decision_context" : "null::text as decision_context"},
+              ${recommendationDecisionStateSql("r", "run.decision_statement", recorded)} as decision_state
        from recommendations r
+       join runs run on run.id = r.run_id
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1
          and r.synthesized_insight_id is not null
-       order by si.quality_score desc nulls last, r.created_at`,
+       order by si.quality_score desc nulls last, r.created_at, r.id`,
       [runId],
     );
     return result.rows;
@@ -3661,11 +3670,63 @@ export default async function RunPage({
     </div>
   );
 
+  // GT-007: exports of this (main) list, separate from the per-pre-insight list's exports on the
+  // Working data tab. Shown whenever the list has anything, including only rejected items. The
+  // links are downloads (the download attribute), so a download that fails in transit is reported
+  // by the browser's download list and leaves this page, and any open edit, where it is, rather
+  // than replacing the page with the browser's error page.
+  const mainRecommendationExportControls =
+    synthesizedRecommendations.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-2" data-testid="main-recommendation-exports">
+        <div className="flex items-center gap-1 rounded-lg border border-border px-2 py-1">
+          <DownloadIcon className="ml-0.5 h-3.5 w-3.5 text-muted" />
+          <span className="mr-0.5 text-sm font-medium text-foreground">Main list Excel:</span>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export?scope=all`}
+            download
+            aria-label="Excel: all recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            All
+          </a>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export?scope=accepted`}
+            download
+            aria-label="Excel: accepted recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            Accepted
+          </a>
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-border px-2 py-1">
+          <PresentationIcon className="ml-0.5 h-3.5 w-3.5 text-muted" />
+          <span className="mr-0.5 text-sm font-medium text-foreground">Main list Slides:</span>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export-deck?scope=all`}
+            download
+            aria-label="Slides: all recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            All
+          </a>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export-deck?scope=accepted`}
+            download
+            aria-label="Slides: accepted recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            Accepted
+          </a>
+        </div>
+      </div>
+    ) : null;
+
   const recommendationsSection = (
     <div
       key={`recommendations-${recommendationsReached}`}
       className="flex flex-col gap-4"
     >
+      {mainRecommendationExportControls && <div className="flex justify-end">{mainRecommendationExportControls}</div>}
       <SynthesizedRecommendationsReview
         runId={id}
         recommendations={synthesizedRecommendations}
@@ -3684,7 +3745,8 @@ export default async function RunPage({
   // (same "add, don't hide" pattern as pre-insights vs synthesized
   // insights). This is also where the Excel/Slides export buttons stay,
   // since those routes were built against this join and still only ever
-  // export this list.
+  // export this list. The main list above has its own exports (GT-007,
+  // synthesized-recommendations/export and export-deck).
   const allRecommendationsTabLabel = `Recommendations${recommendations.length > 0 ? ` (${recommendations.length})` : ""}`;
   const allRecommendationsTabHeaderRight =
     recommendations.length > 0 ? (

@@ -9,7 +9,7 @@
 //   5. Synthesized insights citing the findings; a researcher-written recommendation; the narrative.
 //   6. Reload: every finding, insight and recommendation the screen showed is still shown, with
 //      the same review status and wording.
-//   7. Every export route the app links to (13 routes, both scopes where offered) answers 200 with a
+//   7. Every export route the app links to (15 routes, both scopes where offered) answers 200 with a
 //      readable file, and agrees with the screen and the database: each item shown on screen
 //      appears in its "all" export, an accepted-scope export carries no rejected item, figures in
 //      the findings export equal the stored ones, and the researcher's wording is exported exactly.
@@ -120,6 +120,8 @@ test("journey: upload to every export, numbers against the reference, screen and
       ["synthesized-insights/export-deck?scope=all", "pptx"], ["synthesized-insights/export-deck?scope=accepted", "pptx"],
       ["recommendations/export?scope=all", "xlsx"], ["recommendations/export?scope=accepted", "xlsx"],
       ["recommendations/export-deck?scope=all", "pptx"], ["recommendations/export-deck?scope=accepted", "pptx"],
+      ["synthesized-recommendations/export?scope=all", "xlsx"], ["synthesized-recommendations/export?scope=accepted", "xlsx"],
+      ["synthesized-recommendations/export-deck?scope=all", "pptx"], ["synthesized-recommendations/export-deck?scope=accepted", "pptx"],
       ["story/export", "pptx"], ["story/export-docx", "docx"], ["history/export", "xlsx"], ["coding/export", "xlsx"],
       ["crosstab/export", "xlsx"],
     ];
@@ -176,10 +178,10 @@ test("journey: upload to every export, numbers against the reference, screen and
         }
         if (route === "findings/export?scope=all") expect.soft(text, `${route}: researcher note exported exactly`).toContain(note);
       }
-      // The Recommendations Excel/Slides links sit on the Working data tab and export the per-pre-insight
-      // list (by design, see page.tsx); the researcher's recommendation is on a synthesized insight, so
-      // it is exported through the narrative only.
-      if (route.startsWith("story/")) {
+      // The Recommendations Excel/Slides links on the Working data tab export the per-pre-insight list
+      // (by design, see page.tsx). The researcher's recommendation is on a synthesized insight: it is
+      // in the narrative and, since GT-007, in the main list's own exports.
+      if (route.startsWith("story/") || route.startsWith("synthesized-recommendations/")) {
         expect.soft(text, `${route}: researcher's recommendation wording exported exactly`).toContain(humanAction);
       }
       if (route.startsWith("synthesized-insights/")) {
