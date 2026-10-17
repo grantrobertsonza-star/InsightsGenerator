@@ -8,6 +8,9 @@ Current outstanding work is reconciled in [the row-level reconciliation below](#
 
 ## Current decision and evidence
 
+**Latest independent ffa7adc review:** [exact disposition](export-repair-independent-review-2026-10-17.md). GT-004 and GT-006 original failures now pass; GT-005 original horizontal Total clipping is repaired. FND remains Confirmed for the actual latest-refusing-verdict/older-robust generator and exported-current counterexample. GT-005 remains open for supported long-label vertical content loss. Only these material remainders are released to Claude; preserve passing subcases. GT007 product decision pending; GT008-010 unrepaired/deferrable wording limits remain explicit. Counts36Closed/1Confirmed/6Blocked=43 unchanged; no overall acceptance or public-release authorisation. Earlier broader defect descriptions below are historical where narrowed by this review.
+
+
 **Latest broader golden-thread assessment, 2026-10-17:** existing FND-001/REP-OUT-001 is Confirmed defect for actual downstream consumers GT-004 (unqualified earlier-decision recommendation XLSX/PPTX) and GT-006 (rejected-support pre-insight XLSX still Robust). GT-005 separately records clipped Total columns in rendered crosstab PDF/PPTX under the existing export/rendering acceptance scope; no additional canonical row. Prior bounded passing mechanisms remain evidence, but do not close these newly exercised consumers. Current partition36 Closed/1 Confirmed/6 Blocked=43; priorities34/9/0 unchanged. Claude owns bounded export repairs; Codex verifies the exact repair commit. The older37/6 statements below are retained historical dispositions. Shared reproductions and exact closure assertions: [golden-thread findings](golden-thread-findings-register-2026-10-17.md). Replay only; fresh model quality is unverified. Overall acceptance remains incomplete. Previous canonical snapshot retained byte-for-byte as[v30](technical-release-acceptance-baseline-2026-10-15.v30.md).
 
 

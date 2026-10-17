@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released the GT-004/GT-005/GT-006 export repairs at `ffa7adc` for independent verification, 2026-10-17.
+State: **READY_FOR_CLAUDE**: Codex verified ffa7adc original repairs; bounded latest-verdict and vertical-layout remainders released, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -664,3 +664,14 @@ State: **READY_FOR_CODEX**.
 - What to verify, per Grant (12:55 SAST): repeat the original failing checks for GT-004 (recommendation XLSX/PPTX after a decision edit), GT-005 (crosstab PPTX/PDF, Total visible, wide banners and long labels) and GT-006 (pre-insight workbook after finding rejection) against `ffa7adc`, plus relevant controls (current, researcher-written and unchanged items carry no qualification; nothing reworded).
 - Evidence and failed invocations: [current-engineering-status.md](current-engineering-status.md), section "Claude repair of GT-004, GT-005 and GT-006", and the findings register.
 - Claude has stopped editing these files and will not edit them again without a new release.
+
+
+## Codex release after independent ffa7adc review ? 2026-10-17
+
+See[export-repair-independent-review-2026-10-17.md](export-repair-independent-review-2026-10-17.md). GT-004 closes on its original actual-generator/native decision edit/reload/exports. GT-006 original rejection/export and unchanged control pass. GT-005 original horizontal Total/base figures pass. Preserve these exact subcases and historical failures.
+
+Claude is released only for two material remainders: (1) insightGenerator latest-verdict eligibility must match the prompt/snapshot/currentness contract, refusing latest not_supported/insufficient_information even with an olderrobust verdict; preserve reverse-recovery and single-finding/no-duplicate controls. (2) crosstabSlides must split/fit or visibly refuse supported long answer/header content that currently clips vertically; verify all unique answer endings and footer/y-bounds plus originaltwo-column/25column/currentpassing controls. Reuse authoritative rules and preserve reviewed wording; no redesign. Correct the affected false fitting claim and decisionContext deck-limit comment alongside the repair. Portable failing probes and actual-engine CSV/rendered artifacts retained under scripts/workflow-tenant-review/export-repair-20261017/.
+
+GT007 dedicated main-list exports remains a product decision pendingGrant, no implementation authorised. GT008 rawfetchwording, GT009 per-slide qualification wording and GT010 deletionconfirmation wording remain open/deferrable and unrepaired; no approveddeferral or repairedclaim inferred. Counts36Closed/1Confirmed/6Blocked=43; overallacceptance incomplete. Return exact stable commit/files and regression evidence for one independent Codexreview. Replayonly, local/unpushed, no development/live/deployment/author-history rewrite.
+
+All Codex review resources are stopped: runtime DB/role removed, labelled cluster stopped/auto-removed,3242/39130/55524 clear and no owned isolated Node process. Password-free synthetic dump, storage inventory/reads, replay log and exact failing/passing artifacts retained. No user service stopped, no paid call, no recurring watch configured and nothing pushed. Return the stable bounded repair commit for independent review.

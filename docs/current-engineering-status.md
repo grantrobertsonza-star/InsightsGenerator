@@ -680,3 +680,9 @@ Codex owned stack/DB/role removed and labelled cluster stopped;3240/39129/55522 
 ## Additional independent qualitative workflow — 2026-10-17
 
 Codex completed the different researcher-edit workflow in qualitative-researcher-edit-assessment-2026-10-17.md.9main/4follow-onchecks and13exactexportassertions pass on frozen application19b3d54; source unchanged, actual native writes/reload, failure/retry and export checks. Failed harness attempts retained. No new appdefect or closure; existing36Closed/1Confirmed/6Blocked and GT004/005/006 unchanged. Replay only; no push/deployment. Owned synthetic stack/DB/role shut down;3241/39129/55523 clear. Claude retains export repair ownership.
+
+## Codex independent ffa7adc export repair disposition — 2026-10-17
+
+Report:export-repair-independent-review-2026-10-17.md. OriginalGT004 native failure closes; originalGT006 rejected/current-control workbook case and GT005 horizontalTotal/reference cases pass. Actualindependent failures remain: latestrefusingverdict bypassedbyhistoricalrobust drafts/exportSupportcurrent; supportedlonglabelrenderloses7answerendsvertically. ExistingFND Confirmed and GT005open, no newcanonicalrow.36Closed/1Confirmed/6Blocked unchanged. Focused20pass/2independentappfail/5skip; native5/5 plusGT006/crosstabreference; build/TypeScriptpass. No broad886test/39browserindependentclaim. Claude boundedlatestverdict/layoutrepairreleased; GT007productdecisionpending,GT008-010openwording/presentation. Replayonly; local/unpushed; failedhistorypreserved.
+
+Owned ffa7adc review resources stopped; runtime DB/role absent, labelled cluster stopped,3242/39130/55524 clear and no owned isolated Node process. Dump/storage/replay/source/failure evidence retained. Handoff READY_FOR_CLAUDE for latest-verdict and vertical-layout remainders only; no watch configured or changed.
