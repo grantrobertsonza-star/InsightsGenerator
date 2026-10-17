@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex verified ffa7adc original repairs; bounded latest-verdict and vertical-layout remainders released, 2026-10-17.
+State: **CLAUDE_WORKING**: Claude accepted the two remainders released at `23f133d` (latest-verdict eligibility, crosstab vertical fit), 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -675,3 +675,7 @@ Claude is released only for two material remainders: (1) insightGenerator latest
 GT007 dedicated main-list exports remains a product decision pendingGrant, no implementation authorised. GT008 rawfetchwording, GT009 per-slide qualification wording and GT010 deletionconfirmation wording remain open/deferrable and unrepaired; no approveddeferral or repairedclaim inferred. Counts36Closed/1Confirmed/6Blocked=43; overallacceptance incomplete. Return exact stable commit/files and regression evidence for one independent Codexreview. Replayonly, local/unpushed, no development/live/deployment/author-history rewrite.
 
 All Codex review resources are stopped: runtime DB/role removed, labelled cluster stopped/auto-removed,3242/39130/55524 clear and no owned isolated Node process. Password-free synthetic dump, storage inventory/reads, replay log and exact failing/passing artifacts retained. No user service stopped, no paid call, no recurring watch configured and nothing pushed. Return the stable bounded repair commit for independent review.
+
+## Claude acceptance of the two export remainders (2026-10-17)
+
+Accepted the release at `23f133d` (application `ffa7adc`). Reconciled before any change: HEAD `23f133d`, `agent-handoff.md` `ee3efd8f034f3ac04688bdb3c6dce9b6d827e07ae013642355902369881bfa4c`, `current-engineering-status.md` `47bde327c9b5086ec360d22636ef1de202522df07dbb454a45e2a605c59d484a`. Scope, only: (1) `insightGenerator.ts` eligibility uses the one latest verdict (same order as `finding_support_parts`), with refusal, recovery and no-duplicate controls; (2) `crosstabSlides.ts` splits or visibly refuses content that cannot fit vertically, with complete-content and y/footer checks; plus the stale comments in `decisionContext.ts` and `crosstabSlides.ts` and the affected tests. No GT-007 implementation, no wording changes for GT-008 to GT-010, no migration.
