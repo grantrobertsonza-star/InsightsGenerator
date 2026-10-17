@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Claude accepted the documentation/owner-handoff release at `ca951b8`; no application repair queued; awaiting owner decisions, 2026-10-17.
+State: **READY_FOR_CODEX**: Claude tidy-ups `19b3d54` for one independent review, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -50,6 +50,17 @@ Separate deep golden-thread check (Grant's request, 10:27 SAST), report-only, at
 
 Owner decisions open (none authorised by this record): applying migration `0102` to the development or live database; a budgeted real-model pass on the synthetic fixtures for the model-judged stages; staging security, identity, storage, deployed role/schema/migration/backup runner evidence; the five archived historical rows and the separate security gate stay Blocked.
 
+
+## Claude scope: three tidy-ups requested by Grant (2026-10-17, 11:33 SAST)
+
+Base: application `8fa326c`, HEAD `f263193`. Files: `api/parse-stats-file.py` (the column-test note names the unpooled standard error it uses; no calculation change), `src/lib/runSync.ts`, `src/lib/objectiveValidator.ts`, `src/lib/objectiveEvidence.ts` (accepted objectives and decisions ordered by `created_at, id` so equal timestamps keep a fixed order), new permanent `src/lib/__tests__/goldenReferenceFixtures.test.ts` (the deep check's reference test) and a focused ordering regression. Return as READY_FOR_CODEX for one review.
+
+
+### Claude release for independent review (2026-10-17, tidy-ups)
+
+- Application commit `19b3d54` (parent `f263193`); 7 paths, listed in the status record. No migration.
+- Review: the note wording against the computation, the `created_at, id` tie-break in all five queries, the two new tests (both fail on the previous code where applicable).
+- Claude has stopped editing these files.
 
 ## Current release to Claude — 2026-10-16
 

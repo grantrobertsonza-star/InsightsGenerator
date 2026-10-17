@@ -1,8 +1,20 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **CLAUDE_WORKING**: owner handoff after Codex accepted `8fa326c` (37 Closed / 6 Blocked); no application repair queued.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude tidy-ups `19b3d54` (test label, candidate order, permanent reference test), for one review.
 
 
+
+
+## Claude tidy-ups for one Codex review (2026-10-17; commit `19b3d54`)
+
+Implemented, ready for review. Requested by Grant (11:33 SAST) from the deep golden-thread check observations. Base: application `8fa326c`, docs `f263193`.
+
+- `api/parse-stats-file.py`: the table note names the column test actually applied ("two-proportion z-test with unpooled standard errors on effective bases"; the SE is computed column versus the rest of its banner, line ~2568). Wording only, no calculation change, no engine version change: tables saved earlier keep their previous note until recomputed.
+- `src/lib/runSync.ts`, `src/lib/objectiveValidator.ts`, `src/lib/objectiveEvidence.ts`: accepted objectives and decisions ordered by `created_at, id`. Only ties change (previously arbitrary). Candidate-backed evidence items are keyed by candidate id; free-text items by kind, order and text, whose order is now stable.
+- `src/lib/__tests__/goldenReferenceFixtures.test.ts` (new, permanent): the deep check's reference test, plus the note wording. `src/lib/__tests__/candidateOrderTieBreak.db.test.ts` (new, real DB): statements and evidence item order with equal timestamps; both cases fail on the previous code. `src/lib/__tests__/helpers/fakeObjectiveDb.ts`: follows the new query text and order (it matches SQL exactly; 9 Rule B tests failed until it was updated, recorded here).
+- Checks: `npx tsc --noEmit -p .` pass; Python syntax pass; changed-file ESLint 0 errors, 1 pre-existing warning (`_hadTable` in `objectiveEvidence.ts`); `vitest run src/lib/__tests__ --pool=forks` 124 files, **875 passed, 0 failed, 42 skipped**; production build pass; against it **30/30 UI checks**, smoke 1, adapter 2, objective review acceptance passed.
+- Failed invocations retained: the first full run included the parked evidence copy of the reference test in the typecheck (renamed out of the compiled tree) and failed 9 Rule B tests on the fake database's exact query match (helper updated).
+- Resources stopped; 0 disposable databases or roles. No model calls, push, deployment, or live/development change.
 
 ## Deep golden-thread check (Claude, 2026-10-17; report only)
 
