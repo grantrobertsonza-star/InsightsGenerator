@@ -13,9 +13,22 @@ import { syncDecisionStatement } from "./runSync";
  */
 export type DecisionChangeResult = { ok: true; refreshError: string | null };
 
+// Runs only after the change committed, so nothing here may throw: a throw would reach the panel
+// as "Not saved" about a change that was saved. Any failure (the marker lookup, the refreshes,
+// revalidation) is reported as the refresh error instead; the committed marker stays, so the
+// panel keeps offering the update and a retry runs the same path.
 async function afterDecisionChange(runId: string): Promise<DecisionChangeResult> {
-  const refreshError = await refreshDecisionDependants(TENANT_ID, runId);
-  revalidatePath(`/runs/${runId}`);
+  let refreshError: string | null;
+  try {
+    refreshError = await refreshDecisionDependants(TENANT_ID, runId);
+  } catch (error) {
+    refreshError = error instanceof Error && error.message ? error.message : String(error);
+  }
+  try {
+    revalidatePath(`/runs/${runId}`);
+  } catch (error) {
+    refreshError ??= error instanceof Error && error.message ? error.message : String(error);
+  }
   return { ok: true, refreshError };
 }
 

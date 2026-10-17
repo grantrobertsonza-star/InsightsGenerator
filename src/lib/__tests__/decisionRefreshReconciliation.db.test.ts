@@ -11,6 +11,12 @@
 //   - a retry with the refresh working reports no problem and clears the marker.
 // Plus the guarantee in decisionRefresh.ts: a change committed while a refresh is running stays
 // owed after that refresh succeeds.
+// Independent review 2026-10-17 found two gaps, replayed here:
+//   - a failure after the commit outside the refreshes (the marker lookup) still threw, so the
+//     panel said "Not saved" about a saved change; it is now reported as saved with the reason;
+//   - a successful refresh cleared the warning while existing insights (which the refresh never
+//     rewrites) still described the earlier decisions; those are now counted and marked, through
+//     the panel's count and the insights export, until the decisions match again.
 // Real disposable PostgreSQL through the app's own db.ts; only the two model-backed refreshes are
 // controlled (they fail, succeed, or make a change mid-refresh on demand).
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -19,8 +25,19 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 
 // fail: the insight refresh reports a failure the way the real wrapper does (logged and
 // returned, not thrown); throws: it throws, as when logging the failure itself fails.
-const state = vi.hoisted(() => ({ fail: false, throws: false, during: null as null | (() => Promise<void>), insightRuns: 0 }));
+// readFail: the next tenant read fails once (a database outage after the change committed).
+const state = vi.hoisted(() => ({ fail: false, throws: false, during: null as null | (() => Promise<void>), insightRuns: 0, readFail: false }));
+vi.mock("../db", async (original) => {
+  const actual = await original<typeof import("../db")>();
+  return { ...actual, withTenantRead: async (...args: Parameters<typeof actual.withTenantRead>) => {
+    if (state.readFail) { state.readFail = false; throw new Error("Synthetic marker lookup outage"); }
+    return actual.withTenantRead(...args);
+  } };
+});
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// The insights export route imports through the app alias, which vitest does not resolve here.
+vi.mock("@/lib/db", async () => await import("../db"));
+vi.mock("@/lib/decisionContext", async () => await import("../decisionContext"));
 vi.mock("../insightGenerator", () => ({
   refreshInsights: vi.fn(async () => {
     state.insightRuns += 1;
@@ -127,6 +144,77 @@ describe.skipIf(!TEST_DATABASE_URL)("decision changes reconcile after a failed r
     }
     expect(await a.retryDecisionRefresh(run)).toEqual({ ok: true, refreshError: null });
     expect(await pending()).toBe(false);
+  });
+
+  it("a failure after the commit outside the refreshes is reported as saved, stays owed, and a retry reconciles", async () => {
+    const a = await import("../decisionCandidateActions");
+    state.readFail = true;
+    expect(await a.addOwnDecisionCandidate(run, "Committed before lookup outage")).toEqual({ ok: true, refreshError: "Synthetic marker lookup outage" });
+    expect((await rows(run)).find((x) => x.candidate_text === "Committed before lookup outage")?.status).toBe("accepted");
+    expect(await statement(run)).toContain("Committed before lookup outage");
+    expect(await pending()).toBe(true);
+    // The retry itself meeting the outage is reported the same way, not thrown.
+    state.readFail = true;
+    expect(await a.retryDecisionRefresh(run)).toEqual({ ok: true, refreshError: "Synthetic marker lookup outage" });
+    expect(await pending()).toBe(true);
+    // Repeating the same add does not duplicate the researcher's row.
+    expect(await a.addOwnDecisionCandidate(run, "Committed before lookup outage")).toEqual({ ok: true, refreshError: null });
+    expect((await rows(run)).filter((x) => x.candidate_text === "Committed before lookup outage")).toHaveLength(1);
+    expect(await pending()).toBe(false);
+  });
+
+  it("existing insights written for earlier decisions stay marked after a successful refresh, with wording untouched", async () => {
+    const a = await import("../decisionCandidateActions");
+    const { decisionContextMismatch } = await import("../decisionRefresh");
+    const XLSX = await import("xlsx");
+    const [r3] = (await db.pool.query("insert into runs(tenant_id,project_name,decision_statement) values($1,'C','Decision one') returning id", [tenant])).rows.map((r) => r.id as string);
+    await db.pool.query(
+      "insert into decision_candidates(tenant_id,run_id,candidate_text,rationale,source,status,created_at) values($1,$2,'Decision one','r','ai_suggested','accepted',now()-interval '2 min'),($1,$2,'Decision two','r','ai_suggested','pending',now()-interval '1 min')",
+      [tenant, r3],
+    );
+    const finding = async (r: string, text: string) => {
+      const id = (await db.pool.query("insert into findings(tenant_id,run_id,origin,finding_text,status) values($1,$2,'generated',$3,'accepted') returning id", [tenant, r, text])).rows[0].id as string;
+      await db.pool.query("insert into verdicts(tenant_id,finding_id,verdict_tier,rationale,verification_method,corroboration_level) values($1,$2,'robust','Synthetic','single_pass','single_source')", [tenant, id]);
+      return id;
+    };
+    const insight = async (r: string, f: string, context: string | null, headline: string) =>
+      (await db.pool.query("insert into insights(tenant_id,run_id,finding_id,decision_context,headline,observation,tension,implication) values($1,$2,$3,$4,$5,'o','t','i') returning id", [tenant, r, f, context, headline])).rows[0].id as string;
+    // Written for the current decision; carries a recommendation the researcher reworded.
+    const framed = await insight(r3, await finding(r3, "Framed finding"), "Decision one", "Framed headline");
+    await db.pool.query(
+      "insert into recommendations(tenant_id,run_id,insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status,edited) values($1,$2,$3,'Researcher wording','o','f','t','m','medium','a','b','ai_suggested','accepted',true)",
+      [tenant, r3, framed],
+    );
+    // Control: written before any decision existed (no recorded context), never marked.
+    await insight(r3, await finding(r3, "Unframed finding"), null, "Unframed headline");
+    await db.pool.query("insert into synthesized_insights(tenant_id,run_id,decision_context,headline,observation,tension,implication) values($1,$2,' Decision one ','Synth','o','t','i')", [tenant, r3]);
+    // Control in another run: its own mismatch must not count here.
+    await insight(other, await finding(other, "Other finding"), "Some other decision", "Other headline");
+
+    expect(await decisionContextMismatch(tenant, r3), "whitespace alone is not a change").toEqual({ insights: 0, recommendations: 0 });
+    expect(await a.acceptDecisionCandidate(r3, (await rows(r3)).find((x) => x.candidate_text === "Decision two")!.id)).toEqual({ ok: true, refreshError: null });
+    expect(await statement(r3)).toBe("1. Decision one\n2. Decision two");
+    expect(await (await import("../decisionRefresh")).decisionRefreshPending(tenant, r3), "the refresh succeeded").toBe(false);
+    expect(await decisionContextMismatch(tenant, r3), "still described by the earlier decision").toEqual({ insights: 2, recommendations: 1 });
+    const kept = (await db.pool.query("select i.headline, i.decision_context, r.action_text, r.edited from insights i join recommendations r on r.insight_id=i.id where i.id=$1", [framed])).rows[0];
+    expect(kept).toEqual({ headline: "Framed headline", decision_context: "Decision one", action_text: "Researcher wording", edited: true });
+
+    // The qualification travels into the insights export (the real route).
+    const { GET } = await import("../../app/api/runs/[id]/insights/export/route");
+    const response = await GET(new Request("http://local/export"), { params: Promise.resolve({ id: r3 }) });
+    const sheet = XLSX.read(new Uint8Array(await response.arrayBuffer()), { type: "array" });
+    const exported = XLSX.utils.sheet_to_json<Record<string, string>>(sheet.Sheets[sheet.SheetNames[0]]);
+    const served = (headline: string) => exported.find((x) => x.Headline === headline)?.["Decision this serves"] ?? "";
+    expect(served("Framed headline")).toMatch(/^Written for earlier decisions \(the accepted decisions have changed since\): Decision one$/);
+    expect(served("Unframed headline")).toBe("");
+
+    // Back to the decisions they were written for: nothing is marked any more.
+    expect(await a.unacceptDecisionCandidate(r3, (await rows(r3)).find((x) => x.candidate_text === "Decision two")!.id)).toEqual({ ok: true, refreshError: null });
+    expect(await statement(r3)).toBe("Decision one");
+    expect(await decisionContextMismatch(tenant, r3)).toEqual({ insights: 0, recommendations: 0 });
+    // Unknown stays unknown.
+    state.readFail = true;
+    expect(await decisionContextMismatch(tenant, r3)).toBeNull();
   });
 
   it("a change that cannot commit still fails as before and marks nothing", async () => {

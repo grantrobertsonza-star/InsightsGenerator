@@ -54,7 +54,8 @@ import {
 } from "@/lib/discoveryClassification";
 import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
-import { decisionRefreshPending } from "@/lib/decisionRefresh";
+import { decisionContextMismatch, decisionRefreshPending } from "@/lib/decisionRefresh";
+import { writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
 import UploadForm from "./UploadForm";
@@ -1017,6 +1018,8 @@ type InsightRow = {
   from_report: boolean;
   verification_basis: "data_backed" | "report_only";
   caveats: string[];
+  // Written for accepted decisions that have since changed (rule in decisionContext.ts).
+  written_for_earlier_decisions: boolean;
 };
 
 // Sorted by quality_score first (highest first, unscored insights last via
@@ -1032,8 +1035,10 @@ async function getInsights(runId: string): Promise<InsightRow[]> {
               f.finding_text, f.theme, v.verdict_tier, v.verification_basis,
               (f.origin in ('stated', 'coded')
                 or exists (select 1 from findings g where g.grounded_by_finding_id = f.id)) as from_report,
-              coalesce(v.statistical_checks->'caveats', '[]'::jsonb) as caveats
+              coalesce(v.statistical_checks->'caveats', '[]'::jsonb) as caveats,
+              ${writtenForEarlierDecisionsSql("i.decision_context", "r.decision_statement")} as written_for_earlier_decisions
        from insights i
+       join runs r on r.id = i.run_id
        join findings f on f.id = i.finding_id
        join lateral (
          select vv.verdict_tier, vv.verification_basis, vv.statistical_checks
@@ -3097,6 +3102,7 @@ export default async function RunPage({
     reportReadStats,
     waveFilesResult,
     decisionRefreshIsPending,
+    earlierDecisionCounts,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3136,6 +3142,7 @@ export default async function RunPage({
     timing("reportReadStats", getReportReadStats(id)),
     timing("waveFiles", listWaveFilesAction(id)),
     timing("decisionRefreshPending", decisionRefreshPending(TENANT_ID, id)),
+    timing("decisionContextMismatch", decisionContextMismatch(TENANT_ID, id)),
   ]);
   if (!run) {
     notFound();
@@ -3527,6 +3534,7 @@ export default async function RunPage({
         hasFindings={findings.length > 0}
         evidenceSynthesis={run.evidence_synthesis}
         refreshPending={decisionRefreshIsPending}
+        earlierDecisions={earlierDecisionCounts}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import {
   type VerificationBasis,
 } from "@/lib/discoveryClassification";
 import { CAVEAT_LABELS, caveatLabel } from "@/lib/caveatLabels";
+import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
 import { FigureCheckFor } from "./FigureCheckNotice";
 
 type VerdictTier = "robust" | "use_with_caution";
@@ -26,6 +27,7 @@ type Insight = {
   from_report: boolean;
   verification_basis: VerificationBasis;
   caveats: string[];
+  written_for_earlier_decisions: boolean;
 };
 
 // Short, plain-language labels for the fixed caveat vocabulary (see the
@@ -290,6 +292,14 @@ export default function InsightsReview({
                     {caveatLabel(caveat)}
                   </span>
                 ))}
+                {insight.written_for_earlier_decisions && (
+                  <span
+                    title="The accepted decisions changed after this insight was written; it has not been rewritten for the current ones."
+                    className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                  >
+                    {EARLIER_DECISIONS_LABEL}
+                  </span>
+                )}
               </div>
               {verificationCaption(insight.verification_basis, inputState) && (
                 <p className="mb-1.5 text-xs italic text-slate-500">

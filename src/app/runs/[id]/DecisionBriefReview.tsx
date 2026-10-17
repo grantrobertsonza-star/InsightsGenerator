@@ -17,6 +17,8 @@ import {
   type DecisionChangeResult,
 } from "@/lib/decisionCandidateActions";
 import { TrashIcon } from "@/components/icons";
+import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
+import type { EarlierDecisionCounts } from "@/lib/decisionRefresh";
 
 type DecisionCandidate = {
   id: string;
@@ -208,12 +210,16 @@ export default function DecisionBriefReview({
   hasFindings,
   evidenceSynthesis,
   refreshPending,
+  earlierDecisions,
 }: {
   runId: string;
   candidates: DecisionCandidate[];
   // Whether the insights and recommendations are still owed a refresh after a decision change
   // (null: could not be checked). Read on the server from the persisted marker.
   refreshPending: boolean | null;
+  // Existing insights, and the recommendations built on them, written for accepted decisions that
+  // have since changed (null: could not be checked). A refresh does not rewrite these.
+  earlierDecisions: EarlierDecisionCounts | null;
   // Whether this run has any findings yet, i.e. whether the framer has had
   // anything to read. Passed from the server component since that check
   // reads the findings table, not the candidate list.
@@ -348,6 +354,7 @@ export default function DecisionBriefReview({
         busy={isPending}
         onRetry={() => runListAction(() => retryDecisionRefresh(runId))}
       />
+      <EarlierDecisionsNotice counts={earlierDecisions} />
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           <span>Couldn&apos;t generate suggestions right now: {regenerateError}</span>
@@ -472,6 +479,33 @@ export default function DecisionBriefReview({
  * after a saved change whose update failed (with the reason), and on any later visit while the
  * persisted marker says an update is still owed. Unknown is said as unknown.
  */
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Says when existing insights were written for earlier accepted decisions. These are kept as they
+ * are (rewriting would discard reviewed recommendations and support links), so this is a standing
+ * qualification rather than something "Update them now" can clear; each such insight carries the
+ * same mark in the pre-insights list and its Excel export. Synthesized insights are counted
+ * here but carry no per-card mark (see decisionContext.ts, limitations).
+ */
+function EarlierDecisionsNotice({ counts }: { counts: EarlierDecisionCounts | null }) {
+  const message =
+    counts === null
+      ? "Could not check whether the existing insights were written for the current accepted decisions."
+      : counts.insights > 0
+        ? "The existing insights and recommendations do not all reflect the current accepted decisions: " +
+          `${plural(counts.insights, "insight was", "insights were")} written for earlier ones, with ` +
+          `${plural(counts.recommendations, "recommendation", "recommendations")} built on them. They have not been ` +
+          `rewritten, so your review work is kept. Pre-insights are marked "${EARLIER_DECISIONS_LABEL}" in the pre-insights list and its Excel export.`
+        : null;
+  if (!message) return null;
+  return (
+    <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      {message}
+    </p>
+  );
+}
+
 function DecisionRefreshNotice({ problem, pending, busy, onRetry }: { problem: string | null; pending: boolean | null; busy: boolean; onRetry: () => void }) {
   const message = problem
     ? `Saved. The insights and recommendations were not updated to match: ${problem}`

@@ -14,6 +14,10 @@
 //   2. After a reload the panel still says the insights and recommendations are not up to date.
 //   3. With writes allowed, "Update them now" clears the notice, the marker is gone, the insight
 //      exists, and after a reload there is no notice.
+//   4. (Independent review 2026-10-17) Reword the accepted decision: the refresh succeeds but does
+//      not rewrite the existing insight, so the panel, the pre-insight card and the pre-insights
+//      Excel export mark it "Written for earlier decisions", after a reload too, and its text is unchanged.
+// Third test: the same replay for a "generate" run with an existing insight and recommendation.
 // Second test, the panel's own callers with reload (no failure injected): add your own decision,
 // delete it, "Accept all" on two pending ones; after each reload the panel, the stored statuses
 // and the decision statement agree, and nothing is left owed.
@@ -22,6 +26,7 @@ import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import XLSX from "xlsx";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -58,7 +63,7 @@ test("a decision change whose refresh fails is shown as saved and not updated, s
     const openDecisions = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Business decisions/ }).first().click();
-      await expect(page.getByText("Decision B", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText("Decision A", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
     };
     const notice = page.getByRole("status").filter({ hasText: /insights and recommendations/ });
 
@@ -84,8 +89,76 @@ test("a decision change whose refresh fails is shown as saved and not updated, s
     expect(Number((await db.query("select count(*) from insights where finding_id=$1", [finding])).rows[0].count)).toBe(1);
     await openDecisions();
     await expect(notice).toHaveCount(0);
+
+    // 4. Independent review replay (validate mode): reword the accepted decision. The refresh
+    // succeeds but does not rewrite the existing insight, so it stays marked, after a reload too.
+    await expectEarlierDecisionsMarked({ page, db, run, finding, openDecisions, notice, pendingMarkers });
   } finally {
     await allow().catch(() => {});
+    await db.end();
+  }
+});
+
+/** Edits accepted "Decision B", then checks the existing insight is kept and marked everywhere it shows. */
+async function expectEarlierDecisionsMarked({ page, db, run, finding, openDecisions, notice, pendingMarkers }) {
+  const before = (await db.query("select id, headline, decision_context from insights where finding_id=$1", [finding])).rows[0];
+  expect(before.decision_context).toBe("1. Decision A\n2. Decision B");
+  const edited = page.locator("div", { has: page.getByText("Decision B", { exact: true }) }).filter({ has: page.getByRole("button", { name: "Edit", exact: true }) }).last();
+  await edited.getByRole("button", { name: "Edit", exact: true }).click();
+  const save = page.getByRole("button", { name: "Save and accept", exact: true });
+  await save.locator("..").locator("..").locator("textarea").fill("Decision B materially revised");
+  await save.click();
+  await expect.poll(async () => (await db.query("select decision_statement from runs where id=$1", [run.id])).rows[0].decision_statement, { timeout: 120_000 }).toBe("1. Decision A\n2. Decision B materially revised");
+  await expect.poll(pendingMarkers, { timeout: 120_000 }).toBe(0);
+  const earlier = notice.filter({ hasText: "written for earlier ones" });
+  await expect(earlier.first()).toContainText("1 insight was written for earlier ones", { timeout: 60_000 });
+  await openDecisions();
+  await expect(earlier.first()).toContainText("1 insight was written for earlier ones", { timeout: 60_000 });
+  await expect(page.getByText(/^Not saved:|^Not changed:/)).toHaveCount(0);
+  // The insight itself is untouched.
+  expect((await db.query("select id, headline, decision_context from insights where finding_id=$1", [finding])).rows[0]).toEqual(before);
+  // Marked in the pre-insights list (Working data, Pre-insights tab).
+  await page.getByRole("button", { name: /^Working data(\s*\d+)?$/ }).first().click();
+  await page.getByRole("button", { name: /^Pre-insights/ }).first().click();
+  const insightCard = page.locator("div.rounded-lg", { hasText: before.headline }).last();
+  await expect(insightCard.getByText("Written for earlier decisions", { exact: true })).toBeVisible({ timeout: 60_000 });
+  // And in the insights export.
+  const response = await page.request.get(`${new URL(run.url).origin}/api/runs/${run.id}/insights/export`);
+  expect(response.status()).toBe(200);
+  const book = XLSX.read(await response.body(), { type: "buffer" });
+  const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]]);
+  expect(rows.find((r) => r.Headline === before.headline)?.["Decision this serves"]).toBe(
+    "Written for earlier decisions (the accepted decisions have changed since): 1. Decision A\n2. Decision B",
+  );
+}
+
+test("generate mode: an existing insight written for an earlier decision stays marked after the decision is reworded", async ({ page }, testInfo) => {
+  test.setTimeout(6 * 60_000);
+  const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
+  await db.connect();
+  try {
+    const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+    const ui = await bind({ page, target, testInfo });
+    const run = await ui.createRun({ name: `decision-context-generate-${Date.now()}` });
+    const t = target.tenantId;
+    await db.query("insert into decision_candidates(tenant_id,run_id,candidate_text,rationale,source,status,created_at) values($1,$2,'Decision A','r','ai_suggested','accepted',now()-interval '2 min'),($1,$2,'Decision B','r','ai_suggested','accepted',now()-interval '1 min')", [t, run.id]);
+    await db.query("update runs set entry_point='generate', decision_statement=$2 where id=$1", [run.id, "1. Decision A\n2. Decision B"]);
+    const finding = (await db.query("insert into findings(tenant_id,run_id,origin,finding_text,status) values($1,$2,'generated','Synthetic finding for the generate check','accepted') returning id", [t, run.id])).rows[0].id;
+    await db.query("insert into verdicts(tenant_id,finding_id,verdict_tier,rationale,verification_method,corroboration_level) values($1,$2,'robust','Synthetic','single_pass','single_source')", [t, finding]);
+    // An existing recommendation too, so the refresh has nothing to add (no model call needed).
+    const insight = (await db.query("insert into insights(tenant_id,run_id,finding_id,decision_context,headline,observation,tension,implication) values($1,$2,$3,$4,'Existing generate headline','o','t','i') returning id", [t, run.id, finding, "1. Decision A\n2. Decision B"])).rows[0].id;
+    await db.query("insert into recommendations(tenant_id,run_id,insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status,edited) values($1,$2,$3,'Researcher wording','o','f','t','m','medium','a','b','ai_suggested','accepted',true)", [t, run.id, insight]);
+    const pendingMarkers = async () => Number((await db.query("select count(*) from trace where run_id=$1 and event='decision_refresh_pending'", [run.id])).rows[0].count);
+    const openDecisions = async () => {
+      await page.goto(run.url, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Business decisions/ }).first().click();
+      await expect(page.getByText("Decision A", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+    };
+    const notice = page.getByRole("status").filter({ hasText: /insights and recommendations/ });
+    await openDecisions();
+    await expect(notice).toHaveCount(0);
+    await expectEarlierDecisionsMarked({ page, db, run, finding, openDecisions, notice, pendingMarkers });
+  } finally {
     await db.end();
   }
 });

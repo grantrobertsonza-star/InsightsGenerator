@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { withTenant, withTenantRead } from "./db";
+import { writtenForEarlierDecisionsSql } from "./decisionContext";
 import { refreshInsights } from "./insightGenerator";
 import { refreshRecommendations } from "./recommendationAgent";
 
@@ -10,6 +11,8 @@ import { refreshRecommendations } from "./recommendationAgent";
 // and the researcher told "Not changed". The change now records that a refresh is owed, in the same
 // transaction, and the marker is cleared only by a refresh that succeeds; until then the decisions
 // panel says the insights and recommendations are not up to date and offers to update them.
+// A successful refresh only adds what is missing; insights that already existed keep the
+// decisions they were written for, which decisionContextMismatch reports separately.
 const PENDING_EVENT = "decision_refresh_pending";
 
 /** Records, inside the transaction that changes the accepted decisions, that dependants are owed a refresh. */
@@ -55,6 +58,39 @@ export async function refreshDecisionDependants(tenantId: string, runId: string)
  * Whether the insights and recommendations are still owed a refresh after a decision change.
  * null when this could not be checked: unknown is shown as unknown, never as up to date.
  */
+export type EarlierDecisionCounts = { insights: number; recommendations: number };
+
+/**
+ * How many existing insights (per-finding and synthesized) and the recommendations built on them
+ * were written for earlier accepted decisions (rule in decisionContext.ts). A successful refresh
+ * does not rewrite these, so this is reported separately from the marker above and stays until
+ * the decisions match again. null when this could not be checked.
+ */
+export async function decisionContextMismatch(tenantId: string, runId: string): Promise<EarlierDecisionCounts | null> {
+  const stale = (alias: string) => writtenForEarlierDecisionsSql(`${alias}.decision_context`, "r.decision_statement");
+  try {
+    return await withTenantRead(tenantId, async (client) => {
+      const r = await client.query<{ insights: number; recommendations: number }>(
+        `with s as (
+           select i.id as insight_id, null::uuid as synthesized_id from insights i join runs r on r.id = i.run_id
+            where i.run_id = $1 and ${stale("i")}
+           union all
+           select null, si.id from synthesized_insights si join runs r on r.id = si.run_id
+            where si.run_id = $1 and ${stale("si")}
+         )
+         select (select count(*) from s)::int as insights,
+                (select count(*) from recommendations rec
+                  where rec.insight_id in (select insight_id from s where insight_id is not null)
+                     or rec.synthesized_insight_id in (select synthesized_id from s where synthesized_id is not null))::int as recommendations`,
+        [runId],
+      );
+      return r.rows[0] ?? { insights: 0, recommendations: 0 };
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function decisionRefreshPending(tenantId: string, runId: string): Promise<boolean | null> {
   try {
     return await withTenantRead(tenantId, async (client) => {

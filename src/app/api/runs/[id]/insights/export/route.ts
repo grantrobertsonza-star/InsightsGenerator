@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
+import { EARLIER_DECISIONS_LABEL, writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
 
 const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 
@@ -12,6 +13,7 @@ type ExportRow = {
   tension: string;
   implication: string;
   decision_context: string | null;
+  written_for_earlier_decisions: boolean;
   finding_text: string;
 };
 
@@ -36,8 +38,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     );
     const insightsResult = await client.query<ExportRow>(
       `select f.theme, v.verdict_tier, i.headline, i.observation, i.tension, i.implication,
-              i.decision_context, f.finding_text
+              i.decision_context, f.finding_text,
+              ${writtenForEarlierDecisionsSql("i.decision_context", "r.decision_statement")} as written_for_earlier_decisions
        from insights i
+       join runs r on r.id = i.run_id
        join findings f on f.id = i.finding_id
        join verdicts v on v.finding_id = f.id
        where i.run_id = $1
@@ -58,7 +62,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     Observation: row.observation,
     Tension: row.tension,
     Implication: row.implication,
-    "Decision this serves": row.decision_context ?? "",
+    // The qualification travels with the exported row (see decisionContext.ts).
+    "Decision this serves": row.written_for_earlier_decisions
+      ? `${EARLIER_DECISIONS_LABEL} (the accepted decisions have changed since): ${row.decision_context}`
+      : row.decision_context ?? "",
     "From finding": row.finding_text,
   }));
 
