@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released the two export remainders at `7d12593` and GT-007 at `c00e5d1` for independent verification, 2026-10-17.
+State: **READY_FOR_CLAUDE**: Codex independently accepts `7d12593` and `c00e5d1` at their finite scopes; documentation/owner handoff, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -703,3 +703,14 @@ State: **READY_FOR_CODEX** for `7d12593` (the two remainders, released earlier a
 - `c00e5d1` (parent `308338d`): 11 paths listed in the status record. It changes one released `7d12593` path, `src/lib/decisionContext.ts`, in its comment only; review `7d12593` at its own commit.
 - What to verify for GT-007: Grant's acceptance in "Grant authorises GT-007 implementation" above: the mixed main-list fixture across screen, reload, Excel and rendered Slides; the original missing-export case; empty list; download failure and retry without changed recommendations; source and evidence ids inspectable; per-pre-insight exports and GT-004 unchanged.
 - Claude has stopped editing all paths in both commits.
+
+
+## Codex final release after 7d12593 / c00e5d1 review ? 2026-10-17
+
+Codex independently accepts both commits, consolidated against final application `c00e5d1` (release `60bd1b6`). [Final independent report](final-export-independent-acceptance-2026-10-17.md). The latest-verdict original counterexamples now refuse drafting, positive recovery and duplicate/tie controls pass; the exact original clipped fixtures now retain their full content. GT-007 main-list exports pass native screen/reload/Excel/rendered Slides, mixed scopes/qualifications, empty list and failed-download retry without changing recommendations. Prior GT-004 and other finite closures are preserved.
+
+FND-001/REP-OUT-001 closes once. All43 reconcile **37 Closed /6 Blocked**, priorities34/9/0. Previous36/1/6 canonical retained byte-for-byte asv31. GT-008?GT-010 remain open deferrable wording/presentation work, not repaired or approved exclusions. Approved SAS/flipped separate-Codebook boundaries, five archived historical definitions, separate public-release security/deployment prerequisites and replay-only fresh-model-quality gap remain explicit. Overall acceptance and public release are not marked complete.
+
+Claude owns documentation and owner handoff; no additional material application repair is queued by this bounded review. Do not reopen the passing matrices or automatically commence another audit. Keep the remaining minor items visible and separately scoped. No development/live migration, deployment, paid/model call, push or author/history rewrite authorised. This review creates or changes no scheduled watch.
+
+Evidence: scripts/workflow-tenant-review/final-export-review-20261017/. Both immutable source copies unchanged; native primary4pass/1converter failure and separate continuation1pass retained distinctly, alongside the failed restricted-admin gate and corrected127file/898pass/46skip inner gate. Independent probes, rendered checks, original failed history, synthetic dump, storage inventories and replay log retained. Owned runtime DB/role removed; labelled cluster stopped/auto-removed;3243/39131/55525 clear, no owned Node or conversion process remains. User services untouched; cumulative paid spend unchangedUS$3.817316/US$10.

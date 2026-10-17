@@ -2,11 +2,14 @@
 
 Canonical finite release baseline:43 existing rows. This is technical functionality consolidation,
 not public-release authorization or an unrestricted audit. The previous document is retained byte-for-byte
-as [v29](technical-release-acceptance-baseline-2026-10-15.v29.md); earlier evidence/history remains local.
+as [v31](technical-release-acceptance-baseline-2026-10-15.v31.md); earlier evidence/history remains local.
 
 Current outstanding work is reconciled in [the row-level reconciliation below](#row-level-reconciliation-2026-10-17). Older statements about pending banners, keys, tooling and repaired mechanisms are historical where superseded there.
 
 ## Current decision and evidence
+
+**Final independent affected-source decision, application c00e5d1 / repairs7d12593:** [final report](final-export-independent-acceptance-2026-10-17.md). The original latest-verdict bypass and layout content-loss failures now pass independent original-fixture checks. GT-004/005/006 close at their stated finite evidence levels; authorised GT-007 main-list exports pass native, real-DB and rendered-output scope/reload/failure-retry checks. FND-001/REP-OUT-001 closes; all other rows retain their dispositions:37 Closed/6 Blocked=43, priorities34/9/0. GT-008?GT-010 remain open deferrable wording/presentation limits, not repaired or approved exclusions. Six blocked security/historical rows, approved format/layout exclusions and replay-only model-quality gap remain explicit. Overall acceptance/public release remain incomplete. Older open-repair statements below are history where superseded by this exact disposition.
+
 
 **Latest independent ffa7adc review:** [exact disposition](export-repair-independent-review-2026-10-17.md). GT-004 and GT-006 original failures now pass; GT-005 original horizontal Total clipping is repaired. FND remains Confirmed for the actual latest-refusing-verdict/older-robust generator and exported-current counterexample. GT-005 remains open for supported long-label vertical content loss. Only these material remainders are released to Claude; preserve passing subcases. GT007 product decision pending; GT008-010 unrepaired/deferrable wording limits remain explicit. Counts36Closed/1Confirmed/6Blocked=43 unchanged; no overall acceptance or public-release authorisation. Earlier broader defect descriptions below are historical where narrowed by this review.
 
@@ -16,7 +19,7 @@ Current outstanding work is reconciled in [the row-level reconciliation below](#
 
 - [Resumed golden-thread walkthrough](golden-thread-walkthrough-2026-10-15.md), unchanged checkpoint3c29e02: real model-backed narrative exports and independent A/C probes executed. Original lookup and handover/verdict failures remain historical evidence. The body editor, later passing handovers and exact remaining FND assertions are reconciled below; no old blocked claim overrides them. Prior closures are preserved.
 
-**36 Closed /0 Implemented awaiting verification /1 Confirmed defect /0 Untested requirement /
+**37 Closed /0 Implemented awaiting verification /0 Confirmed defect /0 Untested requirement /
 6 Blocked =43.** Priority is independent:34 release-priority (33 technical + separate security1),
 9 important but deferrable,0 optional. Verification work is not a count of repairs.
 
@@ -224,7 +227,7 @@ Current row-level dispositions are reconciled on2026-10-17. All43 IDs, prioritie
 | Business-decisions remainder (unassigned acceptance requirement; not a new defect ID) | Reject/restore/unaccept, own add/delete/bulk and decision_statement synchronization agree after reload. | Closed | Release blocker | Independent8fa326c review: original postcommit and framed-insight probes preserved; actual-generator null/different-parent-context recommendation, both generator paths, prompt-time concurrent snapshot, unknown legacy, revert/human-wording/current controls pass. Native original probes/reload/own-delete/bulk and real-DB finite transitions/retry pass.0102 additive rollback/rerun and pre-migration unknown-to-recording recovery independently checked. | Finite transition table: intended row/run only, status-only operations preserve wording/source, statement equals accepted set; failed refresh/retry visibly reconciles; bulk reload agrees. | No further repair for the finite business contract.0102 needed for recording new contexts; without it or for legacy AI rows, show unknown. No automatic rewrite action or per-item deck/narrative qualification claimed; preserve separate deployment/process limits. |
 | ANA-NPS-003 calculation-input subcase | NPS/Objectives/chart requests never calculate with unavailable required saved layout/design inputs. | Closed | Release blocker | 2026-10-17 independent reconciliation: Independent Brief38 strict setup/lower-builder/cache-miss refusal closure preserved. | Strict success followed by lower-level failure blocks engine/save for ordinary, explicit-design and explicit-no-design requests; cache-miss path likewise safe. | No new arbitrary default or public-release claim. |
 | ANA-NPS-003 / IMP-005 findings freshness subcase | Findings with changed/uncheckable design are visibly stale/unknown; no-source remains not applicable. | Closed | Release blocker | 2026-10-17 independent reconciliation: Independent current/stale/unknown/no-source and missing-snapshot/migration lookup closure preserved. | Actual loader returns current/stale/unknown/null correctly; missing snapshot/migration and lookup failure with a source table show unknown badge after reload. | Shared deeper consumers remain FND scope. |
-| FND-001 / REP-OUT-001 necessary handover only | Changed/rejected/deleted/replaced support cannot remain silently valid in outputs consuming these modules. | Confirmed defect | Release blocker | 2026-10-17 broader native export assessment confirms GT-004 and GT-006 under this shared row; earlier finite wrong-group/retry/replacement/duplicate/body/design controls preserved. See shared findings register for actual output evidence. | In-place change, delete, replacement and duplicates invalidate/qualify affected dependent artifact; unchanged support stays eligible; human wording survives. | Claude repairs affected export consumers; Codex independently repeats original failures and current/unknown/recovery controls on exact commit. Preserve reviewed work and failed history. |
+| FND-001 / REP-OUT-001 necessary handover only | Changed/rejected/deleted/replaced support cannot remain silently valid in outputs consuming these modules. | Closed | Release blocker | Independent7d12593/c00e5d1 review: original latest-refusal counterexamples now refuse drafting/export; latest-robust recovery, historical duplicates and equal-time tie controls pass. Original rejection/current-control and GT-004 native qualification closures preserved; actual final deletion/correction/edited-wording handovers pass. Scripted provider boundaries explicit; see final report. | In-place change, delete, replacement and duplicates invalidate/qualify affected dependent artifact; unchanged support stays eligible; human wording survives. | No further repair in this finite handover scope; preserve original failures and verified subcases. No fresh provider quality, deployed security or all-Office claim. |
 | ANA-NPS-003 downstream freshness handover | Changing design makes affected insights/recommendations/saved narratives visibly stale or ineligible. | Closed | Release blocker | 2026-10-17 independent reconciliation: Independent fresh-current native PSU change, actual saved design verification, unaffected control, reload, qualified insight/recommendation/narrative and actual DOCX/PPTX preserve human wording. | Change design behind accepted evidence: dependent objects keep human wording and show stale/unverified or publication is blocked until rebuilt/reviewed. | Combined failed invocation plus same-project continuation, not an all-green initial run; synthetic accepted support/model replay explicitly bounded. |
 
 
@@ -235,8 +238,8 @@ Current row-level dispositions are reconciled on2026-10-17. All43 IDs, prioritie
 | Import (including separate security) |16|0|0|0|1|
 | Setup/Review Objectives |15|0|0|0|5 historical gaps|
 | Business decisions |2|0|0|0|0|
-| Cross-tabs/necessary shared handovers |3|0|1|0|0|
-| **Total** |**36**|**0**|**1**|**0**|**6**|
+| Cross-tabs/necessary shared handovers |4|0|0|0|0|
+| **Total** |**37**|**0**|**0**|**0**|**6**|
 
 Finite row closures do not imply whole-module, overall technical or public-release sign-off.
 The separate security/environment gates and disclosed supported-scope limits remain explicit.
@@ -244,7 +247,7 @@ Shared assertions are counted once under their existing row identities.
 
 ## Remaining work, separated by evidence
 
-**One confirmed shared handover row remains:** FND-001/REP-OUT-001 for GT-004 and GT-006, with separate export-rendering finding GT-005 also requiring repair.36 finite rows remain Closed. The previous no-outstanding-defect disposition is preserved in v30; the broader native/export failures now supersede it. This is acceptance at the named code/disposable/native boundaries, not an unrestricted audit, whole-module or public-release certification. Business decision currentness uses visible qualification, preserves human wording and does not rewrite existing artifacts. Legacy AI recommendations without recorded context remain unknown;0102 enables recording on new generations.
+**No required defect remains open in the reconciled finite local technical partition:**37 rows Closed after independent original-failure verification at7d12593/c00e5d1. GT-007 is verified authorised functionality, not a new canonical row. GT-008?GT-010 remain deferrable wording/presentation work; six security/historical rows remain Blocked. This is not overall acceptance, public-release approval or unrestricted certification. Previous failed runs and the prior36/1/6 disposition are retained in the preceding canonical snapshot and reports.
 
 **Six blocked rows:** deployed IMP-001/016 security plus five historical definitions explicitly archived by Grant as unsubstantiated, retaining Blocked. Four of9 deferrable-priority rows have finite closure; five are those historical gaps. Research Quality Review remains design-only; approved SAS/flipped-separate-Codebook exclusions and other documented capability/Office/provider limits remain explicit.
 

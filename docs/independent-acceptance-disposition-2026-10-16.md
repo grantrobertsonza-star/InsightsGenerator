@@ -1168,3 +1168,22 @@ FND-001/REP-OUT-001 remainsConfirmed for the independent actualgenerator latestn
 GT007 mainrecommendationsexports: pendingGrant productdecision, noapprovedexclusionorimplementation. GT008 rawFailedtofetch independentlyreproducedC3; draft/nodurablewrite/retryonecopy passes, open deferrablewording. GT009 C5qualificationsslide-onlydesigncaveat reproducedwithotherdeckstatuswarningspresent, openminorconsistency. GT010 C1confirmationreviewedsource deletion reproduced; effectsqualified, humanrecommendationkept, openconfirmationwording. None repairedbyffa7adc, none silentlyaddedto43orwaivedasapprovedexclusion.
 
 FocusedactualPostgreSQL17/Python5files20pass2independentappfail5explicit-skips. Native5/5 plusseparateGT006andactualcrosstabreference, build/fullTypeScriptpass. Failedbuildschema/bootstrap/temppermission prerequisites retained; POSIXrendercheckskip distinctfromactualindependentLibreOfficecontrols. Claude releasedonlylatestverdict/layoutsmallfixesandaffectedregressions/comments; no paidcalls/push/deployment/historyrewrite. Replayqualitygapandseparatepublicrelease/security/archiveddefinitions unchanged. Exactsourceandfailedartifactsretainedunder scripts/workflow-tenant-review/export-repair-20261017/.
+
+## Final independent disposition of 7d12593 / c00e5d1 — 2026-10-17
+
+[Final exact-commit report](final-export-independent-acceptance-2026-10-17.md) supersedes the earlier open material remainders. Final applicationc00e5d1, release60bd1b6; behavioural repair paths match7d12593. Original latest-verdict counterexamples, recovery/duplicate/tie controls and original complete rendered layout fixtures now pass independent checks. GT-007 authorised main-list functionality passes native/actual-route/rendered scope, identity, evidence, support/decision qualifications, reload, empty list and failed-download retry controls. Preserve all original failures and earlier passing mechanisms.
+
+| Canonical disposition | Current result |
+|---|---|
+| FND-001/REP-OUT-001 | Closed at the existing finite local handover contract; the actual original supported-workflow failures are resolved by implemented repairs and independent matching checks |
+| Other36 previously Closed rows | Remain Closed at their recorded scopes; no expanded module-wide claim |
+| IMP-001/016 | Remains Blocked for the separate intended deployed identity/storage/roles/schema/process gate |
+| SET004/005, REV003/010/M03 | Five historical-definition rows remain Blocked and deferrable; no invented or silently resolved requirement |
+| GT-007 | Authorised feature independently verified; not an added canonical row |
+| GT-008–GT-010 | Open, deferrable, unrepaired wording/presentation; distinct from approved exclusions |
+
+Partition37 Closed/0 awaiting/0 Confirmed/0 Untested/6 Blocked=43; priorities34/9/0. Previous canonical byte-for-bytev31. Overall acceptance/public release incomplete; approved format/layout exclusions and replay-only model-quality gap preserved. No paid call, development/live write, deployment, push or history rewrite.
+
+Exact7d focused19pass/3skip; final corrected-admin inner strict gate127files898pass/46skip confirms actual required DB/Python suites, with outer shell1 retained/cause unproved; additional independent15pass/3skip, build exit0. Native initial4pass/1converter failure, separate GT007 continuation1pass;271 rendered assertions/4 direct refusal controls, actualHTTP422/fallback/retry/reference and nativeempty pass. Failed admin prerequisites, converter path invocation, helper syntax and inspection attempts remain distinct retained history. Exact downloaded failing-path deck renders unchanged on an isolated short path; no all-converter/all-Office certification inferred.
+
+Evidence root:scripts/workflow-tenant-review/final-export-review-20261017/. Owned stack/DB/role removed, labelled cluster stopped,3243/39131/55525 and owned processes clear. Claude released for documentation/owner handoff; no further material repair queued by this finite review, no repeated sweep or scheduled watch created. GT008-010 remain separately visible. Final report has the complete practical limits.

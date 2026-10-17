@@ -732,3 +732,11 @@ Owned ffa7adc review resources stopped; runtime DB/role absent, labelled cluster
 ## GT-007 scope authorised by Grant — 2026-10-17
 
 Grant approved dedicated Excel and Slides exports for the main Recommendations list. Claude retains ownership and may include this in the current package or a separate stable release. Exact bounded acceptance is appended to agent-handoff.md; independent verification remains required. The earlier pending product decision is resolved, feature completion is not claimed. Counts36 Closed/1 Confirmed/6 Blocked unchanged; other repairs and GT-008–GT-010 unaffected. Replay only, local and unpushed.
+
+## Final independent export acceptance — 2026-10-17
+
+Codex independently accepts repairs7d12593 and authorised main-list featurec00e5d1 at final applicationc00e5d1/release60bd1b6. Exact report:final-export-independent-acceptance-2026-10-17.md. GT004/005/006 finite closures and GT007 feature verified; FND closes once.37Closed/6Blocked=43, priorities34/9/0; all other row dispositions preserved. GT008-010 remain open deferrable wording/presentation, no new canonical row or approved-exclusion inference. Six blocked security/historical rows, existing exclusions and fresh-model gap remain; overall acceptance incomplete.
+
+Exact7d focused19pass/3skip; corrected-admin final strict127files898pass/46skip actual required suites; independent extra15pass/3skip; production build exit0. Native initial4pass/1converter failure, separate unchanged-assertion short-path GT007 continuation1pass;271 rendered-content assertions/4 refusal controls; real HTTP422/retry, numeric references and native empty-list pass. Original full-gate role prerequisites, converter failure, helper/decoding errors retained; no false all-green primary claim. Source read-only, replay only, local/unpushed. Evidence:scripts/workflow-tenant-review/final-export-review-20261017/.
+
+Final review resources verified stopped: runtime DB/role removed, labelled cluster stopped/auto-removed,3243/39131/55525 clear, no owned application/converter process. Both source manifests unchanged. Final report:final-export-independent-acceptance-2026-10-17.md. Handoff READY_FOR_CLAUDE for documentation/owner handoff;37Closed/6Blocked, overall acceptance incomplete. No watch changed, paid call, push or deployment.
