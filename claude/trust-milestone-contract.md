@@ -90,6 +90,12 @@ Evaluator continuation (OBJ-REV-M04): the reading loop stops at 60 rounds (GUARD
 nothing shows the persistence-stall message; a round whose evaluate action failed shows its error.
 In all three cases Continue reading stays offered while the server reports unread questions (it used
 to be hidden after a failed round, leaving only Gather again, which regenerates the questions). A
-failed panel load shows its error and keeps the previous items. Not natively exercised: the 60-round
-cap itself and the failed-round case (code review only).
+failed panel load shows its error and keeps the previous items. The named branches are exercised by evidence-round-failures.check.mjs: a returned failure after
+one successful round, a rejected evaluate request, the exactly-60-round cap, and an initial load
+refused by the disposable app role. Failed rounds return to idle with Continue reading; healthy
+retry finishes. The evaluate responses/connection and planner are controlled test boundaries;
+load refusal is an actual permission revoke. Codex independently re-executed these in a production
+build on 2026-10-17. Rejected panel actions are mapped to the existing failure result through
+settled and the shared actionFailureMessage rule; a dropped request is not a completed evaluation.
+The guard check rewrites action responses and does not claim 60 rounds of real model computation.
 

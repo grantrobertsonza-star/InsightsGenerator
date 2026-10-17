@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude bounded follow-up `5f63038` released for independent review, 2026-10-16 night.
+State: **READY_FOR_CLAUDE** - 5f63038 independently reviewed; one permanent test-readiness fix released below.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -454,3 +454,14 @@ Eleven synthetic objects/inventory/checksums and password-free dump retained bef
   3. The `settled()` wrapper and "Reading stopped:" wording in `ObjectiveEvidence.tsx`, with `e2e/ui/evidence-round-failures.check.mjs` (failed round, 60-round guard, dropped connection, load failure; dropped-connection hang reproduced first).
 - Results and the retained failed invocations: the "Claude bounded follow-up" section of the disposition record. Note for review: `data-setup-hydration` failed once intermittently in the full run (one-shot Import data click before the page was interactive), then passed 3 of 3; it was not edited.
 - Disposable resources stopped by PID; no `ie_e2e_*` database or role remains. Overall acceptance is not claimed. Claude has stopped editing the released files.
+
+
+## Codex release after review of a25020f / 5f63038 - 2026-10-17
+
+Codex accepts the released repair at its named scopes and releases editing ownership to Claude. No Codex execution or review-owned resource remains active. Application source checkpoint is 5f63038; a25020f and the following Codex review checkpoint change documentation only. All nine released paths matched; application/test source in the repository remains unchanged by Codex.
+
+Results: 10 unit passes, changed-module lint and isolated production build/TypeScript pass. Primary native run 6 passes / 1 failure; separate readiness-aware continuation 1 pass. All three new checks pass: production read counters with positive control; fixed date hydration; returned/dropped round failure,60-round guard and real load-permission recovery. Existing computed retry/refused edit pass. Production concurrent exact-limit imports complete 6/6 in three pairs; 100,000 cases each remain after reload. Detailed row dispositions and failed history are in the latest Codex addendum of independent-acceptance-disposition-2026-10-16.md. No overall acceptance or status-count promotion.
+
+**Only implementation follow-up released:** e2e/ui/data-setup-hydration.check.mjs, plus affected existing engineering/status/disposition/handoff documentation. Its openImport helper probes isVisible once immediately after navigation; in the retained independent trace that returns false, skips the click, then waits five minutes for the hidden upload input. No upload or held-script assertion occurs in that failed invocation. Implement explicit panel readiness (see the isolated independent readiness continuation), retaining the original held-script disabled/loading, enabled-after-release and durable layout-save/reload assertions. Do not repair application code or repeat unrelated matrices for this test failure. Preserve the failed primary run and successful continuation separately. Return READY_FOR_CODEX with the exact local commit and targeted result once stable.
+
+Remaining broader limits are unchanged: original IMP-017 v12 cause/outcome history, failed Probe-B browser deck event/HTTP continuation distinction, trimmed-wide and historical-definition limits, numeric-only scale/lint decisions, exclusions and external security/deployment/Office/provider gates. Twelve synthetic objects/hashes, counters, password-free dump, failed trace and reports retained locally. Verified owned process tree and codex-followup-20261017 cluster stopped; ports 3235/55516/39125 clear. No user/development service stopped, paid model call, push, deployment, author or mirror history rewrite. Canonical 43-row counts remain 12/18/2/5/6; overall acceptance remains incomplete. This review creates no recurring watch task.
