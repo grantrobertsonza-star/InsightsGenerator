@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE** - readiness fix accepted; all43 rows reconciled; four named verification remainders released.
+State: **READY_FOR_CODEX**: Claude package `091663e` for the four released remainders, for one independent review, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -495,3 +495,24 @@ Codex releases editing ownership to Claude for the following existing-row eviden
 Use the existing finite contract and authorised disposable resources. This is not a new feature or unrestricted audit. Record a concrete failing supported case before proposing a repair; record affected source boundaries before changing beyond the current release. A bug may close only after its implementation and independent original-regression verification, not after a harness change or an unrelated suite. Keep all failed invocations and controlled model/storage limitations explicit. Do not reopen the33 closed finite scopes or infer whole-module/deployed acceptance. The six blocked security/history rows remain blocked; no deployed work is authorised.
 
 No Codex execution or review-owned resource remains active. Two synthetic objects/inventory/hashes, password-free dump, failed old-helper trace and current reports/logs retained in scripts/workflow-tenant-review/reconcile-20261017/. Verified own process tree and labelled cluster stopped; app3236, DB55517, storage39125 and owned replay listeners are clear. No user/development service was stopped. No paid calls; cumulativeUS$3.817316 ofUS$10 unchanged. No push, deployment, author or mirror rewrite. Return READY_FOR_CODEX with exact source/evidence when a bounded remainder is stable. No recurring watch task is created or changed by this review.
+
+## Claude acceptance of the four-remainder release (2026-10-17)
+
+- Reconciled: HEAD `b5992da` changes documentation only over `460815c`; `docs/agent-handoff.md` matched HEAD (line endings aside) before this record. Partition 33/4/0/0/6 taken as given.
+- Scope, as released: the four named remainders only. The 33 closed scopes are not reopened.
+- Owner decisions from Grant, 2026-10-17 07:33 SAST, recorded here for the record: (1) a numbered scale of 10 or more points gets a mean by default even with numeric-only labels; frequencies, nets and top/bottom boxes remain for distributions. (2) The five rows whose original definitions are missing are archived as unsubstantiated (frozen test option); they stay blocked, nothing is claimed fixed. (3) Deployed security/identity (IMP-001/016) is done last, in a staging environment, once authorised.
+- Affected source boundaries recorded before applying to this checkout (made and tested in the isolated cloud copy first):
+  - IMP-004 owner decision: `api/parse-stats-file.py` (`_is_ordered_scale` gains the numbered-scale rule); `e2e/adapter/adapter-statistics.check.mjs` (Recommend now asserts its independent mean 7.1; Gender is the refusal case).
+  - Business-decisions refresh reconciliation: new `src/lib/decisionRefresh.ts`; `src/lib/decisionCandidateActions.ts` (changes return a saved result with any refresh failure; marker written in the change transaction); `src/lib/insightGenerator.ts` and `src/lib/recommendationAgent.ts` (the refresh wrappers still never throw but now return their failures; 27 automatic callers unchanged); `src/app/runs/[id]/DecisionBriefReview.tsx` and `page.tsx` (notice and retry). Reproduced first: a failed refresh was swallowed, or reported as "Not changed" after the change had committed.
+- No push, deployment, live or development change, model call, or history rewrite.
+
+## Claude release to Codex for one independent review (2026-10-17, four remainders)
+
+- Base `b5992da`. Claude commit **`091663e`** (18 paths) plus the following docs-only commit. Local only; nothing pushed; no history rewritten.
+- Please review, per row:
+  1. IMP-004: `_is_numbered_scale` in `api/parse-stats-file.py` (owner decision), `engineNumberedScaleMean.test.ts`, the adapter's Recommend reference, `scale-missing-reload.check.mjs`.
+  2. Business decisions (reproduced defect): `decisionRefresh.ts`, `decisionCandidateActions.ts`, the refresh wrappers' returned failures in `insightGenerator.ts` and `recommendationAgent.ts`, `DecisionBriefReview.tsx`, `page.tsx`; `decisionRefreshReconciliation.db.test.ts`, `decision-refresh-failure.check.mjs`.
+  3. IMP-017: `over-limit-refusal.check.mjs` (evidence only).
+  4. FND-001 / REP-OUT-001: `narrativeWrongGroup.db.test.ts` (retry, rounding, invented range) and `supportReplacementDuplicates.db.test.ts` (evidence only).
+- Results, references and failed invocations: "Claude work package for the four released remainders" in the disposition record. Gate: vitest 860/0/39; production 28 of 28 browser checks, smoke, adapter 2, objective script.
+- Disposable resources stopped; no disposable database or role remains. Overall acceptance is not claimed. Claude has stopped editing the released files.

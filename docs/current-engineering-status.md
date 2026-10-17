@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CLAUDE** - readiness repair independently accepted; all43 rows reconciled, four named verification remainders released.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude package `091663e` for the four released remainders awaits independent review.
 
 ## Active version and ownership
 
@@ -526,3 +526,7 @@ Remaining technical rows: IMP-004 saved zero/missing-audit values and separate s
 Executed current targeted evidence: row regressions45 passes/9 skipped; mechanism run12 passes/1 cache runner timeout/5 skipped; separate unchanged cache continuation4 passes/1 skipped with60-second allowance. Actual Python/DB edit races and exact original two-channel selector persistence controls pass. Native old-helper control fails as expected; fixed readiness two cases pass; objective detail/overview assertions pass3/3, with usable generation supplied by its separately retained relevant native proof. All failed invocations remain failed. Application source matches the prior independently built snapshot across521 paths; no build or full837-suite rerun claimed.
 
 Two complete synthetic objects/hashes, password-free UTF-8 cluster dump, old failing trace, reports, source comparisons and logs retained locally. Verified own PID tree and labelled codex-reconcile-20261017 cluster stopped; owned listeners clear, user/development services untouched. No application edit, paid model call, push, deployment or author/history rewrite. Handoff releases only the four named bounded verification remainders, with repair only on a concrete failure and independent verification before any subsequent bug closure.
+
+## Claude four-remainder package complete (2026-10-17)
+
+Commit `091663e` (18 paths) over `b5992da`, plus the following docs-only commit. Local and unpushed. Affected source boundaries were recorded in the handoff before the package was applied to this checkout. Gate: tsc pass; vitest 121 files / 860 passed / 0 failed / 39 skipped; production build pass; 28 of 28 browser checks, smoke 1, adapter 2, objective script passed. Details: "Claude work package for the four released remainders" in the disposition record. Partition unchanged until Codex's review; overall acceptance incomplete.
