@@ -1,12 +1,37 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude remainder repairs `7d12593` (latest verdict, crosstab vertical fit), for independent verification; GT-007 in progress separately.
+Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude remainder repairs `7d12593` and GT-007 main recommendation exports `c00e5d1`, for independent verification.
 
 
 
 
 
 
+
+
+## Claude implementation of GT-007, main Recommendations list exports (2026-10-17; commit `c00e5d1`)
+
+Implemented, ready for Codex's independent verification. Authorised by Grant at `f6e63c3`. Parent `308338d` (documentation) on application `7d12593`. 11 paths, committed bytes match the package hashes (0 mismatches). No migration.
+
+- New: `src/app/api/runs/[id]/synthesized-recommendations/export/route.ts` (xlsx) and `export-deck/route.ts` (pptx), `?scope=all` (default, every review status) or `?scope=accepted`; the scope is named in the file name, on an "About" sheet and on an "About this export" slide.
+- New: `src/lib/mainRecommendationExport.ts`, the one loader and field list both files use: recommendation and insight ids, exact stored wording and status, author and edit mark, "Decisions written for" by the shared rule (`decisionContext.ts`, worded by `recommendationQualification.ts`), the insight's support by the shared FND-001 rule (`loadInsightSupportOrUnchecked`), insight review status, chain of evidence and supporting finding ids; the screen's order (insight quality, creation, id). A failed read is an error response, never an empty file; an empty list says "No recommendations in this scope."
+- New: `src/lib/fieldTableSlides.ts`: one recommendation per slide as a native field table, measured with the crosstab layout's widths (imports `crosstabSlides.ts`, unchanged); long fields continue on the next slide marked "(cont.)"; a field that cannot fit is refused (422). Accepted scope leaves invalid support out and lists it with its reason, as the per-pre-insight deck does.
+- `page.tsx`: "Main list Excel" and "Main list Slides" controls above the main list (download links, so a failed download is reported by the browser and the page, with any open edit, stays); `getSynthesizedRecommendations` reads each recommendation's decision record by the shared rule. `SynthesizedRecommendationsReview.tsx`: each card states the decisions it was written for in the export's words; `data-status`, `data-support-status`, `data-decision-state` for checks.
+- `decisionContext.ts`: comment only (where the per-item decision mark is now shown). This is one of the 7 paths released at `7d12593`; its code is unchanged.
+- Per-pre-insight exports (`recommendations/export`, `export-deck`) and their GT-004 repair are unchanged.
+
+Tests:
+- `mainRecommendationExport.db.test.ts` (real PostgreSQL 16, actual routes): mixed fixture (AI and researcher-written; accepted, pending, rejected; current, earlier and unrecorded decisions; current, invalid and changed support; a per-pre-insight recommendation kept out). Excel all and accepted (ids in order, exact wording, every qualification, scope), Slides all and accepted (tags, invalid left out and listed), a 4,000-character field rendered with LibreOffice (inside the page and above the footer, all 60 sentences and the end sentinel), empty list, a real failure (table renamed) is an error and the retry returns identical rows with the recommendations table unchanged, unknown run 404. 7 passed, 1 placeholder.
+- `e2e/ui/main-recommendation-exports.check.mjs` (production build, disposable stack, replay): project through the native controls plus three AI recommendations inserted as fixture rows; a pending one rejected with its Reject button; screen = screen after reload; native Excel and Slides downloads (both scopes, Slides rendered with LibreOffice) agree with the screen and database per id; after the finding is rejected through the UI, the dependent recommendations read "no longer valid" on screen and in Excel and are left out of the accepted Slides and listed; a download failing with a real server error is reported as a failed download, the page stays, the retry gives the same rows and no recommendation changed.
+- `journey-exports.check.mjs`: the four new routes answer 200 with the researcher's recommendation wording exactly.
+
+Checks (cloud workspace, disposable PostgreSQL 16, replay only): `npx tsc --noEmit -p .` pass; ESLint 0 errors on the changed files (5 pre-existing warnings in `page.tsx`); `vitest run src/lib/__tests__ --pool=forks` 127 files, **900 passed, 0 failed, 44 skipped**; production `next build --webpack` pass; browser **39/39** on that build, smoke 1, adapter 2, objective acceptance passed.
+
+Failed invocations (retained): the first browser run injected the download failure with `page.route(...).abort()`; after the links became download links Playwright no longer routed the request (0 aborts), so the check failed; it now injects a real server error instead. `missingRecommendationsNotice.test.tsx` first failed to load (missing `@/lib/recommendationQualification` alias mock, test harness); mock added.
+
+Original case: before this commit the main list had no export controls and `synthesized-recommendations/*` did not exist; the researcher's recommendation reached only the narrative (GT-007 register row).
+
+Limits: the support and decision states come from the shared rules; the screen shows no per-card mark for an insight that is itself rejected (the export states "Insight review"). The other export links in the app are plain navigations: a failed download there replaces the page with the browser's error page (observation, unchanged). Replay only; model quality unverified.
 
 ## Claude repair of the two export remainders (2026-10-17; commit `7d12593`)
 

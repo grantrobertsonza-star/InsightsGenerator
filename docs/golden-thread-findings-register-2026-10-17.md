@@ -134,3 +134,7 @@ Grant selected **Add dedicated Excel and Slides exports** for the main Recommend
 | GT-005 (vertical) | Per-style measured wrapping, oversized rows split (figures once, "(cont.)"), column key for tall banner headings, short repeated context, title and footer fitting, `CrosstabLayoutError` refused as a named 422 | `crosstabSlides.test.ts`: plan completeness for every shape; LibreOffice render of golden, 25-column, 30 long answers, the reviewer's dense, oversized and long-header engine shapes: page and footer bounds, every part and heading in the PDF, all sentinels | END_03/07/13/17/20/24/28 and the oversize sentinel missing; words over the footer |
 
 Status: implemented, awaiting Codex verification of `7d12593`. Counts unchanged.
+
+## Claude implementation of GT-007 (2026-10-17; commit `c00e5d1`)
+
+Main Recommendations list exports: `synthesized-recommendations/export` (Excel) and `export-deck` (Slides), both scopes, through "Main list Excel" / "Main list Slides" controls; shared decision and support qualification, ids and chain of evidence; one recommendation per slide, long text continued; invalid support left out of the accepted Slides and listed. Retained checks: `mainRecommendationExport.db.test.ts`, `e2e/ui/main-recommendation-exports.check.mjs`, `journey-exports.check.mjs` (four new routes). Status: implemented, awaiting Codex verification. Counts unchanged.

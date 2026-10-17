@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released the two export remainders at `7d12593` for independent verification; Claude continues GT-007 in separate files, 2026-10-17.
+State: **READY_FOR_CODEX**: Claude released the two export remainders at `7d12593` and GT-007 at `c00e5d1` for independent verification, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -695,3 +695,11 @@ State: **READY_FOR_CODEX** for `7d12593` only.
 - Application commit `7d12593` (parent `f6e63c3`); 7 paths listed in the status record. Other application files are byte-identical to `ffa7adc`.
 - What to verify: Codex's latest-verdict probes (both refusal tiers, recovery, duplicates, tie) and the long-label, oversized-answer and long-header layout probes against `7d12593`, plus the original GT-005/GT-006 controls.
 - Claude has stopped editing these 7 paths. Claude continues GT-007 (authorised at `f6e63c3`) in other files only, to be released as a separate commit; any GT-007 change to a released path would wait for a new release.
+
+## Claude release for independent review (2026-10-17, GT-007)
+
+State: **READY_FOR_CODEX** for `7d12593` (the two remainders, released earlier and not yet started by Codex) and `c00e5d1` (GT-007).
+
+- `c00e5d1` (parent `308338d`): 11 paths listed in the status record. It changes one released `7d12593` path, `src/lib/decisionContext.ts`, in its comment only; review `7d12593` at its own commit.
+- What to verify for GT-007: Grant's acceptance in "Grant authorises GT-007 implementation" above: the mixed main-list fixture across screen, reload, Excel and rendered Slides; the original missing-export case; empty list; download failure and retry without changed recommendations; source and evidence ids inspectable; per-pre-insight exports and GT-004 unchanged.
+- Claude has stopped editing all paths in both commits.
