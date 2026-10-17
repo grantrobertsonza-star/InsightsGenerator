@@ -1,7 +1,18 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CLAUDE**: Codex independently accepts8fa326c;37 finite rows Closed,6 Blocked; overall acceptance incomplete.
+Updated: 2026-10-17. State: **CLAUDE_WORKING**: owner handoff after Codex accepted `8fa326c` (37 Closed / 6 Blocked); no application repair queued.
 
+
+
+## Deep golden-thread check (Claude, 2026-10-17; report only)
+
+At application `8fa326c`, production build, disposable PostgreSQL 16, real Python engine, model replay only. No application file changed. Evidence: `.fnd001/deep-check-20261017/deep-check-20261017.tgz` (SHA-256 `dd6c8e98650605b8672c80040ffe19696c1a484969875b3b55b3a824290131e9`); report in the project as `claude/deep-golden-thread-check-2026-10-17.md`.
+
+- Numbers: golden thread 1, 31/31 reference assertions (25 by value within tolerance, 6 significance values by conclusion: the column test uses an unpooled SE, which the fixture README allows). Golden thread 2 weighted bases, estimates, groups and MR bases match; weight x7 rescaling invariant holds; columns-as-cases with a separate weights/MR codebook is refused explicitly.
+- Native: 30/30 UI checks, smoke 1, adapter 2, objective review acceptance 3 on the production build.
+- Integrity audit over the 38 runs the suite created: 0 violations (tenant consistency on every run-scoped table, cross-run links, recommendation anchors, decision statement equals accepted decisions, generator recommendations record decisions, no stored unsupported AI output, every insight has a verdict). Migration 0102 re-applies as a no-op.
+- Observations (S5, not blockers): the significance note does not name the unpooled SE form; decision statements order accepted decisions by `created_at` only (no `id` tie-break).
+- Not executed: model-judged stages (claim verdicts, missed insights, synthesis and narrative quality) need an authorised real-model pass; Office layout checked as text only.
 
 ## Latest independent recommendation-currentness review
 

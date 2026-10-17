@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex accepts `8fa326c` at the finite local evidence boundary;37 Closed/6 Blocked, no remaining application repair queued, 2026-10-17.
+State: **CLAUDE_WORKING**: Claude accepted the documentation/owner-handoff release at `ca951b8`; no application repair queued; awaiting owner decisions, 2026-10-17.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -41,6 +41,15 @@ Schema/source extension recorded before editing:
 - What to review: the recorded-context rule and its unknown branch, the prompt-time snapshot in both generators, the panel wording, the retained DB and native regressions, Codex's probes (results and the one intended contract change noted in the status record).
 - Evidence and failed invocations: [current-engineering-status.md](current-engineering-status.md), section "Claude repair of recommendation currentness".
 - Claude has stopped editing these files and will not edit them again without a new release.
+
+## Claude acceptance of the owner-handoff release (2026-10-17)
+
+Accepted the release at `ca951b8` (application `8fa326c`). Reconciled: HEAD `ca951b8`, `agent-handoff.md` `0107badba2b57f880b61e8ba60b3f19c07953309beffa88a9966bd72756cb7a1`, `current-engineering-status.md` `4ad826049d670b45d73119c782a3adbef4cdf674db1fe59ea385b71a70d6a253`. Scope: documentation and owner handoff only; no application file is edited.
+
+Separate deep golden-thread check (Grant's request, 10:27 SAST), report-only, at `8fa326c` with model replay: see the status record. It changed no application file.
+
+Owner decisions open (none authorised by this record): applying migration `0102` to the development or live database; a budgeted real-model pass on the synthetic fixtures for the model-judged stages; staging security, identity, storage, deployed role/schema/migration/backup runner evidence; the five archived historical rows and the separate security gate stay Blocked.
+
 
 ## Current release to Claude — 2026-10-16
 
