@@ -29,9 +29,19 @@ const appUrl = new URL(target.appUrl);
 // Variables in rows, one column per case: the file that needs the non-default layout.
 const WIDE_CSV = ["Variable,R1,R2,R3,R4", "ID,001,002,003,004", "Gender,1,2,1,2", "Score,5,4,3,5"].join("\n");
 
-async function openImport(page) {
+// Opens the Import data panel and waits until `ready` (something inside it) is present. A single
+// visibility probe straight after navigation could run before the section button rendered, skip
+// the click, and leave the check waiting five minutes for a panel that was never opened (Codex's
+// retained trace, 2026-10-17). Here the button is clicked only while `ready` is absent, and the
+// attempt repeats until it appears or the timeout passes.
+async function openImport(page, ready) {
   const button = page.getByRole("button", { name: /Import data/ }).first();
-  if (await button.isVisible()) await button.click();
+  await expect(async () => {
+    if ((await ready.count()) === 0) {
+      await button.click({ timeout: 5_000 });
+      await expect(ready.first()).toBeAttached({ timeout: 5_000 });
+    }
+  }).toPass({ timeout: 90_000 });
 }
 
 test("a layout chosen while the page loads is held, and one chosen after loading is saved", async ({ page }) => {
@@ -45,8 +55,8 @@ test("a layout chosen while the page loads is held, and one chosen after loading
   const dir = mkdtempSync(path.join(tmpdir(), "layout-check-"));
   const file = path.join(dir, "wide-layout.csv");
   writeFileSync(file, WIDE_CSV);
-  await openImport(page);
   const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
+  await openImport(page, form.locator('input[name="rawTableFiles"]'));
   await form.locator('input[name="rawTableFiles"]').setInputFiles(file);
   await form.getByRole("button", { name: "Upload", exact: true }).click();
   const layout = () => page.getByLabel(/How the file is laid out: wide-layout\.csv/);
@@ -78,6 +88,6 @@ test("a layout chosen while the page loads is held, and one chosen after loading
   expect((await saved).status()).toBe(200);
   await expect(page.getByText("Needs review", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await page.reload({ waitUntil: "networkidle" });
-  await openImport(page);
+  await openImport(page, layout());
   await expect(layout()).toHaveValue("columns_are_cases", { timeout: 60_000 });
 });
