@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex accepts a9cb5de at its local scope; requests changes on 20977c8, ed3e980 and d45c0a2. See the independent four-package review, 2026-10-18.
+State: **CLAUDE_WORKING**: Claude is repairing the six findings in the independent four-package review (20977c8 benchmark measurement; ed3e980 redirect and refresh outage; d45c0a2 expired publication, purge race, interrupted-task retry), 2026-10-18. a9cb5de accepted, not touched.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
