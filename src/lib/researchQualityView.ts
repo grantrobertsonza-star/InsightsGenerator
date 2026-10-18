@@ -75,8 +75,19 @@ export type ResearchQualityView = {
     facts: DocumentedFact[];
     observations: ObservationView[];
     referencePassages: { referenceId: string; passageId: string; title: string; text: string; synthetic: boolean }[];
+    progress: ReviewProgress;
   });
 };
+
+/**
+ * Live progress of a review's steps, read from the task rows (the stored coverage is written only
+ * when a run finishes). `interrupted` is true when the review still says pending or running but no
+ * step is being worked on: nothing holds a live lease and nothing has moved for INTERRUPTED_AFTER
+ * seconds. That is what a server restart or an unexpected error mid-run leaves behind; the screen
+ * says so and offers to continue, instead of showing "reviewing" for ever.
+ */
+export type ReviewProgress = { total: number; done: number; failed: number; working: number; waiting: number; interrupted: boolean };
+export const INTERRUPTED_AFTER_SECONDS = 120;
 
 const entryAuthor = (email: string | null) => email ?? "single user (before sign-in)";
 
@@ -148,7 +159,30 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
     const chosen = reviewId ? reviewRows.find((r) => r.id === reviewId) : reviewRows[0];
     if (!chosen) return view;
     const manifest = chosen.manifest as ReviewManifest;
-    view.review = { ...summary(chosen), manifest, coverage: (chosen.coverage ?? {}) as never, sourceFreshness: [], newClarifications: clar.filter((c) => !manifest.clarificationIds.includes(c.id)).length, facts: [], observations: [], referencePassages: [] };
+    const progress = (
+      await client.query<{ total: number; done: number; failed: number; working: number; waiting: number; idle: boolean }>(
+        `select count(*)::int as total,
+                count(*) filter (where status = 'succeeded')::int as done,
+                count(*) filter (where status = 'failed')::int as failed,
+                count(*) filter (where status = 'running' and lease_expires_at > clock_timestamp())::int as working,
+                count(*) filter (where status = 'pending' or (status = 'running' and lease_expires_at <= clock_timestamp()))::int as waiting,
+                coalesce(max(updated_at), now()) < clock_timestamp() - make_interval(secs => $2) as idle
+           from research_quality_tasks where review_id = $1`,
+        [chosen.id, INTERRUPTED_AFTER_SECONDS],
+      )
+    ).rows[0];
+    const active = chosen.state === "pending" || chosen.state === "running";
+    view.review = {
+      ...summary(chosen),
+      manifest,
+      coverage: (chosen.coverage ?? {}) as never,
+      sourceFreshness: [],
+      newClarifications: clar.filter((c) => !manifest.clarificationIds.includes(c.id)).length,
+      facts: [],
+      observations: [],
+      referencePassages: [],
+      progress: { total: progress.total, done: progress.done, failed: progress.failed, working: progress.working, waiting: progress.waiting, interrupted: active && progress.working === 0 && progress.idle },
+    };
     view.review.sourceFreshness = await sourceFreshness(client, manifest);
     view.review.facts = await reviewFacts(client, chosen.id as string, manifest);
     view.review.observations = await reviewObservations(client, runId, chosen.id as string, chosen.sequence as number, view.review.sourceFreshness);

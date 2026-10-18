@@ -15,7 +15,7 @@ const ROLE = "ie_test_rq_app";
 let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
 const objects = new Map<string, Buffer>();
 const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> } };
+const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess" };
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
@@ -54,6 +54,9 @@ vi.mock("../anthropic", () => ({
             statement: s.slice(0, 80),
             exact_quote: s,
           }));
+          if (model.cutOff === "extract") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: { facts: facts.slice(0, 1) } }] };
+          // The live model's slip seen on 2026-10-18: the list arrives as a JSON string and the flag is left out.
+          if (model.stringifyLists) return { usage, content: [{ type: "tool_use", input: { facts: JSON.stringify(facts) } }] };
           return { usage, content: [{ type: "tool_use", input: { nothing_found: facts.length === 0, facts } }] };
         }
         const payload = JSON.parse(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
@@ -80,7 +83,8 @@ vi.mock("../anthropic", () => ({
           };
         });
         void group;
-        return { usage, content: [{ type: "tool_use", input: { observations } }] };
+        if (model.cutOff === "assess") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: {} }] };
+        return { usage, content: [{ type: "tool_use", input: model.stringifyLists ? { observations: JSON.stringify(observations) } : { observations } }] };
       },
     },
   },
@@ -173,6 +177,8 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     model.failTask = null;
     model.malformed = null;
     model.hold = null;
+    model.stringifyLists = false;
+    model.cutOff = null;
   });
 
   it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
@@ -750,6 +756,97 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const v = await viewOf(r.reviewId);
       expect(v.review!.state).toBe("complete");
       expect(v.review!.observations.length).toBeGreaterThan(0);
+    });
+  });
+
+  // Grant's first live review, 2026-10-18: "extraction answer is not in the required shape" on every
+  // passage, and a review that stayed "running" long after. These cases reproduce both with the
+  // actual actions, runner, repository and view.
+  describe("live-model answers and stalled runs", () => {
+    const freshDoc = async (label: string) =>
+      addDoc(A, runA, `${label}.txt`, Buffer.from(`Live ${label}.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n`));
+
+    it("lists returned as JSON text, without the nothing-found flag, are read and the review completes", async () => {
+      model.stringifyLists = true;
+      const id = await start([{ documentId: await freshDoc("stringified"), roles: ["brief"] }]);
+      const v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.facts.length).toBeGreaterThan(0);
+      expect(v.review!.observations.length).toBeGreaterThan(0);
+    });
+
+    it("an answer cut off at the length limit is refused with that reason, and a retry completes the review", async () => {
+      model.cutOff = "extract";
+      const id = await start([{ documentId: await freshDoc("cutoff"), roles: ["brief"] }]);
+      let v = await viewOf(id);
+      expect(v.review!.state).toBe("failed");
+      const failed = v.review!.coverage.tasks!.filter((t) => t.status === "failed");
+      expect(failed.length).toBeGreaterThan(0);
+      for (const t of failed) expect(t.error).toMatch(/cut off at the \d+-token limit/);
+      model.cutOff = null;
+      expect((await m.actions.retryResearchQualityReviewAction(runA, id)).ok).toBe(true);
+      await settle();
+      v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      // Same check for the assessment stage.
+      model.cutOff = "assess";
+      const id2 = await start([{ documentId: await freshDoc("cutoff-assess"), roles: ["brief"] }]);
+      const v2 = await viewOf(id2);
+      expect(v2.review!.coverage.tasks!.filter((t) => t.stage === "assess" && t.status === "failed").every((t) => /cut off/.test(t.error ?? ""))).toBe(true);
+    });
+
+    it("a shape the model cannot be read from names what arrived, never the content", async () => {
+      const { validateExtraction } = await import("../researchQualityRules");
+      const ctx = { text: "abc", range: { start: 0, end: 3 }, segments: [], sourceId: "s", sourceVersionId: "v" };
+      expect(() => validateExtraction({ facts: "not json" }, ctx)).toThrow("extraction answer is not in the required shape (facts: string, nothing_found: missing)");
+      expect(() => validateExtraction({}, ctx)).toThrow("(facts: missing, nothing_found: missing)");
+      expect(() => validateExtraction(null, ctx)).toThrow("(received nothing)");
+      expect(() => validateExtraction({ facts: [] }, ctx)).toThrow(/required shape/); // an empty list still needs the explicit flag
+    });
+
+    it("a run that stopped part-way shows as interrupted, not running, and Continue finishes it once", async () => {
+      const id = await start([{ documentId: await freshDoc("interrupted"), roles: ["brief"] }]);
+      // Make it look exactly like a server restart mid-run: review running, one step mid-attempt
+      // with its lease run out, the rest never started, nothing touched for minutes.
+      await q(`delete from research_quality_observation_versions where review_id = $1`, [id]);
+      await q(`update research_quality_tasks set status = 'pending', attempts = 0, lease_token = null, lease_expires_at = null, result = result - 'facts', updated_at = now() - interval '10 minutes' where review_id = $1`, [id]);
+      const one = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'extract' order by task_key limit 1`, [id])).rows[0].id;
+      await q(`update research_quality_tasks set status = 'running', attempts = 1, lease_expires_at = now() - interval '5 minutes' where id = $1`, [one]);
+      await q(`update research_quality_reviews set state = 'running', completed_at = null where id = $1`, [id]);
+      let v = await viewOf(id);
+      expect(v.review!.state).toBe("running");
+      expect(v.review!.progress).toMatchObject({ done: 0, working: 0, interrupted: true });
+      // A step with a live lease is work in progress, not an interruption.
+      await q(`update research_quality_tasks set lease_expires_at = now() + interval '5 minutes' where id = $1`, [one]);
+      expect((await viewOf(id)).review!.progress).toMatchObject({ working: 1, interrupted: false });
+      await q(`update research_quality_tasks set lease_expires_at = now() - interval '5 minutes' where id = $1`, [one]);
+      model.calls = [];
+      expect((await m.actions.retryResearchQualityReviewAction(runA, id)).ok).toBe(true);
+      await settle();
+      v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.progress).toMatchObject({ interrupted: false, failed: 0 });
+      expect(v.review!.progress.done).toBe(v.review!.progress.total);
+      const extracts = (await q(`select count(*)::int n from research_quality_tasks where review_id = $1 and stage = 'extract'`, [id])).rows[0].n;
+      expect(model.calls.filter((c) => c === "record_documented_facts").length).toBe(extracts); // each step once
+      // Continuing a finished review does nothing.
+      model.calls = [];
+      await m.actions.retryResearchQualityReviewAction(runA, id);
+      await settle();
+      expect(model.calls).toEqual([]);
+    });
+
+    it("an unexpected failure outside a single step does not leave the review marked running", async () => {
+      const id = await start([{ documentId: await freshDoc("crash"), roles: ["brief"] }]);
+      // Remove the run limits from the stored manifest so the runner fails between steps, outside
+      // the per-step error handling, as an unexpected database or code error would.
+      await q(`update research_quality_tasks set status = 'pending', attempts = 0 where review_id = $1 and stage = 'extract'`, [id]);
+      await q(`update research_quality_reviews set state = 'running', manifest = manifest - 'limits' where id = $1`, [id]);
+      const runner = await import("../researchQualityReview");
+      await expect(runner.runReview(A, runA, id)).rejects.toThrow();
+      const v = await viewOf(id);
+      expect(["failed", "partial"]).toContain(v.review!.state);
+      expect(v.review!.progress.interrupted).toBe(false);
     });
   });
 

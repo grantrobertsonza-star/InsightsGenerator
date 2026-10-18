@@ -30,6 +30,8 @@ import {
   selectCriteria,
   sha256,
   validateExtraction,
+  normaliseToolAnswer,
+  describeShape,
   validateObservation,
   type Criterion,
   type RawObservation,
@@ -215,10 +217,20 @@ async function callTool(tenantId: string, runId: string, agent: string, system: 
   const u = response.usage as { input_tokens: number; output_tokens: number };
   await logApiUsage(tenantId, runId, agent, response.usage);
   const usage = { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cost: estimateCostUsd(u.input_tokens ?? 0, u.output_tokens ?? 0) };
+  // An answer cut off at the length limit is incomplete even when it parses; it is refused with
+  // that reason rather than validated as if it were whole.
+  if (response.stop_reason === "max_tokens") throw Object.assign(new Error(`the answer was cut off at the ${maxTokens}-token limit`), { usage });
   const block = response.content.find((b) => b.type === "tool_use") as { input?: unknown } | undefined;
   if (!block || block.input === undefined) throw Object.assign(new Error("the model gave no structured answer"), { usage });
   return { input: block.input, usage };
 }
+
+// Output budgets. Up to 60 facts with quotes of up to 400 characters, plus statements, can exceed
+// 6,000 tokens on a dense brief; an assessment of a criteria group carries reasoning and an
+// improvement per criterion. Both stay well inside the model's output limit, and callTool refuses an
+// answer that still reaches the budget rather than validating a truncated one.
+const EXTRACT_MAX_TOKENS = 16000;
+const ASSESS_MAX_TOKENS = 16000;
 
 const EXTRACT_SYSTEM = [
   "You extract documented facts from research documents for a methodological quality review.",
@@ -355,7 +367,7 @@ async function runExtraction(tenantId: string, runId: string, review: { manifest
       EXTRACT_SYSTEM,
       `Document: ${src.filename}\nRoles confirmed by the researcher: ${src.roles.join(", ")}\nPassage ${input.range.start}-${input.range.end} of ${src.charCount} characters.\n<document>\n${passage}\n</document>`,
       EXTRACT_TOOL,
-      6000,
+      EXTRACT_MAX_TOKENS,
     );
     usage = answer.usage;
     const validated = validateExtraction(answer.input, { text: pinned.text, range: input.range, segments: pinned.segments, sourceId: src.sourceId, sourceVersionId: src.sourceVersionId });
@@ -401,10 +413,12 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
       })),
       reference_passages: passages.map((p) => ({ reference_id: p.referenceId, passage_id: p.passageId, text: p.text })),
     };
-    const answer = await callTool(tenantId, runId, "research_quality_assess", ASSESS_SYSTEM, JSON.stringify(payload), ASSESS_TOOL, 8000);
+    const answer = await callTool(tenantId, runId, "research_quality_assess", ASSESS_SYSTEM, JSON.stringify(payload), ASSESS_TOOL, ASSESS_MAX_TOKENS);
     usage = answer.usage;
-    const raw = (answer.input as { observations?: unknown }).observations;
-    if (!Array.isArray(raw) || raw.length === 0) throw new Error("the assessment returned no observations");
+    const answerObj = normaliseToolAnswer(answer.input, "observations");
+    const raw = (answerObj as { observations?: unknown } | null)?.observations;
+    if (!Array.isArray(raw)) throw new Error(`the assessment answer is not in the required shape (${describeShape(answerObj, ["observations"])})`);
+    if (raw.length === 0) throw new Error("the assessment returned no observations");
     const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent }));
     const covered = new Set(validated.map((v) => v.criterionId));
     const notAssessed = criteriaIds.filter((id) => !covered.has(id));
@@ -442,6 +456,19 @@ async function runPool<T>(items: T[], concurrency: number, fn: (t: T) => Promise
  * are never rerun.
  */
 export async function runReview(tenantId: string, runId: string, reviewId: string): Promise<void> {
+  try {
+    await runReviewSteps(tenantId, runId, reviewId);
+  } catch (error) {
+    // An unexpected failure outside a single step (a database error, say) must not leave the
+    // review marked running with nobody working on it. Record the state the tasks actually reached;
+    // anything unfinished counts as not done, and retry can continue it.
+    console.error("[researchQuality] review run stopped:", error);
+    await finishReview(tenantId, reviewId, null, false).catch((e) => console.error("[researchQuality] could not record the stopped review:", e));
+    throw error;
+  }
+}
+
+async function runReviewSteps(tenantId: string, runId: string, reviewId: string): Promise<void> {
   const review = await loadReviewRow(tenantId, runId, reviewId);
   const manifest = review.manifest;
   await setReviewState(tenantId, reviewId, "running");
@@ -468,14 +495,14 @@ export async function runReview(tenantId: string, runId: string, reviewId: strin
   await finishReview(tenantId, reviewId, facts.length, coverageComplete);
 }
 
-async function finishReview(tenantId: string, reviewId: string, factCount: number, coverageComplete: boolean): Promise<void> {
+async function finishReview(tenantId: string, reviewId: string, factCount: number | null, coverageComplete: boolean): Promise<void> {
   const tasks = await loadTasks(tenantId, reviewId);
   const ok = tasks.filter((t) => t.status === "succeeded");
   const failed = tasks.filter((t) => t.status === "failed" || t.status === "pending" || t.status === "running");
   const assessOk = ok.some((t) => t.stage === "assess");
   const state = failed.length === 0 ? "complete" : assessOk ? "partial" : "failed";
   await setReviewState(tenantId, reviewId, state, {
-    facts: factCount,
+    facts: factCount ?? undefined,
     coverageComplete,
     tasks: tasks.map((t) => ({ key: t.task_key, stage: t.stage, status: t.status, attempts: t.attempts, maxAttempts: t.max_attempts, error: t.error, validation: t.validation })),
   });
@@ -501,6 +528,10 @@ export async function retryFailedTasks(tenantId: string, runId: string, reviewId
   if (unfinishedExtract && assessPublished) notes.push("A document that could not be read is not retried in this review, because its assessments are already published. Start a new review version to include it.");
   const exhausted = tasks.filter((t) => unfinished(t) && t.attempts >= t.max_attempts && !(t.stage === "extract" && assessPublished));
   if (exhausted.length) notes.push(`${exhausted.length === 1 ? "One step has" : `${exhausted.length} steps have`} used all of their attempts and cannot be retried in this review. Start a new review version to try again.`);
-  if (retried > 0) await runReview(tenantId, runId, reviewId);
+  // Steps that never started (the run stopped before reaching them) are pending already: they need
+  // a run, not a reset. A run claims each task atomically, so a runner still working elsewhere and
+  // this one never do the same step twice.
+  const neverStarted = tasks.filter((t) => t.status === "pending").length;
+  if (retried > 0 || neverStarted > 0) await runReview(tenantId, runId, reviewId);
   return { retried, note: notes.length ? notes.join(" ") : null };
 }

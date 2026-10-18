@@ -233,6 +233,36 @@ export function chunkRanges(charCount: number, maxChars: number, chunk = 20_000)
 
 // ---------------------------------------------------------------- extraction validation
 
+/**
+ * Repairs the one structural slip the model makes with long answers: returning a list field as a
+ * JSON-encoded string instead of a list (observed with the live model on 2026-10-18, where every
+ * extraction of a real brief was refused). Only that exact case is repaired, and only when the
+ * string parses to a list; anything else is left as it is for validation to refuse. No content is
+ * invented or defaulted.
+ */
+export function normaliseToolAnswer(raw: unknown, listKey: string): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const obj = { ...(raw as Record<string, unknown>) };
+  const v = obj[listKey];
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed)) obj[listKey] = parsed;
+    } catch {
+      /* left as a string: validation refuses it and says so */
+    }
+  }
+  return obj;
+}
+
+/** Names what an unusable answer contained (field types only, never content), so the failure shown to the researcher and kept in the task record is diagnosable. */
+export function describeShape(raw: unknown, keys: string[]): string {
+  if (raw === null || typeof raw !== "object") return `received ${raw === null ? "nothing" : typeof raw}`;
+  const r = raw as Record<string, unknown>;
+  const kind = (v: unknown) => (v === undefined ? "missing" : Array.isArray(v) ? "list" : v === null ? "null" : typeof v);
+  return keys.map((k) => `${k}: ${kind(r[k])}`).join(", ");
+}
+
 export type ExtractedFactInput = { topic: unknown; phase: unknown; selection?: unknown; statement: unknown; exact_quote: unknown };
 
 /** Validates one extraction answer: enums, sizes and quotes. Unverifiable quotes are dropped and counted. */
@@ -240,8 +270,11 @@ export function validateExtraction(
   raw: unknown,
   ctx: { text: string; range: { start: number; end: number }; segments: Segment[]; sourceId: string; sourceVersionId: string },
 ): { facts: Omit<DocumentedFact, "factId">[]; dropped: number; nothingFound: boolean } {
-  const r = raw as { facts?: unknown; nothing_found?: unknown } | null;
-  if (!r || !Array.isArray(r.facts) || typeof r.nothing_found !== "boolean") throw new Error("extraction answer is not in the required shape");
+  const r = normaliseToolAnswer(raw, "facts") as { facts?: unknown; nothing_found?: unknown } | null;
+  // A non-empty fact list answers the question "was anything found?" by itself; only an empty list
+  // needs the explicit flag, so a missing flag is never taken as "nothing found".
+  if (r && Array.isArray(r.facts) && r.facts.length > 0 && r.nothing_found === undefined) r.nothing_found = false;
+  if (!r || !Array.isArray(r.facts) || typeof r.nothing_found !== "boolean") throw new Error(`extraction answer is not in the required shape (${describeShape(r, ["facts", "nothing_found"])})`);
   if (r.facts.length === 0 && !r.nothing_found) throw new Error("extraction returned no facts without saying nothing was found");
   if (r.facts.length > 120) throw new Error("extraction returned more facts than allowed");
   const facts: Omit<DocumentedFact, "factId">[] = [];
