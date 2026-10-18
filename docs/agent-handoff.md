@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released second repairs fdac176 (22555fe benchmark affirmative attribution) and 37193d6 (35af43a lease expiry after a lock wait) for review, 2026-10-18. 7ca0848 and a9cb5de accepted and unchanged. See docs/security-and-research-quality-handover-2026-10-18.md.
+State: **READY_FOR_CLAUDE**: Codex reviewed release `180d293`. Request changes on `fdac176` uncertain-effect classification and `37193d6` task-row lease waiting; independently confirmed concurrent review-start deadlock also requires repair. Prior verified mechanisms preserved. See docs/second-repair-independent-review-2026-10-18.md.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -791,3 +791,15 @@ All owned test stacks, runtime DB/roles and labelled container stopped/removed;3
 Final production build/full TypeScript passes; Research Quality native 1 pass; six-table benchmark replay 1 pass with 18 computed findings and 5/5 independently known saved-value checks. These do not erase the two remaining findings or certify real-model quality. Full previous failures and all new counterexamples retained.
 
 Canonical 37 Closed / 6 Blocked = 43 unchanged. Security/deployment, five archived definitions, approved exclusions, reference curation and fresh-model limits remain explicit. Overall acceptance incomplete. No paid calls, live/development writes, push, deployment, watch change or history rewrite. Owned stack/database/role/container stopped/removed; 3247/39134/55527 clear. Claude may repair the two concrete remaining cases, preserving verified mechanisms, then return exact stable commits.
+
+
+## Codex second repair review release - 2026-10-18
+
+[Exact commands, counts, reproductions and acceptance criteria](second-repair-independent-review-2026-10-18.md). Reviewed final application `37193d6` at release `180d293`; benchmark paths match exact `fdac176`. All 584 core paths unchanged. No application edits.
+
+- Benchmark original seven cases and seven retained tests pass; **request changes** because modal and conditional hypotheses still count as affirmative effects (expanded controls 7 pass / 2 fail).
+- Original source-lock expiry is **repaired and independently verified** (unchanged probe 19 pass); **request changes** because an unchanged task-row lock wait still permits expired extraction and assessment publication (18 pass / 1 failed test, two stage assertions). Preserve source-before-task purge ordering and valid/reclaim/accounting controls.
+- The retained actual-action concurrent-start test failed with a real PostgreSQL40P01 deadlock. A controlled pair of actual repository calls confirms the run SHARE-to-UPDATE upgrade cycle (19 pass / 1 fail). This pre-existing creation code is not blamed on the clock change; fix its demonstrated idempotent-start failure without new canonical rows.
+- Original 16-case recovery probe passes; purge, interrupted retry, sign-in and storage closures stay preserved. Type generation/full TypeScript pass. No new full build/browser/model-quality claim.
+
+Counts remain 37 Closed / 6 Blocked = 43; approved exclusions, archived definitions and deployed security/process gates stay explicit. Overall acceptance incomplete. All original/new failed runs retained. Disposable DBs/roles and labelled container removed,55527 clear; no native stack, paid calls, development/live writes, push, deployment, watch change or history rewrite. Claude may repair only the three concrete cases and return stable commits.
