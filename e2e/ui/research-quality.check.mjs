@@ -40,6 +40,17 @@ test("research quality review: start, review, decide, conflict, clarify, export"
     const section = page.getByTestId("research-quality");
     await expect(section.getByRole("button", { name: "Review selected material" })).toBeVisible({ timeout: 60_000 });
     expect(await usage()).toBe(0);
+    // Menu order agreed 2026-10-18: Import data, Research quality review, then Objectives with
+    // Business decisions inside; and the module uses the shared three-pane layout.
+    const menu = (await page.locator("#run-nav-slot button").allInnerTexts()).map((t) => t.replace(/\s*\d+$/, "").trim());
+    const at = (label) => menu.indexOf(label);
+    for (const label of ["Import data", "Research quality review", "Set Objectives", "Review Objectives", "Business decisions", "Analytics"]) expect(at(label), `${label} in ${menu.join(" | ")}`).toBeGreaterThanOrEqual(0);
+    expect(at("Import data")).toBe(0);
+    expect(at("Research quality review")).toBe(1);
+    expect(at("Set Objectives")).toBeGreaterThan(at("Research quality review"));
+    expect(at("Business decisions")).toBe(at("Review Objectives") + 1);
+    expect(at("Analytics")).toBeGreaterThan(at("Business decisions"));
+    for (const title of ["Reviews", "Start a review", "Documents"]) await expect(section.getByRole("heading", { name: title, exact: true })).toBeVisible();
 
     // 2. the per-document link preselects that document
     await page.getByRole("button", { name: /^Reports and decks/ }).first().click();
@@ -122,7 +133,8 @@ test("research quality review: start, review, decide, conflict, clarify, export"
     await section.getByLabel("Clarification").fill("Recruitment will use the customer database.");
     await section.getByRole("button", { name: "Save clarification" }).click();
     await expect(section.getByText(/Clarification saved/)).toBeVisible();
-    await section.getByRole("tab", { name: "History and export" }).click();
+    // History and export sit in the right-hand pane beside the review (three-pane layout).
+    await expect(section.getByRole("heading", { name: "History and export" })).toBeVisible();
     const [download] = await Promise.all([page.waitForEvent("download"), section.getByRole("link", { name: "Download review (Word)" }).click()]);
     const bytes = readFileSync(await download.path());
     const xml = await (await JSZip.loadAsync(bytes)).file("word/document.xml").async("string");

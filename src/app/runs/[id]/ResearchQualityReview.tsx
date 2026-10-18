@@ -15,6 +15,7 @@ import {
   saveResearchQualityRolesAction,
   startResearchQualityReviewAction,
 } from "@/lib/researchQualityActions";
+import { Pane, ThreePane } from "./ThreePane";
 import { RQ_PRESELECT_EVENT } from "./ReviewResearchQualityLink";
 import { ROLE_LABEL, SOURCE_ROLES, type ResearcherEntryKind, type SourceRole } from "@/lib/researchQualityTypes";
 import {
@@ -31,15 +32,16 @@ import {
 } from "@/lib/researchQualityPresentation";
 import type { ObservationView, ResearchQualityView } from "@/lib/researchQualityView";
 
-type Tab = "overview" | "documents" | "alignment" | "improvements" | "clarifications" | "history";
+// The middle pane's tabs. Documents and History and export live in the right-hand pane, beside
+// the review, as on the other three-pane pages.
+type Tab = "overview" | "alignment" | "improvements" | "clarifications";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "documents", label: "Documents" },
   { id: "alignment", label: "Alignment" },
   { id: "improvements", label: "Improvements" },
   { id: "clarifications", label: "Clarifications" },
-  { id: "history", label: "History and export" },
 ];
+const STATE_LABEL: Record<string, string> = { pending: "starting", running: "running", complete: "complete", partial: "partial", failed: "failed" };
 const key = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "");
 const defaultRoles = (kind: string): SourceRole[] => (kind === "report" ? ["report"] : kind === "instrument" ? ["questionnaire"] : kind === "transcript" ? ["fieldwork"] : ["brief"]);
 const btn = "rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50";
@@ -102,52 +104,91 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
   if (error?.setup) return <p role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">{error.text}</p>;
   if (!view) return <p className="text-sm text-muted">{error ? error.text : "Loading..."}</p>;
   const showStart = starting || !view.review;
+  const r = view.review;
   return (
-    <div className="flex flex-col gap-3" data-testid="research-quality">
-      {error && <p role="alert" className="rounded-md bg-red-50 p-2 text-sm text-red-800">{error.text}</p>}
-      <p className="max-w-3xl text-xs text-muted">
-        AI judgements about the documents you select, checked by code and reviewed by you. Not a score or a certification. The text of reviewed documents is kept with the review history, even if
-        the project document is later deleted, until you purge it under Documents.
-      </p>
-      {view.reviews.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <label>
-            Review{" "}
-            <select aria-label="Review version" value={view.review?.id ?? ""} onChange={(e) => { setStarting(false); setReviewId(e.target.value || null); }} className="rounded border border-border px-1 py-0.5">
-              {view.reviews.map((r) => (
-                <option key={r.id} value={r.id}>{`Review ${r.sequence}: ${r.state}, ${r.createdAt.slice(0, 10)}`}</option>
-              ))}
-            </select>
-          </label>
-          {!showStart && <button className={btn} onClick={() => setStarting(true)}>New review version</button>}
-        </div>
-      )}
-      {showStart ? (
-        <StartPanel
-          key={preselectDocumentId ?? "none"}
-          runId={runId}
-          view={view}
-          preselect={preselectDocumentId}
-          onCancel={view.review ? () => setStarting(false) : null}
-          onStarted={(id) => {
-            setStarting(false);
-            setReviewId(id);
-            setTab("overview");
-            void load(id);
-          }}
-        />
-      ) : (
-        <>
-          <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
-            {TABS.map((t) => (
-              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`px-2.5 py-1.5 text-xs font-medium ${tab === t.id ? "border-b-2 border-primary text-foreground" : "text-muted"}`}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <ReviewBody runId={runId} view={view} tab={tab} reload={() => load(reviewId)} />
-        </>
-      )}
+    <div data-testid="research-quality">
+      <ThreePane
+        storageKey="research-quality"
+        left={
+          <Pane side="left" title="Reviews" badge={view.reviews.length > 0 ? <span className="rounded-full bg-white px-2 text-xs text-muted">{view.reviews.length}</span> : undefined}>
+            <p className="text-xs text-muted">
+              AI judgements about the documents you select, checked by code and reviewed by you. Not a score or a certification. The text of reviewed documents is kept with the review history,
+              even if the project document is later deleted, until you purge it under Documents.
+            </p>
+            <button className={`${primary} w-fit`} disabled={showStart} onClick={() => setStarting(true)}>
+              {view.reviews.length === 0 ? "Start a review" : "New review version"}
+            </button>
+            {view.reviews.length > 0 && (
+              <ul aria-label="Review versions" className="flex flex-col gap-1">
+                {view.reviews.map((x) => {
+                  const active = !showStart && r?.id === x.id;
+                  return (
+                    <li key={x.id}>
+                      <button
+                        aria-current={active ? "true" : undefined}
+                        onClick={() => { setStarting(false); setReviewId(x.id); }}
+                        className={`w-full rounded-md border px-2 py-1.5 text-left text-xs ${active ? "border-primary bg-white font-medium text-foreground" : "border-transparent hover:border-border hover:bg-white"}`}
+                      >
+                        {`Review ${x.sequence}`}
+                        <span className="ml-1 text-muted">{`${STATE_LABEL[x.state] ?? x.state}, ${x.createdAt.slice(0, 10)}`}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Pane>
+        }
+        middle={
+          <Pane side="middle" title={showStart ? (view.reviews.length === 0 ? "Start a review" : "New review version") : `Review ${r!.sequence}`}>
+            {error && <p role="alert" className="rounded-md bg-red-50 p-2 text-sm text-red-800">{error.text}</p>}
+            {showStart ? (
+              <StartPanel
+                key={preselectDocumentId ?? "none"}
+                runId={runId}
+                view={view}
+                preselect={preselectDocumentId}
+                onCancel={view.review ? () => setStarting(false) : null}
+                onStarted={(id) => {
+                  setStarting(false);
+                  setReviewId(id);
+                  setTab("overview");
+                  void load(id);
+                }}
+              />
+            ) : (
+              <>
+                <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
+                  {TABS.map((t) => (
+                    <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`px-2.5 py-1.5 text-xs font-medium ${tab === t.id ? "border-b-2 border-primary text-foreground" : "text-muted"}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <ReviewBody runId={runId} view={view} tab={tab} reload={() => load(reviewId)} />
+              </>
+            )}
+          </Pane>
+        }
+        right={
+          <Pane side="right" title={r && !showStart ? "Documents and export" : "Documents"}>
+            {r && !showStart ? (
+              <>
+                <h4 className="text-xs font-semibold text-foreground">Documents in this project</h4>
+                <DocumentsTab runId={runId} view={view} reload={() => load(reviewId)} />
+                <h4 className="mt-2 text-xs font-semibold text-foreground">History and export</h4>
+                <HistoryTab runId={runId} view={view} />
+              </>
+            ) : (
+              <p className="text-xs text-muted">
+                {view.documents.length === 0
+                  ? "No documents yet. Add a brief, proposal, questionnaire or report under Import data; PDF, Word and text files can be reviewed."
+                  : "Select documents and their roles in the middle. After a review, each document's versions, roles and purge control appear here, with the review history and the Word export."}
+              </p>
+            )}
+          </Pane>
+        }
+      />
     </div>
   );
 }
@@ -304,7 +345,17 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
   return (
     <div className="flex flex-col gap-3">
       <div data-testid="rq-review-state" data-state={r.state} className={`rounded-md p-2 text-xs ${r.state === "complete" ? "bg-emerald-50 text-emerald-900" : r.state === "failed" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900"}`}>
-        {r.state === "pending" || r.state === "running" ? "Reviewing the selected material. This page updates by itself." : null}
+        {(r.state === "pending" || r.state === "running") && !r.progress.interrupted
+          ? `Reviewing the selected material: ${r.progress.done} of ${r.progress.total} steps done${r.progress.failed ? `, ${r.progress.failed} failed` : ""}. Each step can take a minute or two; this page updates by itself.`
+          : null}
+        {r.progress.interrupted && (
+          <div data-testid="rq-review-interrupted">
+            {`Review ${r.sequence} stopped before it finished (${r.progress.done} of ${r.progress.total} steps done), most likely because the server restarted. Nothing done so far is lost.`}
+            <button className={`${btn} ml-2`} onClick={async () => { const x = await retryResearchQualityReviewAction(runId, r.id); setRetryMsg(x.ok ? "Continuing the review from where it stopped." : x.error); await reload(); }}>
+              Continue review
+            </button>
+          </div>
+        )}
         {r.state === "complete" ? `Review ${r.sequence} is complete.` : null}
         {r.state === "partial" ? `Review ${r.sequence} is partial: ${failedSteps.length} step(s) failed. What is shown was assessed; the rest is listed as not assessed.` : null}
         {r.state === "failed" ? `Review ${r.sequence} failed: nothing could be assessed.` : null}
@@ -345,11 +396,9 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
           {r.observations.map((o) => <ObservationCard key={o.versionId} runId={runId} o={o} view={view} reload={reload} />)}
         </>
       )}
-      {tab === "documents" && <DocumentsTab runId={runId} view={view} reload={reload} />}
       {tab === "alignment" && <AlignmentTab view={view} />}
       {tab === "improvements" && <ImprovementsTab view={view} />}
       {tab === "clarifications" && <ClarificationsTab runId={runId} view={view} reload={reload} />}
-      {tab === "history" && <HistoryTab runId={runId} view={view} />}
     </div>
   );
 }

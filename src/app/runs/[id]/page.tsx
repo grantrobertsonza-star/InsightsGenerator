@@ -4167,15 +4167,6 @@ export default async function RunPage({
   );
 
 
-  // Decision's nav placement follows the same hard data dependency this
-  // comment used to explain for the old scroll-order build: in generate
-  // mode, generateDecisionCandidates reads insights, not raw findings, and
-  // throws if none exist yet, so Decision has to stay grouped after
-  // Analysis regardless of what's known upfront. In validate mode it reads
-  // raw findings directly and needs nothing from Insights, so it's free to
-  // sit with Objective instead -- see decisionGroup below, used when
-  // building navSections.
-  const decisionGroup = run.entry_point === "validate" ? "Setup" : "Decisions";
 
   // The granular, per-finding/per-pre-insight audit trail: pre-insights,
   // the full (unclustered) recommendations list, and a record of anything
@@ -4815,11 +4806,17 @@ export default async function RunPage({
     ) : null;
 
   const navSections: RunNavSection[] = [
+    // Order agreed with Grant, 2026-10-18: import first; the research quality review of the brief,
+    // proposal and other documents next, as its own module; then objectives with the business
+    // decisions they serve. The menu shows one section at a time, so this order is the menu's only.
+    { id: "upload", group: "Setup", label: "Import data" },
+    { id: "research-quality", group: "Quality review", label: "Research quality review" },
     { id: "objective", group: "Objectives", label: "Set Objectives" },
     { id: "objectives", group: "Objectives", label: "Review Objectives" },
-    // Works before any data exists (a brief alone is enough), so it sits with the objectives.
-    { id: "research-quality", group: "Objectives", label: "Research quality review" },
-    { id: "upload", group: "Setup", label: "Import data" },
+    // Under Objectives in both modes. Decisions can always be added by hand here. Suggestions are
+    // offered once there are findings; in generate mode generateDecisionCandidates reads insights,
+    // and says so when none exist yet, so suggestions there come after the analysis.
+    { id: "decisions", group: "Objectives", label: "Business decisions" },
     {
       id: "crosstabs",
       group: "Analysis",
@@ -4850,7 +4847,6 @@ export default async function RunPage({
       label: "Insights",
       badge: synthesizedInsights.length,
     },
-    { id: "decisions", group: decisionGroup, label: "Business decisions" },
     {
       id: "recommendations",
       group: "Decisions",
