@@ -1,6 +1,6 @@
 # Handover: storage-checker repair, benchmark harness, sign-in (G6) and Research Quality Review v1 — 2026-10-18
 
-Status: **implemented, ready for Codex review.** Authorised by Grant on 2026-10-18 (06:40: security and Research Quality Review; 07:15: storage-checker repair and benchmark completion; 08:02: the brief and proposal rubric). Nothing pushed or deployed; no development or live database touched. Overall acceptance and public release remain open.
+Status: **implemented, ready for Codex review** (repairs after Codex's review are listed below). Authorised by Grant on 2026-10-18 (06:40: security and Research Quality Review; 07:15: storage-checker repair and benchmark completion; 08:02: the brief and proposal rubric). Nothing pushed or deployed; no development or live database touched. Overall acceptance and public release remain open.
 
 ## Commits on the laptop checkout
 
@@ -10,8 +10,11 @@ Status: **implemented, ready for Codex review.** Authorised by Grant on 2026-10-
 | `20977c8` | b22 | Real-model benchmark harness: computed tables first, step log, step timeout |
 | `ed3e980` | b23 | Sign-in, organisations, per-request tenant, signed conversion requests (G6, IMP-001) |
 | `d45c0a2` | b24 | Research Quality Review v1 with the RQC-2 brief and proposal rubric, and the Windows run kit |
+| `22555fe` | b25 | Repair after Codex: omitted-effect measurement on saved statistics (20977c8) |
+| `7ca0848` | b26 | Repair after Codex: sign-in redirect and refresh-only outage (ed3e980) |
+| `35af43a` | b27 | Repair after Codex: Research Quality lease expiry, purge ordering, interrupted retry (d45c0a2) |
 
-Exact hashes are in each package's `hashes.txt` under `.fnd001/overnight/b21` to `b24`.
+Exact hashes are in each package's `hashes.txt` under `.fnd001/overnight/b21` to `b28`.
 
 ## 1. Storage-privacy checker (b21)
 
@@ -44,6 +47,24 @@ Implemented from the 2026-10-16 brief and fit assessment, with Grant's three ear
 
 Migration: **0105_research_quality_review.sql** (seven tables, row-level security, tenant-scoped composite keys). Without it every action returns a setup message before any write or model call.
 
+## Repairs after Codex's independent review (2026-10-18, afternoon)
+
+Codex accepted `a9cb5de` and requested changes on the other three (`docs/four-package-independent-review-2026-10-18.md`). Each repair is a separate commit on top of `1e22cb2`; nothing in `a9cb5de` was touched. Status: **implemented, ready for Codex review.**
+
+**b25, benchmark measurement (20977c8).** The omitted-effect measurement now lives in `e2e/ui/omitted-effect-measure.mjs`. Computed findings are matched on their saved statistics (question, answer, banner variable, banner column, column value), never their wording; the effect is found only when every target group has a finding at its value and the expected group is higher. An insight states the effect only when a sentence names the answer and each group is named as a whole word with a percentage in its own clause, at the right value. A missing target table reads "could not be measured", not "not found". `omittedEffectMeasure.test.ts` (6 tests) covers Codex's two counterexamples (split 70/50 findings now found; repeated female-only text now "one group only"), reversed groups, wrong values, unrelated figures, other answers, stated-origin findings, wording without statistics and the missing table. Run on Codex's saved replay evidence (`b22-saved-evidence.json`), the computed findings match and the female-only insight is classified "mentions one group only". The six tables, step bounds, failed-table refusal and "not extracted on replay" labels are unchanged; no replay result is a model score.
+
+**b26, sign-in (ed3e980).**
+- Open redirect: `safeNextPath` refuses control characters and backslashes, parses what remains with browser URL rules against a placeholder origin, and returns only the parsed path, query and fragment when it stays there. `/\t/evil.example/`, newline, carriage return, NUL, backslash, protocol-relative, absolute and `javascript:` destinations all go to `/`; in-app paths with query and fragment are kept.
+- Refresh-only outage: with the access cookie gone and the refresh cookie present, `requestContext` now treats the request as a renewal the proxy could not complete (a rejected refresh never reaches it: the proxy signs the visitor out), so routes answer 503 and pages error, cookies are kept, and the same request recovers in the same organisation once Auth answers.
+- The obsolete comment in `api/parse-stats-file.py` about sending the shared secret is replaced by one that matches the HMAC signing.
+- Tests: `safeNextPath.test.ts` (3 tests, every refused value also checked by resolving it the way a browser would); `signedInTenantAccess.db.test.ts` +3 (the actual proxy followed by the actual route: outage 503 with cookies kept, recovery in organisation A, a rejected refresh token is a genuine 401 with cookies cleared). Browser: `sign-in-access.check.mjs` gained the seven sign-in destinations (with every external request blocked before dispatch) and the refresh-only outage with a full-session control, recovery and a rejected refresh.
+
+**b27, Research Quality task lifecycle (d45c0a2).** No migration change.
+- Every result write (extraction, assessment and failure) requires the current, unexpired lease (`lease_expires_at > now()`). A refused late answer still adds its token usage to the cost totals, because the call was paid for.
+- Purge and publication are serialised: publication locks the source versions it rests on FOR SHARE (an extraction's pinned version and cited versions; for an assessment, every version in the review's manifest, since its reasoning may paraphrase any), purge locks them FOR UPDATE, both in id order and before touching task rows. If the purge commits first, publication refuses and the task fails with no attempts left and a "start a new review version" message; if publication commits first, the purge blanks it as before.
+- Explicit retry treats an expired running task as interrupted: it is reset to pending within its attempt bound and rerun; a live lease is never taken over; an interrupted extraction after assessments have published, and a task out of attempts, get a visible new-review explanation. A retry with nothing to do no longer leaves the review marked "running".
+- Tests: `researchQuality.db.test.ts` +5 (expired lease for extraction, assessment and failure, with usage counted and the current lease publishing; purge before a late extraction and assessment, with tasks, observations, view and DOCX free of the text and an unrelated source untouched; both overlap orders made deterministic by holding the task row so the publication waits inside its transaction; retry with a live lease, an interrupted assessment, a repeat, exhausted attempts and an interrupted extraction after publication; an interrupted extraction before publication resumed to a complete review). Codex's unchanged recovery probe, copied in temporarily: 16 passed, 0 failed (it was 13 passed, 3 failed on `d45c0a2`). Each new test was also run against the released code and fails there.
+
 ## Checks run in this workspace
 
 All on the combined tree (b21 to b24), 2026-10-18:
@@ -55,6 +76,15 @@ All on the combined tree (b21 to b24), 2026-10-18:
 - Failed-run history kept: the first full browser run after sign-in had 3 failures and the smoke and adapter runs lacked their environment variables. Two failures (`over-limit-refusal`, `concurrent-limit-uploads`) were uploads over 10 MB cut off by the proxy's body buffer ("Unexpected end of form"), fixed by `proxyClientMaxBodySize`; the third (`decision-refresh-failure` own add/delete/accept) passed unchanged on rerun and in the final run (timing, not reproduced). The first harness self-test hung at the multiple-response set's "Row (all)" button; fixed in b22.
 - b23 on its own (HEAD plus b23, page.tsx without the Research Quality wiring): `tsc` pass; requestTenantCoverage, authSession, parseRequestSignature, safeNextPath, signedInTenantAccess, tenantIsolation and findingWording: 21 passed, 2 skipped.
 - Research Quality real-model harness self-test against the replay server on the gateway port: all 13 cases ran to completion and wrote `research-quality-model.json` (grades on replay are meaningless and not reported).
+
+Checks on the repaired tree (b25 to b27 on top of `1e22cb2`), 2026-10-18:
+
+- `npx tsc --noEmit`: pass. ESLint on the changed files: no new errors.
+- `TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres npx vitest run src/lib/__tests__ --pool=forks`: **139 files (138 passed, 1 skipped), 1006 passed, 0 failed, 59 skipped**; the 16 more than before are the new tests above.
+- The new tests against the released code (`git show HEAD:` copies of the changed sources): `safeNextPath` 3 failed; `signedInTenantAccess` refresh-outage case failed; the 5 new Research Quality cases failed. Codex's unchanged `independentResearchQualityRecovery` probe on the repaired code: 16 passed.
+- `next build --webpack` (production): pass.
+- Browser, production build on the disposable stack: `npx playwright test -c e2e/ui/ui-check.config.mjs` **49 passed, 1 skipped** (the real-model check, which skips on replay); Codex's unchanged `independent-login-next-continuation` and `independent-refresh-outage` probes **3 passed**; smoke **1 passed**; adapter checks **2 passed**; `objective-review-acceptance.mjs` **passed**; harness self-test of `real-model-quality` on replay **1 passed** (six tables, 18 computed findings, omitted effect "found in the computed findings; no insight states it", both one-group insights classified "mentions one group only" and anchored on the target findings; replay, not a quality result).
+- Failed-run history kept: the first run of the new refresh-only browser check failed at recovery (401). The stack's Auth stand-in revokes every refresh token of a user on sign-out, while real Supabase with `scope=local` (what the app sends) revokes only that session; the main sign-in check signs the primary user out, which spent the shared stored session the new check relied on. The check now signs in for its own session; the stand-in is unchanged (stricter than Supabase). Replayed by hand on the repaired build with a fresh session, the same sequence gave 503 (route), 500 (page) and then 200 after recovery.
 
 ## What used mocks versus real infrastructure
 

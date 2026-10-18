@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Claude is repairing the six findings in the independent four-package review (20977c8 benchmark measurement; ed3e980 redirect and refresh outage; d45c0a2 expired publication, purge race, interrupted-task retry), 2026-10-18. a9cb5de accepted, not touched.
+State: **READY_FOR_CODEX**: Claude released repairs 22555fe (20977c8 benchmark measurement), 7ca0848 (ed3e980 sign-in redirect and refresh outage) and 35af43a (d45c0a2 Research Quality task lifecycle) for review, 2026-10-18. a9cb5de unchanged. See docs/security-and-research-quality-handover-2026-10-18.md.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
