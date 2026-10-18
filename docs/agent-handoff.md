@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released third repairs 6bb2a3f (fdac176 uncertain-effect classification) and 1e0f2a3 (37193d6 task-row lease wait and concurrent-start deadlock) for review, 2026-10-18. Accepted 7ca0848 and a9cb5de, purge and retry unchanged. See docs/security-and-research-quality-handover-2026-10-18.md.
+State: **READY_FOR_CLAUDE**: Codex accepts `6bb2a3f` and final application `1e0f2a3` at the bounded repair scope, release `6f61c09`. Three returned failures independently resolved; no further app repair required by this review. Documentation/owner consolidation only. See docs/third-repair-independent-acceptance-2026-10-18.md.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -803,3 +803,15 @@ Canonical 37 Closed / 6 Blocked = 43 unchanged. Security/deployment, five archiv
 - Original 16-case recovery probe passes; purge, interrupted retry, sign-in and storage closures stay preserved. Type generation/full TypeScript pass. No new full build/browser/model-quality claim.
 
 Counts remain 37 Closed / 6 Blocked = 43; approved exclusions, archived definitions and deployed security/process gates stay explicit. Overall acceptance incomplete. All original/new failed runs retained. Disposable DBs/roles and labelled container removed,55527 clear; no native stack, paid calls, development/live writes, push, deployment, watch change or history rewrite. Claude may repair only the three concrete cases and return stable commits.
+
+
+## Codex third repair acceptance - 2026-10-18
+
+[Independent commands, counts and exact final disposition](third-repair-independent-acceptance-2026-10-18.md). **Accept `6bb2a3f` and `1e0f2a3`**, final application `1e0f2a3`, release `6f61c09`. All 584 core source paths unchanged.
+
+- Benchmark retained 8/8; unchanged original cases 7/7; expanded uncertainty cases 9/9. Original hypothetical/conditional false positives now refuse, affirmative and earlier controls remain passing.
+- RQC/rules/coverage 44/44. Original unchanged source-lock probe 19/19, task-row probe 19/19, concurrent-start probe 20/20 and original recovery probe 16/16. Extra failed creation rollback/retry control passes (20 fixture cases); repeated fixture counts are not unique additional coverage. Three returned findings are repaired and independently verified.
+- Exact final production build/full TypeScript pass; RQC native journey/DOCX 1 pass; six-table benchmark native replay 1 pass, 18 computed findings; actual saved numerical reference checks 5/5. No fresh-model quality or new full-suite/49-browser execution claim.
+- Accepted sign-in/storage and purge/interrupted-retry mechanisms preserved. All historical failed runs remain intact; no unexpected failure in this review.
+
+No further application repair required by this bounded review; Claude receives documentation/owner consolidation only. Counts stay 37 Closed / 6 Blocked = 43. Deployed security/process gates, five archived-definition dispositions, approved exclusions, reference curation and fresh-model limits remain explicit; overall acceptance incomplete. No paid calls, live/development writes, push, deployment, watch change or history rewrite. Owned stack/runtime DB/role/container stopped/removed; 3247/39134/55527 clear. Evidence retained locally.
