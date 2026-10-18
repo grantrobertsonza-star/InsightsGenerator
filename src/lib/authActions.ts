@@ -20,10 +20,33 @@ import { loadMemberships, requireRequestContext } from "./requestContext";
 
 export type SignInState = { error: string | null; email: string };
 
-/** Only a same-site relative path is followed after sign-in, never another host. */
+// A placeholder origin that no real request uses. The destination is resolved against it the way a
+// browser would resolve it against this app, and anything that ends up anywhere else is refused.
+const SAME_SITE_BASE = "http://same-site.invalid";
+
+/**
+ * Only a path on this app is followed after sign-in, never another host.
+ *
+ * Prefix checks alone are not enough: browsers drop tab and newline characters and read a backslash
+ * as a slash, so "/\t/evil.example/" or "/\\evil.example" navigate to another host. Control
+ * characters and backslashes are therefore refused outright, and what remains is parsed with the
+ * same URL rules a browser applies; the result must stay on the placeholder origin. Only the
+ * parsed path, query and fragment are returned, so the redirect is always relative.
+ */
 export async function safeNextPath(value: unknown): Promise<string> {
   const s = typeof value === "string" ? value : "";
-  return s.startsWith("/") && !s.startsWith("//") && !s.startsWith("/\\") && !s.startsWith("/login") ? s : "/";
+  if (!s.startsWith("/") || s.length > 2048 || /[\u0000-\u001f\u007f\\]/.test(s)) return "/";
+  let parsed: URL;
+  try {
+    parsed = new URL(s, SAME_SITE_BASE);
+  } catch {
+    return "/";
+  }
+  if (parsed.origin !== SAME_SITE_BASE) return "/";
+  const local = parsed.pathname + parsed.search + parsed.hash;
+  // Never back to the sign-in page itself (it would loop); "/login" and "/login/..." both count.
+  if (local === "/login" || local.startsWith("/login/") || local.startsWith("/login?") || local.startsWith("/login#")) return "/";
+  return local;
 }
 
 async function requestIsSecure(): Promise<boolean> {

@@ -55,8 +55,11 @@ export async function proxy(request: NextRequest) {
     return response;
   } catch (error) {
     if (error instanceof AuthRejectedError) return signedOut(request);
-    // Auth unreachable: let the request through unchanged. The page's own check then fails
-    // visibly (requestContext reports the outage) instead of this proxy signing the user out.
+    // Auth unreachable: let the request through with its cookies unchanged. The page's own check
+    // then fails visibly instead of this proxy signing the user out. That holds when the access
+    // cookie has already lapsed too: requestContext treats a refresh cookie without an access
+    // cookie as a renewal that could not happen (503 for routes, an error for pages), not as
+    // "signed out", and the same request succeeds once Auth answers again.
     console.error("[proxy] session refresh failed:", error);
     return NextResponse.next();
   }

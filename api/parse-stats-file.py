@@ -3484,18 +3484,14 @@ class handler(BaseHTTPRequestHandler):
             # own, and it downloads with the Supabase service-role key, which bypasses row-level
             # security entirely - so without this check, anyone who can reach this URL at all can
             # read any tenant's stored file by guessing or observing its storage path.
-            # PARSE_STATS_SHARED_SECRET must be set to the same value the Next.js app sends (see
-            # parseStatsFile.ts), and a request without the matching header is refused before
-            # anything is downloaded. This used to run with no check at all whenever the secret
-            # was left unset, which is exactly the unprotected state an operator who forgot to
-            # configure it would be in - the one case this exists to catch. The secret being
-            # unset is now treated the same as a wrong one: refused, not waved through.
-            #
-            # IMP-001 (worker scope): the shared secret is no longer sent. The app signs each
-            # request for one exact action, bucket and storage path with an expiry
-            # (src/lib/parseRequestSignature.ts), and verify_parse_request recomputes that
-            # signature, so a captured request cannot be replayed later or retargeted at another
-            # tenant's file. An unset secret is refused like a wrong one.
+            # IMP-001 (worker scope): PARSE_STATS_SHARED_SECRET is the signing key and is never
+            # sent over the wire. The app signs each request for one exact action, bucket and
+            # storage path with an expiry (src/lib/parseRequestSignature.ts, called from
+            # parseStatsFile.ts), and verify_parse_request recomputes that signature before
+            # anything is downloaded, so a captured request cannot be replayed later or
+            # retargeted at another tenant's file. The key must hold the same value in both
+            # environments. An unset key is refused like a wrong one, never waved through: an
+            # operator who forgot to configure it is exactly the case this check exists for.
             length = int(self.headers.get("content-length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
             storage_path = body.get("storagePath")

@@ -48,6 +48,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 // same real modules.
 vi.mock("@/lib/requestContext", async () => await import("../requestContext"));
 vi.mock("@/lib/db", async () => await import("../db"));
+vi.mock("@/lib/authSession", async () => await import("../authSession"));
 vi.mock("@/lib/processProgress", async () => await import("../processProgress"));
 vi.mock("next/server", async () => ({ ...(await vi.importActual<object>("next/server")), after: () => {} }));
 // React cache() needs a React request scope; outside one each call simply runs (no memo).
@@ -95,6 +96,11 @@ describe.skipIf(!TEST_DATABASE_URL)("signed-in tenant access (actual actions and
     delete process.env.DEFAULT_TENANT_ID;
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       if (authDown) throw new TypeError("fetch failed");
+      if (String(url).includes("/auth/v1/token?grant_type=refresh_token")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { refresh_token?: string };
+        if (body.refresh_token !== "refresh-a") return Response.json({ message: "Invalid Refresh Token" }, { status: 400 });
+        return Response.json({ access_token: "token-a", refresh_token: "refresh-a2", expires_in: 3600, user: TOKENS["token-a"] });
+      }
       if (String(url).endsWith("/auth/v1/user")) {
         const token = /^Bearer (.+)$/.exec(String((init?.headers as Record<string, string>)?.authorization ?? ""))?.[1];
         const user = token ? TOKENS[token] : undefined;
@@ -150,6 +156,55 @@ describe.skipIf(!TEST_DATABASE_URL)("signed-in tenant access (actual actions and
     await expect(m.ctx.requireTenantId()).rejects.not.toBeInstanceOf(Redirected);
     const r = (await m.runsRoute.GET(new Request("http://x/api/runs"))) as Response;
     expect(r.status).toBe(503);
+  });
+
+  // Codex 2026-10-18 (ed3e980): with the access cookie lapsed and only the refresh cookie left, an
+  // Auth outage during the proxy's refresh was answered 401 ("not signed in"). The ACTUAL proxy and
+  // the ACTUAL route run in sequence here, the way Next runs them for one request.
+  describe("access cookie lapsed, refresh cookie present (actual proxy, then actual route)", () => {
+    const sendThroughProxy = async () => {
+      const { proxy } = await import("../../proxy");
+      const { NextRequest } = await import("next/server");
+      const headers = new Headers({ cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") });
+      const response = await proxy(new NextRequest("http://127.0.0.1:3000/api/runs", { headers }));
+      // NextResponse.next() carries tokens the proxy renewed as request-cookie overrides; apply them
+      // to this request's jar, as Next does before the route runs.
+      const overridden = response.headers.get("x-middleware-request-cookie");
+      if (overridden) for (const pair of overridden.split("; ")) { const [k, ...v] = pair.split("="); jar.set(k, v.join("=")); }
+      return response;
+    };
+
+    it("Auth unreachable: unavailable (503), cookies kept, never 401 or a sign-in redirect", async () => {
+      jar.set("ie-refresh", "refresh-a");
+      jar.set("ie-organisation", A);
+      authDown = true;
+      const passed = await sendThroughProxy();
+      expect(passed.status).toBe(200); // let through, not answered by the proxy
+      expect(passed.headers.get("location")).toBeNull();
+      expect(passed.cookies.getAll().filter((c) => c.value === "")).toEqual([]); // nothing deleted
+      const r = (await m.runsRoute.GET(new Request("http://x/api/runs"))) as Response;
+      expect(r.status).toBe(503);
+      await expect(m.ctx.requireTenantId()).rejects.not.toBeInstanceOf(Redirected);
+      expect(jar.get("ie-refresh")).toBe("refresh-a");
+    });
+
+    it("Auth back: the same cookies renew and recover in the original organisation", async () => {
+      jar.set("ie-refresh", "refresh-a");
+      jar.set("ie-organisation", A);
+      await sendThroughProxy();
+      expect(jar.get("ie-access")).toBe("token-a");
+      const r = (await m.runsRoute.GET(new Request("http://x/api/runs"))) as Response;
+      expect(r.status).toBe(200);
+      expect(((await r.json()) as { runs: { id: string }[] }).runs.map((x) => x.id)).toEqual([runA]);
+    });
+
+    it("a refresh token Auth rejects is a genuine sign-out (401, cookies cleared)", async () => {
+      jar.set("ie-refresh", "refresh-revoked");
+      const answered = await sendThroughProxy();
+      expect(answered.status).toBe(401);
+      const cleared = answered.cookies.getAll().map((c) => c.name).sort();
+      expect(cleared).toEqual(["ie-access", "ie-refresh"]);
+    });
   });
 
   it("a signed-in user with no membership is refused everything", async () => {

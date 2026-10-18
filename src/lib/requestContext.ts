@@ -7,7 +7,8 @@
 // How the tenant is decided, per request:
 //   1. The access-token cookie is checked with Supabase Auth (authSession.userForAccessToken).
 //      A missing, expired or revoked token means "not signed in". An unreachable Auth service is
-//      a visible error, never "signed out" and never a fallback organisation.
+//      a visible error, never "signed out" and never a fallback organisation; that includes a
+//      session whose access token lapsed and could not be renewed during the outage.
 //   2. The user's memberships are read from tenant_memberships under app.current_user_id, which
 //      row-level security restricts to that user's own rows.
 //   3. The organisation cookie picks one of those memberships when the user has several. A cookie
@@ -21,7 +22,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pool } from "./db";
-import { ACCESS_COOKIE, AuthRejectedError, ORGANISATION_COOKIE, userForAccessToken } from "./authSession";
+import { ACCESS_COOKIE, AuthRejectedError, AuthUnavailableError, ORGANISATION_COOKIE, REFRESH_COOKIE, userForAccessToken } from "./authSession";
 
 export type Membership = { tenantId: string; organisationName: string; role: "owner" | "member" };
 export type RequestContext = {
@@ -74,7 +75,15 @@ export function chooseMembership(memberships: Membership[], requested: string | 
 const loadRequestContext = cache(async (): Promise<RequestContext> => {
   const jar = await cookies();
   const accessToken = jar.get(ACCESS_COOKIE)?.value;
-  if (!accessToken) throw new NotSignedInError();
+  if (!accessToken) {
+    // A refresh token without an access token means the session needed renewing and src/proxy.ts
+    // could not renew it: a rejected refresh never gets this far (the proxy signs the visitor out
+    // there), so what is left is an Auth service that did not answer. That is an outage, not a
+    // sign-out: answer "unavailable" and keep the cookies, so the same request succeeds once Auth
+    // is back. Without either cookie the visitor simply is not signed in.
+    if (jar.get(REFRESH_COOKIE)?.value) throw new AuthUnavailableError("The session could not be renewed because sign-in is unavailable.");
+    throw new NotSignedInError();
+  }
   let user;
   try {
     user = await userForAccessToken(accessToken);

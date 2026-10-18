@@ -97,3 +97,97 @@ test("sign-in, organisation scoping and sign-out", async ({ browser, page }, tes
   await expect(page.getByTestId("account-organisation")).toHaveText("Synthetic e2e tenant");
   for (const c of [anon, other, none, replay]) await c.close();
 });
+
+// Codex 2026-10-18 (ed3e980), retained: a sign-in destination that a browser resolves to another
+// host must not be followed. Every request leaving the app is blocked before dispatch, so nothing
+// is ever sent to the external host; the assertion is on attempted top-level navigations.
+for (const [label, next, expectedPath] of [
+  ["in-app destination", "/programs?view=all", "/programs?view=all"],
+  ["tab path", "/\t/evil.example/", "/"],
+  ["newline path", "/\n/evil.example/", "/"],
+  ["carriage-return path", "/\r/evil.example/", "/"],
+  ["backslash path", "/\\evil.example/", "/"],
+  ["protocol-relative", "//evil.example/", "/"],
+  ["absolute external", "https://evil.example/", "/"],
+]) {
+  test(`after sign-in, next: ${label}`, async ({ browser }) => {
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const page = await context.newPage();
+    const externalNavigations = [];
+    await page.route("**/*", (route) => {
+      const request = route.request();
+      if (new URL(request.url()).origin !== new URL(origin).origin) {
+        if (request.isNavigationRequest()) externalNavigations.push(request.url());
+        return route.abort();
+      }
+      return route.continue();
+    });
+    try {
+      await page.goto(`${origin}/login?next=${encodeURIComponent(next)}`);
+      await page.getByLabel("Email", { exact: true }).fill(creds.primary.email);
+      await page.getByLabel("Password", { exact: true }).fill(creds.primary.password);
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.waitForURL((url) => url.pathname !== "/login");
+      await page.waitForLoadState("load");
+      expect(externalNavigations).toEqual([]);
+      const landed = new URL(page.url());
+      expect(landed.origin).toBe(new URL(origin).origin);
+      expect(landed.pathname + landed.search).toBe(expectedPath);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+// Codex 2026-10-18 (ed3e980), retained: with the access cookie gone and only the refresh cookie
+// left, an Auth outage must read as "unavailable", not "signed out", keep the cookies, and recover
+// in the same organisation once Auth is back. Controls: a full session during the outage, and a
+// rejected refresh token, which is a genuine sign-out.
+test("refresh-only session during an Auth outage stays unavailable, then recovers", async ({ browser }) => {
+  // This check signs in for its own session: the stack's stored session is shared with other
+  // checks, and refresh tokens are single-use, so another check renewing it would spend the token
+  // this one depends on.
+  const own = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const login = await own.newPage();
+  await login.goto(`${origin}/login`);
+  await login.getByLabel("Email", { exact: true }).fill(creds.primary.email);
+  await login.getByLabel("Password", { exact: true }).fill(creds.primary.password);
+  await login.getByRole("button", { name: "Sign in", exact: true }).click();
+  await login.waitForURL((url) => url.pathname !== "/login");
+  const state = await own.storageState();
+  await own.close();
+  const full = await browser.newContext({ storageState: JSON.parse(readFileSync(target.authStateFile, "utf8")) });
+  const refreshOnly = await browser.newContext({ storageState: { ...state, cookies: state.cookies.filter((c) => c.name !== "ie-access") } });
+  try {
+    expect((await full.request.get(`${origin}/api/runs`)).status()).toBe(200);
+    writeFileSync(target.authFaultFile, JSON.stringify({ down: true }));
+    try {
+      expect((await full.request.get(`${origin}/api/runs`)).status()).toBe(503);
+      expect((await refreshOnly.request.get(`${origin}/api/runs`)).status(), "refresh outage must not read as signed out").toBe(503);
+      const page = await refreshOnly.newPage();
+      const shown = await page.goto(`${origin}/programs`);
+      expect(shown.status()).toBeGreaterThanOrEqual(500);
+      await expect(page).not.toHaveURL(/\/login/);
+      expect((await refreshOnly.cookies()).map((c) => c.name)).toContain("ie-refresh");
+      await page.close();
+    } finally {
+      rmSync(target.authFaultFile, { force: true });
+    }
+    expect((await refreshOnly.request.get(`${origin}/api/runs`)).status()).toBe(200);
+    const page = await refreshOnly.newPage();
+    await page.goto(`${origin}/programs`);
+    await expect(page.getByTestId("account-organisation")).toHaveText("Synthetic e2e tenant");
+    await page.close();
+  } finally {
+    await full.close();
+    await refreshOnly.close();
+  }
+  const revoked = await browser.newContext({
+    storageState: { cookies: state.cookies.filter((c) => c.name !== "ie-access").map((c) => (c.name === "ie-refresh" ? { ...c, value: "revoked-refresh-token" } : c)), origins: [] },
+  });
+  try {
+    expect((await revoked.request.get(`${origin}/api/runs`)).status()).toBe(401);
+  } finally {
+    await revoked.close();
+  }
+});
