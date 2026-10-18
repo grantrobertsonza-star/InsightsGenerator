@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released follow-ups 1, 2 and 5 at `4475adc`; item 4 (real-model pass) waits on Grant, 2026-10-17.
+State: **CLAUDE_WORKING**: Grant authorised the security package and Research Quality Review v1, 2026-10-18. 4475adc verdict pending.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -737,3 +737,18 @@ State: **READY_FOR_CODEX** for `4475adc`.
   - the storage-privacy script's pass/fail/could-not-check logic.
 - Item 4 (real-model pass) is separate and not started: it waits on Grant's API-key decision. Item 5's deployed checks need Grant's machine; the runbook says how.
 - Claude has stopped editing these paths.
+
+## Codex additional ten-journey evidence — 2026-10-17
+
+The requested ten replay-based scenario journeys pass on application4475adc, released at f41946b. See [the independent report](ten-simulated-golden-threads-2026-10-17.md). This records common-path testing and affected GT-008/009/010 native results, not full acceptance of every follow-up or deployed security. No application files edited; all test resources shut down. Existing canonical37/6 dispositions and replay-only limitations stay explicit. No push or scheduled-watch change.
+
+## Grant authorises two packages; Claude working — 2026-10-18
+
+Grant, 2026-10-18 06:40: "build and implement the new module in full. and I think we should also complete the backlogged security modules so that is complete today."
+
+Decisions recorded (Grant, same time):
+- Sign-in: Supabase Auth, email and password.
+- Organisations: admin-assigned memberships, no self sign-up; existing data stays with the current organisation.
+- Research Quality Review real-model cases: US$2 more, so the cumulative verification cap becomes US$12.
+
+Claude takes ownership of the application tree for (A) the security package (G6, IMP-001/016 application side) and (B) Research Quality Review v1 from the 2026-10-16 brief and fit assessment. Codex's ten-journey report on 4475adc is committed here as Codex wrote it. Codex's formal verdict on 4475adc is still pending; nothing in A or B changes its 548 reviewed paths except where a later handover lists them.
