@@ -458,6 +458,60 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       await q(`delete from research_quality_tasks where id = $1`, [ex]);
     });
 
+    // Codex 2026-10-18 (35af43a): the lease was checked against now(), which PostgreSQL freezes at the
+    // start of the transaction, so a publication that waited on a source lock past its lease expiry
+    // still published. Each stage is held on its source lock until its lease has run out (checked
+    // from another session before the lock is released), then must refuse; the control waits the
+    // same way with a lease that is still live and must publish; the refused task is then reclaimed
+    // and published normally.
+    it("a publication whose lease runs out while it waits on a source lock is refused; a live one publishes", async () => {
+      const waitingOnLock = async () => {
+        for (let i = 0; i < 200; i++) {
+          if ((await q(`select count(*)::int n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`)).rows[0].n > 0) return;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        throw new Error("the publication never waited on the source lock");
+      };
+      const holdSourceDuring = async (versionId: string, publish: () => Promise<boolean>, holdMs: number) => {
+        const holder = await db.pool.connect();
+        try {
+          await holder.query("begin");
+          await holder.query(`select 1 from research_quality_source_versions where id = $1 for update`, [versionId]);
+          const pending = publish();
+          await waitingOnLock();
+          await new Promise((r) => setTimeout(r, holdMs));
+          const before = Date.now();
+          await holder.query("commit");
+          return { published: await pending, releasedAt: before };
+        } finally {
+          holder.release();
+        }
+      };
+      for (const stage of ["extract", "assess"] as const) {
+        // Lease runs out during the wait: refused, nothing published, the task is still claimable.
+        const r = await freshReview(`lock-wait-${stage}`);
+        const as = stage === "assess" ? await reopenAssessment(r.reviewId) : null;
+        const taskId = as ? as.taskId : await syntheticExtract(r.reviewId, `extract:lock-wait:${stage}`, { sourceIndex: 0 });
+        const publishWith = (lease: string) =>
+          as ? m.repo.publishAssessment(A, runA, r.reviewId, taskId, lease, as.observations as never, {}, usage) : m.repo.publishExtraction(A, taskId, lease, { facts: [], dropped: 0, nothingFound: true }, usage);
+        const lease = await m.repo.claimTask(A, taskId, 60);
+        await q(`update research_quality_tasks set lease_expires_at = clock_timestamp() + interval '1 second' where id = $1`, [taskId]);
+        const late = await holdSourceDuring(r.versionId, () => publishWith(lease!), 1300);
+        expect((await q(`select lease_expires_at < clock_timestamp() as expired from research_quality_tasks where id = $1`, [taskId])).rows[0].expired).toBe(true);
+        expect(late.published, `${stage}: lease expired while waiting`).toBe(false);
+        expect((await task(taskId)).status).toBe("running");
+        if (as) expect(await versionsOf(taskId)).toBe(0);
+        // Reclaimed after expiry, the same wait with a live lease publishes.
+        const again = await m.repo.claimTask(A, taskId, 60);
+        expect(again).toBeTruthy();
+        const live = await holdSourceDuring(r.versionId, () => publishWith(again!), 300);
+        expect(live.published, `${stage}: lease still live after waiting`).toBe(true);
+        expect((await task(taskId)).status).toBe("succeeded");
+        if (as) expect(await versionsOf(taskId)).toBe(as.observations.length);
+        if (!as) await q(`delete from research_quality_tasks where id = $1`, [taskId]);
+      }
+    }, 30000);
+
     it("a purge that lands while work is in flight discards the late result for good; other sources keep their text", async () => {
       const keep = await freshReview("unrelated");
       const r = await freshReview("purge-race");

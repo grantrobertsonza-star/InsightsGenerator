@@ -6,10 +6,15 @@
 //   - one explicit start creates one review: unique (run_id, request_key), and a repeat returns the
 //     existing review;
 //   - a task result (success or failure) is recorded only by the lease that claimed it and only
-//     while that lease is unexpired: the UPDATE matches (id, lease_token, status 'running',
-//     lease_expires_at > now()), so a late answer from an expired lease writes nothing, whether or
-//     not another attempt has claimed the task since (Codex 2026-10-18). Its token usage is still
-//     added to the cost totals, because the call was paid for;
+//     while that lease is unexpired at the moment the result is written: the UPDATE matches
+//     (id, lease_token, status 'running', lease_expires_at > clock_timestamp()), so a late answer
+//     from an expired lease writes nothing, whether or not another attempt has claimed the task
+//     since. Lease times are compared with clock_timestamp(), never now(): now() is frozen at the
+//     start of the transaction, so a publication that waited on a source lock (or the task row)
+//     would otherwise be judged by the time it started, not the time it writes (Codex 2026-10-18,
+//     twice). The UPDATE also takes the task row lock, so a reclaim cannot slip in between the
+//     check and the commit: it waits, then re-reads the row and finds it no longer running. A
+//     refused answer's token usage is still added to the cost totals, because it was paid for;
 //   - a result never outlives a purge of the text it was made from: publication first locks the
 //     source versions it rests on FOR SHARE, purgeSourceText locks them FOR UPDATE, both in id order
 //     and both before touching task rows, so the two serialise without deadlock. A purge that
@@ -244,7 +249,7 @@ export type TaskRow = {
 };
 
 export async function loadTasks(tenantId: string, reviewId: string): Promise<TaskRow[]> {
-  return withTenant(tenantId, async (client) => (await client.query<TaskRow>(`select id, task_key, stage, depends_on, status, attempts, max_attempts, input_hash, result, validation, error, lease_expires_at::text, (status = 'running' and lease_expires_at < now()) as lease_expired from research_quality_tasks where review_id = $1 order by task_key`, [reviewId])).rows);
+  return withTenant(tenantId, async (client) => (await client.query<TaskRow>(`select id, task_key, stage, depends_on, status, attempts, max_attempts, input_hash, result, validation, error, lease_expires_at::text, (status = 'running' and lease_expires_at < clock_timestamp()) as lease_expired from research_quality_tasks where review_id = $1 order by task_key`, [reviewId])).rows);
 }
 
 /**
@@ -257,9 +262,9 @@ export async function claimTask(tenantId: string, taskId: string, leaseSeconds =
     const r = await client.query<{ lease_token: string }>(
       `update research_quality_tasks
           set status = 'running', attempts = attempts + 1, lease_token = gen_random_uuid(),
-              lease_expires_at = now() + make_interval(secs => $2), updated_at = now()
+              lease_expires_at = clock_timestamp() + make_interval(secs => $2), updated_at = now()
         where id = $1 and attempts < max_attempts
-          and (status = 'pending' or (status = 'running' and lease_expires_at < now()))
+          and (status = 'pending' or (status = 'running' and lease_expires_at < clock_timestamp()))
         returning lease_token`,
       [taskId, leaseSeconds],
     );
@@ -275,8 +280,9 @@ export async function updateTaskInput(tenantId: string, taskId: string, input: u
 
 type Usage = { input: number; output: number; cost: number };
 
-// The lease condition every result write shares: this attempt's token, still running, unexpired.
-const CURRENT_LEASE = `id = $1 and lease_token = $2 and status = 'running' and lease_expires_at > now()`;
+// The lease condition every result write shares: this attempt's token, still running, and unexpired
+// by the clock at the moment of the write (clock_timestamp(), not the transaction-start now()).
+const CURRENT_LEASE = `id = $1 and lease_token = $2 and status = 'running' and lease_expires_at > clock_timestamp()`;
 
 const SOURCE_PURGED_ERROR = "The source text was purged while this was being worked on, so the result was discarded. Start a new review version to assess the remaining material.";
 
@@ -431,7 +437,7 @@ export async function resetFailedTasks(tenantId: string, runId: string, reviewId
     if (own.rowCount !== 1) throw new ResearchQualityError("Unknown review.");
     const r = await client.query(`update research_quality_tasks set status = 'pending', error = null, lease_token = null, lease_expires_at = null, updated_at = now()
         where review_id = $1 and stage = $2 and attempts < max_attempts
-          and (status = 'failed' or (status = 'running' and lease_expires_at < now()))`, [reviewId, stage]);
+          and (status = 'failed' or (status = 'running' and lease_expires_at < clock_timestamp()))`, [reviewId, stage]);
     // Only a reset that found something reopens the review; otherwise a retry with nothing to do
     // would leave it marked running with no runner coming.
     if (r.rowCount) await client.query(`update research_quality_reviews set state = 'running', completed_at = null where id = $1`, [reviewId]);
