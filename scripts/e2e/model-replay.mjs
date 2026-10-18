@@ -8,7 +8,9 @@
 //
 // Tools with a scripted answer (clusters group pre-insights by subject, see record_clusters):
 // record_insights, record_clusters, record_synthesized_insight,
-// record_recommendations, record_narrative. Any other tool gets the smallest answer its own
+// record_recommendations, record_narrative, and for Research Quality Review record_documented_facts
+// (each sentence of the passage, quoted verbatim) and record_quality_observations (one observation
+// per criterion, citing the facts it was sent). Any other tool gets the smallest answer its own
 // input_schema allows (empty arrays, first enum value, empty strings), which the app treats as
 // "nothing usable came back"; a text-only request gets a one-line reply.
 import http from "node:http";
@@ -41,6 +43,49 @@ function minimal(schema) {
 }
 
 const handlers = {
+  // Research Quality Review extraction: every sentence of the <document> passage as a fact, quoted
+  // exactly, with a topic and phase read from plain keywords. Restates the input; judges nothing.
+  record_documented_facts: (content) => {
+    const doc = /<document>\n([\s\S]*)\n<\/document>/.exec(content)?.[1] ?? "";
+    const facts = doc
+      .split(/(?<=[.?!])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 12 && s.length <= 400)
+      .slice(0, 40)
+      .map((s) => ({
+        topic: /decision/i.test(s) ? "decision" : /recruit|panel|sample/i.test(s) ? "recruitment" : /customer|public|population/i.test(s) ? "population" : /question/i.test(s) ? "instrument_item" : "claim",
+        phase: /\bwill\b/i.test(s) ? "planned" : "reported_executed",
+        selection: /opt-in|convenience/i.test(s) ? "non_probability" : /random|probability/i.test(s) ? "probability" : "unstated",
+        statement: s.slice(0, 120),
+        exact_quote: s,
+      }));
+    return { nothing_found: facts.length === 0, facts };
+  },
+  // Research Quality Review assessment: one observation per criterion sent, citing up to two facts.
+  record_quality_observations: (content) => {
+    const p = JSON.parse(content);
+    return {
+      observations: p.criteria.map((c, i) => {
+        const cited = p.facts.slice(i % Math.max(1, p.facts.length), (i % Math.max(1, p.facts.length)) + 1).map((f) => f.id);
+        return {
+          criterion_id: c.id,
+          fact_ids: cited,
+          decision_refs: [],
+          score: cited.length ? 3 : 0,
+          score_reason: "Replay: restates whether anything was cited.",
+          documentation: cited.length ? "documented" : "not_documented",
+          methodology: cited.length ? "concern" : "cannot_assess",
+          decision_fitness: p.context.decisions.map((d) => ({ decision_ref: d.ref, state: "qualified", reasoning: "Replay: restates the criterion." })),
+          reasoning: `Replay observation for ${c.id}.`,
+          implication: `Replay implication for ${c.id}.`,
+          uncertainty: [],
+          improvement: { current_action: `Replay: state ${c.id} explicitly.`, future_action: null, timing: "before_decision", rationale: "Replay." },
+          reference_passages: [],
+          clarification_questions: [`Replay question for ${c.id}?`],
+        };
+      }),
+    };
+  },
   // "N. [theme · verdict: ...] <finding text>" per finding.
   record_insights: (content) => ({
     insights: numbered(content, "\\[[^\\]]*\\]\\s*").map(({ index, line }) => ({

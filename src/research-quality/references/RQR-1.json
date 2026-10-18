@@ -1,0 +1,27 @@
+{
+  "release": "RQR-1",
+  "kind": "production",
+  "note": "Production reference catalogue. No entry is approved yet: approval needs an authorised curator to confirm the passage, its applicability and the licence to store or send it. Until then every recommendation reports 'insufficient reference support' rather than citing guidance. Draft entries are listed for curation and are never sent to the model or shown as support.",
+  "entries": [
+    {
+      "referenceId": "REF-COREQ", "version": 1, "status": "draft_pending_curation",
+      "publisher": "International Journal for Quality in Health Care (Oxford University Press)",
+      "authors": "Tong, A., Sainsbury, P., & Craig, J.",
+      "title": "Consolidated criteria for reporting qualitative research (COREQ): A 32-item checklist for interviews and focus groups",
+      "year": 2007, "doi": "10.1093/intqhc/mzm042", "url": "https://doi.org/10.1093/intqhc/mzm042",
+      "applicability": { "studyTypes": ["qualitative", "mixed"], "criteria": ["RQ-QUAL-PROCESS", "RQ-SAMPLE-RECRUIT"] },
+      "permissions": { "storeText": false, "sendToModel": false, "reproduceInExport": false, "decision": "not yet reviewed" },
+      "passages": []
+    },
+    {
+      "referenceId": "REF-AAPOR-NPS", "version": 1, "status": "draft_pending_curation",
+      "publisher": "American Association for Public Opinion Research",
+      "authors": "AAPOR Task Force on Non-Probability Sampling",
+      "title": "Report of the AAPOR Task Force on Non-Probability Sampling",
+      "year": 2013, "doi": null, "url": "https://www.aapor.org/wp-content/uploads/2022/11/NPS_TF_Report_Final_7_revised_FNL_6_22_13.pdf",
+      "applicability": { "studyTypes": ["quantitative", "mixed"], "criteria": ["RQ-SAMPLE-RECRUIT", "RQ-INFERENCE-SCOPE"] },
+      "permissions": { "storeText": false, "sendToModel": false, "reproduceInExport": false, "decision": "not yet reviewed" },
+      "passages": []
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+Research proposal: Loyalty programme study
+
+Understanding of the brief
+The client wants to understand loyalty among the general public in South Africa and whether loyalty schemes are popular.
+
+Objectives
+1. Measure awareness of loyalty schemes among the general public.
+2. Identify preferred reward types.
+3. Profile heavy coffee drinkers.
+
+Approach
+We will run an online survey using an opt-in online panel of South African adults. Respondents will be recruited by the panel provider and screened for coffee consumption in the last month.
+
+Sample
+We will achieve 1,000 completes, with quotas on age, gender and province.
+
+Analysis
+We will report frequencies and cross-tabulations by region and age, with significance testing at 95%.
+
+Deliverables
+A PowerPoint report and data tables.
+
+Timeline
+Fieldwork in January 2027, report on 15 March 2027.
+
+Cost
+R420,000 excluding VAT.

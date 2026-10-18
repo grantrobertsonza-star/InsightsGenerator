@@ -1,0 +1,38 @@
+{
+  "release": "RQR-T1",
+  "kind": "synthetic_test",
+  "note": "SYNTHETIC TEST REFERENCES, NOT METHODOLOGICAL STANDARDS. Written for the module's acceptance fixtures (brief section 10, worked example REF-SCOPE). Loaded only when RESEARCH_QUALITY_REFERENCE_CATALOGUE=synthetic-test, and every review and export that uses them says so.",
+  "entries": [
+    {
+      "referenceId": "REF-SCOPE", "version": 1, "status": "approved_synthetic_test",
+      "publisher": "Insights Elevator test fixtures (synthetic)", "authors": null,
+      "title": "Synthetic guidance: claims stay within the documented design", "year": 2026, "doi": null, "url": null,
+      "applicability": { "studyTypes": ["quantitative", "qualitative", "mixed", "unclear"], "criteria": ["RQ-INFERENCE-SCOPE", "RQ-DESIGN-ALIGN"], "purposes": ["exploration", "estimation", "causal"] },
+      "permissions": { "storeText": true, "sendToModel": true, "reproduceInExport": true, "decision": "synthetic, written for tests" },
+      "passages": [
+        { "passageId": "S1", "text": "Claims should stay within what the documented selection and design can support. Exploratory interviews can surface reasons and perspectives, but alone they do not establish how common something is in a population." },
+        { "passageId": "S2", "text": "Observational data can show associations; a causal conclusion needs a design that rules out the main alternative explanations, which should be stated." }
+      ]
+    },
+    {
+      "referenceId": "REF-PRECISION", "version": 1, "status": "approved_synthetic_test",
+      "publisher": "Insights Elevator test fixtures (synthetic)", "authors": null,
+      "title": "Synthetic guidance: precision of probability samples", "year": 2026, "doi": null, "url": null,
+      "applicability": { "studyTypes": ["quantitative"], "criteria": ["RQ-SAMPLE-RECRUIT"], "designs": ["probability"] },
+      "permissions": { "storeText": true, "sendToModel": true, "reproduceInExport": true, "decision": "synthetic, written for tests" },
+      "passages": [
+        { "passageId": "P1", "text": "For a probability sample, the precision of an estimate depends on the achieved sample size and design effect. This guidance does not apply to opt-in or convenience samples." }
+      ]
+    },
+    {
+      "referenceId": "REF-QUAL-SELECTION", "version": 1, "status": "approved_synthetic_test",
+      "publisher": "Insights Elevator test fixtures (synthetic)", "authors": null,
+      "title": "Synthetic guidance: qualitative participant selection", "year": 2026, "doi": null, "url": null,
+      "applicability": { "studyTypes": ["qualitative", "mixed"], "criteria": ["RQ-SAMPLE-RECRUIT", "RQ-QUAL-PROCESS"] },
+      "permissions": { "storeText": true, "sendToModel": true, "reproduceInExport": true, "decision": "synthetic, written for tests" },
+      "passages": [
+        { "passageId": "Q1", "text": "Qualitative selection is judged by whether the rationale for who was included fits the purpose and whose perspectives may be missing, not by a minimum number." }
+      ]
+    }
+  ]
+}

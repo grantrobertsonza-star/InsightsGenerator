@@ -1,0 +1,6 @@
+Questionnaire: loyalty survey
+
+Q1. How often did you visit one of our stores in the last month? (Never / Once / 2 to 4 times / 5 or more times)
+Q2. If we launched a points-based loyalty scheme, how likely would you be to join? (Very likely / Somewhat likely / Not very likely / Not at all likely)
+Q3. Which reward would you most prefer? (Free drinks / Discounts / Early access to new products)
+Q4. Don't you agree that our coffee is the best in town? (Yes / No)

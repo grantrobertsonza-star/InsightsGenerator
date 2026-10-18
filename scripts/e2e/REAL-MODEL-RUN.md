@@ -1,6 +1,13 @@
 # Real-model quality pass on Windows
 
-One run on the golden-thread-1 synthetic fixture with the real model, capped at **US$5**. Recorded spend is US$3.817316 of US$10, so the total stays under the cap.
+Two measurements with the real model through one budget gateway, capped together at **US$7**:
+
+1. the golden-thread-1 benchmark again (about US$5 at most), now with computed survey tables committed first, so claims are checked against data rather than only against each other (the 2026-10-18 run lacked them and is incomplete as a benchmark);
+2. the Research Quality Review semantic cases (13 synthetic cases, about US$2 at most).
+
+Recorded spend is US$4.018694 (US$3.817316 plus the gateway's US$0.201378 on 2026-10-18). Grant raised the cumulative cap to US$12 on 2026-10-18, so US$7 here keeps the total under it.
+
+The app now requires sign-in. The disposable stack creates its own synthetic accounts and signed-in browser state, so nothing changes in the steps below and no real account is used.
 
 Everything runs on a throwaway database created on your local Supabase PostgreSQL server (port 54322). It is dropped at the end. Your development database, its data and the cloud project are never touched. The API key stays on your machine: only the budget gateway reads it, from a temporary file you delete at the end.
 
@@ -31,11 +38,11 @@ Expected: the build ends with the route list, and the last line says `dropped ie
 ```powershell
 $keyFile = "$env:TEMP\ie-realmodel-key.txt"
 (Select-String -Path .env.local -Pattern '^ANTHROPIC_API_KEY=(.*)$').Matches[0].Groups[1].Value.Trim('"') | Set-Content -NoNewline $keyFile
-$env:ANTHROPIC_KEY_FILE = $keyFile; $env:GATEWAY_BUDGET_USD = "5"
+$env:ANTHROPIC_KEY_FILE = $keyFile; $env:GATEWAY_BUDGET_USD = "7"
 node scripts/e2e/model-budget-gateway.mjs
 ```
 
-Expected: `model budget gateway on 127.0.0.1:55017, budget US$5`. Leave it running.
+Expected: `model budget gateway on 127.0.0.1:55017, budget US$7`. Leave it running.
 
 ## Window 3: the stack, then the check
 
@@ -54,7 +61,18 @@ $env:GOLDEN_SMOKE_TARGET_MANIFEST = "$PWD\e2e-results\target-manifest.json"
 npx playwright test -c e2e/ui/ui-check.config.mjs real-model-quality
 ```
 
-It takes about 10 to 40 minutes. It writes `e2e-results\real-model-quality.json` and the gateway writes `e2e-results\model-gateway-log.json`. Neither file contains the key or any prompt text.
+It takes about 10 to 40 minutes and prints `[real-model-quality]` progress lines. It writes `e2e-results\real-model-quality.json` and the gateway writes `e2e-results\model-gateway-log.json`. Neither file contains the key or any prompt text.
+
+Then the Research Quality Review cases, in the same window 3 (the stack is not needed for these, but leaving it running does no harm). They use a throwaway database on your local Supabase server and the same gateway:
+
+```powershell
+$env:RQ_REAL_MODEL = "1"
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:55017"
+$env:TEST_DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:54322/postgres"
+npx vitest run src/lib/__tests__/researchQualityModel.real.test.ts --pool=forks
+```
+
+It takes about 5 to 20 minutes and writes `e2e-results\research-quality-model.json`. Each case says whether the model's judgement met the case's acceptable outcome; a disagreement is a result, not a failed run.
 
 ## Afterwards
 
@@ -62,6 +80,6 @@ It takes about 10 to 40 minutes. It writes `e2e-results\real-model-quality.json`
 2. In window 2 press **Ctrl+C**, then delete the key file:
    `Remove-Item "$env:TEMP\ie-realmodel-key.txt"`
 3. Optionally remove the build copy: `Remove-Item -Recurse "$env:TEMP\ie-realmodel"`. The node_modules junction is removed with it, not your real node_modules.
-4. Send me `e2e-results\real-model-quality.json` and `e2e-results\model-gateway-log.json`, or just say "done" and I'll read them from your laptop.
+4. Send me `e2e-results\real-model-quality.json`, `e2e-results\research-quality-model.json` and `e2e-results\model-gateway-log.json`, or just say "done" and I'll read them from your laptop.
 
 If the gateway refuses a call (budget reached), the pipeline records that step as failed. The check still writes what it measured.

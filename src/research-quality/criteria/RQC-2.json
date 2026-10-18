@@ -1,0 +1,845 @@
+{
+ "release": "RQC-2",
+ "status": "approved",
+ "note": "Criteria library for Research Quality Review v1. RQC-2 (Grant, 2026-10-18) adds the brief and proposal rubric: brief background, business problem, decision, three or more objectives on the app's objective criteria, methodology parameters, deadline and budget; proposal literature review, restatement, added objectives, methodology, design, sample, analytical plan, products, timeline and budget, compared with the brief when one is selected. Every criterion is scored on its own (Strong 5, Workable 3, Weak 1, Absent 0) with an improvement suggestion; scores are never combined.",
+ "scale": {
+  "5": "Strong",
+  "3": "Workable",
+  "1": "Weak",
+  "0": "Absent"
+ },
+ "criteria": [
+  {
+   "criterionId": "RQ-BRIEF-BACKGROUND",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief give background to the problem: the situation, what led to it and what is already known?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "context or situation",
+    "what prompted the research",
+    "existing knowledge"
+   ],
+   "evaluationGuidance": "Strong: the context explains why the problem matters now and what is already known. Workable: some context but gaps a researcher would have to ask about. Weak: a sentence or two. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-PROBLEM",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief state the business problem clearly, as a problem (not only a topic)?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "business problem statement"
+   ],
+   "evaluationGuidance": "Strong: a specific problem with its business consequence. Workable: a problem that is stated but broad. Weak: only a topic or a solution in disguise. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-DECISION",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief state the decision(s) the research is meant to inform?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "intended decision or use",
+    "who decides",
+    "timing"
+   ],
+   "evaluationGuidance": "Look for an explicit decision or use, not a topic. Implied but never stated is Weak. Do not invent a decision.",
+   "unsupportedInferenceRestrictions": [
+    "Do not treat a research topic as a stated decision."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-OBJECTIVES",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief state at least three clear research objectives, each specific, measurable, answerable with research and relevant to the business problem?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "objectives or research questions"
+   ],
+   "evaluationGuidance": "Judge every stated objective on the app's objective criteria: specific, measurable, answerable with research evidence, relevant to the business problem. Name which objectives fall short and on which criterion. Strong: three or more objectives that all meet the criteria. Workable: three or more with some shortfalls. Weak: fewer than three, or most fall short. Absent: no objectives. Cite each objective as a fact.",
+   "unsupportedInferenceRestrictions": [
+    "Do not rewrite objectives into ones the brief does not contain."
+   ],
+   "execution": "hybrid"
+  },
+  {
+   "criterionId": "RQ-BRIEF-METHOD-PARAMS",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "How far does the brief specify the methodology parameters a supplier needs: target population, geography, method or approach preferences, sample expectations, subgroups, timing of fieldwork, reporting needs?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "target population",
+    "geography",
+    "method preferences",
+    "sample expectations",
+    "subgroups"
+   ],
+   "evaluationGuidance": "List which parameters are given and which are missing. Strong: most parameters given or explicitly left to the supplier. Workable: some. Weak: one or two. Absent: none.",
+   "unsupportedInferenceRestrictions": [
+    "Never prescribe a sample size."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-DEADLINE",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief give a deadline (or timeline) for the research or the decision?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "deadline or key dates"
+   ],
+   "evaluationGuidance": "Strong: a dated deadline and key milestones. Workable: a deadline only. Weak: vague timing. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-BUDGET",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief give a budget, a budget range or an indication of scale?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "budget or range"
+   ],
+   "evaluationGuidance": "Strong: an amount or range. Workable: an indication of scale or a stated constraint. Weak: only 'cost-effective' or similar. Absent: none. An explicit statement that budget is open counts as Workable.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-PROP-LITERATURE",
+   "version": 1,
+   "group": "proposal",
+   "assessmentQuestion": "Does the proposal include a literature or prior-evidence review relevant to the problem?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "literature, prior studies or existing data reviewed"
+   ],
+   "evaluationGuidance": "Strong: relevant prior evidence reviewed and used to shape the design. Workable: mentioned and relevant but not used. Weak: generic or not relevant. Absent: none. Relevance to this business problem matters, not length.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-PROP-RESTATEMENT",
+   "version": 1,
+   "group": "proposal",
+   "assessmentQuestion": "Does the proposal restate the business problem and objectives accurately?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "restated problem",
+    "restated objectives"
+   ],
+   "evaluationGuidance": "When a brief is selected, compare the proposal's restatement with the brief's own problem and objectives and name any drift, omission or reinterpretation, citing both. Without a brief, judge whether the problem and objectives are stated clearly on their own. Strong: accurate and complete. Workable: minor drift. Weak: material drift or omissions. Absent: no restatement.",
+   "unsupportedInferenceRestrictions": [
+    "Do not choose between brief and proposal where they conflict; report both."
+   ],
+   "execution": "hybrid",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-PROP-OBJECTIVES-ADDED",
+   "version": 1,
+   "group": "proposal",
+   "assessmentQuestion": "Does the proposal add objectives beyond the brief, and are any additions justified and useful?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "objectives not in the brief",
+    "rationale for them"
+   ],
+   "evaluationGuidance": "With a brief, list objectives the proposal adds and whether each is justified and relevant to the problem; additions that dilute the brief's priorities are a concern. Without a brief, judge whether the proposal's objectives are coherent as a set. Strong: useful, justified additions or a clear statement that none are needed. Workable: additions without rationale. Weak: additions that distract. Absent: cannot tell which objectives are new.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-PROP-METHOD",
+   "version": 1,
+   "group": "proposal-method",
+   "assessmentQuestion": "Is the proposed methodology suitable for the objectives and the decision: approach, data collection and why it was chosen?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "research approach",
+    "data collection method",
+    "rationale"
+   ],
+   "evaluationGuidance": "Judge fit for purpose, not sophistication. Strong: approach justified against each objective. Workable: suitable but thinly justified. Weak: mismatched to some objectives. Absent: no methodology.",
+   "unsupportedInferenceRestrictions": [
+    "A plan is not evidence of execution."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-PROP-DESIGN",
+   "version": 1,
+   "group": "proposal-method",
+   "assessmentQuestion": "Is the research design described clearly enough to judge: phases, stimulus or questionnaire development, piloting, controls, fieldwork procedure?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "design structure",
+    "instrument development",
+    "piloting"
+   ],
+   "evaluationGuidance": "Strong: clear design with each phase and how it answers the objectives. Workable: outline only. Weak: vague. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-PROP-SAMPLE",
+   "version": 1,
+   "group": "proposal-method",
+   "assessmentQuestion": "Is the sample defined and appropriate: target population, selection and recruitment, size with its rationale, subgroups and quotas?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "sample definition",
+    "selection and recruitment",
+    "size and rationale",
+    "subgroups"
+   ],
+   "evaluationGuidance": "Quantitative: whether selection supports the intended inference; size alone never establishes representativeness. Qualitative: selection rationale and recruitment context; no survey minimum-n rules. Strong: defined, justified and fit for the subgroup analysis planned. Workable: defined but thinly justified. Weak: undefined in parts. Absent: none.",
+   "unsupportedInferenceRestrictions": [
+    "Never prescribe a universal sample size."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-PROP-ANALYSIS",
+   "version": 1,
+   "group": "proposal-method",
+   "assessmentQuestion": "Is there an analytical plan: how each objective will be analysed, comparisons and subgroups, weighting and significance, or the qualitative analysis process?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "analysis approach per objective",
+    "subgroups and comparisons",
+    "weighting, significance or coding approach"
+   ],
+   "evaluationGuidance": "Strong: a plan per objective. Workable: general analysis description. Weak: 'analysis will be conducted'. Absent: none. Significance testing does not cure selection bias.",
+   "unsupportedInferenceRestrictions": [
+    "Do not compute or prescribe statistics without a stated method."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-PROP-PRODUCTS",
+   "version": 1,
+   "group": "proposal",
+   "assessmentQuestion": "Does the proposal state the products and deliverables: what will be delivered, in what form and when?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "deliverables",
+    "format"
+   ],
+   "evaluationGuidance": "Strong: each deliverable with format and timing, linked to the decision. Workable: listed deliverables. Weak: vague. Absent: none. With a brief, note deliverables the brief asked for that are missing.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-PROP-TIMELINE",
+   "version": 1,
+   "group": "proposal",
+   "assessmentQuestion": "Does the proposal give a timeline with milestones, and does it meet the brief's deadline?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "timeline",
+    "milestones"
+   ],
+   "evaluationGuidance": "With a brief that gives a deadline, check the timeline meets it, citing both. Strong: dated milestones that fit. Workable: an overall timeline. Weak: vague. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-PROP-BUDGET",
+   "version": 1,
+   "group": "proposal",
+   "assessmentQuestion": "Does the proposal give a budget or cost, and does it fit the brief's budget indication?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-present"
+   },
+   "requiredEvidence": [
+    "cost or budget",
+    "what it includes"
+   ],
+   "evaluationGuidance": "With a brief budget indication, check fit, citing both. Strong: itemised cost that fits. Workable: total cost. Weak: indicative only. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-DESIGN-ALIGN",
+   "version": 1,
+   "group": "design",
+   "assessmentQuestion": "Does the documented design (approach, selection, measures, analysis) address the stated objectives and decision?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "methodology",
+     "report"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "documented-design"
+   },
+   "requiredEvidence": [
+    "design or approach",
+    "link to objectives"
+   ],
+   "evaluationGuidance": "Judge fit for the stated purpose. A design can suit one objective and not another; assess per decision where decisions are given.",
+   "unsupportedInferenceRestrictions": [
+    "A plan is not evidence of execution."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-SAMPLE-RECRUIT",
+   "version": 1,
+   "group": "design",
+   "assessmentQuestion": "Is how participants or respondents were (or will be) selected and recruited documented, and appropriate for the stated purpose?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "methodology",
+     "report",
+     "fieldwork"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "documented-design-or-fieldwork"
+   },
+   "requiredEvidence": [
+    "selection method",
+    "recruitment source",
+    "target and achieved numbers where stated"
+   ],
+   "evaluationGuidance": "Quantitative: whether selection supports the intended inference; size alone never establishes representativeness, and weights alone do not establish a sampling design. Qualitative: participant-selection rationale and recruitment context; no survey minimum-n rules and no requirement of statistical representativeness.",
+   "unsupportedInferenceRestrictions": [
+    "Never prescribe a universal sample size.",
+    "Missing recruitment documentation is not proof of poor recruitment."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-MEASURE-ANALYSIS",
+   "version": 1,
+   "group": "design",
+   "assessmentQuestion": "Are measurement and analysis documented: bases, weighting and missing data (quantitative) or the analytic process (qualitative)?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "methodology",
+     "report"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "documented-design"
+   },
+   "requiredEvidence": [
+    "measures",
+    "analysis approach",
+    "bases and missing-data treatment or coding process"
+   ],
+   "evaluationGuidance": "Record what is stated. A weighting statement without a sampling design is partial. Statistical significance does not cure selection bias.",
+   "unsupportedInferenceRestrictions": [
+    "Do not compute or prescribe statistics without a stated, supported method."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-INFERENCE-SCOPE",
+   "version": 1,
+   "group": "alignment",
+   "assessmentQuestion": "For each intended decision or use, what can the documented evidence support (exploration, description, estimation, causal claims)?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief",
+     "proposal",
+     "methodology",
+     "report"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "any-material"
+   },
+   "requiredEvidence": [
+    "intended uses",
+    "documented design",
+    "claims made"
+   ],
+   "evaluationGuidance": "The same method can be suitable for one purpose and insufficient for another; give decision fitness per decision. Observational designs do not establish causation; exploratory interviews do not establish prevalence.",
+   "unsupportedInferenceRestrictions": [
+    "Do not change or re-judge calculated findings.",
+    "Do not claim misconduct."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-INSTR-COVERAGE",
+   "version": 1,
+   "group": "instrument",
+   "assessmentQuestion": "Does the questionnaire or discussion guide cover every stated objective?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "questionnaire",
+     "discussion_guide"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "instrument-present"
+   },
+   "requiredEvidence": [
+    "instrument items",
+    "objectives"
+   ],
+   "evaluationGuidance": "Map objectives to items. An objective with no item is a coverage gap; name the objective, never invent the missing question as if it were in the instrument.",
+   "unsupportedInferenceRestrictions": [
+    "Do not quote questions that are not in the instrument."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-INSTR-WORDING",
+   "version": 1,
+   "group": "instrument",
+   "assessmentQuestion": "Are items free of leading or combined wording, with suitable recall periods, response options, scales and documented routing?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "questionnaire",
+     "discussion_guide"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "instrument-present"
+   },
+   "requiredEvidence": [
+    "item wording",
+    "response options",
+    "routing where shown"
+   ],
+   "evaluationGuidance": "Quote the item. For guides, assess openness and neutrality of prompts rather than response options.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-ALIGN-CONSISTENCY",
+   "version": 1,
+   "group": "alignment",
+   "assessmentQuestion": "Do the documents agree on population, objectives, measures, sample and fieldwork? Where they conflict, what are the conflicting statements?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "two-or-more-sources"
+   },
+   "requiredEvidence": [
+    "comparable statements from at least two documents"
+   ],
+   "evaluationGuidance": "Keep each conflicting statement with its source. Do not reconcile or choose between them.",
+   "unsupportedInferenceRestrictions": [
+    "Do not guess a reconciliation."
+   ],
+   "execution": "hybrid"
+  },
+  {
+   "criterionId": "RQ-PLAN-EXECUTION",
+   "version": 1,
+   "group": "alignment",
+   "assessmentQuestion": "Where a plan and a report of what was done both exist, do they differ, and what does any difference mean for the conclusions?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [],
+    "modes": [
+     "review_documented"
+    ],
+    "ruleId": "plan-and-execution"
+   },
+   "requiredEvidence": [
+    "planned statements",
+    "reported-executed statements"
+   ],
+   "evaluationGuidance": "Planned and reported-executed statements stay separate. A difference qualifies inference; it is not evidence of misconduct.",
+   "unsupportedInferenceRestrictions": [
+    "Do not treat the plan as what happened."
+   ],
+   "execution": "hybrid"
+  },
+  {
+   "criterionId": "RQ-QUAL-PROCESS",
+   "version": 1,
+   "group": "design",
+   "assessmentQuestion": "For qualitative work: is the analytic process transparent, and is researcher influence and the scope of claims addressed?",
+   "applicability": {
+    "studyTypes": [
+     "qualitative",
+     "mixed"
+    ],
+    "roles": [
+     "proposal",
+     "methodology",
+     "report"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "qualitative-strand"
+   },
+   "requiredEvidence": [
+    "coding or analysis process",
+    "reflexivity or researcher role",
+    "claim scope"
+   ],
+   "evaluationGuidance": "Saturation is not inferred from a participant count. Claims should stay within the perspectives heard.",
+   "unsupportedInferenceRestrictions": [
+    "Do not apply survey sample-size rules."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-MIXED-INTEGRATION",
+   "version": 1,
+   "group": "design",
+   "assessmentQuestion": "For mixed methods: is each strand's purpose and the integration of strands stated, with unresolved differences kept visible?",
+   "applicability": {
+    "studyTypes": [
+     "mixed"
+    ],
+    "roles": [
+     "proposal",
+     "methodology",
+     "report"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "mixed-strands"
+   },
+   "requiredEvidence": [
+    "strand purposes",
+    "integration approach"
+   ],
+   "evaluationGuidance": "Assess each strand under its own criteria; never average strand judgements.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  }
+ ]
+}

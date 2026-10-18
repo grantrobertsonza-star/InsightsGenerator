@@ -72,6 +72,11 @@ export function RunSectionProvider({
   );
 }
 
+/** Switches the run to another section from any client component inside the provider. */
+export function useGoToSection(): (id: string) => void {
+  return useRunSection().setSelected;
+}
+
 /** A button that switches the run to another section of the sidebar. */
 export function GoToSection({ id, children }: { id: string; children: ReactNode }) {
   const { setSelected } = useRunSection();

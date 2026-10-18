@@ -88,6 +88,8 @@ import {
 } from "./RunShell";
 import type { FindingKind } from "@/lib/findingActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
+import ResearchQualityReview from "./ResearchQualityReview";
+import ReviewResearchQualityLink from "./ReviewResearchQualityLink";
 import { impactFor, loadDocumentDeletionImpact } from "@/lib/documentDeletionImpact";
 import { deleteDocumentConfirmation } from "@/lib/documentDeletionMessage";
 import SubmitButton from "@/components/SubmitButton";
@@ -4371,6 +4373,9 @@ export default async function RunPage({
                                       ).toLocaleDateString()}
                                     </div>
                                   </div>
+                                  {/\.(pdf|docx|txt)$/i.test(doc.source_filename) && (
+                                    <ReviewResearchQualityLink documentId={doc.id} />
+                                  )}
                                   <form
                                     action={deleteAction}
                                     className="shrink-0"
@@ -4812,6 +4817,8 @@ export default async function RunPage({
   const navSections: RunNavSection[] = [
     { id: "objective", group: "Objectives", label: "Set Objectives" },
     { id: "objectives", group: "Objectives", label: "Review Objectives" },
+    // Works before any data exists (a brief alone is enough), so it sits with the objectives.
+    { id: "research-quality", group: "Objectives", label: "Research quality review" },
     { id: "upload", group: "Setup", label: "Import data" },
     {
       id: "crosstabs",
@@ -5414,6 +5421,15 @@ export default async function RunPage({
                 }
               />
             </ObjectiveSelectionProvider>
+          </SectionPanel>
+
+          <SectionPanel id="research-quality">
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Research quality review</h2>
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Check a brief, proposal, questionnaire, methodology or report for what it documents, whether the approach suits
+              its purpose, and what the evidence can support for each decision. Opening this section does not call the model.
+            </p>
+            <ResearchQualityReview runId={id} />
           </SectionPanel>
 
           <SectionPanel id="crosstabs">

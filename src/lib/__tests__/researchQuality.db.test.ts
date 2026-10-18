@@ -1,0 +1,404 @@
+// Research Quality Review v1 on a REAL PostgreSQL (disposable, all migrations) as a NON-OWNER role
+// without BYPASSRLS, through the ACTUAL server actions, repository, orchestration, view and DOCX
+// builder. Mocked boundaries only: the model client (a deterministic stand-in that quotes the
+// document it is given), object storage (in memory), the signed-in request context, and
+// next/server after() (run inline so the test can await it). The cases are the deterministic
+// parts of the brief's finite suite (section 10): RQ01, RQ04, RQ10 to RQ14, the missing-migration
+// guard and purge. The semantic "M" cases need the real model and are in the Windows kit.
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import JSZip from "jszip";
+import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+
+const A = "00000000-0000-4000-8000-0000000000a7";
+const B = "00000000-0000-4000-8000-0000000000b7";
+const ROLE = "ie_test_rq_app";
+let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+const objects = new Map<string, Buffer>();
+const pendingAfter: Promise<unknown>[] = [];
+const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> } };
+
+vi.mock("../requestContext", async () => ({
+  ...(await vi.importActual<object>("../requestContext")),
+  requireRequestContext: async () => ({ ...current, organisationName: "Org", role: "owner", memberships: [] }),
+  requireTenantId: async () => current.tenantId,
+}));
+vi.mock("next/server", async () => ({ ...(await vi.importActual<object>("next/server")), after: (fn: () => Promise<unknown>) => void pendingAfter.push(fn()) }));
+vi.mock("../supabaseAdmin", () => ({
+  supabaseAdmin: {
+    storage: {
+      from: () => ({
+        download: async (p: string) => (objects.has(p) ? { data: new Blob([new Uint8Array(objects.get(p)!)]), error: null } : { data: null, error: { message: "not found" } }),
+      }),
+    },
+  },
+}));
+vi.mock("../apiUsage", async () => ({ ...(await vi.importActual<object>("../apiUsage")), logApiUsage: async () => {} }));
+// Deterministic model stand-in: extraction quotes each sentence of the passage it was sent;
+// assessment answers one observation per criterion, citing facts whose topic fits.
+vi.mock("../anthropic", () => ({
+  CLAUDE_MODEL: "stand-in-model",
+  anthropic: {
+    messages: {
+      create: async (req: { tool_choice: { name: string }; messages: { content: string }[] }) => {
+        const tool = req.tool_choice.name;
+        const content = req.messages[0].content;
+        model.calls.push(tool);
+        const usage = { input_tokens: 1000, output_tokens: 500 };
+        if (tool === "record_documented_facts") {
+          const doc = /<document>\n([\s\S]*)\n<\/document>/.exec(content)![1];
+          const sentences = doc.split(/(?<=\.)\s+/).map((s) => s.trim()).filter((s) => s.length >= 12);
+          const facts = sentences.map((s) => ({
+            topic: /decision/i.test(s) ? "decision" : /recruit|panel/i.test(s) ? "recruitment" : /customers|public/i.test(s) ? "population" : /question|ask/i.test(s) ? "instrument_item" : "claim",
+            phase: /\bwill\b/i.test(s) ? "planned" : "reported_executed",
+            selection: /opt-in/i.test(s) ? "non_probability" : "unstated",
+            statement: s.slice(0, 80),
+            exact_quote: s,
+          }));
+          return { usage, content: [{ type: "tool_use", input: { nothing_found: facts.length === 0, facts } }] };
+        }
+        const payload = JSON.parse(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
+        const group = payload.criteria[0].id;
+        if (model.hold && payload.criteria.some((c) => c.id === model.hold!.task)) await model.hold.release;
+        if (model.failTask && payload.criteria.some((c) => c.id === model.failTask)) throw new Error("synthetic model outage");
+        const observations = payload.criteria.map((c) => {
+          const want = c.id.includes("POPULATION") ? ["population"] : c.id.includes("DECISION") ? ["decision"] : c.id.includes("SAMPLE") ? ["recruitment"] : c.id.includes("ALIGN") ? ["population", "recruitment"] : [];
+          const cited = payload.facts.filter((f) => want.includes(f.topic)).slice(0, 2).map((f) => f.id);
+          return {
+            criterion_id: c.id,
+            fact_ids: model.malformed === c.id ? ["F999"] : cited,
+            decision_refs: payload.context.decisions.length ? [0] : [],
+            score: cited.length ? 3 : 0,
+            score_reason: "stand-in score",
+            documentation: cited.length ? (c.id.includes("ALIGN") && cited.length > 1 ? "conflicting" : "documented") : "not_documented",
+            methodology: cited.length ? "concern" : "concern",
+            decision_fitness: payload.context.decisions.map((d) => ({ decision_ref: d.ref, state: "qualified", reasoning: "stand-in" })),
+            reasoning: `stand-in judgement for ${c.id}`,
+            implication: `Generated implication for ${c.id}`,
+            uncertainty: [],
+            improvement: { current_action: `Clarify ${c.id} in the report`, future_action: null, timing: "before_decision", rationale: "stand-in" },
+            clarification_questions: [`What does ${c.id} need?`],
+          };
+        });
+        void group;
+        return { usage, content: [{ type: "tool_use", input: { observations } }] };
+      },
+    },
+  },
+}));
+
+describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, real database, non-owner role)", () => {
+  let db: DisposableDb;
+  let runA: string;
+  let briefDoc: string;
+  let proposalDoc: string;
+  let binaryDoc: string;
+  let runB: string;
+  type M = {
+    actions: typeof import("../researchQualityActions");
+    view: typeof import("../researchQualityView");
+    repo: typeof import("../researchQualityRepository");
+    exportDocx: typeof import("../researchQualityExport");
+  };
+  let m: M;
+  const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
+  const settle = async () => {
+    while (pendingAfter.length) await pendingAfter.shift();
+  };
+  const addDoc = async (tenant: string, run: string, name: string, bytes: Buffer, kind = "evidence") => {
+    const path = `${tenant}/${run}/${Date.now()}-${Math.random().toString(16).slice(2)}-${name}`;
+    objects.set(path, bytes);
+    return (await q(`insert into documents (tenant_id, run_id, kind, source_filename, storage_path) values ($1,$2,$3,$4,$5) returning id`, [tenant, run, kind, name, path])).rows[0].id as string;
+  };
+  const start = async (sources: { documentId: string; roles: string[] }[], extra: Record<string, unknown> = {}) => {
+    const r = await m.actions.startResearchQualityReviewAction(runA, {
+      requestKey: `k${Math.random().toString(36).slice(2, 12)}`,
+      mode: "improve_planned",
+      studyType: "quantitative",
+      purpose: "Decide whether to launch a loyalty scheme",
+      sources,
+      decisions: [{ decisionId: null, text: "Launch the loyalty scheme or not" }],
+      objectives: [],
+      ...extra,
+    });
+    if (!r.ok) throw new Error(r.error);
+    await settle();
+    return r.reviewId;
+  };
+  const viewOf = async (reviewId: string | null) => {
+    const r = await m.actions.loadResearchQualityViewAction(runA, reviewId);
+    if (!r.ok) throw new Error(r.error);
+    return r.view;
+  };
+
+  beforeAll(async () => {
+    db = await createDisposableDb();
+    await q(`insert into tenants (id, name) values ($1, 'A'), ($2, 'B')`, [A, B]);
+    runA = (await q(`insert into runs (tenant_id, project_name) values ($1, 'RQ project') returning id`, [A])).rows[0].id;
+    runB = (await q(`insert into runs (tenant_id, project_name) values ($1, 'Other org') returning id`, [B])).rows[0].id;
+    await q(`do $$ begin if not exists (select 1 from pg_roles where rolname = '${ROLE}') then create role ${ROLE} login password 'ie_test_only' nobypassrls; end if; end $$`);
+    await q(`grant usage on schema public to ${ROLE}`);
+    await q(`grant select, insert, update, delete on all tables in schema public to ${ROLE}`);
+    await q(`grant usage, select on all sequences in schema public to ${ROLE}`);
+    await q(`grant execute on all functions in schema public to ${ROLE}`);
+    await q(`revoke all on table tenants from ${ROLE}`);
+    const u = new URL(db.url);
+    u.username = ROLE;
+    u.password = "ie_test_only";
+    process.env.DATABASE_URL = u.toString();
+    process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://storage.invalid";
+    process.env.SUPABASE_SECRET_KEY ??= "unused";
+    briefDoc = await addDoc(A, runA, "brief.txt", Buffer.from("Project brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\nDeliverables are a short report and a deck.\n"));
+    proposalDoc = await addDoc(A, runA, "proposal.txt", Buffer.from("Proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+    binaryDoc = await addDoc(A, runA, "scan.txt", Buffer.from([0x25, 0x50, 0x00, 0xff, 0xfe, 0x00]));
+    m = {
+      actions: await import("../researchQualityActions"),
+      view: await import("../researchQualityView"),
+      repo: await import("../researchQualityRepository"),
+      exportDocx: await import("../researchQualityExport"),
+    };
+  }, 180000);
+
+  afterAll(async () => {
+    const { pool } = await import("../db");
+    await pool.end().catch(() => {});
+    await db?.drop();
+    const { Client } = await import("pg");
+    const c = new Client({ connectionString: TEST_DATABASE_URL });
+    await c.connect();
+    await c.query(`drop role if exists ${ROLE}`).catch(() => {});
+    await c.end();
+  });
+  beforeEach(() => {
+    current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+    model.failTask = null;
+    model.malformed = null;
+    model.hold = null;
+  });
+
+  it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
+    await q(`alter table research_quality_researcher_entries rename to rq_entries_hidden`);
+    try {
+      model.calls = [];
+      const v = await m.actions.loadResearchQualityViewAction(runA, null);
+      expect(v).toMatchObject({ ok: false, setup: true });
+      const s = await m.actions.startResearchQualityReviewAction(runA, { requestKey: "guardguard1", mode: "improve_planned", studyType: "unclear", purpose: "", sources: [{ documentId: briefDoc, roles: ["brief"] }], decisions: [], objectives: [] });
+      expect(s).toMatchObject({ ok: false });
+      expect(model.calls).toEqual([]);
+      expect((await q(`select count(*)::int n from research_quality_sources`)).rows[0].n).toBe(0);
+    } finally {
+      await q(`alter table rq_entries_hidden rename to research_quality_researcher_entries`);
+    }
+  });
+
+  it("RQ01: opening the module makes no model call; a brief alone gives a scoped review where later documents are 'not yet available'", async () => {
+    model.calls = [];
+    const empty = await viewOf(null);
+    expect(empty.review).toBeNull();
+    expect(empty.documents.map((d) => d.filename).sort()).toEqual(["brief.txt", "proposal.txt", "scan.txt"]);
+    expect(model.calls).toEqual([]);
+    const id = await start([{ documentId: briefDoc, roles: ["brief"] }]);
+    const v = await viewOf(id);
+    expect(v.review!.state).toBe("complete");
+    expect(model.calls.filter((c) => c === "record_documented_facts")).toHaveLength(1);
+    const sample = v.review!.manifest.criteria.find((c) => c.criterionId === "RQ-SAMPLE-RECRUIT")!;
+    expect(sample.status).toBe("excluded");
+    expect(sample.reason).toMatch(/no plan or methodology document yet/);
+    expect(v.review!.observations.some((o) => o.criterionId === "RQ-SAMPLE-RECRUIT")).toBe(false);
+    // Every published quote is verbatim from the pinned snapshot.
+    const text = (await q(`select canonical_text from research_quality_source_versions where id = $1`, [v.review!.manifest.sources[0].sourceVersionId])).rows[0].canonical_text as string;
+    for (const o of v.review!.observations) for (const s of o.payload.statements) expect(text.slice(s.locator.start, s.locator.end)).toBe(s.exactQuote);
+    // Absence with the brief read in full is "complete"; methodology can never be a concern without documentation.
+    const absent = v.review!.observations.filter((o) => o.payload.basis === "absence_in_assessed_scope");
+    expect(absent.length).toBeGreaterThan(0);
+    for (const o of absent) expect(o.payload.assessment.methodology).toBe("cannot_assess");
+    expect(v.review!.createdBy).toBe("researcher-a@example.test");
+  });
+
+  it("a repeated start with the same request key creates one review", async () => {
+    const before = (await q(`select count(*)::int n from research_quality_reviews`)).rows[0].n;
+    const body = { requestKey: "samekey12345", mode: "improve_planned", studyType: "unclear", purpose: "", sources: [{ documentId: briefDoc, roles: ["brief"] }], decisions: [], objectives: [] };
+    const [r1, r2] = await Promise.all([m.actions.startResearchQualityReviewAction(runA, body), m.actions.startResearchQualityReviewAction(runA, body)]);
+    await settle();
+    expect(r1.ok && r2.ok && r1.reviewId === r2.reviewId).toBe(true);
+    expect((await q(`select count(*)::int n from research_quality_reviews`)).rows[0].n).toBe(before + 1);
+  });
+
+  it("RQ04 control: an unreadable document is refused with its reason and nothing is created", async () => {
+    const before = (await q(`select count(*)::int n from research_quality_reviews`)).rows[0].n;
+    const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: "binarykey123", mode: "review_documented", studyType: "unclear", purpose: "", sources: [{ documentId: binaryDoc, roles: ["report"] }], decisions: [], objectives: [] });
+    expect(r).toMatchObject({ ok: false });
+    expect(!r.ok && r.error).toMatch(/not UTF-8 text/);
+    expect((await q(`select count(*)::int n from research_quality_reviews`)).rows[0].n).toBe(before);
+  });
+
+  it("RQ02 (deterministic part): conflicting populations keep both passages, each with its own source", async () => {
+    const id = await start([{ documentId: briefDoc, roles: ["brief"] }, { documentId: proposalDoc, roles: ["proposal"] }]);
+    const v = await viewOf(id);
+    const align = v.review!.observations.find((o) => o.criterionId === "RQ-ALIGN-CONSISTENCY")!;
+    expect(align.payload.assessment.documentation).toBe("conflicting");
+    const files = new Set(align.payload.statements.map((s) => v.review!.manifest.sources.find((x) => x.sourceVersionId === s.sourceVersionId)!.filename));
+    expect(files).toEqual(new Set(["brief.txt", "proposal.txt"]));
+    expect(v.review!.facts.filter((f) => f.topic === "population" || f.topic === "recruitment").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("RQ10/RQ11: decisions are revision-checked, idempotent and attributed; a regenerated judgement awaits review and keeps the earlier wording", async () => {
+    const first = await viewOf(null);
+    const o = first.review!.observations.find((x) => x.criterionId === "RQ-BRIEF-DECISION")!;
+    const accept = await m.actions.recordResearchQualityEntryAction(runA, { kind: "accept", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: "acceptkey001" });
+    expect(accept.ok).toBe(true);
+    // The same click again records once.
+    expect(await m.actions.recordResearchQualityEntryAction(runA, { kind: "accept", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: "acceptkey001" })).toMatchObject({ ok: true });
+    // A save naming the old revision is a visible conflict, not an overwrite.
+    const stale = await m.actions.recordResearchQualityEntryAction(runA, { kind: "wording", observationId: o.observationId, observationVersionId: o.versionId, body: "Stale wording", expectedRevision: o.revision, idempotencyKey: "stalewording1" });
+    expect(stale).toMatchObject({ ok: false, conflict: true });
+    const wording = await m.actions.recordResearchQualityEntryAction(runA, { kind: "wording", observationId: o.observationId, observationVersionId: o.versionId, body: "Researcher wording kept", expectedRevision: o.revision + 1, idempotencyKey: "goodwording1" });
+    expect(wording.ok).toBe(true);
+    const clar = await m.actions.recordResearchQualityEntryAction(runA, { kind: "clarification", observationId: null, observationVersionId: null, body: "Recruitment is through the customer database, all active customers invited.", expectedRevision: null, idempotencyKey: "clarify00001" });
+    expect(clar.ok).toBe(true);
+    const mid = await viewOf(first.review!.id);
+    expect(mid.review!.newClarifications).toBe(1);
+    const accepted = mid.review!.observations.find((x) => x.observationId === o.observationId)!;
+    expect(accepted).toMatchObject({ status: "accepted", decidedBy: "researcher-a@example.test" });
+    expect(accepted.wording?.text).toBe("Researcher wording kept");
+    expect((await q(`select count(*)::int n from research_quality_researcher_entries where idempotency_key = 'acceptkey001'`)).rows[0].n).toBe(1);
+
+    // A new review version: same logical observation, new version, awaiting review; the earlier
+    // decision and wording are history, and the clarification enters as researcher-supplied.
+    const id2 = await start([{ documentId: briefDoc, roles: ["brief"] }, { documentId: proposalDoc, roles: ["proposal"] }]);
+    const v2 = await viewOf(id2);
+    const again = v2.review!.observations.find((x) => x.observationId === o.observationId)!;
+    expect(again.status).toBe("awaiting_review");
+    expect(again.wording).toBeNull();
+    expect(again.previous).toMatchObject({ status: "accepted", wording: "Researcher wording kept" });
+    expect(v2.review!.manifest.clarifications.map((c) => c.text)).toContain("Recruitment is through the customer database, all active customers invited.");
+    expect(v2.review!.newClarifications).toBe(0);
+    // The earlier review still shows its own decision.
+    const old = await viewOf(first.review!.id);
+    expect(old.review!.observations.find((x) => x.observationId === o.observationId)!.status).toBe("accepted");
+  });
+
+  it("RQ12: replacing a source makes dependent observations 'requires review', and identical-looking text does not inherit acceptance", async () => {
+    const before = await viewOf(null);
+    const src = before.documents.find((d) => d.id === briefDoc)!.source!;
+    const replacement = await addDoc(A, runA, "brief.txt", Buffer.from("Project brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing and lapsed customers about loyalty.\n"));
+    expect((await m.actions.replaceResearchQualitySourceAction(runA, src.sourceId, replacement)).ok).toBe(true);
+    // Reading the replacement (as a new review does) creates a new version of the same logical source.
+    const id = await start([{ documentId: replacement, roles: ["brief"] }]);
+    const prev = await viewOf(before.review!.id);
+    const briefObs = prev.review!.observations.filter((o) => o.payload.statements.some((s) => prev.review!.manifest.sources.find((x) => x.sourceVersionId === s.sourceVersionId)?.sourceId === src.sourceId));
+    expect(briefObs.length).toBeGreaterThan(0);
+    for (const o of briefObs) expect(o.freshness).toBe("requires_review");
+    expect(prev.review!.sourceFreshness.find((f) => f.sourceId === src.sourceId)!.status).toBe("changed");
+    const now = await viewOf(id);
+    expect(now.review!.manifest.sources[0].sourceId).toBe(src.sourceId);
+    for (const o of now.review!.observations) expect(o.status).toBe("awaiting_review");
+    expect((await q(`select count(*)::int n from research_quality_source_versions where source_id = $1`, [src.sourceId])).rows[0].n).toBe(2);
+  });
+
+  it("RQ12: a late answer from an expired lease cannot publish over the current attempt", async () => {
+    const reviewId = (await q(`select id from research_quality_reviews where run_id = $1 order by sequence desc limit 1`, [runA])).rows[0].id;
+    const task = (await q(`insert into research_quality_tasks (tenant_id, run_id, review_id, task_key, stage, max_attempts, result) values ($1,$2,$3,'extract:late:00','extract',2,'{"input":{}}') returning id`, [A, runA, reviewId])).rows[0].id;
+    const lease1 = await m.repo.claimTask(A, task, 1);
+    expect(lease1).toBeTruthy();
+    await q(`update research_quality_tasks set lease_expires_at = now() - interval '1 second' where id = $1`, [task]);
+    const lease2 = await m.repo.claimTask(A, task, 60);
+    expect(lease2).toBeTruthy();
+    expect(await m.repo.publishExtraction(A, task, lease1!, { facts: [{ late: true }], dropped: 0, nothingFound: false }, { input: 1, output: 1, cost: 0 })).toBe(false);
+    expect(await m.repo.publishExtraction(A, task, lease2!, { facts: [], dropped: 0, nothingFound: true }, { input: 1, output: 1, cost: 0 })).toBe(true);
+    expect((await q(`select result->'facts' as f from research_quality_tasks where id = $1`, [task])).rows[0].f).toEqual([]);
+    await q(`delete from research_quality_tasks where id = $1`, [task]);
+  });
+
+  it("RQ13: one failed and one malformed assessment give an honest partial review; retry reruns only those, once", async () => {
+    model.failTask = "RQ-DESIGN-ALIGN";
+    model.malformed = "RQ-BRIEF-DECISION";
+    const id = await start([{ documentId: briefDoc, roles: ["brief"] }, { documentId: proposalDoc, roles: ["proposal"] }], { mode: "review_documented" });
+    let v = await viewOf(id);
+    expect(v.review!.state).toBe("partial");
+    const failed = v.review!.coverage.tasks!.filter((t) => t.status === "failed").map((t) => t.key).sort();
+    expect(failed).toEqual(["assess:brief", "assess:design"]);
+    expect(v.review!.observations.some((o) => o.criterionId === "RQ-BRIEF-DECISION")).toBe(false);
+    const versionsBefore = (await q(`select count(*)::int n from research_quality_observation_versions where review_id = $1`, [id])).rows[0].n;
+    model.failTask = null;
+    model.malformed = null;
+    model.calls = [];
+    expect((await m.actions.retryResearchQualityReviewAction(runA, id)).ok).toBe(true);
+    await settle();
+    expect(model.calls).toEqual(["record_quality_observations", "record_quality_observations"]);
+    v = await viewOf(id);
+    expect(v.review!.state).toBe("complete");
+    const versionsAfter = (await q(`select count(*)::int n from research_quality_observation_versions where review_id = $1`, [id])).rows[0].n;
+    expect(versionsAfter).toBeGreaterThan(versionsBefore);
+    // No observation has two versions in one review.
+    expect((await q(`select count(*)::int n from (select observation_id from research_quality_observation_versions where review_id = $1 group by 1 having count(*) > 1) d`, [id])).rows[0].n).toBe(0);
+    // Out of attempts: a further retry does nothing.
+    model.calls = [];
+    await q(`update research_quality_tasks set status = 'failed' where review_id = $1 and task_key = 'assess:brief'`, [id]);
+    await m.actions.retryResearchQualityReviewAction(runA, id);
+    await settle();
+    expect(model.calls).toEqual([]);
+  });
+
+  it("export: the DOCX carries scope, separate dimensions, qualifications, researcher wording and the dismissed appendix; no model call", async () => {
+    const v = await viewOf(null);
+    const o = v.review!.observations[0];
+    await m.actions.recordResearchQualityEntryAction(runA, { kind: "dismiss", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: "dismisskey01" });
+    model.calls = [];
+    const view = await m.view.loadResearchQualityView(A, runA, null);
+    const { buffer } = await m.exportDocx.buildResearchQualityDocx(view, "RQ project");
+    expect(model.calls).toEqual([]);
+    const xml = await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string");
+    const text = xml.replace(/<[^>]+>/g, " ");
+    expect(text).toMatch(/Documentation: /);
+    expect(text).toMatch(/Methodology: /);
+    expect(text).toMatch(/Decision fitness/);
+    expect(text).toMatch(/Appendix: dismissed observations/);
+    expect(text).toMatch(new RegExp(`${o.criterionId} dismissed by researcher-a@example.test`));
+    expect(text).toMatch(/not a certification/);
+  });
+
+  it("RQ14: another organisation cannot read, export, start, decide or purge; nothing is disclosed or changed", async () => {
+    const v = await viewOf(null);
+    const o = v.review!.observations[1];
+    const src = v.documents.find((d) => d.source)!.source!;
+    current = { tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" };
+    model.calls = [];
+    expect(await m.actions.loadResearchQualityViewAction(runA, null)).toMatchObject({ ok: false });
+    expect(await m.actions.loadResearchQualityViewAction(runA, v.review!.id)).toMatchObject({ ok: false });
+    expect(await m.actions.startResearchQualityReviewAction(runA, { requestKey: "crosstenant1", mode: "improve_planned", studyType: "unclear", purpose: "", sources: [{ documentId: briefDoc, roles: ["brief"] }], decisions: [], objectives: [] })).toMatchObject({ ok: false });
+    expect(await m.actions.recordResearchQualityEntryAction(runA, { kind: "accept", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: "crosstenant2" })).toMatchObject({ ok: false });
+    // Even naming its own run, B cannot reach A's observation or source.
+    expect(await m.actions.recordResearchQualityEntryAction(runB, { kind: "comment", observationId: o.observationId, observationVersionId: null, body: "x", expectedRevision: null, idempotencyKey: "crosstenant3" })).toMatchObject({ ok: false });
+    expect(await m.actions.purgeResearchQualitySourceAction(runA, src.sourceId)).toMatchObject({ ok: false });
+    expect(await m.actions.retryResearchQualityReviewAction(runA, v.review!.id)).toMatchObject({ ok: false });
+    expect(model.calls).toEqual([]);
+    expect((await q(`select count(*)::int n from research_quality_researcher_entries where tenant_id = $1`, [B])).rows[0].n).toBe(0);
+    expect((await q(`select count(*)::int n from research_quality_source_versions where source_id = $1 and purged_at is not null`, [src.sourceId])).rows[0].n).toBe(0);
+    current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+    expect((await m.actions.loadResearchQualityViewAction(runA, null)).ok).toBe(true);
+  });
+
+  it("purge: the retained text and every copied quote from that source are removed; history stays, labelled", async () => {
+    const v = await viewOf(null);
+    const src = v.documents.find((d) => d.id === proposalDoc)!.source!;
+    const r = await m.actions.purgeResearchQualitySourceAction(runA, src.sourceId);
+    expect(r).toMatchObject({ ok: true });
+    expect((await q(`select count(*)::int n from research_quality_source_versions where source_id = $1 and canonical_text <> ''`, [src.sourceId])).rows[0].n).toBe(0);
+    const leaks = await q(`select count(*)::int n from research_quality_observation_versions where run_id = $1 and payload::text like '%opt-in online panel%'`, [runA]);
+    expect(leaks.rows[0].n).toBe(0);
+    const taskLeaks = await q(`select count(*)::int n from research_quality_tasks where run_id = $1 and result::text like '%opt-in online panel%'`, [runA]);
+    expect(taskLeaks.rows[0].n).toBe(0);
+    const after = await viewOf(null);
+    expect(after.review!.sourceFreshness.find((f) => f.sourceId === src.sourceId)?.status ?? "purged").toBe("purged");
+  });
+
+  it("deleting the project document keeps the review history, shows the source as removed and never as current", async () => {
+    const reviews = (await viewOf(null)).reviews;
+    await q(`delete from documents where run_id = $1`, [runA]);
+    for (const r of reviews) {
+      const v = await viewOf(r.id);
+      for (const f of v.review!.sourceFreshness) expect(f.status).not.toBe("current");
+    }
+    expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n).toBe(reviews.length);
+  });
+});
