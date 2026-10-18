@@ -1,6 +1,6 @@
 # Handover: storage-checker repair, benchmark harness, sign-in (G6) and Research Quality Review v1 — 2026-10-18
 
-Status: **implemented, ready for Codex review** (repairs after Codex's review are listed below). Authorised by Grant on 2026-10-18 (06:40: security and Research Quality Review; 07:15: storage-checker repair and benchmark completion; 08:02: the brief and proposal rubric). Nothing pushed or deployed; no development or live database touched. Overall acceptance and public release remain open.
+Status: **independently accepted at the bounded repair scope** (Codex, 18 October 2026): `a9cb5de` storage checker, `7ca0848` sign-in, `6bb2a3f` benchmark measurement and `1e0f2a3` Research Quality Review, after the repair rounds listed below (`docs/third-repair-independent-acceptance-2026-10-18.md`). The release baseline stays at 37 Closed / 6 Blocked; deployed security, real-model quality and overall acceptance remain open. Authorised by Grant on 2026-10-18 (06:40: security and Research Quality Review; 07:15: storage-checker repair and benchmark completion; 08:02: the brief and proposal rubric). Nothing pushed or deployed; no development or live database touched. Overall acceptance and public release remain open.
 
 ## Commits on the laptop checkout
 
@@ -88,7 +88,7 @@ Codex (`docs/second-repair-independent-review-2026-10-18.md`) confirmed the orig
 **b33, Research Quality lease after a task-row wait, and concurrent starts (37193d6).**
 - Every result write (extraction, assessment, failure, purge discard) now locks the task row with a separate `select ... for update` after any source locks and before the lease UPDATE, so the lease is judged with `clock_timestamp()` after the wait. (PostgreSQL decides an UPDATE's WHERE before waiting on a row lock and does not re-check it when the holder releases without changing the row.)
 - `createReview` takes the run row once, `FOR UPDATE`, checking tenant ownership there, and checks the request key only after it. The previous `FOR SHARE` then `FOR UPDATE` upgrade let two concurrent starts deadlock (40P01).
-- `researchQuality.db.test.ts` +2, 21 tests: extraction, assessment and failure writes held on the task row until the lease ran out are refused (usage still counted, nothing published), and the same wait with a live lease records; two starts with the same key forced to arrive together return one review (one created), two different keys get consecutive sequences, a sequential repeat returns the existing review, and another organisation is refused and creates nothing. Both fail on `37193d6`. Codex's unchanged probes: task-row wait 19 of 19 (18 of 19 on `37193d6`); concurrent start 20 of 20 (18 of 20).
+- `researchQuality.db.test.ts` +2, 21 tests: extraction, assessment and failure writes held on the task row until the lease ran out are refused (usage still counted, nothing published), and the same wait with a live lease records; two starts with the same key forced to arrive together return one review (one created), two different keys get consecutive sequences, a sequential repeat returns the existing review, and another organisation is refused and creates nothing. Both fail on `37193d6`. Codex's unchanged probes: task-row wait 19 of 19 (18 of 19 on `37193d6`); concurrent start 20 of 20 (18 of 20). **Accepted by Codex on 18 October** (`d70f585`), including an added creation rollback and retry control.
 
 Checks on the tree with b32 and b33: `npx tsc --noEmit` pass; ESLint on the changed files clean; full vitest **139 files (138 passed, 1 skipped), 1011 passed, 0 failed, 59 skipped**; production build pass; browser **49 passed, 1 skipped**; benchmark harness self-test on replay **1 passed** (18 computed findings; "found in the computed findings; no insight states it"); smoke **1 passed**; adapter **2 passed**; objective acceptance **passed**. No failed runs in this round.
 
@@ -125,3 +125,7 @@ Checks on the repaired tree (b25 to b27 on top of `1e22cb2`), 2026-10-18:
 - Deployed G1 to G6 checks remain on Grant's machine (`scripts/release-gate/README.md`).
 - Human-edit provenance outside Research Quality Review still records a time but not the person.
 - Research Quality Review limits: PDF, DOCX and TXT only; no OCR; one structured observation per criterion and decision; reference curation not done; downstream propagation into findings, insights or exports is deliberately out of v1.
+
+## Documentation consolidation (2026-10-18)
+
+After Codex's acceptance, the founder's business proposal and engineering build brief were updated outside the repository: `Insights Elevator Business Proposal (15).docx` (new section "Independent testing, 15 to 18 October 2026") and `Insights Elevator - MVP Engineering Build Brief (18).md` (new section 8A, plus status, checks, limits and roadmap). Both record why the testing was run, what it found and how each finding was remedied, with the accepted statuses above. No application file changed.
