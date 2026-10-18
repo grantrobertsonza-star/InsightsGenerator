@@ -116,6 +116,31 @@ describe("omitted-effect measurement", () => {
     }
   });
 
+  // Codex 2026-10-18 (fdac176): possible or conditional statements counted as an observed effect.
+  it("does not count a possibility, condition, prediction or question as stating the effect", () => {
+    const refused = [
+      "Convenience might be chosen by 70% of men and by 50% of women.", // Codex
+      "If Convenience were chosen by 70% of men and by 50% of women, we would change the campaign.", // Codex
+      "Convenience may matter more to men (70%) than to women (50%).",
+      "Convenience could be chosen by 70% of men and 50% of women.",
+      "Convenience is likely to be chosen by 70% of men and 50% of women.",
+      "Convenience is expected to reach 70% among men and 50% among women.",
+      "Assuming Convenience is chosen by 70% of men and 50% of women, the gap is large.",
+      "Is Convenience chosen by 70% of men and 50% of women?",
+      "We plan for Convenience to reach 70% of men and 50% of women.",
+    ];
+    for (const text of refused) {
+      const r = measure(correct, [insight(text)]);
+      expect(r.insightsStating, text).toEqual([]);
+      expect(r.insightsRelatedButNotStating[0]?.classification, text).toBe("mentions the answer and group figures without establishing the effect (not counted)");
+      expect(r.insightsRelatedButNotStating[0].unestablished[0], text).toMatch(/^not asserted/);
+    }
+    // Affirmative controls in the same wording families still count.
+    for (const text of ["Convenience was chosen by 70% of men and by 50% of women.", "Convenience matters more to men (70%) than to women (50%).", "70% of men and 50% of women chose convenience as a reason."]) {
+      expect(measure(correct, [insight(text)]).insightsStating.length, text).toBe(1);
+    }
+  });
+
   it("matches computed findings on their statistics, not their wording", () => {
     // Reversed values in the saved statistics are a disagreement, whatever the sentence says.
     const reversed = [columnFinding("m", "Male", 50), columnFinding("f", "Female", 70)];

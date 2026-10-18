@@ -12,7 +12,8 @@
 //     expected group is the higher one;
 //   - an insight is text written by the model, so it has no structured statistics of its own. It
 //     counts as stating the effect only when its text affirmatively attributes each group's value
-//     to the answer (readTextAttribution: no negation or hedge in the sentence, each group named
+//     to the answer (readTextAttribution: no negation, condition, possibility or question in the
+//     sentence, each group named
 //     as a whole word with a percentage in its own clause, and that clause either naming the
 //     answer or being a bare group figure anchored to it), at the right value, with the right
 //     group higher. Co-occurring tokens are not enough (Codex 2026-10-18: "Convenience was not
@@ -64,10 +65,23 @@ function judgeValues(valuesByGroup, target) {
 // "70% of men and 50% of women", "men 70%, women 50%", "65% of men against 52% of women".
 const CLAUSE_BREAK = /,|;|:|\b(?:and|or|than|vs\.?|versus|against|while|whereas|but|compared (?:with|to))\b/i;
 const PERCENT = /(\d+(?:\.\d+)?)\s*(?:%|per\s?cent\b|percent\b)/gi;
-// A sentence that negates or hedges anything is not read as asserting the effect: "Convenience was
-// not measured, ...", "Convenience is not chosen by 70% of men ...". Deliberately broad; a correct
-// statement caught by it is reported as unestablished, never as stating the effect.
-const NEGATION = /\b(?:not|no|never|none|neither|nor|without|cannot|unlike|excluding|except)\b|n['\u2019]t\b/i;
+// A sentence that does not assert something observed is not read as stating the effect:
+//   - negation: "Convenience was not measured, ...", "Convenience is not chosen by 70% of men ...";
+//   - possibility, condition, prediction or supposition: "Convenience might be chosen by 70% of
+//     men ...", "If Convenience were chosen by 70% of men ..., we would ...", "is likely to",
+//     "expected", "assuming";
+//   - a question.
+// Deliberately broad (Codex 2026-10-18, twice): a correct statement caught by it is reported as
+// unestablished, never as stating the effect.
+const NOT_ASSERTED = new RegExp(
+  [
+    "\\b(?:not|no|never|none|neither|nor|without|cannot|unlike|excluding|except)\\b|n['\\u2019]t\\b",
+    "\\b(?:might|may|could|would|should|can|if|whether|unless|suppose|supposing|assume|assuming|assumed|hypothetical(?:ly)?|possibl[ey]|perhaps|probabl[ey]|likely|unlikely|potential(?:ly)?|expect(?:s|ed)?|predict(?:s|ed)?|project(?:s|ed)?|forecast(?:s)?|hope(?:s|d)?|plan(?:s|ned)?|aim(?:s|ed)?|target(?:s|ed)?|imagine|scenario)\\b",
+    "\\?\\s*$",
+  ].join("|"),
+  "i",
+);
+
 // Words that may sit next to a group's figure without changing what the figure is about. A clause
 // with a group figure and anything else ("50% of women reported good service") is about something
 // else, or at least not established to be about the answer.
@@ -78,8 +92,9 @@ const FILLER = new Set(
 /**
  * How an insight's text attributes percentages to each target group for the target answer, read
  * conservatively. A figure counts for a group only when the text affirmatively attributes it:
- *   - sentences that do not name the answer are ignored, and a sentence that negates or hedges is
- *     ignored as a whole and recorded as unestablished;
+ *   - sentences that do not name the answer are ignored, and a sentence that is not an assertion
+ *     of something observed (negated, conditional, possible, predicted, supposed, or a question;
+ *     see NOT_ASSERTED) is ignored as a whole and recorded as unestablished;
  *   - a sentence is cut into clauses where prose moves from one group's figure to the next; a
  *     group mention takes a percentage only from its own clause (the nearest, if several);
  *   - a clause that names the answer attributes its own group figures ("Convenience matters more
@@ -121,8 +136,8 @@ export function readTextAttribution(text, target) {
       .filter((w) => w && !FILLER.has(w));
   for (const sentence of String(text ?? "").split(/(?<=[.!?;])\s+/)) {
     if (!answer.test(sentence)) continue;
-    if (NEGATION.test(sentence)) {
-      if (figuresIn(sentence).length) unestablished.push(`negated or hedged: ${sentence.trim().slice(0, 120)}`);
+    if (NOT_ASSERTED.test(sentence)) {
+      if (figuresIn(sentence).length) unestablished.push(`not asserted (negated, conditional, possible or a question): ${sentence.trim().slice(0, 120)}`);
       continue;
     }
     const clauses = sentence.split(new RegExp(CLAUSE_BREAK.source, "gi")).map((c) => {
