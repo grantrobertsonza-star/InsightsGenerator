@@ -71,7 +71,8 @@ describe("omitted-effect measurement", () => {
       ["Convenience matters more to women (70%) than to men (50%).", "names the groups with other values"],
       ["Convenience: 65% of men against 52% of women.", "names the groups with other values"],
       ["Convenience is chosen by 60% overall; men are 70% of the sample.", "does not state it"],
-      ["Convenience is chosen by 60% overall, and by 70% of men.", "mentions one group only (not the comparison)"],
+      ["Convenience is chosen by 60% overall, and by 70% of men.", "mentions the answer and group figures without establishing the effect (not counted)"],
+      ["Convenience is chosen by 70% of men.", "mentions one group only (not the comparison)"],
       ["Male respondents pick Convenience at 50%, female respondents at 70%.", "names the groups with other values"],
       ["Value is chosen by 70% of men and 50% of women.", "does not state it"],
       ["Convenience differs by gender.", "does not state it"],
@@ -81,6 +82,37 @@ describe("omitted-effect measurement", () => {
       expect(r.insightsStating, text).toEqual([]);
       const all = [...r.insightsStating, ...r.insightsRelatedButNotStating];
       expect(all.length ? all[0].classification : "does not state it", text).toBe(label);
+    }
+  });
+
+  // Codex 2026-10-18 (22555fe): naming the answer somewhere in a sentence let unrelated or negated
+  // figures in other clauses count as the effect. A positive now needs affirmative attribution;
+  // anything uncertain is reported as unestablished, never as stating the effect.
+  it("needs the text to attribute both figures to the answer, affirmatively", () => {
+    const refused = [
+      "Convenience was not measured, while 70% of men and 50% of women reported good service.", // Codex
+      "Convenience is not chosen by 70% of men or 50% of women.", // Codex
+      "Convenience was low, while 70% of men and 50% of women reported good service.",
+      "Convenience was low, while 70% of men and 50% of women did.",
+      "Convenience never came up; 70% of men and 50% of women preferred price.",
+      "Unlike convenience, 70% of men and 50% of women cited price.",
+      "Convenience aside, 70% of men and 50% of women cited price.",
+      "Men (70%) and women (50%) agreed on price, and convenience was secondary.",
+    ];
+    for (const text of refused) {
+      const r = measure(correct, [insight(text)]);
+      expect(r.insightsStating, text).toEqual([]);
+      expect(r.outcome, text).toBe("found in the computed findings; no insight states it");
+    }
+    // The negated and unrelated cases are reported, not silently dropped.
+    const reported = measure(correct, [insight(refused[0]), insight(refused[1])]).insightsRelatedButNotStating;
+    expect(reported.map((i: { classification: string }) => i.classification)).toEqual([
+      "mentions the answer and group figures without establishing the effect (not counted)",
+      "mentions the answer and group figures without establishing the effect (not counted)",
+    ]);
+    // Controls: affirmative statements still count, including label and split forms.
+    for (const text of ["Convenience: men 70%, women 50%.", "Convenience is chosen by 70% of men and by 50% of women.", "Convenience matters more to men (70%) than to women (50%)."]) {
+      expect(measure(correct, [insight(text)]).insightsStating.length, text).toBe(1);
     }
   });
 
