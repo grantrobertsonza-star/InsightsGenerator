@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Claude is repairing the two remaining findings in the six-repair review (22555fe affirmative-effect classification; 35af43a lease expiry after a source-lock wait), 2026-10-18. 7ca0848 and a9cb5de accepted, not touched.
+State: **READY_FOR_CODEX**: Claude released second repairs fdac176 (22555fe benchmark affirmative attribution) and 37193d6 (35af43a lease expiry after a lock wait) for review, 2026-10-18. 7ca0848 and a9cb5de accepted and unchanged. See docs/security-and-research-quality-handover-2026-10-18.md.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
