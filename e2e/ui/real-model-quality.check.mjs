@@ -12,7 +12,9 @@
 //     significance), two unsupported (C9 the 16-person subgroup, C10 advertising caused loyalty).
 //     A correct claim should pass verification (robust / use with caution); a wrong or unsupported
 //     one should not (not supported / insufficient information);
-//   - the omitted effect the report never mentions (Convenience 70% men vs 50% women): is it found;
+//   - the omitted effect the report never mentions (Convenience 70% men vs 50% women): is it in the
+//     computed findings (matched on their saved statistics) and does an insight state it correctly
+//     (e2e/ui/omitted-effect-measure.mjs);
 //   - numerical traceability of the AI-written insights (figure checks);
 //   - cost and calls, from the gateway log.
 // This is a MEASUREMENT on one fixture and one run, not a pass threshold: the test fails only when
@@ -22,6 +24,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { measureOmittedEffect } from "./omitted-effect-measure.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -48,6 +51,20 @@ const PASSING = new Set(["robust", "use_with_caution"]);
 // The survey variables the report's claims and the omitted effect rest on, each crossed by Gender.
 // "Reasons" is the codebook's multiple-response set (MR_Convenience, MR_Value, MR_Service).
 const COMPUTED_ROWS = ["Purchase", "Satisfaction", "Recommend", "Reasons", "NearTie", "SmallGroup"];
+// The omitted effect, in the identities the engine saves (answer key: "Convenience 70% male vs 50%
+// female ... not mentioned in report"): the Convenience option of the Reasons set, by Gender. The
+// group words are how an insight may name each Gender column in prose.
+const OMITTED_EFFECT = {
+  question: "Reasons",
+  answer: "Convenience",
+  banner: "Gender",
+  groups: [
+    { column: "Male", value: 70, words: ["male", "males", "men", "man"] },
+    { column: "Female", value: 50, words: ["female", "females", "women", "woman"] },
+  ],
+  higher: "Male",
+  tolerance: 0.5,
+};
 
 // A multiple-response SET (here "Reasons") offers "Row (all)" rather than the adapter's "Row"
 // button, so it is picked here with the workspace's own controls; everything else is the adapter's.
@@ -166,7 +183,7 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
 
     // ---- measurements -------------------------------------------------------------------
     const findings = (await db.query(
-      `select f.id, f.origin, f.finding_kind, f.finding_text, f.status, v.verdict_tier, v.rationale
+      `select f.id, f.origin, f.finding_kind, f.finding_text, f.status, f.stated_stats, v.verdict_tier, v.rationale
          from findings f
          left join lateral (select verdict_tier, rationale from verdicts lv where lv.finding_id = f.id order by lv.created_at desc, lv.id desc limit 1) v on true
         where f.run_id = $1 order by f.created_at`,
@@ -184,13 +201,25 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
       return { id: c.id, expected: key.claims[c.id], expectedOutcome: c.expect, extracted: matched.length, verdicts, outcome, texts: matched.map((f) => f.finding_text.slice(0, 160)), rationale: matched[0]?.rationale?.slice(0, 300) ?? null };
     });
     out.claimSummary = out.claims.reduce((m, c) => ((m[c.outcome] = (m[c.outcome] ?? 0) + 1), m), {});
-    const generated = findings.filter((f) => f.origin === "generated");
-    const omitted = generated.filter((f) => /convenien/i.test(f.finding_text) && /70/.test(f.finding_text) && /50/.test(f.finding_text));
-    const insightsText = (await db.query("select headline || ' ' || observation as t from synthesized_insights where run_id=$1 union all select headline || ' ' || observation from insights where run_id=$1", [run.id])).rows.map((r) => r.t);
+    // Insights with the findings they rest on: a pre-insight is anchored on one finding; a
+    // synthesized insight on the pre-insights it was built from.
+    const insightRows = (await db.query(
+      `select 'insight' as kind, i.id, i.headline || ' ' || i.observation as text, array_remove(array[i.finding_id], null)::text[] as finding_ids
+         from insights i where i.run_id = $1
+       union all
+       select 'synthesized', si.id, si.headline || ' ' || si.observation, coalesce(array_agg(pi.finding_id) filter (where pi.finding_id is not null), '{}')::text[]
+         from synthesized_insights si
+         left join synthesized_insight_sources src on src.synthesized_insight_id = si.id
+         left join insights pi on pi.id = src.pre_insight_id
+        where si.run_id = $1 group by si.id`,
+      [run.id],
+    )).rows;
     out.omittedEffect = {
       expected: key.omitted_effect,
-      foundAsFinding: omitted.map((f) => f.finding_text.slice(0, 200)),
-      foundInInsights: insightsText.filter((t) => /convenien/i.test(t) && /(men|male).*(women|female)|(women|female).*(men|male)/i.test(t)).map((t) => t.slice(0, 200)),
+      ...measureOmittedEffect(
+        { findings, insights: insightRows.map((r) => ({ kind: r.kind, id: r.id, text: r.text, findingIds: r.finding_ids })), computedTables: out.computedTables },
+        OMITTED_EFFECT,
+      ),
     };
     const figure = (await db.query(
       `select 'synthesized' as kind, figure_check->>'status' as status, count(*)::int as n from synthesized_insights where run_id=$1 group by 2
