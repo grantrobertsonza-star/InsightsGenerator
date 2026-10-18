@@ -29,6 +29,8 @@ import {
   shownImplication,
   scorecard,
   comparisonLabel,
+  CHECKLIST_STATUS_LABEL,
+  checklistScoreText,
 } from "@/lib/researchQualityPresentation";
 import type { ObservationView, ResearchQualityView } from "@/lib/researchQualityView";
 
@@ -377,6 +379,8 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
       </div>
       {tab === "overview" && (
         <>
+          <ChecklistGrid view={view} />
+          <h4 className="mt-2 text-xs font-semibold text-foreground">Assessment by criterion</h4>
           <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
             <Stat label="Documented strengths" n={ov.strengths.length} />
             <Stat label="Concerns" n={ov.concerns.length} />
@@ -400,6 +404,91 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
       {tab === "improvements" && <ImprovementsTab view={view} />}
       {tab === "clarifications" && <ClarificationsTab runId={runId} view={view} reload={reload} />}
     </div>
+  );
+}
+
+const STATUS_CHIP: Record<string, string> = {
+  present: "bg-emerald-100 text-emerald-900",
+  partial: "bg-amber-100 text-amber-900",
+  absent: "bg-red-100 text-red-900",
+  not_assessed: "bg-slate-100 text-slate-700",
+};
+const BAND_CHIP: Record<string, string> = { strong: "bg-emerald-100 text-emerald-900", workable: "bg-amber-100 text-amber-900", weak: "bg-red-100 text-red-900" };
+
+/**
+ * The scored checklist: for each document, its overall percentage and band, a percentage per section,
+ * and every element with its status, the code's reason when a status was not accepted, and the quotes
+ * it rests on. All numbers come from the server's scoring (researchQualityChecklist.ts).
+ */
+function ChecklistGrid({ view }: { view: ResearchQualityView }) {
+  const r = view.review!;
+  if (r.checklists.length === 0) return r.checklistNote ? <p className="rounded-md bg-slate-50 p-2 text-xs text-muted" data-testid="rq-checklist-note">{r.checklistNote}</p> : null;
+  return (
+    <section className="flex flex-col gap-3" aria-label="Scored checklist" data-testid="rq-checklist">
+      <p className="text-xs text-muted">
+        Each document is checked against the elements good practice expects in that kind of document. Present scores 2, partial 1, absent 0; percentages count assessed elements only. Strong is 80% or
+        more, Workable 60% or more. A guide to where to look, not a certification.
+      </p>
+      {r.checklists.map((c) => (
+        <div key={c.taskKey} className="rounded-md border border-border bg-white p-2 text-xs" data-checklist={c.checklistId} data-state={c.state}>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-semibold text-foreground">{c.filename}</span>
+            <span className="text-muted">{c.label}</span>
+            <span className={`ml-auto rounded px-2 py-0.5 font-semibold ${c.score?.band ? BAND_CHIP[c.score.band] : "bg-slate-100 text-slate-700"}`} data-testid="rq-checklist-overall">
+              {checklistScoreText(c.score, c.state)}
+            </span>
+          </div>
+          {c.state === "failed" && <p className="mt-1 text-red-800">{c.error}</p>}
+          {c.score && (
+            <>
+              <p className="mt-1 text-muted">{`${c.score.assessed} of ${c.score.total} elements assessed. Basis: ${c.basis}`}</p>
+              <table className="mt-2 w-full border-collapse">
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="py-1 pr-2 font-medium">Section</th>
+                    <th className="py-1 pr-2 font-medium">Score</th>
+                    <th className="py-1 font-medium">Assessed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.score.sections.map((s) => (
+                    <tr key={s.sectionId} className="border-t border-border" data-section={s.sectionId}>
+                      <td className="py-1 pr-2">{s.label}</td>
+                      <td className="py-1 pr-2">
+                        {s.pct === null ? <span className="text-muted">Not assessed</span> : <span className={`rounded px-1.5 py-0.5 ${BAND_CHIP[s.band ?? ""] ?? ""}`}>{`${s.pct}%`}</span>}
+                      </td>
+                      <td className="py-1 text-muted">{`${s.assessed} of ${s.total}`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <details className="mt-2">
+                <summary className="cursor-pointer font-medium">Elements</summary>
+                {c.sections.map((s) => (
+                  <div key={s.sectionId} className="mt-2">
+                    <div className="font-semibold">{s.label}</div>
+                    <ul className="flex flex-col gap-1">
+                      {s.elements.map((e) => (
+                        <li key={e.elementId} className="rounded border border-border p-1.5" data-element={e.elementId} data-status={e.status ?? "none"}>
+                          <span className={`mr-2 rounded px-1.5 py-0.5 ${STATUS_CHIP[e.status ?? "not_assessed"]}`}>{CHECKLIST_STATUS_LABEL[e.status ?? "not_assessed"]}</span>
+                          <span className="font-medium">{e.label}</span>
+                          {e.essential && <span className="ml-1 text-muted">(essential)</span>}
+                          {e.reason && <div className="mt-0.5 text-muted">{e.reason}</div>}
+                          {e.notAssessedBecause && <div className="mt-0.5 text-amber-800">{`Not scored: ${e.notAssessedBecause}.`}</div>}
+                          {e.quotes.map((q) => (
+                            <blockquote key={q.factId} className="mt-0.5 border-l-2 border-slate-300 pl-2 text-slate-700">{`${q.fromBrief ? "Brief: " : ""}\u201c${q.quote}\u201d`}</blockquote>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </details>
+            </>
+          )}
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -627,8 +716,31 @@ function AlignmentTab({ view }: { view: ResearchQualityView }) {
 
 function ImprovementsTab({ view }: { view: ResearchQualityView }) {
   const groups = improvementsByTiming(view.review!.observations);
+  const gaps = view.review!.checklists.filter((c) => c.gaps.length > 0);
   return (
     <div className="flex flex-col gap-3 text-xs">
+      <section data-testid="rq-gap-recommendations">
+        <h4 className="font-semibold">Missing or partial elements</h4>
+        <p className="text-muted">From the scored checklist: what to add to each document, essential elements first.</p>
+        {gaps.length === 0 ? (
+          <p className="text-muted">{view.review!.checklists.some((c) => c.state === "scored") ? "None: every assessed element is present." : "No scored checklist in this review."}</p>
+        ) : (
+          gaps.map((c) => (
+            <div key={c.taskKey} className="mt-1">
+              <div className="font-medium">{`${c.filename} (${c.label})`}</div>
+              <ul className="list-disc pl-5">
+                {c.gaps.map((g) => (
+                  <li key={g.elementId} data-element={g.elementId}>
+                    {g.essential && <span className="mr-1 font-semibold text-red-800">Essential.</span>}
+                    {`${g.label} (${g.status}): ${g.recommendation}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
+      </section>
+      <h4 className="font-semibold">Improvements from the assessment</h4>
       <p className="text-muted">Priorities by when they matter, not calculated severity. Dismissed observations are left out.</p>
       {groups.map((g) => (
         <section key={g.timing}>

@@ -10,7 +10,8 @@
 // record_insights, record_clusters, record_synthesized_insight,
 // record_recommendations, record_narrative, and for Research Quality Review record_documented_facts
 // (each sentence of the passage, quoted verbatim) and record_quality_observations (one observation
-// per criterion, citing the facts it was sent). Any other tool gets the smallest answer its own
+// per criterion, citing the facts it was sent) and record_checklist_statuses (present when a fact of
+// a matching topic was sent). Any other tool gets the smallest answer its own
 // input_schema allows (empty arrays, first enum value, empty strings), which the app treats as
 // "nothing usable came back"; a text-only request gets a one-line reply.
 import http from "node:http";
@@ -83,6 +84,19 @@ const handlers = {
           reference_passages: [],
           clarification_questions: [`Replay question for ${c.id}?`],
         };
+      }),
+    };
+  },
+  // Research Quality Review checklist: an element is present when a fact of a matching topic was
+  // sent (decision, population, sampling or recruitment), absent otherwise. Judges nothing.
+  record_checklist_statuses: (content) => {
+    const p = JSON.parse(content);
+    const topicFor = (id) => (/DECISION/.test(id) ? "decision" : /POPULATION/.test(id) ? "population" : /SAMPLING|FRAME|SIZE/.test(id) ? "recruitment" : null);
+    return {
+      elements: p.elements.map((e) => {
+        const t = topicFor(e.element_id);
+        const ids = t ? p.facts.filter((f) => f.topic === t).map((f) => f.id).slice(0, 2) : [];
+        return { element_id: e.element_id, status: ids.length ? "present" : "absent", fact_ids: ids, reason: ids.length ? "Replay: a matching fact was sent." : "Replay: no matching fact was sent." };
       }),
     };
   },

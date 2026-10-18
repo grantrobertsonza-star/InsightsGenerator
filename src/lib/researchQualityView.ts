@@ -9,6 +9,7 @@
 // Researcher state: acceptance, dismissal and wording belong to one observation VERSION. When a
 // newer review produced a new version, the earlier decision and wording are shown as history and
 // the new version is "awaiting review"; nothing is carried over silently.
+import { findChecklist, gapRecommendations, scoreChecklist, type ChecklistScore, type ElementResult, type ElementStatus, type GapRecommendation } from "./researchQualityChecklist";
 import type { PoolClient } from "pg";
 import { withTenantRead, withTenantRepeatableRead } from "./db";
 import { CRITERIA, referenceCatalogue } from "./researchQualityRules";
@@ -76,7 +77,33 @@ export type ResearchQualityView = {
     observations: ObservationView[];
     referencePassages: { referenceId: string; passageId: string; title: string; text: string; synthetic: boolean }[];
     progress: ReviewProgress;
+    checklists: ChecklistView[];
+    /** Why no checklist was run, when none was: the migration was missing, or the review predates it. */
+    checklistNote: string | null;
   });
+};
+
+/**
+ * One document scored against one checklist. Statuses come from the model, validated by code; every
+ * number here is computed by researchQualityChecklist.ts from those statuses. `state` follows the
+ * checklist task: a failed or unfinished step shows no score rather than a zero.
+ */
+export type ChecklistView = {
+  taskKey: string;
+  sourceId: string;
+  filename: string;
+  checklistId: string;
+  label: string;
+  basis: string;
+  state: "scored" | "failed" | "pending";
+  error: string | null;
+  score: ChecklistScore | null;
+  sections: {
+    sectionId: string;
+    label: string;
+    elements: { elementId: string; label: string; essential: boolean; status: ElementStatus | null; reason: string; notAssessedBecause: string | null; quotes: { factId: string; quote: string; fromBrief: boolean }[] }[];
+  }[];
+  gaps: GapRecommendation[];
 };
 
 /**
@@ -88,6 +115,55 @@ export type ResearchQualityView = {
  */
 export type ReviewProgress = { total: number; done: number; failed: number; working: number; waiting: number; interrupted: boolean };
 export const INTERRUPTED_AFTER_SECONDS = 120;
+
+function checklistViews(
+  tasks: { task_key: string; status: string; error: string | null; result: { input?: { sourceIndex?: number; checklistId?: string }; elements?: ElementResult[] } | null }[],
+  manifest: ReviewManifest,
+  facts: DocumentedFact[],
+): ChecklistView[] {
+  const byFact = new Map(facts.map((f) => [f.factId, f]));
+  return tasks.flatMap((t) => {
+    const input = t.result?.input ?? {};
+    const checklist = findChecklist(input.checklistId ?? "");
+    const src = manifest.sources[input.sourceIndex ?? -1];
+    if (!checklist || !src) return [];
+    const results = t.status === "succeeded" ? (t.result?.elements ?? []) : [];
+    const byId = new Map(results.map((r) => [r.elementId, r]));
+    return [
+      {
+        taskKey: t.task_key,
+        sourceId: src.sourceId,
+        filename: src.filename,
+        checklistId: checklist.checklistId,
+        label: checklist.label,
+        basis: checklist.basis,
+        state: t.status === "succeeded" ? "scored" : t.status === "failed" ? "failed" : "pending",
+        error: t.error,
+        score: t.status === "succeeded" ? scoreChecklist(checklist, results) : null,
+        sections: checklist.sections.map((sec) => ({
+          sectionId: sec.sectionId,
+          label: sec.label,
+          elements: sec.elements.map((e) => {
+            const r = byId.get(e.elementId);
+            return {
+              elementId: e.elementId,
+              label: e.label,
+              essential: e.essential,
+              status: r?.status ?? null,
+              reason: r?.reason ?? "",
+              notAssessedBecause: r?.notAssessedBecause ?? null,
+              quotes: (r?.factIds ?? []).flatMap((id) => {
+                const f = byFact.get(id);
+                return f ? [{ factId: id, quote: f.exactQuote, fromBrief: f.sourceVersionId !== src.sourceVersionId }] : [];
+              }),
+            };
+          }),
+        })),
+        gaps: t.status === "succeeded" ? gapRecommendations(checklist, results) : [],
+      } satisfies ChecklistView,
+    ];
+  });
+}
 
 const entryAuthor = (email: string | null) => email ?? "single user (before sign-in)";
 
@@ -181,10 +257,27 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
       facts: [],
       observations: [],
       referencePassages: [],
+      checklists: [],
+      checklistNote: null,
       progress: { total: progress.total, done: progress.done, failed: progress.failed, working: progress.working, waiting: progress.waiting, interrupted: active && progress.working === 0 && progress.idle },
     };
     view.review.sourceFreshness = await sourceFreshness(client, manifest);
     view.review.facts = await reviewFacts(client, chosen.id as string, manifest);
+    const checklistTasks = (
+      await client.query<{ task_key: string; status: string; error: string | null; result: { input?: { sourceIndex?: number; checklistId?: string }; elements?: ElementResult[] } | null }>(
+        `select task_key, status, error, result from research_quality_tasks where review_id = $1 and stage = 'checklist' order by task_key`,
+        [chosen.id],
+      )
+    ).rows;
+    view.review.checklists = checklistViews(checklistTasks, manifest, view.review.facts);
+    view.review.checklistNote =
+      checklistTasks.length > 0
+        ? null
+        : manifest.checklistRelease === undefined
+          ? "This review was made before the scored checklist existed. Start a new review version to score the documents."
+          : manifest.checklistRelease === null
+            ? "The scored checklist needs database migration 0106. Apply it, then start a new review version."
+            : "None of the selected documents has a role with a checklist (brief, proposal, questionnaire, methodology, report or fieldwork).";
     view.review.observations = await reviewObservations(client, runId, chosen.id as string, chosen.sequence as number, view.review.sourceFreshness);
     const cat = referenceCatalogue();
     const usedRefs = new Set(view.review.observations.flatMap((o) => o.payload.methodologicalReferenceRefs.map((r) => `${r.referenceId}:${r.passageId}`)));

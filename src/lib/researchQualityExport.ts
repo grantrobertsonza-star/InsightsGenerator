@@ -19,6 +19,8 @@ import {
   shownImplication,
   scorecard,
   comparisonLabel,
+  CHECKLIST_STATUS_LABEL,
+  checklistScoreText,
 } from "./researchQualityPresentation";
 import type { ObservationView, ResearchQualityView } from "./researchQualityView";
 
@@ -64,6 +66,24 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   body.push(h("Overview", HeadingLevel.HEADING_1));
   body.push(p(`${ov.strengths.length} documented strength(s), ${ov.concerns.length} concern(s), ${ov.gaps.length} documentation gap(s), ${ov.decisionImplications.length} with decision implications. ${ov.awaitingReview} awaiting review; ${ov.requiresReview} need review because a source changed or could not be checked.`));
 
+  // Part 1: the scored checklist (RQK-1), the same figures the screen shows, computed on the server.
+  body.push(h("Scored checklist", HeadingLevel.HEADING_1));
+  if (r.checklists.length === 0) body.push(p(r.checklistNote ?? "No checklist was scored in this review."));
+  else
+    body.push(
+      p("Each document is checked against the elements good practice expects in that kind of document. Present scores 2, partial 1, absent 0; percentages count assessed elements only. Strong is 80% or more, Workable 60% or more. A guide to where to look, not a certification."),
+    );
+  for (const c of r.checklists) {
+    body.push(h(`${c.filename}: ${c.label}, ${checklistScoreText(c.score, c.state)}`, HeadingLevel.HEADING_2));
+    if (c.state === "failed" && c.error) body.push(p(`Not scored: ${c.error}`));
+    if (!c.score) continue;
+    body.push(p(`${c.score.assessed} of ${c.score.total} elements assessed. Basis: ${c.basis}`, { italics: true }));
+    for (const sec of c.score.sections) body.push(bullet(`${sec.label}: ${sec.pct === null ? "not assessed" : `${sec.pct}%`} (${sec.assessed} of ${sec.total} assessed)`));
+    for (const sec of c.sections)
+      for (const e of sec.elements)
+        body.push(bullet(`${sec.label}, ${e.label}${e.essential ? " (essential)" : ""}: ${CHECKLIST_STATUS_LABEL[e.status ?? "not_assessed"]}${e.notAssessedBecause ? ` (${e.notAssessedBecause})` : ""}${e.reason ? `. ${e.reason}` : ""}`));
+  }
+
   body.push(h("Scorecard", HeadingLevel.HEADING_1));
   body.push(p("Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up into one figure."));
   for (const g of scorecard(r.observations)) {
@@ -102,6 +122,12 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   }
 
   body.push(h("Improvement plan", HeadingLevel.HEADING_1));
+  // Part 2: recommendations. First the checklist's own recommendation for each missing or partial
+  // element, then the assessment's improvements by timing.
+  body.push(h("Missing or partial elements", HeadingLevel.HEADING_2));
+  const gapDocs = r.checklists.filter((c) => c.gaps.length > 0);
+  if (gapDocs.length === 0) body.push(p(r.checklists.some((c) => c.state === "scored") ? "None: every assessed element is present." : "No scored checklist in this review."));
+  for (const c of gapDocs) for (const g of c.gaps) body.push(bullet(`${c.filename}, ${g.label} (${g.status}${g.essential ? ", essential" : ""}): ${g.recommendation}`));
   for (const g of improvementsByTiming(r.observations)) {
     body.push(h(g.label, HeadingLevel.HEADING_2));
     if (g.items.length === 0) body.push(p("None."));

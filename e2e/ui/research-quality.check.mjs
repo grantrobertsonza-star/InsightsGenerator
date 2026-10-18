@@ -97,6 +97,25 @@ test("research quality review: start, review, decide, conflict, clarify, export"
       for (const s of v.payload.statements) expect(texts.get(s.sourceVersionId).slice(s.locator.start, s.locator.end)).toBe(s.exactQuote);
     }
 
+    // 4b. the scored checklist: one card per document, its own checklist, a score or a stated
+    // reason, and every percentage recomputed here from the element statuses the screen shows.
+    const grid = section.getByTestId("rq-checklist");
+    await expect(grid).toBeVisible();
+    const cards = grid.locator("[data-checklist]");
+    await expect(cards).toHaveCount(2);
+    expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute("data-checklist")).sort())).toEqual(["brief", "questionnaire"]);
+    for (const c of await cards.all()) {
+      const statuses = await c.locator("[data-element]").evaluateAll((els) => els.map((e) => e.getAttribute("data-status")));
+      const assessed = statuses.filter((x) => x !== "not_assessed" && x !== "none");
+      const points = assessed.reduce((n, x) => n + (x === "present" ? 2 : x === "partial" ? 1 : 0), 0);
+      const overall = await c.getByTestId("rq-checklist-overall").innerText();
+      if (assessed.length * 2 >= statuses.length) expect(overall).toContain(`${Math.round((points / (assessed.length * 2)) * 100)}%`);
+      else expect(overall).toMatch(/Too little could be assessed/);
+    }
+    await section.getByRole("tab", { name: "Improvements" }).click();
+    await expect(section.getByTestId("rq-gap-recommendations")).toContainText("Missing or partial elements");
+    await section.getByRole("tab", { name: "Overview" }).click();
+
     // 5. accept and wording survive reload, attributed
     const first = obs.first();
     const obsId = await first.getAttribute("data-observation-id");

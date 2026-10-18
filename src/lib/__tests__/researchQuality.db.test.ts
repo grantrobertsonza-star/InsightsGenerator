@@ -15,7 +15,7 @@ const ROLE = "ie_test_rq_app";
 let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
 const objects = new Map<string, Buffer>();
 const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess" };
+const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail" };
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
@@ -58,6 +58,20 @@ vi.mock("../anthropic", () => ({
           // The live model's slip seen on 2026-10-18: the list arrives as a JSON string and the flag is left out.
           if (model.stringifyLists) return { usage, content: [{ type: "tool_use", input: { facts: JSON.stringify(facts) } }] };
           return { usage, content: [{ type: "tool_use", input: { nothing_found: facts.length === 0, facts } }] };
+        }
+        if (tool === "record_checklist_statuses") {
+          // Checklist stand-in: an element is present when a fact of its matching topic exists, and
+          // absent otherwise. "overclaim" says present everywhere without citing anything.
+          const cp = JSON.parse(content) as { elements: { element_id: string }[]; facts: { id: string; topic: string }[] };
+          if (model.checklist === "fail") throw new Error("synthetic checklist outage");
+          const topicFor = (id: string) => (/DECISION/.test(id) ? "decision" : /POPULATION/.test(id) ? "population" : /SAMPLING|FRAME/.test(id) ? "recruitment" : null);
+          const elements = cp.elements.map((e) => {
+            if (model.checklist === "overclaim") return { element_id: e.element_id, status: "present", fact_ids: [], reason: "stand-in overclaim" };
+            const t = topicFor(e.element_id);
+            const f = t ? cp.facts.filter((x) => x.topic === t).map((x) => x.id) : [];
+            return { element_id: e.element_id, status: f.length ? "present" : "absent", fact_ids: f.slice(0, 2), reason: f.length ? "stated" : "not stated" };
+          });
+          return { usage, content: [{ type: "tool_use", input: { elements } }] };
         }
         const payload = JSON.parse(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
         const group = payload.criteria[0].id;
@@ -179,6 +193,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     model.hold = null;
     model.stringifyLists = false;
     model.cutOff = null;
+    model.checklist = "normal";
   });
 
   it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
@@ -744,7 +759,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     it("an interrupted extraction before any assessment published is resumed and the review completes", async () => {
       const r = await freshReview("resume");
       const extracts = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'extract'`, [r.reviewId])).rows.map((x) => x.id);
-      const assesses = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'assess'`, [r.reviewId])).rows.map((x) => x.id);
+      const assesses = (await q(`select id from research_quality_tasks where review_id = $1 and stage in ('assess', 'checklist')`, [r.reviewId])).rows.map((x) => x.id);
       await q(`delete from research_quality_observation_versions where review_id = $1`, [r.reviewId]);
       await q(`update research_quality_tasks set status = 'pending', attempts = 0, lease_token = null, lease_expires_at = null where id = any($1::uuid[])`, [assesses]);
       await q(`update research_quality_tasks set status = 'running', attempts = 1, result = result - 'facts', lease_expires_at = now() - interval '1 second' where id = any($1::uuid[])`, [extracts]);
@@ -752,7 +767,9 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const retry = await runner.retryFailedTasks(A, runA, r.reviewId);
       expect(retry).toEqual({ retried: extracts.length, note: null });
       expect(model.calls.filter((c) => c === "record_documented_facts").length).toBe(extracts.length);
-      expect(model.calls.filter((c) => c === "record_quality_observations").length).toBe(assesses.length);
+      const checklists = (await q(`select count(*)::int n from research_quality_tasks where review_id = $1 and stage = 'checklist'`, [r.reviewId])).rows[0].n;
+      expect(model.calls.filter((c) => c === "record_quality_observations").length).toBe(assesses.length - checklists);
+      expect(model.calls.filter((c) => c === "record_checklist_statuses").length).toBe(checklists);
       const v = await viewOf(r.reviewId);
       expect(v.review!.state).toBe("complete");
       expect(v.review!.observations.length).toBeGreaterThan(0);
@@ -847,6 +864,98 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const v = await viewOf(id);
       expect(["failed", "partial"]).toContain(v.review!.state);
       expect(v.review!.progress.interrupted).toBe(false);
+    });
+  });
+
+  // The scored checklist (RQK-1), Grant 2026-10-18: each document scored against the elements its
+  // type should contain, model finds and code scores. Actual actions, runner, view and DOCX.
+  describe("scored checklist", () => {
+    const doc = (label: string, text: string) => addDoc(A, runA, `${label}.txt`, Buffer.from(text));
+    const briefText = "Checklist brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n";
+    const proposalText = "Checklist proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n";
+
+    it("scores each document against its own checklist; every number follows from the statuses shown", async () => {
+      const id = await start([{ documentId: await doc("ck-brief", briefText), roles: ["brief"] }, { documentId: await doc("ck-proposal", proposalText), roles: ["proposal"] }]);
+      const v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.checklists.map((c) => [c.checklistId, c.state])).toEqual([["brief", "scored"], ["proposal", "scored"]]);
+      for (const c of v.review!.checklists) {
+        const statuses = c.sections.flatMap((s) => s.elements.map((e) => e.status));
+        expect(statuses.every((x) => x !== null)).toBe(true);
+        // Independent recount from what the screen shows.
+        const assessed = statuses.filter((x) => x !== "not_assessed");
+        const points = assessed.reduce((n, x) => n + (x === "present" ? 2 : x === "partial" ? 1 : 0), 0);
+        expect(c.score!.assessed).toBe(assessed.length);
+        expect(c.score!.pct).toBe(Math.round((points / (assessed.length * 2)) * 100));
+        // Presence is always backed by a quote from the document.
+        for (const s of c.sections) for (const e of s.elements) if (e.status === "present" || e.status === "partial") expect(e.quotes.length, e.elementId).toBeGreaterThan(0);
+      }
+      const b = v.review!.checklists[0];
+      const el = (id: string) => b.sections.flatMap((s) => s.elements).find((e) => e.elementId === id)!;
+      expect(el("BR-DECISION")).toMatchObject({ status: "present" });
+      expect(el("BR-DECISION").quotes[0].quote).toMatch(/The decision is whether/);
+      expect(el("BR-BUDGET").status).toBe("absent");
+      expect(b.gaps.find((g) => g.elementId === "BR-BUDGET")).toMatchObject({ essential: true, status: "absent" });
+      expect(b.gaps.findIndex((g) => !g.essential)).toBeGreaterThan(b.gaps.findLastIndex((g) => g.essential)); // essential first
+      // The proposal's sampling element was found in the proposal's own text, not the brief's.
+      const pe = v.review!.checklists[1].sections.flatMap((s) => s.elements).find((e) => e.elementId === "PR-SAMPLING")!;
+      expect(pe.status).toBe("present");
+      expect(pe.quotes.every((q) => !q.fromBrief)).toBe(true);
+      // The Word export carries the same grid and the gap recommendations.
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(text).toMatch(/Scored checklist/);
+      expect(text).toContain(`ck-brief.txt: Research brief, ${b.score!.pct}%`);
+      expect(text).toMatch(/Missing or partial elements/);
+      expect(text).toMatch(/Budget indication \(absent, essential\)/);
+    });
+
+    it("presence claimed without quotes is not scored, so it cannot inflate the score", async () => {
+      model.checklist = "overclaim";
+      const id = await start([{ documentId: await doc("ck-overclaim", briefText), roles: ["brief"] }]);
+      const c = (await viewOf(id)).review!.checklists[0];
+      expect(c.state).toBe("scored");
+      expect(c.score).toMatchObject({ assessed: 0, pct: null, band: null });
+      expect(c.sections[0].elements[0].notAssessedBecause).toMatch(/no quoted fact/);
+      expect(c.gaps).toEqual([]);
+    });
+
+    it("a failed checklist step shows no score (not zero), leaves the review partial, and retry scores it", async () => {
+      model.checklist = "fail";
+      const id = await start([{ documentId: await doc("ck-fail", briefText), roles: ["brief"] }]);
+      let v = await viewOf(id);
+      expect(v.review!.state).toBe("partial");
+      expect(v.review!.checklists[0]).toMatchObject({ state: "failed", score: null, gaps: [] });
+      expect(v.review!.checklists[0].error).toMatch(/synthetic checklist outage/);
+      model.checklist = "normal";
+      expect((await m.actions.retryResearchQualityReviewAction(runA, id)).ok).toBe(true);
+      await settle();
+      v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.checklists[0].state).toBe("scored");
+    });
+
+    it("without migration 0106 a review runs as before and says which migration adds the checklist", async () => {
+      await q(`alter table research_quality_tasks drop constraint research_quality_tasks_stage_check`);
+      // NOT VALID: earlier tests' checklist rows stay; only new rows are held to the old rule.
+      await q(`alter table research_quality_tasks add constraint research_quality_tasks_stage_check check (stage in ('extract', 'assess')) not valid`);
+      try {
+        const id = await start([{ documentId: await doc("ck-nomigration", briefText), roles: ["brief"] }]);
+        const v = await viewOf(id);
+        expect(v.review!.state).toBe("complete");
+        expect(v.review!.checklists).toEqual([]);
+        expect(v.review!.checklistNote).toMatch(/migration 0106/);
+      } finally {
+        await q(`alter table research_quality_tasks drop constraint research_quality_tasks_stage_check`);
+        await q(`alter table research_quality_tasks add constraint research_quality_tasks_stage_check check (stage in ('extract', 'assess', 'checklist'))`);
+      }
+    });
+
+    it("a document whose role has no checklist is reviewed without one, and the screen says why", async () => {
+      const id = await start([{ documentId: await doc("ck-guide", briefText), roles: ["discussion_guide"] }], { mode: "review_documented", studyType: "qualitative" });
+      const v = await viewOf(id);
+      expect(v.review!.checklists).toEqual([]);
+      expect(v.review!.checklistNote).toMatch(/None of the selected documents has a role with a checklist/);
     });
   });
 

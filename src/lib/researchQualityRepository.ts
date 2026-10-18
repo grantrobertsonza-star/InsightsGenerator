@@ -175,7 +175,24 @@ export async function purgeSourceText(tenantId: string, runId: string, sourceId:
 
 // ---------------------------------------------------------------- reviews and tasks
 
-export type NewTask = { taskKey: string; stage: "extract" | "assess"; dependsOn: string[]; inputHash: string | null; maxAttempts: number; input: unknown };
+export type TaskStage = "extract" | "assess" | "checklist";
+
+/**
+ * Whether migration 0106 (the checklist task stage) is applied. Without it a review runs as before
+ * with no checklist, and the screen says which migration adds it; nothing fails part-way.
+ */
+export async function checklistStageAvailable(client: PoolClient): Promise<boolean> {
+  const r = await client.query<{ ok: boolean }>(
+    `select exists (select 1 from pg_constraint where conrelid = 'public.research_quality_tasks'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%checklist%') as ok`,
+  );
+  return r.rows[0]?.ok === true;
+}
+
+export async function checklistAvailable(tenantId: string): Promise<boolean> {
+  return withTenant(tenantId, (client) => checklistStageAvailable(client));
+}
+
+export type NewTask = { taskKey: string; stage: TaskStage; dependsOn: string[]; inputHash: string | null; maxAttempts: number; input: unknown };
 
 /** Creates the review and its tasks once per request key; a repeat returns the existing review. */
 export async function createReview(
@@ -241,7 +258,7 @@ export async function createReview(
 export type TaskRow = {
   id: string;
   task_key: string;
-  stage: "extract" | "assess";
+  stage: TaskStage;
   depends_on: string[];
   status: "pending" | "running" | "succeeded" | "failed";
   attempts: number;
@@ -388,6 +405,39 @@ export async function publishExtraction(tenantId: string, taskId: string, lease:
 }
 
 /**
+ * Publishes a checklist result (element statuses citing fact ids), under the same rules as an
+ * extraction: the current, unexpired lease, and only while the scored document's source version is
+ * unpurged (the reasons may paraphrase its text).
+ */
+export async function publishChecklist(tenantId: string, taskId: string, lease: string, result: { checklistId: string; elements: unknown[] }, usage: Usage): Promise<boolean> {
+  return withTenant(tenantId, async (client) => {
+    const pinned = (
+      await client.query<{ v: string | null }>(
+        `select r.manifest->'sources'->((t.result->'input'->>'sourceIndex')::int)->>'sourceVersionId' as v
+           from research_quality_tasks t join research_quality_reviews r on r.id = t.review_id where t.id = $1`,
+        [taskId],
+      )
+    ).rows[0]?.v;
+    if (await sourcesPurged(client, [pinned])) {
+      await discardForPurge(client, taskId, lease, usage);
+      return false;
+    }
+    await lockTaskRow(client, taskId);
+    const r = await client.query(
+      `update research_quality_tasks
+          set status = 'succeeded', result = coalesce(result, '{}'::jsonb) || $3::jsonb, error = null,
+              lease_token = null, lease_expires_at = null,
+              input_tokens = input_tokens + $4, output_tokens = output_tokens + $5, cost_usd = cost_usd + $6, updated_at = now()
+        where ${CURRENT_LEASE} and stage = 'checklist'`,
+      [taskId, lease, JSON.stringify(result), usage.input, usage.output, usage.cost],
+    );
+    if (r.rowCount === 1) await client.query(`update research_quality_reviews set actual_cost_usd = actual_cost_usd + $2 where id = (select review_id from research_quality_tasks where id = $1)`, [taskId, usage.cost]);
+    else await recordUsageOnly(client, taskId, usage);
+    return r.rowCount === 1;
+  });
+}
+
+/**
  * Publishes an assessment task's observations atomically with its status, only for the current,
  * unexpired lease and only while every source version in the review's manifest is unpurged (the
  * assessment was given facts from all of them, and its reasoning may paraphrase any). Each observation is found or created by its logical key, then gets one version for this
@@ -453,7 +503,7 @@ export async function publishAssessment(
  * has expired (the attempt died, for example a worker interrupted mid-call). A running task with a
  * live lease is never taken over, and attempt bounds still apply. Returns how many were reset.
  */
-export async function resetFailedTasks(tenantId: string, runId: string, reviewId: string, stage: "extract" | "assess"): Promise<number> {
+export async function resetFailedTasks(tenantId: string, runId: string, reviewId: string, stage: TaskStage): Promise<number> {
   return withTenant(tenantId, async (client) => {
     await assertModuleTables(client);
     const own = await client.query(`select 1 from research_quality_reviews where id = $1 and run_id = $2 and tenant_id = $3 for update`, [reviewId, runId, tenantId]);

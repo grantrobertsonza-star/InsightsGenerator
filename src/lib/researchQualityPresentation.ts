@@ -92,3 +92,15 @@ export function scorecard(observations: ObservationView[]) {
 }
 
 export const comparisonLabel = (c: ObservationPayload["comparison"]) => (c === "compared_with_brief" ? "compared with the brief" : c === "standalone" ? "assessed on its own (no brief)" : null);
+
+// ---------------------------------------------------------------- checklist (RQK-1)
+
+export const CHECKLIST_STATUS_LABEL: Record<string, string> = { present: "Present", partial: "Partial", absent: "Absent", not_assessed: "Not assessed" };
+export const CHECKLIST_BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
+/** "72% (Workable)", or why there is no percentage. */
+export function checklistScoreText(score: { pct: number | null; band: string | null; assessed: number; total: number } | null, state: string): string {
+  if (state === "failed") return "Could not be scored";
+  if (state === "pending" || !score) return "Not scored yet";
+  if (score.pct === null) return `Too little could be assessed (${score.assessed} of ${score.total} elements)`;
+  return `${score.pct}% (${CHECKLIST_BAND_LABEL[score.band ?? ""] ?? score.band})`;
+}

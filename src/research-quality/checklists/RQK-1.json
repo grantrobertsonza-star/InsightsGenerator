@@ -1,0 +1,715 @@
+{
+ "release": "RQK-1",
+ "status": "production",
+ "scale": {
+  "present": 2,
+  "partial": 1,
+  "absent": 0
+ },
+ "bands": [
+  {
+   "band": "strong",
+   "minPct": 80
+  },
+  {
+   "band": "workable",
+   "minPct": 60
+  },
+  {
+   "band": "weak",
+   "minPct": 0
+  }
+ ],
+ "note": "Required elements per document type, scored by code from quoted evidence. Bands follow the objective quality scorer (80% and 60%).",
+ "checklists": [
+  {
+   "checklistId": "brief",
+   "label": "Research brief",
+   "roles": [
+    "brief"
+   ],
+   "basis": "Founder's brief rubric (2026-10-18); ISO 20252:2019 research request requirements.",
+   "sections": [
+    {
+     "sectionId": "context",
+     "label": "Context and problem",
+     "elements": [
+      {
+       "elementId": "BR-BACKGROUND",
+       "label": "Background to the problem",
+       "present": "The situation, what led to the research and what is already known.",
+       "partial": "A sentence or two of context without what prompted the research or what is known.",
+       "recommendation": "Add a short background: the situation, what prompted the research now, and what is already known.",
+       "essential": true
+      },
+      {
+       "elementId": "BR-PROBLEM",
+       "label": "Business problem",
+       "present": "The business problem the research is meant to help solve, stated as a problem.",
+       "partial": "A topic or area of interest rather than a problem.",
+       "recommendation": "State the business problem in one or two sentences: what is going wrong or what is unknown, and why it matters.",
+       "essential": true
+      },
+      {
+       "elementId": "BR-DECISION",
+       "label": "Decision the research informs",
+       "present": "The decision(s) the results will be used for, and by whom.",
+       "partial": "Use of the results is implied but no decision is named.",
+       "recommendation": "Name the decision the research will inform and who will make it.",
+       "essential": true
+      },
+      {
+       "elementId": "BR-AUDIENCE",
+       "label": "Users of the results",
+       "present": "Who will receive and act on the findings.",
+       "partial": "Users mentioned only in passing.",
+       "recommendation": "Say who will use the results, so the reporting can be shaped for them.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "objectives",
+     "label": "Objectives",
+     "elements": [
+      {
+       "elementId": "BR-OBJ-COUNT",
+       "label": "At least three research objectives",
+       "present": "Three or more distinct research objectives.",
+       "partial": "One or two objectives.",
+       "recommendation": "List at least three distinct research objectives, each answerable by the research.",
+       "essential": true,
+       "rule": "min-objective-facts:3"
+      },
+      {
+       "elementId": "BR-OBJ-QUALITY",
+       "label": "Objectives specific and measurable",
+       "present": "Objectives that say what will be measured, among whom.",
+       "partial": "Objectives present but vague about what or whom.",
+       "recommendation": "Rewrite each objective to say what will be measured and among whom.",
+       "essential": false
+      },
+      {
+       "elementId": "BR-INFO-NEEDS",
+       "label": "Information needs or hypotheses",
+       "present": "The specific questions, measures or hypotheses the client needs answered.",
+       "partial": "General areas of interest without specific questions.",
+       "recommendation": "List the specific questions or hypotheses each objective must answer.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "method",
+     "label": "Method parameters",
+     "elements": [
+      {
+       "elementId": "BR-POPULATION",
+       "label": "Target population",
+       "present": "Who the research is about (for example customers, lapsed users, a region).",
+       "partial": "A broad group without definition.",
+       "recommendation": "Define the target population: who is in and who is out.",
+       "essential": true
+      },
+      {
+       "elementId": "BR-SCOPE",
+       "label": "Geography and scope",
+       "present": "Where and over what scope the research applies.",
+       "partial": "Scope implied but not stated.",
+       "recommendation": "State the geography and scope the results must cover.",
+       "essential": false
+      },
+      {
+       "elementId": "BR-METHOD",
+       "label": "Method requirements or constraints",
+       "present": "Required or preferred approach, mode or constraints (or an explicit invitation to propose).",
+       "partial": "A method mentioned without the reason or constraint.",
+       "recommendation": "Say what method requirements or constraints apply, or invite the agency to propose and justify one.",
+       "essential": false
+      },
+      {
+       "elementId": "BR-GROUPS",
+       "label": "Reporting groups or sample needs",
+       "present": "Sub-groups the results must be reported for, or sample expectations.",
+       "partial": "Groups mentioned without the need to report on them.",
+       "recommendation": "List the sub-groups that results must be reported for, so the sample can be designed for them.",
+       "essential": false
+      },
+      {
+       "elementId": "BR-EXISTING",
+       "label": "Existing data and previous research",
+       "present": "Previous studies, data or tracking that the research should build on.",
+       "partial": "Mentioned without saying what it is or how to use it.",
+       "recommendation": "List previous research and data the agency should review or build on.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "logistics",
+     "label": "Deliverables, timing and budget",
+     "elements": [
+      {
+       "elementId": "BR-DELIVERABLES",
+       "label": "Deliverables expected",
+       "present": "The outputs expected (report, deck, data, workshop).",
+       "partial": "Outputs implied but not listed.",
+       "recommendation": "List the deliverables you expect and their format.",
+       "essential": false
+      },
+      {
+       "elementId": "BR-DEADLINE",
+       "label": "Deadline",
+       "present": "A date or period by which results are needed.",
+       "partial": "A vague time frame.",
+       "recommendation": "Give the date by which results are needed and any interim milestones.",
+       "essential": true
+      },
+      {
+       "elementId": "BR-BUDGET",
+       "label": "Budget indication",
+       "present": "A budget, range or cost ceiling.",
+       "partial": "A statement that budget is limited without a figure or range.",
+       "recommendation": "Give a budget range or ceiling so proposals can be sized realistically.",
+       "essential": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "checklistId": "proposal",
+   "label": "Research proposal",
+   "roles": [
+    "proposal"
+   ],
+   "basis": "Founder's proposal rubric (2026-10-18); ISO 20252:2019 proposal requirements.",
+   "sections": [
+    {
+     "sectionId": "understanding",
+     "label": "Understanding of the brief",
+     "elements": [
+      {
+       "elementId": "PR-RESTATE-PROBLEM",
+       "label": "Restates the business problem",
+       "present": "The business problem restated accurately (compared with the brief when one is selected).",
+       "partial": "Restated loosely or differently from the brief.",
+       "recommendation": "Restate the business problem in your own words and confirm it matches the brief.",
+       "essential": true,
+       "compare": "brief_if_present"
+      },
+      {
+       "elementId": "PR-RESTATE-OBJECTIVES",
+       "label": "Restates the objectives",
+       "present": "The brief's objectives restated, each traceable.",
+       "partial": "Some objectives restated, others missing or changed.",
+       "recommendation": "Restate each of the brief's objectives so the client can confirm the scope.",
+       "essential": true,
+       "compare": "brief_if_present"
+      },
+      {
+       "elementId": "PR-ADDED-OBJECTIVES",
+       "label": "Additional or refined objectives",
+       "present": "Objectives added or sharpened, with the reason.",
+       "partial": "Additions without a reason.",
+       "recommendation": "Say which objectives you added or sharpened and why.",
+       "essential": false,
+       "compare": "brief_if_present"
+      },
+      {
+       "elementId": "PR-LITERATURE",
+       "label": "Relevant literature or prior evidence",
+       "present": "Relevant previous research, theory or evidence that shapes the approach.",
+       "partial": "Mentioned generically without its relevance.",
+       "recommendation": "Summarise the relevant prior research and how it shapes the design.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "design",
+     "label": "Design and sample",
+     "elements": [
+      {
+       "elementId": "PR-DESIGN",
+       "label": "Research design named and justified",
+       "present": "The design (for example survey, interviews, experiment, mixed) and why it suits the objectives.",
+       "partial": "Design named without justification.",
+       "recommendation": "Name the research design and explain why it answers the objectives.",
+       "essential": true
+      },
+      {
+       "elementId": "PR-MODE",
+       "label": "Data collection method",
+       "present": "How data will be collected (mode: online, telephone, face to face, interviews).",
+       "partial": "Mode implied.",
+       "recommendation": "State the data collection mode and why it suits the population.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-POPULATION",
+       "label": "Target population defined",
+       "present": "Who is eligible, with inclusion and exclusion rules.",
+       "partial": "Population named without eligibility rules.",
+       "recommendation": "Define the target population with inclusion and exclusion criteria.",
+       "essential": true
+      },
+      {
+       "elementId": "PR-FRAME",
+       "label": "Sampling frame or recruitment source",
+       "present": "Where participants come from (list, panel, database, intercept).",
+       "partial": "Source implied.",
+       "recommendation": "Name the sampling frame or recruitment source and its coverage gaps.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-SAMPLING",
+       "label": "Sampling method",
+       "present": "How participants are selected (probability or non-probability, quotas, purposive).",
+       "partial": "Selection described loosely.",
+       "recommendation": "State how participants are selected, and whether results can be generalised.",
+       "essential": true
+      },
+      {
+       "elementId": "PR-SAMPLE-SIZE",
+       "label": "Sample size with rationale",
+       "present": "The sample size and why it is enough for the analysis and sub-groups.",
+       "partial": "A size without a rationale.",
+       "recommendation": "Give the sample size and the reasoning (precision, sub-group bases or saturation).",
+       "essential": true
+      }
+     ]
+    },
+    {
+     "sectionId": "instrument",
+     "label": "Instrument and fieldwork",
+     "elements": [
+      {
+       "elementId": "PR-INSTRUMENT",
+       "label": "Instrument outline",
+       "present": "What the questionnaire or guide will cover, linked to the objectives.",
+       "partial": "Instrument mentioned without content.",
+       "recommendation": "Outline the questionnaire or guide sections and link each to an objective.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-PILOT",
+       "label": "Pilot or pretest",
+       "present": "A pilot, cognitive test or soft launch before full fieldwork.",
+       "partial": "Mentioned without what it tests.",
+       "recommendation": "Plan a pilot or pretest and say what it will check.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-QC",
+       "label": "Fieldwork quality control",
+       "present": "Checks on data quality during fieldwork (back-checks, attention checks, supervision).",
+       "partial": "Quality mentioned generically.",
+       "recommendation": "Describe the fieldwork quality checks you will apply.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-ETHICS",
+       "label": "Ethics, consent and data protection",
+       "present": "Informed consent, confidentiality and data protection (for example POPIA in South Africa).",
+       "partial": "Mentioned without how it is handled.",
+       "recommendation": "Say how consent, confidentiality and data protection (POPIA) will be handled.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "analysis",
+     "label": "Analysis plan",
+     "elements": [
+      {
+       "elementId": "PR-ANALYSIS",
+       "label": "Analysis plan linked to objectives",
+       "present": "How each objective will be analysed (methods, comparisons, outputs).",
+       "partial": "Analysis described generically.",
+       "recommendation": "Set out how each objective will be analysed and what output it produces.",
+       "essential": true
+      },
+      {
+       "elementId": "PR-WEIGHTING",
+       "label": "Weighting or adjustment",
+       "present": "Whether and how data will be weighted, or why not.",
+       "partial": "Weighting mentioned without approach.",
+       "recommendation": "Say whether data will be weighted, to what, and why.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-PRECISION",
+       "label": "Precision and testing",
+       "present": "Margins of error, significance testing or (for qualitative work) how rigour is ensured.",
+       "partial": "Mentioned without method.",
+       "recommendation": "State how precision will be reported or, for qualitative work, how rigour will be shown.",
+       "essential": false
+      },
+      {
+       "elementId": "PR-LIMITATIONS",
+       "label": "Anticipated limitations",
+       "present": "Known limitations of the design and how they are handled.",
+       "partial": "Limitations listed without handling.",
+       "recommendation": "List the design's limitations and how each will be handled or reported.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "delivery",
+     "label": "Products, timeline and budget",
+     "elements": [
+      {
+       "elementId": "PR-PRODUCTS",
+       "label": "Products and deliverables",
+       "present": "The deliverables and their format (compared with the brief when one is selected).",
+       "partial": "Deliverables listed but not matching the brief.",
+       "recommendation": "List each deliverable and confirm it meets what the brief asked for.",
+       "essential": false,
+       "compare": "brief_if_present"
+      },
+      {
+       "elementId": "PR-TIMELINE",
+       "label": "Timeline",
+       "present": "A schedule with milestones that meets the brief's deadline.",
+       "partial": "A total duration without milestones, or a timeline that misses the deadline.",
+       "recommendation": "Give a timeline with milestones and confirm it meets the deadline.",
+       "essential": true,
+       "compare": "brief_if_present"
+      },
+      {
+       "elementId": "PR-BUDGET",
+       "label": "Budget",
+       "present": "A cost, with a breakdown or what is included.",
+       "partial": "A total without what it covers.",
+       "recommendation": "Give the cost and what it includes, within the brief's budget.",
+       "essential": true,
+       "compare": "brief_if_present"
+      },
+      {
+       "elementId": "PR-TEAM",
+       "label": "Team and experience",
+       "present": "Who will do the work and their relevant experience.",
+       "partial": "Organisation named without the team.",
+       "recommendation": "Name the team and their relevant experience.",
+       "essential": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "checklistId": "questionnaire",
+   "label": "Questionnaire",
+   "roles": [
+    "questionnaire"
+   ],
+   "basis": "Krosnick and Presser (2010), Question and questionnaire design; standard pretesting practice.",
+   "sections": [
+    {
+     "sectionId": "coverage",
+     "label": "Coverage",
+     "elements": [
+      {
+       "elementId": "QN-OBJ-COVERAGE",
+       "label": "Questions cover every objective",
+       "present": "Questions that address each research objective.",
+       "partial": "Some objectives without questions.",
+       "recommendation": "Map each objective to its questions and add questions for any objective not covered.",
+       "essential": true
+      },
+      {
+       "elementId": "QN-SCREENER",
+       "label": "Screening and eligibility",
+       "present": "Questions that confirm the respondent belongs to the target population.",
+       "partial": "Partial screening.",
+       "recommendation": "Add screening questions that confirm eligibility before the main questions.",
+       "essential": false
+      },
+      {
+       "elementId": "QN-PROFILE",
+       "label": "Questions for reporting groups",
+       "present": "Demographic or profile questions needed for the planned sub-group analysis.",
+       "partial": "Some reporting groups not captured.",
+       "recommendation": "Add the profile questions needed to report on each sub-group.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "wording",
+     "label": "Question wording",
+     "elements": [
+      {
+       "elementId": "QN-SINGLE",
+       "label": "One idea per question",
+       "present": "Questions that each ask about one thing (no double-barrelled questions).",
+       "partial": "One or two questions ask about two things at once.",
+       "recommendation": "Split any question that asks about two things into separate questions.",
+       "essential": true
+      },
+      {
+       "elementId": "QN-NEUTRAL",
+       "label": "Neutral wording",
+       "present": "Questions worded without leading or loaded language.",
+       "partial": "Some leading phrasing.",
+       "recommendation": "Reword leading questions so they do not suggest an answer.",
+       "essential": true
+      },
+      {
+       "elementId": "QN-CLEAR",
+       "label": "Clear language and defined terms",
+       "present": "Simple language, with terms defined where needed.",
+       "partial": "Some jargon or undefined terms.",
+       "recommendation": "Simplify the wording and define any technical terms.",
+       "essential": false
+      },
+      {
+       "elementId": "QN-PERIOD",
+       "label": "Reference periods stated",
+       "present": "Time frames given for behaviour questions (for example in the past month).",
+       "partial": "Some behaviour questions without a time frame.",
+       "recommendation": "Add a reference period to every behaviour question.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "responses",
+     "label": "Response options",
+     "elements": [
+      {
+       "elementId": "QN-EXHAUSTIVE",
+       "label": "Options mutually exclusive and exhaustive",
+       "present": "Answer lists that do not overlap and cover all answers (with Other where needed).",
+       "partial": "Some overlapping or incomplete lists.",
+       "recommendation": "Check every answer list for overlap and gaps, and add Other where needed.",
+       "essential": true
+      },
+      {
+       "elementId": "QN-SCALES",
+       "label": "Balanced, labelled scales",
+       "present": "Rating scales with balanced, labelled points.",
+       "partial": "Unbalanced or partly labelled scales.",
+       "recommendation": "Use balanced scales with every point (or at least the ends) labelled.",
+       "essential": false
+      },
+      {
+       "elementId": "QN-DK",
+       "label": "Don't know and not applicable handled",
+       "present": "Explicit handling of don't know, not applicable or refusal.",
+       "partial": "Handled for some questions only.",
+       "recommendation": "Decide where don't know or not applicable is offered and apply it consistently.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "structure",
+     "label": "Structure",
+     "elements": [
+      {
+       "elementId": "QN-ROUTING",
+       "label": "Routing and skip logic",
+       "present": "Instructions for who answers which questions.",
+       "partial": "Routing for some questions only.",
+       "recommendation": "Specify routing for every question that does not apply to everyone.",
+       "essential": true
+      },
+      {
+       "elementId": "QN-ORDER",
+       "label": "Logical order",
+       "present": "A flow from general to specific, with sensitive questions later.",
+       "partial": "Some ordering issues.",
+       "recommendation": "Reorder from general to specific and move sensitive questions later.",
+       "essential": false
+      },
+      {
+       "elementId": "QN-INTRO",
+       "label": "Introduction and consent",
+       "present": "An introduction with purpose, duration, confidentiality and consent.",
+       "partial": "Introduction without consent or confidentiality.",
+       "recommendation": "Add an introduction covering purpose, length, confidentiality and consent.",
+       "essential": false
+      },
+      {
+       "elementId": "QN-LENGTH",
+       "label": "Estimated length",
+       "present": "An estimate of how long the questionnaire takes.",
+       "partial": "Length implied.",
+       "recommendation": "State the expected interview length and check it against the mode.",
+       "essential": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "checklistId": "methodology_report",
+   "label": "Methodology or report",
+   "roles": [
+    "methodology",
+    "report",
+    "fieldwork"
+   ],
+   "basis": "AAPOR Code of Professional Ethics and Practices (2021), disclosure standards; ISO 20252:2019 reporting requirements.",
+   "sections": [
+    {
+     "sectionId": "disclosure",
+     "label": "Study disclosure",
+     "elements": [
+      {
+       "elementId": "MR-SPONSOR",
+       "label": "Sponsor and conductor",
+       "present": "Who commissioned and who conducted the research.",
+       "partial": "One of the two only.",
+       "recommendation": "State who commissioned and who conducted the research.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-DATES",
+       "label": "Fieldwork dates",
+       "present": "When the data were collected.",
+       "partial": "A month or year only.",
+       "recommendation": "Give the fieldwork start and end dates.",
+       "essential": false
+      },
+      {
+       "elementId": "MR-POPULATION",
+       "label": "Population studied",
+       "present": "The population the results describe.",
+       "partial": "Population named loosely.",
+       "recommendation": "Define the population the results describe.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-FRAME",
+       "label": "Sampling frame and coverage",
+       "present": "Where the sample came from and who it may miss.",
+       "partial": "Source named without coverage.",
+       "recommendation": "Describe the sampling frame and who it may miss.",
+       "essential": false
+      },
+      {
+       "elementId": "MR-DESIGN",
+       "label": "Sample design",
+       "present": "How the sample was selected (probability or non-probability, quotas, stratification).",
+       "partial": "Selection described loosely.",
+       "recommendation": "Describe how the sample was selected, including quotas or stratification.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-SIZE",
+       "label": "Achieved sample size",
+       "present": "The number of completed interviews or participants, overall and for key groups.",
+       "partial": "An overall total without key group bases.",
+       "recommendation": "Report the achieved sample size overall and for each key group.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-MODE",
+       "label": "Data collection mode",
+       "present": "How data were collected.",
+       "partial": "Mode implied.",
+       "recommendation": "State the data collection mode(s).",
+       "essential": false
+      },
+      {
+       "elementId": "MR-INSTRUMENT",
+       "label": "Question wording available",
+       "present": "The questionnaire or exact question wording, or where to find it.",
+       "partial": "Some questions quoted.",
+       "recommendation": "Include the questionnaire or the exact wording of questions reported.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "quality",
+     "label": "Data quality",
+     "elements": [
+      {
+       "elementId": "MR-RESPONSE",
+       "label": "Response or participation rate",
+       "present": "The response, cooperation or completion rate, or why it cannot be calculated.",
+       "partial": "A rate without its definition.",
+       "recommendation": "Report the response or participation rate and how it was calculated.",
+       "essential": false
+      },
+      {
+       "elementId": "MR-WEIGHTING",
+       "label": "Weighting",
+       "present": "Whether and how the data were weighted, and to what targets.",
+       "partial": "Weighting mentioned without targets.",
+       "recommendation": "Describe the weighting: variables, targets and source.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-PRECISION",
+       "label": "Precision",
+       "present": "Margins of error or confidence intervals, or (for non-probability samples) why they are not given.",
+       "partial": "Precision stated without how it was calculated.",
+       "recommendation": "Report precision with its method, or explain why it does not apply to this sample.",
+       "essential": false
+      },
+      {
+       "elementId": "MR-CLEANING",
+       "label": "Data cleaning and quality checks",
+       "present": "How the data were checked and cleaned.",
+       "partial": "Mentioned generically.",
+       "recommendation": "Describe the quality checks and how cases were excluded.",
+       "essential": false
+      }
+     ]
+    },
+    {
+     "sectionId": "findings",
+     "label": "Findings and claims",
+     "elements": [
+      {
+       "elementId": "MR-BASES",
+       "label": "Bases shown for findings",
+       "present": "The base (number answering) shown for reported figures.",
+       "partial": "Bases shown for some figures.",
+       "recommendation": "Show the base for every reported figure.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-SUPPORT",
+       "label": "Claims supported by the data shown",
+       "present": "Conclusions that follow from the figures reported.",
+       "partial": "Some claims go beyond the data shown.",
+       "recommendation": "Check every conclusion against the figures and qualify any that go beyond them.",
+       "essential": true
+      },
+      {
+       "elementId": "MR-LIMITATIONS",
+       "label": "Limitations stated",
+       "present": "The study's limitations and their effect on the findings.",
+       "partial": "Limitations listed without their effect.",
+       "recommendation": "State the limitations and how they affect the findings.",
+       "essential": false
+      },
+      {
+       "elementId": "MR-OBJECTIVES",
+       "label": "Findings linked to objectives",
+       "present": "Findings organised by, or traced to, the research objectives.",
+       "partial": "Some objectives not addressed.",
+       "recommendation": "Show how each objective is answered, and say which could not be.",
+       "essential": false
+      },
+      {
+       "elementId": "MR-RECS",
+       "label": "Recommendations follow from findings",
+       "present": "Recommendations traced to the findings that support them.",
+       "partial": "Recommendations without supporting findings.",
+       "recommendation": "Link each recommendation to the findings that support it.",
+       "essential": false
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

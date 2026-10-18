@@ -116,10 +116,12 @@ export type ReviewManifest = {
   referencePassages: ReferencePassage[];
   referenceCatalogue: { release: string; kind: "production" | "synthetic_test"; hash: string };
   limits: ReviewLimits;
+  /** The checklist release the documents are scored against (RQK-1), or null when migration 0106 is not applied. Absent on reviews made before the checklist existed. */
+  checklistRelease?: { release: string; hash: string } | null;
 };
 
 export type ReviewLimits = { maxDocuments: number; maxCharsPerDocument: number; maxCharsTotal: number; maxAttempts: number; concurrency: number };
-export const DEFAULT_LIMITS: ReviewLimits = { maxDocuments: 6, maxCharsPerDocument: 40_000, maxCharsTotal: 120_000, maxAttempts: 20, concurrency: 2 };
+export const DEFAULT_LIMITS: ReviewLimits = { maxDocuments: 6, maxCharsPerDocument: 40_000, maxCharsTotal: 120_000, maxAttempts: 30, concurrency: 2 };
 
 /** One generated observation version (research_quality_observation_versions.payload). */
 export type ObservationPayload = {
