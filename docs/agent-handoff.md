@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released repairs 22555fe (20977c8 benchmark measurement), 7ca0848 (ed3e980 sign-in redirect and refresh outage) and 35af43a (d45c0a2 Research Quality task lifecycle) for review, 2026-10-18. a9cb5de unchanged. See docs/security-and-research-quality-handover-2026-10-18.md.
+State: **READY_FOR_CLAUDE**: Codex independently reviewed release `44bee6e`. Accept `7ca0848`; request changes on `22555fe` affirmative-effect classification and `35af43a` lease expiry after a source-lock wait. Storage, purge and interrupted-retry closures preserved. See docs/six-repair-independent-review-2026-10-18.md.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -777,3 +777,17 @@ Independent review completed in order on exact a9cb5de, 20977c8, ed3e980 and d45
 Claude may repair these concrete findings and their focused regression/recovery cases, then release exact commits for Codex independent verification. Application source was unchanged by Codex. Passing unrelated checks do not close these findings. Keep original failed runs, deployed identity/storage/role/migration/backup gates, approved exclusions and deferred historical definitions explicit. Counts37 Closed/6 Blocked unchanged; overall acceptance incomplete.
 
 All owned test stacks, runtime DB/roles and labelled container stopped/removed;3245/3246/3247/39132/39133/39134/55527 clear. Evidence and password-free synthetic dumps retained under scripts/workflow-tenant-review/four-package-review-20261018/. No paid calls, deployed changes, push, watch change or author/history rewrite. This release does not authorise a new paid-model run.
+
+
+## Codex repair verification release - 2026-10-18
+
+[Independent commands, counts, reproductions and fix criteria](six-repair-independent-review-2026-10-18.md). Reviewed exact `22555fe`, `7ca0848`, `35af43a` using immutable copies and disposable PostgreSQL/Auth/Storage/replay. All 584 core source paths match each commit after execution; no application edits.
+
+- **Accept `7ca0848`**: both original independent sign-in failures pass unchanged, with safe control, outage/recovery and rejected-refresh controls. Focused 44 passed / 2 skipped; original native 3 passed; retained sign-in 9 passed. Deployed security remains separate.
+- **Request changes `22555fe`**: original split finding and female-only cases now pass; 6 retained tests pass. Independent unrelated and explicitly denied target-effect text still produce a false positive (5 controls pass, 2 fail). Keep the verified structured measurement and return uncertain attribution as unverified rather than claiming the effect.
+- **Request changes `35af43a`**: original 16-case probe now passes. Purge coordination and bounded interrupted retry are repaired and independently verified. Expired-before-entry refusal passes, but extraction and assessment both publish after a real source-lock wait outlasts their lease; PostgreSQL now() is frozen at transaction start. Retained 41 checks pass; expanded wait probe 18 pass / 1 fail (two stage assertions). Fix only the remaining lease decision boundary and its focused recovery controls.
+- **Preserve accepted `a9cb5de`** unchanged; no new deployed-storage claim.
+
+Final production build/full TypeScript passes; Research Quality native 1 pass; six-table benchmark replay 1 pass with 18 computed findings and 5/5 independently known saved-value checks. These do not erase the two remaining findings or certify real-model quality. Full previous failures and all new counterexamples retained.
+
+Canonical 37 Closed / 6 Blocked = 43 unchanged. Security/deployment, five archived definitions, approved exclusions, reference curation and fresh-model limits remain explicit. Overall acceptance incomplete. No paid calls, live/development writes, push, deployment, watch change or history rewrite. Owned stack/database/role/container stopped/removed; 3247/39134/55527 clear. Claude may repair the two concrete remaining cases, preserving verified mechanisms, then return exact stable commits.
