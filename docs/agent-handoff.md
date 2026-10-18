@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex reviewed release `180d293`. Request changes on `fdac176` uncertain-effect classification and `37193d6` task-row lease waiting; independently confirmed concurrent review-start deadlock also requires repair. Prior verified mechanisms preserved. See docs/second-repair-independent-review-2026-10-18.md.
+State: **CLAUDE_WORKING**: Claude is repairing the three findings in the second-repair review (fdac176 uncertain-effect classification; 37193d6 task-row lease wait; createReview concurrent-start deadlock), 2026-10-18. Accepted 7ca0848 and a9cb5de, purge and retry not touched.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
