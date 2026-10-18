@@ -392,6 +392,216 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     expect(after.review!.sourceFreshness.find((f) => f.sourceId === src.sourceId)?.status ?? "purged").toBe("purged");
   });
 
+  // Codex 2026-10-18 (d45c0a2) reproduced three lifecycle defects with actual repository calls: an
+  // expired lease nobody had replaced still published; a purge that landed while an extraction was
+  // in flight was undone by the late result; and an interrupted (expired, still running) task was
+  // invisible to explicit retry. These cases run the same repository and runner functions.
+  describe("task lifecycle: expiry, purge ordering, interrupted retry", () => {
+    const usage = { input: 10, output: 5, cost: 0.25 };
+    let runner: typeof import("../researchQualityReview");
+    const freshReview = async (label: string) => {
+      const doc = await addDoc(A, runA, `${label}.txt`, Buffer.from(`Lifecycle ${label}.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n`));
+      const reviewId = await start([{ documentId: doc, roles: ["brief"] }]);
+      const src = (await q(`select id, current_version_id from research_quality_sources where run_id = $1 and document_id = $2`, [runA, doc])).rows[0];
+      return { reviewId, sourceId: src.id as string, versionId: src.current_version_id as string };
+    };
+    const syntheticExtract = async (reviewId: string, key: string, input: unknown = {}) =>
+      (await q(`insert into research_quality_tasks (tenant_id, run_id, review_id, task_key, stage, max_attempts, result) values ($1,$2,$3,$4,'extract',2,$5) returning id`, [A, runA, reviewId, key, JSON.stringify({ input })])).rows[0].id as string;
+    const expire = (taskId: string) => q(`update research_quality_tasks set lease_expires_at = now() - interval '1 second' where id = $1`, [taskId]);
+    const task = async (taskId: string) => (await q(`select status, attempts, max_attempts, error, result::text as result, cost_usd::float as cost, lease_token from research_quality_tasks where id = $1`, [taskId])).rows[0];
+    const reviewCost = async (reviewId: string) => (await q(`select actual_cost_usd::float as c from research_quality_reviews where id = $1`, [reviewId])).rows[0].c as number;
+    /** Takes an assessment task's published observations back off it and returns it to pending, as if it had never run. */
+    const reopenAssessment = async (reviewId: string) => {
+      const taskId = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'assess' order by task_key limit 1`, [reviewId])).rows[0].id as string;
+      const saved = (await q(`select ov.payload, o.logical_key, o.anchor from research_quality_observation_versions ov join research_quality_observations o on o.id = ov.observation_id where ov.task_id = $1`, [taskId])).rows;
+      expect(saved.length).toBeGreaterThan(0);
+      await q(`delete from research_quality_observation_versions where task_id = $1`, [taskId]);
+      await q(`update research_quality_tasks set status = 'pending', attempts = 0, lease_token = null, lease_expires_at = null where id = $1`, [taskId]);
+      return { taskId, observations: saved.map((r) => ({ logicalKey: r.logical_key as string, anchor: r.anchor, payload: r.payload })) };
+    };
+    const versionsOf = async (taskId: string) => (await q(`select count(*)::int n from research_quality_observation_versions where task_id = $1`, [taskId])).rows[0].n as number;
+
+    beforeAll(async () => {
+      runner = await import("../researchQualityReview");
+    });
+
+    it("an expired lease nobody replaced cannot publish an extraction, an assessment or a failure; usage is still counted; the current lease publishes", async () => {
+      const r = await freshReview("expiry");
+      const costBefore = await reviewCost(r.reviewId);
+      // Extraction, Codex's reproduction: claimed, lease run out, no other claimant.
+      const ex = await syntheticExtract(r.reviewId, "extract:expired:00");
+      const lease = await m.repo.claimTask(A, ex, 60);
+      await expire(ex);
+      expect(await m.repo.publishExtraction(A, ex, lease!, { facts: [], dropped: 0, nothingFound: true }, usage)).toBe(false);
+      expect(await m.repo.failTask(A, ex, lease!, "late failure", usage)).toBe(false);
+      let row = await task(ex);
+      expect(row.status).toBe("running");
+      expect(row.error).toBeNull();
+      expect(row.cost).toBeCloseTo(0.5, 4); // both late calls were paid for
+      // The same task, claimed again, publishes normally.
+      const fresh = await m.repo.claimTask(A, ex, 60);
+      expect(fresh).toBeTruthy();
+      expect(await m.repo.publishExtraction(A, ex, fresh!, { facts: [], dropped: 0, nothingFound: true }, usage)).toBe(true);
+      row = await task(ex);
+      expect(row.status).toBe("succeeded");
+      // Assessment: the same rule.
+      const as = await reopenAssessment(r.reviewId);
+      const aLease = await m.repo.claimTask(A, as.taskId, 60);
+      await expire(as.taskId);
+      expect(await m.repo.publishAssessment(A, runA, r.reviewId, as.taskId, aLease!, as.observations as never, {}, usage)).toBe(false);
+      expect(await versionsOf(as.taskId)).toBe(0);
+      expect((await task(as.taskId)).status).toBe("running");
+      const aFresh = await m.repo.claimTask(A, as.taskId, 60);
+      expect(await m.repo.publishAssessment(A, runA, r.reviewId, as.taskId, aFresh!, as.observations as never, {}, usage)).toBe(true);
+      expect(await versionsOf(as.taskId)).toBe(as.observations.length);
+      expect(await reviewCost(r.reviewId)).toBeCloseTo(costBefore + 5 * 0.25, 4);
+      await q(`delete from research_quality_tasks where id = $1`, [ex]);
+    });
+
+    it("a purge that lands while work is in flight discards the late result for good; other sources keep their text", async () => {
+      const keep = await freshReview("unrelated");
+      const r = await freshReview("purge-race");
+      // Extraction in flight when the purge lands (Codex's sequence: claim, purge, publish).
+      const ex = await syntheticExtract(r.reviewId, "extract:purge:00", { sourceIndex: 0, range: { start: 0, end: 10 } });
+      const lease = await m.repo.claimTask(A, ex, 60);
+      await m.repo.purgeSourceText(A, runA, r.sourceId);
+      const fact = { sourceVersionId: r.versionId, sourceId: r.sourceId, exactQuote: "Lifecycle purge-race.", statement: "Lifecycle purge-race." };
+      expect(await m.repo.publishExtraction(A, ex, lease!, { facts: [fact], dropped: 0, nothingFound: false }, usage)).toBe(false);
+      const row = await task(ex);
+      expect(row.result).not.toContain("Lifecycle purge-race");
+      expect(row.status).toBe("failed");
+      expect(row.attempts).toBe(row.max_attempts); // a retry cannot bring it back
+      expect(row.error).toMatch(/purged/);
+      // Assessment in flight when the purge has landed: nothing is published.
+      const as = await reopenAssessment(r.reviewId);
+      const aLease = await m.repo.claimTask(A, as.taskId, 60);
+      expect(await m.repo.publishAssessment(A, runA, r.reviewId, as.taskId, aLease!, as.observations as never, {}, usage)).toBe(false);
+      expect(await versionsOf(as.taskId)).toBe(0);
+      expect((await task(as.taskId)).status).toBe("failed");
+      // Retry refuses visibly instead of reviving either.
+      model.calls = [];
+      const retry = await runner.retryFailedTasks(A, runA, r.reviewId);
+      expect(retry.retried).toBe(0);
+      expect(retry.note).toMatch(/new review version/);
+      expect(model.calls).toEqual([]);
+      for (const where of [`research_quality_tasks where run_id = $1 and result::text like '%Lifecycle purge-race%'`, `research_quality_observation_versions where run_id = $1 and payload::text like '%Lifecycle purge-race%'`]) {
+        expect((await q(`select count(*)::int n from ${where}`, [runA])).rows[0].n).toBe(0);
+      }
+      const exported = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, r.reviewId), "RQ project");
+      expect((await (await JSZip.loadAsync(exported.buffer)).file("word/document.xml")!.async("string"))).not.toContain("Lifecycle purge-race");
+      // The unrelated source keeps its text, and its review is untouched.
+      expect((await q(`select canonical_text from research_quality_source_versions where id = $1`, [keep.versionId])).rows[0].canonical_text).toContain("Lifecycle unrelated");
+      expect((await viewOf(keep.reviewId)).review!.state).toBe("complete");
+      await q(`delete from research_quality_tasks where id = $1`, [ex]);
+    });
+
+    it("publication and purge overlapping in either order never leave purged text behind", async () => {
+      const doc = await addDoc(A, runA, "race.txt", Buffer.from("Race source.\n"));
+      const { sourceId } = await m.repo.saveSourceRoles(A, runA, doc, ["brief"], null);
+      const { reviewId } = await freshReview("race-host");
+      const newVersion = async (i: number, quote: string) =>
+        (
+          await q(
+            `insert into research_quality_source_versions (tenant_id, run_id, source_id, ordinal, original_document_id, filename, content_sha256, canonical_sha256, extractor, extractor_version, canonical_text, segments, char_count)
+             values ($1,$2,$3,$4,$5,'race.txt',$6,$6,'plain_text','rq-reader@1',$7,'[]',$8) returning id`,
+            [A, runA, sourceId, i, doc, `sha-race-${i}`, quote, quote.length],
+          )
+        ).rows[0].id as string;
+      const waitingOnLocks = async (n: number) => {
+        for (let i = 0; i < 200; i++) {
+          const w = (await q(`select count(*)::int n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`)).rows[0].n;
+          if (w >= n) return;
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        throw new Error(`expected ${n} sessions waiting on locks`);
+      };
+
+      // Order 1, publication inside its transaction first: it has locked the source version and is
+      // held (by a third session holding the task row) just before writing; the purge then queues
+      // behind it. When both finish, the purge has blanked what was published.
+      const quote1 = "Concurrent secret one.";
+      const v1 = await newVersion(1, quote1);
+      const ex1 = await syntheticExtract(reviewId, "extract:race:1");
+      const lease1 = await m.repo.claimTask(A, ex1, 60);
+      const holder = await db.pool.connect();
+      await holder.query("begin");
+      await holder.query(`select 1 from research_quality_tasks where id = $1 for update`, [ex1]);
+      const publishing = m.repo.publishExtraction(A, ex1, lease1!, { facts: [{ sourceVersionId: v1, sourceId, exactQuote: quote1, statement: quote1 }], dropped: 0, nothingFound: false }, usage);
+      await waitingOnLocks(1); // publication waits on the task row, holding its share lock on v1
+      const purging = m.repo.purgeSourceText(A, runA, sourceId);
+      await waitingOnLocks(2); // the purge waits on the publication's share lock
+      await holder.query("commit");
+      holder.release();
+      expect(await publishing).toBe(true);
+      await purging;
+      expect((await task(ex1)).result).not.toContain(quote1);
+
+      // Order 2, purge first: the publication then refuses.
+      const quote2 = "Concurrent secret two.";
+      const v2 = await newVersion(2, quote2);
+      const ex2 = await syntheticExtract(reviewId, "extract:race:2");
+      const lease2 = await m.repo.claimTask(A, ex2, 60);
+      await m.repo.purgeSourceText(A, runA, sourceId);
+      expect(await m.repo.publishExtraction(A, ex2, lease2!, { facts: [{ sourceVersionId: v2, sourceId, exactQuote: quote2, statement: quote2 }], dropped: 0, nothingFound: false }, usage)).toBe(false);
+      expect((await task(ex2)).result).not.toContain(quote2);
+      expect((await q(`select count(*)::int n from research_quality_source_versions where source_id = $1 and canonical_text <> ''`, [sourceId])).rows[0].n).toBe(0);
+      await q(`delete from research_quality_tasks where id = any($1::uuid[])`, [[ex1, ex2]]);
+    });
+
+    it("explicit retry recovers interrupted work within its bounds, never steals a live lease, and repeats harmlessly", async () => {
+      const r = await freshReview("interrupted");
+      // A live lease is left to its attempt.
+      const live = await reopenAssessment(r.reviewId);
+      const liveLease = await m.repo.claimTask(A, live.taskId, 3600);
+      model.calls = [];
+      expect(await runner.retryFailedTasks(A, runA, r.reviewId)).toEqual({ retried: 0, note: null });
+      expect((await task(live.taskId)).lease_token).toBe(liveLease);
+      expect(model.calls).toEqual([]);
+      // The worker died: the lease runs out with the task still marked running. Retry reruns it once.
+      await expire(live.taskId);
+      expect((await runner.retryFailedTasks(A, runA, r.reviewId)).retried).toBe(1);
+      expect(model.calls).toEqual(["record_quality_observations"]);
+      expect((await task(live.taskId)).status).toBe("succeeded");
+      expect(await versionsOf(live.taskId)).toBe(live.observations.length);
+      expect((await viewOf(r.reviewId)).review!.state).toBe("complete");
+      // Repeating the retry does nothing.
+      model.calls = [];
+      expect(await runner.retryFailedTasks(A, runA, r.reviewId)).toEqual({ retried: 0, note: null });
+      expect(model.calls).toEqual([]);
+      // Out of attempts: explained, not stranded silently, and the review is not left "running".
+      await q(`update research_quality_tasks set status = 'running', attempts = max_attempts, lease_expires_at = now() - interval '1 second' where id = $1`, [live.taskId]);
+      const exhausted = await runner.retryFailedTasks(A, runA, r.reviewId);
+      expect(exhausted.retried).toBe(0);
+      expect(exhausted.note).toMatch(/used all of their attempts/);
+      expect(model.calls).toEqual([]);
+      expect((await q(`select state from research_quality_reviews where id = $1`, [r.reviewId])).rows[0].state).not.toBe("running");
+      // An interrupted extraction after assessments published: the safe new-review explanation.
+      const ex = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'extract' order by task_key limit 1`, [r.reviewId])).rows[0].id;
+      await q(`update research_quality_tasks set status = 'running', attempts = 1, lease_expires_at = now() - interval '1 second' where id = $1`, [ex]);
+      const afterPublish = await runner.retryFailedTasks(A, runA, r.reviewId);
+      expect(afterPublish.retried).toBe(0);
+      expect(afterPublish.note).toMatch(/Start a new review version to include it/);
+      expect(model.calls).toEqual([]);
+    });
+
+    it("an interrupted extraction before any assessment published is resumed and the review completes", async () => {
+      const r = await freshReview("resume");
+      const extracts = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'extract'`, [r.reviewId])).rows.map((x) => x.id);
+      const assesses = (await q(`select id from research_quality_tasks where review_id = $1 and stage = 'assess'`, [r.reviewId])).rows.map((x) => x.id);
+      await q(`delete from research_quality_observation_versions where review_id = $1`, [r.reviewId]);
+      await q(`update research_quality_tasks set status = 'pending', attempts = 0, lease_token = null, lease_expires_at = null where id = any($1::uuid[])`, [assesses]);
+      await q(`update research_quality_tasks set status = 'running', attempts = 1, result = result - 'facts', lease_expires_at = now() - interval '1 second' where id = any($1::uuid[])`, [extracts]);
+      model.calls = [];
+      const retry = await runner.retryFailedTasks(A, runA, r.reviewId);
+      expect(retry).toEqual({ retried: extracts.length, note: null });
+      expect(model.calls.filter((c) => c === "record_documented_facts").length).toBe(extracts.length);
+      expect(model.calls.filter((c) => c === "record_quality_observations").length).toBe(assesses.length);
+      const v = await viewOf(r.reviewId);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.observations.length).toBeGreaterThan(0);
+    });
+  });
+
   it("deleting the project document keeps the review history, shows the source as removed and never as current", async () => {
     const reviews = (await viewOf(null)).reviews;
     await q(`delete from documents where run_id = $1`, [runA]);

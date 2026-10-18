@@ -5,9 +5,18 @@
 // inside a transaction. Guarantees, and how each is established:
 //   - one explicit start creates one review: unique (run_id, request_key), and a repeat returns the
 //     existing review;
-//   - a task result is published only by the lease that claimed it and only while that lease is
-//     current: the publish UPDATE matches (id, lease_token, status 'running'), so a late answer from
-//     an expired or superseded lease writes nothing;
+//   - a task result (success or failure) is recorded only by the lease that claimed it and only
+//     while that lease is unexpired: the UPDATE matches (id, lease_token, status 'running',
+//     lease_expires_at > now()), so a late answer from an expired lease writes nothing, whether or
+//     not another attempt has claimed the task since (Codex 2026-10-18). Its token usage is still
+//     added to the cost totals, because the call was paid for;
+//   - a result never outlives a purge of the text it was made from: publication first locks the
+//     source versions it rests on FOR SHARE, purgeSourceText locks them FOR UPDATE, both in id order
+//     and both before touching task rows, so the two serialise without deadlock. A purge that
+//     commits first makes the publication refuse (the task fails with no attempts left); a
+//     publication that commits first is then blanked by the purge like any published result;
+//   - an attempt that died (running, lease expired) is not stranded: claimTask can take it over
+//     and resetFailedTasks puts it back to pending for an explicit retry, within attempt bounds;
 //   - observation identity is the server-derived logical key, unique per run; one version per
 //     observation per review (unique (review_id, observation_id));
 //   - researcher status and wording decisions lock the observation row and compare its revision; a
@@ -129,7 +138,7 @@ export async function purgeSourceText(tenantId: string, runId: string, sourceId:
   if (!isUuid(sourceId)) throw new ResearchQualityError("Unknown source.");
   return withTenant(tenantId, async (client) => {
     await assertModuleTables(client);
-    const versions = (await client.query<{ id: string }>(`select id from research_quality_source_versions where source_id = $1 and run_id = $2 and tenant_id = $3 for update`, [sourceId, runId, tenantId])).rows.map((r) => r.id);
+    const versions = (await client.query<{ id: string }>(`select id from research_quality_source_versions where source_id = $1 and run_id = $2 and tenant_id = $3 order by id for update`, [sourceId, runId, tenantId])).rows.map((r) => r.id);
     if (versions.length === 0) {
       const exists = await client.query(`select 1 from research_quality_sources where id = $1 and run_id = $2 and tenant_id = $3`, [sourceId, runId, tenantId]);
       if (exists.rowCount !== 1) throw new ResearchQualityError("Unknown source.");
@@ -230,10 +239,12 @@ export type TaskRow = {
   validation: unknown;
   error: string | null;
   lease_expires_at: string | null;
+  /** Running with a lease that has run out: the attempt died or is too slow to be accepted. Decided by the database clock. */
+  lease_expired: boolean;
 };
 
 export async function loadTasks(tenantId: string, reviewId: string): Promise<TaskRow[]> {
-  return withTenant(tenantId, async (client) => (await client.query<TaskRow>(`select id, task_key, stage, depends_on, status, attempts, max_attempts, input_hash, result, validation, error, lease_expires_at::text from research_quality_tasks where review_id = $1 order by task_key`, [reviewId])).rows);
+  return withTenant(tenantId, async (client) => (await client.query<TaskRow>(`select id, task_key, stage, depends_on, status, attempts, max_attempts, input_hash, result, validation, error, lease_expires_at::text, (status = 'running' and lease_expires_at < now()) as lease_expired from research_quality_tasks where review_id = $1 order by task_key`, [reviewId])).rows);
 }
 
 /**
@@ -262,40 +273,96 @@ export async function updateTaskInput(tenantId: string, taskId: string, input: u
   });
 }
 
-/** Records a failed attempt, only for the lease that made it. */
-export async function failTask(tenantId: string, taskId: string, lease: string, error: string, usage: { input: number; output: number; cost: number }): Promise<boolean> {
+type Usage = { input: number; output: number; cost: number };
+
+// The lease condition every result write shares: this attempt's token, still running, unexpired.
+const CURRENT_LEASE = `id = $1 and lease_token = $2 and status = 'running' and lease_expires_at > now()`;
+
+const SOURCE_PURGED_ERROR = "The source text was purged while this was being worked on, so the result was discarded. Start a new review version to assess the remaining material.";
+
+/** Adds a call's usage to the task and review totals. Used when its result is not accepted: the call was still paid for. */
+async function recordUsageOnly(client: PoolClient, taskId: string, usage: Usage): Promise<void> {
+  await client.query(`update research_quality_tasks set input_tokens = input_tokens + $2, output_tokens = output_tokens + $3, cost_usd = cost_usd + $4 where id = $1`, [taskId, usage.input, usage.output, usage.cost]);
+  await client.query(`update research_quality_reviews set actual_cost_usd = actual_cost_usd + $2 where id = (select review_id from research_quality_tasks where id = $1)`, [taskId, usage.cost]);
+}
+
+/**
+ * Locks the given source versions FOR SHARE (id order, the same order purgeSourceText uses for its
+ * FOR UPDATE) and reports whether any has been purged. Called before the task row is touched.
+ */
+async function sourcesPurged(client: PoolClient, versionIds: (string | null | undefined)[]): Promise<boolean> {
+  const ids = [...new Set(versionIds.filter(isUuid))].sort();
+  if (ids.length === 0) return false;
+  const r = await client.query<{ purged: boolean }>(`select purged_at is not null as purged from research_quality_source_versions where id = any($1::uuid[]) order by id for share`, [ids]);
+  return r.rows.some((x) => x.purged);
+}
+
+/** Fails the task for good (no attempts left) because its source was purged; only for the current lease. */
+async function discardForPurge(client: PoolClient, taskId: string, lease: string, usage: Usage): Promise<void> {
+  const r = await client.query(
+    `update research_quality_tasks
+        set status = 'failed', attempts = max_attempts, error = $3, lease_token = null, lease_expires_at = null,
+            input_tokens = input_tokens + $4, output_tokens = output_tokens + $5, cost_usd = cost_usd + $6, updated_at = now()
+      where ${CURRENT_LEASE}`,
+    [taskId, lease, SOURCE_PURGED_ERROR, usage.input, usage.output, usage.cost],
+  );
+  if (r.rowCount === 1) await client.query(`update research_quality_reviews set actual_cost_usd = actual_cost_usd + $2 where id = (select review_id from research_quality_tasks where id = $1)`, [taskId, usage.cost]);
+  else await recordUsageOnly(client, taskId, usage);
+}
+
+/** Records a failed attempt, only for the current, unexpired lease that made it. */
+export async function failTask(tenantId: string, taskId: string, lease: string, error: string, usage: Usage): Promise<boolean> {
   return withTenant(tenantId, async (client) => {
     const r = await client.query(
       `update research_quality_tasks
           set status = 'failed', error = $3, lease_token = null, lease_expires_at = null,
               input_tokens = input_tokens + $4, output_tokens = output_tokens + $5, cost_usd = cost_usd + $6, updated_at = now()
-        where id = $1 and lease_token = $2 and status = 'running'`,
+        where ${CURRENT_LEASE}`,
       [taskId, lease, error.slice(0, 2000), usage.input, usage.output, usage.cost],
     );
     if (r.rowCount === 1) await client.query(`update research_quality_reviews set actual_cost_usd = actual_cost_usd + $2 where id = (select review_id from research_quality_tasks where id = $1)`, [taskId, usage.cost]);
-    return r.rowCount === 1;
-  });
-}
-
-/** Publishes an extraction result, only for the current lease. */
-export async function publishExtraction(tenantId: string, taskId: string, lease: string, result: { facts: unknown[]; dropped: number; nothingFound: boolean }, usage: { input: number; output: number; cost: number }): Promise<boolean> {
-  return withTenant(tenantId, async (client) => {
-    const r = await client.query(
-      `update research_quality_tasks
-          set status = 'succeeded', result = coalesce(result, '{}'::jsonb) || $3::jsonb, validation = $4::jsonb, error = null,
-              lease_token = null, lease_expires_at = null,
-              input_tokens = input_tokens + $5, output_tokens = output_tokens + $6, cost_usd = cost_usd + $7, updated_at = now()
-        where id = $1 and lease_token = $2 and status = 'running'`,
-      [taskId, lease, JSON.stringify({ facts: result.facts, nothingFound: result.nothingFound }), JSON.stringify({ droppedUnverifiableQuotes: result.dropped }), usage.input, usage.output, usage.cost],
-    );
-    if (r.rowCount === 1) await client.query(`update research_quality_reviews set actual_cost_usd = actual_cost_usd + $2 where id = (select review_id from research_quality_tasks where id = $1)`, [taskId, usage.cost]);
+    else await recordUsageOnly(client, taskId, usage);
     return r.rowCount === 1;
   });
 }
 
 /**
- * Publishes an assessment task's observations atomically with its status, only for the current
- * lease. Each observation is found or created by its logical key, then gets one version for this
+ * Publishes an extraction result, only for the current, unexpired lease, and only while the source
+ * version it was read from (and every version its facts cite) is unpurged. Returns false when
+ * nothing was published.
+ */
+export async function publishExtraction(tenantId: string, taskId: string, lease: string, result: { facts: unknown[]; dropped: number; nothingFound: boolean }, usage: Usage): Promise<boolean> {
+  return withTenant(tenantId, async (client) => {
+    const pinned = (
+      await client.query<{ v: string | null }>(
+        `select r.manifest->'sources'->((t.result->'input'->>'sourceIndex')::int)->>'sourceVersionId' as v
+           from research_quality_tasks t join research_quality_reviews r on r.id = t.review_id where t.id = $1`,
+        [taskId],
+      )
+    ).rows[0]?.v;
+    const cited = result.facts.map((f) => (f as { sourceVersionId?: string } | null)?.sourceVersionId);
+    if (await sourcesPurged(client, [pinned, ...cited])) {
+      await discardForPurge(client, taskId, lease, usage);
+      return false;
+    }
+    const r = await client.query(
+      `update research_quality_tasks
+          set status = 'succeeded', result = coalesce(result, '{}'::jsonb) || $3::jsonb, validation = $4::jsonb, error = null,
+              lease_token = null, lease_expires_at = null,
+              input_tokens = input_tokens + $5, output_tokens = output_tokens + $6, cost_usd = cost_usd + $7, updated_at = now()
+        where ${CURRENT_LEASE}`,
+      [taskId, lease, JSON.stringify({ facts: result.facts, nothingFound: result.nothingFound }), JSON.stringify({ droppedUnverifiableQuotes: result.dropped }), usage.input, usage.output, usage.cost],
+    );
+    if (r.rowCount === 1) await client.query(`update research_quality_reviews set actual_cost_usd = actual_cost_usd + $2 where id = (select review_id from research_quality_tasks where id = $1)`, [taskId, usage.cost]);
+    else await recordUsageOnly(client, taskId, usage);
+    return r.rowCount === 1;
+  });
+}
+
+/**
+ * Publishes an assessment task's observations atomically with its status, only for the current,
+ * unexpired lease and only while every source version in the review's manifest is unpurged (the
+ * assessment was given facts from all of them, and its reasoning may paraphrase any). Each observation is found or created by its logical key, then gets one version for this
  * review. Two observations with the same key in one answer are rejected before anything is written.
  */
 export async function publishAssessment(
@@ -306,7 +373,7 @@ export async function publishAssessment(
   lease: string,
   observations: { logicalKey: string; anchor: unknown; payload: ObservationPayload }[],
   validation: unknown,
-  usage: { input: number; output: number; cost: number },
+  usage: Usage,
 ): Promise<boolean> {
   const keys = new Set<string>();
   for (const o of observations) {
@@ -314,14 +381,25 @@ export async function publishAssessment(
     keys.add(o.logicalKey);
   }
   return withTenant(tenantId, async (client) => {
+    const manifestVersions = (
+      await client.query<{ v: string | null }>(`select s->>'sourceVersionId' as v from research_quality_reviews r, jsonb_array_elements(r.manifest->'sources') s where r.id = $1`, [reviewId])
+    ).rows.map((x) => x.v);
+    const cited = observations.flatMap((o) => o.payload.statements.map((st) => st.sourceVersionId));
+    if (await sourcesPurged(client, [...manifestVersions, ...cited])) {
+      await discardForPurge(client, taskId, lease, usage);
+      return false;
+    }
     const claimed = await client.query(
       `update research_quality_tasks
           set status = 'succeeded', validation = $3::jsonb, error = null, lease_token = null, lease_expires_at = null,
               input_tokens = input_tokens + $4, output_tokens = output_tokens + $5, cost_usd = cost_usd + $6, updated_at = now()
-        where id = $1 and lease_token = $2 and status = 'running'`,
-      [taskId, lease, JSON.stringify(validation), usage.input, usage.output, usage.cost],
+        where ${CURRENT_LEASE} and review_id = $7`,
+      [taskId, lease, JSON.stringify(validation), usage.input, usage.output, usage.cost, reviewId],
     );
-    if (claimed.rowCount !== 1) return false;
+    if (claimed.rowCount !== 1) {
+      await recordUsageOnly(client, taskId, usage);
+      return false;
+    }
     for (const o of observations) {
       const obs = await client.query<{ id: string }>(
         `insert into research_quality_observations (tenant_id, run_id, logical_key, criterion_id, anchor)
@@ -341,14 +419,22 @@ export async function publishAssessment(
   });
 }
 
-/** Puts failed tasks of the given stage back to pending (attempt bounds still apply). */
+/**
+ * Puts the given stage's retryable tasks back to pending: failed ones, and running ones whose lease
+ * has expired (the attempt died, for example a worker interrupted mid-call). A running task with a
+ * live lease is never taken over, and attempt bounds still apply. Returns how many were reset.
+ */
 export async function resetFailedTasks(tenantId: string, runId: string, reviewId: string, stage: "extract" | "assess"): Promise<number> {
   return withTenant(tenantId, async (client) => {
     await assertModuleTables(client);
     const own = await client.query(`select 1 from research_quality_reviews where id = $1 and run_id = $2 and tenant_id = $3 for update`, [reviewId, runId, tenantId]);
     if (own.rowCount !== 1) throw new ResearchQualityError("Unknown review.");
-    const r = await client.query(`update research_quality_tasks set status = 'pending', error = null, updated_at = now() where review_id = $1 and stage = $2 and status = 'failed' and attempts < max_attempts`, [reviewId, stage]);
-    await client.query(`update research_quality_reviews set state = 'running', completed_at = null where id = $1`, [reviewId]);
+    const r = await client.query(`update research_quality_tasks set status = 'pending', error = null, lease_token = null, lease_expires_at = null, updated_at = now()
+        where review_id = $1 and stage = $2 and attempts < max_attempts
+          and (status = 'failed' or (status = 'running' and lease_expires_at < now()))`, [reviewId, stage]);
+    // Only a reset that found something reopens the review; otherwise a retry with nothing to do
+    // would leave it marked running with no runner coming.
+    if (r.rowCount) await client.query(`update research_quality_reviews set state = 'running', completed_at = null where id = $1`, [reviewId]);
     return r.rowCount ?? 0;
   });
 }

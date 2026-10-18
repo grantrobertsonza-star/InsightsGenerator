@@ -437,8 +437,9 @@ async function runPool<T>(items: T[], concurrency: number, fn: (t: T) => Promise
 /**
  * Runs whatever is runnable in a review until nothing more can progress, then records its state:
  * complete (every task succeeded), partial (some assessments published, something failed) or failed
- * (no assessment published). Each pending task runs once; a failed one reruns only through an
- * explicit retry, within its attempt bound. Successful tasks are never rerun.
+ * (no assessment published). Each pending task runs once; a failed or interrupted one (running,
+ * lease expired) reruns only through an explicit retry, within its attempt bound. Successful tasks
+ * are never rerun.
  */
 export async function runReview(tenantId: string, runId: string, reviewId: string): Promise<void> {
   const review = await loadReviewRow(tenantId, runId, reviewId);
@@ -481,18 +482,25 @@ async function finishReview(tenantId: string, reviewId: string, factCount: numbe
 }
 
 /**
- * Reruns failed tasks only. A failed extraction can be retried in place only while no assessment
- * has published (otherwise assessments would rest on facts they never saw); after that, including
- * the missing material needs a new review version, and this says so.
+ * Reruns tasks that did not finish: failed ones, and interrupted ones (still marked running, lease
+ * expired). Successful tasks are never rerun and a task with a live lease is left to its attempt.
+ * An unfinished extraction can be retried in place only while no assessment has published
+ * (otherwise assessments would rest on facts they never saw); after that, and for a task that has
+ * used all its attempts, including the missing material needs a new review version, and the note
+ * says so. Repeating the call when nothing is retryable changes nothing and returns the same note.
  */
 export async function retryFailedTasks(tenantId: string, runId: string, reviewId: string): Promise<{ retried: number; note: string | null }> {
   const tasks = await loadTasks(tenantId, reviewId);
+  const unfinished = (t: TaskRow) => t.status === "failed" || t.lease_expired;
   const assessPublished = tasks.some((t) => t.stage === "assess" && t.status === "succeeded");
-  const failedExtract = tasks.some((t) => t.stage === "extract" && t.status === "failed");
+  const unfinishedExtract = tasks.some((t) => t.stage === "extract" && unfinished(t));
   let retried = 0;
-  if (failedExtract && !assessPublished) retried += await resetFailedTasks(tenantId, runId, reviewId, "extract");
+  if (unfinishedExtract && !assessPublished) retried += await resetFailedTasks(tenantId, runId, reviewId, "extract");
   retried += await resetFailedTasks(tenantId, runId, reviewId, "assess");
-  const note = failedExtract && assessPublished ? "A document that could not be read is not retried in this review, because its assessments are already published. Start a new review version to include it." : null;
+  const notes: string[] = [];
+  if (unfinishedExtract && assessPublished) notes.push("A document that could not be read is not retried in this review, because its assessments are already published. Start a new review version to include it.");
+  const exhausted = tasks.filter((t) => unfinished(t) && t.attempts >= t.max_attempts && !(t.stage === "extract" && assessPublished));
+  if (exhausted.length) notes.push(`${exhausted.length === 1 ? "One step has" : `${exhausted.length} steps have`} used all of their attempts and cannot be retried in this review. Start a new review version to try again.`);
   if (retried > 0) await runReview(tenantId, runId, reviewId);
-  return { retried, note };
+  return { retried, note: notes.length ? notes.join(" ") : null };
 }
