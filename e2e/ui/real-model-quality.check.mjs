@@ -3,7 +3,8 @@
 // skips, because replay answers say nothing about model quality.
 //
 // One synthetic project from golden-thread-1 through the native controls: the survey workbook and
-// the planted-claim report are uploaded, a business decision is accepted, "Run analysis" runs the
+// the planted-claim report are uploaded, computed crosstabs (each claim variable by Gender) are
+// committed as evidence, a business decision is accepted, "Run analysis" runs the
 // pipeline (report extraction, claim checks against the data, verification, insights), then
 // "Run synthesis". The model's judgements are then compared with the fixture's independent answer
 // key (fixtures/golden-thread-1/history/answer-key.json):
@@ -44,6 +45,31 @@ const CLAIMS = [
   { id: "C10", expect: "fail", markers: [/Advertising caused/i] },
 ];
 const PASSING = new Set(["robust", "use_with_caution"]);
+// The survey variables the report's claims and the omitted effect rest on, each crossed by Gender.
+// "Reasons" is the codebook's multiple-response set (MR_Convenience, MR_Value, MR_Service).
+const COMPUTED_ROWS = ["Purchase", "Satisfaction", "Recommend", "Reasons", "NearTie", "SmallGroup"];
+
+// A multiple-response SET (here "Reasons") offers "Row (all)" rather than the adapter's "Row"
+// button, so it is picked here with the workspace's own controls; everything else is the adapter's.
+async function buildSetTable(page, setName, column) {
+  await page.reload({ waitUntil: "networkidle" });
+  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
+  if (!(await dialog.isVisible())) {
+    await page.getByRole("button", { name: /^Analytics(\s*\d+)?$/ }).first().click();
+    await page.getByRole("button", { name: /^Crosstabs/ }).click();
+  }
+  const search = dialog.getByPlaceholder("Search name or label");
+  const rowOf = (name) => dialog.locator(`div.grid:has(> span[title="${name}"])`).first();
+  await search.fill(column);
+  const col = rowOf(column).getByRole("button", { name: "Column", exact: true });
+  if ((await col.getAttribute("aria-pressed", { timeout: 60_000 })) !== "true") await col.click();
+  await search.fill(setName);
+  await dialog.locator("div.grid").filter({ hasText: setName }).getByRole("button", { name: /^Row \(all\)$/ }).first().click({ timeout: 60_000 });
+  await search.fill("");
+  await dialog.getByRole("button", { name: "Add table to set", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: /^Commit \d+ table/ })).toBeVisible({ timeout: 180_000 });
+  return { dialog };
+}
 
 test("real-model quality on golden-thread-1: claim verdicts, omitted effect, figure traceability, cost", async ({ page }, testInfo) => {
   // REAL_MODEL_QUALITY_HARNESS_TEST=1 runs it on a replay stack to test the harness itself; its output
@@ -53,15 +79,43 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
   test.setTimeout(60 * 60_000);
   const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
   await db.connect();
-  const out = { fixture: "golden-thread-1", modelMode: target.modelMode, harnessTestOnly: target.modelMode !== "real-model", startedAt: new Date().toISOString() };
+  const out = { fixture: "golden-thread-1", modelMode: target.modelMode, harnessTestOnly: target.modelMode !== "real-model", startedAt: new Date().toISOString(), steps: [] };
+  // Progress to stdout and the result file, so a long or stuck run shows where it is.
+  const step = (name) => {
+    out.steps.push({ name, at: new Date().toISOString() });
+    console.log(`[real-model-quality] ${new Date().toISOString()} ${name}`);
+  };
   try {
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
+    // A control that never appears fails the step after three minutes, instead of holding the
+    // whole run until the hour-long test timeout (what a missing "Row" button did once).
+    page.setDefaultTimeout(180_000);
     const run = await ui.createRun({ name: `real-model-${Date.now()}` });
     out.runId = run.id;
     await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
     await ui.upload(run, path.join(FIXTURE, "report.docx"), "report");
     await ui.expectReadyOrActionableRecovery(run);
+
+    // Computed evidence from the survey data, built through the native crosstab controls, so the
+    // report's claims are verified against calculated tables and the omitted effect can surface.
+    // (The 2026-10-18 run skipped this step: the pipeline then had nothing but the report's own
+    // sentences to check claims against, so its verdicts measured internal consistency, not data
+    // agreement. That run is incomplete as a benchmark and is kept as such.)
+    step("uploaded workbook and report");
+    out.computedTables = [];
+    for (const row of COMPUTED_ROWS) {
+      const t = row === "Reasons" ? await buildSetTable(page, row, "Gender") : await ui.buildTable(run, { row, column: "Gender" });
+      await t.dialog.getByRole("button", { name: /^Commit \d+ table/ }).click();
+      await expect(t.dialog.getByText(/Committed \d+ table\(s\)\. \d+ finding\(s\) generated\./)).toBeVisible({ timeout: 300_000 });
+      out.computedTables.push(row);
+      step(`committed computed table ${row} by Gender`);
+    }
+    out.computedFindings = Number((await db.query("select count(*) from findings where run_id=$1 and origin='generated'", [run.id])).rows[0].count);
+    // Without computed findings the benchmark cannot measure data agreement: stop as incomplete
+    // here instead of spending model calls on a run that cannot answer the question.
+    expect(out.computedFindings, "computed findings from the survey tables (benchmark incomplete without them)").toBeGreaterThan(0);
+
     await page.goto(run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Business decisions/ }).first().click();
     const form = page.locator("form", { has: page.getByRole("button", { name: "Add decision" }) });
@@ -69,6 +123,7 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
     await form.locator("textarea").fill(decision);
     await form.getByRole("button", { name: "Add decision" }).click();
     await expect.poll(async () => (await db.query("select decision_statement from runs where id=$1", [run.id])).rows[0].decision_statement, { timeout: 300_000 }).toBe(decision);
+    step("decision saved");
 
     // Run analysis, then wait for the pipeline: the in-memory progress tracker reports "done".
     await page.goto(run.url, { waitUntil: "networkidle" });
@@ -91,6 +146,7 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
       return stable;
     }, { timeout: 15 * 60_000, intervals: [20_000] }).toBe(true);
 
+    step("analysis settled");
     // Synthesis.
     await page.goto(run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
