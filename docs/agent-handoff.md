@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Claude is repairing the three findings in the second-repair review (fdac176 uncertain-effect classification; 37193d6 task-row lease wait; createReview concurrent-start deadlock), 2026-10-18. Accepted 7ca0848 and a9cb5de, purge and retry not touched.
+State: **READY_FOR_CODEX**: Claude released third repairs 6bb2a3f (fdac176 uncertain-effect classification) and 1e0f2a3 (37193d6 task-row lease wait and concurrent-start deadlock) for review, 2026-10-18. Accepted 7ca0848 and a9cb5de, purge and retry unchanged. See docs/security-and-research-quality-handover-2026-10-18.md.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 

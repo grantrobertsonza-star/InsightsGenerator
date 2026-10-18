@@ -15,8 +15,10 @@ Status: **implemented, ready for Codex review** (repairs after Codex's review ar
 | `35af43a` | b27 | Repair after Codex: Research Quality lease expiry, purge ordering, interrupted retry (d45c0a2) |
 | `fdac176` | b29 | Second repair: benchmark affirmative attribution (22555fe) |
 | `37193d6` | b30 | Second repair: lease expiry judged at the write after a lock wait (35af43a) |
+| `6bb2a3f` | b32 | Third repair: possible, conditional and question sentences not counted (fdac176) |
+| `1e0f2a3` | b33 | Third repair: task row locked before the lease is judged; one run lock for review creation (37193d6) |
 
-Exact hashes are in each package's `hashes.txt` under `.fnd001/overnight/b21` to `b31`.
+Exact hashes are in each package's `hashes.txt` under `.fnd001/overnight/b21` to `b34`.
 
 ## 1. Storage-privacy checker (b21)
 
@@ -76,6 +78,19 @@ Codex accepted `7ca0848` (sign-in) and kept `a9cb5de` accepted; it requested cha
 **b30, lease expiry after a lock wait (35af43a).** PostgreSQL's `now()` is the transaction's start time, so a publication that waited on a source lock was judged by the time it started. Every lease comparison and expiry in `researchQualityRepository.ts` (the shared `CURRENT_LEASE` used by extraction, assessment and failure writes, `claimTask`, `loadTasks.lease_expired` and `resetFailedTasks`) now uses `clock_timestamp()`. The UPDATE also takes the task row lock, so a reclaim cannot slip in between the check and the commit (it waits, then re-reads the row). Source-lock ordering, atomic task/result writes and paid-attempt accounting are unchanged. `researchQuality.db.test.ts` +1: for extraction and assessment, a publication held on its source lock until its lease has run out (checked from another session before release) is refused with nothing published; reclaimed, the same wait with a live lease publishes. It fails on `35af43a`. Codex's `independent-lock-expiry.probe.txt`, unchanged: 19 of 19 pass (18 of 19 on `35af43a`).
 
 Checks on the tree with b29 and b30: `npx tsc --noEmit` pass; ESLint on the changed files clean; full vitest **139 files (138 passed, 1 skipped), 1008 passed, 0 failed, 59 skipped**; production build pass; browser on the new build **49 passed, 1 skipped**; benchmark harness self-test on replay **1 passed** (18 computed findings; omitted effect "found in the computed findings; no insight states it"; both one-group insights still "mentions one group only"); smoke **1 passed**; adapter **2 passed**; objective acceptance **passed**. No failed runs in this round.
+
+## Third repairs after Codex's second-repair review (2026-10-18, evening)
+
+Codex (`docs/second-repair-independent-review-2026-10-18.md`) confirmed the original cases of both second repairs but found three further boundaries. Fixed on top of `4dfc2d3`; accepted sign-in, storage, purge and retry are untouched. Status: **implemented, ready for Codex review.**
+
+**b32, benchmark: not-asserted statements (fdac176).** The sentence filter (`NOT_ASSERTED`, replacing `NEGATION`) now also refuses possibility, condition, prediction, supposition and questions: modal verbs (might, may, could, would, should, can), if/whether/unless, assume/suppose, likely/probably/possibly/perhaps, expected/predicted/projected/forecast, plan/aim/target/hope, and a trailing question mark. Such a sentence is reported as "not asserted ..." and the insight as "mentions the answer and group figures without establishing the effect (not counted)". The comments now say exactly this. `omittedEffectMeasure.test.ts` +1 (Codex's two sentences, seven more uncertain forms, three affirmative controls), 8 tests; the new one fails on `fdac176`. Codex's expanded probe: 9 of 9 (7 of 9 on `fdac176`); its original seven: 7 of 7.
+
+**b33, Research Quality lease after a task-row wait, and concurrent starts (37193d6).**
+- Every result write (extraction, assessment, failure, purge discard) now locks the task row with a separate `select ... for update` after any source locks and before the lease UPDATE, so the lease is judged with `clock_timestamp()` after the wait. (PostgreSQL decides an UPDATE's WHERE before waiting on a row lock and does not re-check it when the holder releases without changing the row.)
+- `createReview` takes the run row once, `FOR UPDATE`, checking tenant ownership there, and checks the request key only after it. The previous `FOR SHARE` then `FOR UPDATE` upgrade let two concurrent starts deadlock (40P01).
+- `researchQuality.db.test.ts` +2, 21 tests: extraction, assessment and failure writes held on the task row until the lease ran out are refused (usage still counted, nothing published), and the same wait with a live lease records; two starts with the same key forced to arrive together return one review (one created), two different keys get consecutive sequences, a sequential repeat returns the existing review, and another organisation is refused and creates nothing. Both fail on `37193d6`. Codex's unchanged probes: task-row wait 19 of 19 (18 of 19 on `37193d6`); concurrent start 20 of 20 (18 of 20).
+
+Checks on the tree with b32 and b33: `npx tsc --noEmit` pass; ESLint on the changed files clean; full vitest **139 files (138 passed, 1 skipped), 1011 passed, 0 failed, 59 skipped**; production build pass; browser **49 passed, 1 skipped**; benchmark harness self-test on replay **1 passed** (18 computed findings; "found in the computed findings; no insight states it"); smoke **1 passed**; adapter **2 passed**; objective acceptance **passed**. No failed runs in this round.
 
 ## Checks run in this workspace
 
