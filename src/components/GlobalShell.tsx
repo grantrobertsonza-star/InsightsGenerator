@@ -1,4 +1,4 @@
-import Link from "next/link";
+import CollapsibleRail from "./CollapsibleRail";
 import GlobalNav from "./GlobalNav";
 import AccountPanel from "./AccountPanel";
 
@@ -12,6 +12,9 @@ import AccountPanel from "./AccountPanel";
  * the top of page.tsx, programs/page.tsx and manual/layout.tsx: a fixed
  * top bar still puts everything below it in one long vertical scroll,
  * which is exactly what this redesign is meant to get away from.
+ *
+ * The rail can be hidden to a narrow strip and shown again (CollapsibleRail), for more room
+ * on the working screens; the choice is remembered per browser.
  */
 export default function GlobalShell({
   children,
@@ -20,27 +23,15 @@ export default function GlobalShell({
 }) {
   return (
     <div className="flex min-h-screen w-full">
-      <aside className="flex w-56 flex-none flex-col border-r border-border bg-white py-5">
-        <Link href="/" className="mb-6 flex items-center gap-2.5 px-4">
-          <div className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-primary text-sm font-bold text-white shadow-sm">
-            IE
-          </div>
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-semibold text-foreground">
-              Insights Elevator
-            </div>
-            <div className="truncate text-[11px] text-muted">
-              Decision-ready insights
-            </div>
-          </div>
-        </Link>
+      <CollapsibleRail>
         <GlobalNav />
         {/* A run's own section nav (RunNav, in RunShell.tsx) portals its
             list into this slot so there's one sidebar column, not two --
-            it's empty and takes no space on every other page. */}
+            it's empty and takes no space on every other page. It stays
+            mounted while the rail is hidden, so the portal keeps its target. */}
         <div id="run-nav-slot" className="mt-2 flex min-h-0 flex-1 flex-col" />
         <AccountPanel />
-      </aside>
+      </CollapsibleRail>
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
     </div>
   );
