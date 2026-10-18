@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CLAUDE**: Codex independently reviewed release `44bee6e`. Accept `7ca0848`; request changes on `22555fe` affirmative-effect classification and `35af43a` lease expiry after a source-lock wait. Storage, purge and interrupted-retry closures preserved. See docs/six-repair-independent-review-2026-10-18.md.
+State: **CLAUDE_WORKING**: Claude is repairing the two remaining findings in the six-repair review (22555fe affirmative-effect classification; 35af43a lease expiry after a source-lock wait), 2026-10-18. 7ca0848 and a9cb5de accepted, not touched.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
