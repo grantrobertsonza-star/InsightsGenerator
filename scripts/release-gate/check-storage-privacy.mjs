@@ -15,8 +15,18 @@
 //   2. a stored object cannot be read through the public URL, with no credentials
 //   3. the same object cannot be read with only the publishable (anon) key, the key any visitor has
 //   4. a signed link works when fresh and is refused after it expires (2 s), unless --no-sign.
-//      Signing creates a token, not stored data.
-// Exit code: 0 all pass, 2 any fail, 1 could not check (nothing failed, something unreachable).
+//      Signing creates a token, not stored data. --no-sign records the expiry check as SKIPPED,
+//      so the summary cannot read ENFORCED without it.
+// How an answer is read (classifyRead below; Codex formal verdict 2026-10-18 found the earlier
+// version treated every non-200 as a refusal):
+//   - any 2xx, including 206 partial content, means bytes were served: FAIL
+//   - 400, 401, 403 and 404 are Supabase Storage's refusals (an unknown object and an object the
+//     key may not read look alike by design), and count as refused only because the server key
+//     has just read the same object; for the expired link, 400/401/403 only (a 404 there could
+//     mean the object vanished, which says nothing about expiry)
+//   - anything else (no answer, a redirect, 408, 429, 5xx, an unexpected status) proves nothing
+//     about authorization: COULD NOT CHECK, never PASS
+// Exit code: 0 all pass, 2 any fail, 1 could not check or skipped (nothing failed).
 import pg from "pg";
 
 const args = process.argv.slice(2);
@@ -53,6 +63,16 @@ async function get(url, headers = {}) {
     return { status: 0, body: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/** PASS / FAIL / COULD NOT CHECK for a read that should have been refused. */
+function classifyRead(status, refusals) {
+  if (status >= 200 && status < 300) return "FAIL";
+  if (refusals.includes(status)) return "PASS";
+  return "COULD NOT CHECK";
+}
+const OBJECT_REFUSALS = [400, 401, 403, 404];
+const EXPIRY_REFUSALS = [400, 401, 403];
+const answered = (r) => (r.status ? `answered ${r.status}` : `no answer (${r.body})`);
 
 if (!base || !anon || !secret) {
   console.error("NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY must be set (shell or .env files).");
@@ -101,10 +121,12 @@ if (!objectPath) {
     record("object reads", "COULD NOT CHECK", `the server key could not read the sample object (${owner.status || owner.body}), so a refusal would prove nothing`);
   } else {
     const pub = await get(`${base}/storage/v1/object/public/${BUCKET}/${encoded}`);
-    record("no read through the public URL", pub.status === 200 ? "FAIL" : pub.status === 0 ? "COULD NOT CHECK" : "PASS", `answered ${pub.status || pub.body}`);
+    record("no read through the public URL", classifyRead(pub.status, OBJECT_REFUSALS), answered(pub));
     const viaAnon = await get(`${base}/storage/v1/object/authenticated/${BUCKET}/${encoded}`, authHeaders(anon));
-    record("no read with the publishable key", viaAnon.status === 200 ? "FAIL" : viaAnon.status === 0 ? "COULD NOT CHECK" : "PASS", `answered ${viaAnon.status || viaAnon.body}`);
-    if (!flag("--no-sign")) {
+    record("no read with the publishable key", classifyRead(viaAnon.status, OBJECT_REFUSALS), answered(viaAnon));
+    if (flag("--no-sign")) {
+      record("signed link expires", "SKIPPED", "--no-sign: expiry was not checked");
+    } else {
       let signed = null;
       try {
         const r = await fetch(`${base}/storage/v1/object/sign/${BUCKET}/${encoded}`, {
@@ -123,14 +145,16 @@ if (!objectPath) {
         const fresh = await get(link);
         await new Promise((r) => setTimeout(r, 4000));
         const stale = await get(link);
-        if (fresh.status !== 200) record("signed link expires", "COULD NOT CHECK", `a fresh signed link answered ${fresh.status}`);
-        else record("signed link expires", stale.status === 200 ? "FAIL" : "PASS", `fresh 200, after expiry ${stale.status}`);
+        if (fresh.status !== 200) record("signed link expires", "COULD NOT CHECK", `a fresh signed link ${answered(fresh)}, so a later refusal would prove nothing`);
+        else record("signed link expires", classifyRead(stale.status, EXPIRY_REFUSALS), `fresh 200, after expiry ${answered(stale)}`);
       }
     }
   }
 }
 
 const failed = results.some((r) => r.status === "FAIL");
-const unknown = results.some((r) => r.status === "COULD NOT CHECK");
+const unknown = results.some((r) => r.status === "COULD NOT CHECK" || r.status === "SKIPPED");
 console.log(failed ? "STORAGE PRIVACY: NOT ENFORCED" : unknown ? "STORAGE PRIVACY: NOT FULLY CHECKED" : "STORAGE PRIVACY: ENFORCED");
-process.exit(failed ? 2 : unknown ? 1 : 0);
+// exitCode rather than process.exit(): exiting while fetch sockets are still closing aborted the
+// process on Windows (Codex, 2026-10-18: exit 3221226505 instead of 1), losing the real result.
+process.exitCode = failed ? 2 : unknown ? 1 : 0;
