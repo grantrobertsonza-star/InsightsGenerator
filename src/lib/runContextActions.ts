@@ -7,9 +7,10 @@ import { readContextDocument } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines, normalizeObjectiveLine } from "./objectiveLines";
+import { requireTenantId } from "./requestContext";
 
 const BUCKET = "documents";
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+
 
 function fileOrNull(entry: FormDataEntryValue | null): File | null {
   return entry instanceof File && entry.size > 0 ? entry : null;
@@ -33,6 +34,7 @@ function fileOrNull(entry: FormDataEntryValue | null): File | null {
  * been quietly rewriting on every add, edit, or delete.
  */
 export async function saveRunContext(runId: string, formData: FormData) {
+  const TENANT_ID = await requireTenantId();
   const clean = (key: string) => {
     const v = String(formData.get(key) ?? "").trim();
     return v.length > 0 ? v : null;
@@ -170,6 +172,8 @@ export async function saveStatedObjectiveEdit(
   oldText: string,
   newText: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   try {
     await editStatedObjective(runId, oldText, newText);
     return { ok: true };
@@ -185,6 +189,7 @@ export async function saveStatedObjectiveEdit(
  * for objectiveFramer.ts's "researcher's true starting point" read.
  */
 export async function editStatedObjective(runId: string, oldText: string, newText: string | null) {
+  const TENANT_ID = await requireTenantId();
   // OBJ-SET-M02: only trimming here, instead of running the replacement through the same
   // normalizeObjectiveLine stripping parseObjectiveLines applies on every read, let a
   // bulleted/numbered edit ("- B", "1. B") get stored as typed while display (which always

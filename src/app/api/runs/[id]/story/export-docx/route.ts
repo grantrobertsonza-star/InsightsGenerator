@@ -21,8 +21,7 @@ import { summariseSupport, type InsightSupport } from "@/lib/supportStatusShared
 import { figureCheckLoadErrorNote, joinNotes, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
 import { latestVerdictLateral } from "@/lib/latestVerdict";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ConfidenceTier = "strong" | "moderate" | "exploratory" | null;
 type QualityTier = "finding" | "partial" | "qualified" | null;
@@ -66,6 +65,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const result = await withTenant(TENANT_ID, async (client) => {

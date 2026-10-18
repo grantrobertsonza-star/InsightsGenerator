@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 const state = vi.hoisted(() => ({ failRefresh: false }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

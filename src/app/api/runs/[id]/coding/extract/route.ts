@@ -12,8 +12,7 @@ import {
   type CodeAnalysis,
   type CodingAnalysisView,
 } from "@/lib/codingAnalysis";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 /**
  * A working document for writing up: every transcript's themes with their
@@ -26,6 +25,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const info = await withTenant(TENANT_ID, async (client) => {
     const run = await client.query<{ project_name: string | null }>(

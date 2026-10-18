@@ -19,6 +19,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 const TENANT = "00000000-0000-4000-8000-0000000000c9";
 const model = vi.hoisted(() => ({ assistant: null as null | Record<string, unknown> }));

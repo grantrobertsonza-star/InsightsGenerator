@@ -4,8 +4,7 @@ import { addFooter, addTitleSlide, safeFileStem } from "@/lib/deckSlides";
 import { CrosstabLayoutError } from "@/lib/crosstabSlides";
 import { FIELD_CELL_MARGIN, planFieldSlides } from "@/lib/fieldTableSlides";
 import { exportFields, loadMainRecommendations, parseScope, qualificationTags, scopeLabel, supportText } from "@/lib/mainRecommendationExport";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 // LAYOUT_16x9 is 10 x 5.625 inches; the shared footer rule sits at 5.22.
 const X = 0.5;
@@ -24,6 +23,9 @@ const PT = 10;
  * changed or unchecked support and earlier or unrecorded decisions stay, tagged.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const scope = parseScope(new URL(request.url).searchParams.get("scope"));
   const data = await loadMainRecommendations(TENANT_ID, runId, scope);

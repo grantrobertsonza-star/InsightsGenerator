@@ -70,7 +70,22 @@ describe.skipIf(!TEST_DATABASE_URL)("tenant isolation matrix (real database)", (
               where col.table_schema = 'public' and col.table_name = c.relname and col.column_name = 'tenant_id')`)
     ).rows as { name: string; rls: boolean; policy: boolean }[];
     expect(rows.length).toBeGreaterThan(40);
-    expect(rows.filter((r) => !r.rls || !r.policy).map((r) => r.name)).toEqual([]);
+    // G6: tenant_memberships is the one deliberate exception. It decides the tenant, so it is keyed
+    // on the signed-in USER (app.current_user_id) with a read-only policy; checked separately below.
+    expect(rows.filter((r) => r.name !== "tenant_memberships" && (!r.rls || !r.policy)).map((r) => r.name)).toEqual([]);
+  });
+
+  it("catalog: tenant_memberships has RLS and only a SELECT policy keyed on app.current_user_id", async () => {
+    const r = (
+      await db.pool.query(`
+        select c.relrowsecurity as rls,
+               array_agg(p.polcmd::text order by p.polcmd) as cmds,
+               bool_and(pg_get_expr(p.polqual, p.polrelid) like '%app.current_user_id%') as keyed
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+        join pg_policy p on p.polrelid = c.oid
+        where c.relname = 'tenant_memberships' group by c.relrowsecurity`)
+    ).rows[0] as { rls: boolean; cmds: string[]; keyed: boolean };
+    expect(r).toEqual({ rls: true, cmds: ["r"], keyed: true });
   });
 
   it("as a non-owner role: tenant B cannot see, change, delete or create tenant A's rows; no tenant fails closed", async () => {

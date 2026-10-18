@@ -1,5 +1,6 @@
 import Link from "next/link";
 import GlobalNav from "./GlobalNav";
+import AccountPanel from "./AccountPanel";
 
 /**
  * The app's persistent left rail: brand identity plus the three top-level
@@ -38,6 +39,7 @@ export default function GlobalShell({
             list into this slot so there's one sidebar column, not two --
             it's empty and takes no space on every other page. */}
         <div id="run-nav-slot" className="mt-2 flex min-h-0 flex-1 flex-col" />
+        <AccountPanel />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
     </div>

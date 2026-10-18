@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 const storage = vi.hoisted(() => ({ fail: false, objects: new Set<string>(), uploadGate: null as null | (() => Promise<void>) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: () => ({ upload: async (path: string) => { await storage.uploadGate?.(); storage.objects.add(path); return { error: null }; }, remove: async (paths: string[]) => {

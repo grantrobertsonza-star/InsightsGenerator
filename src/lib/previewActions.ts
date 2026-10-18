@@ -5,8 +5,8 @@ import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { parseTableDocument, type ParsedTable } from "./parseTable";
 import { resolveAuthoritativeSheet } from "./crosstabs";
+import { requireTenantId } from "./requestContext";
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 const BUCKET = "documents";
 
 export type PreviewResult =
@@ -38,6 +38,7 @@ export async function getDocumentPreviewUrl(
   runId: string,
   source: { sourceDocumentId: string | null; sourceTableId: string | null }
 ): Promise<PreviewResult> {
+  const TENANT_ID = await requireTenantId();
   if (source.sourceTableId) {
     const tableRow = await withTenant(TENANT_ID, async (client) => {
       const result = await client.query<{ headers: string[]; rows: Record<string, string | number | null>[]; document_id: string; table_index: number; row_count: number }>(

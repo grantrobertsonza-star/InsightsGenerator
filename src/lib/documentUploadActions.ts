@@ -5,8 +5,7 @@ import { withTenant } from "./db";
 import { ingestOutputFiles } from "./outputIngest";
 import { readContextDocument } from "./extractFindings";
 import { DuplicateUploadError, INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 /**
  * Stores a report or transcript and reads its text straight away, so the preview on the Import page
@@ -14,6 +13,7 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  * effort: if it fails the upload still stands and processing reads the file again and reports why.
  */
 async function storeAndRead(runId: string, kind: "report" | "transcript", file: File): Promise<string> {
+  const TENANT_ID = await requireTenantId();
   const id = await storeUploadedDocument(TENANT_ID, runId, kind, file);
   try {
     await readContextDocument(TENANT_ID, runId, id);
@@ -43,6 +43,7 @@ export type UploadResult =
  * added, or the error, so the form can say so instead of failing silently.
  */
 export async function uploadDocumentsAction(runId: string, formData: FormData): Promise<UploadResult> {
+  const TENANT_ID = await requireTenantId();
   const files = (name: string) => (formData.getAll(name) as File[]).filter((f) => f instanceof File && f.size > 0);
   const reports = files("reportFiles");
   const tables = files("tableFiles");

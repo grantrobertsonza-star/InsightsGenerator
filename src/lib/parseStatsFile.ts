@@ -19,6 +19,7 @@ export type ParsedTable = {
 };
 
 import { isStatsFileName } from "./statsFileName";
+import { SIGNATURE_HEADER, signParseRequest } from "./parseRequestSignature";
 export { isStatsFileName };
 
 /**
@@ -71,13 +72,11 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
 
   const response = await fetch(`${base}/api/parse-stats-file`, {
     method: "POST",
-    // The secret here must match PARSE_STATS_SHARED_SECRET on the Python function's own side
-    // (api/parse-stats-file.py). The Python side now refuses every request when its own copy
-    // of the secret is unset, so this env var is no longer optional in a deployed environment:
-    // leaving it unset here, or configuring a different value than the Python function has,
-    // makes every parse request fail with a 401, surfaced below as an actionable message rather
-    // than a generic parsing failure.
-    headers: { "content-type": "application/json", "x-parse-stats-secret": process.env.PARSE_STATS_SHARED_SECRET ?? "" },
+    // IMP-001: the request is signed for exactly this file and action (parseRequestSignature.ts);
+    // the shared secret itself is never sent. PARSE_STATS_SHARED_SECRET must hold the same value
+    // here and in the Python function's environment, or every request fails with a 401, surfaced
+    // below as an actionable message rather than a generic parsing failure.
+    headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest("convert", BUCKET, storagePath) },
     body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
   });
 
@@ -705,10 +704,8 @@ export async function runStatsTool<T>(
     : process.env.PARSE_STATS_FILE_URL ?? "http://127.0.0.1:3000";
   const response = await fetch(`${base}/api/parse-stats-file`, {
     method: "POST",
-    // See the comment on the equivalent header in convert() above: this secret must match
-    // PARSE_STATS_SHARED_SECRET on the Python side, which now refuses every request if its
-    // own copy is unset.
-    headers: { "content-type": "application/json", "x-parse-stats-secret": process.env.PARSE_STATS_SHARED_SECRET ?? "" },
+    // Signed for this action and file, as in convert() above.
+    headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest(action, BUCKET, storagePath) },
     body: JSON.stringify({ action, args, storagePath, sourceFilename, bucket: BUCKET }),
   });
   if (!response.ok) {

@@ -3439,6 +3439,44 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     }
 
 
+# IMP-001: verification side of src/lib/parseRequestSignature.ts. Returns None when the request is
+# authentic and in scope, else a short reason (kept server-side; the caller only says 401).
+_SIGNED_PATH = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[^/\\]+$",
+    re.IGNORECASE,
+)
+_SIGNATURE_LIFETIME_SECONDS = 300
+_SIGNED_ACTIONS = {"convert", "dictionary", "categories", "columns", "crosstab"}
+
+
+def verify_parse_request(secret, header, action, bucket, storage_path, now=None):
+    import hmac
+    import time
+
+    if not secret:
+        return "secret not configured"
+    if not isinstance(header, str) or header.count(".") != 2:
+        return "missing signature"
+    version, expires_text, mac = header.split(".")
+    if version != "v1" or not expires_text.isdigit():
+        return "malformed signature"
+    expires_at = int(expires_text)
+    current = int(time.time() if now is None else now)
+    # The app signs with a fixed lifetime, so an expiry further ahead than that is not one it issued.
+    if expires_at < current or expires_at > current + _SIGNATURE_LIFETIME_SECONDS + 60:
+        return "signature expired"
+    if action not in _SIGNED_ACTIONS or bucket != DEFAULT_BUCKET:
+        return "action or bucket not allowed"
+    if not isinstance(storage_path, str) or ".." in storage_path or not _SIGNED_PATH.match(storage_path):
+        return "storage path not allowed"
+    payload = f"v1\n{expires_at}\n{action}\n{bucket}\n{storage_path}".encode("utf-8")
+    expected = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, mac):
+        return "signature mismatch"
+    return None
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
@@ -3452,18 +3490,30 @@ class handler(BaseHTTPRequestHandler):
             # was left unset, which is exactly the unprotected state an operator who forgot to
             # configure it would be in - the one case this exists to catch. The secret being
             # unset is now treated the same as a wrong one: refused, not waved through.
-            secret = os.environ.get("PARSE_STATS_SHARED_SECRET")
-            if not secret or self.headers.get("x-parse-stats-secret") != secret:
-                self._send_json(401, {"error": "Unauthorized"})
-                return
+            #
+            # IMP-001 (worker scope): the shared secret is no longer sent. The app signs each
+            # request for one exact action, bucket and storage path with an expiry
+            # (src/lib/parseRequestSignature.ts), and verify_parse_request recomputes that
+            # signature, so a captured request cannot be replayed later or retargeted at another
+            # tenant's file. An unset secret is refused like a wrong one.
             length = int(self.headers.get("content-length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
-            storage_path = body["storagePath"]
+            storage_path = body.get("storagePath")
             source_filename = body.get("sourceFilename", "upload.sav")
             bucket = body.get("bucket", DEFAULT_BUCKET)
+            action = body.get("action", "convert")
+            refusal = verify_parse_request(
+                os.environ.get("PARSE_STATS_SHARED_SECRET"),
+                self.headers.get("x-parse-stats-signature"),
+                action,
+                bucket,
+                storage_path,
+            )
+            if refusal:
+                self._send_json(401, {"error": "Unauthorized"})
+                return
 
             file_bytes = _storage_download(bucket, storage_path)
-            action = body.get("action", "convert")
             if action == "dictionary":
                 self._send_json(200, {"result": dictionary(file_bytes, source_filename, body.get("args") or {})})
                 return

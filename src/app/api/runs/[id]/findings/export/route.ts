@@ -3,8 +3,7 @@ import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
 import { findingSourceSql, SOURCE_NOT_RECORDED } from "@/lib/sourceAttribution";
 import { findingOriginalAvailable } from "@/lib/findingWording";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportRow = {
   origin: "stated" | "generated" | "coded";
@@ -47,6 +46,9 @@ const patternLabel: Record<string, string> = {
  * what's on screen here.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const { searchParams } = new URL(request.url);
   // "accepted" exports only findings you've reviewed and accepted; anything

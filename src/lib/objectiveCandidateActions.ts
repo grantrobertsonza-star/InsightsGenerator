@@ -7,10 +7,10 @@ import { syncResearchObjective } from "./runSync";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { refreshObjectiveValidationQuietly } from "./objectiveValidator";
 import { normalizeObjectiveLine, parseObjectiveLines } from "./objectiveLines";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 export async function acceptObjectiveCandidate(runId: string, candidateId: string, editedText?: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{ candidate_text: string; source: string }>(
       "select candidate_text, source from objective_candidates where id = $1 and run_id = $2",
@@ -87,6 +87,7 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
  * alone.
  */
 export async function acceptAllObjectiveCandidates(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update objective_candidates set status = 'accepted' where run_id = $1 and status = 'pending'", [
       runId,
@@ -104,6 +105,7 @@ export async function acceptAllObjectiveCandidates(runId: string) {
  * batch at once. Accepted and already-rejected candidates are untouched.
  */
 export async function deleteAllObjectiveCandidates(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("delete from objective_candidates where run_id = $1 and status = 'pending'", [runId]);
   });
@@ -121,6 +123,7 @@ export async function deleteAllObjectiveCandidates(runId: string) {
  * an unintended transition.
  */
 export async function unacceptObjectiveCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
       "update objective_candidates set status = 'pending' where id = $1 and run_id = $2 and status = 'accepted'",
@@ -134,6 +137,7 @@ export async function unacceptObjectiveCandidate(runId: string, candidateId: str
 }
 
 export async function rejectObjectiveCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update objective_candidates set status = 'rejected' where id = $1 and run_id = $2", [
       candidateId,
@@ -161,6 +165,7 @@ export async function rejectObjectiveCandidate(runId: string, candidateId: strin
  * regardless of the candidate's original initial status.
  */
 export async function restoreObjectiveCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update objective_candidates set status = 'accepted' where id = $1 and run_id = $2", [
       candidateId,
@@ -180,6 +185,7 @@ export async function restoreObjectiveCandidate(runId: string, candidateId: stri
  * still reject it like anything else if they change their mind.
  */
 export async function addOwnObjectiveCandidate(runId: string, candidateText: string) {
+  const TENANT_ID = await requireTenantId();
   const text = candidateText.trim();
   if (!text) return;
 
@@ -264,6 +270,7 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
  * thing needed to find its matching line.
  */
 export async function deleteObjectiveCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{ candidate_text: string; source: string }>(
       "select candidate_text, source from objective_candidates where id = $1 and run_id = $2",
@@ -299,6 +306,7 @@ export async function deleteObjectiveCandidate(runId: string, candidateId: strin
 export async function regenerateObjectiveCandidates(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateObjectiveCandidates(TENANT_ID, runId);
     await refreshObjectiveQuality(TENANT_ID, runId);
@@ -323,6 +331,7 @@ export async function regenerateObjectiveCandidates(
  * or rejected are left alone.
  */
 export async function deleteSuggestedObjectives(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
       `delete from objective_candidates

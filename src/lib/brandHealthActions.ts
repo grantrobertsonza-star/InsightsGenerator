@@ -11,10 +11,11 @@ import { runNpsAction } from "./npsActions";
 import type { VariableInfo, VariableSet, VariableDictionary } from "./parseStatsFile";
 import { defaultMetricForScale, summarizeSeries, type CsmMetric } from "./csmMetrics";
 import { categoryAverage, brandHealthFindingKey, matchSetMembersToBrands } from "./brandHealthMetrics";
+import { requireTenantId } from "./requestContext";
 
 export type { CsmMetric };
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+
 
 type Fail = { ok: false; error: string };
 
@@ -132,6 +133,7 @@ export async function loadBrandHealthCandidatesAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; variables: VariableInfo[]; sets: VariableSet[]; weightVar: string | null } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const usable = dict.variables.filter((v) => !v.weightLike && !v.text && v.nDistinct >= 2);
@@ -148,6 +150,8 @@ export async function loadBrandCategoriesAction(
   brandVar: string,
   weightVar: string | null,
 ): Promise<{ ok: true; brands: string[] } | Fail> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   const res = await runDistributionAction(runId, documentId, brandVar, weightVar, null);
   if (!res.ok) return { ok: false, error: res.error };
   return { ok: true, brands: res.result.series[0]?.bars.map((b) => b.label) ?? [] };
@@ -254,6 +258,7 @@ export async function buildBrandHealthDashboardAction(
   mapping: BrandHealthMapping,
   waveLabel?: string | null,
 ): Promise<{ ok: true; dashboard: BrandHealthDashboard } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     if (!mapping.brandVar) return { ok: false, error: "Map the brand variable first: which question in the file holds the brand values." };
     if (!mapping.ourBrand) return { ok: false, error: "Pick which brand is \"ours\" to compare against the rest." };
@@ -422,6 +427,8 @@ export async function buildBrandHealthWaveDashboardsAction(
   files: { documentId: string; label: string }[],
   mapping: BrandHealthMapping,
 ): Promise<{ ok: true; dashboards: BrandHealthDashboard[] } | Fail> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   const dashboards: BrandHealthDashboard[] = [];
   for (const f of files) {
     const res = await buildBrandHealthDashboardAction(runId, f.documentId, mapping, f.label);
@@ -435,6 +442,7 @@ export async function loadBrandHealthModuleAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; mapping: BrandHealthMapping | null } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const mapping = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ mapping: BrandHealthMapping }>(
@@ -454,6 +462,7 @@ export async function saveBrandHealthModuleAction(
   documentId: string,
   mapping: BrandHealthMapping,
 ): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
@@ -517,6 +526,7 @@ export async function addBrandHealthFindingAction(
   dashboard: BrandHealthDashboard,
   section: BrandHealthFindingSection,
 ): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const key = brandHealthFindingKey(dashboard, section);
     if (!key) return { ok: false, error: "There is nothing in this section to post yet." };
@@ -603,6 +613,7 @@ export async function removeBrandHealthFindingAction(
   section: BrandHealthFindingSection,
   key: string,
 ): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -629,6 +640,7 @@ export async function brandHealthFindingStatusAction(
   section: BrandHealthFindingSection,
   key: string,
 ): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

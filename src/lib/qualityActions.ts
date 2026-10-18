@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { scoreObjectiveQuality } from "./objectiveQualityScorer";
 import { scoreRecommendationQuality } from "./recommendationQualityScorer";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 export type QualityActionResult =
   { ok: true; message: string } | { ok: false; error: string };
@@ -14,6 +13,7 @@ export async function scoreObjectivesAction(
   runId: string,
   force: boolean,
 ): Promise<QualityActionResult> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await scoreObjectiveQuality(TENANT_ID, runId, { force });
     revalidatePath(`/runs/${runId}`);
@@ -45,6 +45,7 @@ export async function scoreObjectivesAction(
 export async function scoreRecommendationsAction(
   runId: string,
 ): Promise<QualityActionResult> {
+  const TENANT_ID = await requireTenantId();
   try {
     const n = await scoreRecommendationQuality(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

@@ -6,8 +6,7 @@ import { withTenant } from "./db";
 import { recordHumanEdit, recordHumanReview, reviewActionForStatus } from "./findingProvenance";
 import { editFindingWordingTx, revertFindingWordingTx, type WordingEditResult } from "./findingWording";
 import { verifyAfterGenerate } from "./verifyAfterGenerate";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 // REP-IN-002: every function below is an explicit researcher action, so each records its own
 // provenance (findingProvenance.ts) in the same transaction as the change. A status choice is a
@@ -15,6 +14,7 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 // and the provenance write is skipped (replacement then treats the finding as provenance unknown).
 
 export async function setFindingStatus(runId: string, findingId: string, status: "accepted" | "rejected" | "pending") {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
       "update findings set status = $1 where id = $2 and run_id = $3 returning id",
@@ -38,6 +38,7 @@ export async function setManyFindingStatuses(
   findingIds: string[],
   status: "accepted" | "rejected" | "pending"
 ) {
+  const TENANT_ID = await requireTenantId();
   if (findingIds.length === 0) return;
   await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
@@ -59,6 +60,7 @@ export type FindingKind =
   | "stated_insight";
 
 export async function setFindingKind(runId: string, findingId: string, findingKind: FindingKind) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
       "update findings set finding_kind = $1 where id = $2 and run_id = $3 returning id",
@@ -70,6 +72,7 @@ export async function setFindingKind(runId: string, findingId: string, findingKi
 }
 
 export async function setFindingTheme(runId: string, findingId: string, theme: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
       "update findings set theme = $1 where id = $2 and run_id = $3 returning id",
@@ -87,6 +90,7 @@ export async function setFindingTheme(runId: string, findingId: string, theme: s
  * a note is still recorded as an edit.
  */
 export async function setFindingNote(runId: string, findingId: string, note: string) {
+  const TENANT_ID = await requireTenantId();
   const trimmed = note.trim();
   await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
@@ -111,6 +115,7 @@ export async function editFindingWording(
   editedFrom: string,
   newText: string,
 ): Promise<WordingEditResult> {
+  const TENANT_ID = await requireTenantId();
   const result = await withTenant(TENANT_ID, (client) => editFindingWordingTx(client, TENANT_ID, runId, findingId, editedFrom, newText));
   if (result.ok && result.changed) {
     after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -121,6 +126,7 @@ export async function editFindingWording(
 
 /** Restores the extracted wording (and its grounding) exactly; re-checked the same way as an edit. */
 export async function revertFindingWording(runId: string, findingId: string, editedFrom: string): Promise<WordingEditResult> {
+  const TENANT_ID = await requireTenantId();
   const result = await withTenant(TENANT_ID, (client) => revertFindingWordingTx(client, TENANT_ID, runId, findingId, editedFrom));
   if (result.ok) {
     after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -134,6 +140,7 @@ export async function revertFindingWording(runId: string, findingId: string, edi
  * after an edit failed or has not finished). Returns whether it now has a verdict.
  */
 export async function recheckFindingWording(runId: string, findingId: string): Promise<{ ok: boolean; error?: string }> {
+  const TENANT_ID = await requireTenantId();
   await verifyAfterGenerate(TENANT_ID, runId);
   const has = await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ has: boolean }>(

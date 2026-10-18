@@ -5,8 +5,7 @@ import { loadInsightSupportOrUnchecked } from "@/lib/supportStatus";
 import { SUPPORT_STATUS_LABEL, summariseSupport } from "@/lib/supportStatusShared";
 import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportRow = {
   id: string;
@@ -48,6 +47,9 @@ const qualityLabel: Record<string, string> = {
  * rejected ones too so the sheet can double as an audit record.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const { searchParams } = new URL(request.url);
   const onlyAccepted = searchParams.get("scope") === "accepted";

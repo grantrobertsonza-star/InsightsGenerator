@@ -5,8 +5,7 @@ import { recommendationDecisionContextAvailable, recommendationDecisionStateSql 
 import { decisionsWrittenFor } from "@/lib/recommendationQualification";
 import { loadPreInsightSupportOrUnchecked } from "@/lib/supportStatus";
 import { SUPPORT_STATUS_LABEL, summariseSupport } from "@/lib/supportStatusShared";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportRow = {
   insight_id: string;
@@ -35,6 +34,9 @@ type ExportRow = {
  * going ahead.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const { searchParams } = new URL(request.url);
   const onlyAccepted = searchParams.get("scope") === "accepted";

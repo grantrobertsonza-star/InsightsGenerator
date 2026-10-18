@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { safeFileStem } from "@/lib/deckSlides";
 import { exportFields, loadMainRecommendations, parseScope, scopeLabel } from "@/lib/mainRecommendationExport";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 /**
  * GT-007: the main Recommendations list (recommendations on synthesized insights, AI-suggested and
@@ -13,6 +12,9 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  * response, never an empty workbook.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const scope = parseScope(new URL(request.url).searchParams.get("scope"));
   const data = await loadMainRecommendations(TENANT_ID, runId, scope);

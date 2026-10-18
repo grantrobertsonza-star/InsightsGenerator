@@ -9,8 +9,7 @@ import { normaliseDataSetup } from "./dataSetupShared";
 import { runDistributionAction, type ChartResult } from "./chartActions";
 import { runNpsAction, type NpsResult, type NpsSegment } from "./npsActions";
 import { runDriverAnalysisFor, type DriverReport } from "./drivers";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
 
@@ -22,6 +21,7 @@ export type WaveFile = { documentId: string; filename: string; wave: string; upl
  * about Wave tracking shows up unless the researcher has actually marked at least one file as a wave.
  */
 export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const files = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string; source_filename: string; data_setup: unknown; uploaded_at: string }>(
@@ -55,6 +55,7 @@ export async function sharedWaveVariablesAction(
   runId: string,
   documentIds: string[],
 ): Promise<{ ok: true; variables: { name: string; label: string }[]; weights: { name: string; label: string }[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     if (documentIds.length === 0) return { ok: true, variables: [], weights: [] };
     const dicts = await Promise.all(documentIds.map((id) => loadVariableDictionary(TENANT_ID, runId, id)));
@@ -81,6 +82,8 @@ export async function runWaveChartAction(
   variable: string,
   weightVar: string | null,
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; result: ChartResult }[] = [];
@@ -142,6 +145,8 @@ export async function runWaveNpsAction(
   variable: string,
   weightVar: string | null,
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; result: NpsResult }[] = [];
@@ -205,6 +210,7 @@ function describeWaveNps(segments: NpsSegment[], label: string, weighted: boolea
 /** Posts (or re-posts) a wave-over-wave NPS reading as a finding. Keyed on the variable alone: one
  * wave-trend finding per question, so building the comparison again just refreshes it. */
 export async function addWaveNpsFindingAction(runId: string, result: NpsResult): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const segments = result.segments;
     if (!segments || segments.length === 0) return { ok: false, error: "No wave segments to post." };
@@ -261,6 +267,7 @@ export async function addWaveNpsFindingAction(runId: string, result: NpsResult):
 }
 
 export async function removeWaveNpsFindingAction(runId: string, variable: string): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -278,6 +285,7 @@ export async function removeWaveNpsFindingAction(runId: string, variable: string
 }
 
 export async function waveNpsFindingStatusAction(runId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(
@@ -306,6 +314,7 @@ function describeWaveChart(result: ChartResult): string {
 /** Posts (or re-posts) a wave-over-wave distribution as a finding. Keyed on the variable alone, same
  * reasoning as the NPS trend above. */
 export async function addWaveChartFindingAction(runId: string, result: ChartResult): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       const existing = await client.query<{ n: number }>(
@@ -360,6 +369,7 @@ export async function addWaveChartFindingAction(runId: string, result: ChartResu
 }
 
 export async function removeWaveChartFindingAction(runId: string, variable: string): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -377,6 +387,7 @@ export async function removeWaveChartFindingAction(runId: string, variable: stri
 }
 
 export async function waveChartFindingStatusAction(runId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(
@@ -427,6 +438,7 @@ export async function runWaveDriverAction(
   files: WaveFile[],
   request: WaveDriverRequest,
 ): Promise<{ ok: true; table: WaveDriverTable; perWave: { wave: string; report: DriverReport }[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     if (files.length < 2) return { ok: false, error: "Label at least two files as waves to compare them." };
     const perWave: { f: WaveFile; report: Awaited<ReturnType<typeof runDriverAnalysisFor>> }[] = [];
@@ -481,6 +493,7 @@ function describeWaveDriverTable(table: WaveDriverTable): string {
 /** Posts (or re-posts) a wave-over-wave driver-weight comparison as a finding. Keyed on the outcome
  * variable alone, same reasoning as the chart and NPS trend findings above. */
 export async function addWaveDriverFindingAction(runId: string, table: WaveDriverTable): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       const existing = await client.query<{ n: number }>(
@@ -535,6 +548,7 @@ export async function addWaveDriverFindingAction(runId: string, table: WaveDrive
 }
 
 export async function removeWaveDriverFindingAction(runId: string, outcome: string): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -552,6 +566,7 @@ export async function removeWaveDriverFindingAction(runId: string, outcome: stri
 }
 
 export async function waveDriverFindingStatusAction(runId: string, outcome: string): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

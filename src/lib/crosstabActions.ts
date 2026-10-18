@@ -20,8 +20,7 @@ import { planStarterTables } from "./starterTables";
 import { planCrosstabFromText, type AskPlan } from "./crosstabAsk";
 import type { CategoryList, CrosstabRequest, CrosstabResult, VariableDictionary } from "./parseStatsFile";
 import { summarizeCrosstabTable, type CrosstabInsights } from "./crosstabInsights";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
 
@@ -37,6 +36,7 @@ export async function loadVariablesAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; dictionary: VariableDictionary } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, dictionary: await loadVariableDictionary(TENANT_ID, runId, documentId) };
   } catch (error) {
@@ -49,6 +49,7 @@ export async function loadCategoriesAction(
   documentId: string,
   variable: string,
 ): Promise<{ ok: true; list: CategoryList } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, list: await loadCategories(TENANT_ID, runId, documentId, variable) };
   } catch (error) {
@@ -60,6 +61,7 @@ export async function listCrosstabsAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; items: CrosstabListItem[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, items: await listCrosstabs(TENANT_ID, runId, documentId) };
   } catch (error) {
@@ -72,6 +74,7 @@ export async function addCrosstabAction(
   documentId: string,
   request: CrosstabRequest,
 ): Promise<{ ok: true; tableId: string; questions: number; skipped: { variable: string; reason: string }[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await buildCrosstab(TENANT_ID, runId, documentId, request);
     return { ok: true, ...r };
@@ -84,6 +87,7 @@ export async function commitCrosstabsAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; tables: number; findings: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await commitCrosstabs(TENANT_ID, runId, documentId);
     if (r.findings > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -95,6 +99,7 @@ export async function commitCrosstabsAction(
 }
 
 export async function deleteCrosstabAction(runId: string, tableId: string): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await deleteCrosstab(TENANT_ID, runId, tableId);
     revalidatePath(`/runs/${runId}`);
@@ -108,6 +113,7 @@ export async function loadCrosstabAction(
   runId: string,
   tableId: string,
 ): Promise<{ ok: true; label: string; result: CrosstabResult | null } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, ...(await loadCrosstab(TENANT_ID, runId, tableId)) };
   } catch (error) {
@@ -124,6 +130,7 @@ export async function summarizeCrosstabAction(
   runId: string,
   tableId: string,
 ): Promise<{ ok: true; insights: CrosstabInsights } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const { result } = await loadCrosstab(TENANT_ID, runId, tableId);
     if (!result) return { ok: false, error: "This crosstab has no saved result." };
@@ -145,6 +152,7 @@ export async function replicateCrosstabsToWaveAction(
   sourceDocumentId: string,
   targetDocumentId: string,
 ): Promise<{ ok: true; built: number; skipped: { label: string; reason: string }[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await replicateCrosstabsToWave(TENANT_ID, runId, sourceDocumentId, targetDocumentId);
     revalidatePath(`/runs/${runId}`);
@@ -160,6 +168,7 @@ export async function buildStarterTablesAction(
   documentId: string,
   settings?: Pick<CrosstabRequest, "weightVar" | "correction" | "excludeDk" | "design">,
 ): Promise<{ ok: true; tables: number; questions: number; banners: string[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const dictionary = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const plan = planStarterTables(dictionary);
@@ -189,6 +198,7 @@ export async function deleteDraftCrosstabsAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; deleted: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const deleted = await deleteDraftCrosstabs(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
@@ -200,6 +210,7 @@ export async function deleteDraftCrosstabsAction(
 
 /** Saves the title and caption of one table. */
 export async function setCrosstabTextAction(runId: string, tableId: string, title: string, caption: string): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await setCrosstabText(TENANT_ID, runId, tableId, title, caption);
     revalidatePath(`/runs/${runId}`);
@@ -211,6 +222,7 @@ export async function setCrosstabTextAction(runId: string, tableId: string, titl
 
 /** Turns a plain-English request into a table setup for the researcher to review. Nothing is built here. */
 export async function askCrosstabAction(runId: string, documentId: string, text: string): Promise<{ ok: true; plan: AskPlan } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, plan: await planCrosstabFromText(TENANT_ID, runId, documentId, text) };
   } catch (error) {

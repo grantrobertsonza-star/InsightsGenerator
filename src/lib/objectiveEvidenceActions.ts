@@ -13,8 +13,7 @@ import {
   type EvidenceQuestion,
   type ItemEvidence,
 } from "./objectiveEvidence";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
 
@@ -57,6 +56,7 @@ export async function loadObjectiveEvidenceAction(
   | { ok: true; questions: EvidenceQuestion[]; items: ItemEvidence[]; variablesTruncated: boolean | null; originAvailable: boolean; remaining: number }
   | Fail
 > {
+  const TENANT_ID = await requireTenantId();
   try {
     // Counter-review on OBJ-REV-009: read back on every load, not only right after a fresh
     // "Gather evidence" click, so the warning survives a page reload instead of vanishing
@@ -87,6 +87,7 @@ export async function loadObjectiveEvidenceAction(
 export async function generateObjectiveEvidenceAction(
   runId: string,
 ): Promise<{ ok: true; created: number; items: number; skippedInferred: number; datasets: number; variablesTruncated: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await generateEvidenceQuestions(TENANT_ID, runId);
     return { ok: true, ...r };
@@ -106,6 +107,7 @@ export async function generateObjectiveEvidenceAction(
 export async function evaluateObjectiveEvidenceAction(
   runId: string,
 ): Promise<{ ok: true; done: number; remaining: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await evaluatePending(TENANT_ID, runId, 2);
     revalidatePath(`/runs/${runId}`);
@@ -120,6 +122,7 @@ export async function editObjectiveEvidenceAction(
   id: string,
   patch: { question?: string; request_text?: string; supports_if?: string; against_if?: string; excluded?: boolean },
 ): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await editEvidenceQuestion(TENANT_ID, runId, id, patch);
     return { ok: true };
@@ -129,6 +132,7 @@ export async function editObjectiveEvidenceAction(
 }
 
 export async function retryObjectiveEvidenceAction(runId: string, id?: string): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await retryEvidence(TENANT_ID, runId, id);
     return { ok: true };
@@ -140,6 +144,7 @@ export async function retryObjectiveEvidenceAction(runId: string, id?: string): 
 
 /** Moves an evidence table into the Cross tabs draft set, where it can be edited and committed into findings like any other. */
 export async function promoteEvidenceTableAction(runId: string, tableId: string): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const moved = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query(
@@ -170,6 +175,7 @@ export async function listEvidenceTablesAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; tables: EvidenceTableListing[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const tables = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<EvidenceTableListing>(

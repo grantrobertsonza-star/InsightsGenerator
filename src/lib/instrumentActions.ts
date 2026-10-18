@@ -12,8 +12,8 @@ import {
   AUTO_CONFIRM_MIN,
 } from "./instruments";
 import { getGuideCoverage, type GuideReport } from "./guides";
+import { requireTenantId } from "./requestContext";
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 type Fail = { ok: false; error: string };
 type Ok<T = object> = { ok: true } & T;
 
@@ -28,6 +28,7 @@ export async function readInstrumentAction(
   runId: string,
   documentId: string,
 ): Promise<Ok<{ items: number; complete: boolean; failedChunks: number; incompleteItems: number }> | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await readInstrumentItems(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
@@ -42,6 +43,7 @@ export async function setInstrumentTargetAction(
   instrumentId: string,
   dataDocumentId: string,
 ): Promise<Ok<{ suggested: number }> | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, dataDocumentId);
     revalidatePath(`/runs/${runId}`);
@@ -54,6 +56,7 @@ export async function setInstrumentTargetAction(
 export async function loadInstrumentReviewAction(
   instrumentId: string,
 ): Promise<Ok<{ items: InstrumentItem[]; links: InstrumentLink[] }> | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const [items, links] = await Promise.all([getInstrumentItems(TENANT_ID, instrumentId), getInstrumentLinks(TENANT_ID, instrumentId)]);
     return { ok: true, items, links };
@@ -67,6 +70,7 @@ export async function setLinkStatusAction(
   linkId: string,
   status: "suggested" | "confirmed" | "rejected",
 ): Promise<Ok | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query("update instrument_links set status = $1 where id = $2 and run_id = $3", [status, linkId, runId]);
@@ -84,6 +88,7 @@ export async function confirmLinksAction(
   instrumentId: string,
   minConfidence: number = AUTO_CONFIRM_MIN,
 ): Promise<Ok<{ confirmed: number }> | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const n = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query(
@@ -103,6 +108,7 @@ export async function confirmLinksAction(
 
 /** How well the sessions in this run followed a guide. Computed from the stored text, nothing is saved. */
 export async function guideCoverageAction(runId: string, guideId: string, onlyDocumentId?: string): Promise<Ok<{ report: GuideReport }> | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, report: await getGuideCoverage(TENANT_ID, runId, guideId, onlyDocumentId) };
   } catch (e) {

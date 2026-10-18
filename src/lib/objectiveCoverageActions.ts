@@ -5,12 +5,12 @@ import { withTenant } from "./db";
 import { generateObjectiveValidation, refreshObjectiveValidationQuietly } from "./objectiveValidator";
 import { generateObjectiveCandidates } from "./objectiveFramer";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 type Result = { ok: true } | { ok: false; error: string };
 
 async function logError(runId: string, event: string, message: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
       `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, $3, $4)`,
@@ -21,6 +21,7 @@ async function logError(runId: string, event: string, message: string) {
 
 /** Re-checks every stated objective and decision against the accepted insights. */
 export async function checkObjectiveCoverage(runId: string): Promise<Result> {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateObjectiveValidation(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -38,6 +39,7 @@ export async function checkObjectiveCoverage(runId: string): Promise<Result> {
  * one until the researcher accepts it.
  */
 export async function suggestObjectivesFromUnmatched(runId: string): Promise<Result> {
+  const TENANT_ID = await requireTenantId();
   try {
     const headlines = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ headline: string }>(

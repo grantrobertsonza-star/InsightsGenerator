@@ -33,8 +33,7 @@ import {
   setSessionType,
   startCalibration,
 } from "./codingAnalysis";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 export type ActionResult =
   { ok: true; message?: string } | { ok: false; error: string };
@@ -60,6 +59,7 @@ export async function setSessionTypeAction(
   documentId: string,
   sessionType: "individual" | "focus_group",
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     setSessionType(TENANT_ID, runId, documentId, sessionType),
   );
@@ -71,6 +71,7 @@ export async function startCalibrationAction(
   codebookId: string,
   options?: { kind?: "targeted" | "audit"; size?: number },
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     startCalibration(TENANT_ID, documentId, codebookId, options),
   );
@@ -82,6 +83,7 @@ export async function runStabilityCheckAction(
   codebookId: string,
   reruns: number,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     runStabilityCheck(TENANT_ID, runId, documentId, codebookId, reruns),
   );
@@ -92,6 +94,7 @@ export async function applyMajorityCodingAction(
   documentId: string,
   codebookId: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const message = await applyMajorityCoding(TENANT_ID, runId, documentId, codebookId);
     await syncFindingThemes(TENANT_ID, documentId);
@@ -105,6 +108,7 @@ export async function saveBlindStabilityTurnAction(
   segmentId: string,
   codeIds: string[],
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     saveBlindStabilityTurn(TENANT_ID, codebookId, segmentId, codeIds),
   );
@@ -117,6 +121,7 @@ export async function resolveStabilityTurnAction(
   segmentId: string,
   changes: { codeId: string; action: "add" | "remove" }[],
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     resolveStabilityTurn(
       TENANT_ID,
@@ -133,6 +138,7 @@ export async function resetCalibrationAction(
   runId: string,
   codebookId: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () => resetCalibration(TENANT_ID, codebookId));
 }
 
@@ -142,6 +148,7 @@ export async function saveCalibrationTurnAction(
   segmentId: string,
   appliedCodeIds: string[],
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     saveCalibrationTurn(TENANT_ID, codebookId, segmentId, appliedCodeIds),
   );
@@ -153,6 +160,7 @@ export async function setCaseMappingAction(
   tableId: string | null,
   column: string | null,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     setCaseMapping(TENANT_ID, runId, documentId, tableId, column),
   );
@@ -164,6 +172,7 @@ export async function setRespondentKeyAction(
   speakerKey: string,
   caseKey: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     setRespondentKey(TENANT_ID, documentId, speakerKey, caseKey),
   );
@@ -174,6 +183,7 @@ export async function proposeLinksAction(
   documentId: string,
   codebookId: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const { proposed } = await proposeVariableLinks(
       TENANT_ID,
@@ -192,6 +202,7 @@ export async function addLinkAction(
   documentId: string,
   link: { codeName: string; variable: string; direction: "higher" | "lower" },
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     addVariableLink(TENANT_ID, runId, documentId, link),
   );
@@ -202,6 +213,7 @@ export async function setLinkStatusAction(
   linkIds: string[],
   status: "proposed" | "accepted" | "rejected",
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () => setLinkStatus(TENANT_ID, runId, linkIds, status));
 }
 
@@ -210,6 +222,7 @@ export async function searchNegativeCasesAction(
   documentId: string,
   codebookId: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const r = await searchNegativeCases(
       TENANT_ID,
@@ -230,6 +243,7 @@ export async function setNegativeCaseStatusAction(
   id: string,
   status: "pending" | "confirmed" | "dismissed",
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     setNegativeCaseStatus(TENANT_ID, runId, id, status),
   );
@@ -241,6 +255,7 @@ export async function resegmentTranscriptAction(
   mode: SegmentMode,
   moderators: string[],
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const result = await resegmentTranscript(
       TENANT_ID,
@@ -266,6 +281,7 @@ export async function saveTranscriptSetupAction(
     style: InterviewStyle | null;
   },
 ) {
+  const TENANT_ID = await requireTenantId();
   // No revalidatePath: the setup grid keeps its own state, and re-rendering
   // this whole page for three dropdowns is what made it feel slow.
   try {
@@ -284,6 +300,7 @@ export async function checkMeaningSaturationAction(
   documentId: string,
   codebookId: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const r = await checkMeaningSaturation(
       TENANT_ID,
@@ -306,6 +323,7 @@ export async function changeTurnCodeAction(
   codeId: string,
   action: "add" | "remove",
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     changeTurnCode(TENANT_ID, runId, documentId, segmentId, codeId, action),
   );
@@ -319,6 +337,7 @@ export async function addResearcherCodeAction(
   definition: string,
   segmentId: string | null,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, () =>
     addResearcherCode(
       TENANT_ID,
@@ -337,6 +356,7 @@ export async function restoreCodebookVersionAction(
   documentId: string,
   codebookId: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const v = await restoreCodebookVersion(
       TENANT_ID,
@@ -353,6 +373,7 @@ export async function saveCodeMetaAction(
   documentId: string,
   entries: { name: string; theme: string; note: string; keywords: string }[],
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     await saveCodeMeta(TENANT_ID, documentId, entries);
     await syncFindingThemes(TENANT_ID, documentId);
@@ -366,12 +387,14 @@ export async function saveTurnNoteAction(
   segmentIndex: number,
   note: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     await saveTurnNote(TENANT_ID, documentId, segmentIndex, note);
   });
 }
 
 export async function suggestThemesAction(runId: string, documentId: string) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const r = await suggestThemes(TENANT_ID, runId, documentId);
     return `Grouped ${r.codes} codes into ${r.themes} themes. Review them, then edit as you see fit.`;
@@ -379,6 +402,7 @@ export async function suggestThemesAction(runId: string, documentId: string) {
 }
 
 export async function integrateThemesAction(runId: string) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const r = await integrateThemes(TENANT_ID, runId);
     const checks: string[] = [];
@@ -395,6 +419,7 @@ export async function addMemoAction(
   kind: "analytic" | "reflexivity" | "decision",
   body: string,
 ) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     await addMemo(TENANT_ID, runId, { documentId, codeName, kind, body });
     return "Memo saved.";
@@ -402,12 +427,14 @@ export async function addMemoAction(
 }
 
 export async function deleteMemoAction(runId: string, memoId: string) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     await deleteMemo(TENANT_ID, runId, memoId);
   });
 }
 
 export async function reuseCodebookAction(runId: string, targetDocumentId: string, sourceDocumentId: string) {
+  const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
     const r = await reuseCodebook(TENANT_ID, runId, targetDocumentId, sourceDocumentId);
     return `Applied ${r.codes} codes from the other transcript. Review the counts, then adjust the codebook if this transcript needs a code of its own.`;

@@ -27,6 +27,9 @@ import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 // Boundaries of the server actions exercised below; the database work is real.
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

@@ -11,17 +11,16 @@ Run them from the app folder on a machine that can reach the environment. The cl
 | G3 Two-tenant matrix | Inside a rolled-back transaction, a tenant that owns nothing sees no rows of any tenant table | part of G2 | as G2 |
 | G4 Storage privacy | The `documents` bucket is private; an object cannot be read through its public URL or with the publishable key; a signed link expires | `node scripts/release-gate/check-storage-privacy.mjs` (with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY` for the target) | Exit 0, "ENFORCED" |
 | G5 Backup and restore | A backup of the target restores into a local database | `npm run backup`, then `npm run restore -- backups/<folder>` (Docker) | Restore completes; G1 on the restored copy matches the target |
-| G6 Deployed identity | Each request is tied to an authenticated person and their organisation | none: see below | Not available |
+| G6 Deployed identity | Each request is tied to a signed-in person and the organisation they belong to | `src/lib/__tests__/requestTenantCoverage.test.ts` (every entry point) and `signedInTenantAccess.db.test.ts` (behaviour); on the target, the manual check below | All three pass |
 
-## G6: what is missing, not a check
+## G6: sign-in and organisations
 
-The app has no sign-in. Every request runs as the single organisation in `DEFAULT_TENANT_ID`. Row-level security (G2, G3) stops one tenant's queries from reading another's rows. But nothing yet decides which tenant a request belongs to, because there is no user to decide it from. Before a second organisation uses the app, three things need building:
+Implemented 2026-10-18 (see `docs/sign-in-and-organisations.md`). Every page, server action and route handler takes its tenant from the signed-in Supabase user and their row in `tenant_memberships` (migration 0104), never from `DEFAULT_TENANT_ID`. A source scan fails the test suite if any entry point skips that. What the local evidence does not show: that the deployed Supabase project, its cookies over HTTPS and its Auth settings behave the same. On the target, after migrations 0104 and 0105 are applied and at least one member is added:
 
-- authentication;
-- a per-request tenant taken from the signed-in user;
-- a check that every route and server action uses it.
-
-Until then the release stays limited to one organisation. The gate is not passed by running anything.
+1. Signed out, open the app: it goes to the sign-in page; `/api/runs` answers 401.
+2. Sign in as a member of organisation A: only A's projects are listed.
+3. Sign in (another browser) as a member of organisation B only: A's project URL answers 404 and its exports return nothing from it.
+4. An account with no membership sees only "No organisation yet".
 
 ## Order
 
@@ -29,7 +28,7 @@ Until then the release stays limited to one organisation. The gate is not passed
 2. G5, before any change to the target.
 3. G2/G3, after `node scripts/db/setup-app-role.mjs --apply` (see `docs/database-roles.md`) and redeploying with the new role's `DATABASE_URL`.
 4. G4.
-5. G6, which needs a product decision and an implementation.
+5. G6, the manual sign-in check above.
 
 ## Evidence so far
 

@@ -8,8 +8,7 @@ import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/fi
 import { figureCheckNote } from "@/lib/numberTrace";
 import { loadPreInsightSupportOrUnchecked } from "@/lib/supportStatus";
 import { summariseSupport, type SupportStatus } from "@/lib/supportStatusShared";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportInsight = {
   id: string;
@@ -32,6 +31,9 @@ const NO_THEME_LABEL = "No theme";
  * two feel like one family of output rather than two different tools.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const [run, insights] = await withTenant(TENANT_ID, async (client) => {

@@ -5,8 +5,7 @@ import { withTenant } from "./db";
 import { figureCheckAvailable } from "./figureChecks";
 import { generateRecommendations, generateSynthesizedRecommendations } from "./recommendationAgent";
 import { refreshRecommendationQuality } from "./recommendationQualityScorer";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 type RecommendationFields = {
   action_text: string;
@@ -28,6 +27,7 @@ type RecommendationFields = {
  * among competing options.
  */
 export async function acceptRecommendation(runId: string, recommendationId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2", [
       recommendationId,
@@ -38,6 +38,7 @@ export async function acceptRecommendation(runId: string, recommendationId: stri
 }
 
 export async function rejectRecommendation(runId: string, recommendationId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update recommendations set status = 'rejected' where id = $1 and run_id = $2", [
       recommendationId,
@@ -53,6 +54,7 @@ export async function rejectRecommendation(runId: string, recommendationId: stri
  * accepted by default now, "restore" is just the mirror of reject.
  */
 export async function restoreRecommendation(runId: string, recommendationId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2", [
       recommendationId,
@@ -74,6 +76,7 @@ export async function updateAndAcceptRecommendation(
   recommendationId: string,
   fields: RecommendationFields
 ) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     // Numerical traceability (0101): the stored figure check described the AI's wording. A
     // researcher's own wording is not AI output, so the check is cleared (not checked) rather than
@@ -131,6 +134,7 @@ export async function addOwnRecommendation(
   insightId: string,
   fields: RecommendationFields
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   // REC-001: the anchor's ownership is validated in the SAME statement that writes the
   // recommendation (insert ... select ... where the insight belongs to this run), inside the
   // tenant-scoped transaction, so a recommendation can never be attached to another project's
@@ -168,6 +172,7 @@ export async function addOwnRecommendation(
 }
 
 export async function deleteRecommendation(runId: string, recommendationId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("delete from recommendations where id = $1 and run_id = $2", [recommendationId, runId]);
   });
@@ -186,6 +191,7 @@ export async function deleteRecommendation(runId: string, recommendationId: stri
 export async function regenerateRecommendations(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateRecommendations(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);
@@ -213,6 +219,7 @@ export async function addOwnSynthesizedRecommendation(
   synthesizedInsightId: string,
   fields: RecommendationFields
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   // REC-001: same single-statement ownership validation as addOwnRecommendation; the anchor must
   // also still be accepted (the picker only offers accepted insights).
   const inserted = await withTenant(TENANT_ID, async (client) => {
@@ -260,6 +267,7 @@ export async function addOwnSynthesizedRecommendation(
 export async function regenerateSynthesizedRecommendations(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateSynthesizedRecommendations(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

@@ -8,8 +8,7 @@ import {
   themesByAttribute,
   usableAttributes,
 } from "@/lib/qualCrosstab";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type Cell = string | number | boolean | null;
 
@@ -32,6 +31,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const data = await withTenant(TENANT_ID, async (client) => {

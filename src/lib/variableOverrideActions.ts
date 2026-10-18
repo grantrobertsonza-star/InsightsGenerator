@@ -2,8 +2,7 @@
 
 import { saveVariableOverride, type QuestionType } from "./variableOverrides";
 import type { VariableType } from "./dataQuality";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 /**
  * Corrects (or clears, with `null`) what import inferred for one variable:
@@ -17,6 +16,7 @@ export async function saveVariableOverrideAction(
   variableName: string,
   patch: { type?: VariableType | null; questionType?: QuestionType | null },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await saveVariableOverride(TENANT_ID, runId, documentId, variableName, patch);
     return { ok: true };

@@ -15,6 +15,9 @@
 // caches a positive answer per module and the pre-migration tests must not inherit it.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeFindingsDb, type FakeFindingsDb, type Row } from "./helpers/fakeFindingsDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 vi.setConfig({ testTimeout: 30000 });
 

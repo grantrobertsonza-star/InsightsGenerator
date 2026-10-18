@@ -3,9 +3,10 @@ import { withTenant, withTenantRead } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import SubmitButton from "@/components/SubmitButton";
 import { ChartIcon, ArrowLeftIcon } from "@/components/icons";
+import { requireTenantId } from "@/lib/requestContext";
 
 // Same no-login-yet placeholder as every other page (see src/app/page.tsx).
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+
 
 type ProgramWave = {
   id: string;
@@ -22,6 +23,7 @@ type Program = {
 };
 
 async function getPrograms(): Promise<Program[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const programsResult = await client.query<{
       id: string;
@@ -54,6 +56,7 @@ async function getPrograms(): Promise<Program[]> {
 
 async function createProgram(formData: FormData) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) {
     return;
@@ -68,6 +71,8 @@ async function createProgram(formData: FormData) {
 }
 
 export default async function ProgramsPage() {
+  // G6: resolve the session first, so a signed-out visit redirects before any loader runs.
+  await requireTenantId();
   const programs = await getPrograms();
 
   return (

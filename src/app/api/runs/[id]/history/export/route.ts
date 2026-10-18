@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportRow = {
   finding_text: string;
@@ -49,6 +48,9 @@ function csvField(value: string): string {
  * and scroll to a collapsed section.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const [run, rows] = await withTenant(TENANT_ID, async (client) => {

@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { loadDataSetup, loadDataSetupWithStatus, saveDataSetup, type ExpectedPreviousSetup } from "./dataSetup";
 import { extractAndStoreDocumentTables } from "./documentTables";
 import { normaliseDataSetup, type DataSetup } from "./dataSetupShared";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 /**
  * ANA-NPS-003 (second counter-review): the one client-callable way to read a document's
@@ -14,6 +13,7 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  * another tool/session) rather than always starting from the bare heuristic.
  */
 export async function loadDataSetupAction(_runId: string, documentId: string): Promise<DataSetup> {
+  const TENANT_ID = await requireTenantId();
   return loadDataSetup(TENANT_ID, documentId);
 }
 
@@ -28,6 +28,7 @@ export async function loadDataSetupStatusAction(
   _runId: string,
   documentId: string,
 ): Promise<{ setup: DataSetup; ok: true } | { setup: DataSetup; ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   return loadDataSetupWithStatus(TENANT_ID, documentId);
 }
 
@@ -43,6 +44,7 @@ export async function saveDataSetupAction(
   setup: DataSetup,
   expected?: ExpectedPreviousSetup,
 ): Promise<{ ok: true } | { ok: false; error: string; conflict?: boolean; current?: DataSetup | null }> {
+  const TENANT_ID = await requireTenantId();
   // No revalidatePath, same as the transcript set-up: the row keeps its own state.
   try {
     const r = await saveDataSetup(TENANT_ID, runId, documentId, normaliseDataSetup(setup), expected);
@@ -75,6 +77,7 @@ export async function readDataFileAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await extractAndStoreDocumentTables(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);

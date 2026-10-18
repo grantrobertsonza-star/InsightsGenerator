@@ -9,6 +9,9 @@
 // Skipped, with a printed reason, when TEST_DATABASE_URL is not set.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 const TENANT = "00000000-0000-4000-8000-0000000000dd";
 const storage = vi.hoisted(() => ({ objects: new Set<string>(), failOnce: new Set<string>(["bad.csv"]), removed: [] as string[] }));

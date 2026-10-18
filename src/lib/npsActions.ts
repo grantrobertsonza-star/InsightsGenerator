@@ -9,8 +9,7 @@ import { withTenant } from "./db";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf, computeNps, leadingNumber } from "./descriptiveFindings";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 export type NpsSegment = {
   name: string;
@@ -132,6 +131,7 @@ export async function runNpsAction(
   // own, not gated on a strata variable also being supplied.
   design?: SurveyDesignChoice | null,
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     // ANA-NPS-003 (Brief 37 repair): the dictionary's build/cache path depends on the
     // document's persisted layout - a required saved input distinct from design. An explicit
@@ -316,6 +316,7 @@ export async function addNpsFindingAction(
   documentId: string,
   result: NpsResult,
 ): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       // Scoped by source_document_id too, not just the variable name: two documents in the
@@ -412,6 +413,7 @@ export async function addNpsFindingAction(
 
 /** Takes an NPS finding out of use (rejected, not deleted, so adding it again restores it). */
 export async function removeNpsFindingAction(runId: string, documentId: string, variable: string): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -430,6 +432,7 @@ export async function removeNpsFindingAction(runId: string, documentId: string, 
 
 /** Whether this NPS question is currently committed to findings (for the button state in the tool). */
 export async function npsFindingStatusAction(runId: string, documentId: string, variable: string): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

@@ -169,8 +169,7 @@ import {
 } from "@/lib/crossTabPreview";
 import { latestVerdictLateral } from "@/lib/latestVerdict";
 import { getSampleFailedVerdicts, getVerdictSummary } from "@/lib/verdictSummary";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "@/lib/requestContext";
 
 // Opening an already-processed run used to take as long as processing it,
 // because these three self-heal checks (retry a framer or the
@@ -305,6 +304,7 @@ type Finding = {
 };
 
 async function getRun(runId: string): Promise<Run | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     try {
       const result = await client.query<Run>(
@@ -344,6 +344,7 @@ type Program = {
 };
 
 async function getPrograms(): Promise<Program[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<Program>(
       "select id, name from programs order by name asc",
@@ -365,6 +366,7 @@ async function getProgramWaves(
   programId: string,
   excludeRunId: string,
 ): Promise<ProgramWave[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ProgramWave>(
       `select id, project_name, wave_label from runs
@@ -377,6 +379,7 @@ async function getProgramWaves(
 }
 
 async function getReportReadStats(runId: string): Promise<Map<string, NonNullable<ReportReadStats>>> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{ detail: Record<string, unknown>; ran_at: string | null }>(
       `select distinct on (detail->>'documentId') detail, occurred_at::text as ran_at
@@ -402,6 +405,7 @@ async function getReportReadStats(runId: string): Promise<Map<string, NonNullabl
 }
 
 async function getDocuments(runId: string): Promise<Document[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     try {
       const result = await client.query<Document>(
@@ -435,6 +439,7 @@ async function setDocumentProcessingStatus(
   documentId: string,
   status: "ready" | "incomplete" | "failed",
 ): Promise<boolean> {
+  const TENANT_ID = await requireTenantId();
   // Shared with storeAndRead's upload-time read (documentUploadActions.ts), so a document's
   // status reflects every attempt that could tell whether it has usable data, not just the
   // ones triggered from this page.
@@ -478,6 +483,7 @@ type DocumentTablePreview = {
 async function getDocumentTablePreviews(
   runId: string,
 ): Promise<DocumentTablePreview[]> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<DocumentTablePreview>(
@@ -520,6 +526,7 @@ async function getRawQuality(
   t: { id: string; headers: string[]; row_version: string },
   stated: StatedRouting[],
 ): Promise<TableQuality | null> {
+  const TENANT_ID = await requireTenantId();
   const version = `${t.row_version}|${t.headers.length}|${JSON.stringify(stated)}`;
   const hit = rawQualityCache.get(t.id);
   if (hit && hit.version === version) return hit.q;
@@ -548,6 +555,7 @@ async function getRawQuality(
 async function getDocumentExcerpts(
   runId: string,
 ): Promise<Map<string, { excerpt: string; length: number }>> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string; excerpt: string | null; length: number }>(
@@ -572,6 +580,7 @@ async function getDocumentExcerpts(
  * coding tables only exist once migration 0043 has been applied.
  */
 async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
+  const TENANT_ID = await requireTenantId();
   const out = new Map<string, CodebookView>();
   try {
     await withTenantRead(TENANT_ID, async (client) => {
@@ -834,6 +843,7 @@ type FindingRow = Omit<Finding, "designFreshness"> & {
  * failed read is reported on the page, never shown as "nothing to review".
  */
 async function getFigureChecks(runId: string): Promise<RunFigureChecks> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, (client) => loadRunFigureChecks(client, runId));
   } catch (error) {
@@ -849,6 +859,7 @@ async function getFigureChecks(runId: string): Promise<RunFigureChecks> {
 }
 
 async function getWordingEdits(runId: string): Promise<WordingEdits> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, (client) => loadWordingEdits(client, runId));
   } catch (error) {
@@ -857,6 +868,7 @@ async function getWordingEdits(runId: string): Promise<WordingEdits> {
 }
 
 async function getFindings(runId: string): Promise<Finding[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     try {
       const result = await client.query<FindingRow>(
@@ -970,6 +982,7 @@ type ObjectiveCandidate = {
 async function getObjectiveCandidates(
   runId: string,
 ): Promise<ObjectiveCandidate[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ObjectiveCandidate>(
       `select id, candidate_text, rationale, source, status, edited
@@ -994,6 +1007,7 @@ type DecisionCandidate = {
 async function getDecisionCandidates(
   runId: string,
 ): Promise<DecisionCandidate[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<DecisionCandidate>(
       `select id, candidate_text, rationale, source, status, edited
@@ -1037,6 +1051,7 @@ type InsightRow = {
 // that hasn't been scored yet, or that scored low, still appears, it just
 // sorts lower.
 async function getInsights(runId: string): Promise<InsightRow[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<Omit<InsightRow, "support_status" | "support_summary">>(
       `select i.id, i.headline, i.observation, i.tension, i.implication, i.decision_context,
@@ -1077,6 +1092,7 @@ async function getSynthesizedInsights(
   runId: string,
   supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedInsightRow[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<SynthesizedInsightQueryRow>(
       `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status,
@@ -1161,6 +1177,7 @@ async function getSynthesizedInsights(
 async function getStatedInsightValidations(
   runId: string,
 ): Promise<StatedInsightValidation[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<
       Omit<StatedInsightValidation, "contradicted_by">
@@ -1248,6 +1265,7 @@ async function getStatedInsightValidations(
 async function getTrimmedFiles(
   runId: string,
 ): Promise<Map<string, { total: number; kept: number }>> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{ detail: unknown }>(
       `select detail from trace where run_id = $1 and event = 'wide_file_trimmed' order by occurred_at asc`,
@@ -1288,6 +1306,7 @@ async function getTrimmedFiles(
 async function getLabelDiagnostics(
   runId: string,
 ): Promise<Map<string, { conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[]; unmatched: string[] }>> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{ id: string; conflicts: unknown; unmatched: unknown }>(
       `select id, variable_dictionary->'labelConflicts' as conflicts, variable_dictionary->'unmatchedLabelVariables' as unmatched
@@ -1313,6 +1332,7 @@ async function getLabelDiagnostics(
 async function getUnsupportedIdentifierColumns(
   runId: string,
 ): Promise<Map<string, string[]>> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{ detail: unknown }>(
       `select detail from trace where run_id = $1 and event = 'unsupported_identifier_format' order by occurred_at asc`,
@@ -1343,6 +1363,7 @@ async function getLatestTraceMessage(
   runId: string,
   events: string[],
 ): Promise<string | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{ detail: unknown }>(
       `select detail from trace where run_id = $1 and event = any($2::text[]) order by occurred_at desc limit 1`,
@@ -1381,6 +1402,7 @@ type ProcessRunErrors = { errors: string[]; occurredAt: string };
 async function getLatestProcessErrors(
   runId: string,
 ): Promise<ProcessRunErrors | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     // Only an error from the most recent processing click should ever show:
     // processRunAction writes a 'process_run_batch' marker the instant you
@@ -1432,6 +1454,7 @@ type PendingLegacyConfirmation = {
  * re-checks every id under its lock.
  */
 async function getPendingLegacyConfirmations(runId: string): Promise<PendingLegacyConfirmation[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const latest = await client.query<{
       event: string;
@@ -1501,6 +1524,7 @@ type Recommendation = {
 // answers a different question first, which one is worth looking at at
 // all, nothing here drops or filters a recommendation.
 async function getRecommendations(runId: string): Promise<Recommendation[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<Recommendation>(
       `select r.id, r.insight_id, i.headline as insight_headline, f.theme, r.action_text, r.owner_role,
@@ -1563,6 +1587,7 @@ type RecommendationQuality = {
 async function getRecommendationQuality(
   runId: string,
 ): Promise<Map<string, RecommendationQuality>> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<RecommendationQuality>(
@@ -1594,6 +1619,7 @@ type StoredObjectiveQuality = {
 async function getObjectiveQuality(
   runId: string,
 ): Promise<{ rows: StoredObjectiveQuality[]; missing: boolean }> {
+  const TENANT_ID = await requireTenantId();
   try {
     const rows = await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<StoredObjectiveQuality>(
@@ -1623,6 +1649,7 @@ async function getSynthesizedRecommendations(
   runId: string,
   supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedRecommendation[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     // GT-007: each card states the decisions it was written for by the same rule the main-list
     // exports use (decisionContext.ts), so screen and files agree. Same order as the exports.
@@ -1673,6 +1700,7 @@ type ParkedInsight = {
  * or domain knowledge arrives.
  */
 async function getParkedInsights(runId: string): Promise<ParkedInsight[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ParkedInsight>(
       `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status,
@@ -1712,6 +1740,7 @@ type StoryNarrative = {
 async function getStoryNarrative(
   runId: string,
 ): Promise<StoryNarrative | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<StoryNarrative>(
       `select executive_summary, situation, complication, question, governing_thought, pillars,
@@ -1732,6 +1761,7 @@ async function getStoryNarrative(
 async function getAssistantMessages(
   runId: string,
 ): Promise<AssistantChatMessage[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<AssistantChatMessage>(
       `select id, role, content, created_at::text
@@ -1755,6 +1785,7 @@ async function getAssistantMessages(
 async function getObjectiveValidations(
   runId: string,
 ): Promise<ObjectiveValidation[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a
     // catalog probe rather than try/catch - a failed SELECT (the column doesn't exist
@@ -1805,6 +1836,7 @@ type ApiUsageRow = {
  * below rather than trusting the declared row type.
  */
 async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{
       agent: string;
@@ -1859,6 +1891,7 @@ export type FindingHistoryRow = {
  * quietly renders no History section rather than breaking the whole page.
  */
 async function getFindingHistory(runId: string): Promise<FindingHistoryRow[]> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<FindingHistoryRow>(
@@ -1908,6 +1941,7 @@ export type ApiUsageBatchRow = {
  * counting toward getApiUsage's all-time total.
  */
 async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<{
@@ -1972,6 +2006,7 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
 // after each analysis run. Skipped when none exist (objectives are optional).
 // Failures are logged, never thrown, so they cannot stop the pipeline.
 async function refreshObjectiveValidation(runId: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     const has = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: boolean }>(
@@ -2001,6 +2036,7 @@ async function refreshObjectiveCandidates(runId: string) {
 }
 
 async function refreshInferredObjectives(runId: string) {
+  const TENANT_ID = await requireTenantId();
   // Objectives are optional. When the researcher stated none (typed or
   // imported from a brief), objectives are inferred from the findings and
   // accepted automatically, marked as inferred so reports can flag that
@@ -2028,6 +2064,7 @@ async function refreshInferredObjectives(runId: string) {
 }
 
 async function refreshDecisionCandidates(runId: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
   } catch (error) {
@@ -2056,6 +2093,7 @@ async function refreshDecisionCandidates(runId: string) {
  * here shouldn't block the actual processing.
  */
 async function stampSingleDocumentBatch(runId: string, mode: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
@@ -2082,6 +2120,7 @@ async function recordSingleDocumentError(
   documentId: string,
   error: unknown,
 ) {
+  const TENANT_ID = await requireTenantId();
   const message = error instanceof Error ? error.message : String(error);
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
@@ -2097,6 +2136,8 @@ async function recordSingleDocumentError(
 
 async function extractFindingsAction(runId: string, documentId: string) {
   "use server";
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   await runReportExtraction(runId, documentId, {});
 }
 
@@ -2108,6 +2149,8 @@ async function extractFindingsAction(runId: string, documentId: string) {
  */
 async function confirmLegacyReplacementAction(runId: string, documentId: string, formData: FormData) {
   "use server";
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   const findingIds = formData
     .getAll("findingId")
     .filter((value): value is string => typeof value === "string" && value.length > 0);
@@ -2122,6 +2165,7 @@ async function runReportExtraction(
   documentId: string,
   options: { confirmLegacyReplacement?: { findingIds: string[] } },
 ) {
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     const result = await extractFindingsFromDocument(TENANT_ID, runId, documentId, options);
@@ -2194,6 +2238,7 @@ async function runReportExtraction(
 
 async function generateFindingsAction(runId: string, documentId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     await processTableDocument(TENANT_ID, runId, documentId);
@@ -2249,6 +2294,7 @@ async function reapplyCodebookAction(
   codes: CodebookEdit[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     // ANA-QUAL-001: reapplyCodebook stamps "ready"/"incomplete" itself now - see
@@ -2288,6 +2334,7 @@ async function reapplyCodebookAction(
 
 async function codeThemesAction(runId: string, documentId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -2331,6 +2378,7 @@ async function codeThemesAction(runId: string, documentId: string) {
  * detection, verification, insights, objectives, decisions, recommendations.
  */
 async function refreshAfterCoding(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
   // insights, so it has nothing to wait for here; running it alongside the
@@ -2378,6 +2426,7 @@ async function importCodingAction(
   formData: FormData,
 ) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -2492,6 +2541,7 @@ async function importCodingAction(
  */
 async function reverifyFindingsAction(runId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await reverifyFindings(TENANT_ID, runId);
   // reverifyFindings just wiped every verdict on this run, including the
   // chain-trace verdicts stated_insight claims had; without this they would
@@ -2517,6 +2567,7 @@ async function reverifyFindingsAction(runId: string) {
  */
 async function synthesizeInsightsAction(runId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
   // Every other workflow trigger in this file already chains
@@ -2550,6 +2601,7 @@ async function synthesizeInsightsAction(runId: string) {
  */
 async function generateStoryReportAction(runId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   try {
     await generateStoryNarrative(TENANT_ID, runId);
   } catch (error) {
@@ -2597,6 +2649,7 @@ async function generateStoryReportAction(runId: string) {
 // pipeline (see supabase/migrations/0026_programs.sql).
 async function updateProgramLinkAction(runId: string, formData: FormData) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   const action = String(formData.get("action") ?? "link");
 
   if (action === "unlink") {
@@ -2707,6 +2760,7 @@ async function processRunAction(
   mode: "new" | "unreviewed" | "all",
 ) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   // A previous click's later stages may still be running in the background.
   // Starting another pass on top of them would reset the progress card and
   // race the same writes, so do nothing; the status card shows it is running.
@@ -3013,6 +3067,7 @@ export default async function RunPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const TENANT_ID = await requireTenantId();
   const { id } = await params;
   // Every loader below only needs the run id, so they all run at once. They
   // used to run one after another, which meant the page waited on the sum of

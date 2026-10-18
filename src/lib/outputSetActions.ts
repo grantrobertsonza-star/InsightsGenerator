@@ -6,11 +6,12 @@ import { verifyAfterGenerate } from "./verifyAfterGenerate";
 import { withTenant } from "./db";
 import { deleteDocument } from "./documentActions";
 import { checkOutputSet, compareOutputSets, generateOutputFindings, mergeOutputSets, type StoredChecks } from "./outputAnalysisRun";
+import { requireTenantId } from "./requestContext";
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 type Result = { ok: true } | { ok: false; error: string };
 
 export async function saveOutputSetAction(runId: string, setId: string, name: string, waveLabel: string): Promise<Result> {
+  const TENANT_ID = await requireTenantId();
   try {
     const clean = name.trim();
     if (!clean) return { ok: false, error: "A set needs a name." };
@@ -30,6 +31,7 @@ export async function saveOutputSetAction(runId: string, setId: string, name: st
 }
 
 export async function deleteOutputSetAction(runId: string, setId: string): Promise<Result> {
+  const TENANT_ID = await requireTenantId();
   try {
     const ids = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>("select id from documents where output_set_id = $1 and run_id = $2", [setId, runId]);
@@ -47,6 +49,8 @@ export async function deleteOutputSetAction(runId: string, setId: string): Promi
 }
 
 export async function deleteOutputFileAction(runId: string, documentId: string): Promise<Result> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   try {
     await deleteDocument(runId, documentId);
     return { ok: true };
@@ -59,6 +63,7 @@ type CheckResult = { ok: true; checks: StoredChecks } | { ok: false; error: stri
 
 /** Runs the set-level checks and stores them. Writes no findings. */
 export async function checkOutputSetAction(runId: string, setId: string): Promise<CheckResult> {
+  const TENANT_ID = await requireTenantId();
   try {
     const { stored } = await checkOutputSet(TENANT_ID, runId, setId);
     revalidatePath(`/runs/${runId}`);
@@ -70,6 +75,7 @@ export async function checkOutputSetAction(runId: string, setId: string): Promis
 
 /** Replaces the set's findings with a fresh set built from its evidence files, each carrying its assurance notes. */
 export async function generateOutputFindingsAction(runId: string, setId: string): Promise<CheckResult> {
+  const TENANT_ID = await requireTenantId();
   try {
     const { checks } = await generateOutputFindings(TENANT_ID, runId, setId);
     after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -83,6 +89,7 @@ export async function generateOutputFindingsAction(runId: string, setId: string)
 
 /** Compares two sets as an earlier and a later wave and writes the changes as findings. */
 export async function compareWavesAction(runId: string, earlierId: string, laterId: string): Promise<{ ok: true; findings: number; notes: string[] } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     const r = await compareOutputSets(TENANT_ID, runId, earlierId, laterId);
     if (r.findings > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -95,6 +102,7 @@ export async function compareWavesAction(runId: string, earlierId: string, later
 }
 
 export async function mergeOutputSetsAction(runId: string, fromId: string, intoId: string): Promise<{ ok: true; moved: number } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     const moved = await mergeOutputSets(TENANT_ID, runId, fromId, intoId);
     revalidatePath(`/runs/${runId}`);

@@ -11,10 +11,11 @@ import { runNpsAction, type NpsResult } from "./npsActions";
 import { runDriverAnalysisFor, type DriverReport } from "./drivers";
 import type { VariableInfo } from "./parseStatsFile";
 import { defaultMetricForScale, metricLabel, summarizeSeries, csmFindingKey, type CsmMetric } from "./csmMetrics";
+import { requireTenantId } from "./requestContext";
 
 export type { CsmMetric };
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+
 
 type Fail = { ok: false; error: string };
 
@@ -62,6 +63,7 @@ export async function loadCsmCandidatesAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; variables: VariableInfo[]; weightVar: string | null } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const usable = dict.variables.filter((v) => !v.weightLike && !v.text && v.nDistinct >= 2);
@@ -124,6 +126,7 @@ export async function buildCsmDashboardAction(
   mapping: CsmMapping,
   waveLabel?: string | null,
 ): Promise<{ ok: true; dashboard: CsmDashboard } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
     const weightVar = defaultWeight(dict);
@@ -207,6 +210,8 @@ export async function buildCsmWaveDashboardsAction(
   files: { documentId: string; label: string }[],
   mapping: CsmMapping,
 ): Promise<{ ok: true; dashboards: CsmDashboard[] } | Fail> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   const dashboards: CsmDashboard[] = [];
   for (const f of files) {
     const res = await buildCsmDashboardAction(runId, f.documentId, mapping, f.label);
@@ -220,6 +225,7 @@ export async function loadCsmModuleAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; mapping: CsmMapping | null } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const mapping = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ mapping: CsmMapping }>(
@@ -239,6 +245,7 @@ export async function saveCsmModuleAction(
   documentId: string,
   mapping: CsmMapping,
 ): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
@@ -306,6 +313,7 @@ export async function addCsmFindingAction(
   dashboard: CsmDashboard,
   section: CsmFindingSection,
 ): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const key = csmFindingKey(dashboard, section);
     if (!key) return { ok: false, error: "There is nothing in this section to post yet." };
@@ -380,6 +388,7 @@ export async function removeCsmFindingAction(
   key: string,
   groupVar: string | null,
 ): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -407,6 +416,7 @@ export async function csmFindingStatusAction(
   key: string,
   groupVar: string | null,
 ): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

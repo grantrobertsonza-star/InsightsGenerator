@@ -5,6 +5,7 @@ import { withTenant } from "./db";
 import { generateDecisionCandidates } from "./decisionFramer";
 import { markDecisionRefreshPending, refreshDecisionDependants } from "./decisionRefresh";
 import { syncDecisionStatement } from "./runSync";
+import { requireTenantId } from "./requestContext";
 
 /**
  * What a decision change reports back. The change itself either committed (this result) or
@@ -18,6 +19,7 @@ export type DecisionChangeResult = { ok: true; refreshError: string | null };
 // revalidation) is reported as the refresh error instead; the committed marker stays, so the
 // panel keeps offering the update and a retry runs the same path.
 async function afterDecisionChange(runId: string): Promise<DecisionChangeResult> {
+  const TENANT_ID = await requireTenantId();
   let refreshError: string | null;
   try {
     refreshError = await refreshDecisionDependants(TENANT_ID, runId);
@@ -34,10 +36,12 @@ async function afterDecisionChange(runId: string): Promise<DecisionChangeResult>
 
 /** Retries the insight and recommendation refresh owed after an earlier decision change. */
 export async function retryDecisionRefresh(runId: string): Promise<DecisionChangeResult> {
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
   return afterDecisionChange(runId);
 }
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+
 
 /**
  * editedText, when given, is a wording change the researcher made on the
@@ -46,6 +50,7 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  * a later reader can see this wasn't accepted exactly as suggested.
  */
 export async function acceptDecisionCandidate(runId: string, candidateId: string, editedText?: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{ candidate_text: string; edited: boolean }>(
       "select candidate_text, edited from decision_candidates where id = $1 and run_id = $2",
@@ -89,6 +94,7 @@ export async function acceptDecisionCandidate(runId: string, candidateId: string
  * alone.
  */
 export async function acceptAllDecisionCandidates(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update decision_candidates set status = 'accepted' where run_id = $1 and status = 'pending'", [
       runId,
@@ -105,6 +111,7 @@ export async function acceptAllDecisionCandidates(runId: string) {
  * batch at once. Accepted and already-rejected candidates are untouched.
  */
 export async function deleteAllDecisionCandidates(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("delete from decision_candidates where run_id = $1 and status = 'pending'", [runId]);
   });
@@ -112,6 +119,7 @@ export async function deleteAllDecisionCandidates(runId: string) {
 }
 
 export async function rejectDecisionCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update decision_candidates set status = 'rejected' where id = $1 and run_id = $2", [
       candidateId,
@@ -130,6 +138,7 @@ export async function rejectDecisionCandidate(runId: string, candidateId: string
  * mirror of reject, an un-reject, not a second review step.
  */
 export async function restoreDecisionCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update decision_candidates set status = 'accepted' where id = $1 and run_id = $2", [
       candidateId,
@@ -147,6 +156,7 @@ export async function restoreDecisionCandidate(runId: string, candidateId: strin
  * statement and everything built on it are refreshed.
  */
 export async function unacceptDecisionCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("update decision_candidates set status = 'pending' where id = $1 and run_id = $2", [
       candidateId,
@@ -167,6 +177,7 @@ export async function unacceptDecisionCandidate(runId: string, candidateId: stri
  * still reject it like anything else if they change their mind.
  */
 export async function addOwnDecisionCandidate(runId: string, candidateText: string) {
+  const TENANT_ID = await requireTenantId();
   const text = candidateText.trim();
   if (!text) return;
 
@@ -200,6 +211,7 @@ export async function addOwnDecisionCandidate(runId: string, candidateText: stri
  * text that no longer exists anywhere as a candidate.
  */
 export async function deleteDecisionCandidate(runId: string, candidateId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query("delete from decision_candidates where id = $1 and run_id = $2", [candidateId, runId]);
     await syncDecisionStatement(client, runId);
@@ -225,6 +237,7 @@ export async function deleteDecisionCandidate(runId: string, candidateId: string
 export async function regenerateDecisionCandidates(
   runId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

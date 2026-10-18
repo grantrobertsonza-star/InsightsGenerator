@@ -7,6 +7,9 @@
 // Not real PostgreSQL; the integration cases are listed in the handover.
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeObjectiveDb, type FakeObjectiveDb, type Row } from "./helpers/fakeObjectiveDb";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 vi.setConfig({ testTimeout: 30000 });
 

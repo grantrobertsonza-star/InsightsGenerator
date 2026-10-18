@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { finishDocumentStorageCleanup, queueDocumentStorageCleanup } from "./documentStorageCleanup";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 /**
  * Deletes a single uploaded document from a run (e.g. a duplicate re-import,
@@ -14,6 +13,7 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  * so they're removed alongside it rather than left dangling.
  */
 export async function deleteDocument(runId: string, documentId: string) {
+  const TENANT_ID = await requireTenantId();
   const cleanupId = await withTenant(TENANT_ID, async (client) => {
     // Lock the owned document before queuing paths or deleting dependent human work.
     const owned = await client.query<{ storage_path: string; preview_storage_path: string | null }>("select storage_path,preview_storage_path from documents where id=$1 and run_id=$2 and tenant_id=$3 for update", [documentId, runId, TENANT_ID]);
@@ -53,6 +53,7 @@ export async function deleteDocument(runId: string, documentId: string) {
 }
 
 export async function retryDocumentStorageCleanup(runId: string): Promise<{ ok: boolean; error?: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await finishDocumentStorageCleanup(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

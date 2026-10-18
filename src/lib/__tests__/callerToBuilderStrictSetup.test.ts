@@ -59,6 +59,9 @@ import { withTenant } from "../db";
 import { loadDataSetupWithStatus } from "../dataSetup";
 import { planCrosstabFromText } from "../crosstabAsk";
 import { runStatsTool } from "../parseStatsFile";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 vi.setConfig({ testTimeout: 20000 });
 

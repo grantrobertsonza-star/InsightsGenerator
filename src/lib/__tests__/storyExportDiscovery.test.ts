@@ -17,6 +17,9 @@
 // Not established here: rendered layout (checked separately by rendering the files).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 const state = vi.hoisted(() => ({
   statements: [] as string[],

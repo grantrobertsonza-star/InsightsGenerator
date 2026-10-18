@@ -3,11 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { requireTenantId } from "./requestContext";
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 const BUCKET = "documents";
 
 export async function deleteRun(runId: string) {
+  const TENANT_ID = await requireTenantId();
   // Storage files aren't known to Postgres, so they're cleaned up here
   // before the run itself (and everything that cascades from it) is deleted.
   const storagePaths = await withTenant(TENANT_ID, async (client) => {
@@ -30,6 +31,7 @@ export async function deleteRun(runId: string) {
 }
 
 export async function renameRun(runId: string, name: string) {
+  const TENANT_ID = await requireTenantId();
   const trimmed = name.trim();
   if (!trimmed) return;
   await withTenant(TENANT_ID, async (client) => {

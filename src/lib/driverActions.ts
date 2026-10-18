@@ -15,8 +15,7 @@ import {
   type DriverRequest,
   type SavedDriverAnalysis,
 } from "./drivers";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
 
@@ -36,6 +35,7 @@ export async function runDriverAnalysisAction(
   documentId: string,
   request: DriverRequest,
 ): Promise<{ ok: true; report: DriverReport } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, report: await runDriverAnalysisFor(TENANT_ID, runId, documentId, request) };
   } catch (error) {
@@ -49,6 +49,7 @@ export async function saveDriverAnalysisAction(
   title: string,
   report: DriverReport,
 ): Promise<{ ok: true; id: string } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const id = await saveDriverAnalysis(TENANT_ID, runId, documentId, title, report);
     revalidatePath(`/runs/${runId}`);
@@ -62,6 +63,7 @@ export async function listDriverAnalysesAction(
   runId: string,
   documentId: string,
 ): Promise<{ ok: true; items: SavedDriverAnalysis[] } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, items: await listDriverAnalyses(TENANT_ID, runId, documentId) };
   } catch (error) {
@@ -70,6 +72,7 @@ export async function listDriverAnalysesAction(
 }
 
 export async function deleteDriverAnalysisAction(runId: string, id: string): Promise<{ ok: true } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await deleteDriverAnalysis(TENANT_ID, runId, id);
     revalidatePath(`/runs/${runId}`);
@@ -80,6 +83,7 @@ export async function deleteDriverAnalysisAction(runId: string, id: string): Pro
 }
 
 export async function addDriverFindingsAction(runId: string, analysisId: string): Promise<{ ok: true; added: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const added = await addDriverFindings(TENANT_ID, runId, analysisId);
     if (added > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
@@ -91,6 +95,7 @@ export async function addDriverFindingsAction(runId: string, analysisId: string)
 }
 
 export async function removeDriverFindingsAction(runId: string, analysisId: string): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await removeDriverFindings(TENANT_ID, runId, analysisId);
     revalidatePath(`/runs/${runId}`);
@@ -101,6 +106,7 @@ export async function removeDriverFindingsAction(runId: string, analysisId: stri
 }
 
 export async function driverFindingCountsAction(runId: string): Promise<{ ok: true; counts: Record<string, number> } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, counts: Object.fromEntries(await driverFindingCounts(TENANT_ID, runId)) };
   } catch (error) {

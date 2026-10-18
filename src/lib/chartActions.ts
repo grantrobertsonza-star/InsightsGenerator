@@ -9,8 +9,7 @@ import { withTenant } from "./db";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf } from "./descriptiveFindings";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -53,6 +52,7 @@ export async function runDistributionAction(
   weightVar: string | null | undefined,
   groupVar: string | null,
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     // ANA-NPS-003 (Brief 37 repair): the dictionary's build/cache path depends on the
     // document's persisted layout - a required saved input distinct from design, and not
@@ -223,6 +223,7 @@ export async function addChartFindingAction(
   result: ChartResult,
   groupVar: string | null,
 ): Promise<{ ok: true; added: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       // Scoped by source_document_id too: two documents in the same run (two waves, say) can
@@ -287,6 +288,7 @@ export async function removeChartFindingAction(
   variable: string,
   groupVar: string | null,
 ): Promise<{ ok: true; removed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
@@ -314,6 +316,7 @@ export async function chartFindingStatusAction(
   variable: string,
   groupVar: string | null,
 ): Promise<{ ok: true; committed: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
   try {
     const committed = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ n: number }>(

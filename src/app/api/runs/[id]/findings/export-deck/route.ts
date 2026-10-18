@@ -3,8 +3,7 @@ import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
 import { addTitleSlide, addFooter, safeFileStem } from "@/lib/deckSlides";
 import { findingSourceSql, formatFindingSource, sourceLine } from "@/lib/sourceAttribution";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportFinding = {
   finding_text: string;
@@ -42,6 +41,9 @@ const NO_THEME_LABEL = "No theme";
  * reviewed ones.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") === "all" ? "all" : "accepted";

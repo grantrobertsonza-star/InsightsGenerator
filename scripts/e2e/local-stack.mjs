@@ -12,6 +12,12 @@
 //     table/sequence/function privileges, so row-level security applies to every app query
 //   - a local stand-in for the Supabase Storage endpoints the app uses (upload, download, remove,
 //     signed URLs), in memory only
+//   - a local stand-in for the five Supabase Auth endpoints the app uses (password sign-in,
+//     refresh, current user, sign-out, admin user creation), in memory only, with two synthetic
+//     users: one member of the synthetic tenant and one member of a second synthetic tenant (G6).
+//     Their signed-in browser states are written next to the manifest (authStateFile,
+//     otherAuthStateFile) so the browser checks start signed in; the synthetic passwords are in
+//     e2e-credentials.json for the sign-in checks. All of it lives only as long as this stack.
 //   - an explicit model REPLAY (scripts/e2e/model-replay.mjs) instead of the real model: no key, no
 //     paid calls. Replay output is orchestration evidence only, never AI-quality evidence.
 //   - the app itself (next dev) with every variable from .env* files overridden, so it cannot reach
@@ -40,6 +46,7 @@ const dbName = `ie_e2e_${id}`;
 const role = `ie_e2e_app_${id}`;
 const rolePassword = randomBytes(18).toString("hex"); // in memory and the child's environment only
 const tenantId = randomUUID();
+const otherTenantId = randomUUID();
 
 async function withClient(url, fn) {
   const c = new pg.Client({ connectionString: url.toString() });
@@ -65,6 +72,7 @@ await withClient(dbUrl, async (c) => {
     }
   }
   await c.query(`insert into tenants (id, name) values ($1, 'Synthetic e2e tenant')`, [tenantId]);
+  await c.query(`insert into tenants (id, name) values ($1, 'Second synthetic tenant')`, [otherTenantId]);
 });
 // Exercise the deployable setup contract, including withholding the unprotected tenant registry,
 // rather than claiming compatibility from a similar hand-written set of grants.
@@ -90,6 +98,71 @@ if (roleFacts.superuser || roleFacts.bypassRls || roleFacts.ownsTables) throw ne
 const grantsArtifact = path.join(outDir, "application-role-grants.json");
 writeFileSync(grantsArtifact, JSON.stringify({ role, database: dbName, grants: roleFacts.grants }, null, 1));
 
+// ---- auth stand-in state (in memory)
+const authUsers = new Map(); // email -> { id, email, password }
+const accessTokens = new Map(); // token -> userId
+const refreshTokens = new Map(); // token -> userId
+const accessSeconds = Number(process.env.E2E_AUTH_ACCESS_SECONDS ?? 3600);
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+function issueSession(user) {
+  const exp = Math.floor(Date.now() / 1000) + accessSeconds;
+  const access = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: user.id, exp, email: user.email })}.${randomBytes(16).toString("hex")}`;
+  const refresh = randomBytes(24).toString("hex");
+  accessTokens.set(access, user.id);
+  refreshTokens.set(refresh, user.id);
+  return { access_token: access, refresh_token: refresh, token_type: "bearer", expires_in: accessSeconds, expires_at: exp, user: { id: user.id, email: user.email } };
+}
+const userById = (id) => [...authUsers.values()].find((u) => u.id === id);
+function authStandIn(req, url, body, send) {
+  const fault = existsSync(path.join(outDir, "auth-fault.json")) ? JSON.parse(readFileSync(path.join(outDir, "auth-fault.json"), "utf8")) : {};
+  if (fault.down === true) return send(503, { message: "Synthetic auth outage" });
+  if (!req.headers.apikey) return send(401, { message: "No API key found in request" });
+  const json = (() => {
+    try {
+      return JSON.parse(body.toString() || "{}");
+    } catch {
+      return {};
+    }
+  })();
+  const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
+  const route = url.pathname.slice("/auth/v1".length);
+  if (req.method === "POST" && route === "/token" && url.searchParams.get("grant_type") === "password") {
+    const u = authUsers.get(String(json.email ?? "").toLowerCase());
+    if (!u || u.password !== json.password) return send(400, { error: "invalid_grant", error_description: "Invalid login credentials" });
+    return send(200, issueSession(u));
+  }
+  if (req.method === "POST" && route === "/token" && url.searchParams.get("grant_type") === "refresh_token") {
+    const id = refreshTokens.get(json.refresh_token);
+    if (!id) return send(400, { error: "invalid_grant", error_description: "Invalid Refresh Token" });
+    refreshTokens.delete(json.refresh_token);
+    return send(200, issueSession(userById(id)));
+  }
+  if (req.method === "GET" && route === "/user") {
+    const id = bearer && accessTokens.get(bearer);
+    const exp = bearer ? JSON.parse(Buffer.from(bearer.split(".")[1] ?? "", "base64url").toString() || "{}").exp : 0;
+    if (!id || exp < Date.now() / 1000) return send(401, { message: "invalid JWT" });
+    const u = userById(id);
+    return send(200, { id: u.id, email: u.email });
+  }
+  if (req.method === "POST" && route === "/logout") {
+    if (bearer) {
+      const id = accessTokens.get(bearer);
+      accessTokens.delete(bearer);
+      for (const [t, uid] of refreshTokens) if (uid === id) refreshTokens.delete(t);
+    }
+    return send(204, "", "text/plain");
+  }
+  if (req.method === "POST" && route === "/admin/users") {
+    if (req.headers.authorization !== "Bearer local-stand-in") return send(401, { message: "admin only" });
+    const email = String(json.email ?? "").toLowerCase();
+    if (authUsers.has(email)) return send(422, { message: "User already registered" });
+    const u = { id: randomUUID(), email, password: String(json.password ?? "") };
+    authUsers.set(email, u);
+    return send(200, { id: u.id, email: u.email });
+  }
+  return send(404, { message: `auth stand-in: unsupported ${req.method} ${route}` });
+}
+
 // ---- storage stand-in (in memory)
 const objects = new Map();
 const signTokens = new Map();
@@ -105,6 +178,9 @@ const storage = http.createServer(async (req, res) => {
     res.writeHead(status, { "content-type": type });
     res.end(type === "application/json" ? JSON.stringify(value) : value);
   };
+  // ---- Supabase Auth stand-in (G6). Tokens are JWT-shaped (the app reads only `exp`, to time a
+  // refresh) and are accepted only by this stand-in's own /user endpoint.
+  if (url.pathname.startsWith("/auth/v1/")) return authStandIn(req, url, body, send);
   const p = decodeURIComponent(url.pathname.replace(/^\/storage\/v1/, ""));
   const readFaultFile = path.join(outDir, "storage-fault.json");
   let m0;
@@ -168,6 +244,31 @@ const storage = http.createServer(async (req, res) => {
 await new Promise((r) => storage.listen(Number(process.env.E2E_STORAGE_PORT ?? 0), "127.0.0.1", r));
 const storageUrl = `http://127.0.0.1:${storage.address().port}`;
 
+// ---- synthetic users, memberships and signed-in browser states (G6)
+const credentials = {
+  primary: { email: "researcher@e2e.test", password: randomBytes(12).toString("hex"), tenantId },
+  other: { email: "other-org@e2e.test", password: randomBytes(12).toString("hex"), tenantId: otherTenantId },
+  unassigned: { email: "no-org@e2e.test", password: randomBytes(12).toString("hex"), tenantId: null },
+};
+for (const c of Object.values(credentials)) {
+  const u = { id: randomUUID(), email: c.email, password: c.password };
+  authUsers.set(c.email, u);
+  c.userId = u.id;
+}
+await withClient(dbUrl, async (c) => {
+  for (const cred of Object.values(credentials)) {
+    if (cred.tenantId) await c.query(`insert into tenant_memberships (user_id, tenant_id, role) values ($1, $2, 'owner')`, [cred.userId, cred.tenantId]);
+  }
+});
+const credentialsFile = path.join(outDir, "e2e-credentials.json");
+writeFileSync(credentialsFile, JSON.stringify({ note: "Synthetic disposable accounts for this stack only.", ...credentials }, null, 1));
+function writeAuthState(file, cred) {
+  const s = issueSession(authUsers.get(cred.email));
+  const cookie = (name, value) => ({ name, value, domain: "127.0.0.1", path: "/", expires: -1, httpOnly: true, secure: false, sameSite: "Lax" });
+  writeFileSync(file, JSON.stringify({ cookies: [cookie("ie-access", s.access_token), cookie("ie-refresh", s.refresh_token), ...(cred.tenantId ? [cookie("ie-organisation", cred.tenantId)] : [])], origins: [] }, null, 1));
+  return file;
+}
+
 // ---- model replay
 const replay = createModelReplay(path.join(outDir, "model-fixture.json"));
 await new Promise((r) => replay.server.listen(0, "127.0.0.1", r));
@@ -182,7 +283,6 @@ appDbUrl.password = rolePassword;
 const env = {
   ...process.env,
   DATABASE_URL: appDbUrl.toString(),
-  DEFAULT_TENANT_ID: tenantId,
   NEXT_PUBLIC_SUPABASE_URL: storageUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "local-stand-in",
   SUPABASE_SECRET_KEY: "local-stand-in",
@@ -225,6 +325,9 @@ for (let i = 0; ; i++) {
 }
 
 const manifestPath = path.resolve(process.env.E2E_MANIFEST ?? path.join(outDir, "target-manifest.json"));
+const authStateFile = writeAuthState(path.join(outDir, "auth-state.json"), credentials.primary);
+const otherAuthStateFile = writeAuthState(path.join(outDir, "auth-state-other.json"), credentials.other);
+const unassignedAuthStateFile = writeAuthState(path.join(outDir, "auth-state-unassigned.json"), credentials.unassigned);
 const dbNoCreds = new URL(dbUrl.toString());
 dbNoCreds.username = "";
 dbNoCreds.password = "";
@@ -245,6 +348,14 @@ writeFileSync(
       storageReadsUrl: `${storageUrl}/__reads`,
       storageFaultFile: path.join(outDir, "storage-fault.json"),
       tenantId,
+      otherTenantId,
+      // G6: signed-in browser states for the synthetic users (Playwright storageState files) and
+      // the disposable credentials file; the browser checks start signed in as the primary user.
+      authStateFile,
+      otherAuthStateFile,
+      unassignedAuthStateFile,
+      credentialsFile,
+      authFaultFile: path.join(outDir, "auth-fault.json"),
       startedAt: new Date().toISOString(),
     },
     null,

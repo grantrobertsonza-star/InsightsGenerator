@@ -12,11 +12,7 @@ import {
 import SubmitButton from "@/components/SubmitButton";
 import { parseNumberedItems } from "@/lib/text";
 import { Pane, ThreePane } from "./runs/[id]/ThreePane";
-
-// There's no login system yet, so every run on this page belongs to one
-// fixed tenant read from the environment. Once real auth exists, this will
-// come from whoever is logged in instead.
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "@/lib/requestContext";
 
 type Run = {
   id: string;
@@ -33,6 +29,7 @@ type Run = {
 };
 
 async function getRuns(): Promise<Run[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     // Both queries are independent, so they go to the database together on
     // the same connection (pg queues them) instead of one waiting on the other
@@ -68,6 +65,7 @@ async function getRuns(): Promise<Run[]> {
 
 async function createRun(formData: FormData) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   const projectName = String(formData.get("projectName") ?? "");
   const entryPoint = String(formData.get("entryPoint") ?? "");
 
@@ -130,6 +128,8 @@ export default async function Home({
 }: {
   searchParams: Promise<{ entry?: string }>;
 }) {
+  // G6: resolve the session first, so a signed-out visit redirects before any loader runs.
+  await requireTenantId();
   const { entry } = await searchParams;
   const runs = await getRuns();
 

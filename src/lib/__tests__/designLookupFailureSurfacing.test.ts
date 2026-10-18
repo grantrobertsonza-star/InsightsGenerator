@@ -29,6 +29,9 @@ import { loadDataSetupWithStatus } from "../dataSetup";
 import { planCrosstabFromText } from "../crosstabAsk";
 import { withTenant } from "../db";
 import type { DataSetup } from "../dataSetupShared";
+// G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
+vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 
 const FAKE_DICT = {
   variables: [{ name: "q1", label: "Q1", nValid: 100, nDistinct: 5, pctValid: 95, weightLike: false, inSet: null }],

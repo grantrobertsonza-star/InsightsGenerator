@@ -13,8 +13,7 @@ import { refreshSynthesizedInsights } from "./insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "./synthesizedInsightQualityScorer";
 import { refreshRecommendations } from "./recommendationAgent";
 import { withTenant } from "./db";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 /**
  * The chat-box server action behind the Research assistant card: sends one
@@ -28,6 +27,7 @@ export async function sendAssistantMessage(
   runId: string,
   message: string
 ): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     const { reply } = await askResearchAssistant(TENANT_ID, runId, message);
     revalidatePath(`/runs/${runId}`);
@@ -54,6 +54,7 @@ async function refreshObjectiveCandidatesQuietly(runId: string) {
 }
 
 async function refreshDecisionCandidatesQuietly(runId: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
   } catch (error) {
@@ -81,6 +82,7 @@ export async function uploadAssistantDocument(
   runId: string,
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   const file = formData.get("file") as File | null;
   if (!file || file.size === 0) {
     return { ok: false, error: "No file selected." };

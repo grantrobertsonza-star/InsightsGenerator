@@ -15,7 +15,8 @@ fs.mkdirSync(out, { recursive: true });
 const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace('postgres://', 'postgres://postgres@') });
 await db.connect();
 const browser = await chromium.launch();
-const page = await browser.newPage();
+// G6: start signed in as the stack's synthetic primary user.
+const page = await browser.newPage(target.authStateFile ? { storageState: target.authStateFile } : {});
 page.setDefaultTimeout(30000);
 const result = { checks: [], boundary: 'Native objective detail and overview transitions/regeneration/reload. One synthetic evidence/rejected-candidate fixture; model replay only.' };
 const post = async (locator) => { await expect(locator).toBeEnabled({ timeout: 60000 }); await page.waitForTimeout(350); await locator.click(); await page.waitForTimeout(350); };

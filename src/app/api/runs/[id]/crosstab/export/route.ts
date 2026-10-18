@@ -5,8 +5,7 @@ import { withTenant } from "@/lib/db";
 import { convertOfficeDocToPdf } from "@/lib/convertToPdf";
 import { addCrosstabSlides, CrosstabLayoutError } from "@/lib/crosstabSlides";
 import type { CrosstabResult, CrosstabRow } from "@/lib/parseStatsFile";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type Cell = string | number | null;
 
@@ -236,6 +235,9 @@ function tableSheet(label: string, r: CrosstabResult, opts: ExportOpts): XLSX.Wo
 
 /** All saved crosstabs for a run (or one, with ?tableId=) as an Excel workbook. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const sp = new URL(request.url).searchParams;
   const tableId = sp.get("tableId");

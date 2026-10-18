@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
+import { routeRequestContext } from "@/lib/requestContext";
 
-// IMP-001: this route used to take tenantId straight from the request (a query param on GET, the
-// body on POST) with no check at all - an unauthenticated caller could read or create runs under
-// ANY tenant id simply by naming it. There is still no login system in this app (no session, no
-// per-user identity - every other entry point in the codebase runs under this same single
-// DEFAULT_TENANT_ID), so "authenticate the caller" cannot yet mean distinguishing one real user
-// from another. What it can mean today is this: the server decides the tenant, exactly like every
-// other action in the app already does, and a caller can no longer select an arbitrary one. This
-// closes the concrete hole (arbitrary caller-chosen tenant scope) without pretending a multi-user
-// auth system exists yet - that remains a separate, larger piece of work, deliberately deferred by
-// the user's own instruction (2026-10-14) rather than attempted here.
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+// IMP-001 / G6: this route used to take tenantId straight from the request, so any caller could
+// read or create runs under any tenant by naming it. The tenant now comes only from the signed-in
+// user's organisation (requestContext.routeRequestContext); a tenantId in the query or body is
+// ignored. A request without a valid session gets 401 and touches nothing.
+
 
 export async function GET(_request: Request) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const runs = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query(
       `select id, business_problem, research_objective, decision_statement, evidence_threshold, audience,
@@ -27,6 +25,9 @@ export async function GET(_request: Request) {
 }
 
 export async function POST(request: Request) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const body = await request.json();
   // decisionStatement is still accepted directly here for a caller that
   // already knows its decision going in, matching what the column has
