@@ -512,6 +512,103 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       }
     }, 30000);
 
+    // Codex 2026-10-18 (37193d6): a lease checked inside the UPDATE was decided before waiting on a
+    // task row another session held unchanged, and not re-checked after. Each write now locks the
+    // task row first. Extraction, assessment and the failure write each wait on the task row until
+    // the lease has run out and must refuse; the same wait with a live lease must record.
+    it("a write whose lease runs out while it waits on the task row is refused; a live one records", async () => {
+      const waitingOnLock = async () => {
+        for (let i = 0; i < 200; i++) {
+          if ((await q(`select count(*)::int n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`)).rows[0].n > 0) return;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        throw new Error("the write never waited on the task row");
+      };
+      const holdTaskDuring = async (taskId: string, write: () => Promise<boolean>, holdMs: number) => {
+        const holder = await db.pool.connect();
+        try {
+          await holder.query("begin");
+          await holder.query(`select 1 from research_quality_tasks where id = $1 for update`, [taskId]);
+          const pending = write();
+          await waitingOnLock();
+          await new Promise((r) => setTimeout(r, holdMs));
+          await holder.query("commit");
+          return await pending;
+        } finally {
+          holder.release();
+        }
+      };
+      for (const kind of ["extract", "assess", "fail"] as const) {
+        const r = await freshReview(`task-wait-${kind}`);
+        const as = kind === "assess" ? await reopenAssessment(r.reviewId) : null;
+        const taskId = as ? as.taskId : await syntheticExtract(r.reviewId, `extract:task-wait:${kind}`, { sourceIndex: 0 });
+        const writeWith = (lease: string) =>
+          kind === "assess"
+            ? m.repo.publishAssessment(A, runA, r.reviewId, taskId, lease, as!.observations as never, {}, usage)
+            : kind === "extract"
+              ? m.repo.publishExtraction(A, taskId, lease, { facts: [], dropped: 0, nothingFound: true }, usage)
+              : m.repo.failTask(A, taskId, lease, "late failure", usage);
+        const lease = await m.repo.claimTask(A, taskId, 60);
+        await q(`update research_quality_tasks set lease_expires_at = clock_timestamp() + interval '1 second' where id = $1`, [taskId]);
+        const costBefore = (await task(taskId)).cost;
+        expect(await holdTaskDuring(taskId, () => writeWith(lease!), 1300), `${kind}: lease expired while waiting on the task row`).toBe(false);
+        const after = await task(taskId);
+        expect(after.status).toBe("running");
+        expect(after.error).toBeNull();
+        expect(after.cost).toBeCloseTo(costBefore + usage.cost, 4); // the refused call is still paid for
+        if (as) expect(await versionsOf(taskId)).toBe(0);
+        const again = await m.repo.claimTask(A, taskId, 60);
+        expect(again).toBeTruthy();
+        expect(await holdTaskDuring(taskId, () => writeWith(again!), 300), `${kind}: lease still live after waiting`).toBe(true);
+        expect((await task(taskId)).status).toBe(kind === "fail" ? "failed" : "succeeded");
+        if (as) expect(await versionsOf(taskId)).toBe(as.observations.length);
+        if (!as) await q(`delete from research_quality_tasks where id = $1`, [taskId]);
+      }
+    }, 30000);
+
+    // Codex 2026-10-18: createReview took the run FOR SHARE and later upgraded to FOR UPDATE, so two
+    // concurrent starts each held the share lock and deadlocked (40P01) on the upgrade. Both starts
+    // are made to arrive together by holding the run lock until both are waiting.
+    it("concurrent starts: the same request key gives one review, different keys separate sequences, no deadlock", async () => {
+      const base = (await q(`select * from research_quality_reviews where run_id = $1 order by sequence desc limit 1`, [runA])).rows[0];
+      const input = (requestKey: string) => ({
+        requestKey, parentReviewId: null, mode: base.mode, studyType: base.study_type, purpose: base.purpose, manifest: base.manifest,
+        criteriaRelease: base.criteria_release, criteriaHash: base.criteria_hash, referencesRelease: base.references_release, referencesHash: base.references_hash,
+        promptVersion: base.prompt_version, model: base.model, estimatedCostUsd: 0, actor: { userId: current.userId, email: current.email }, tasks: [],
+      });
+      const together = async (calls: (() => Promise<{ reviewId: string; created: boolean }>)[]) => {
+        const holder = await db.pool.connect();
+        await holder.query("begin");
+        await holder.query(`select 1 from runs where id = $1 for update`, [runA]);
+        const settled = Promise.allSettled(calls.map((c) => c()));
+        try {
+          for (let i = 0; i < 200; i++) {
+            if ((await q(`select count(*)::int n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`)).rows[0].n >= calls.length) break;
+            await new Promise((r) => setTimeout(r, 20));
+          }
+        } finally {
+          await holder.query("commit");
+          holder.release();
+        }
+        return settled;
+      };
+      const same = await together([() => m.repo.createReview(A, runA, input("concurrent-same-01")), () => m.repo.createReview(A, runA, input("concurrent-same-01"))]);
+      expect(same.map((x) => x.status)).toEqual(["fulfilled", "fulfilled"]);
+      const sameIds = same.map((x) => (x as PromiseFulfilledResult<{ reviewId: string; created: boolean }>).value);
+      expect(new Set(sameIds.map((v) => v.reviewId)).size).toBe(1);
+      expect(sameIds.filter((v) => v.created).length).toBe(1);
+      expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1 and request_key = 'concurrent-same-01'`, [runA])).rows[0].n).toBe(1);
+      const distinct = await together([() => m.repo.createReview(A, runA, input("concurrent-diff-01")), () => m.repo.createReview(A, runA, input("concurrent-diff-02"))]);
+      expect(distinct.map((x) => x.status)).toEqual(["fulfilled", "fulfilled"]);
+      const seqs = (await q(`select sequence from research_quality_reviews where run_id = $1 and request_key in ('concurrent-diff-01', 'concurrent-diff-02') order by sequence`, [runA])).rows.map((x) => x.sequence);
+      expect(seqs.length).toBe(2);
+      expect(seqs[1]).toBe(seqs[0] + 1);
+      // A sequential repeat returns the existing review; another organisation is refused and creates nothing.
+      expect(await m.repo.createReview(A, runA, input("concurrent-same-01"))).toEqual({ reviewId: sameIds[0].reviewId, created: false });
+      await expect(m.repo.createReview(B, runA, input("concurrent-cross-01"))).rejects.toThrow(/Unknown project/);
+      expect((await q(`select count(*)::int n from research_quality_reviews where request_key = 'concurrent-cross-01'`)).rows[0].n).toBe(0);
+    }, 20000);
+
     it("a purge that lands while work is in flight discards the late result for good; other sources keep their text", async () => {
       const keep = await freshReview("unrelated");
       const r = await freshReview("purge-race");

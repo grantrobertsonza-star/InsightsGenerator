@@ -12,9 +12,11 @@
 //     since. Lease times are compared with clock_timestamp(), never now(): now() is frozen at the
 //     start of the transaction, so a publication that waited on a source lock (or the task row)
 //     would otherwise be judged by the time it started, not the time it writes (Codex 2026-10-18,
-//     twice). The UPDATE also takes the task row lock, so a reclaim cannot slip in between the
-//     check and the commit: it waits, then re-reads the row and finds it no longer running. A
-//     refused answer's token usage is still added to the cost totals, because it was paid for;
+//     twice). Each write first locks the task row (lockTaskRow, after any source locks), and only
+//     then runs the lease UPDATE, so the lease is judged after every wait, whether on a source
+//     version or on the task row itself. Holding the row lock to commit also means a reclaim
+//     cannot slip in between the check and the commit. A refused answer's token usage is still
+//     added to the cost totals, because it was paid for;
 //   - a result never outlives a purge of the text it was made from: publication first locks the
 //     source versions it rests on FOR SHARE, purgeSourceText locks them FOR UPDATE, both in id order
 //     and both before touching task rows, so the two serialise without deadlock. A purge that
@@ -199,11 +201,16 @@ export async function createReview(
 ): Promise<{ reviewId: string; created: boolean }> {
   return withTenant(tenantId, async (client) => {
     await assertModuleTables(client);
-    await assertRunOwned(client, tenantId, runId);
+    // One run lock, taken once, FOR UPDATE: it checks ownership and serialises sequence allocation
+    // and the request-key check per project. Taking FOR SHARE first and upgrading later deadlocked
+    // two concurrent starts (each held the share lock and waited for the other's; Codex
+    // 2026-10-18). The request key is checked only after the lock, so a start that waited sees the
+    // review the first one committed and returns it.
+    if (!isUuid(runId)) throw new ResearchQualityError("Unknown project.");
+    const owned = await client.query(`select 1 from runs where id = $1 and tenant_id = $2 for update`, [runId, tenantId]);
+    if (owned.rowCount !== 1) throw new ResearchQualityError("Unknown project.");
     const existing = await client.query<{ id: string }>(`select id from research_quality_reviews where run_id = $1 and request_key = $2`, [runId, r.requestKey]);
     if (existing.rows[0]) return { reviewId: existing.rows[0].id, created: false };
-    // Serialise sequence allocation per project.
-    await client.query(`select 1 from runs where id = $1 for update`, [runId]);
     const seq = (await client.query<{ n: number }>(`select coalesce(max(sequence), 0) + 1 as n from research_quality_reviews where run_id = $1`, [runId])).rows[0].n;
     const parent = r.parentReviewId ?? (await client.query<{ id: string }>(`select id from research_quality_reviews where run_id = $1 order by sequence desc limit 1`, [runId])).rows[0]?.id ?? null;
     const inserted = await client.query<{ id: string }>(
@@ -286,6 +293,18 @@ const CURRENT_LEASE = `id = $1 and lease_token = $2 and status = 'running' and l
 
 const SOURCE_PURGED_ERROR = "The source text was purged while this was being worked on, so the result was discarded. Start a new review version to assess the remaining material.";
 
+/**
+ * Locks the task row before its lease is judged. The lease UPDATE alone is not enough: if another
+ * session holds the row without changing it, PostgreSQL decides the UPDATE's WHERE before waiting
+ * and does not re-check it afterwards, so an expiry that passed during the wait went unnoticed
+ * (Codex 2026-10-18). Taking the row lock first, by id only, means the lease UPDATE that follows is
+ * a new statement evaluated with clock_timestamp() after any wait. Lock order everywhere: source
+ * versions (sourcesPurged), then the task row.
+ */
+async function lockTaskRow(client: PoolClient, taskId: string): Promise<void> {
+  await client.query(`select 1 from research_quality_tasks where id = $1 for update`, [taskId]);
+}
+
 /** Adds a call's usage to the task and review totals. Used when its result is not accepted: the call was still paid for. */
 async function recordUsageOnly(client: PoolClient, taskId: string, usage: Usage): Promise<void> {
   await client.query(`update research_quality_tasks set input_tokens = input_tokens + $2, output_tokens = output_tokens + $3, cost_usd = cost_usd + $4 where id = $1`, [taskId, usage.input, usage.output, usage.cost]);
@@ -305,6 +324,7 @@ async function sourcesPurged(client: PoolClient, versionIds: (string | null | un
 
 /** Fails the task for good (no attempts left) because its source was purged; only for the current lease. */
 async function discardForPurge(client: PoolClient, taskId: string, lease: string, usage: Usage): Promise<void> {
+  await lockTaskRow(client, taskId);
   const r = await client.query(
     `update research_quality_tasks
         set status = 'failed', attempts = max_attempts, error = $3, lease_token = null, lease_expires_at = null,
@@ -319,6 +339,7 @@ async function discardForPurge(client: PoolClient, taskId: string, lease: string
 /** Records a failed attempt, only for the current, unexpired lease that made it. */
 export async function failTask(tenantId: string, taskId: string, lease: string, error: string, usage: Usage): Promise<boolean> {
   return withTenant(tenantId, async (client) => {
+    await lockTaskRow(client, taskId);
     const r = await client.query(
       `update research_quality_tasks
           set status = 'failed', error = $3, lease_token = null, lease_expires_at = null,
@@ -351,6 +372,7 @@ export async function publishExtraction(tenantId: string, taskId: string, lease:
       await discardForPurge(client, taskId, lease, usage);
       return false;
     }
+    await lockTaskRow(client, taskId);
     const r = await client.query(
       `update research_quality_tasks
           set status = 'succeeded', result = coalesce(result, '{}'::jsonb) || $3::jsonb, validation = $4::jsonb, error = null,
@@ -395,6 +417,7 @@ export async function publishAssessment(
       await discardForPurge(client, taskId, lease, usage);
       return false;
     }
+    await lockTaskRow(client, taskId);
     const claimed = await client.query(
       `update research_quality_tasks
           set status = 'succeeded', validation = $3::jsonb, error = null, lease_token = null, lease_expires_at = null,
