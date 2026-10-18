@@ -69,6 +69,43 @@ export const GROUP_LABEL: Record<string, string> = {
 };
 
 /**
+ * Short names for the scorecard, so a row reads at a glance; the full assessment question (the
+ * criteria release's own wording, which is what the model was asked) stays one hover away. Keyed
+ * by the stable criterion id, never by wording. A criterion added to a later release without a
+ * name here shows its id, so a missing name is visible rather than silently blank.
+ */
+export const CRITERION_SHORT_LABEL: Record<string, string> = {
+  "RQ-BRIEF-BACKGROUND": "Background",
+  "RQ-BRIEF-PROBLEM": "Business problem",
+  "RQ-BRIEF-DECISION": "Decisions to inform",
+  "RQ-BRIEF-OBJECTIVES": "Research objectives",
+  "RQ-BRIEF-METHOD-PARAMS": "Method parameters",
+  "RQ-BRIEF-DEADLINE": "Deadline",
+  "RQ-BRIEF-BUDGET": "Budget",
+  "RQ-PROP-LITERATURE": "Prior evidence review",
+  "RQ-PROP-RESTATEMENT": "Problem and objectives restated",
+  "RQ-PROP-OBJECTIVES-ADDED": "Added objectives",
+  "RQ-PROP-METHOD": "Method suitability",
+  "RQ-PROP-DESIGN": "Research design",
+  "RQ-PROP-SAMPLE": "Sample",
+  "RQ-PROP-ANALYSIS": "Analysis plan",
+  "RQ-PROP-PRODUCTS": "Deliverables",
+  "RQ-PROP-TIMELINE": "Timeline",
+  "RQ-PROP-BUDGET": "Budget",
+  "RQ-DESIGN-ALIGN": "Design fits objectives",
+  "RQ-SAMPLE-RECRUIT": "Selection and recruitment",
+  "RQ-MEASURE-ANALYSIS": "Measurement and analysis",
+  "RQ-INFERENCE-SCOPE": "What the evidence supports",
+  "RQ-INSTR-COVERAGE": "Objectives covered",
+  "RQ-INSTR-WORDING": "Item wording",
+  "RQ-ALIGN-CONSISTENCY": "Documents agree",
+  "RQ-PLAN-EXECUTION": "Plan versus execution",
+  "RQ-QUAL-PROCESS": "Qualitative process",
+  "RQ-MIXED-INTEGRATION": "Mixed-method integration",
+};
+export const criterionShortLabel = (criterionId: string) => CRITERION_SHORT_LABEL[criterionId] ?? criterionId;
+
+/**
  * One row per criterion: its own score and improvement. Scores are shown side by side and never
  * combined. Dismissed observations are left out; when one criterion has several observations (per
  * decision), each row is listed.

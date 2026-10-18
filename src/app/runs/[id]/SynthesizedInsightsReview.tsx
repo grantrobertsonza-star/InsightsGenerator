@@ -12,6 +12,7 @@ import { TrashIcon } from "@/components/icons";
 import type { InsightSupport } from "@/lib/supportStatusShared";
 import { SupportStatusNotice } from "./SupportStatusNotice";
 import { FigureCheckFor } from "./FigureCheckNotice";
+import InfoDot from "@/components/InfoDot";
 
 // Matches MIN_CLUSTER_SIZE in src/lib/insightSynthesizer.ts (not imported
 // directly -- that file pulls in server-only dependencies this client
@@ -143,24 +144,6 @@ const qualityTierDefinition: Record<QualityTier, string> = {
     "Finding, not insight: scored below 12 of 25. Reads as a restated observation rather than a genuine " +
     "insight -- no named mechanism, no clear action, or an unsupported leap from the evidence.",
 };
-
-/**
- * Small, discoverable hover target for a definition that doesn't fit in a
- * label. Plain title attribute underneath (same pattern already used on the
- * stability badges below), the visible "i" dot just signals there's
- * something to hover, since a bare label or count gives no such hint.
- */
-function InfoDot({ text }: { text: string }) {
-  return (
-    <span
-      title={text}
-      aria-label={text}
-      className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 cursor-help items-center justify-center rounded-full bg-slate-200 align-text-top text-[9px] font-bold leading-none text-slate-500"
-    >
-      i
-    </span>
-  );
-}
 
 const InsightSelection = createContext<{
   selectedId: string | null;

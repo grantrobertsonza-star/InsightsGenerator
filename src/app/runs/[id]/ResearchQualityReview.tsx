@@ -31,7 +31,9 @@ import {
   comparisonLabel,
   CHECKLIST_STATUS_LABEL,
   checklistScoreText,
+  criterionShortLabel,
 } from "@/lib/researchQualityPresentation";
+import InfoDot from "@/components/InfoDot";
 import type { ObservationView, ResearchQualityView } from "@/lib/researchQualityView";
 
 // The middle pane's tabs. Documents and History and export live in the right-hand pane, beside
@@ -492,27 +494,67 @@ function ChecklistGrid({ view }: { view: ResearchQualityView }) {
   );
 }
 
+// Same look as the insight quality scores table (SynthesizedInsightsReview): coloured score chips,
+// a rating pill, and the long wording behind an "i" hover so each row reads at a glance.
+const CRITERION_SCORE_CHIP: Record<number, string> = {
+  0: "bg-rose-50 text-rose-700",
+  1: "bg-slate-100 text-slate-600",
+  3: "bg-amber-50 text-amber-700",
+  5: "bg-indigo-50 text-indigo-700",
+};
+const CRITERION_RATING_PILL: Record<string, string> = {
+  Strong: "bg-indigo-50 text-indigo-700",
+  Workable: "bg-amber-50 text-amber-700",
+  Weak: "bg-slate-100 text-slate-600",
+  Absent: "bg-rose-50 text-rose-700",
+};
+
 function Scorecard({ view }: { view: ResearchQualityView }) {
   const groups = scorecard(view.review!.observations);
   if (groups.length === 0) return null;
   return (
-    <div className="overflow-x-auto" aria-label="Scorecard">
-      <p className="text-xs text-muted">Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up.</p>
-      <table className="w-full border-collapse text-xs">
-        <thead><tr><th className="border-b p-1 text-left">Criterion</th><th className="border-b p-1 text-left">Score</th><th className="border-b p-1 text-left">Suggested improvement</th></tr></thead>
-        <tbody>
-          {groups.map((g) => [
-            <tr key={g.group}><td colSpan={3} className="bg-slate-50 p-1 font-semibold">{g.label}</td></tr>,
-            ...g.rows.map((r) => (
-              <tr key={r.observation.versionId} className="align-top" data-score={r.score ?? "none"} data-criterion={r.observation.criterionId}>
-                <td className="border-b p-1">{r.observation.criterionId}<div className="text-muted">{r.observation.question}</div>{comparisonLabel(r.comparison) && <div className="text-muted">{comparisonLabel(r.comparison)}</div>}</td>
-                <td className="border-b p-1 whitespace-nowrap">{`${r.label}${r.score !== null ? ` (${r.score}/5)` : ""}`}{r.observation.freshness !== "current" && <div className="text-amber-800">requires review</div>}</td>
-                <td className="border-b p-1">{r.suggestion ?? (r.score === 5 ? "None needed." : "No suggestion given.")}</td>
-              </tr>
-            )),
-          ])}
-        </tbody>
-      </table>
+    <div className="space-y-2" aria-label="Scorecard">
+      <p className="text-xs text-muted">
+        Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up. Hover the i for the full question, or a rating for the reason.
+      </p>
+      {/* Stacked rows rather than a table: the Overview pane is often narrow, and a table there
+          scrolls the rating and the improvement out of view. */}
+      <div className="divide-y divide-border rounded-xl border border-border bg-white text-xs">
+        {groups.map((g) => (
+          <div key={g.group} role="group" aria-label={g.label}>
+            <div className="bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700">{g.label}</div>
+            <ul className="divide-y divide-border">
+              {g.rows.map((r) => {
+                const o = r.observation;
+                const compared = comparisonLabel(r.comparison);
+                return (
+                  <li key={o.versionId} className="px-3 py-2" data-score={r.score ?? "none"} data-criterion={o.criterionId}>
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                      <span className="font-medium text-foreground" data-testid="rq-criterion-name">
+                        {criterionShortLabel(o.criterionId)}
+                        <InfoDot text={`${o.criterionId}: ${o.question}${compared ? ` (${compared})` : ""}`} />
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        {r.score !== null && (
+                          <span className={`inline-block min-w-6 rounded px-1.5 py-0.5 text-center font-semibold ${CRITERION_SCORE_CHIP[r.score] ?? CRITERION_SCORE_CHIP[1]}`}>{r.score}</span>
+                        )}
+                        <span
+                          title={o.payload.rating?.reason || undefined}
+                          className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${CRITERION_RATING_PILL[r.label] ?? "bg-slate-100 text-muted"}`}
+                        >
+                          {r.label}
+                        </span>
+                      </span>
+                    </div>
+                    {o.freshness !== "current" && <div className="mt-1 text-amber-800">requires review</div>}
+                    <p className="mt-1 text-slate-600">{r.suggestion ?? (r.score === 5 ? "None needed." : "No suggestion given.")}</p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

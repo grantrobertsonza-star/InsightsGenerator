@@ -112,6 +112,19 @@ test("research quality review: start, review, decide, conflict, clarify, export"
       if (assessed.length * 2 >= statuses.length) expect(overall).toContain(`${Math.round((points / (assessed.length * 2)) * 100)}%`);
       else expect(overall).toMatch(/Too little could be assessed/);
     }
+    // 4c. the scorecard shows a short name per criterion, with the full question behind the "i".
+    const scoreRows = section.getByLabel("Scorecard").locator("[data-criterion]");
+    await expect(scoreRows.first()).toBeVisible();
+    for (const row of (await scoreRows.all()).slice(0, 3)) {
+      const id = await row.getAttribute("data-criterion");
+      const dot = row.locator("[title]").first();
+      const hover = await dot.getAttribute("title");
+      expect(hover).toMatch(new RegExp(`^${id}: .+\\?`));
+      // The visible cell is the short name, not the question.
+      const cell = (await row.getByTestId("rq-criterion-name").innerText()).replace(/\s*i$/, "").trim();
+      expect(cell.length).toBeLessThan(hover.length);
+      expect(cell).not.toContain("?");
+    }
     await section.getByRole("tab", { name: "Improvements" }).click();
     await expect(section.getByTestId("rq-gap-recommendations")).toContainText("Missing or partial elements");
     await section.getByRole("tab", { name: "Overview" }).click();
