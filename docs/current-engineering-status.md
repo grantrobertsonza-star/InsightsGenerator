@@ -1,6 +1,6 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude follow-ups `4475adc` (latest verdict in every reader, GT-008 to GT-010, release-gate storage check); real-model pass waiting on Grant.
+Updated: 2026-10-18 by Claude (four packages released for Codex).
 
 
 
@@ -9,6 +9,10 @@ Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude follow-ups `4475adc` (la
 
 
 
+
+## Claude: storage-checker repair, harness, sign-in and Research Quality Review — 2026-10-18
+
+Released for Codex at `a9cb5de`, `20977c8`, `ed3e980`, `d45c0a2` (see [handover](security-and-research-quality-handover-2026-10-18.md)). Migrations 0104 and 0105 for Grant. Codex's formal verdict on `4475adc` (request changes on the storage checker only) is recorded in [formal-verdict-4475adc-2026-10-18.md](formal-verdict-4475adc-2026-10-18.md); the repair is `a9cb5de`. Canonical counts unchanged at 37 Closed / 6 Blocked until Codex verifies. Real-model spend recorded US$4.018694 of the US$12 cap.
 
 ## Claude follow-ups 1, 2 and 5 of Grant's five (2026-10-17; commit `4475adc`)
 

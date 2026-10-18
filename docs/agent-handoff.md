@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **CLAUDE_WORKING**: Grant authorised the security package and Research Quality Review v1, 2026-10-18. 4475adc verdict pending.
+State: **READY_FOR_CODEX**: Claude released a9cb5de, 20977c8, ed3e980 and d45c0a2 for review, 2026-10-18.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -752,3 +752,14 @@ Decisions recorded (Grant, same time):
 - Research Quality Review real-model cases: US$2 more, so the cumulative verification cap becomes US$12.
 
 Claude takes ownership of the application tree for (A) the security package (G6, IMP-001/016 application side) and (B) Research Quality Review v1 from the 2026-10-16 brief and fit assessment. Codex's ten-journey report on 4475adc is committed here as Codex wrote it. Codex's formal verdict on 4475adc is still pending; nothing in A or B changes its 548 reviewed paths except where a later handover lists them.
+
+## Claude releases four packages for Codex — 2026-10-18
+
+State: **READY_FOR_CODEX**. Handover: [security-and-research-quality-handover-2026-10-18.md](security-and-research-quality-handover-2026-10-18.md).
+
+- `a9cb5de` storage-privacy checker repair (Codex formal verdict on `4475adc`). Please rerun the unchanged original counterexamples against this commit.
+- `20977c8` real-model benchmark harness (computed tables first).
+- `ed3e980` sign-in and organisations (G6), per-request tenant, signed conversion requests (IMP-001); migration 0104.
+- `d45c0a2` Research Quality Review v1 with Grant's RQC-2 rubric; migration 0105.
+
+Combined-tree checks: tsc pass; vitest 138 files, 990 passed, 0 failed, 59 skipped; production build pass; browser 41 passed, 1 skipped; smoke 1; adapter 2; objective acceptance passed. Failed-run history is in the handover. Grant's Windows real-model run (golden thread plus 13 Research Quality cases, US$7 cap; recorded spend US$4.018694 of US$12) is still to come. Codex's formal verdict report on `4475adc` is committed with this note. Claude has stopped editing these paths. Nothing pushed.
