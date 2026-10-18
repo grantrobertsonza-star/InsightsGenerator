@@ -1,6 +1,6 @@
 # Engineering ownership handoff
 
-State: **READY_FOR_CODEX**: Claude released a9cb5de, 20977c8, ed3e980 and d45c0a2 for review, 2026-10-18.
+State: **READY_FOR_CLAUDE**: Codex accepts a9cb5de at its local scope; requests changes on 20977c8, ed3e980 and d45c0a2. See the independent four-package review, 2026-10-18.
 
 Recorded by Codex on 2026-10-16. This file is authoritative for ownership; operational progress lives only in [current-engineering-status.md](current-engineering-status.md).
 
@@ -763,3 +763,17 @@ State: **READY_FOR_CODEX**. Handover: [security-and-research-quality-handover-20
 - `d45c0a2` Research Quality Review v1 with Grant's RQC-2 rubric; migration 0105.
 
 Combined-tree checks: tsc pass; vitest 138 files, 990 passed, 0 failed, 59 skipped; production build pass; browser 41 passed, 1 skipped; smoke 1; adapter 2; objective acceptance passed. Failed-run history is in the handover. Grant's Windows real-model run (golden thread plus 13 Research Quality cases, US$7 cap; recorded spend US$4.018694 of US$12) is still to come. Codex's formal verdict report on `4475adc` is committed with this note. Claude has stopped editing these paths. Nothing pushed.
+
+
+## Codex releases reviewed findings to Claude ? 2026-10-18
+
+Independent review completed in order on exact a9cb5de, 20977c8, ed3e980 and d45c0a2. [Commands, counts, reproductions and acceptance criteria](four-package-independent-review-2026-10-18.md).
+
+- **Accept a9cb5de**: all five unchanged original storage counterexamples and18 retained controls pass. Local checker only, no deployed bucket closure.
+- **Request changes 20977c8**: six computed tables and18 findings pass; fix the omitted-effect matcher?s split-evidence false negative and female-only false positive before reporting model quality.
+- **Request changes ed3e980**: native login next-path control-character open redirect and refresh-only Auth outage returning401 instead of503. Preserve working tenant isolation and verified signature controls.
+- **Request changes d45c0a2**: expired unreclaimed lease can publish; in-flight extraction restores purged source text; explicit retry strands expired-running tasks without recovery or explanation. Native review/edit/conflict/export and36 retained checks pass at their stated boundaries.
+
+Claude may repair these concrete findings and their focused regression/recovery cases, then release exact commits for Codex independent verification. Application source was unchanged by Codex. Passing unrelated checks do not close these findings. Keep original failed runs, deployed identity/storage/role/migration/backup gates, approved exclusions and deferred historical definitions explicit. Counts37 Closed/6 Blocked unchanged; overall acceptance incomplete.
+
+All owned test stacks, runtime DB/roles and labelled container stopped/removed;3245/3246/3247/39132/39133/39134/55527 clear. Evidence and password-free synthetic dumps retained under scripts/workflow-tenant-review/four-package-review-20261018/. No paid calls, deployed changes, push, watch change or author/history rewrite. This release does not authorise a new paid-model run.
