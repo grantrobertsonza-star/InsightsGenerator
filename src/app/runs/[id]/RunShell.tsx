@@ -128,9 +128,17 @@ export function RunNav({ sections }: { sections: RunNavSection[] }) {
 
   const content = (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-border pt-3">
-      {groups.map((group) => (
-        <div key={group.name} className="mb-3 px-3">
-          <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      {/* Groups are separated by a rule and spacing, with a heading that reads as a heading rather
+          than another item, so the stages (setup, quality review, objectives, ...) stand apart. */}
+      {groups.map((group, index) => (
+        <div
+          key={group.name}
+          role="group"
+          aria-label={group.name}
+          className={`px-3 pb-3 ${index > 0 ? "mt-1 border-t border-slate-200 pt-3" : ""}`}
+        >
+          <div className="mb-1.5 flex items-center gap-2 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-700">
+            <span aria-hidden="true" className="h-3 w-1 rounded-full bg-primary/60" />
             {group.name}
           </div>
           <div className="flex flex-col gap-0.5">
