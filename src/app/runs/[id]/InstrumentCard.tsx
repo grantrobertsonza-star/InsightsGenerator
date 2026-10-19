@@ -11,6 +11,7 @@ import {
 } from "@/lib/instrumentActions";
 import type { InstrumentItem, InstrumentLink, InstrumentSummary } from "@/lib/instruments";
 import type { GuideReport } from "@/lib/guides";
+import { useInstrumentAutoStart } from "./useInstrumentAutoStart";
 
 type DataDoc = { id: string; name: string };
 
@@ -51,7 +52,7 @@ export default function InstrumentCard({
   /** Guides inside a transcript's card: check coverage for that transcript only. */
   onlyTranscript?: string;
 }) {
-  const [pending, start] = useTransition();
+  const [ownPending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState(fixedTarget ?? summary.forDocumentId ?? dataDocs[0]?.id ?? "");
@@ -62,31 +63,13 @@ export default function InstrumentCard({
   const isGuide = summary.type === "interview_guide" || summary.type === "focus_group_guide";
   const read = summary.items > 0;
 
-  // Read, then match (questionnaires) or check coverage (guides), once, without a click.
-  const started = useRef(false);
+  // Read, then match (questionnaires), once, without a click: the same rule the one-line entry in a
+  // data file's pane uses. Guide coverage below runs by itself once the guide is read.
+  const auto = useInstrumentAutoStart({ runId, documentId, summary, isGuide, target, enabled: !!autoStart });
+  const pending = ownPending || auto.running;
+  const shownError = error ?? auto.error;
+  const shownMessage = message ?? auto.message;
   const coverageRan = useRef(false);
-  useEffect(() => {
-    if (started.current || pending) return;
-    const needsRead = !!autoStart && summary.items === 0;
-    const links = summary.links.suggested + summary.links.confirmed + summary.links.rejected;
-    const needsMatch = !!autoStart && !isGuide && !!target && summary.items > 0 && links === 0;
-    if (!needsRead && !needsMatch) return;
-    started.current = true;
-    start(async () => {
-      if (needsRead) {
-        const r = await readInstrumentAction(runId, documentId);
-        if (!r.ok) {
-          setError(r.error);
-          return;
-        }
-      }
-      if (!isGuide && target) {
-        const m = await setInstrumentTargetAction(runId, documentId, target);
-        if (!m.ok) setError(m.error);
-        else setMessage(`${m.suggested} links suggested. Check them before they are used.`);
-      }
-    });
-  }, [autoStart, pending, summary.items, summary.links.suggested, summary.links.confirmed, summary.links.rejected, isGuide, target, runId, documentId]);
 
   // Guide coverage is a cheap count, so it runs by itself once the guide is read.
   useEffect(() => {
@@ -128,7 +111,7 @@ export default function InstrumentCard({
       {!read ? (
         <div className="space-y-2">
           <p className="text-muted">
-            {autoStart && !error
+            {autoStart && !shownError
               ? "Reading now. This can take a minute and runs by itself."
               : isGuide
               ? "Read the guide to list its questions and probes. They will be matched to the questions asked in your transcripts."
@@ -249,8 +232,8 @@ export default function InstrumentCard({
       {read && !summary.readStatus && (
         <p role="status" className="text-amber-800">Reading coverage is unknown for these saved items. Read again to establish complete coverage; confirmed links are preserved.</p>
       )}
-      {message && <p className="text-foreground">{message}</p>}
-      {error && <p className="text-danger">{error}</p>}
+      {shownMessage && <p className="text-foreground">{shownMessage}</p>}
+      {shownError && <p className="text-danger">{shownError}</p>}
 
       {review && (
         <div className="space-y-2">

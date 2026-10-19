@@ -45,18 +45,11 @@ export default function UploadForm({ runId }: { runId: string }) {
         });
       }}
     >
+      {/* Context first, then data, then what was written from it; a questionnaire last, since it is
+          linked to the data or transcripts it belongs to (Grant, 2026-10-19). */}
       <div key={round} className="grid grid-cols-1 gap-2">
         <FileInput name="briefFiles" multiple accept=".pdf,.docx,.txt" icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Brief" caption="The research brief: context, and checked in Research quality review" />
         <FileInput name="proposalFiles" multiple accept=".pdf,.docx,.txt" icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Proposal" caption="A research proposal: context, and checked in Research quality review" />
-        <FileInput name="reportFiles" multiple icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Reports" caption="PDF, Word or PowerPoint" />
-        <FileInput
-          name="tableFiles"
-          multiple
-          accept=".csv,.xlsx,.xls,.sav,.dta"
-          icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
-          label="Tables"
-          caption="Already aggregated"
-        />
         <FileInput
           name="rawTableFiles"
           multiple
@@ -64,6 +57,14 @@ export default function UploadForm({ runId }: { runId: string }) {
           icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
           label="Raw data"
           caption={`CSV/Excel, SPSS or Stata. ${LIMITS_CAPTION}.`}
+        />
+        <FileInput
+          name="tableFiles"
+          multiple
+          accept=".csv,.xlsx,.xls,.sav,.dta"
+          icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
+          label="Tables"
+          caption="Already aggregated"
         />
         <FileInput
           name="outputFiles"
@@ -74,6 +75,7 @@ export default function UploadForm({ runId }: { runId: string }) {
           caption="A zip of models, clusters and logs"
         />
         <FileInput name="transcriptFiles" multiple icon={<TranscriptIcon className="h-3.5 w-3.5 text-primary" />} label="Qual data" caption="Coded or uncoded" />
+        <FileInput name="reportFiles" multiple icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Reports" caption="PDF, Word or PowerPoint" />
         <FileInput name="instrumentFiles" multiple accept=".pdf,.docx" icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Questionnaire or guide" caption="Links to your data or transcripts" />
       </div>
       <label className="flex flex-col gap-1 text-xs text-muted">

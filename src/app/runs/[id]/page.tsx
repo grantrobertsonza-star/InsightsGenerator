@@ -116,6 +116,7 @@ import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverride
 import type { VariableDictionary } from "@/lib/parseStatsFile";
 import InstrumentCard from "./InstrumentCard";
 import AttachedInstruments from "./AttachedInstruments";
+import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
 import AcceptDataButton from "./AcceptDataButton";
 import OutputSetCard from "./OutputSetCard";
 import RelatedOutputSets from "./RelatedOutputSets";
@@ -3602,13 +3603,10 @@ export default async function RunPage({
             documentId: x.id,
             filename: x.source_filename,
             summary: instrumentSummaries.get(x.id)!,
-            deleteAction: deleteDocument.bind(null, id, x.id),
-            deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, x.id)),
           }))}
           targetId={d.kind === "table" ? d.id : undefined}
           dataDocs={d.kind === "table" ? rawDataDocs.map((r) => ({ id: r.id, name: r.source_filename })) : undefined}
           autoStart={d.kind === "table" || transcriptDocs[0]?.id === d.id}
-          onlyTranscript={d.kind === "transcript" ? d.id : undefined}
         />
     );
   };
@@ -5290,6 +5288,8 @@ export default async function RunPage({
                               : []
                           }
                         />
+                      ) : d.kind === "evidence" || d.kind === "report" ? (
+                        <DocumentIndicatorsPanel key="indicators" runId={id} documentId={d.id} />
                       ) : d.kind === "transcript" && transcriptQuality.has(d.id) ? (
                         <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
                           <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">

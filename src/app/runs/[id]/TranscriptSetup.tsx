@@ -123,6 +123,11 @@ export function ImportDetailProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** Selects a file in the Import list, as clicking its card does (used to jump from a data file to its questionnaire). */
+export function useSelectImportFile(): (documentId: string) => void {
+  return useContext(FileDetailContext).select;
+}
+
 /** The right-hand pane body: everything about the selected file that used to sit inside its card. */
 export function SelectedFileDetail() {
   const { selectedId, rows } = useContext(FileDetailContext);
@@ -139,10 +144,12 @@ export function SelectedFileDetail() {
         </div>
         <OpenFileButton runId={row.runId} documentId={row.documentId} filename={row.filename} />
       </div>
-      {row.purpose}
+      {/* What the file is for, with its next step (Open Analysis, Open Coding...), comes last, after
+          the checks a researcher reads first (Grant, 2026-10-19). */}
       <PreviewPanel preview={row.preview} docKind={row.kind} />
       {row.attached}
       {row.quality}
+      {row.purpose}
       {!row.preview && !row.attached && !row.quality && !row.purpose && (
         <p className="text-sm text-muted">Nothing to preview for this file yet.</p>
       )}

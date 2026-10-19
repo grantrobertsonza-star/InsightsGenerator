@@ -12,6 +12,10 @@
 //      box (`next dev`, Turbopack), which had no key. It did not reproduce here on the webpack dev
 //      stack with the old code, so this guard is unproven against that fault; React prints the
 //      warning only in development, so it passes trivially against a production build.
+//   6. A data file's pane names its linked questionnaire on one line (Grant, 2026-10-19: the full
+//      questionnaire card there duplicated its own); the first read still starts from that line.
+//   7. The purpose box (Open Analysis, Open Coding) is the last block in the pane.
+//   8. A brief shows its size: pages, words, and how much of it a quality review reads.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -62,12 +66,36 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(page.getByTestId("file-purpose")).toContainText(/Questionnaire or guide/);
   await page.getByText("golden-survey-documented.xlsx", { exact: true }).first().click();
   await expect(page.getByTestId("file-purpose")).toContainText(/Case-level data/);
+  // 6. The data file's pane names its questionnaire on one line, not a second copy of its card; the
+  //    first read still starts from here, and "Show" opens the questionnaire's own card.
+  const pane = page.getByTestId("file-purpose").locator("xpath=..");
+  const line = pane.getByTestId("attached-instrument");
+  await expect(line).toHaveCount(1);
+  await expect(line).toContainText("Questionnaire: questionnaire.docx");
+  // The read finishes from here: items read, or the reason it could not (with model replay this
+  // fixture reads as "No question items were found"), shown on the line rather than lost.
+  await expect(async () => {
+    const read = /items read/.test(await line.innerText());
+    const reason = (await line.locator(".text-danger").count()) > 0;
+    expect(read || reason).toBe(true);
+  }).toPass({ timeout: 3 * 60_000 });
+  await expect(pane.getByRole("button", { name: /Match to variables|Match again/ })).toHaveCount(0);
+  // 7. What the file is for, with Open Analysis, comes after the checks (the last block in the pane).
+  const lastBlock = pane.locator(":scope > *").last();
+  await expect(lastBlock).toHaveAttribute("data-testid", "file-purpose");
+  await line.getByRole("button", { name: "Show" }).click();
+  await expect(page.getByTestId("file-purpose")).toContainText(/Questionnaire or guide/);
 
   // The brief: what it is for, and the way to its quality review.
   await page.getByText("client-brief.docx", { exact: true }).first().click();
   const purpose = page.getByTestId("file-purpose");
   await expect(purpose).toBeVisible();
   await expect(purpose).toContainText(/brief or proposal/);
+  // 8. Its size: pages (or why not known), words read, and that a quality review reads all of it.
+  const size = page.getByTestId("document-indicators");
+  await expect(size.getByTestId("indicator-words")).toContainText(/^\d[\d,]* \(as read from the file\)$/, { timeout: 60_000 });
+  await expect(size.getByTestId("indicator-pages")).toContainText(/^(\d[\d,]*|Not known: .+)$/);
+  await expect(size.getByTestId("indicator-coverage")).toContainText("A quality review reads all of it");
   // Totals name every kind, questionnaires included.
   await expect(page.getByTestId("project-totals")).toContainText("1 questionnaire(s) or guide(s)");
   await expect(page.getByText(/findings so far$/)).toHaveCount(0);
