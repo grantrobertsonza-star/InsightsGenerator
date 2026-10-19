@@ -1,5 +1,6 @@
 // Research Quality Review v1: presentation rules shared by the screen and the DOCX export. Pure
 // (no database, no server code), so the client component can import it.
+import criteriaRelease from "../research-quality/criteria/RQC-3.json";
 import type { DocumentedFact, ObservationPayload, ReviewManifest } from "./researchQualityTypes";
 import type { ObservationView } from "./researchQualityView";
 
@@ -79,9 +80,14 @@ export const CRITERION_SHORT_LABEL: Record<string, string> = {
   "RQ-BRIEF-PROBLEM": "Business problem",
   "RQ-BRIEF-DECISION": "Decisions to inform",
   "RQ-BRIEF-OBJECTIVES": "Research objectives",
-  "RQ-BRIEF-METHOD-PARAMS": "Method parameters",
-  "RQ-BRIEF-DEADLINE": "Deadline",
+  "RQ-BRIEF-METHOD-PARAMS": "Method parameters", // retired in RQC-3 (now Audience and Method)
+  "RQ-BRIEF-DEADLINE": "Deadline", // retired in RQC-3 (now Timing); kept for earlier reviews
   "RQ-BRIEF-BUDGET": "Budget",
+  "RQ-BRIEF-AUDIENCE": "Audience and scope",
+  "RQ-BRIEF-METHOD": "Method guidance",
+  "RQ-BRIEF-DELIVERABLES": "Deliverables",
+  "RQ-BRIEF-TIMING": "Timing",
+  "RQ-BRIEF-PRACTICAL": "Practicalities",
   "RQ-PROP-LITERATURE": "Prior evidence review",
   "RQ-PROP-RESTATEMENT": "Problem and objectives restated",
   "RQ-PROP-OBJECTIVES-ADDED": "Added objectives",
@@ -111,7 +117,9 @@ export const criterionShortLabel = (criterionId: string) => CRITERION_SHORT_LABE
  * decision), each row is listed.
  */
 export function scorecard(observations: ObservationView[]) {
-  const live = observations.filter((o) => o.status !== "dismissed");
+  // Groups and rows follow the criteria release's order (brief, proposal, ...; background before
+  // budget), not the order observations happened to be saved in.
+  const live = observations.filter((o) => o.status !== "dismissed").sort((a, b) => releaseOrder(a.criterionId) - releaseOrder(b.criterionId));
   const groups = [...new Set(live.map((o) => o.group))];
   return groups.map((g) => ({
     group: g,
@@ -128,9 +136,13 @@ export function scorecard(observations: ObservationView[]) {
   }));
 }
 
+const RELEASE_ORDER = new Map(criteriaRelease.criteria.map((c, i) => [c.criterionId, i]));
+/** Position in the criteria release; a criterion it does not list goes last. */
+const releaseOrder = (criterionId: string) => RELEASE_ORDER.get(criterionId) ?? Number.MAX_SAFE_INTEGER;
+
 export const comparisonLabel = (c: ObservationPayload["comparison"]) => (c === "compared_with_brief" ? "compared with the brief" : c === "standalone" ? "assessed on its own (no brief)" : null);
 
-// ---------------------------------------------------------------- checklist (RQK-1)
+// ---------------------------------------------------------------- checklist (RQK)
 
 export const CHECKLIST_STATUS_LABEL: Record<string, string> = { present: "Present", partial: "Partial", absent: "Absent", not_assessed: "Not assessed" };
 export const CHECKLIST_BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };

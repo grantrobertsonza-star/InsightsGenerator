@@ -116,7 +116,7 @@ export type ReviewManifest = {
   referencePassages: ReferencePassage[];
   referenceCatalogue: { release: string; kind: "production" | "synthetic_test"; hash: string };
   limits: ReviewLimits;
-  /** The checklist release the documents are scored against (RQK-1), or null when migration 0106 is not applied. Absent on reviews made before the checklist existed. */
+  /** The checklist release the documents are scored against (RQK-1 or later), or null when migration 0106 is not applied. Absent on reviews made before the checklist existed. */
   checklistRelease?: { release: string; hash: string } | null;
 };
 

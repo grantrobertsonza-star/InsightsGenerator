@@ -85,6 +85,25 @@ test("research quality review: start, review, decide, conflict, clarify, export"
 
     // 4. completes, with separate dimensions and verbatim quotes
     await expect(section.getByTestId("rq-review-state")).toHaveAttribute("data-state", /complete|partial/, { timeout: 8 * 60_000 });
+
+    // 4a. Overview is the bird's-eye view: the brief dashboard's ten dimensions, the overall
+    // percentage recomputed here from the scores on screen, and the questionnaire's checklist bar.
+    const dash = section.getByTestId("rq-dashboard");
+    await expect(dash).toBeVisible();
+    const dims = dash.locator("[data-criterion]");
+    await expect(dims).toHaveCount(10);
+    const shown = await dims.evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-criterion"), score: e.getAttribute("data-score") })));
+    const weightOf = (id) => (["RQ-BRIEF-PROBLEM", "RQ-BRIEF-DECISION", "RQ-BRIEF-OBJECTIVES"].includes(id) ? 2 : 1);
+    const rated = shown.filter((x) => x.score !== "none");
+    const ratedWeight = rated.reduce((n, x) => n + weightOf(x.id), 0);
+    const expectedPct = ratedWeight * 2 >= 13 ? String(Math.round((rated.reduce((n, x) => n + weightOf(x.id) * Number(x.score), 0) / (ratedWeight * 5)) * 100)) : "none";
+    await expect(dash).toHaveAttribute("data-pct", expectedPct);
+    if (expectedPct !== "none") await expect(dash.getByTestId("rq-dashboard-ring")).toHaveAccessibleName(`Overall ${expectedPct}%`);
+    await expect(dash.locator('[data-criterion="RQ-BRIEF-DECISION"]')).toContainText("x2");
+    await expect(section.getByTestId("rq-overview-checklists").locator("[data-checklist]")).toHaveCount(1);
+    // Evidence and decisions live on the Details tab, not the Overview.
+    await expect(section.getByTestId("rq-observation")).toHaveCount(0);
+    await section.getByRole("tab", { name: "Details" }).click();
     const obs = section.getByTestId("rq-observation");
     await expect(obs.first()).toBeVisible();
     await expect(obs.first()).toContainText("Documentation:");
@@ -102,8 +121,9 @@ test("research quality review: start, review, decide, conflict, clarify, export"
     const grid = section.getByTestId("rq-checklist");
     await expect(grid).toBeVisible();
     const cards = grid.locator("[data-checklist]");
-    await expect(cards).toHaveCount(2);
-    expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute("data-checklist")).sort())).toEqual(["brief", "questionnaire"]);
+    // The brief is rated on the dashboard dimensions now (RQK-2), so only the questionnaire has a checklist.
+    await expect(cards).toHaveCount(1);
+    expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute("data-checklist")).sort())).toEqual(["questionnaire"]);
     for (const c of await cards.all()) {
       const statuses = await c.locator("[data-element]").evaluateAll((els) => els.map((e) => e.getAttribute("data-status")));
       const assessed = statuses.filter((x) => x !== "not_assessed" && x !== "none");
@@ -133,7 +153,7 @@ test("research quality review: start, review, decide, conflict, clarify, export"
     await expect(section.getByRole("heading", { name: /^Criterion details \(\d+\)$/ })).toBeVisible();
     await section.getByRole("tab", { name: "Improvements" }).click();
     await expect(section.getByTestId("rq-gap-recommendations")).toContainText("Missing or partial elements");
-    await section.getByRole("tab", { name: "Overview" }).click();
+    await section.getByRole("tab", { name: "Details" }).click();
 
     // 5. accept and wording survive reload, attributed
     const first = obs.first();
@@ -147,6 +167,7 @@ test("research quality review: start, review, decide, conflict, clarify, export"
     await expect(byId()).toContainText("Implication (your wording): Researcher wording for the export");
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Research quality review/ }).first().click();
+    await section.getByRole("tab", { name: "Details" }).click({ timeout: 60_000 });
     await expect(byId()).toHaveAttribute("data-status", "accepted", { timeout: 60_000 });
     await expect(byId()).toContainText("Researcher wording for the export");
     await expect(byId()).toContainText(`accepted by ${JSON.parse(readFileSync(target.credentialsFile, "utf8")).primary.email}`);
@@ -155,6 +176,7 @@ test("research quality review: start, review, decide, conflict, clarify, export"
     const other = await browser.newPage();
     await other.goto(run.url, { waitUntil: "networkidle" });
     await other.getByRole("button", { name: /^Research quality review/ }).first().click();
+    await other.getByTestId("research-quality").getByRole("tab", { name: "Details" }).click({ timeout: 60_000 });
     const otherCard = other.locator(`[data-testid="rq-observation"][data-observation-id="${obsId}"]`);
     await expect(otherCard).toBeVisible({ timeout: 60_000 });
     await byId().getByRole("button", { name: "Dismiss" }).click();

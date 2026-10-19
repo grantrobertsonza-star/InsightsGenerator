@@ -867,7 +867,58 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     });
   });
 
-  // The scored checklist (RQK-1), Grant 2026-10-18: each document scored against the elements its
+  // The brief dashboard (RQC-3), Grant 2026-10-19: ten dimensions rated by the model, combined by code.
+  describe("brief dashboard", () => {
+    const briefDoc = (label: string) => addDoc(A, runA, `${label}.txt`, Buffer.from("Dashboard brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n"));
+
+    it("rates the ten brief dimensions and computes the weighted overall from them; the export shows the same", async () => {
+      const id = await start([{ documentId: await briefDoc("db-brief"), roles: ["brief"] }]);
+      const v = await viewOf(id);
+      expect(v.review!.state).toBe("complete");
+      expect(v.review!.criteriaRelease).toBe("RQC-3");
+      expect(v.review!.dashboardNote).toBeNull();
+      const [d] = v.review!.dashboards;
+      expect(d.dashboardId).toBe("brief");
+      expect(d.dimensions).toHaveLength(10);
+      expect(d.dimensions.every((x) => x.state === "rated")).toBe(true);
+      // Independent recount from the stored ratings: weight x score over weight x 5.
+      const rating = (cid: string) => v.review!.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed").map((o) => o.payload.rating.score!).sort((a, b) => a - b)[0];
+      const weight = (cid: string) => (["RQ-BRIEF-PROBLEM", "RQ-BRIEF-DECISION", "RQ-BRIEF-OBJECTIVES"].includes(cid) ? 2 : 1);
+      const ids = d.dimensions.map((x) => x.criterionId);
+      const points = ids.reduce((n, cid) => n + weight(cid) * rating(cid), 0);
+      expect(d.pct).toBe(Math.round((points / (13 * 5)) * 100));
+      // The stand-in rates the decision 3 (a decision fact is cited) and the rest 0: 6 / 65 = 9%.
+      expect(d.dimensions.find((x) => x.criterionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+      expect(d).toMatchObject({ pct: 9, band: "weak" });
+      // The retired brief criteria are never selected for a new review.
+      expect(v.review!.manifest.criteria.map((c) => c.criterionId)).not.toContain("RQ-BRIEF-DEADLINE");
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(text).toContain("Research brief: 9% (Weak)");
+      expect(text).toContain("Decisions to inform (counts x2): 3/5, Workable");
+    });
+
+    it("a dismissed rating leaves its dimension unrated rather than zero", async () => {
+      const id = await start([{ documentId: await briefDoc("db-dismiss"), roles: ["brief"] }]);
+      const before = (await viewOf(id)).review!;
+      const o = before.observations.find((x) => x.criterionId === "RQ-BRIEF-PROBLEM")!;
+      expect((await m.actions.recordResearchQualityEntryAction(runA, { kind: "dismiss", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: `db-dismiss-${o.observationId}` })).ok).toBe(true);
+      const [d] = (await viewOf(id)).review!.dashboards;
+      expect(d.dimensions.find((x) => x.criterionId === "RQ-BRIEF-PROBLEM")).toMatchObject({ state: "not_rated", score: null });
+      // Problem (weight 2) leaves the base: 6 / (11 x 5) = 10.9% -> 11.
+      expect(d).toMatchObject({ pct: 11, ratedWeight: 11, totalWeight: 13 });
+    });
+
+    it("a review made under an earlier criteria release shows no dashboard and says why", async () => {
+      const id = await start([{ documentId: await briefDoc("db-old"), roles: ["brief"] }]);
+      await q(`update research_quality_reviews set criteria_release = 'RQC-2' where id = $1`, [id]);
+      const v = await viewOf(id);
+      expect(v.review!.dashboards).toEqual([]);
+      expect(v.review!.dashboardNote).toMatch(/criteria release RQC-2, before the dashboard/);
+    });
+  });
+
+  // The scored checklist (RQK-1, now RQK-2), Grant 2026-10-18: each document scored against the elements its
   // type should contain, model finds and code scores. Actual actions, runner, view and DOCX.
   describe("scored checklist", () => {
     const doc = (label: string, text: string) => addDoc(A, runA, `${label}.txt`, Buffer.from(text));
@@ -878,41 +929,37 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const id = await start([{ documentId: await doc("ck-brief", briefText), roles: ["brief"] }, { documentId: await doc("ck-proposal", proposalText), roles: ["proposal"] }]);
       const v = await viewOf(id);
       expect(v.review!.state).toBe("complete");
-      expect(v.review!.checklists.map((c) => [c.checklistId, c.state])).toEqual([["brief", "scored"], ["proposal", "scored"]]);
-      for (const c of v.review!.checklists) {
-        const statuses = c.sections.flatMap((s) => s.elements.map((e) => e.status));
-        expect(statuses.every((x) => x !== null)).toBe(true);
-        // Independent recount from what the screen shows.
-        const assessed = statuses.filter((x) => x !== "not_assessed");
-        const points = assessed.reduce((n, x) => n + (x === "present" ? 2 : x === "partial" ? 1 : 0), 0);
-        expect(c.score!.assessed).toBe(assessed.length);
-        expect(c.score!.pct).toBe(Math.round((points / (assessed.length * 2)) * 100));
-        // Presence is always backed by a quote from the document.
-        for (const s of c.sections) for (const e of s.elements) if (e.status === "present" || e.status === "partial") expect(e.quotes.length, e.elementId).toBeGreaterThan(0);
-      }
-      const b = v.review!.checklists[0];
-      const el = (id: string) => b.sections.flatMap((s) => s.elements).find((e) => e.elementId === id)!;
-      expect(el("BR-DECISION")).toMatchObject({ status: "present" });
-      expect(el("BR-DECISION").quotes[0].quote).toMatch(/The decision is whether/);
-      expect(el("BR-BUDGET").status).toBe("absent");
-      expect(b.gaps.find((g) => g.elementId === "BR-BUDGET")).toMatchObject({ essential: true, status: "absent" });
-      expect(b.gaps.findIndex((g) => !g.essential)).toBeGreaterThan(b.gaps.findLastIndex((g) => g.essential)); // essential first
+      // RQK-2: the brief is rated on the RQC-3 dimensions (its dashboard), not a checklist.
+      expect(v.review!.checklists.map((c) => [c.checklistId, c.state])).toEqual([["proposal", "scored"]]);
+      const c = v.review!.checklists[0];
+      const statuses = c.sections.flatMap((s) => s.elements.map((e) => e.status));
+      expect(statuses.every((x) => x !== null)).toBe(true);
+      // Independent recount from what the screen shows.
+      const assessed = statuses.filter((x) => x !== "not_assessed");
+      const points = assessed.reduce((n, x) => n + (x === "present" ? 2 : x === "partial" ? 1 : 0), 0);
+      expect(c.score!.assessed).toBe(assessed.length);
+      expect(c.score!.pct).toBe(Math.round((points / (assessed.length * 2)) * 100));
+      // Presence is always backed by a quote from the document.
+      for (const s of c.sections) for (const e of s.elements) if (e.status === "present" || e.status === "partial") expect(e.quotes.length, e.elementId).toBeGreaterThan(0);
       // The proposal's sampling element was found in the proposal's own text, not the brief's.
-      const pe = v.review!.checklists[1].sections.flatMap((s) => s.elements).find((e) => e.elementId === "PR-SAMPLING")!;
+      const pe = c.sections.flatMap((s) => s.elements).find((e) => e.elementId === "PR-SAMPLING")!;
       expect(pe.status).toBe("present");
       expect(pe.quotes.every((q) => !q.fromBrief)).toBe(true);
+      expect(pe.quotes[0].quote).toMatch(/opt-in online panel|commercial panel/);
+      expect(c.gaps.length).toBeGreaterThan(0);
+      expect(c.gaps.findIndex((g) => !g.essential)).toBeGreaterThan(c.gaps.findLastIndex((g) => g.essential)); // essential first
       // The Word export carries the same grid and the gap recommendations.
       const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
       const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
       expect(text).toMatch(/Scored checklist/);
-      expect(text).toContain(`ck-brief.txt: Research brief, ${b.score!.pct}%`);
+      expect(text).toContain(`ck-proposal.txt: Research proposal, ${c.score!.pct}%`);
       expect(text).toMatch(/Missing or partial elements/);
-      expect(text).toMatch(/Budget indication \(absent, essential\)/);
+      expect(text).toContain(`${c.gaps[0].label} (absent, essential)`);
     });
 
     it("presence claimed without quotes is not scored, so it cannot inflate the score", async () => {
       model.checklist = "overclaim";
-      const id = await start([{ documentId: await doc("ck-overclaim", briefText), roles: ["brief"] }]);
+      const id = await start([{ documentId: await doc("ck-overclaim", proposalText), roles: ["proposal"] }]);
       const c = (await viewOf(id)).review!.checklists[0];
       expect(c.state).toBe("scored");
       expect(c.score).toMatchObject({ assessed: 0, pct: null, band: null });
@@ -922,7 +969,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
 
     it("a failed checklist step shows no score (not zero), leaves the review partial, and retry scores it", async () => {
       model.checklist = "fail";
-      const id = await start([{ documentId: await doc("ck-fail", briefText), roles: ["brief"] }]);
+      const id = await start([{ documentId: await doc("ck-fail", proposalText), roles: ["proposal"] }]);
       let v = await viewOf(id);
       expect(v.review!.state).toBe("partial");
       expect(v.review!.checklists[0]).toMatchObject({ state: "failed", score: null, gaps: [] });
@@ -940,7 +987,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       // NOT VALID: earlier tests' checklist rows stay; only new rows are held to the old rule.
       await q(`alter table research_quality_tasks add constraint research_quality_tasks_stage_check check (stage in ('extract', 'assess')) not valid`);
       try {
-        const id = await start([{ documentId: await doc("ck-nomigration", briefText), roles: ["brief"] }]);
+        const id = await start([{ documentId: await doc("ck-nomigration", proposalText), roles: ["proposal"] }]);
         const v = await viewOf(id);
         expect(v.review!.state).toBe("complete");
         expect(v.review!.checklists).toEqual([]);

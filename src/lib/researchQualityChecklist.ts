@@ -1,7 +1,8 @@
-// Research Quality Review: the quantitative checklist (RQK-1), added 2026-10-18 at Grant's request.
+// Research Quality Review: the quantitative checklist (RQK-1, now RQK-2), added 2026-10-18 at Grant's request.
 //
 // Each document type has a fixed list of required elements, drawn from research-methods practice
-// (src/research-quality/checklists/RQK-1.json). The model's only job is to say, for each element,
+// (src/research-quality/checklists/RQK-2.json; RQK-2 retires the brief checklist, which the ten RQC-3
+// brief dimensions and their dashboard replace). The model's only job is to say, for each element,
 // whether the document states it (present / partial / absent) and to cite the facts that show it;
 // those facts were extracted earlier with exact quotes that code located in the document text.
 // Everything numeric is computed here, by code, from those statuses:
@@ -13,7 +14,7 @@
 // absence while citing facts, or claimed absence in a document that was not read in full. Unknown is
 // never scored as absent. Scores are a guide to where to look, not a certification.
 // Pure module: no database, no model calls.
-import checklistRelease from "../research-quality/checklists/RQK-1.json";
+import checklistRelease from "../research-quality/checklists/RQK-2.json";
 import { canonicalJson, sha256 } from "./researchQualityRules";
 import type { DocumentedFact, SourceRole } from "./researchQualityTypes";
 
@@ -28,7 +29,7 @@ export type ChecklistElement = {
   rule?: string;
 };
 export type ChecklistSection = { sectionId: string; label: string; elements: ChecklistElement[] };
-export type Checklist = { checklistId: string; label: string; roles: string[]; basis: string; sections: ChecklistSection[] };
+export type Checklist = { checklistId: string; label: string; roles: string[]; basis: string; sections: ChecklistSection[]; retired?: string };
 
 export const CHECKLISTS = {
   release: checklistRelease.release,
@@ -52,7 +53,9 @@ export function bandFor(pct: number): Band {
  * none, which the screen states rather than scoring the document against the wrong list.
  */
 export function checklistsForRoles(roles: readonly SourceRole[]): Checklist[] {
-  return CHECKLISTS.checklists.filter((c) => c.roles.some((r) => roles.includes(r as SourceRole)));
+  // A retired checklist is never run for a new review; findChecklist still returns it, so a review
+  // scored under an earlier release keeps showing its checklist.
+  return CHECKLISTS.checklists.filter((c) => !c.retired && c.roles.some((r) => roles.includes(r as SourceRole)));
 }
 
 export function findChecklist(checklistId: string): Checklist | null {

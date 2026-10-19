@@ -1,7 +1,7 @@
 {
- "release": "RQC-2",
+ "release": "RQC-3",
  "status": "approved",
- "note": "Criteria library for Research Quality Review v1. RQC-2 (Grant, 2026-10-18) adds the brief and proposal rubric: brief background, business problem, decision, three or more objectives on the app's objective criteria, methodology parameters, deadline and budget; proposal literature review, restatement, added objectives, methodology, design, sample, analytical plan, products, timeline and budget, compared with the brief when one is selected. Every criterion is scored on its own (Strong 5, Workable 3, Weak 1, Absent 0) with an improvement suggestion; scores are never combined.",
+ "note": "Criteria library for Research Quality Review. RQC-3 (Grant, 2026-10-19) rates a research brief on ten dimensions drawn from EY Sweeney, Preparing a market research brief; John (2007), The research brief, in van Hamersveld and de Bont (eds), Market Research Handbook (5th ed.), Wiley; B2B International; IntoTheMinds; Ventures (ventures-me.com); and The Market Researchers: background, business problem, decisions, objectives, audience and scope, method guidance, deliverables, timing, budget, and practicalities. RQC-2 (Grant, 2026-10-18) added the proposal rubric. Every criterion is scored on its own (Strong 5, Workable 3, Weak 1, Absent 0) with an improvement suggestion. A dashboard (below) combines a document type's criteria into one weighted percentage for a bird's-eye view, computed by code; the per-criterion scores stay visible beside it. Retired criteria are kept only so that reviews made under an earlier release still show their questions; they are never selected for a new review.",
  "scale": {
   "5": "Strong",
   "3": "Workable",
@@ -11,9 +11,9 @@
  "criteria": [
   {
    "criterionId": "RQ-BRIEF-BACKGROUND",
-   "version": 1,
+   "version": 2,
    "group": "brief",
-   "assessmentQuestion": "Does the brief give background to the problem: the situation, what led to it and what is already known?",
+   "assessmentQuestion": "Does the brief give the background: the situation, what triggered the research, what is already known (prior research, data, competitors) and the product or market concerned?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -31,19 +31,20 @@
     "ruleId": "brief-present"
    },
    "requiredEvidence": [
-    "context or situation",
-    "what prompted the research",
-    "existing knowledge"
+    "situation or context",
+    "trigger for the research",
+    "existing knowledge or prior research",
+    "product, service or market"
    ],
-   "evaluationGuidance": "Strong: the context explains why the problem matters now and what is already known. Workable: some context but gaps a researcher would have to ask about. Weak: a sentence or two. Absent: none.",
+   "evaluationGuidance": "Strong: explains why the research is needed now, what triggered it, what is already known (including prior research or data) and describes the product or market. Workable: context and trigger given but existing knowledge or the product/market is thin. Weak: a sentence or two of context. Absent: none.",
    "unsupportedInferenceRestrictions": [],
    "execution": "llm_judgement"
   },
   {
    "criterionId": "RQ-BRIEF-PROBLEM",
-   "version": 1,
+   "version": 2,
    "group": "brief",
-   "assessmentQuestion": "Does the brief state the business problem clearly, as a problem (not only a topic)?",
+   "assessmentQuestion": "Does the brief state the business problem as a problem with its consequence, not only a topic?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -61,17 +62,20 @@
     "ruleId": "brief-present"
    },
    "requiredEvidence": [
-    "business problem statement"
+    "business problem statement",
+    "consequence or stakes"
    ],
-   "evaluationGuidance": "Strong: a specific problem with its business consequence. Workable: a problem that is stated but broad. Weak: only a topic or a solution in disguise. Absent: none.",
-   "unsupportedInferenceRestrictions": [],
+   "evaluationGuidance": "Strong: a specific problem with its business consequence (for example declining repeat purchase costing share). Workable: a problem that is stated but broad or without consequence. Weak: only a topic ('understand our customers') or a solution in disguise. Absent: none.",
+   "unsupportedInferenceRestrictions": [
+    "Do not treat a research topic as a stated problem."
+   ],
    "execution": "llm_judgement"
   },
   {
    "criterionId": "RQ-BRIEF-DECISION",
-   "version": 1,
+   "version": 2,
    "group": "brief",
-   "assessmentQuestion": "Does the brief state the decision(s) the research is meant to inform?",
+   "assessmentQuestion": "Does the brief state the decision(s) the research will inform, and what a successful outcome looks like?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -91,9 +95,9 @@
    "requiredEvidence": [
     "intended decision or use",
     "who decides",
-    "timing"
+    "success criteria"
    ],
-   "evaluationGuidance": "Look for an explicit decision or use, not a topic. Implied but never stated is Weak. Do not invent a decision.",
+   "evaluationGuidance": "Strong: explicit decision(s), who will make them and what the research must deliver for them to be made (success criteria). Workable: the decision is stated without success criteria or decision owner. Weak: a decision is only implied. Absent: none. Do not invent a decision.",
    "unsupportedInferenceRestrictions": [
     "Do not treat a research topic as a stated decision."
    ],
@@ -101,9 +105,9 @@
   },
   {
    "criterionId": "RQ-BRIEF-OBJECTIVES",
-   "version": 1,
+   "version": 2,
    "group": "brief",
-   "assessmentQuestion": "Does the brief state at least three clear research objectives, each specific, measurable, answerable with research and relevant to the business problem?",
+   "assessmentQuestion": "Does the brief state research objectives and key questions that are specific, measurable, prioritised and tied to the problem, ideally running from broad to specific?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -121,19 +125,20 @@
     "ruleId": "brief-present"
    },
    "requiredEvidence": [
-    "objectives or research questions"
+    "objectives or research questions",
+    "priorities"
    ],
-   "evaluationGuidance": "Judge every stated objective on the app's objective criteria: specific, measurable, answerable with research evidence, relevant to the business problem. Name which objectives fall short and on which criterion. Strong: three or more objectives that all meet the criteria. Workable: three or more with some shortfalls. Weak: fewer than three, or most fall short. Absent: no objectives. Cite each objective as a fact.",
+   "evaluationGuidance": "Judge every stated objective on the app's objective criteria: specific, measurable, answerable with research evidence, relevant to the business problem. Name which objectives fall short and on which criterion. Strong: three or more objectives that all meet the criteria, with priorities or a broad-to-specific order and key questions. Workable: three or more with some shortfalls, or no priorities. Weak: fewer than three, vague ('better understand'), or most fall short. Absent: no objectives. Cite each objective as a fact.",
    "unsupportedInferenceRestrictions": [
     "Do not rewrite objectives into ones the brief does not contain."
    ],
    "execution": "hybrid"
   },
   {
-   "criterionId": "RQ-BRIEF-METHOD-PARAMS",
+   "criterionId": "RQ-BRIEF-AUDIENCE",
    "version": 1,
    "group": "brief",
-   "assessmentQuestion": "How far does the brief specify the methodology parameters a supplier needs: target population, geography, method or approach preferences, sample expectations, subgroups, timing of fieldwork, reporting needs?",
+   "assessmentQuestion": "Does the brief define the target audience and scope: who qualifies (a definition, not only a profile), geography, subgroups to report on, incidence, languages and exclusions?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -151,23 +156,23 @@
     "ruleId": "brief-present"
    },
    "requiredEvidence": [
-    "target population",
+    "target population definition",
     "geography",
-    "method preferences",
-    "sample expectations",
-    "subgroups"
+    "subgroups",
+    "incidence or size",
+    "languages or exclusions"
    ],
-   "evaluationGuidance": "List which parameters are given and which are missing. Strong: most parameters given or explicitly left to the supplier. Workable: some. Weak: one or two. Absent: none.",
+   "evaluationGuidance": "Strong: a definition of who qualifies, with geography, subgroups to report separately and some indication of incidence or where to find them. Workable: audience and geography stated but as a profile, or without subgroups. Weak: only a general description ('young people', 'our customers'). Absent: none.",
    "unsupportedInferenceRestrictions": [
     "Never prescribe a sample size."
    ],
    "execution": "llm_judgement"
   },
   {
-   "criterionId": "RQ-BRIEF-DEADLINE",
+   "criterionId": "RQ-BRIEF-METHOD",
    "version": 1,
    "group": "brief",
-   "assessmentQuestion": "Does the brief give a deadline (or timeline) for the research or the decision?",
+   "assessmentQuestion": "Does the brief give method guidance (initial thinking on qualitative, quantitative or both, and real constraints such as comparability with earlier waves) while leaving the supplier room to propose?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -185,17 +190,82 @@
     "ruleId": "brief-present"
    },
    "requiredEvidence": [
-    "deadline or key dates"
+    "method thinking or preference",
+    "constraints",
+    "openness to supplier proposals"
    ],
-   "evaluationGuidance": "Strong: a dated deadline and key milestones. Workable: a deadline only. Weak: vague timing. Absent: none.",
+   "evaluationGuidance": "Strong: initial thinking with its reason and any real constraints (comparability, stimulus, data sources), and an invitation to propose alternatives. Workable: a preference or constraint without reasons, or explicitly left open to the supplier. Weak: a method dictated without justification (over-prescribed), or a confused fit such as qualitative methods for a measurement objective. Absent: nothing about method or constraints.",
+   "unsupportedInferenceRestrictions": [
+    "Never prescribe a sample size.",
+    "A method left open to the supplier is not a gap."
+   ],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-DELIVERABLES",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief say what must be delivered: outputs, format, level of analysis (for example recommendations, segmentation, key indicators) and any data files?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "deliverables",
+    "format",
+    "level of analysis or key indicators"
+   ],
+   "evaluationGuidance": "Strong: named outputs with format and the level of analysis or key indicators expected (and data files where needed). Workable: outputs named with little on format or analysis level. Weak: only 'a final report' or 'a presentation'. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-TIMING",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief give the timing: a deadline, milestones and a realistic allowance for preparation, fieldwork and reporting, including events to avoid?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "deadline",
+    "milestones",
+    "fieldwork window or constraints"
+   ],
+   "evaluationGuidance": "Strong: a dated deadline linked to the decision, with milestones and a realistic allowance for preparation, fieldwork and analysis (or timing events to avoid). Workable: a deadline only. Weak: vague timing ('as soon as possible'). Absent: none.",
    "unsupportedInferenceRestrictions": [],
    "execution": "llm_judgement"
   },
   {
    "criterionId": "RQ-BRIEF-BUDGET",
-   "version": 1,
+   "version": 2,
    "group": "brief",
-   "assessmentQuestion": "Does the brief give a budget, a budget range or an indication of scale?",
+   "assessmentQuestion": "Does the brief give a budget, a budget range or an indication of scale, and say how much flexibility there is?",
    "applicability": {
     "studyTypes": [
      "quantitative",
@@ -213,9 +283,42 @@
     "ruleId": "brief-present"
    },
    "requiredEvidence": [
-    "budget or range"
+    "budget or range",
+    "flexibility"
    ],
-   "evaluationGuidance": "Strong: an amount or range. Workable: an indication of scale or a stated constraint. Weak: only 'cost-effective' or similar. Absent: none. An explicit statement that budget is open counts as Workable.",
+   "evaluationGuidance": "Strong: an amount or range with its flexibility stated. Workable: an amount or range alone, an indication of scale, or an explicit statement that budget is open. Weak: only 'cost-effective' or similar. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-PRACTICAL",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief cover practicalities and governance: contacts and approvers, roles, confidentiality and ethics, the proposal due date and format, and how proposals will be judged?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "contacts or approvers",
+    "roles",
+    "confidentiality or ethics",
+    "submission date and format",
+    "selection criteria"
+   ],
+   "evaluationGuidance": "Strong: most of contacts, approvers, roles, confidentiality or ethics, submission details and selection criteria. Workable: contacts and submission details only. Weak: one of these. Absent: none.",
    "unsupportedInferenceRestrictions": [],
    "execution": "llm_judgement"
   },
@@ -840,6 +943,109 @@
    "evaluationGuidance": "Assess each strand under its own criteria; never average strand judgements.",
    "unsupportedInferenceRestrictions": [],
    "execution": "llm_judgement"
+  },
+  {
+   "criterionId": "RQ-BRIEF-METHOD-PARAMS",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "How far does the brief specify the methodology parameters a supplier needs: target population, geography, method or approach preferences, sample expectations, subgroups, timing of fieldwork, reporting needs?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "target population",
+    "geography",
+    "method preferences",
+    "sample expectations",
+    "subgroups"
+   ],
+   "evaluationGuidance": "List which parameters are given and which are missing. Strong: most parameters given or explicitly left to the supplier. Workable: some. Weak: one or two. Absent: none.",
+   "unsupportedInferenceRestrictions": [
+    "Never prescribe a sample size."
+   ],
+   "execution": "llm_judgement",
+   "retired": "Split into RQ-BRIEF-AUDIENCE and RQ-BRIEF-METHOD in RQC-3."
+  },
+  {
+   "criterionId": "RQ-BRIEF-DEADLINE",
+   "version": 1,
+   "group": "brief",
+   "assessmentQuestion": "Does the brief give a deadline (or timeline) for the research or the decision?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "brief-present"
+   },
+   "requiredEvidence": [
+    "deadline or key dates"
+   ],
+   "evaluationGuidance": "Strong: a dated deadline and key milestones. Workable: a deadline only. Weak: vague timing. Absent: none.",
+   "unsupportedInferenceRestrictions": [],
+   "execution": "llm_judgement",
+   "retired": "Replaced by RQ-BRIEF-TIMING in RQC-3."
+  }
+ ],
+ "dashboards": [
+  {
+   "dashboardId": "brief",
+   "label": "Research brief",
+   "criteria": [
+    "RQ-BRIEF-BACKGROUND",
+    "RQ-BRIEF-PROBLEM",
+    "RQ-BRIEF-DECISION",
+    "RQ-BRIEF-OBJECTIVES",
+    "RQ-BRIEF-AUDIENCE",
+    "RQ-BRIEF-METHOD",
+    "RQ-BRIEF-DELIVERABLES",
+    "RQ-BRIEF-TIMING",
+    "RQ-BRIEF-BUDGET",
+    "RQ-BRIEF-PRACTICAL"
+   ],
+   "weights": {
+    "RQ-BRIEF-PROBLEM": 2,
+    "RQ-BRIEF-DECISION": 2,
+    "RQ-BRIEF-OBJECTIVES": 2
+   },
+   "basis": "Problem, decisions and objectives count double: every source treats them as the core of a brief, and IntoTheMinds names a missing decision and a topic in place of a problem as the most common failures.",
+   "sinceRelease": "RQC-3"
+  }
+ ],
+ "dashboardBands": [
+  {
+   "band": "strong",
+   "minPct": 80
+  },
+  {
+   "band": "workable",
+   "minPct": 60
+  },
+  {
+   "band": "weak",
+   "minPct": 0
   }
  ]
 }

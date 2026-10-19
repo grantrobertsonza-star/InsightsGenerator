@@ -1,5 +1,5 @@
 {
- "release": "RQK-1",
+ "release": "RQK-2",
  "status": "production",
  "scale": {
   "present": 2,
@@ -175,7 +175,8 @@
       }
      ]
     }
-   ]
+   ],
+   "retired": "RQK-2 (Grant, 2026-10-19): a brief is now rated on the ten RQC-3 dimensions and their dashboard instead. Kept so reviews scored under RQK-1 still show their checklist."
   },
   {
    "checklistId": "proposal",

@@ -21,7 +21,9 @@ import {
   comparisonLabel,
   CHECKLIST_STATUS_LABEL,
   checklistScoreText,
+  criterionShortLabel,
 } from "./researchQualityPresentation";
+const DASHBOARD_BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
 import type { ObservationView, ResearchQualityView } from "./researchQualityView";
 
 const p = (text: string, opts: { bold?: boolean; italics?: boolean; size?: number } = {}) => new Paragraph({ children: [new TextRun({ text, ...opts })] });
@@ -51,7 +53,7 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   body.push(p(`State: ${r.state}${r.state !== "complete" ? " (not every part was assessed; see Scope)" : ""}. Created ${r.createdAt.slice(0, 16).replace("T", " ")} UTC by ${r.createdBy ?? "single user"}.`));
   body.push(p(`Mode: ${r.mode === "improve_planned" ? "improve a planned study" : "review a documented study"}. Study type: ${r.studyType}. Purpose: ${r.purpose || "not stated"}.`));
   body.push(p(`Criteria library ${r.criteriaRelease}; reference catalogue ${r.referencesRelease}${r.syntheticReferences ? " (SYNTHETIC TEST REFERENCES, NOT METHODOLOGICAL STANDARDS)" : ""}; model ${r.model}; prompts ${r.promptVersion}.`));
-  body.push(p("These are AI judgements about documents, validated by code and reviewed by a researcher. They are not a certification, a score or proof that work was carried out. An accepted observation means researcher agreement, not scientific verification.", { italics: true }));
+  body.push(p("These are AI judgements about documents, validated by code and reviewed by a researcher. Scores are a guide to where to look, not a certification or proof that work was carried out. An accepted observation means researcher agreement, not scientific verification.", { italics: true }));
 
   body.push(h("Scope", HeadingLevel.HEADING_1));
   for (const s of r.manifest.sources) {
@@ -66,7 +68,16 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   body.push(h("Overview", HeadingLevel.HEADING_1));
   body.push(p(`${ov.strengths.length} documented strength(s), ${ov.concerns.length} concern(s), ${ov.gaps.length} documentation gap(s), ${ov.decisionImplications.length} with decision implications. ${ov.awaitingReview} awaiting review; ${ov.requiresReview} need review because a source changed or could not be checked.`));
 
-  // Part 1: the scored checklist (RQK-1), the same figures the screen shows, computed on the server.
+  // The bird's-eye dashboard (RQC-3 brief dimensions): the same figures as the screen's Overview.
+  if (r.dashboards.length > 0 || r.dashboardNote) body.push(h("Dashboard", HeadingLevel.HEADING_1));
+  if (r.dashboardNote) body.push(p(r.dashboardNote));
+  for (const d of r.dashboards) {
+    body.push(h(`${d.label}: ${d.pct === null ? `no overall score (only ${d.ratedWeight} of ${d.totalWeight} weight rated)` : `${d.pct}% (${DASHBOARD_BAND_LABEL[d.band!]})`}`, HeadingLevel.HEADING_2));
+    body.push(p(`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. The overall figure is weighted points over the weighted maximum, across rated dimensions only; Strong is 80% or more, Workable 60% or more. ${d.basis}`, { italics: true }));
+    for (const x of d.dimensions) body.push(bullet(`${criterionShortLabel(x.criterionId)}${x.weight > 1 ? ` (counts x${x.weight})` : ""}: ${x.score === null ? x.label : `${x.score}/5, ${x.label}`}`));
+  }
+
+  // Part 1: the scored checklist (RQK), the same figures the screen shows, computed on the server.
   body.push(h("Scored checklist", HeadingLevel.HEADING_1));
   if (r.checklists.length === 0) body.push(p(r.checklistNote ?? "No checklist was scored in this review."));
   else
@@ -85,7 +96,7 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   }
 
   body.push(h("Scorecard", HeadingLevel.HEADING_1));
-  body.push(p("Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up into one figure."));
+  body.push(p("Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Only the dashboard above combines them, as a weighted percentage."));
   for (const g of scorecard(r.observations)) {
     body.push(h(g.label, HeadingLevel.HEADING_2));
     for (const row of g.rows) {

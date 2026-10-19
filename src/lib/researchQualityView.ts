@@ -9,6 +9,7 @@
 // Researcher state: acceptance, dismissal and wording belong to one observation VERSION. When a
 // newer review produced a new version, the earlier decision and wording are shown as history and
 // the new version is "awaiting review"; nothing is carried over silently.
+import { DASHBOARDS, reviewDashboards, type DashboardView } from "./researchQualityDashboard";
 import { findChecklist, gapRecommendations, scoreChecklist, type ChecklistScore, type ElementResult, type ElementStatus, type GapRecommendation } from "./researchQualityChecklist";
 import type { PoolClient } from "pg";
 import { withTenantRead, withTenantRepeatableRead } from "./db";
@@ -80,6 +81,10 @@ export type ResearchQualityView = {
     checklists: ChecklistView[];
     /** Why no checklist was run, when none was: the migration was missing, or the review predates it. */
     checklistNote: string | null;
+    /** Bird's-eye dashboards (researchQualityDashboard.ts), computed from the stored ratings. */
+    dashboards: DashboardView[];
+    /** Why there is no dashboard, when a document type has one but this review shows none. */
+    dashboardNote: string | null;
   });
 };
 
@@ -259,6 +264,8 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
       referencePassages: [],
       checklists: [],
       checklistNote: null,
+      dashboards: [],
+      dashboardNote: null,
       progress: { total: progress.total, done: progress.done, failed: progress.failed, working: progress.working, waiting: progress.waiting, interrupted: active && progress.working === 0 && progress.idle },
     };
     view.review.sourceFreshness = await sourceFreshness(client, manifest);
@@ -279,6 +286,24 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
             ? "The scored checklist needs database migration 0106. Apply it, then start a new review version."
             : "None of the selected documents has a role with a checklist (brief, proposal, questionnaire, methodology, report or fieldwork).";
     view.review.observations = await reviewObservations(client, runId, chosen.id as string, chosen.sequence as number, view.review.sourceFreshness);
+    const assessTasks = new Map(
+      (await client.query<{ task_key: string; status: string }>(`select task_key, status from research_quality_tasks where review_id = $1 and stage = 'assess'`, [chosen.id])).rows.map((t) => [t.task_key, t.status]),
+    );
+    const selectedCriteria = manifest.criteria.filter((c) => c.status === "selected").map((c) => c.criterionId);
+    view.review.dashboards = reviewDashboards({
+      criteriaRelease: view.review.criteriaRelease,
+      selectedCriteria,
+      observations: view.review.observations,
+      assessState: (criterionId) => {
+        const group = CRITERIA.criteria.find((c) => c.criterionId === criterionId)?.group;
+        const status = group ? assessTasks.get(`assess:${group}`) : undefined;
+        return status === "succeeded" ? "done" : status === "failed" ? "failed" : "pending";
+      },
+    });
+    view.review.dashboardNote =
+      view.review.dashboards.length === 0 && DASHBOARDS.some((d) => d.criteria.some((c) => selectedCriteria.includes(c)))
+        ? `This review was made with criteria release ${view.review.criteriaRelease}, before the dashboard. Start a new review version to see it.`
+        : null;
     const cat = referenceCatalogue();
     const usedRefs = new Set(view.review.observations.flatMap((o) => o.payload.methodologicalReferenceRefs.map((r) => `${r.referenceId}:${r.passageId}`)));
     view.review.referencePassages = cat.entries.flatMap((e) =>

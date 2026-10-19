@@ -4,7 +4,7 @@
 // A model may suggest; only this code decides which criteria apply, which references may be
 // cited, which quotes are real and which observation a judgement belongs to.
 import { createHash } from "node:crypto";
-import criteriaRelease from "../research-quality/criteria/RQC-2.json";
+import criteriaRelease from "../research-quality/criteria/RQC-3.json";
 import productionReferences from "../research-quality/references/RQR-1.json";
 import syntheticReferences from "../research-quality/references/RQR-T1.json";
 import {
@@ -48,7 +48,10 @@ export function canonicalJson(value: unknown): string {
 }
 export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
+// `criteria` keeps retired entries so reviews made under an earlier release still show their
+// questions and groups; selectCriteria never offers a retired criterion to a new review.
 export const CRITERIA = { release: criteriaRelease.release, hash: sha256(canonicalJson(criteriaRelease)), criteria: criteriaRelease.criteria };
+const isRetired = (c: Criterion) => typeof (c as { retired?: unknown }).retired === "string";
 
 /**
  * The reference catalogue in force. Production unless RESEARCH_QUALITY_REFERENCE_CATALOGUE is
@@ -79,7 +82,7 @@ export function selectCriteria(mode: ReviewMode, studyType: StudyType, roles: So
   const has = (r: SourceRole) => roles.includes(r);
   const documentedDesign = has("methodology") || has("report");
   const instrument = has("questionnaire") || has("discussion_guide");
-  return CRITERIA.criteria.map((c) => {
+  return CRITERIA.criteria.filter((c) => !isRetired(c)).map((c) => {
     const base = { criterionId: c.criterionId, version: c.version };
     const sel = (status: CriterionSelection["status"], reason: string) => ({ ...base, status, reason });
     if (!c.applicability.modes.includes(mode)) return sel("excluded", `applies only when reviewing a documented study`);

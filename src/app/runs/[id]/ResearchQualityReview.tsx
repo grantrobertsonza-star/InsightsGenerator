@@ -38,9 +38,12 @@ import type { ObservationView, ResearchQualityView } from "@/lib/researchQuality
 
 // The middle pane's tabs. Documents and History and export live in the right-hand pane, beside
 // the review, as on the other three-pane pages.
-type Tab = "overview" | "alignment" | "improvements" | "clarifications";
+// Overview is the bird's-eye view (dashboard and headline scores); Details holds every criterion's
+// evidence, reasons and the review controls.
+type Tab = "overview" | "details" | "alignment" | "improvements" | "clarifications";
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "details", label: "Details" },
   { id: "alignment", label: "Alignment" },
   { id: "improvements", label: "Improvements" },
   { id: "clarifications", label: "Clarifications" },
@@ -380,7 +383,8 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
         )}
         {r.newClarifications > 0 && <div className="mt-1">{r.newClarifications} clarification(s) were added after this review; start a new review version to include them.</div>}
       </div>
-      {tab === "overview" && (
+      {tab === "overview" && <OverviewDashboard view={view} />}
+      {tab === "details" && (
         <>
           <ChecklistGrid view={view} />
           <h4 className="mt-2 text-xs font-semibold text-foreground">Assessment by criterion</h4>
@@ -419,6 +423,96 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
       {tab === "improvements" && <ImprovementsTab view={view} />}
       {tab === "clarifications" && <ClarificationsTab runId={runId} view={view} reload={reload} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- overview dashboard
+
+// One colour per rating, shared by the bars and the ring so a glance reads the same everywhere.
+const SCORE_BAR: Record<number, string> = { 5: "bg-indigo-500", 3: "bg-amber-400", 1: "bg-slate-400", 0: "bg-rose-400" };
+const SCORE_TEXT: Record<number, string> = { 5: "text-indigo-700", 3: "text-amber-700", 1: "text-slate-600", 0: "text-rose-700" };
+const BAND_RING: Record<string, string> = { strong: "#6366f1", workable: "#f59e0b", weak: "#e11d48" };
+const BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
+
+/**
+ * The bird's-eye view (Grant, 2026-10-19): for each dashboard (the brief's ten dimensions), the
+ * weighted overall percentage as a ring and one bar per dimension, then each other document's checklist
+ * percentage. Every figure is computed on the server (researchQualityDashboard.ts,
+ * researchQualityChecklist.ts); this only draws them. Evidence, reasons and decisions are in Details.
+ */
+function OverviewDashboard({ view }: { view: ResearchQualityView }) {
+  const r = view.review!;
+  const checklists = r.checklists;
+  return (
+    <div className="flex flex-col gap-3" data-testid="rq-overview">
+      {r.dashboardNote && <p className="rounded-md bg-slate-50 p-2 text-xs text-muted" data-testid="rq-dashboard-note">{r.dashboardNote}</p>}
+      {r.dashboards.map((d) => (
+        <section key={d.dashboardId} className="rounded-xl border border-border bg-white p-3" aria-label={`${d.label} dashboard`} data-testid="rq-dashboard" data-dashboard={d.dashboardId} data-pct={d.pct ?? "none"}>
+          <div className="flex flex-wrap items-center gap-3">
+            <ScoreRing pct={d.pct} band={d.band} />
+            <div className="min-w-0 flex-1">
+              <h4 className="text-sm font-semibold text-foreground">{d.label}</h4>
+              <p className="text-xs text-muted">
+                {d.pct === null
+                  ? `Too little rated yet for an overall score (${d.ratedWeight} of ${d.totalWeight} weight).`
+                  : `${BAND_LABEL[d.band!]}: weighted across ${d.dimensions.filter((x) => x.state === "rated").length} of ${d.dimensions.length} dimensions.`}
+                <InfoDot text={`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. Overall = weighted points / weighted maximum, over rated dimensions. Strong 80% or more, Workable 60% or more. ${d.basis}`} />
+              </p>
+            </div>
+          </div>
+          <ul className="mt-3 flex flex-col gap-1.5">
+            {d.dimensions.map((x) => (
+              <li key={x.criterionId} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-criterion={x.criterionId} data-state={x.state} data-score={x.score ?? "none"}>
+                <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground" data-testid="rq-dimension-name">
+                  {criterionShortLabel(x.criterionId)}
+                  {x.weight > 1 && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600" title="Counts double in the overall score">{`x${x.weight}`}</span>}
+                </span>
+                <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                  <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" title={x.reason || x.label} role="img" aria-label={`${criterionShortLabel(x.criterionId)}: ${x.score === null ? x.label : `${x.score} of 5, ${x.label}`}`}>
+                    {x.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${SCORE_BAR[x.score] ?? SCORE_BAR[1]}`} style={{ width: `${Math.max(x.score, 0.15) * 20}%` }} />}
+                  </span>
+                  <span className={`w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-bold uppercase tracking-wide ${x.score === null ? "text-muted" : SCORE_TEXT[x.score]}`}>{x.score === null ? (x.state === "failed" ? "failed" : "-") : `${x.score} ${x.label}`}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {checklists.length > 0 && (
+        <section className="rounded-xl border border-border bg-white p-3" aria-label="Other documents" data-testid="rq-overview-checklists">
+          <h4 className="text-xs font-semibold text-foreground">Other documents</h4>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {checklists.map((c) => (
+              <li key={c.taskKey} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-checklist={c.checklistId}>
+                <span className="min-w-[9rem] flex-1 truncate"><span className="font-medium text-foreground">{c.filename}</span><span className="ml-1 text-muted">{c.label}</span></span>
+                <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                  <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    {c.score?.pct != null && <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${c.score.pct}%`, background: BAND_RING[c.score.band ?? "weak"] }} />}
+                  </span>
+                  <span className="w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-bold">{c.score?.pct != null ? `${c.score.pct}%` : "-"}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-muted">Element by element in Details.</p>
+        </section>
+      )}
+      {r.dashboards.length === 0 && checklists.length === 0 && !r.dashboardNote && <p className="text-xs text-muted">Nothing to score yet. The criteria and their evidence are in Details.</p>}
+    </div>
+  );
+}
+
+function ScoreRing({ pct, band }: { pct: number | null; band: string | null }) {
+  const radius = 26;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <svg viewBox="0 0 64 64" width="64" height="64" role="img" aria-label={pct === null ? "No overall score" : `Overall ${pct}%`} className="shrink-0" data-testid="rq-dashboard-ring">
+      <circle cx="32" cy="32" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="7" />
+      {pct !== null && (
+        <circle cx="32" cy="32" r={radius} fill="none" stroke={BAND_RING[band ?? "weak"]} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(pct / 100) * circumference} ${circumference}`} transform="rotate(-90 32 32)" />
+      )}
+      <text x="32" y="36" textAnchor="middle" fontSize="14" fontWeight="700" fill="#0f172a">{pct === null ? "-" : `${pct}%`}</text>
+    </svg>
   );
 }
 
@@ -528,7 +622,7 @@ function Scorecard({ view }: { view: ResearchQualityView }) {
   return (
     <div className="space-y-2" aria-label="Scorecard">
       <p className="text-xs text-muted">
-        Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Scores are not added up. Hover the i for the full question, or a rating for the reason.
+        Each criterion is scored on its own: Strong 5, Workable 3, Weak 1, Absent 0. Only the Overview dashboard combines them, as a weighted percentage. Hover the i for the full question, or a rating for the reason.
       </p>
       {/* Stacked rows rather than a table: the Overview pane is often narrow, and a table there
           scrolls the rating and the improvement out of view. */}
@@ -701,7 +795,7 @@ function DocumentsTab({ runId, view, reload }: { runId: string; view: ResearchQu
             <div className="font-medium">{d.filename}</div>
             <div className="text-muted">{s.currentVersion ? `Version ${s.currentVersion.ordinal} (${s.currentVersion.extractor.replace("_", " ")}, ${s.currentVersion.charCount.toLocaleString("en-GB")} characters)${s.currentVersion.purged ? ", text purged" : ""}; ${s.versions} version(s) kept.` : "Not read yet."}</div>
             <RoleEditor runId={runId} documentId={d.id} roles={s.roles} revision={s.revision} onSaved={reload} />
-            {cited.length > 0 && <div className="mt-1">{`Cited by: ${cited.map((o) => o.criterionId).join(", ")}`}</div>}
+            {cited.length > 0 && <div className="mt-1">{`Cited by: ${[...new Set(cited.map((o) => criterionShortLabel(o.criterionId)))].join(", ")}`}</div>}
             <button
               className={`${btn} mt-1`}
               onClick={async () => {
