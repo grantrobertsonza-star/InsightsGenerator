@@ -550,6 +550,32 @@ async function getRawQuality(
 }
 
 /**
+ * The brief or proposal role recorded for each document (at upload through Import's Brief and
+ * Proposal pickers, or by a review), for Set Objectives' "Fill in from" choice. A convenience: before
+ * migration 0105 there is no such table, and every document is simply offered without a role.
+ */
+async function getDocumentReviewRoles(runId: string): Promise<Map<string, "brief" | "proposal">> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ document_id: string; roles: string[] }>(
+        `select document_id, roles from research_quality_sources where run_id = $1 and document_id is not null`,
+        [runId],
+      );
+      const out = new Map<string, "brief" | "proposal">();
+      for (const x of r.rows) {
+        if (x.roles.includes("brief")) out.set(x.document_id, "brief");
+        else if (x.roles.includes("proposal")) out.set(x.document_id, "proposal");
+      }
+      return out;
+    });
+  } catch (error) {
+    if (/research_quality_sources/.test(error instanceof Error ? error.message : String(error))) return new Map();
+    throw error;
+  }
+}
+
+/**
  * The opening of each report or transcript's extracted text, so a researcher
  * can check on the Import page that the file was read properly. Only the
  * first characters are fetched, never the whole text.
@@ -3087,6 +3113,7 @@ export default async function RunPage({
     transcriptSetups,
     dataSetups,
     documentExcerpts,
+    documentReviewRoles,
     setupSuggestions,
     latestProcessErrors,
     pendingLegacyConfirmations,
@@ -3128,6 +3155,7 @@ export default async function RunPage({
     timing("transcriptSetups", getTranscriptSetups(TENANT_ID, id)),
     timing("dataSetups", loadDataSetups(TENANT_ID, id)),
     timing("documentExcerpts", getDocumentExcerpts(id)),
+    timing("documentReviewRoles", getDocumentReviewRoles(id)),
     timing("setupSuggestions", getSetupSuggestions(TENANT_ID, id)),
     timing("latestProcessErrors", getLatestProcessErrors(id)),
     timing("pendingLegacyConfirmations", getPendingLegacyConfirmations(id)),
@@ -3532,11 +3560,7 @@ export default async function RunPage({
       return (
         <div className={box} data-testid="file-purpose">
           <p>{`Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <GoToSection id="findings">Open Findings</GoToSection>
-            {/* A brief or proposal added under Reports can still be reviewed as one. */}
-            <ReviewResearchQualityLink documentId={d.id} />
-          </div>
+          <GoToSection id="findings">Open Findings</GoToSection>
         </div>
       );
     if (d.kind === "instrument")
@@ -5369,7 +5393,7 @@ export default async function RunPage({
           <SectionPanel id="objective">
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">Set up objectives</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
-              Add the business problem and your own objectives, or import them from a brief or proposal.
+              Add the business problem and your own objectives, or fill them in from a brief or proposal added under Import data.
               They are scored and checked against the evidence on the Objectives page.
             </p>
             <ThreePane
@@ -5380,6 +5404,10 @@ export default async function RunPage({
                     businessProblem={run.business_problem}
                     objective={run.stated_objectives_text}
                     audience={run.audience}
+                    documents={documents
+                      // Briefs and proposals only: imported as context, or given that role by a review.
+                      .filter((d) => (d.kind === "evidence" || documentReviewRoles.has(d.id)) && /\.(pdf|docx|pptx|txt)$/i.test(d.source_filename))
+                      .map((d) => ({ id: d.id, filename: d.source_filename, role: documentReviewRoles.get(d.id) ?? null }))}
                   />
                 </Pane>
               }

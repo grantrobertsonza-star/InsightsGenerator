@@ -3,46 +3,55 @@ import { saveRunContext } from "@/lib/runContextActions";
 
 const field =
   "mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
-const fileField =
-  "block min-w-0 max-w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100";
 
 export default function RunContextForm({
   runId,
   businessProblem,
   objective,
   audience,
+  documents,
 }: {
   runId: string;
   businessProblem: string | null;
   objective: string | null;
   audience: string | null;
+  /** The project's imported documents that can be read as a brief or proposal, with any role recorded at import. */
+  documents: { id: string; filename: string; role: "brief" | "proposal" | null }[];
 }) {
   return (
     <form
       action={saveRunContext.bind(null, runId)}
       className="flex flex-col gap-4"
     >
-      <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
-        <span className="text-sm font-medium text-foreground">
-          Import from a brief and/or proposal
-        </span>
-        <span className="ml-1.5 text-xs font-normal text-muted">(optional)</span>
-        <p className="mt-1 text-xs text-muted">
-          The client&apos;s brief usually states the business problem and objectives; a
-          supplier&apos;s proposal reflects both back. Upload either or both and we will fill in
-          whichever fields below you leave blank. Text you type yourself always wins.
-        </p>
-        <div className="mt-2 grid grid-cols-1 gap-2">
-          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <span className="text-xs font-medium text-foreground">Brief (from the client)</span>
-            <input type="file" name="briefFile" accept=".pdf,.docx,.pptx,.txt" className={fileField} />
-          </label>
-          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <span className="text-xs font-medium text-foreground">Proposal (your response)</span>
-            <input type="file" name="proposalFile" accept=".pdf,.docx,.pptx,.txt" className={fileField} />
-          </label>
+      {documents.length > 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
+          <span className="text-sm font-medium text-foreground">Fill in from a brief or proposal</span>
+          <span className="ml-1.5 text-xs font-normal text-muted">(optional)</span>
+          <p className="mt-1 text-xs text-muted">
+            Choose an imported brief and/or proposal and we will fill in whichever fields below you leave blank when you save. Text you type yourself always wins. Add files under Import data.
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2">
+            {(
+              [
+                ["briefDocumentId", "Brief (from the client)", "brief"],
+                ["proposalDocumentId", "Proposal (your response)", "proposal"],
+              ] as const
+            ).map(([name, label, role]) => (
+              <label key={name} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span className="text-xs font-medium text-foreground">{label}</span>
+                <select name={name} defaultValue="" className="min-w-0 max-w-full rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground">
+                  <option value="">Not used</option>
+                  {[...documents].sort((a, b) => Number(b.role === role) - Number(a.role === role)).map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.role === role ? `${d.filename} (imported as ${role})` : d.filename}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <label className="block">
         <span className="text-sm font-medium text-foreground">Business problem</span>
         <span className="ml-1.5 text-xs font-normal text-muted">(optional)</span>

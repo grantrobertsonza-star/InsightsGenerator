@@ -2,25 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
-import { supabaseAdmin } from "./supabaseAdmin";
 import { readContextDocument } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines, normalizeObjectiveLine } from "./objectiveLines";
 import { requireTenantId } from "./requestContext";
 
-const BUCKET = "documents";
-
-
-function fileOrNull(entry: FormDataEntryValue | null): File | null {
-  return entry instanceof File && entry.size > 0 ? entry : null;
-}
 
 /**
  * Saves the project's context: business problem, research objective or
- * hypothesis, and audience. All optional. An uploaded brief and/or proposal
- * only fills fields the researcher left blank, it never overwrites text
- * typed by hand. The objective is also kept as the researcher's own accepted
+ * hypothesis, and audience. All optional. A brief and/or proposal chosen from
+ * the project's imported documents only fills fields the researcher left
+ * blank, it never overwrites text typed by hand. The objective is also kept as the researcher's own accepted
  * candidate, so a later accept or reject on the objective list (which
  * recomputes runs.research_objective from accepted candidates) cannot wipe it.
  *
@@ -42,41 +35,29 @@ export async function saveRunContext(runId: string, formData: FormData) {
   let businessProblem = clean("businessProblem");
   let objective = clean("researchObjective");
   const audience = String(formData.get("audience") ?? "").trim();
-  const briefFile = fileOrNull(formData.get("briefFile"));
-  const proposalFile = fileOrNull(formData.get("proposalFile"));
+  // Grant 2026-10-19: briefs and proposals are added under Import data; here the researcher only
+  // chooses which imported one(s) to fill the blank fields from. Nothing is chosen by default, so an
+  // ordinary save never calls the model.
+  const briefId = clean("briefDocumentId");
+  const proposalId = clean("proposalDocumentId");
 
-  if (briefFile || proposalFile) {
+  if (briefId || proposalId) {
     try {
-      // Stored as "evidence" documents: context for the project, not
-      // sources to mine findings from.
-      const storeAndExtractText = async (file: File): Promise<string> => {
-        const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-        const storagePath = `${TENANT_ID}/${runId}/${Date.now()}-${safeFileName}`;
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const { error } = await supabaseAdmin.storage
-          .from(BUCKET)
-          .upload(storagePath, buffer, { contentType: file.type || undefined });
-        if (error) throw new Error(`Upload of ${file.name} failed: ${error.message}`);
-        const documentId = await withTenant(TENANT_ID, async (client) => {
-          const r = await client.query<{ id: string }>(
-            `insert into documents (tenant_id, run_id, kind, source_filename, storage_path)
-             values ($1, $2, 'evidence', $3, $4) returning id`,
-            [TENANT_ID, runId, file.name, storagePath],
-          );
-          return r.rows[0].id;
-        });
-        // Reads and stores the text (with a direct .docx fallback) so the file previews and later steps can use it.
-        await readContextDocument(TENANT_ID, runId, documentId);
-        const stored = await withTenant(TENANT_ID, async (client) => {
-          const r = await client.query<{ extracted_text: string | null }>("select extracted_text from documents where id = $1", [documentId]);
-          return r.rows[0]?.extracted_text ?? "";
-        });
-        return stored;
+      const textOf = async (documentId: string): Promise<string> => {
+        const read = async () =>
+          withTenant(TENANT_ID, async (client) => {
+            const r = await client.query<{ extracted_text: string | null }>(
+              "select extracted_text from documents where id = $1 and run_id = $2 and tenant_id = $3",
+              [documentId, runId, TENANT_ID],
+            );
+            if (r.rowCount !== 1) throw new Error("That document is not in this project.");
+            return r.rows[0].extracted_text;
+          });
+        // A document whose text was never read (an old upload) is read now, the same way Import does.
+        const text = (await read()) ?? (await readContextDocument(TENANT_ID, runId, documentId), await read());
+        return text ?? "";
       };
-      const [briefText, proposalText] = await Promise.all([
-        briefFile ? storeAndExtractText(briefFile) : Promise.resolve(null),
-        proposalFile ? storeAndExtractText(proposalFile) : Promise.resolve(null),
-      ]);
+      const [briefText, proposalText] = await Promise.all([briefId ? textOf(briefId) : Promise.resolve(null), proposalId ? textOf(proposalId) : Promise.resolve(null)]);
       const extracted = await extractBriefFields(TENANT_ID, runId, { briefText, proposalText });
       businessProblem = businessProblem ?? extracted.businessProblem;
       objective = objective ?? extracted.researchObjective;

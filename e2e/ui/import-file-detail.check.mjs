@@ -3,7 +3,7 @@
 // the selected file. Real browser on the disposable stack (model replay).
 //   1. A questionnaire linked to a raw data file is listed on that file's card ("Linked"), and the
 //      file count includes it, so nothing imported is missing from the list.
-//   2. Selecting a brief or report shows what that file is for, with "Review research quality",
+//   2. Selecting a brief shows what that file is for, with "Review research quality",
 //      which opens that module with the document highlighted.
 //   3. Project totals are one line, not the body of the pane.
 import { expect, test } from "@playwright/test";
@@ -24,7 +24,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   const ui = await bind({ page, target, testInfo });
   const run = await ui.createRun({ name: `import-detail-${Date.now()}` });
   await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
-  await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "report");
+  await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "brief");
 
   // The questionnaire, through the Questionnaire or guide control.
   const form = page.locator("form", { has: page.locator('input[name="instrumentFiles"]') });
@@ -42,7 +42,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await page.getByText("client-brief.docx", { exact: true }).first().click();
   const purpose = page.getByTestId("file-purpose");
   await expect(purpose).toBeVisible();
-  await expect(purpose).toContainText(/brief|Report/);
+  await expect(purpose).toContainText(/brief or proposal/);
   // Totals name every kind, questionnaires included.
   await expect(page.getByTestId("project-totals")).toContainText("1 questionnaire(s) or guide(s)");
   await expect(page.getByText(/findings so far$/)).toHaveCount(0);

@@ -45,6 +45,8 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     // Through the Import screen's Brief and Proposal pickers (added 2026-10-19).
     await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "brief");
     await ui.upload(run, path.join(FIXTURE, "report.docx"), "proposal");
+    // A report is not a brief or proposal: it is not offered for review (Grant 2026-10-19).
+    await ui.upload(run, path.join(FIXTURE, "questionnaire.docx"), "report");
     const usage = async () => Number((await db.query(`select count(*) from trace where run_id=$1 and event='api_usage' and detail->>'agent' like 'research_quality%'`, [run.id])).rows[0].count);
 
     // 1. open the section: no model call; the menu order agreed 2026-10-18 still holds
@@ -57,6 +59,8 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     for (const title of ["Briefs and proposals", "Dashboard", "Criterion details"]) await expect(section.getByRole("heading", { name: title, exact: true })).toBeVisible({ timeout: 60_000 });
     const card = (name) => section.locator("[data-document-id]").filter({ hasText: name });
     await expect(card("client-brief.docx")).toBeVisible();
+    await expect(card("questionnaire.docx")).toHaveCount(0);
+    await expect(section.locator("[data-document-id]")).toHaveCount(2);
     // The role recorded at upload is shown on each document.
     await expect(card("client-brief.docx").getByTestId("rq-doc-role")).toHaveText("Brief");
     await expect(card("report.docx").getByTestId("rq-doc-role")).toHaveText("Proposal");

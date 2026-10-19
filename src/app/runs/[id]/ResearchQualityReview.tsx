@@ -159,7 +159,12 @@ function DocumentList({
   onStarted: (id: string) => void;
   reload: () => Promise<void>;
 }) {
-  const docs = view.documents.filter((d) => REVIEWABLE.test(d.filename));
+  // Only briefs and proposals (Grant 2026-10-19): documents imported as context (a brief or proposal,
+  // kind "evidence") and any document already given a brief or proposal role, for example a brief that
+  // was added under Reports and reviewed as one. Reports, questionnaires and data are not listed.
+  const docs = view.documents.filter(
+    (d) => REVIEWABLE.test(d.filename) && d.kind !== "instrument" && (d.kind === "evidence" || (d.source?.roles ?? []).some((r) => r === "brief" || r === "proposal")),
+  );
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
@@ -188,7 +193,7 @@ function DocumentList({
     onStarted(res.reviewId);
   }
 
-  if (docs.length === 0) return <p className="text-xs text-muted">No briefs or proposals yet. Add one under Import data or Set Objectives; Word, PDF and text files can be reviewed.</p>;
+  if (docs.length === 0) return <p className="text-xs text-muted">No briefs or proposals yet. Add one under Import data with the Brief or Proposal picker; Word, PDF and text files can be reviewed.</p>;
   const reviewsOf = (documentId: string) => view.reviews.filter((x) => x.kind && x.kind !== "proposal_vs_brief" && x.sources.some((s) => s.documentId === documentId));
   const comparisons = view.reviews.filter((x) => x.kind === "proposal_vs_brief");
   const older = view.reviews.filter((x) => !x.kind);
