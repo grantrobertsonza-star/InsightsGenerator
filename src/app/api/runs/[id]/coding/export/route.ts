@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
 import { crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
 import { kappaBand } from "@/lib/qualAudit";
+import { getTranscriptSetups } from "@/lib/transcriptSetup";
 import {
   cooccurrence,
   themesByAttribute,
@@ -778,6 +779,23 @@ export async function GET(
     ),
   );
   add("Respondents by theme", sheet(matrixHeaders, matrixOut));
+  // Each coded transcript's wave as recorded on Import (migration 0107), so a reader of this file
+  // knows which round each transcript is. Blank when none was given. Themes are not compared
+  // across waves here, and this sheet says so rather than implying it.
+  const setups = await getTranscriptSetups(TENANT_ID, runId);
+  add(
+    "Transcripts",
+    sheet(
+      ["Transcript", "Wave", "Accepted for coding", "Note"],
+      data.books.map((b, i) => [
+        fileName.get(b.document_id) ?? b.document_id,
+        setups.get(b.document_id)?.wave ?? "",
+        setups.get(b.document_id)?.confirmed ? "Yes" : "No",
+        i === 0 ? "Waves are recorded for reference; themes are not yet compared across waves." : "",
+      ]),
+      [40, 16, 18, 60],
+    ),
+  );
   add(
     "Negative cases",
     sheet(

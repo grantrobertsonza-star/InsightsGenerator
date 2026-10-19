@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { saveTranscriptSetupAction } from "@/lib/codingAnalysisActions";
+import { saveTranscriptSetupAction, withdrawTranscriptSetupAction } from "@/lib/codingAnalysisActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
 import { readDataFileAction, saveDataSetupAction } from "@/lib/dataSetupActions";
 import { displayDay, displayUtcMinute } from "@/lib/displayDate";
@@ -86,6 +86,8 @@ type Row = {
   // Data quality for the imported table(s), prepared on the server.
   quality?: React.ReactNode;
   initial: TranscriptSetup | null;
+  /** Transcripts: migration 0107 is applied, so the wave and Undo accept can be saved. */
+  waveAvailable?: boolean;
   suggestion: SetupSuggestion | null;
   hasCoding: boolean;
   accent: { border: string; dot: string };
@@ -525,12 +527,18 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
 function SetupRow({ runId, row }: { runId: string; row: Row }) {
   const { initial } = row;
   const wasConfirmed = initial?.confirmed ?? false;
+  // Undone by the researcher (Undo accept): choices kept and shown, never accepted again by itself.
+  const wasWithdrawn = initial?.withdrawn ?? false;
   const [choice, setChoice] = useState<Choice>({
-    sessionType: wasConfirmed ? (initial?.sessionType ?? "") : "",
+    sessionType: wasConfirmed || wasWithdrawn ? (initial?.sessionType ?? "") : "",
     mode: initial?.mode ?? "auto",
     style: initial?.style ?? "",
   });
   const [confirmed, setConfirmed] = useState(wasConfirmed);
+  const [waveText, setWaveText] = useState(initial?.wave ?? "");
+  // The wave sent with every save: the last value left in the box, so a dropdown save never
+  // drops it and a wave edit never needs its own request shape.
+  const savedWave = useRef<string | null>(initial?.wave ?? null);
   const [changedAfterCoding, setChangedAfterCoding] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -556,6 +564,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
         sessionType: toSave.sessionType,
         mode: toSave.mode,
         style: toSave.style === "" ? null : toSave.style,
+        ...(row.waveAvailable ? { wave: savedWave.current } : {}),
       });
       if (r.ok) {
         setConfirmed(true);
@@ -588,7 +597,7 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
   // dropdowns stay open to change it.
   const autoRan = useRef(false);
   useEffect(() => {
-    if (wasConfirmed || autoRan.current) return;
+    if (wasConfirmed || wasWithdrawn || autoRan.current) return;
     autoRan.current = true;
     const first: Choice = {
       sessionType: sug?.sessionType ?? "individual",
@@ -600,6 +609,23 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const showSuggestion = sug !== null && confirmed && sug.sessionType !== choice.sessionType;
+
+  async function undoAccept() {
+    setError(null);
+    setPending(true);
+    const r = await withdrawTranscriptSetupAction(runId, row.documentId);
+    setPending(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setConfirmed(false);
+    window.dispatchEvent(new CustomEvent(SETUP_EVENT, { detail: { documentId: row.documentId, withdrawn: true } }));
+  }
+
+  function acceptAgain() {
+    save({ ...choice, sessionType: choice.sessionType || sug?.sessionType || "individual" });
+  }
   const note = error
     ? error
     : changedAfterCoding
@@ -679,8 +705,30 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
           ))}
         </select>
         </Field>
+        <Field label="Wave (optional)">
+          <input
+            aria-label={`Wave: ${row.filename}`}
+            disabled={!ready || row.waveAvailable !== true}
+            className={`${select} w-full`}
+            placeholder="e.g. Wave 1, Baseline"
+            value={waveText}
+            onChange={(e) => setWaveText(e.target.value)}
+            onBlur={() => {
+              const next = waveText.trim() || null;
+              if (next === savedWave.current) return;
+              savedWave.current = next;
+              save({ ...choice, sessionType: choice.sessionType || sug?.sessionType || "individual" });
+            }}
+          />
+          <p className="col-span-2 mt-1 text-[10px] text-muted">
+            {row.waveAvailable === false
+              ? "The wave needs database update 0107 before it can be saved."
+              : "Label this transcript as a tracking wave to compare repeated interviews or groups using the same guide. Shown in Coding; themes are not yet compared across waves."}
+          </p>
+        </Field>
       </div>
       <LoadingHint ready={ready} />
+      {row.detail && <p className="text-[11px] text-muted">{row.detail}</p>}
       {showSuggestion && sug && (
         <p className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
           Looks like{" "}
@@ -704,6 +752,26 @@ function SetupRow({ runId, row }: { runId: string; row: Row }) {
           </button>
         </p>
       )}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <p className="max-w-md text-[11px] text-muted">
+          {confirmed
+            ? "Accepted. Open Coding to code its themes. If you change the set-up above, run Code themes again for this file."
+            : "Not accepted: Coding skips this transcript. Check the set-up above, then accept it."}
+        </p>
+        <button
+          type="button"
+          disabled={pending || !ready || (confirmed && row.waveAvailable !== true)}
+          title={confirmed && row.waveAvailable !== true ? "Undo accept needs database update 0107" : undefined}
+          onClick={() => (confirmed ? void undoAccept() : acceptAgain())}
+          className={
+            confirmed
+              ? "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:border-slate-400 disabled:opacity-50"
+              : "rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+          }
+        >
+          {confirmed ? "Undo accept" : "Accept transcript"}
+        </button>
+      </div>
       {note && (
         <p className={`text-[11px] ${error ? "text-danger" : "text-muted"}`}>
           {note}
@@ -794,10 +862,17 @@ export function CodeGate({
     function onSaved(e: Event) {
       const d = (e as CustomEvent).detail as {
         documentId: string;
-        sessionType: "individual" | "focus_group";
-        mode: SegmentMode;
+        sessionType?: "individual" | "focus_group";
+        mode?: SegmentMode;
+        /** Undo accept: coding waits until the transcript is accepted again. */
+        withdrawn?: boolean;
       };
       if (d.documentId !== documentId) return;
+      if (d.withdrawn) {
+        setSummary(null);
+        return;
+      }
+      if (!d.sessionType || !d.mode) return;
       const session = SESSION_LABEL[d.sessionType];
       const mode = MODE_LABEL[d.mode];
       setSummary(session && mode ? `${session}; ${mode}` : "saved");

@@ -15,7 +15,7 @@ import {
 } from "./codingOverrides";
 import { saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
 import { addMemo, deleteMemo, reuseCodebook } from "./codingMemos";
-import { saveTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
+import { saveTranscriptSetup, withdrawTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
 import {
   applyMajorityCoding,
   addVariableLink,
@@ -279,9 +279,13 @@ export async function saveTranscriptSetupAction(
     sessionType: "individual" | "focus_group";
     mode: SegmentMode;
     style: InterviewStyle | null;
+    wave?: string | null;
   },
 ) {
   const TENANT_ID = await requireTenantId();
+  if (setup.wave !== undefined && setup.wave !== null && typeof setup.wave !== "string") {
+    return { ok: false, error: "The wave must be text." } as ActionResult;
+  }
   // No revalidatePath: the setup grid keeps its own state, and re-rendering
   // this whole page for three dropdowns is what made it feel slow.
   try {
@@ -292,6 +296,17 @@ export async function saveTranscriptSetupAction(
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     } as ActionResult;
+  }
+}
+
+/** Undo accept for one transcript: it goes back to "Needs review" and coding skips it until accepted again. */
+export async function withdrawTranscriptSetupAction(runId: string, documentId: string) {
+  const TENANT_ID = await requireTenantId();
+  try {
+    await withdrawTranscriptSetup(TENANT_ID, runId, documentId);
+    return { ok: true } as ActionResult;
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) } as ActionResult;
   }
 }
 

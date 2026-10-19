@@ -136,6 +136,7 @@ import {
   findUnconfirmedTranscripts,
   getSetupSuggestions,
   getTranscriptSetups,
+  transcriptWaveAvailable,
   SETUP_NEEDED_MESSAGE,
 } from "@/lib/transcriptSetup";
 import { loadDataSetups } from "@/lib/dataSetup";
@@ -3148,6 +3149,7 @@ export default async function RunPage({
     decisionRefreshIsPending,
     earlierDecisionCounts,
     deletionImpact,
+    transcriptWaveSaves,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3191,6 +3193,7 @@ export default async function RunPage({
     timing("decisionContextMismatch", decisionContextMismatch(TENANT_ID, id)),
     // GT-010: what deleting each document takes with it, for its confirmation.
     timing("deletionImpact", loadDocumentDeletionImpact(TENANT_ID, id)),
+    timing("transcriptWaveAvailable", transcriptWaveAvailable(TENANT_ID)),
   ]);
   if (!run) {
     notFound();
@@ -4648,6 +4651,13 @@ export default async function RunPage({
                                       </details>
                                     );
                                   })()}
+                                {doc.kind === "transcript" && transcriptSetups.get(doc.id)?.wave && (
+                                  // Recorded on Import (migration 0107). Shown so a coder knows which
+                                  // round this is; themes are not yet compared across waves.
+                                  <p className="text-[11px] text-muted" data-testid="coding-wave">
+                                    {`Wave: ${transcriptSetups.get(doc.id)!.wave}`}
+                                  </p>
+                                )}
                                 {doc.kind === "transcript" && (
                                   <CodeGate
                                     documentId={doc.id}
@@ -5355,10 +5365,13 @@ export default async function RunPage({
                         ? d.ingestion_type === "raw"
                           ? "Case-level data. Tables are built in Analysis, Analytics once you accept it here."
                           : "Already-aggregated table, read as it is."
-                        : d.kind === "report"
+                        : d.kind === "transcript"
+                          ? "Qualitative data. Themes are coded in Analysis, Coding once you accept it here."
+                          : d.kind === "report"
                           ? "Report, read for the findings it states."
                           : "Context for the project, not mined for findings.",
                     initial: transcriptSetups.get(d.id) ?? null,
+                    waveAvailable: transcriptWaveSaves,
                     suggestion: setupSuggestions.get(d.id) ?? null,
                     hasCoding: codebooksByDocument.has(d.id),
                     accent:
