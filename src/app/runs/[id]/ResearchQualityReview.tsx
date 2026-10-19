@@ -344,6 +344,7 @@ function StartPanel({ runId, view, preselect, onCancel, onStarted }: { runId: st
 function ReviewBody({ runId, view, tab, reload }: { runId: string; view: ResearchQualityView; tab: Tab; reload: () => Promise<void> }) {
   const r = view.review!;
   const ov = useMemo(() => overview(r.observations), [r.observations]);
+  const notApplied = r.manifest.criteria.filter((c) => c.status !== "selected");
   const [retryMsg, setRetryMsg] = useState<string | null>(null);
   const failedSteps = (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
   return (
@@ -392,12 +393,24 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
           <p className="text-xs text-muted">{`${ov.awaitingReview} awaiting your review. ${ov.requiresReview} need review because a source changed or could not be checked.`}</p>
           <SourceFreshness view={view} />
           <Scorecard view={view} />
-          {r.manifest.criteria.filter((c) => c.status !== "selected").length > 0 && (
-            <details className="text-xs">
-              <summary>Criteria not assessed in this review</summary>
-              <ul className="list-disc pl-5">{r.manifest.criteria.filter((c) => c.status !== "selected").map((c) => <li key={c.criterionId}>{`${c.criterionId} (${c.status}): ${c.reason}`}</li>)}</ul>
+          {/* Criteria left out of this review, folded away: a list of names and reasons only, never
+              assessments. The assessed criteria follow under their own heading, so the first
+              detail card is not read as belonging to this list. */}
+          {notApplied.length > 0 && (
+            <details className="rounded-lg border border-dashed border-border px-3 py-2 text-xs" data-testid="rq-criteria-not-applied">
+              <summary className="cursor-pointer text-muted">{`Criteria that did not apply to these documents (${notApplied.length})`}</summary>
+              <p className="mt-1 text-muted">Left out because of the documents, roles or study type chosen. Nothing was assessed for these.</p>
+              <ul className="mt-1 list-disc pl-5">
+                {notApplied.map((c) => (
+                  <li key={c.criterionId}>
+                    <span className="font-medium">{criterionShortLabel(c.criterionId)}</span>
+                    {`: ${c.status === "unresolved" ? "not decided" : "did not apply"}, ${c.reason}.`}
+                  </li>
+                ))}
+              </ul>
             </details>
           )}
+          <h4 className="mt-3 text-xs font-semibold text-foreground">{`Criterion details (${r.observations.length})`}</h4>
           {r.observations.length === 0 && r.state !== "running" && r.state !== "pending" && <p className="text-sm text-muted">No observations were published.</p>}
           {r.observations.map((o) => <ObservationCard key={o.versionId} runId={runId} o={o} view={view} reload={reload} />)}
         </>
@@ -603,7 +616,8 @@ function ObservationCard({ runId, o, view, reload }: { runId: string; o: Observa
   return (
     <article className="rounded-lg border border-border bg-white p-3 text-xs" data-testid="rq-observation" data-criterion={o.criterionId} data-status={o.status} data-freshness={o.freshness} data-observation-id={o.observationId}>
       <div className="flex flex-wrap items-baseline gap-2">
-        <span className="font-semibold">{o.criterionId}</span>
+        <span className="font-semibold">{criterionShortLabel(o.criterionId)}</span>
+        <span className="text-[10px] text-muted">{o.criterionId}</span>
         <span className="text-muted">{o.question}</span>
       </div>
       {o.freshness !== "current" && <p className="mt-1 rounded bg-amber-50 p-1.5 text-amber-900" role="status">{o.freshness === "requires_review" ? `Requires review: ${o.freshnessReason}` : "Could not check whether its sources changed."}</p>}

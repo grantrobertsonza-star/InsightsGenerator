@@ -125,6 +125,12 @@ test("research quality review: start, review, decide, conflict, clarify, export"
       expect(cell.length).toBeLessThan(hover.length);
       expect(cell).not.toContain("?");
     }
+    // 4d. criteria that did not apply are a folded list of names and reasons with a count, and the
+    // assessed criteria sit under their own heading, never inside that list.
+    const notApplied = section.getByTestId("rq-criteria-not-applied");
+    await expect(notApplied.locator("summary")).toHaveText(/^Criteria that did not apply to these documents \(\d+\)$/);
+    expect(await notApplied.getByTestId("rq-observation").count()).toBe(0);
+    await expect(section.getByRole("heading", { name: /^Criterion details \(\d+\)$/ })).toBeVisible();
     await section.getByRole("tab", { name: "Improvements" }).click();
     await expect(section.getByTestId("rq-gap-recommendations")).toContainText("Missing or partial elements");
     await section.getByRole("tab", { name: "Overview" }).click();
