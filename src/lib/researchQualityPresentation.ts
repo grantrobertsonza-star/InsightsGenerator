@@ -1,6 +1,6 @@
 // Research Quality Review v1: presentation rules shared by the screen and the DOCX export. Pure
 // (no database, no server code), so the client component can import it.
-import criteriaRelease from "../research-quality/criteria/RQC-5.json";
+import criteriaRelease from "../research-quality/criteria/RQC-6.json";
 import type { DocumentedFact, ObservationPayload, ReviewManifest } from "./researchQualityTypes";
 import type { ObservationView } from "./researchQualityView";
 
@@ -94,6 +94,8 @@ export const CRITERION_SHORT_LABEL: Record<string, string> = {
   "RQ-PROP-METHOD": "Method suitability",
   "RQ-PROP-DESIGN": "Research design",
   "RQ-PROP-SAMPLE": "Sample",
+  "RQ-PROP-SAMPLE-SIZE": "Sample size and precision",
+  "RQ-PROP-SAMPLE-METHOD": "Sampling method",
   "RQ-PROP-ANALYSIS": "Analysis plan",
   "RQ-PROP-PRODUCTS": "Deliverables",
   "RQ-PROP-TIMELINE": "Timeline",

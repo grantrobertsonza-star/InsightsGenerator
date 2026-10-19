@@ -923,6 +923,36 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       expect(listed).toMatchObject({ kind: "proposal_vs_brief", sources: [{ documentId: prop, roles: ["proposal"] }, { documentId: brief, roles: ["brief"] }] });
     });
 
+    it("RQC-6: a proposal review rates sampling twice and checks each stated margin of error by code; the export shows it", async () => {
+      const text =
+        "Precision proposal.\nWe will interview a sample of 500 respondents, giving a margin of error of ±2% at 95% confidence.\n" +
+        "Results for the total of 1,000 interviews carry a margin of error of ±3.1%.\nSubgroups of 200 men and 300 women have a margin of error of ±6%.\n";
+      const id = await kindStart("proposal", [await addDoc(A, runA, "precision-proposal.txt", Buffer.from(text))]);
+      const v = (await viewOf(id)).review!;
+      const selected = v.manifest.criteria.map((c) => c.criterionId);
+      expect(selected).toEqual(expect.arrayContaining(["RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD"]));
+      expect(selected).not.toContain("RQ-PROP-SAMPLE");
+      const method = v.dashboards[0].dimensions.find((x) => x.dimensionId === "method")!;
+      expect(method.criteria.map((c) => c.criterionId)).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"]);
+      // Frozen with the review, from the text it assessed: one understated, one consistent, one not checked.
+      expect(v.manifest.precisionChecks).toHaveLength(1);
+      const checks = v.manifest.precisionChecks![0].checks;
+      expect(checks.map((c) => (c.kind === "checked" ? [c.n, c.statedMargin, c.verdict] : ["not_checked", c.reason]))).toEqual([
+        [500, 2, "understated"],
+        [1000, 3.1, "consistent"],
+        ["not_checked", "More than one sample size in the sentence (a total and subgroups, for example)."],
+      ]);
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const doc = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(doc).toContain("Margin of error, calculated (not the model&apos;s rating");
+      expect(doc).toContain("n=500 at 95% gives about ±4.4 points, not ±2. ±2 would need about n=2,401.");
+    });
+
+    it("a brief review makes no margin-of-error check", async () => {
+      const v = (await viewOf(await kindStart("brief", [await addDoc(A, runA, "moe-brief.txt", Buffer.from("Brief.\nA sample of 500 respondents gives a margin of error of ±2%.\n"))]))).review!;
+      expect(v.manifest.precisionChecks).toBeUndefined();
+    });
+
     it("refuses a wrong number of documents, the same document twice and an unknown kind, creating nothing", async () => {
       const before = (await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n;
       const prop = await proposal();
@@ -943,7 +973,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const id = await start([{ documentId: await briefDoc("db-brief"), roles: ["brief"] }]);
       const v = await viewOf(id);
       expect(v.review!.state).toBe("complete");
-      expect(v.review!.criteriaRelease).toBe("RQC-5");
+      expect(v.review!.criteriaRelease).toBe("RQC-6");
       expect(v.review!.dashboardNote).toBeNull();
       const [d] = v.review!.dashboards;
       expect(d.dashboardId).toBe("brief");
@@ -991,10 +1021,11 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
         points += x.weight * x.score!;
       }
       expect(d.pct).toBe(Math.round((points / (100 * 5)) * 100));
-      // The stand-in rates the sample 3 (a recruitment fact is cited) and the rest 0: method (0+0+3+0+0)/5 = 0.6,
-      // so 36 x 0.6 = 21.6 of 500 -> 4%.
-      expect(d.dimensions[0].score).toBeCloseTo(0.6, 10);
-      expect(d.pct).toBe(4);
+      // The stand-in rates each sampling criterion 3 (a recruitment fact is cited) and the rest 0. Under
+      // RQC-6 sampling is two items, size and method: method (0+0+3+3+0+0)/6 = 1.0, so 36 x 1.0 = 36 of
+      // 500 -> 7.2% -> 7%. (Under RQC-5, with one Sample item, it was (0+0+3+0+0)/5 = 0.6 and 4%.)
+      expect(d.dimensions[0].score).toBeCloseTo(1, 10);
+      expect(d.pct).toBe(7);
       expect(v.review!.dashboards.map((x) => x.dashboardId)).toEqual(["proposal"]); // no brief, no brief dashboard
     });
 

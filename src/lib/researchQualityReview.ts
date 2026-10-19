@@ -16,6 +16,7 @@
 // tools besides the one structured answer. A task's answer is published only by the lease that
 // claimed it. Attempts are bounded per task and per review. Grant's decision (2026-10-16): no
 // monetary cap; the estimate is shown before the explicit start and actual cost is recorded.
+import { findPrecisionChecks } from "./marginOfError";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { estimateCostUsd, logApiUsage } from "./apiUsage";
 import {
@@ -161,6 +162,8 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
   const sources: ReviewManifest["sources"] = [];
   let total = 0;
   let truncated = false;
+  // The text each source is assessed on, for the calculated margin-of-error check below.
+  const assessedText = new Map<string, string>();
   for (const s of input.sources) {
     const doc = await loadOwnedDocument(tenantId, runId, s.documentId);
     const { sourceId } = await saveSourceRoles(tenantId, runId, s.documentId, s.roles, null);
@@ -172,6 +175,7 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     if (assessed < snap.canonicalText.length) truncated = true;
     total += assessed;
     sources.push({ sourceId, sourceVersionId: versionId, documentId: s.documentId, filename: snap.filename, roles: s.roles, canonicalSha256: snap.canonicalSha256, charCount: snap.canonicalText.length, assessedRanges: ranges });
+    assessedText.set(versionId, ranges.map((r) => snap.canonicalText.slice(r.start, r.end)).join("\n"));
   }
   const clarifications = await withTenant(tenantId, async (client) =>
     (
@@ -204,6 +208,12 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     limits,
     checklistRelease: null,
   };
+  // RQC-6: beside the model's "Sample size and precision" rating, code checks every stated margin of
+  // error against the sample size stated with it (marginOfError.ts), on the same text the review
+  // assesses. Done once here and frozen with the review, so it never changes after the fact.
+  if (criteria.some((c) => c.criterionId === "RQ-PROP-SAMPLE-SIZE")) {
+    manifest.precisionChecks = sources.map((src) => ({ sourceVersionId: src.sourceVersionId, filename: src.filename, checks: findPrecisionChecks(assessedText.get(src.sourceVersionId) ?? "") }));
+  }
   // Element checklists belong to the older multi-document review; a kind review is rated on its
   // dashboard's criteria only.
   const checklistReady = !input.kind && (await checklistAvailable(tenantId));

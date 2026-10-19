@@ -118,14 +118,19 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     const method = proposal.locator('[data-criterion="method"]');
     const items = method.locator("li[data-sub-criterion]");
     await expect(method).toHaveAttribute("data-state", "rated", { timeout: 3 * 60_000 });
-    expect(await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-sub-criterion")))).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"]);
+    expect(await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-sub-criterion")))).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"]);
     const itemScores = (await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-score")))).filter((v) => v !== "none").map(Number);
     expect(itemScores.length).toBeGreaterThan(0);
     expect(Number(await method.getAttribute("data-score"))).toBeCloseTo(itemScores.reduce((a, b) => a + b, 0) / itemScores.length, 6);
     await expect(proposal.locator('[data-criterion="price"] li[data-sub-criterion]')).toHaveCount(0); // one item: no list
     await method.locator("button").first().click();
     await expect(details.getByRole("heading", { name: "Methodological rigour" })).toBeVisible();
-    await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(5);
+    await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(6);
+    // RQC-6: the calculated margin-of-error check sits under Sample size and precision, labelled as code's,
+    // not the model's; this fixture states no margin, and says so rather than showing nothing.
+    const precision = details.locator('[data-criterion="RQ-PROP-SAMPLE-SIZE"]').getByTestId("rq-precision-checks");
+    await expect(precision).toContainText("Margin of error, calculated (not the model's rating)");
+    await expect(precision).toContainText(/No margin of error is stated|Consistent|Claims more precision|Wider than needed|Not checked/);
     // Each document lists its own reviews.
     await expect(card("client-brief.docx").getByRole("button", { name: /^Brief review/ })).toHaveCount(1);
     await expect(card("report.docx").getByRole("button", { name: /^Proposal review/ })).toHaveCount(1);

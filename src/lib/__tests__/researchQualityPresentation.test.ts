@@ -1,7 +1,7 @@
 // Scorecard short names: every criterion in the shipped criteria release has one, names are keyed by
 // the stable id (not wording), and an unknown id falls back to the id itself rather than to blank.
 import { describe, expect, it } from "vitest";
-import criteria from "../../research-quality/criteria/RQC-5.json";
+import criteria from "../../research-quality/criteria/RQC-6.json";
 import { CRITERION_SHORT_LABEL, criterionShortLabel } from "../researchQualityPresentation";
 
 describe("criterion short names", () => {

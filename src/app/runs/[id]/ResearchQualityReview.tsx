@@ -11,6 +11,7 @@
 // only a confirmed start, "Retry failed steps" and "Continue review" do. A response that arrives
 // after the researcher switched review is dropped (request sequence), so an older answer never
 // overwrites a newer choice. Reviews made before review kinds stay readable, in their older format.
+import { precisionCheckText } from "@/lib/marginOfError";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   estimateResearchQualityReviewAction,
@@ -581,6 +582,33 @@ function CriterionDetails({ view, selected }: { view: ResearchQualityView; selec
   );
 }
 
+/**
+ * RQC-6: the calculated margin-of-error check beside "Sample size and precision" (marginOfError.ts),
+ * made by code when the review was prepared, not by the model, and labelled as such.
+ */
+function PrecisionChecks({ checks }: { checks: NonNullable<ResearchQualityView["review"]>["manifest"]["precisionChecks"] }) {
+  if (!checks) return null;
+  const all = checks.flatMap((c) => c.checks.map((k) => ({ ...k, filename: c.filename })));
+  return (
+    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2" data-testid="rq-precision-checks">
+      <p className="font-medium">Margin of error, calculated (not the model&apos;s rating)</p>
+      {all.length === 0 ? (
+        <p className="mt-0.5 text-muted">No margin of error is stated in the text reviewed, so there is nothing to check.</p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1.5">
+          {all.map((k, i) => (
+            <li key={i} data-verdict={k.kind === "checked" ? k.verdict : "not_checked"}>
+              <p className={k.kind === "checked" && k.verdict === "understated" ? "font-medium text-amber-800" : "text-foreground"}>{precisionCheckText(k)}</p>
+              <p className="text-muted">{`“${k.quote}” ${k.filename}`}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-1 text-[10px] text-muted">For a proportion of 50% (the widest margin), without a finite-population correction.</p>
+    </div>
+  );
+}
+
 function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; criterionId: string }) {
   const r = view.review!;
   const obs: ObservationView[] = r.observations.filter((o) => o.criterionId === criterionId && o.status !== "dismissed");
@@ -610,6 +638,7 @@ function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; cri
           {first.payload.rating.reason}
         </p>
       )}
+      {criterionId === "RQ-PROP-SAMPLE-SIZE" && <PrecisionChecks checks={r.manifest.precisionChecks} />}
       {obs.some((o) => o.payload.statements.length > 0) && (
         <div className="mt-2">
           <p className="font-medium">In the document&apos;s words</p>

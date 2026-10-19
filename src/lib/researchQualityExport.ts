@@ -5,6 +5,7 @@
 // uncertainty, the improvement plan, clarifications and researcher decisions and wording. Stale,
 // unknown and partial states are labelled in the text. Dismissed observations leave the
 // improvement plan and are listed, with the dismissal, in an appendix.
+import { precisionCheckText } from "./marginOfError";
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
 import { safeFileStem } from "./docxReport";
 import { REVIEW_KIND_LABEL, ROLE_LABEL, type ObservationPayload } from "./researchQualityTypes";
@@ -72,6 +73,13 @@ async function buildKindDocx(view: ResearchQualityView, projectName: string | nu
         if (x.categoryLabel) body.push(p(`${criterionShortLabel(c.criterionId)}: ${c.score === null ? c.label : `${c.score}/5, ${c.label}`}`, { bold: true }));
         body.push(p(obs[0]?.question ?? c.criterionId, { italics: true }));
         if (c.reason) body.push(p(`Why: ${c.reason}`));
+        if (c.criterionId === "RQ-PROP-SAMPLE-SIZE" && r.manifest.precisionChecks) {
+          // RQC-6: the calculated check, by code, said apart from the model's rating.
+          const checks = r.manifest.precisionChecks.flatMap((x) => x.checks.map((k) => ({ ...k, filename: x.filename })));
+          body.push(p("Margin of error, calculated (not the model's rating; a proportion of 50%, no finite-population correction):", { italics: true }));
+          if (checks.length === 0) body.push(bullet("No margin of error is stated in the text reviewed, so there is nothing to check."));
+          for (const k of checks) body.push(bullet(`${precisionCheckText(k)} "${k.quote}" (${k.filename})`));
+        }
         for (const o of obs) for (const st of o.payload.statements) body.push(bullet(`"${st.exactQuote}" (${r.manifest.sources.find((s) => s.sourceVersionId === st.sourceVersionId)?.filename ?? "document"})`));
         const imp = obs[0]?.payload.improvement;
         if (imp && (imp.currentAction || imp.futureAction)) body.push(p(`To improve: ${[imp.currentAction, imp.futureAction].filter(Boolean).join(" ")}`));

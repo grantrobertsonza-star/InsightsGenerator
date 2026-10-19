@@ -21,7 +21,8 @@ describe("criterion applicability", () => {
     expect(s["RQ-BRIEF-DECISION"].status).toBe("selected");
     expect(s["RQ-BRIEF-BACKGROUND"].status).toBe("selected");
     expect(s["RQ-BRIEF-BUDGET"].status).toBe("selected");
-    expect(s["RQ-PROP-SAMPLE"].status).toBe("excluded");
+    expect(s["RQ-PROP-SAMPLE-SIZE"].status).toBe("excluded");
+    expect(s["RQ-PROP-SAMPLE-METHOD"].status).toBe("excluded");
     expect(s["RQ-SAMPLE-RECRUIT"].status).toBe("excluded");
     expect(s["RQ-SAMPLE-RECRUIT"].reason).toMatch(/no plan or methodology document yet/);
     expect(s["RQ-DESIGN-ALIGN"].reason).toMatch(/no plan/);
@@ -169,7 +170,9 @@ describe("brief and proposal rubric (RQC-2)", () => {
     const alone = byId(selectCriteria("improve_planned", "quantitative", ["proposal"], 1));
     expect(alone["RQ-PROP-RESTATEMENT"].reason).toMatch(/assessed on its own/);
     expect(alone["RQ-BRIEF-OBJECTIVES"].status).toBe("excluded");
-    for (const id of ["RQ-PROP-LITERATURE", "RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE", "RQ-PROP-ANALYSIS", "RQ-PROP-PRODUCTS", "RQ-PROP-TIMELINE", "RQ-PROP-BUDGET", "RQ-PROP-OBJECTIVES-ADDED"]) expect(alone[id].status).toBe("selected");
+    // RQC-6: sampling is rated twice, size and precision, then method; the single Sample criterion is retired.
+    expect(alone["RQ-PROP-SAMPLE"]).toBeUndefined();
+    for (const id of ["RQ-PROP-LITERATURE", "RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD", "RQ-PROP-ANALYSIS", "RQ-PROP-PRODUCTS", "RQ-PROP-TIMELINE", "RQ-PROP-BUDGET", "RQ-PROP-OBJECTIVES-ADDED"]) expect(alone[id].status).toBe("selected");
     // A planned study's design is assessed under the proposal criteria, not twice.
     expect(withBrief["RQ-SAMPLE-RECRUIT"].status).toBe("excluded");
   });

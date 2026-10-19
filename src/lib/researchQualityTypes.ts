@@ -7,6 +7,7 @@
 // "Suitable as documented" is a bounded judgement about documents, not proof of execution, and a
 // researcher's acceptance means agreement, not scientific verification.
 
+import type { PrecisionCheck } from "./marginOfError";
 export const SOURCE_ROLES = ["brief", "proposal", "questionnaire", "discussion_guide", "methodology", "report", "fieldwork"] as const;
 export type SourceRole = (typeof SOURCE_ROLES)[number];
 export const ROLE_LABEL: Record<SourceRole, string> = {
@@ -129,6 +130,8 @@ export type ReviewManifest = {
   limits: ReviewLimits;
   /** The checklist release the documents are scored against (RQK-1 or later), or null when migration 0106 is not applied. Absent on reviews made before the checklist existed. */
   checklistRelease?: { release: string; hash: string } | null;
+  /** RQC-6: the calculated margin-of-error checks per source (marginOfError.ts), made when the review was prepared. Absent before RQC-6 and when the review has no "Sample size and precision" criterion. */
+  precisionChecks?: { sourceVersionId: string; filename: string; checks: PrecisionCheck[] }[];
 };
 
 export type ReviewLimits = { maxDocuments: number; maxCharsPerDocument: number; maxCharsTotal: number; maxAttempts: number; concurrency: number };

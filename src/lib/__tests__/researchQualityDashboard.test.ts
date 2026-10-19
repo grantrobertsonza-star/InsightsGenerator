@@ -1,7 +1,7 @@
 // The bird's-eye dashboard (RQC-3 brief dimensions). Expected figures are worked out by hand in each
 // case, not by calling the scorer's own formula.
 import { describe, expect, it } from "vitest";
-import criteria from "../../research-quality/criteria/RQC-5.json";
+import criteria from "../../research-quality/criteria/RQC-6.json";
 import { DASHBOARDS, dashboardBandFor, reviewDashboards } from "../researchQualityDashboard";
 
 const BRIEF = DASHBOARDS.find((d) => d.dashboardId === "brief")!;
@@ -78,9 +78,42 @@ describe("proposal dashboard (RQC-4 categories)", () => {
 
   it("uses Grant's minimum weights scaled to 100 over six categories that cover every active proposal criterion once", () => {
     expect(PROPOSAL.categories!.map((c) => [c.categoryId, c.weight])).toEqual([["method", 36], ["price", 18], ["team", 14], ["management", 14], ["compliance", 9], ["innovation", 9]]);
-    const active = criteria.criteria.filter((c) => c.group.startsWith("proposal") && !("retired" in c && c.retired)).map((c) => c.criterionId).sort();
-    expect([...all].sort()).toEqual(active);
+    const isRetired = (c: (typeof criteria.criteria)[number]) => "retired" in c && Boolean(c.retired);
+    const active = criteria.criteria.filter((c) => c.group.startsWith("proposal") && !isRetired(c)).map((c) => c.criterionId).sort();
+    // Retired criteria stay listed only so older reviews keep their items; new reviews never select them.
+    const retired = new Set(criteria.criteria.filter(isRetired).map((c) => c.criterionId));
+    expect([...all].filter((id) => !retired.has(id)).sort()).toEqual(active);
+    expect([...all].filter((id) => retired.has(id))).toEqual(["RQ-PROP-SAMPLE"]);
     expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("RQC-6: sampling is two items of Methodological rigour (size and precision; method)", () => {
+    const method = PROPOSAL.categories!.find((c) => c.categoryId === "method")!;
+    const now = method.criteria.filter((id) => id !== "RQ-PROP-SAMPLE");
+    expect(now).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE-SIZE", "RQ-PROP-SAMPLE-METHOD", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"]);
+    // A new review: six items, (5 + 3 + 1 + 5 + 3 + 3) / 6 = 20/6 = 3.33.
+    const d = reviewDashboards({
+      criteriaRelease: "RQC-6",
+      selectedCriteria: now,
+      observations: [obs("RQ-PROP-METHOD", 5), obs("RQ-PROP-DESIGN", 3), obs("RQ-PROP-SAMPLE-SIZE", 1), obs("RQ-PROP-SAMPLE-METHOD", 5), obs("RQ-PROP-ANALYSIS", 3), obs("RQ-PROP-LITERATURE", 3)],
+      assessState: done,
+    }).find((x) => x.dashboardId === "proposal")!;
+    const m = d.dimensions.find((x) => x.dimensionId === "method")!;
+    expect(m.criteria.map((c) => c.criterionId)).toEqual(now);
+    expect(m.score).toBeCloseTo(20 / 6, 10);
+  });
+
+  it("a review made before RQC-6 keeps its one Sample item and its score", () => {
+    const before = ["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"];
+    const d = reviewDashboards({
+      criteriaRelease: "RQC-5",
+      selectedCriteria: before,
+      observations: [obs("RQ-PROP-METHOD", 5), obs("RQ-PROP-DESIGN", 3), obs("RQ-PROP-SAMPLE", 3), obs("RQ-PROP-ANALYSIS", 5), obs("RQ-PROP-LITERATURE", 5)],
+      assessState: done,
+    }).find((x) => x.dashboardId === "proposal")!;
+    const m = d.dimensions.find((x) => x.dimensionId === "method")!;
+    expect(m.criteria.map((c) => c.criterionId)).toEqual(before);
+    expect(m.score).toBeCloseTo(21 / 5, 10);
   });
 
   it("scores a category as the average of its rated criteria, then weights the categories", () => {
