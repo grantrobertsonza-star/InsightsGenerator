@@ -3545,12 +3545,15 @@ export default async function RunPage({
   // is context, not mined for findings: its own quality is checked in Research quality review.
   const findingsByDocument = new Map<string, number>();
   for (const f of findings) if (f.source_document_id) findingsByDocument.set(f.source_document_id, (findingsByDocument.get(f.source_document_id) ?? 0) + 1);
+  // Each box carries a key, like `attached` and `quality` below: these elements are built inside the
+  // file list's map and rendered later in the right-hand pane, and React warns about an unkeyed
+  // element made in a list even when it is shown on its own.
   const purposeFor = (d: (typeof documents)[number]): React.ReactNode => {
     const box = "flex flex-col gap-2 rounded-lg border border-border bg-slate-50 p-3 text-xs text-foreground";
     const n = findingsByDocument.get(d.id) ?? 0;
     if (d.kind === "evidence")
       return (
-        <div className={box} data-testid="file-purpose">
+        <div key="purpose" className={box} data-testid="file-purpose">
           <p>Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions.</p>
           <p className="text-muted">Check how well it is written against good research practice:</p>
           <ReviewResearchQualityLink documentId={d.id} />
@@ -3558,27 +3561,27 @@ export default async function RunPage({
       );
     if (d.kind === "report")
       return (
-        <div className={box} data-testid="file-purpose">
+        <div key="purpose" className={box} data-testid="file-purpose">
           <p>{`Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
           <GoToSection id="findings">Open Findings</GoToSection>
         </div>
       );
     if (d.kind === "instrument")
       return (
-        <div className={box} data-testid="file-purpose">
+        <div key="purpose" className={box} data-testid="file-purpose">
           <p>Questionnaire or guide. Link it to the data file or transcripts it belongs to so answers carry its wording and codes.</p>
         </div>
       );
     if (d.kind === "table")
       return (
-        <div className={box} data-testid="file-purpose">
+        <div key="purpose" className={box} data-testid="file-purpose">
           <p>{d.ingestion_type === "raw" ? "Case-level data. Build tables in Analysis once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
           <GoToSection id="crosstabs">Open Analysis</GoToSection>
         </div>
       );
     if (d.kind === "transcript")
       return (
-        <div className={box} data-testid="file-purpose">
+        <div key="purpose" className={box} data-testid="file-purpose">
           <p>Transcript. Code it under Coding once its set-up is confirmed.</p>
           <GoToSection id="coding">Open Coding</GoToSection>
         </div>
@@ -5271,7 +5274,7 @@ export default async function RunPage({
                     purpose: purposeFor(d),
                     quality:
                       importPreviewIdentities.get(d.id)?.error ? (
-                        <ImportPreviewRecovery error={importPreviewIdentities.get(d.id)!.error!} />
+                        <ImportPreviewRecovery key="preview-recovery" error={importPreviewIdentities.get(d.id)!.error!} />
                       ) : d.kind === "instrument" && instrumentSummaries.has(d.id) ? (
                         <InstrumentCard
                           key="instrument"

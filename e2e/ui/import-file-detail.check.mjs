@@ -7,6 +7,11 @@
 //      which opens that module with the document highlighted.
 //   3. Project totals are one line, not the body of the pane.
 //   4. "Open" on a file opens it in a new tab through a short-lived link (here the data file downloads).
+//   5. Selecting each kind of file (data, questionnaire, brief) shows its own purpose, and logs no
+//      React "unique key" warning. Grant saw that warning on 2026-10-19 for the questionnaire's purpose
+//      box (`next dev`, Turbopack), which had no key. It did not reproduce here on the webpack dev
+//      stack with the old code, so this guard is unproven against that fault; React prints the
+//      warning only in development, so it passes trivially against a production build.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -23,6 +28,10 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   test.setTimeout(6 * 60_000);
   const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
   const ui = await bind({ page, target, testInfo });
+  const keyWarnings = [];
+  page.on("console", (m) => {
+    if (m.type() === "error" && /unique "key" prop/.test(m.text())) keyWarnings.push(m.text().slice(0, 300));
+  });
   const run = await ui.createRun({ name: `import-detail-${Date.now()}` });
   await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
   await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "brief");
@@ -48,6 +57,12 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await tab.close().catch(() => {});
   await expect(page.getByText(/could not be opened|not in this project/)).toHaveCount(0);
 
+  // The questionnaire and the data file each describe themselves in the pane.
+  await page.getByText("questionnaire.docx", { exact: true }).first().click();
+  await expect(page.getByTestId("file-purpose")).toContainText(/Questionnaire or guide/);
+  await page.getByText("golden-survey-documented.xlsx", { exact: true }).first().click();
+  await expect(page.getByTestId("file-purpose")).toContainText(/Case-level data/);
+
   // The brief: what it is for, and the way to its quality review.
   await page.getByText("client-brief.docx", { exact: true }).first().click();
   const purpose = page.getByTestId("file-purpose");
@@ -62,4 +77,5 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   // The brief is the document highlighted in the quality review's list.
   await expect(section.locator('[data-document-id][data-highlight="true"]')).toContainText("client-brief.docx", { timeout: 60_000 });
   await expect(section.locator('[data-document-id][data-highlight="true"]')).toHaveCount(1);
+  expect(keyWarnings, "React key warnings while selecting files").toEqual([]);
 });

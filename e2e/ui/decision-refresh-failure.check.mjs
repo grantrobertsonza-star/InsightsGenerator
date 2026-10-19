@@ -209,6 +209,11 @@ test("own add, own delete and accept all agree with the database and the stateme
     // Accept all.
     await page.getByRole("button", { name: "Accept all", exact: true }).click();
     await expect.poll(async () => (await stored()).map((r) => r.status), { timeout: 60_000 }).toEqual(["accepted", "accepted"]);
+    // The statuses commit before the insight and recommendation refresh runs, and the "refresh owed"
+    // marker clears only when that refresh succeeds (decisionRefresh.ts). Reloading in between
+    // rightly shows the not-updated notice from that moment, so wait for the refresh to finish first
+    // (seen failing 2026-10-19 when the refresh was slower than the reload).
+    await expect.poll(owed, { timeout: 120_000 }).toBe(0);
     await openDecisions();
     await expect(page.getByRole("button", { name: "Accept all", exact: true })).toHaveCount(0);
     expect(await statement()).toBe("1. Pending one\n2. Pending two");
