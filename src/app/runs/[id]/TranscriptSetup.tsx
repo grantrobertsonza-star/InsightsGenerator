@@ -75,9 +75,8 @@ type Row = {
   preview: FilePreview | null;
   /** Questionnaires and guides that belong to this file, shown above its quality. */
   attached?: ReactNode;
-  /** Those questionnaires and guides, listed on this file's card so a linked file is never missing
-   *  from the list (its own card is folded into this one). A guide linked to every transcript is
-   *  listed on each transcript's card but counted once. */
+  /** Those questionnaires and guides, named on this file's card. Each also has its own card in the
+   *  list (Grant 2026-10-19), and its links and checks show with this file when it is selected. */
   linked?: { documentId: string; filename: string }[];
   /** What this particular file is for and its next step, at the top of the right-hand pane. */
   purpose?: ReactNode;
@@ -722,7 +721,7 @@ export default function TranscriptSetupTable({
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-base font-semibold text-foreground">
-          Your files ({rows.length + new Set(rows.flatMap((r) => (r.linked ?? []).map((l) => l.documentId))).size})
+          Your files ({rows.length})
         </h2>
         <span className="text-xs text-muted">
           {transcriptRows.length === 0

@@ -5201,7 +5201,7 @@ export default async function RunPage({
               <div className="">
                 <TranscriptSetupTable
                   runId={id}
-                  rows={documents.filter((d) => !instrumentHome.has(d.id) && d.kind !== "output").map((d) => ({
+                  rows={documents.filter((d) => d.kind !== "output").map((d) => ({
                     documentId: d.id,
                     filename: d.source_filename,
                     kind: d.kind,
@@ -5318,7 +5318,9 @@ export default async function RunPage({
                       ) : null,
                     detail:
                       d.kind === "instrument"
-                        ? "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
+                        ? instrumentHome.has(d.id)
+                          ? `Linked to ${instrumentHome.get(d.id) === "*" ? "your transcripts" : (documents.find((x) => x.id === instrumentHome.get(d.id))?.source_filename ?? "your data")}; its links and checks also show with that file.`
+                          : "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
                         : d.kind === "table"
                         ? d.ingestion_type === "raw"
                           ? "Case-level data. Tables are built in Analysis, Analytics once you accept it here."

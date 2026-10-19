@@ -61,7 +61,7 @@ export default function UploadForm({ runId }: { runId: string }) {
           accept=".csv,.xlsx,.xls,.sav,.dta"
           icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
           label="Raw data"
-          caption={`CSV/Excel, SPSS or Stata. ${LIMITS_CAPTION}. SAS and flipped workbooks requiring a separate Codebook for weights or multiple-response sets are excluded pending verification.`}
+          caption={`CSV/Excel, SPSS or Stata. ${LIMITS_CAPTION}.`}
         />
         <FileInput
           name="outputFiles"

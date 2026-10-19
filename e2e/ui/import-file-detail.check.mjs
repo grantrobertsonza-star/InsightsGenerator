@@ -32,8 +32,9 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await form.getByRole("button", { name: "Upload", exact: true }).click();
   const linked = page.getByTestId("linked-instrument").filter({ hasText: "questionnaire.docx" });
   await expect(linked).toBeVisible({ timeout: 3 * 60_000 });
-  // Listed on the data file's card, and counted: three files imported, three in the count.
+  // Named on the data file's card, and with its own card too: three files imported, three listed.
   await expect(page.getByRole("heading", { name: "Your files (3)" })).toBeVisible();
+  await expect(page.getByText(/^Linked to golden-survey-documented\.xlsx; /)).toBeVisible();
   const dataCard = page.locator("div", { has: page.getByText("golden-survey-documented.xlsx", { exact: true }) }).filter({ has: linked }).last();
   await expect(dataCard).toBeVisible();
 
