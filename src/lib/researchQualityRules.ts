@@ -4,9 +4,10 @@
 // A model may suggest; only this code decides which criteria apply, which references may be
 // cited, which quotes are real and which observation a judgement belongs to.
 import { createHash } from "node:crypto";
-import criteriaRelease from "../research-quality/criteria/RQC-4.json";
+import criteriaRelease from "../research-quality/criteria/RQC-5.json";
 import productionReferences from "../research-quality/references/RQR-1.json";
 import syntheticReferences from "../research-quality/references/RQR-T1.json";
+import { DASHBOARDS } from "./researchQualityDashboard";
 import {
   CRITERION_SCORES,
   SCORE_LABEL,
@@ -24,6 +25,7 @@ import {
   type CriterionScore,
   type ReferencePassage,
   type ReviewManifest,
+  type ReviewKind,
   type ReviewMode,
   type Segment,
   type SourceRole,
@@ -107,6 +109,8 @@ export function selectCriteria(mode: ReviewMode, studyType: StudyType, roles: So
         return instrument ? sel("selected", "a questionnaire or guide is selected") : sel("excluded", "no questionnaire or guide selected; added when one is");
       case "two-or-more-sources":
         return sourceCount >= 2 ? sel("selected", "two or more documents to compare") : sel("excluded", "only one document: nothing to compare");
+      case "proposal-and-brief":
+        return has("proposal") && has("brief") ? sel("selected", "a proposal and a brief are selected") : sel("excluded", "needs both a proposal and a brief");
       case "plan-and-execution":
         return (has("proposal") || has("brief")) && (has("report") || has("fieldwork") || has("methodology"))
           ? sel("selected", "both a plan and an account of what was done are selected")
@@ -121,6 +125,17 @@ export function selectCriteria(mode: ReviewMode, studyType: StudyType, roles: So
         return sel("unresolved", `no applicability rule ${c.applicability.ruleId}`);
     }
   });
+}
+
+/**
+ * The criteria a review of one kind runs: exactly its dashboard's (Grant 2026-10-19). A kind review
+ * records only these in its manifest, so nothing else is assessed, shown or exported.
+ */
+export function criteriaForKind(kind: ReviewKind): string[] {
+  const dashboardId = kind === "proposal_vs_brief" ? "comparison" : kind;
+  const d = DASHBOARDS.find((x) => x.dashboardId === dashboardId);
+  if (!d) throw new Error(`no dashboard for review kind ${kind}`);
+  return d.categories ? d.categories.flatMap((c) => c.criteria) : d.criteria;
 }
 
 /** The criteria grouped into the assessment tasks the review runs (one model call per group). */

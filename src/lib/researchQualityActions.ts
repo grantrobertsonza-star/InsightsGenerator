@@ -48,7 +48,8 @@ export async function saveResearchQualityRolesAction(runId: string, documentId: 
 /** The estimate shown before the explicit start; no write, no model call. */
 export async function estimateResearchQualityReviewAction(totalChars: number, documents: number): Promise<Result<{ estimateUsd: number }>> {
   await requireRequestContext();
-  const chars = Math.max(0, Math.min(Number(totalChars) || 0, 120_000));
+  // Up to KIND_LIMITS.maxCharsTotal: a brief or proposal review reads the whole document.
+  const chars = Math.max(0, Math.min(Number(totalChars) || 0, 300_000));
   return { ok: true, estimateUsd: estimateReviewCost(chars, 5, Math.max(1, Math.ceil(chars / 20_000)) + Math.max(0, Number(documents) - 1)) };
 }
 

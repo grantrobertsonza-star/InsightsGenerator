@@ -46,6 +46,8 @@ export default function UploadForm({ runId }: { runId: string }) {
       }}
     >
       <div key={round} className="grid grid-cols-1 gap-2">
+        <FileInput name="briefFiles" multiple accept=".pdf,.docx,.txt" icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Brief" caption="The research brief: context, and checked in Research quality review" />
+        <FileInput name="proposalFiles" multiple accept=".pdf,.docx,.txt" icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Proposal" caption="A research proposal: context, and checked in Research quality review" />
         <FileInput name="reportFiles" multiple icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />} label="Reports" caption="PDF, Word or PowerPoint" />
         <FileInput
           name="tableFiles"

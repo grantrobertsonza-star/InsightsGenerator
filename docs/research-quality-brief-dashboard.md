@@ -1,4 +1,18 @@
-# Research Quality Review: the brief and proposal dashboards (RQC-3, RQC-4)
+# Research Quality Review: brief and proposal reviews (RQC-3 to RQC-5)
+
+## The module since 2026-10-19 (redesign)
+
+Grant 2026-10-19: only briefs and proposals are reviewed (a questionnaire or report has too many variables to rate reliably); objectives and decisions are judged only on whether they are stated and how well they are written, not on the evidence behind them; the module is a static, one-off review that feeds nothing further.
+
+- **Review kinds** (`ReviewKind` in researchQualityTypes.ts): a brief review, a proposal review, and a separate proposal-against-brief comparison. A kind review runs exactly its dashboard's criteria (`criteriaForKind`), reads the whole document (`KIND_LIMITS`: 150,000 characters per document, previously 40,000), runs no element checklist, and takes no mode, study type, purpose, decisions or objectives.
+- **Comparison (RQC-5):** seven criteria (problem restated, objectives covered, audience matches, method guidance respected, deliverables match, meets the deadline, within budget), equal weight, each citing both documents.
+- **Screen:** left, the documents with "Review as brief" and "Review as proposal" (a start shows a cost note and needs confirming), each document's reviews, and the comparison below; middle, the dashboard, whose bars are buttons; right, the selected bar's criteria with rating, reason, the document's own words and how to improve. View only: no accept, dismiss or rewording.
+- **Import data:** new Brief and Proposal pickers store the file as context (as Set Objectives does) and record its role, shown on the review list.
+- **Word export** for a kind review: the dashboard and, per criterion, rating, reason, quotes and improvement.
+- **Older reviews** (no kind) stay readable, in their older format, listed under "Earlier reviews".
+- Tests: `researchQuality.db.test.ts` "review kinds" (real database: brief reads past 40,000 characters, only its criteria, no checklist, export; proposal and comparison; refused inputs create nothing) and `e2e/ui/research-quality.check.mjs` (the whole flow in a browser).
+
+## The dashboards
 
 Added 2026-10-19 at Grant's request: a bird's-eye view first (Overview tab), the detail on a separate tab (Details).
 

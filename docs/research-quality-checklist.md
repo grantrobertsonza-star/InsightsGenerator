@@ -2,6 +2,8 @@
 
 Added 2026-10-18 at Grant's request: the review is now quantitative first, recommendations second.
 
+**2026-10-19 (redesign):** element checklists run only for reviews in the older format; brief and proposal reviews are rated on their dashboards (see `research-quality-brief-dashboard.md`).
+
 **2026-10-19 (RQK-2):** the brief checklist is retired; a brief is rated on the ten RQC-3 dimensions and their dashboard instead (see `research-quality-brief-dashboard.md`). Reviews scored under RQK-1 still show it. The catalogue file is now `RQK-2.json`.
 
 ## What it does

@@ -14,7 +14,7 @@
 // A criterion with no rating (not run yet, failed, or dismissed by the researcher) is "not rated" and
 // left out of every average, never counted as zero; Absent (0) is a real rating and is counted.
 // Pure module: no database, no model calls, no Node-only imports, so the screen can use it too.
-import release from "../research-quality/criteria/RQC-4.json";
+import release from "../research-quality/criteria/RQC-5.json";
 import type { ObservationView } from "./researchQualityView";
 
 type Category = { categoryId: string; label: string; weight: number; criteria: string[] };

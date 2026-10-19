@@ -26,7 +26,9 @@ export function contentSha256(buffer: Buffer): string {
 
 const BUCKET = "documents";
 
-export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument"] as const;
+// "evidence": a brief or proposal, context for the project and not mined for findings (the same kind
+// Set Objectives stores); uploadable from Import data since 2026-10-19.
+export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evidence"] as const;
 export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide"] as const;
 export type InstrumentTypeChoice = (typeof INSTRUMENT_TYPES)[number];
 export type UploadKind = (typeof UPLOAD_KINDS)[number];

@@ -20,6 +20,7 @@ import {
   type ObservationPayload,
   type ReviewManifest,
   type SourceRole,
+  type ReviewKind,
 } from "./researchQualityTypes";
 
 export type Freshness = "current" | "requires_review" | "could_not_check";
@@ -46,6 +47,10 @@ export type ObservationView = {
 export type ReviewSummary = {
   id: string;
   sequence: number;
+  /** null for a review made before review kinds (2026-10-19): readable, in the older format. */
+  kind: ReviewKind | null;
+  /** The documents reviewed, with the role each had (for the document list). */
+  sources: { documentId: string | null; filename: string; roles: SourceRole[] }[];
   state: "pending" | "running" | "complete" | "partial" | "failed";
   mode: string;
   studyType: string;
@@ -203,6 +208,8 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
     const summary = (r: Record<string, unknown>): ReviewSummary => ({
       id: r.id as string,
       sequence: r.sequence as number,
+      kind: (r.manifest as ReviewManifest).kind ?? null,
+      sources: ((r.manifest as ReviewManifest).sources ?? []).map((x) => ({ documentId: x.documentId, filename: x.filename, roles: x.roles })),
       state: r.state as ReviewSummary["state"],
       mode: r.mode as string,
       studyType: r.study_type as string,
@@ -278,7 +285,9 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
     ).rows;
     view.review.checklists = checklistViews(checklistTasks, manifest, view.review.facts);
     view.review.checklistNote =
-      checklistTasks.length > 0
+      checklistTasks.length > 0 || manifest.kind
+        ? null
+        : checklistTasks.length > 0
         ? null
         : manifest.checklistRelease === undefined
           ? "This review was made before the scored checklist existed. Start a new review version to score the documents."

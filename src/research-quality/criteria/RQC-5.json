@@ -1,7 +1,7 @@
 {
- "release": "RQC-4",
+ "release": "RQC-5",
  "status": "approved",
- "note": "Criteria library for Research Quality Review. RQC-4 (Grant, 2026-10-19) adds the proposal dashboard: six weighted categories (methodological rigour, price and cost breakdown, team expertise, management and timeline, compliance and responsiveness, innovation and value-add) from Grant's evaluation scorecard and Hope Research Group's proposal guide, with four new proposal criteria (team, management, compliance, innovation) and clearer budget and timeline wording. RQC-3 (Grant, 2026-10-19) rates a research brief on ten dimensions drawn from EY Sweeney, Preparing a market research brief; John (2007), The research brief, in van Hamersveld and de Bont (eds), Market Research Handbook (5th ed.), Wiley; B2B International; IntoTheMinds; Ventures (ventures-me.com); and The Market Researchers: background, business problem, decisions, objectives, audience and scope, method guidance, deliverables, timing, budget, and practicalities. RQC-2 (Grant, 2026-10-18) added the proposal rubric. Every criterion is scored on its own (Strong 5, Workable 3, Weak 1, Absent 0) with an improvement suggestion. A dashboard (below) combines a document type's criteria into one weighted percentage for a bird's-eye view, computed by code; the per-criterion scores stay visible beside it. Retired criteria are kept only so that reviews made under an earlier release still show their questions; they are never selected for a new review.",
+ "note": "Criteria library for Research Quality Review. RQC-5 (Grant, 2026-10-19) makes the module a one-off review of a brief or a proposal, and adds a separate comparison of a proposal against its brief (seven comparison criteria, equal weights). RQC-4 (Grant, 2026-10-19) adds the proposal dashboard: six weighted categories (methodological rigour, price and cost breakdown, team expertise, management and timeline, compliance and responsiveness, innovation and value-add) from Grant's evaluation scorecard and Hope Research Group's proposal guide, with four new proposal criteria (team, management, compliance, innovation) and clearer budget and timeline wording. RQC-3 (Grant, 2026-10-19) rates a research brief on ten dimensions drawn from EY Sweeney, Preparing a market research brief; John (2007), The research brief, in van Hamersveld and de Bont (eds), Market Research Handbook (5th ed.), Wiley; B2B International; IntoTheMinds; Ventures (ventures-me.com); and The Market Researchers: background, business problem, decisions, objectives, audience and scope, method guidance, deliverables, timing, budget, and practicalities. RQC-2 (Grant, 2026-10-18) added the proposal rubric. Every criterion is scored on its own (Strong 5, Workable 3, Weak 1, Absent 0) with an improvement suggestion. A dashboard (below) combines a document type's criteria into one weighted percentage for a bird's-eye view, computed by code; the per-criterion scores stay visible beside it. Retired criteria are kept only so that reviews made under an earlier release still show their questions; they are never selected for a new review.",
  "scale": {
   "5": "Strong",
   "3": "Workable",
@@ -758,6 +758,237 @@
    "execution": "llm_judgement"
   },
   {
+   "criterionId": "RQ-CMP-PROBLEM",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal restate the brief's business problem and context accurately, without drift or reinterpretation?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's problem",
+    "proposal's restatement"
+   ],
+   "evaluationGuidance": "Strong: the brief's problem and context restated accurately. Workable: minor drift or omissions. Weak: material reinterpretation. Absent: the proposal does not restate the problem.",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-CMP-OBJECTIVES",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal cover every objective the brief states, and are any objectives it adds justified?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's objectives",
+    "proposal's objectives"
+   ],
+   "evaluationGuidance": "List each brief objective and whether the proposal covers it. Strong: every brief objective covered, additions justified. Workable: all covered, additions unexplained. Weak: one or more brief objectives missing. Absent: no objectives in the proposal.",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-CMP-AUDIENCE",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal's target audience and scope (who qualifies, geography, subgroups) match the brief's?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's audience and scope",
+    "proposal's sample and scope"
+   ],
+   "evaluationGuidance": "Strong: matches, or differences are explained. Workable: minor unexplained differences. Weak: a different population, geography or missing subgroups. Absent: the proposal does not define its audience.",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-CMP-METHOD",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal respect the brief's method guidance and constraints, or explain why it departs from them?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's method guidance",
+    "proposal's method"
+   ],
+   "evaluationGuidance": "Strong: follows the guidance or departs with reasons. Workable: follows it without engaging with constraints. Weak: departs without explanation. Absent: either document says nothing about method (say which).",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-CMP-DELIVERABLES",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal deliver what the brief asks for: outputs, format and level of analysis?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's deliverables",
+    "proposal's deliverables"
+   ],
+   "evaluationGuidance": "List each deliverable the brief asks for and whether the proposal offers it. Strong: all, in the format asked. Workable: all, format unclear. Weak: some missing. Absent: no deliverables in the proposal.",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-CMP-TIMING",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal's timeline meet the brief's deadline and milestones?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's deadline",
+    "proposal's timeline"
+   ],
+   "evaluationGuidance": "Strong: meets the deadline and milestones. Workable: meets the deadline, milestones unclear. Weak: misses the deadline or is too vague to tell. Absent: no timeline in the proposal, or no deadline in the brief (say which).",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
+   "criterionId": "RQ-CMP-BUDGET",
+   "version": 1,
+   "group": "comparison",
+   "assessmentQuestion": "Does the proposal's cost fit the brief's budget indication?",
+   "applicability": {
+    "studyTypes": [
+     "quantitative",
+     "qualitative",
+     "mixed",
+     "unclear"
+    ],
+    "roles": [
+     "proposal",
+     "brief"
+    ],
+    "modes": [
+     "improve_planned",
+     "review_documented"
+    ],
+    "ruleId": "proposal-and-brief"
+   },
+   "requiredEvidence": [
+    "brief's budget",
+    "proposal's cost"
+   ],
+   "evaluationGuidance": "Strong: within the budget, with what it buys stated. Workable: within it, little breakdown. Weak: over budget without explanation. Absent: no cost in the proposal, or no budget in the brief (say which).",
+   "unsupportedInferenceRestrictions": [
+    "Cite the brief's and the proposal's own words for every difference; do not choose between them where they conflict."
+   ],
+   "execution": "llm_judgement",
+   "comparison": "brief_if_present"
+  },
+  {
    "criterionId": "RQ-DESIGN-ALIGN",
    "version": 1,
    "group": "design",
@@ -1227,6 +1458,23 @@
     }
    ],
    "basis": "Grant's proposal scorecard (2026-10-19) gives ranges whose minimums total 110%; at his choice the minimums are scaled to 100 (40, 20, 15, 15, 10, 10 become 36, 18, 14, 14, 9, 9). A category's score is the average of its rated criteria. Hope Research Group's proposal guide lists the same components."
+  },
+  {
+   "dashboardId": "comparison",
+   "label": "Proposal against brief",
+   "sinceRelease": "RQC-5",
+   "criteria": [
+    "RQ-CMP-PROBLEM",
+    "RQ-CMP-OBJECTIVES",
+    "RQ-CMP-AUDIENCE",
+    "RQ-CMP-METHOD",
+    "RQ-CMP-DELIVERABLES",
+    "RQ-CMP-TIMING",
+    "RQ-CMP-BUDGET"
+   ],
+   "weights": {},
+   "categories": null,
+   "basis": "Each comparison counts equally: the proposal is checked against what the brief asks for, in the brief's and the proposal's own words."
   }
  ],
  "dashboardBands": [

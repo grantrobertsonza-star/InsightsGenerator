@@ -1,7 +1,7 @@
 // The bird's-eye dashboard (RQC-3 brief dimensions). Expected figures are worked out by hand in each
 // case, not by calling the scorer's own formula.
 import { describe, expect, it } from "vitest";
-import criteria from "../../research-quality/criteria/RQC-4.json";
+import criteria from "../../research-quality/criteria/RQC-5.json";
 import { DASHBOARDS, dashboardBandFor, reviewDashboards } from "../researchQualityDashboard";
 
 const BRIEF = DASHBOARDS.find((d) => d.dashboardId === "brief")!;

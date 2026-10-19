@@ -4,7 +4,7 @@
 //   1. A questionnaire linked to a raw data file is listed on that file's card ("Linked"), and the
 //      file count includes it, so nothing imported is missing from the list.
 //   2. Selecting a brief or report shows what that file is for, with "Review research quality",
-//      which opens that module with the document preselected.
+//      which opens that module with the document highlighted.
 //   3. Project totals are one line, not the body of the pane.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -49,8 +49,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await purpose.getByRole("button", { name: "Review research quality" }).click();
   const section = page.getByTestId("research-quality");
   await expect(section).toBeVisible({ timeout: 60_000 });
-  // Only the brief is preselected (each document card also has role boxes, so count cards, not ticks).
-  const pickedCards = section.locator("[data-document-id]").filter({ has: page.locator("input[type=checkbox]:checked") });
-  await expect(pickedCards).toHaveCount(1, { timeout: 60_000 });
-  await expect(pickedCards).toContainText("client-brief.docx");
+  // The brief is the document highlighted in the quality review's list.
+  await expect(section.locator('[data-document-id][data-highlight="true"]')).toContainText("client-brief.docx", { timeout: 60_000 });
+  await expect(section.locator('[data-document-id][data-highlight="true"]')).toHaveCount(1);
 });

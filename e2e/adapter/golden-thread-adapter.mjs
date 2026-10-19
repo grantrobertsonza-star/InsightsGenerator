@@ -107,8 +107,8 @@ export async function bind({ page, target, testInfo }) {
   }
 
   async function upload(run, file, kind) {
-    const input = { table: "rawTableFiles", report: "reportFiles" }[kind];
-    if (!input) throw new Error(`Adapter upload kind must be "table" or "report", got "${kind}"`);
+    const input = { table: "rawTableFiles", report: "reportFiles", brief: "briefFiles", proposal: "proposalFiles" }[kind];
+    if (!input) throw new Error(`Adapter upload kind must be "table", "report", "brief" or "proposal", got "${kind}"`);
     await openSection("Import data");
     const name = path.basename(file);
     const listed = page.getByRole("heading", { name: /^Your files \(\d+\)$/ });

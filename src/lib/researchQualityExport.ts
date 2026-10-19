@@ -7,7 +7,7 @@
 // improvement plan and are listed, with the dismissal, in an appendix.
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
 import { safeFileStem } from "./docxReport";
-import { ROLE_LABEL, type ObservationPayload } from "./researchQualityTypes";
+import { REVIEW_KIND_LABEL, ROLE_LABEL, type ObservationPayload } from "./researchQualityTypes";
 import {
   DOC_LABEL,
   FITNESS_LABEL,
@@ -43,9 +43,50 @@ function qualifiers(o: ObservationView): string[] {
   return out;
 }
 
+/**
+ * A brief, proposal or comparison review (Grant 2026-10-19): a one-off, view-only report, so the
+ * export is the dashboard and, per dimension, each criterion's rating, the reason, the document's own
+ * words behind it and how to improve it. Nothing about decisions, evidence or researcher decisions.
+ */
+async function buildKindDocx(view: ResearchQualityView, projectName: string | null): Promise<{ buffer: Buffer; filename: string }> {
+  const r = view.review!;
+  const body: Paragraph[] = [];
+  const files = r.manifest.sources.map((s) => `${s.filename} (${s.roles.map((x) => ROLE_LABEL[x]).join(", ")})`).join(" and ");
+  body.push(h(`${REVIEW_KIND_LABEL[r.kind!]}${projectName ? `: ${projectName}` : ""}`, HeadingLevel.TITLE));
+  body.push(p(`${files}. Review ${r.sequence}, ${r.state}, ${r.createdAt.slice(0, 16).replace("T", " ")} UTC by ${r.createdBy ?? "single user"}. Criteria ${r.criteriaRelease}; model ${r.model}.`));
+  for (const s of r.manifest.sources) {
+    const read = s.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0);
+    if (read < s.charCount) body.push(p(`${s.filename}: only the first ${read.toLocaleString("en-GB")} of ${s.charCount.toLocaleString("en-GB")} characters were read; later sections are not rated.`, { bold: true }));
+  }
+  body.push(p("AI ratings of how well the document is written, each checked by code against the document's own words. A guide to where to improve it, not a certification.", { italics: true }));
+  const quotesFor = (cid: string) => r.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed");
+  for (const d of r.dashboards) {
+    body.push(h(`${d.label}: ${d.pct === null ? `no overall score (only ${d.ratedWeight} of ${d.totalWeight} weight rated)` : `${d.pct}% (${DASHBOARD_BAND_LABEL[d.band!]})`}`, HeadingLevel.HEADING_1));
+    body.push(p(`Each criterion is rated Strong 5, Workable 3, Weak 1 or Absent 0. ${d.basis}`, { italics: true }));
+    for (const x of d.dimensions) {
+      const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
+      const score = x.score === null ? x.label : `${Number.isInteger(x.score) ? x.score : x.score.toFixed(1)}/5, ${x.label}`;
+      body.push(h(`${name}${x.categoryLabel ? ` (weight ${x.weight}%)` : x.weight > 1 ? ` (counts x${x.weight})` : ""}: ${score}`, HeadingLevel.HEADING_2));
+      for (const c of x.criteria) {
+        const obs = quotesFor(c.criterionId);
+        if (x.categoryLabel) body.push(p(`${criterionShortLabel(c.criterionId)}: ${c.score === null ? c.label : `${c.score}/5, ${c.label}`}`, { bold: true }));
+        body.push(p(obs[0]?.question ?? c.criterionId, { italics: true }));
+        if (c.reason) body.push(p(`Why: ${c.reason}`));
+        for (const o of obs) for (const st of o.payload.statements) body.push(bullet(`"${st.exactQuote}" (${r.manifest.sources.find((s) => s.sourceVersionId === st.sourceVersionId)?.filename ?? "document"})`));
+        const imp = obs[0]?.payload.improvement;
+        if (imp && (imp.currentAction || imp.futureAction)) body.push(p(`To improve: ${[imp.currentAction, imp.futureAction].filter(Boolean).join(" ")}`));
+      }
+    }
+  }
+  const doc = new Document({ sections: [{ children: body }] });
+  const buffer = await Packer.toBuffer(doc);
+  return { buffer, filename: `${safeFileStem(projectName, "project")}-${r.kind!.replace(/_/g, "-")}-review-${r.sequence}.docx` };
+}
+
 export async function buildResearchQualityDocx(view: ResearchQualityView, projectName: string | null): Promise<{ buffer: Buffer; filename: string }> {
   const r = view.review;
   if (!r) throw new Error("There is no review to export yet.");
+  if (r.kind) return buildKindDocx(view, projectName);
   const sourceName = (versionId: string) => r.manifest.sources.find((s) => s.sourceVersionId === versionId)?.filename ?? "unknown source";
   const ov = overview(r.observations);
   const body: Paragraph[] = [];

@@ -3534,6 +3534,7 @@ export default async function RunPage({
           <p>{`Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
           <div className="flex flex-wrap items-center gap-3">
             <GoToSection id="findings">Open Findings</GoToSection>
+            {/* A brief or proposal added under Reports can still be reviewed as one. */}
             <ReviewResearchQualityLink documentId={d.id} />
           </div>
         </div>
@@ -3542,7 +3543,6 @@ export default async function RunPage({
       return (
         <div className={box} data-testid="file-purpose">
           <p>Questionnaire or guide. Link it to the data file or transcripts it belongs to so answers carry its wording and codes.</p>
-          <ReviewResearchQualityLink documentId={d.id} />
         </div>
       );
     if (d.kind === "table")
@@ -5462,8 +5462,8 @@ export default async function RunPage({
           <SectionPanel id="research-quality">
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">Research quality review</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
-              Check a brief, proposal, questionnaire, methodology or report for what it documents, whether the approach suits
-              its purpose, and what the evidence can support for each decision. Opening this section does not call the model.
+              Rate how well a brief or a proposal is written against good research practice, with a score for each part and what
+              to improve, or check a proposal against its brief. Opening this section does not call the model.
             </p>
             <ResearchQualityReview runId={id} />
           </SectionPanel>

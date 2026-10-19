@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
+import { criteriaForKind } from "../researchQualityRules";
 
 const A = "00000000-0000-4000-8000-0000000000a7";
 const B = "00000000-0000-4000-8000-0000000000b7";
@@ -867,6 +868,73 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     });
   });
 
+  // Review kinds, Grant 2026-10-19: one brief, one proposal, or a proposal against its brief, each a
+  // one-off review of how well the document is written. Actual actions, runner, view and DOCX.
+  describe("review kinds", () => {
+    const kindStart = async (kind: string, documentIds: string[]) => {
+      const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, kind, sources: documentIds.map((documentId) => ({ documentId })) });
+      if (!r.ok) throw new Error(r.error);
+      await settle();
+      return r.reviewId;
+    };
+    const longBrief = () =>
+      // About 60,000 characters: over the older 40,000-character per-document limit.
+      addDoc(A, runA, "kind-brief.txt", Buffer.from("Kind brief.\nThe decision is whether to launch a loyalty scheme next year.\n" + "We will survey existing customers about loyalty and their reasons for leaving.\n".repeat(760) + "Budget: up to R400,000.\n"));
+    const proposal = () => addDoc(A, runA, "kind-proposal.txt", Buffer.from("Kind proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+
+    it("a brief review runs only the ten brief criteria, reads the whole document, has no checklist and asks for nothing else", async () => {
+      const id = await kindStart("brief", [await longBrief()]);
+      const v = (await viewOf(id)).review!;
+      expect(v.kind).toBe("brief");
+      expect(v.manifest.criteria.map((c) => c.criterionId)).toEqual(criteriaForKind("brief"));
+      expect(v.manifest.criteria.every((c) => c.status === "selected")).toBe(true);
+      const s = v.manifest.sources[0];
+      expect(s.roles).toEqual(["brief"]);
+      expect(s.charCount).toBeGreaterThan(40_000);
+      expect(s.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0)).toBe(s.charCount);
+      expect(v.checklists).toEqual([]);
+      expect(v.checklistNote).toBeNull();
+      expect(v.manifest.decisions).toEqual([]);
+      expect(v.dashboards.map((d) => d.dashboardId)).toEqual(["brief"]);
+      expect(new Set(v.observations.map((o) => o.criterionId))).toEqual(new Set(criteriaForKind("brief")));
+      // The Word export is the dashboard and the criteria, nothing about decisions.
+      const { buffer, filename } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      const text = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ");
+      expect(filename).toMatch(/-brief-review-\d+\.docx$/);
+      expect(text).toContain("Brief review: RQ project");
+      expect(text).toContain(`Research brief: ${v.dashboards[0].pct}%`);
+      expect(text).not.toMatch(/Decision implications|Scored checklist|Appendix/);
+    });
+
+    it("a proposal review rates the proposal on its own; a comparison is a separate review with its own criteria", async () => {
+      const prop = await proposal();
+      const brief = await longBrief();
+      const p = (await viewOf(await kindStart("proposal", [prop]))).review!;
+      expect(p.dashboards.map((d) => d.dashboardId)).toEqual(["proposal"]);
+      expect(p.manifest.sources.map((s) => s.roles)).toEqual([["proposal"]]);
+      const c = (await viewOf(await kindStart("proposal_vs_brief", [prop, brief]))).review!;
+      expect(c.kind).toBe("proposal_vs_brief");
+      expect(c.manifest.sources.map((s) => s.roles)).toEqual([["proposal"], ["brief"]]);
+      expect(c.manifest.criteria.map((x) => x.criterionId)).toEqual(criteriaForKind("proposal_vs_brief"));
+      expect(c.dashboards.map((d) => d.dashboardId)).toEqual(["comparison"]);
+      expect(c.dashboards[0].dimensions).toHaveLength(7);
+      // Listed with their kind and documents, for the document list on screen.
+      const listed = (await viewOf(null)).reviews.find((x) => x.id === c.id)!;
+      expect(listed).toMatchObject({ kind: "proposal_vs_brief", sources: [{ documentId: prop, roles: ["proposal"] }, { documentId: brief, roles: ["brief"] }] });
+    });
+
+    it("refuses a wrong number of documents, the same document twice and an unknown kind, creating nothing", async () => {
+      const before = (await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n;
+      const prop = await proposal();
+      const go = (raw: Record<string, unknown>) => m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, ...raw });
+      expect(await go({ kind: "brief", sources: [{ documentId: prop }, { documentId: prop }] })).toMatchObject({ ok: false, error: "Choose one document for a brief review." });
+      expect(await go({ kind: "proposal_vs_brief", sources: [{ documentId: prop }] })).toMatchObject({ ok: false, error: "Choose one proposal and one brief." });
+      expect(await go({ kind: "proposal_vs_brief", sources: [{ documentId: prop }, { documentId: prop }] })).toMatchObject({ ok: false, error: /two different documents/ });
+      expect(await go({ kind: "questionnaire", sources: [{ documentId: prop }] })).toMatchObject({ ok: false });
+      expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n).toBe(before);
+    });
+  });
+
   // The brief dashboard (RQC-3), Grant 2026-10-19: ten dimensions rated by the model, combined by code.
   describe("brief dashboard", () => {
     const briefDoc = (label: string) => addDoc(A, runA, `${label}.txt`, Buffer.from("Dashboard brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n"));
@@ -875,7 +943,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const id = await start([{ documentId: await briefDoc("db-brief"), roles: ["brief"] }]);
       const v = await viewOf(id);
       expect(v.review!.state).toBe("complete");
-      expect(v.review!.criteriaRelease).toBe("RQC-4");
+      expect(v.review!.criteriaRelease).toBe("RQC-5");
       expect(v.review!.dashboardNote).toBeNull();
       const [d] = v.review!.dashboards;
       expect(d.dashboardId).toBe("brief");

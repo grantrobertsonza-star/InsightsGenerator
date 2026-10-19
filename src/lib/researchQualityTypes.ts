@@ -20,6 +20,15 @@ export const ROLE_LABEL: Record<SourceRole, string> = {
 };
 
 export const REVIEW_MODES = ["improve_planned", "review_documented"] as const;
+/**
+ * Grant 2026-10-19: the module reviews one brief or one proposal at a time, as a one-off, view-only
+ * report; comparing a proposal with its brief is a separate review of its own. A review with a kind
+ * runs only that kind's criteria (its dashboard's), reads the whole document, and takes no study
+ * type, mode, decisions or objectives. Reviews made before kinds existed have none and stay readable.
+ */
+export const REVIEW_KINDS = ["brief", "proposal", "proposal_vs_brief"] as const;
+export type ReviewKind = (typeof REVIEW_KINDS)[number];
+export const REVIEW_KIND_LABEL: Record<ReviewKind, string> = { brief: "Brief review", proposal: "Proposal review", proposal_vs_brief: "Proposal against brief" };
 export type ReviewMode = (typeof REVIEW_MODES)[number];
 export const STUDY_TYPES = ["quantitative", "qualitative", "mixed", "unclear"] as const;
 export type StudyType = (typeof STUDY_TYPES)[number];
@@ -95,6 +104,8 @@ export type ReferencePassage = { referenceId: string; version: number; passageId
 
 /** Frozen inputs of one review (research_quality_reviews.manifest). */
 export type ReviewManifest = {
+  /** Absent on reviews made before review kinds (2026-10-19). */
+  kind?: ReviewKind;
   sources: {
     sourceId: string;
     sourceVersionId: string;
@@ -122,6 +133,13 @@ export type ReviewManifest = {
 
 export type ReviewLimits = { maxDocuments: number; maxCharsPerDocument: number; maxCharsTotal: number; maxAttempts: number; concurrency: number };
 export const DEFAULT_LIMITS: ReviewLimits = { maxDocuments: 6, maxCharsPerDocument: 40_000, maxCharsTotal: 120_000, maxAttempts: 30, concurrency: 2 };
+/**
+ * A brief or proposal review reads the whole document: Grant's 102,766-character proposal was read
+ * only to 40,000 under DEFAULT_LIMITS, so its later sections could not count. 150,000 characters is
+ * eight 20,000-character extraction steps per document; with two documents (proposal against brief)
+ * and one assessment step that is 17 steps, 34 attempts at two each, so maxAttempts is 40.
+ */
+export const KIND_LIMITS: ReviewLimits = { maxDocuments: 2, maxCharsPerDocument: 150_000, maxCharsTotal: 300_000, maxAttempts: 40, concurrency: 3 };
 
 /** One generated observation version (research_quality_observation_versions.payload). */
 export type ObservationPayload = {

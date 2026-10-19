@@ -28,6 +28,7 @@ import {
   referenceCatalogue,
   referencePassagesFor,
   selectCriteria,
+  criteriaForKind,
   sha256,
   validateExtraction,
   normaliseToolAnswer,
@@ -61,6 +62,10 @@ import { readSourceSnapshot } from "./researchQualitySources";
 import { withTenant } from "./db";
 import {
   DEFAULT_LIMITS,
+  KIND_LIMITS,
+  REVIEW_KINDS,
+  REVIEW_KIND_LABEL,
+  type ReviewKind,
   REVIEW_MODES,
   ResearchQualityError,
   SOURCE_ROLES,
@@ -80,6 +85,8 @@ const TASK_ATTEMPTS = 2;
 
 export type StartReviewInput = {
   requestKey: string;
+  /** Set for every review started from the screen since 2026-10-19; absent only on the older API. */
+  kind?: ReviewKind;
   mode: ReviewMode;
   studyType: StudyType;
   purpose: string;
@@ -88,11 +95,40 @@ export type StartReviewInput = {
   objectives: ReviewObjective[];
 };
 
+/**
+ * A kind review: one brief, one proposal, or one proposal and one brief. The document roles follow
+ * from the kind and the order given; mode, study type, purpose, decisions and objectives are not
+ * asked for (the module judges how well the document is written, not the evidence behind a decision).
+ */
+function validateKindInput(r: Partial<StartReviewInput>, kind: ReviewKind): StartReviewInput {
+  const docs = Array.isArray(r.sources) ? r.sources : [];
+  const want = kind === "proposal_vs_brief" ? 2 : 1;
+  if (docs.length !== want || docs.some((d) => !d || typeof d.documentId !== "string")) {
+    throw new ResearchQualityError(kind === "proposal_vs_brief" ? "Choose one proposal and one brief." : `Choose one document for a ${REVIEW_KIND_LABEL[kind].toLowerCase()}.`);
+  }
+  if (want === 2 && docs[0].documentId === docs[1].documentId) throw new ResearchQualityError("Choose two different documents: the proposal and the brief.");
+  const roles: SourceRole[][] = kind === "brief" ? [["brief"]] : kind === "proposal" ? [["proposal"]] : [["proposal"], ["brief"]];
+  return {
+    requestKey: r.requestKey as string,
+    kind,
+    mode: "improve_planned",
+    studyType: "unclear",
+    purpose: "",
+    sources: docs.map((d, i) => ({ documentId: d.documentId, roles: roles[i] })),
+    decisions: [],
+    objectives: [],
+  };
+}
+
 /** Server-side validation of the start form: enums, sizes, ownership checked later per document. */
 export function validateStartInput(raw: unknown): StartReviewInput {
   const r = raw as Partial<StartReviewInput> | null;
   if (!r || typeof r !== "object") throw new ResearchQualityError("Nothing to review.");
   if (typeof r.requestKey !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(r.requestKey)) throw new ResearchQualityError("Invalid request key.");
+  if (r.kind !== undefined) {
+    if (!REVIEW_KINDS.includes(r.kind as ReviewKind)) throw new ResearchQualityError("Choose a brief review, a proposal review or a comparison.");
+    return validateKindInput(r, r.kind as ReviewKind);
+  }
   if (!REVIEW_MODES.includes(r.mode as ReviewMode)) throw new ResearchQualityError("Choose whether this is a planned study or a documented one.");
   if (!STUDY_TYPES.includes(r.studyType as StudyType)) throw new ResearchQualityError("Choose the study type, or 'not sure'.");
   const purpose = typeof r.purpose === "string" ? r.purpose.trim() : "";
@@ -121,6 +157,7 @@ export function validateStartInput(raw: unknown): StartReviewInput {
  * reason, before anything is created.
  */
 export async function prepareReview(tenantId: string, runId: string, input: StartReviewInput, actor: { userId: string | null; email: string | null }): Promise<{ reviewId: string; created: boolean }> {
+  const limits = input.kind ? KIND_LIMITS : DEFAULT_LIMITS;
   const sources: ReviewManifest["sources"] = [];
   let total = 0;
   let truncated = false;
@@ -129,8 +166,8 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     const { sourceId } = await saveSourceRoles(tenantId, runId, s.documentId, s.roles, null);
     const snap = await readSourceSnapshot(doc);
     const { versionId } = await recordSourceVersion(tenantId, runId, sourceId, s.documentId, snap);
-    const remaining = Math.max(0, DEFAULT_LIMITS.maxCharsTotal - total);
-    const ranges = chunkRanges(snap.canonicalText.length, Math.min(DEFAULT_LIMITS.maxCharsPerDocument, remaining));
+    const remaining = Math.max(0, limits.maxCharsTotal - total);
+    const ranges = chunkRanges(snap.canonicalText.length, Math.min(limits.maxCharsPerDocument, remaining));
     const assessed = ranges.reduce((n, r) => n + (r.end - r.start), 0);
     if (assessed < snap.canonicalText.length) truncated = true;
     total += assessed;
@@ -145,10 +182,14 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     ).rows,
   );
   const roles = [...new Set(sources.flatMap((s) => s.roles))];
-  const criteria = selectCriteria(input.mode, input.studyType, roles, sources.length);
+  const all = selectCriteria(input.mode, input.studyType, roles, sources.length);
+  // A kind review records and runs only its own criteria; the older API keeps the full selection.
+  const own = input.kind ? new Set(criteriaForKind(input.kind)) : null;
+  const criteria = own ? all.filter((c) => own.has(c.criterionId)) : all;
   const groups = assessmentGroups(criteria);
   const cat = referenceCatalogue();
   const manifest: ReviewManifest = {
+    ...(input.kind ? { kind: input.kind } : {}),
     sources,
     mode: input.mode,
     studyType: input.studyType,
@@ -160,10 +201,12 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     criteria,
     referencePassages: [],
     referenceCatalogue: { release: cat.release, kind: cat.kind, hash: cat.hash },
-    limits: DEFAULT_LIMITS,
+    limits,
     checklistRelease: null,
   };
-  const checklistReady = await checklistAvailable(tenantId);
+  // Element checklists belong to the older multi-document review; a kind review is rated on its
+  // dashboard's criteria only.
+  const checklistReady = !input.kind && (await checklistAvailable(tenantId));
   if (checklistReady) manifest.checklistRelease = { release: CHECKLISTS.release, hash: CHECKLISTS.hash };
   const extractTasks: NewTask[] = sources.flatMap((s, si) =>
     s.assessedRanges.map((range, ci) => ({
@@ -201,7 +244,7 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
     : [];
   // Bounded attempts: each task may run at most TASK_ATTEMPTS times (the first run plus one explicit
   // retry), and the review's reserved attempts may not exceed the configured maximum.
-  if ((extractTasks.length + assessTasks.length + checklistTasks.length) * TASK_ATTEMPTS > DEFAULT_LIMITS.maxAttempts) {
+  if ((extractTasks.length + assessTasks.length + checklistTasks.length) * TASK_ATTEMPTS > limits.maxAttempts) {
     throw new ResearchQualityError("This selection needs more model calls than one review allows. Select fewer or shorter documents.");
   }
   return createReview(tenantId, runId, {

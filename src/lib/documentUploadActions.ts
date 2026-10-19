@@ -6,13 +6,14 @@ import { ingestOutputFiles } from "./outputIngest";
 import { readContextDocument } from "./extractFindings";
 import { DuplicateUploadError, INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
 import { requireTenantId } from "./requestContext";
+import { saveSourceRoles } from "./researchQualityRepository";
 
 /**
  * Stores a report or transcript and reads its text straight away, so the preview on the Import page
  * shows what was read instead of an empty panel until the project is processed. Reading is best
  * effort: if it fails the upload still stands and processing reads the file again and reports why.
  */
-async function storeAndRead(runId: string, kind: "report" | "transcript", file: File): Promise<string> {
+async function storeAndRead(runId: string, kind: "report" | "transcript" | "evidence", file: File): Promise<string> {
   const TENANT_ID = await requireTenantId();
   const id = await storeUploadedDocument(TENANT_ID, runId, kind, file);
   try {
@@ -25,6 +26,18 @@ async function storeAndRead(runId: string, kind: "report" | "transcript", file: 
     // happens to click something that reads it again.
     await markDocumentProcessingStatus(TENANT_ID, id, "failed").catch(() => {});
   }
+  return id;
+}
+
+/**
+ * A brief or proposal: stored as context ("evidence", as Set Objectives stores it), read straight
+ * away, and its role recorded for Research quality review so it is offered as what it is. Recording
+ * the role is a convenience: if the review module's tables are not there yet, the upload stands and
+ * the review screen still lets the researcher choose.
+ */
+async function storeContext(tenantId: string, runId: string, file: File, role: "brief" | "proposal"): Promise<string> {
+  const id = await storeAndRead(runId, "evidence", file);
+  await saveSourceRoles(tenantId, runId, id, [role], null).catch(() => {});
   return id;
 }
 
@@ -51,6 +64,8 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   const transcripts = files("transcriptFiles");
   const instruments = files("instrumentFiles");
   const outputs = files("outputFiles");
+  const briefs = files("briefFiles");
+  const proposals = files("proposalFiles");
   const waveRaw = formData.get("outputWave");
   const outputWave = typeof waveRaw === "string" ? waveRaw : "";
   const typeRaw = formData.get("instrumentType");
@@ -58,7 +73,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     typeof typeRaw === "string" && (INSTRUMENT_TYPES as readonly string[]).includes(typeRaw)
       ? (typeRaw as InstrumentTypeChoice)
       : "questionnaire";
-  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...outputs];
+  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...outputs, ...briefs, ...proposals];
   if (all.length === 0) return { ok: false, error: "Choose at least one file first.", added: [] };
 
   const added: string[] = [];
@@ -70,6 +85,8 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     ...raw.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "table", f, "raw")]),
     ...transcripts.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "transcript", f)]),
     ...instruments.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "instrument", f, undefined, instrumentType)]),
+    ...briefs.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "brief")]),
+    ...proposals.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "proposal")]),
   ];
   for (const [file, run] of jobs) {
     try {
