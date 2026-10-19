@@ -870,13 +870,26 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
         ws = wb[sheet_name]
     except Exception:
         return unsupported  # best effort: a read failure here just leaves the plain numeric string
+    # One forward pass over the data rows, reading only the id-like columns. A read-only
+    # workbook streams its XML: ws.cell(row, column) re-scans the sheet from the top on every
+    # call, so the earlier per-column, per-row lookups cost rows x rows and a 1,000-case,
+    # 97-column workbook hit the statistics worker's 5-minute limit (Codex real-data check,
+    # 2026-10-19: csm_Wave1_Baseline.xlsx). iter_rows reads each row once, in order. Same row
+    # alignment as before (row 1 is the header this file already consumed; data row i is sheet
+    # row i + 2) and the same per-cell rules.
+    first_col, last_col = min(id_positions) + 1, max(id_positions) + 1
     try:
-        for col_idx in id_positions:
-            for row_i in range(len(df)):
-                sheet_row = row_i + 2  # row 1 is the header row this file already consumed
-                cell = ws.cell(row=sheet_row, column=col_idx + 1)
-                fmt = cell.number_format or ""
-                value = cell.value
+        rows = ws.iter_rows(min_row=2, max_row=len(df) + 1, min_col=first_col, max_col=last_col)
+        for row_i, row in enumerate(rows):
+            if row_i >= len(df):
+                break
+            for col_idx in id_positions:
+                offset = col_idx + 1 - first_col
+                if offset >= len(row):
+                    continue  # a short row: no cell there, so nothing to reformat
+                cell = row[offset]
+                fmt = getattr(cell, "number_format", None) or ""
+                value = getattr(cell, "value", None)
                 if not isinstance(value, (int, float)) or GENERAL_FORMAT_RE.match(fmt or "General"):
                     continue
                 if _ZERO_PAD_FORMAT_RE.match(fmt):
