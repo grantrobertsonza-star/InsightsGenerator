@@ -106,9 +106,8 @@ export default function UploadForm({ runId }: { runId: string }) {
         .
       </p>
       <p className="max-w-3xl text-[11px] text-muted">
-        Data handling: upload only files the owner has cleared for analysis. Consent should already be in place, and personal
-        information should be removed or covered for this use (under POPIA, for example). The app does not scan for personal
-        information or strip it out, so that check stays with you.
+        Upload only files authorised for analysis, with appropriate consent and personal information removed or lawfully
+        included under POPIA. You remain responsible for these checks. The app does not detect or remove personal information.
       </p>
       {message && <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">{message}</div>}
       {error && <div className="rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">{error}</div>}

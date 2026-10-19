@@ -483,8 +483,8 @@ function DataSetupRow({ runId, row }: { runId: string; row: Row }) {
             }}
           />
           <p className="col-span-2 mt-1 text-[10px] text-muted">
-            Label this file as one wave of a tracking study (same questionnaire, repeated over time) to compare it with
-            other waves from the Analytics tool on this file, under Wave tracking.
+            Label this file as a tracking wave to compare repeated surveys using the same questionnaire. Open Analytics →
+            Wave tracking.
           </p>
         </Field>
       </div>
