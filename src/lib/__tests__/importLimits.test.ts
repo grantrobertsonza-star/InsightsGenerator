@@ -4,7 +4,9 @@ vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 describe("declared release import limits", () => {
   it("accepts exact boundaries and refuses one over with a recovery message", () => {
     expect(() => assertImportFileSupported("survey.csv", IMPORT_LIMITS.maxFileBytes)).not.toThrow();
-    expect(() => assertImportFileSupported("survey.csv", IMPORT_LIMITS.maxFileBytes + 1)).toThrow(/20 MB.*Split/);
+    expect(() => assertImportFileSupported("survey.csv", IMPORT_LIMITS.maxFileBytes + 1)).toThrow(/100 MB limit \(100,000,000 bytes\).*Split/);
+    // Grant 2026-10-19: real FinScope files (26.7 MB and 80.8 MB) are within the limit.
+    expect(() => assertImportFileSupported("FinScope SA 2025.sav", 80_811_074)).not.toThrow();
     expect(() => assertImportCaseCount(IMPORT_LIMITS.maxCases)).not.toThrow();
     expect(() => assertImportCaseCount(IMPORT_LIMITS.maxCases + 1)).toThrow(/100,000.*retry/);
   });

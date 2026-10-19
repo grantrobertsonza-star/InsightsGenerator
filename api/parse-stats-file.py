@@ -47,11 +47,22 @@ with open(os.path.join(os.path.dirname(__file__), "import-limits.json"), encodin
     IMPORT_LIMITS = json.load(_limits_file)
 
 
+# Built from the limits so the wording matches src/lib/importLimits.ts and the limit actually enforced.
+FILE_LIMIT_MESSAGE = (
+    f"This file exceeds the supported {round(IMPORT_LIMITS['maxFileBytes'] / 1_000_000)} MB limit "
+    f"({IMPORT_LIMITS['maxFileBytes']:,} bytes). Split it into smaller files, then retry."
+)
+CASE_LIMIT_MESSAGE = (
+    f"This file exceeds the supported {IMPORT_LIMITS['maxCases']:,} case limit. "
+    "Split it into smaller files, then retry; no partial result was published."
+)
+
+
 def _check_import_limits(file_bytes, cases=None):
     if len(file_bytes) > IMPORT_LIMITS["maxFileBytes"]:
-        raise ValueError("This file exceeds the supported 20 MB limit (20,000,000 bytes). Split it into smaller files, then retry.")
+        raise ValueError(FILE_LIMIT_MESSAGE)
     if cases is not None and cases > IMPORT_LIMITS["maxCases"]:
-        raise ValueError("This file exceeds the supported 100,000 case limit. Split it into smaller files, then retry; no partial result was published.")
+        raise ValueError(CASE_LIMIT_MESSAGE)
 
 READERS = {
     ".sav": pyreadstat.read_sav,
