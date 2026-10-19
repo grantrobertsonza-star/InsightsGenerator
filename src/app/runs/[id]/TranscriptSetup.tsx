@@ -75,6 +75,12 @@ type Row = {
   preview: FilePreview | null;
   /** Questionnaires and guides that belong to this file, shown above its quality. */
   attached?: ReactNode;
+  /** Those questionnaires and guides, listed on this file's card so a linked file is never missing
+   *  from the list (its own card is folded into this one). A guide linked to every transcript is
+   *  listed on each transcript's card but counted once. */
+  linked?: { documentId: string; filename: string }[];
+  /** What this particular file is for and its next step, at the top of the right-hand pane. */
+  purpose?: ReactNode;
   // Data quality for the imported table(s), prepared on the server.
   quality?: React.ReactNode;
   initial: TranscriptSetup | null;
@@ -128,10 +134,11 @@ export function SelectedFileDetail() {
         <p className="break-words text-sm font-semibold text-foreground">{row.filename}</p>
         <p className="text-[11px] text-muted">{row.kindLabel}</p>
       </div>
+      {row.purpose}
       <PreviewPanel preview={row.preview} docKind={row.kind} />
       {row.attached}
       {row.quality}
-      {!row.preview && !row.attached && !row.quality && (
+      {!row.preview && !row.attached && !row.quality && !row.purpose && (
         <p className="text-sm text-muted">Nothing to preview for this file yet.</p>
       )}
     </div>
@@ -267,6 +274,12 @@ function FileCell({ row }: { row: Row }) {
         </span>
         <span title={`Uploaded ${displayUtcMinute(row.uploadedAt)}`}>{displayDay(row.uploadedAt)}</span>
       </p>
+      {(row.linked ?? []).map((l) => (
+        <p key={l.documentId} className="mt-1 truncate text-[11px] text-slate-600" title={`${l.filename}: linked to this file. Select this file to see it.`} data-testid="linked-instrument">
+          <span className="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">Linked</span>
+          {l.filename}
+        </p>
+      ))}
     </div>
   );
 }
@@ -709,7 +722,7 @@ export default function TranscriptSetupTable({
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-base font-semibold text-foreground">
-          Your files ({rows.length})
+          Your files ({rows.length + new Set(rows.flatMap((r) => (r.linked ?? []).map((l) => l.documentId))).size})
         </h2>
         <span className="text-xs text-muted">
           {transcriptRows.length === 0

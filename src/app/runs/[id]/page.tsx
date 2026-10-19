@@ -3508,6 +3508,59 @@ export default async function RunPage({
       instrumentHome.set(x.id, rawDataDocs.find((r) => r.id === sm.forDocumentId)?.id ?? rawDataDocs[0].id);
     }
   }
+  const hostedBy = (d: (typeof documents)[number]) =>
+    documents.filter((x) => {
+      const h = instrumentHome.get(x.id);
+      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
+    });
+  // What one file is for and its next step, for the right-hand pane. A brief or proposal ("evidence")
+  // is context, not mined for findings: its own quality is checked in Research quality review.
+  const findingsByDocument = new Map<string, number>();
+  for (const f of findings) if (f.source_document_id) findingsByDocument.set(f.source_document_id, (findingsByDocument.get(f.source_document_id) ?? 0) + 1);
+  const purposeFor = (d: (typeof documents)[number]): React.ReactNode => {
+    const box = "flex flex-col gap-2 rounded-lg border border-border bg-slate-50 p-3 text-xs text-foreground";
+    const n = findingsByDocument.get(d.id) ?? 0;
+    if (d.kind === "evidence")
+      return (
+        <div className={box} data-testid="file-purpose">
+          <p>Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions.</p>
+          <p className="text-muted">Check how well it is written against good research practice:</p>
+          <ReviewResearchQualityLink documentId={d.id} />
+        </div>
+      );
+    if (d.kind === "report")
+      return (
+        <div className={box} data-testid="file-purpose">
+          <p>{`Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <GoToSection id="findings">Open Findings</GoToSection>
+            <ReviewResearchQualityLink documentId={d.id} />
+          </div>
+        </div>
+      );
+    if (d.kind === "instrument")
+      return (
+        <div className={box} data-testid="file-purpose">
+          <p>Questionnaire or guide. Link it to the data file or transcripts it belongs to so answers carry its wording and codes.</p>
+          <ReviewResearchQualityLink documentId={d.id} />
+        </div>
+      );
+    if (d.kind === "table")
+      return (
+        <div className={box} data-testid="file-purpose">
+          <p>{d.ingestion_type === "raw" ? "Case-level data. Build tables in Analysis once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
+          <GoToSection id="crosstabs">Open Analysis</GoToSection>
+        </div>
+      );
+    if (d.kind === "transcript")
+      return (
+        <div className={box} data-testid="file-purpose">
+          <p>Transcript. Code it under Coding once its set-up is confirmed.</p>
+          <GoToSection id="coding">Open Coding</GoToSection>
+        </div>
+      );
+    return null;
+  };
   const attachedFor = (d: (typeof documents)[number]): React.ReactNode => {
     const hosted = documents.filter((x) => {
       const h = instrumentHome.get(x.id);
@@ -5189,6 +5242,8 @@ export default async function RunPage({
                             }
                           : null,
                     attached: attachedFor(d),
+                    linked: hostedBy(d).map((x) => ({ documentId: x.id, filename: x.source_filename })),
+                    purpose: purposeFor(d),
                     quality:
                       importPreviewIdentities.get(d.id)?.error ? (
                         <ImportPreviewRecovery error={importPreviewIdentities.get(d.id)!.error!} />
@@ -5291,35 +5346,18 @@ export default async function RunPage({
                 <Pane side="right" title="Selected file">
                   <SelectedFileDetail />
                   <div className="h-px shrink-0 bg-border" />
-                  <div className="grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        ["Reports", documents.filter((d) => d.kind === "report").length],
-                        ["Data tables", documents.filter((d) => d.kind === "table").length],
-                        ["Transcripts", documents.filter((d) => d.kind === "transcript").length],
-                      ] as const
-                    ).map(([label, n]) => (
-                      <div key={label} className="rounded-lg border border-border bg-slate-50 px-2.5 py-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
-                        <div className="mt-0.5 text-lg font-semibold leading-none text-foreground">{n}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-foreground">
-                    <span className="font-semibold">{findings.length}</span>{" "}
-                    {findings.length === 1 ? "finding" : "findings"} so far
-                  </div>
-                  {documents.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white p-4">
-                <p className="max-w-2xl text-xs text-muted">
-                  Files are read and accepted as they arrive. Next, build tables in Analysis, Analytics, code
-                  transcripts under Coding, or run the full analysis from Findings.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <GoToSection id="crosstabs">Open Analysis</GoToSection>
-                </div>
-              </div>
-            )}
+                  {/* Project totals, kept to one line: the pane is about the selected file. */}
+                  <p className="text-[11px] text-muted" data-testid="project-totals">
+                    {`Project so far: ${[
+                      ["report", "report(s)"],
+                      ["table", "data table(s)"],
+                      ["transcript", "transcript(s)"],
+                      ["instrument", "questionnaire(s) or guide(s)"],
+                      ["evidence", "context file(s)"],
+                    ]
+                      .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
+                      .join(", ")}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}
+                  </p>
                 </Pane>
               }
             />
