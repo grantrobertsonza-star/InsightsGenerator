@@ -124,7 +124,8 @@ export async function bind({ page, target, testInfo }) {
     await expect
       .poll(async () => ((await rejected.count()) ? `rejected: ${squash(await rejected.first().innerText())}` : await countNow()), { timeout: STEP_TIMEOUT })
       .toBe(before + 1);
-    await expect(page.getByRole("paragraph").filter({ hasText: new RegExp(`^${escapeRegExp(name)}$`) }).first()).toBeAttached();
+    // The file name as its own text.
+    await expect(page.getByText(name, { exact: true }).first()).toBeAttached();
     await settle();
     run.files = [...(run.files ?? []), { kind, name: path.basename(file) }];
   }

@@ -5227,6 +5227,7 @@ export default async function RunPage({
                   runId={id}
                   rows={documents.filter((d) => d.kind !== "output").map((d) => ({
                     documentId: d.id,
+                    runId: id,
                     filename: d.source_filename,
                     kind: d.kind,
                     kindLabel: d.kind === "table" && d.ingestion_type === "raw" ? "Raw data" : (DOC_KIND_STYLE[d.kind]?.label ?? d.kind),

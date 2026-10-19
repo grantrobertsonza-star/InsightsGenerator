@@ -20,6 +20,7 @@ import type {
   SetupSuggestion,
   TranscriptSetup,
 } from "@/lib/transcriptSetup";
+import OpenFileButton from "./OpenFileButton";
 
 export const SESSION_LABEL = {
   individual: "One person at a time (individual interviews)",
@@ -60,6 +61,8 @@ type FilePreview =
 
 type Row = {
   documentId: string;
+  /** The project, for opening the stored file (OpenFileButton). */
+  runId: string;
   filename: string;
   kind: string;
   kindLabel: string;
@@ -129,9 +132,12 @@ export function SelectedFileDetail() {
   }
   return (
     <div className="@container flex flex-col gap-3">
-      <div>
-        <p className="break-words text-sm font-semibold text-foreground">{row.filename}</p>
-        <p className="text-[11px] text-muted">{row.kindLabel}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="break-words text-sm font-semibold text-foreground">{row.filename}</p>
+          <p className="text-[11px] text-muted">{row.kindLabel}</p>
+        </div>
+        <OpenFileButton runId={row.runId} documentId={row.documentId} filename={row.filename} />
       </div>
       {row.purpose}
       <PreviewPanel preview={row.preview} docKind={row.kind} />
@@ -272,6 +278,9 @@ function FileCell({ row }: { row: Row }) {
           {row.kindLabel}
         </span>
         <span title={`Uploaded ${displayUtcMinute(row.uploadedAt)}`}>{displayDay(row.uploadedAt)}</span>
+        <span className="ml-1.5 align-middle">
+          <OpenFileButton runId={row.runId} documentId={row.documentId} filename={row.filename} />
+        </span>
       </p>
       {(row.linked ?? []).map((l) => (
         <p key={l.documentId} className="mt-1 truncate text-[11px] text-slate-600" title={`${l.filename}: linked to this file. Select this file to see it.`} data-testid="linked-instrument">

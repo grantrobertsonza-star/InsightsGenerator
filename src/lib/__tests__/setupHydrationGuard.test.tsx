@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/codingAnalysisActions", () => ({ saveTranscriptSetupAction: vi.fn() }));
 vi.mock("@/lib/dataSetupActions", () => ({ readDataFileAction: vi.fn(), saveDataSetupAction: vi.fn() }));
+vi.mock("@/lib/documentOpenActions", () => ({ openDocumentAction: vi.fn() }));
 vi.mock("@/app/DeleteDocumentButton", () => ({ default: () => null }));
 vi.mock("@/app/useHydrated", async () => await import("../../app/useHydrated"));
 vi.mock("@/lib/dataSetupShared", async () => await import("../dataSetupShared"));
@@ -19,7 +20,7 @@ describe("setup choices before event handlers attach", () => {
         kind, kindLabel: kind, kindBadge: "Synthetic", uploadedAt: "2026-10-16T12:00:00Z",
         detail: null, isRawData: kind === "table", dataSetup: null, preview: null,
         initial: null, suggestion: null, hasCoding: false,
-        accent: { border: "border-sky-200", dot: "bg-sky-200" }, deleteAction: async () => {},
+        accent: { border: "border-sky-200", dot: "bg-sky-200" }, deleteAction: async () => {}, runId: "synthetic-run",
       };
       const html = renderToStaticMarkup(<ImportDetailProvider><TranscriptSetupTable runId="synthetic-run" rows={[row]} /></ImportDetailProvider>);
       const selects = html.match(/<select\b[^>]*>/g) ?? [];

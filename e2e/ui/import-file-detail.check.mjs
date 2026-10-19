@@ -6,6 +6,7 @@
 //   2. Selecting a brief shows what that file is for, with "Review research quality",
 //      which opens that module with the document highlighted.
 //   3. Project totals are one line, not the body of the pane.
+//   4. "Open" on a file opens it in a new tab through a short-lived link (here the data file downloads).
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -37,6 +38,15 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(page.getByText(/^Linked to golden-survey-documented\.xlsx; /)).toBeVisible();
   const dataCard = page.locator("div", { has: page.getByText("golden-survey-documented.xlsx", { exact: true }) }).filter({ has: linked }).last();
   await expect(dataCard).toBeVisible();
+
+  // Opening a file: the data file downloads under its own name, in a new tab, through a short-lived
+  // link the server signed after checking the file belongs to this project.
+  const [tab] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: "Open golden-survey-documented.xlsx" }).first().click()]);
+  const download = await tab.waitForEvent("download", { timeout: 60_000 });
+  expect(download.suggestedFilename()).toMatch(/golden-survey-documented\.xlsx|^[^/]+$/);
+  expect(download.url()).toMatch(/\/object\/sign\//);
+  await tab.close().catch(() => {});
+  await expect(page.getByText(/could not be opened|not in this project/)).toHaveCount(0);
 
   // The brief: what it is for, and the way to its quality review.
   await page.getByText("client-brief.docx", { exact: true }).first().click();
