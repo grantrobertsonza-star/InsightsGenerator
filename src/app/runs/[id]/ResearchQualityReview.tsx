@@ -460,11 +460,44 @@ function Dashboard({ d, selected, onSelect }: { d: DashboardView; selected: stri
                   </span>
                 </span>
               </button>
+              {x.categoryLabel && x.criteria.length > 1 && (
+                // A category's own items and scores under its bar (Grant, 2026-10-19: the
+                // methodology items on the dashboard, the reasons staying in the detail pane).
+                // The bar above is the category's total: the average of these rated items.
+                <ul className="mb-1 ml-3 flex flex-col border-l border-slate-200 pl-2" aria-label={`${name} items`}>
+                  {x.criteria.map((c) => {
+                    const cShown = c.score === null ? null : String(c.score);
+                    return (
+                      <li key={c.criterionId} data-sub-criterion={c.criterionId} data-score={c.score ?? "none"}>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(x.dimensionId)}
+                          className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-[11px] hover:bg-slate-50"
+                        >
+                          <span className="min-w-[8rem] flex-1 truncate text-slate-700">{criterionShortLabel(c.criterionId)}</span>
+                          <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                            <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${criterionShortLabel(c.criterionId)}: ${cShown === null ? c.label : `${cShown} of 5, ${c.label}`}`}>
+                              {c.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(c.score)}`} style={{ width: `${Math.max(c.score, 0.15) * 20}%` }} />}
+                            </span>
+                            <span className={`w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-semibold uppercase tracking-wide ${c.score === null ? "text-muted" : scoreText(c.score)}`}>
+                              {cShown === null ? (c.state === "failed" ? "failed" : "-") : `${cShown} ${c.label}`}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </li>
           );
         })}
       </ul>
-      <p className="mt-2 text-[11px] text-muted">Click a bar for its detail on the right.</p>
+      <p className="mt-2 text-[11px] text-muted">
+        {d.dimensions.some((x) => x.categoryLabel && x.criteria.length > 1)
+          ? "A category's bar is its total, the average of its rated items listed under it. Click a bar or an item for the reasons on the right."
+          : "Click a bar for its detail on the right."}
+      </p>
     </section>
   );
 }

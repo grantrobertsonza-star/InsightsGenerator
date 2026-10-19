@@ -4969,7 +4969,9 @@ export default async function RunPage({
       validIds={navSections.map((s) => s.id)}
     >
       <main className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-[90rem] px-6 pt-3">
+        {/* Same left edge as every section below (px-6, no centring), so the project title lines up
+            with "Import data" and the other section headings (Grant, 2026-10-19). */}
+        <div className="w-full px-6 pt-3">
           <PipelineStatus runId={id} />
           <div className="mb-2 flex flex-col items-start gap-y-0.5 text-left">
           <h1 className="text-xl font-bold tracking-tight text-foreground">

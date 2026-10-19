@@ -114,7 +114,16 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     await expect(cats).toHaveCount(6);
     expect(await cats.evaluateAll((els) => els.map((e) => [e.getAttribute("data-criterion"), Number(e.getAttribute("data-weight"))]))).toEqual([["method", 36], ["price", 18], ["team", 14], ["management", 14], ["compliance", 9], ["innovation", 9]]);
     await expect(proposal).toHaveAttribute("data-pct", await expectedPct(proposal));
-    await proposal.locator('[data-criterion="method"] button').click();
+    // The methodology items and their scores sit under its bar; the bar is their average (rated only).
+    const method = proposal.locator('[data-criterion="method"]');
+    const items = method.locator("li[data-sub-criterion]");
+    await expect(method).toHaveAttribute("data-state", "rated", { timeout: 3 * 60_000 });
+    expect(await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-sub-criterion")))).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN", "RQ-PROP-SAMPLE", "RQ-PROP-ANALYSIS", "RQ-PROP-LITERATURE"]);
+    const itemScores = (await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-score")))).filter((v) => v !== "none").map(Number);
+    expect(itemScores.length).toBeGreaterThan(0);
+    expect(Number(await method.getAttribute("data-score"))).toBeCloseTo(itemScores.reduce((a, b) => a + b, 0) / itemScores.length, 6);
+    await expect(proposal.locator('[data-criterion="price"] li[data-sub-criterion]')).toHaveCount(0); // one item: no list
+    await method.locator("button").first().click();
     await expect(details.getByRole("heading", { name: "Methodological rigour" })).toBeVisible();
     await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(5);
     // Each document lists its own reviews.

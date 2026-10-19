@@ -16,6 +16,7 @@
 //      questionnaire card there duplicated its own); the first read still starts from that line.
 //   7. The purpose box (Open Analysis, Open Coding) is the last block in the pane.
 //   8. A brief shows its size: pages, words, and how much of it a quality review reads.
+//   9. The project title lines up with the section heading (Grant, 2026-10-19).
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -51,6 +52,11 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(page.getByText(/^Linked to golden-survey-documented\.xlsx; /)).toBeVisible();
   const dataCard = page.locator("div", { has: page.getByText("golden-survey-documented.xlsx", { exact: true }) }).filter({ has: linked }).last();
   await expect(dataCard).toBeVisible();
+
+  // 9. The project title and the section heading share one left edge (1600 px wide viewport).
+  const titleBox = await page.locator("h1").first().boundingBox();
+  const headingBox = await page.getByRole("heading", { name: "Import data", exact: true }).boundingBox();
+  expect(Math.abs(titleBox.x - headingBox.x)).toBeLessThanOrEqual(1);
 
   // Opening a file: the data file downloads under its own name, in a new tab, through a short-lived
   // link the server signed after checking the file belongs to this project.
