@@ -1,4 +1,4 @@
-# Research Quality Review: the brief dashboard (RQC-3)
+# Research Quality Review: the brief and proposal dashboards (RQC-3, RQC-4)
 
 Added 2026-10-19 at Grant's request: a bird's-eye view first (Overview tab), the detail on a separate tab (Details).
 
@@ -30,9 +30,25 @@ Sources:
 - The Market Researchers, *Example market research brief*: https://www.themarketresearchers.co.uk/example-market-research-brief/
 - P. Latimer, *7 questions to ask before writing a market research brief* (LinkedIn): suggested by Grant, could not be read automatically, not used.
 
+## The proposal dashboard (RQC-4)
+
+Added the same day. Six categories from Grant's proposal evaluation scorecard, with the components Hope Research Group lists for a proposal (https://www.hoperesearchgroup.com/resources/market-research-proposal). Grant's suggested ranges have minimums that already total 110%; at his choice the minimums are scaled to 100.
+
+| Category | Weight | Criteria averaged |
+|---|---|---|
+| Methodological rigour | 36% | Method suitability, research design, sample, analysis plan, prior evidence review |
+| Price and cost breakdown | 18% | Budget (v2: breakdown by phase, direct and indirect costs, fit with the brief) |
+| Team expertise | 14% | Team (new): named analysts, track record, domain and local market knowledge |
+| Management and timeline | 14% | Timeline (v2: realistic, milestones), project management (new): communication, quality control, risks |
+| Compliance and responsiveness | 9% | Problem and objectives restated, added objectives, deliverables, compliance and ethics (new: the brief's requirements, POPIA or GDPR, consent, confidentiality, data ownership) |
+| Innovation and value-add | 9% | Value-add (new): additions beyond the requirement, each tied to an objective |
+
+A category's score is the average of its rated criteria (0 to 5), so it can fall between ratings; its colour and label follow the bands (4 or more Strong, 3 or more Workable). RQC-4 is a new release so that reviews made under RQC-3 keep their exact criteria.
+
 ## The overall figure (code, `src/lib/researchQualityDashboard.ts`)
 
-- Dimension score: its rating; with several live observations for one criterion, the lowest.
+- Criterion rating: with several live observations for one criterion, the lowest.
+- Dimension score: the criterion's rating (brief), or the average of the category's rated criteria (proposal).
 - Overall: sum(weight x score) / sum(weight x 5) over rated dimensions, as a whole percentage. Problem, decisions and objectives count double (every source treats them as the core of a brief; IntoTheMinds names a missing decision and a topic in place of a problem as the most common failures).
 - Bands: Strong 80% or more, Workable 60% or more, Weak below (`dashboardBands` in the release).
 - A dimension not rated (still running, failed, or dismissed by the researcher) is left out of the base, never counted as zero. Absent (0) is a rating and is counted.
@@ -56,5 +72,7 @@ The element checklist for a brief (RQK-1) is retired in RQK-2: the ten dimension
 - `src/lib/__tests__/researchQualityDashboard.test.ts`: weights really applied (hand-computed 72% against an unweighted 67%), lowest of several ratings, dismissed and unrated left out, the half-weight threshold, failed and running states, bands at their edges, which reviews get a dashboard.
 - `src/lib/__tests__/researchQuality.db.test.ts` (real database, actual actions): a brief review recounted independently from the stored ratings, the export lines, a dismissal moving the figure, and an RQC-2 review showing the note.
 - `e2e/ui/research-quality.check.mjs`: the ten bars, the overall percentage recomputed from the scores on screen, evidence only on Details.
+- `e2e/ui/rq-proposal-dashboard.check.mjs`: the six categories and weights, the overall recomputed from them on screen.
+- Proposal cases in both unit and database tests: a hand-computed 46% across categories, criteria left out when not selected, an independent recount from stored ratings.
 
 Limits: the ratings are model judgements validated for evidence, not checked against human raters; the weights are a stated choice, not an empirical result.

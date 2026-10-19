@@ -73,8 +73,12 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   if (r.dashboardNote) body.push(p(r.dashboardNote));
   for (const d of r.dashboards) {
     body.push(h(`${d.label}: ${d.pct === null ? `no overall score (only ${d.ratedWeight} of ${d.totalWeight} weight rated)` : `${d.pct}% (${DASHBOARD_BAND_LABEL[d.band!]})`}`, HeadingLevel.HEADING_2));
-    body.push(p(`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. The overall figure is weighted points over the weighted maximum, across rated dimensions only; Strong is 80% or more, Workable 60% or more. ${d.basis}`, { italics: true }));
-    for (const x of d.dimensions) body.push(bullet(`${criterionShortLabel(x.criterionId)}${x.weight > 1 ? ` (counts x${x.weight})` : ""}: ${x.score === null ? x.label : `${x.score}/5, ${x.label}`}`));
+    body.push(p(`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. The overall figure is weighted points over the weighted maximum, across rated dimensions only (a category scores the average of its rated criteria); Strong is 80% or more, Workable 60% or more. ${d.basis}`, { italics: true }));
+    for (const x of d.dimensions) {
+      const score = x.score === null ? x.label : `${Number.isInteger(x.score) ? x.score : x.score.toFixed(1)}/5, ${x.label}`;
+      if (x.categoryLabel === null) body.push(bullet(`${criterionShortLabel(x.dimensionId)}${x.weight > 1 ? ` (counts x${x.weight})` : ""}: ${score}`));
+      else body.push(bullet(`${x.categoryLabel} (weight ${x.weight}%): ${score}. ${x.criteria.map((c) => `${criterionShortLabel(c.criterionId)} ${c.score === null ? c.label.toLowerCase() : `${c.score}/5`}`).join("; ")}`));
+    }
   }
 
   // Part 1: the scored checklist (RQK), the same figures the screen shows, computed on the server.

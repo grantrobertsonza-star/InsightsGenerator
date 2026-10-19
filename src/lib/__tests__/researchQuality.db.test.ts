@@ -875,7 +875,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const id = await start([{ documentId: await briefDoc("db-brief"), roles: ["brief"] }]);
       const v = await viewOf(id);
       expect(v.review!.state).toBe("complete");
-      expect(v.review!.criteriaRelease).toBe("RQC-3");
+      expect(v.review!.criteriaRelease).toBe("RQC-4");
       expect(v.review!.dashboardNote).toBeNull();
       const [d] = v.review!.dashboards;
       expect(d.dashboardId).toBe("brief");
@@ -884,11 +884,11 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       // Independent recount from the stored ratings: weight x score over weight x 5.
       const rating = (cid: string) => v.review!.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed").map((o) => o.payload.rating.score!).sort((a, b) => a - b)[0];
       const weight = (cid: string) => (["RQ-BRIEF-PROBLEM", "RQ-BRIEF-DECISION", "RQ-BRIEF-OBJECTIVES"].includes(cid) ? 2 : 1);
-      const ids = d.dimensions.map((x) => x.criterionId);
+      const ids = d.dimensions.map((x) => x.dimensionId);
       const points = ids.reduce((n, cid) => n + weight(cid) * rating(cid), 0);
       expect(d.pct).toBe(Math.round((points / (13 * 5)) * 100));
       // The stand-in rates the decision 3 (a decision fact is cited) and the rest 0: 6 / 65 = 9%.
-      expect(d.dimensions.find((x) => x.criterionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+      expect(d.dimensions.find((x) => x.dimensionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
       expect(d).toMatchObject({ pct: 9, band: "weak" });
       // The retired brief criteria are never selected for a new review.
       expect(v.review!.manifest.criteria.map((c) => c.criterionId)).not.toContain("RQ-BRIEF-DEADLINE");
@@ -904,9 +904,30 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const o = before.observations.find((x) => x.criterionId === "RQ-BRIEF-PROBLEM")!;
       expect((await m.actions.recordResearchQualityEntryAction(runA, { kind: "dismiss", observationId: o.observationId, observationVersionId: o.versionId, body: null, expectedRevision: o.revision, idempotencyKey: `db-dismiss-${o.observationId}` })).ok).toBe(true);
       const [d] = (await viewOf(id)).review!.dashboards;
-      expect(d.dimensions.find((x) => x.criterionId === "RQ-BRIEF-PROBLEM")).toMatchObject({ state: "not_rated", score: null });
+      expect(d.dimensions.find((x) => x.dimensionId === "RQ-BRIEF-PROBLEM")).toMatchObject({ state: "not_rated", score: null });
       // Problem (weight 2) leaves the base: 6 / (11 x 5) = 10.9% -> 11.
       expect(d).toMatchObject({ pct: 11, ratedWeight: 11, totalWeight: 13 });
+    });
+
+    it("a proposal gets the six weighted categories, each the average of its rated criteria", async () => {
+      const id = await start([{ documentId: await addDoc(A, runA, "db-proposal.txt", Buffer.from("Dashboard proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n")), roles: ["proposal"] }]);
+      const v = await viewOf(id);
+      const d = v.review!.dashboards.find((x) => x.dashboardId === "proposal")!;
+      expect(d.dimensions.map((x) => [x.dimensionId, x.weight])).toEqual([["method", 36], ["price", 18], ["team", 14], ["management", 14], ["compliance", 9], ["innovation", 9]]);
+      // Independent recount from the stored ratings.
+      const rating = (cid: string) => v.review!.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed").map((o) => o.payload.rating.score!).sort((a, b) => a - b)[0];
+      let points = 0;
+      for (const x of d.dimensions) {
+        const scores = x.criteria.map((c) => rating(c.criterionId)).filter((n) => typeof n === "number");
+        expect(x.score).toBeCloseTo(scores.reduce<number>((a, b) => a + b, 0) / scores.length, 10);
+        points += x.weight * x.score!;
+      }
+      expect(d.pct).toBe(Math.round((points / (100 * 5)) * 100));
+      // The stand-in rates the sample 3 (a recruitment fact is cited) and the rest 0: method (0+0+3+0+0)/5 = 0.6,
+      // so 36 x 0.6 = 21.6 of 500 -> 4%.
+      expect(d.dimensions[0].score).toBeCloseTo(0.6, 10);
+      expect(d.pct).toBe(4);
+      expect(v.review!.dashboards.map((x) => x.dashboardId)).toEqual(["proposal"]); // no brief, no brief dashboard
     });
 
     it("a review made under an earlier criteria release shows no dashboard and says why", async () => {

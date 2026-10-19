@@ -428,9 +428,11 @@ function ReviewBody({ runId, view, tab, reload }: { runId: string; view: Researc
 
 // ---------------------------------------------------------------- overview dashboard
 
-// One colour per rating, shared by the bars and the ring so a glance reads the same everywhere.
-const SCORE_BAR: Record<number, string> = { 5: "bg-indigo-500", 3: "bg-amber-400", 1: "bg-slate-400", 0: "bg-rose-400" };
-const SCORE_TEXT: Record<number, string> = { 5: "text-indigo-700", 3: "text-amber-700", 1: "text-slate-600", 0: "text-rose-700" };
+// One colour per level, shared by the bars and the ring so a glance reads the same everywhere. A
+// category's average falls between ratings, so colours follow the bands: 4 or more (80%) Strong,
+// 3 or more (60%) Workable, 1 or more Weak, below 1 towards Absent.
+const scoreBar = (score: number) => (score >= 4 ? "bg-indigo-500" : score >= 3 ? "bg-amber-400" : score >= 1 ? "bg-slate-400" : "bg-rose-400");
+const scoreText = (score: number) => (score >= 4 ? "text-indigo-700" : score >= 3 ? "text-amber-700" : score >= 1 ? "text-slate-600" : "text-rose-700");
 const BAND_RING: Record<string, string> = { strong: "#6366f1", workable: "#f59e0b", weak: "#e11d48" };
 const BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
 
@@ -456,31 +458,44 @@ function OverviewDashboard({ view }: { view: ResearchQualityView }) {
                 {d.pct === null
                   ? `Too little rated yet for an overall score (${d.ratedWeight} of ${d.totalWeight} weight).`
                   : `${BAND_LABEL[d.band!]}: weighted across ${d.dimensions.filter((x) => x.state === "rated").length} of ${d.dimensions.length} dimensions.`}
-                <InfoDot text={`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. Overall = weighted points / weighted maximum, over rated dimensions. Strong 80% or more, Workable 60% or more. ${d.basis}`} />
+                <InfoDot text={`Each dimension is rated Strong 5, Workable 3, Weak 1 or Absent 0. Overall = weighted points / weighted maximum, over rated dimensions; a category scores the average of its rated criteria. Strong 80% or more, Workable 60% or more. ${d.basis}`} />
               </p>
             </div>
           </div>
           <ul className="mt-3 flex flex-col gap-1.5">
-            {d.dimensions.map((x) => (
-              <li key={x.criterionId} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-criterion={x.criterionId} data-state={x.state} data-score={x.score ?? "none"}>
-                <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground" data-testid="rq-dimension-name">
-                  {criterionShortLabel(x.criterionId)}
-                  {x.weight > 1 && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600" title="Counts double in the overall score">{`x${x.weight}`}</span>}
-                </span>
-                <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
-                  <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" title={x.reason || x.label} role="img" aria-label={`${criterionShortLabel(x.criterionId)}: ${x.score === null ? x.label : `${x.score} of 5, ${x.label}`}`}>
-                    {x.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${SCORE_BAR[x.score] ?? SCORE_BAR[1]}`} style={{ width: `${Math.max(x.score, 0.15) * 20}%` }} />}
-                  </span>
-                  <span className={`w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-bold uppercase tracking-wide ${x.score === null ? "text-muted" : SCORE_TEXT[x.score]}`}>{x.score === null ? (x.state === "failed" ? "failed" : "-") : `${x.score} ${x.label}`}</span>
-                </span>
-              </li>
-            ))}
+            {d.dimensions.map((x) => {
+              const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
+              const shownScore = x.score === null ? null : Number.isInteger(x.score) ? String(x.score) : x.score.toFixed(1);
+              // A category's hover lists its criteria; a single criterion's shows the model's reason.
+              const parts = x.categoryLabel ? x.criteria.map((c) => `${criterionShortLabel(c.criterionId)}: ${c.score === null ? c.label : `${c.score} ${c.label}`}`).join("; ") : "";
+              return (
+                <li key={x.dimensionId} className="text-xs" data-criterion={x.dimensionId} data-state={x.state} data-score={x.score ?? "none"} data-weight={x.weight}>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground" data-testid="rq-dimension-name">
+                      {name}
+                      {d.dashboardId === "proposal" || x.categoryLabel ? (
+                        <span className="ml-1 text-[10px] font-normal text-muted">{`${x.weight}%`}</span>
+                      ) : (
+                        x.weight > 1 && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600" title="Counts double in the overall score">{`x${x.weight}`}</span>
+                      )}
+                    </span>
+                    <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                      <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" title={parts || x.reason || x.label} role="img" aria-label={`${name}: ${shownScore === null ? x.label : `${shownScore} of 5, ${x.label}`}`}>
+                        {x.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(x.score)}`} style={{ width: `${Math.max(x.score, 0.15) * 20}%` }} />}
+                      </span>
+                      <span className={`w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-bold uppercase tracking-wide ${x.score === null ? "text-muted" : scoreText(x.score)}`}>{shownScore === null ? (x.state === "failed" ? "failed" : "-") : `${shownScore} ${x.label}`}</span>
+                    </span>
+                  </div>
+                  {x.categoryLabel && x.criteria.length > 1 && <p className="mt-0.5 truncate text-[10px] text-muted" title={parts}>{parts}</p>}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ))}
       {checklists.length > 0 && (
-        <section className="rounded-xl border border-border bg-white p-3" aria-label="Other documents" data-testid="rq-overview-checklists">
-          <h4 className="text-xs font-semibold text-foreground">Other documents</h4>
+        <section className="rounded-xl border border-border bg-white p-3" aria-label="Element checklists" data-testid="rq-overview-checklists">
+          <h4 className="text-xs font-semibold text-foreground">Element checklists</h4>
           <ul className="mt-2 flex flex-col gap-1.5">
             {checklists.map((c) => (
               <li key={c.taskKey} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-checklist={c.checklistId}>

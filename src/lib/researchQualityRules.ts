@@ -4,7 +4,7 @@
 // A model may suggest; only this code decides which criteria apply, which references may be
 // cited, which quotes are real and which observation a judgement belongs to.
 import { createHash } from "node:crypto";
-import criteriaRelease from "../research-quality/criteria/RQC-3.json";
+import criteriaRelease from "../research-quality/criteria/RQC-4.json";
 import productionReferences from "../research-quality/references/RQR-1.json";
 import syntheticReferences from "../research-quality/references/RQR-T1.json";
 import {
