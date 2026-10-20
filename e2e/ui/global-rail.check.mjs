@@ -1,6 +1,6 @@
 // The left rail hides and shows (src/components/CollapsibleRail.tsx), in a real browser on the
 // disposable stack.
-//   - "Hide main menu" shrinks the rail to a narrow strip and gives the content the space;
+//   - "Hide main menu" shrinks the rail to a narrow strip of icons and gives the content the space;
 //   - on a run page the section list is hidden but stays in the page, and works again once shown;
 //   - the choice survives a reload and navigation, and "Show main menu" restores the rail;
 //   - with storage blocked the toggle still works in the page and a reload shows the open rail.
@@ -43,7 +43,14 @@ test("the main menu hides to a strip, keeps a run's section list, and is remembe
   // Hidden but still mounted: the run's section list keeps its place in the page.
   await expect(sectionButton).toBeAttached();
   await expect(sectionButton).toBeHidden();
-  await expect(page.getByRole("link", { name: "Dashboard" })).toBeHidden();
+  // The full menu is hidden; the strip shows an icon for each destination and each project section
+  // instead (2026-10-20), each named for assistive technology, with the current section marked.
+  await expect(page.locator("#global-rail-content").getByRole("link", { name: "Dashboard" })).toBeHidden();
+  const icons = page.getByTestId("global-rail-icons");
+  await expect(icons.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(icons.getByRole("button", { name: "Research quality" })).toBeVisible();
+  await expect(icons.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("run-nav-rail").locator('button[aria-current="page"]')).toHaveCount(1);
 
   // Remembered across a reload and across pages.
   await page.reload({ waitUntil: "networkidle" });
