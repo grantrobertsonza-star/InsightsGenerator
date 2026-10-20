@@ -70,8 +70,9 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
   const a = useObjectiveRowActions(runId, row);
   const tag = tagFor(row);
   const { selected, select } = useObjectiveSelection();
-  // Rolled up by default (Grant, 2026-10-20): one line of the objective under its scores; rolled down
-  // shows the full wording, "To sharpen it" and any rationale. Editing always shows it in full.
+  // Rolled up by default (Grant, 2026-10-20): only the scores row shows; rolling down shows the full
+  // wording, "To sharpen it" and any rationale across the row. Editing always shows it. The wording
+  // stays in the page while rolled up (hidden), so search and assistive tools still find it.
   const [open, setOpen] = useState(false);
   const full = open || a.editing;
 
@@ -85,7 +86,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
       className={`border-b border-border last:border-0 ${a.accepted ? "cursor-pointer" : ""} ${sameObjective(selected, { id: row.id, text: row.text }) ? "bg-primary-light/40" : ""} ${a.rejected ? "opacity-50" : ""}`}
     >
     <tr className="align-top">
-      <td className="whitespace-nowrap px-3 pb-1 pt-2 text-foreground">
+      <td className="whitespace-nowrap px-3 py-2 text-foreground">
         <button
           type="button"
           aria-expanded={full}
@@ -113,7 +114,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
       {COLUMNS.map(([key]) => {
         const v = row.scores ? row.scores[key] : null;
         return (
-          <td key={key} className="px-2 pb-1 pt-2 text-center">
+          <td key={key} className="px-2 py-2 text-center">
             {v === null ? (
               <span className="text-muted">-</span>
             ) : (
@@ -122,8 +123,8 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           </td>
         );
       })}
-      <td className="px-2 pb-1 pt-2 text-center font-semibold text-foreground">{row.scores ? `${row.scores.total}/20` : "-"}</td>
-      <td className="px-3 pb-1 pt-2">
+      <td className="px-2 py-2 text-center font-semibold text-foreground">{row.scores ? `${row.scores.total}/20` : "-"}</td>
+      <td className="px-3 py-2">
         {row.scores ? (
           <span
             title={row.scores.rationale}
@@ -135,9 +136,10 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           <span className="text-muted">Not scored</span>
         )}
       </td>
-      <td className="px-3 pb-1 pt-2" onClick={(event) => event.stopPropagation()}>
-        {/* Row selection must not replace this editor while a status/edit action is clicked. */}
-        <div className="flex flex-wrap items-center gap-1">
+      <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>
+        {/* Row selection must not replace this editor while a status/edit action is clicked. One line,
+            so the actions never stretch the scores row. */}
+        <div className="flex flex-nowrap items-center gap-1 whitespace-nowrap">
           {a.editing ? (
             <>
               <button className={miniBtn} disabled={a.isPending || !a.draft.trim()} onClick={a.save}>
@@ -189,19 +191,19 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
         )}
       </td>
     </tr>
-    <tr>
+    <tr className={full ? "" : "hidden"}>
       <td colSpan={COLUMNS.length + 4} className="px-3 pb-3 pt-1 text-foreground">
         {a.editing ? (
           <textarea autoFocus rows={2} value={a.draft} onChange={(e) => a.setDraft(e.target.value)} onClick={(event) => event.stopPropagation()} className={textareaClass} />
         ) : (
-          <div className={`text-xs leading-relaxed ${full ? "" : "line-clamp-1"}`} title={full ? undefined : row.text}>{row.text}</div>
+          <div className="text-xs leading-relaxed">{row.text}</div>
         )}
-        {full && row.scores?.suggestion && !a.editing && (
+        {row.scores?.suggestion && !a.editing && (
           <div className="mt-1 text-[11px] leading-relaxed text-muted">
             <span className="font-medium">To sharpen it:</span> {row.scores.suggestion}
           </div>
         )}
-        {full && row.source === "ai_suggested" && row.rationale && !a.editing && (
+        {row.source === "ai_suggested" && row.rationale && !a.editing && (
           <div className="mt-1 text-[11px] text-muted">{row.rationale}</div>
         )}
       </td>
