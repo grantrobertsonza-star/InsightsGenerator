@@ -1,5 +1,6 @@
 // Research Quality Review v1: presentation rules shared by the screen and the DOCX export. Pure
 // (no database, no server code), so the client component can import it.
+import checklistRelease from "../research-quality/checklists/RQK-2.json";
 import criteriaRelease from "../research-quality/criteria/RQC-6.json";
 import type { DocumentedFact, ObservationPayload, ReviewManifest } from "./researchQualityTypes";
 import type { ObservationView } from "./researchQualityView";
@@ -165,4 +166,43 @@ export function checklistScoreText(score: { pct: number | null; band: string | n
   if (state === "pending" || !score) return "Not scored yet";
   if (score.pct === null) return `Too little could be assessed (${score.assessed} of ${score.total} elements)`;
   return `${score.pct}% (${CHECKLIST_BAND_LABEL[score.band ?? ""] ?? score.band})`;
+}
+
+// ---------------------------------------------------------------- review steps
+
+const CHECKLIST_LABEL = new Map(checklistRelease.checklists.map((c) => [c.checklistId, c.label]));
+
+/**
+ * A review step in plain words, for the status box (Grant, 2026-10-20: "extract:00:03" meant
+ * nothing on screen). Read from the task key the review writes (researchQualityReview.ts):
+ * extract:<source>:<part>, assess:<group>, checklist:<source>:<checklistId>, with zero-padded
+ * indexes into the frozen manifest. The document is named only when the review has more than one.
+ * A key in a shape this does not know, or pointing outside the manifest, is shown as it is, so an
+ * unexpected step stays visible rather than being given a wrong name.
+ */
+export function reviewStepLabel(key: string, manifest: Pick<ReviewManifest, "sources">): string {
+  const [stage, a, b] = key.split(":");
+  const source = a !== undefined && /^\d+$/.test(a) ? manifest.sources[Number(a)] : undefined;
+  const ofDoc = source && manifest.sources.length > 1 ? ` (${source.filename})` : "";
+  if (stage === "extract" && source && b !== undefined && /^\d+$/.test(b)) {
+    const parts = source.assessedRanges.length;
+    const part = Number(b) + 1;
+    return parts > 1 ? `Reading part ${part} of ${parts}${ofDoc}` : `Reading the document${ofDoc}`;
+  }
+  if (stage === "assess" && a && GROUP_LABEL[a]) return `Rating ${GROUP_LABEL[a]}`;
+  if (stage === "checklist" && source && b) return `Scoring the ${CHECKLIST_LABEL.get(b) ?? b} checklist${ofDoc}`;
+  return key;
+}
+
+type StepRow = { key: string; status: string };
+/**
+ * The failed steps to list under a review. The stored step list is written when a run settles, so
+ * while a retry is running it still holds the last run's failures (Grant, 2026-10-20: old
+ * connection errors showed beside "Retrying the failed steps only"). They are listed only once the
+ * run has settled, or when it was interrupted and is waiting for Continue; while it runs, the live
+ * count of this run's failures is shown instead.
+ */
+export function shownFailedSteps<T extends StepRow>(r: { state: string; progress: { interrupted?: boolean }; coverage: { tasks?: T[] } }): T[] {
+  const running = (r.state === "pending" || r.state === "running") && !r.progress.interrupted;
+  return running ? [] : (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
 }

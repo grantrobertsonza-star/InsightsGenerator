@@ -23,7 +23,7 @@ import {
 import { Pane, ThreePane } from "./ThreePane";
 import { RQ_PRESELECT_EVENT } from "./ReviewResearchQualityLink";
 import { REVIEW_KIND_LABEL, type ReviewKind } from "@/lib/researchQualityTypes";
-import { checklistScoreText, criterionShortLabel, scorecard } from "@/lib/researchQualityPresentation";
+import { checklistScoreText, criterionShortLabel, reviewStepLabel, scorecard, shownFailedSteps } from "@/lib/researchQualityPresentation";
 import InfoDot from "@/components/InfoDot";
 import type { DashboardView } from "@/lib/researchQualityDashboard";
 import type { ObservationView, ResearchQualityView } from "@/lib/researchQualityView";
@@ -347,7 +347,8 @@ const readOf = (s: { assessedRanges: { start: number; end: number }[] }) => s.as
 function ReviewMiddle({ runId, view, selected, onSelect, reload }: { runId: string; view: ResearchQualityView; selected: string | null; onSelect: (id: string) => void; reload: () => Promise<void> }) {
   const r = view.review!;
   const [retryMsg, setRetryMsg] = useState<string | null>(null);
-  const failedSteps = (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
+  const running = (r.state === "pending" || r.state === "running") && !r.progress.interrupted;
+  const failedSteps = shownFailedSteps(r);
   const retry = async (note: string) => {
     const x = await retryResearchQualityReviewAction(runId, r.id);
     setRetryMsg(x.ok ? note : x.error);
@@ -362,7 +363,7 @@ function ReviewMiddle({ runId, view, selected, onSelect, reload }: { runId: stri
         className={`rounded-md p-2 text-xs ${r.state === "complete" ? "bg-emerald-50 text-emerald-900" : r.state === "failed" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900"}`}
       >
         <p>{`${r.manifest.sources.map((s) => s.filename).join(" against ")}. ${r.createdAt.slice(0, 10)}${r.createdBy ? `, ${r.createdBy}` : ""}.`}</p>
-        {(r.state === "pending" || r.state === "running") && !r.progress.interrupted && (
+        {running && (
           <p>{`Reviewing: ${r.progress.done} of ${r.progress.total} steps done${r.progress.failed ? `, ${r.progress.failed} failed` : ""}. Each step can take a minute or two; this page updates by itself.`}</p>
         )}
         {r.progress.interrupted && (
@@ -376,7 +377,7 @@ function ReviewMiddle({ runId, view, selected, onSelect, reload }: { runId: stri
         {r.state === "partial" && <p>{`Partly complete: ${failedSteps.length} step(s) failed. What is shown was rated; the rest is shown as not rated.`}</p>}
         {r.state === "failed" && <p>The review failed: nothing could be rated.</p>}
         {failedSteps.map((t) => (
-          <p key={t.key} className="mt-0.5">{`${t.key}: ${t.error ?? "failed"}`}</p>
+          <p key={t.key} className="mt-0.5" data-testid="rq-failed-step" data-step={t.key}>{`${reviewStepLabel(t.key, r.manifest)}: ${t.error ?? "failed"}`}</p>
         ))}
         {failedSteps.some((t) => t.attempts < t.maxAttempts) && (
           <button className={`${btn} mt-1`} onClick={() => void retry("Retrying the failed steps only.")}>
@@ -618,6 +619,7 @@ function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; cri
   const score = rating?.score ?? first?.payload.rating?.score ?? null;
   const label = rating?.label ?? first?.payload.rating?.label ?? "Not rated";
   const improvement = first?.payload.improvement;
+  const statementCount = obs.reduce((n, o) => n + o.payload.statements.length, 0);
   return (
     <article className="rounded-lg border border-border bg-white p-3 text-xs" data-testid="rq-criterion-detail" data-criterion={criterionId}>
       <div className="flex items-start justify-between gap-2">
@@ -639,10 +641,14 @@ function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; cri
         </p>
       )}
       {criterionId === "RQ-PROP-SAMPLE-SIZE" && <PrecisionChecks checks={r.manifest.precisionChecks} />}
-      {obs.some((o) => o.payload.statements.length > 0) && (
-        <div className="mt-2">
-          <p className="font-medium">In the document&apos;s words</p>
-          <ul className="mt-0.5 flex flex-col gap-1">
+      {statementCount > 0 && (
+        // Closed when a criterion is opened (Grant, 2026-10-20): the quotes can run to a page, and the
+        // rating and its reason come first. Keyed by criterion so switching criteria closes it again.
+        <details key={criterionId} className="group mt-2" data-testid="rq-document-words">
+          <summary className="cursor-pointer select-none font-medium marker:text-muted">
+            {`In the document's words (${statementCount})`}
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1">
             {obs
               .flatMap((o) => o.payload.statements)
               .map((s) => (
@@ -652,7 +658,7 @@ function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; cri
                 </li>
               ))}
           </ul>
-        </div>
+        </details>
       )}
       {first?.payload.basis === "absence_in_assessed_scope" && (
         <p className="mt-1 text-muted">{first.payload.absenceScope === "complete" ? "Not found anywhere in the document, read in full." : "Not found in the parts that were read."}</p>

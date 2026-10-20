@@ -97,6 +97,14 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     for (const v of (await db.query(`select payload from research_quality_observation_versions where review_id=$1`, [review.id])).rows) {
       for (const s of v.payload.statements) expect(texts.get(s.sourceVersionId).slice(s.locator.start, s.locator.end)).toBe(s.exactQuote);
     }
+    // The document's own words are closed when a criterion opens, and open on a click (Grant, 2026-10-20).
+    const words = details.getByTestId("rq-document-words");
+    if ((await words.count()) > 0) {
+      expect(await words.evaluate((e) => e.open)).toBe(false);
+      await expect(words.locator("li").first()).toBeHidden();
+      await words.locator("summary").click();
+      await expect(words.locator("li").first()).toBeVisible();
+    }
     // No evidence or decision assessment on screen: the review rates how the document is written.
     await expect(section.getByText(/Decision implications|Documentation:|Methodology:/)).toHaveCount(0);
 
