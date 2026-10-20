@@ -1,6 +1,15 @@
 # Current engineering status
 
-Updated: 2026-10-17. State: **READY_FOR_CODEX**: Claude repaired recommendation currentness in `8fa326c`, for independent review.
+Updated: 2026-10-20. State: **READY_FOR_CODEX**: the work of 18 October (evening) to 20 October, on both copies, awaits independent review; see the section below and `docs/codex-double-checks-2026-10-20.md`.
+
+
+## Claude: 18 to 20 October work ready for review (2026-10-20)
+
+Implemented, ready for review. Review targets: main copy (`app`, port 3000) at `37bb569`, redesign copy (`app-import-redesign`, port 3001) at `0afd1c3`, each followed by one check fix and one docs-only commit named in the handover. The last independently accepted scope stays `1e0f2a3`; the release baseline stays 37 Closed / 6 Blocked.
+
+- What changed, the checks run with their counts, mocks versus real infrastructure, migrations (0106 and 0107 new) and limits: `docs/handover-2026-10-20.md`.
+- What to double-check tonight, sequenced as the standard asks (calculations and identity, persistence and concurrency, asynchronous UI state, parity between the copies, comments and checks): `docs/codex-double-checks-2026-10-20.md`.
+- Nothing pushed or deployed; no development or live database touched.
 
 
 ## Claude repair of recommendation currentness (2026-10-17; commit `8fa326c`)
