@@ -31,7 +31,7 @@
 //     key so a repeated click records once;
 //   - a source version is immutable; re-reading identical text reuses the current version.
 import type { PoolClient } from "pg";
-import { withTenant } from "./db";
+import { withTenant, withTenantRead } from "./db";
 import { ResearchQualityConflictError, ResearchQualityError, ResearchQualitySetupError, type ObservationPayload, type ResearcherEntryKind, type SourceRole } from "./researchQualityTypes";
 import { canonicalJson, sha256 } from "./researchQualityRules";
 import type { SourceSnapshot } from "./researchQualitySources";
@@ -591,5 +591,22 @@ export async function recordResearcherEntry(
       [tenantId, runId, e.observationId, e.observationVersionId, e.kind, e.body, e.actor.userId, e.actor.email, e.idempotencyKey],
     );
     return { entryId: r.rows[0].id, revision, duplicate: false };
+  });
+}
+
+/**
+ * The Research quality roles recorded for each of a project's documents (recorded at upload as a
+ * brief or a proposal, and changeable in Research quality), for naming a context file in the Import
+ * list. null when the module's tables are not there yet, so "not recorded" is never read as "no role".
+ */
+export async function getDocumentRoles(tenantId: string, runId: string): Promise<Map<string, SourceRole[]> | null> {
+  return withTenantRead(tenantId, async (client) => {
+    const ok = await client.query<{ ok: boolean }>(`select to_regclass('public.research_quality_sources') is not null as ok`);
+    if (!ok.rows[0]?.ok) return null;
+    const r = await client.query<{ document_id: string; roles: SourceRole[] }>(
+      `select document_id, roles from research_quality_sources where run_id = $1 and tenant_id = $2 and document_id is not null`,
+      [runId, tenantId],
+    );
+    return new Map(r.rows.map((x) => [x.document_id, x.roles]));
   });
 }

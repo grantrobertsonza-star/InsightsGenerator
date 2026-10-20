@@ -12,12 +12,14 @@
 //      regenerated narrative)
 //   C7 an edited AI recommendation through re-synthesis, reload and export
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import JSZip from "jszip";
 import pg from "pg";
+import { deleteFirstSource, openSourceTab } from "./helpers/sources.mjs";
 
 const require = createRequire(import.meta.url);
 const XLSX = require("xlsx");
@@ -94,7 +96,7 @@ test("C1 deleting the data file after downstream work: what is removed, what is 
     page.on("dialog", (d) => { obs.confirm = d.message(); d.accept(); });
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Import data(\s*\d+)?$/ }).first().click();
-    await page.getByRole("button", { name: "Delete document", exact: true }).first().click();
+    await deleteFirstSource(page);
     await expect.poll(async () => Number((await client.query("select count(*) from documents where run_id=$1", [t.run.id])).rows[0].count), { timeout: 120_000 }).toBe(0);
     await page.reload({ waitUntil: "networkidle" });
     // GT-010: the confirmation names the reviewed work and the insights whose support goes with the file.
@@ -138,15 +140,14 @@ test("C2 uploading the same data file again does not add corroboration", async (
     const t = await thread(page, testInfo, "change-duplicate");
     const tiers = async () => (await client.query("select id, independent_source_count, confidence_tier, triangulation_count from synthesized_insights where run_id=$1 order by id", [t.run.id])).rows;
     obs.before = await tiers();
-    // Upload the same file through the same form; the app refuses a second copy (IMP-008) and must
-    // say so. Read the form's own message, not a file count.
+    // Upload the same file through the Add files panel; the app refuses a second copy (IMP-008) and
+    // must say so. Read the panel's own result line, not a file count.
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Import data(\s*\d+)?$/ }).first().click();
-    const uploadForm = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-    await uploadForm.locator('input[name="rawTableFiles"]').setInputFiles(WORKBOOK);
-    await uploadForm.getByRole("button", { name: "Upload", exact: true }).click();
+    await addFiles(page, WORKBOOK, "Raw data");
     await page.waitForTimeout(4000);
-    obs.formMessage = (await uploadForm.innerText()).split("\n").filter((l) => /added|already|duplicate|same/i.test(l));
+    const result = page.locator('[data-testid="add-files-message"], [data-testid="add-files-error"]');
+    obs.formMessage = (await result.allInnerTexts()).join("\n").split("\n").filter((l) => /added|already|duplicate|same/i.test(l));
     expect.soft(obs.formMessage.join(" "), "the researcher is told the file is already in the project").toMatch(/already/i);
     obs.documentCount = Number((await client.query("select count(*) from documents where run_id=$1", [t.run.id])).rows[0].count);
     expect.soft(obs.documentCount, "no second copy stored").toBe(1);
@@ -269,6 +270,9 @@ test("C5 a data correction behind an accepted finding after downstream work: sta
     const docId = (await client.query("select id from documents where run_id=$1 and kind='table'", [t.run.id])).rows[0].id;
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Import data(\s*\d+)?$/ }).first().click();
+    // The data file's Variables tab (Grant's Sources layout, 2026-10-20), then any fold around the control.
+    await page.getByRole("button", { name: /^Select .*\.xlsx$/ }).first().click();
+    await openSourceTab(page, "Variables");
     const control = page.getByLabel("Data type: Purchase", { exact: true });
     await expect(control).toBeAttached({ timeout: 60_000 });
     const details = control.locator("xpath=ancestor::details");

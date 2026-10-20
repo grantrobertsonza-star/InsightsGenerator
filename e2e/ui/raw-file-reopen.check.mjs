@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { openSource, openSourceTab } from "./helpers/sources.mjs";
 import pg from "pg";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
@@ -60,15 +61,22 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
     };
     await expect.poll(async () => (await stored()).length, { timeout: 120_000 }).toBe(1);
     await expect.poll(async () => (await db.query("select data_setup->>'accepted' as a from documents where run_id=$1 and kind='table'", [run.id])).rows[0]?.a, { timeout: 120_000 }).toBe("true");
-    // Let the first read and its refresh finish before measuring a reopen: the table row and the
-    // download count must stay the same across a quiet interval.
+    // Let the first read and the one-time work after it finish before measuring a reopen. The first
+    // view of the file also builds what is kept afterwards (its data audit reads the stored file a
+    // few times, once), so the file is viewed once here, unmeasured; then the table row and the
+    // download count must stay the same across three quiet intervals in a row. A single quiet
+    // interval was not enough: a fast run could measure before that one-time work had started and
+    // then count it against the first reopen (seen 2026-10-20: 1 download before, 4 after).
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Import data/ }).first().click();
+    await openSource(page, "wide-tall.csv", "Data quality");
     await page.waitForLoadState("networkidle");
     const snapshot = async () => JSON.stringify([await stored(), await downloads()]);
     let settled = await snapshot();
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0, quiet = 0; i < 40 && quiet < 3; i++) {
       await page.waitForTimeout(3_000);
       const now = await snapshot();
-      if (now === settled) break;
+      quiet = now === settled ? quiet + 1 : 0;
       settled = now;
     }
     const before = await stored();
@@ -80,14 +88,11 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
       const offset = readFileSync(appLog, "utf8").length;
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Import data/ }).first().click();
-      for (const name of ["Preview what was read", "Data quality"]) {
-        const summary = page.getByText(name, { exact: true }).first();
-        await expect(summary).toBeVisible({ timeout: 60_000 });
-        await summary.click();
-      }
-      await expect(page.getByText("Table 1: 5,000 rows, 301 columns").first()).toBeVisible({ timeout: 60_000 });
-      await expect(page.getByText(/Showing the first \d+ of 5,000 rows and \d+ of 301 columns/).first()).toBeVisible();
-      await expect(page.getByText("5000 cases.").first()).toBeVisible();
+      const preview = await openSource(page, "wide-tall.csv", "Preview");
+      await expect(preview.getByText("Table 1: 5,000 rows, 301 columns")).toBeVisible({ timeout: 60_000 });
+      await expect(preview.getByText(/Showing the first \d+ of 5,000 rows and \d+ of 301 columns/)).toBeVisible();
+      const quality = await openSourceTab(page, "Data quality");
+      await expect(quality.getByText("5000 cases.").first()).toBeVisible();
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(2_000);
       const during = readFileSync(appLog, "utf8").slice(offset);
@@ -98,6 +103,7 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
     }
 
     // 3. Positive control: a layout change reads the file again, and both signals move.
+    await openSourceTab(page, "Setup");
     const layout = page.getByLabel(/^How the file is laid out: wide-tall\.csv$/).first();
     const current = await layout.inputValue();
     const other = await layout.locator("option").evaluateAll((os, cur) => os.map((o) => o.value).find((v) => v && v !== cur), current);

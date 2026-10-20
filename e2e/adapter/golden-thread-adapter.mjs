@@ -16,6 +16,7 @@
 // - Limits are recorded on the test as annotations rather than passed over: see
 //   `note(...)` calls below.
 import { expect } from "@playwright/test";
+import { addFiles } from "../ui/helpers/addFiles.mjs";
 import JSZip from "jszip";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -107,20 +108,17 @@ export async function bind({ page, target, testInfo }) {
   }
 
   async function upload(run, file, kind) {
-    const input = { table: "rawTableFiles", report: "reportFiles", brief: "briefFiles", proposal: "proposalFiles" }[kind];
-    if (!input) throw new Error(`Adapter upload kind must be "table", "report", "brief" or "proposal", got "${kind}"`);
+    const type = { table: "Raw data", report: "Report", brief: "Brief", proposal: "Proposal" }[kind];
+    if (!type) throw new Error(`Adapter upload kind must be "table", "report", "brief" or "proposal", got "${kind}"`);
     await openSection("Import data");
     const name = path.basename(file);
-    const listed = page.getByRole("heading", { name: /^Your files \(\d+\)$/ });
-    const countNow = async () => ((await listed.count()) ? Number(/\((\d+)\)/.exec(await listed.first().innerText())[1]) : 0);
+    const countNow = () => page.getByTestId("source-row").count();
     const before = await countNow();
-    const form = page.locator("form", { has: page.locator(`input[name="${input}"]`) });
-    await form.locator(`input[name="${input}"]`).setInputFiles(file);
-    await form.getByRole("button", { name: "Upload", exact: true }).click();
-    // Done when the project lists one more file, under this name. The form's own message is not
-    // used: the first upload switches the page to its populated layout, which remounts the form.
-    // A rejected upload shows the form's error line instead, which stops the thread here.
-    const rejected = page.locator("form > div.border-danger");
+    await addFiles(page, file, type);
+    // Done when the project lists one more file, under this name. The panel's own message is not
+    // used: the first upload switches the page to its populated layout. A rejected upload shows
+    // the panel's error line instead, which stops the thread here.
+    const rejected = page.getByTestId("add-files-error");
     await expect
       .poll(async () => ((await rejected.count()) ? `rejected: ${squash(await rejected.first().innerText())}` : await countNow()), { timeout: STEP_TIMEOUT })
       .toBe(before + 1);
@@ -130,24 +128,28 @@ export async function bind({ page, target, testInfo }) {
     run.files = [...(run.files ?? []), { kind, name: path.basename(file) }];
   }
 
+  // The first data file in the Import list, selected; its Data quality tab once the file is read, or
+  // its Preview tab, which holds the recovery notice when the stored preview cannot be verified.
   async function selectTableDocument() {
     await openSection("Import data");
-    const table = page.getByText(/\.(xlsx|xls|csv|sav)$/i).first();
-    await table.click();
+    await page.getByRole("button", { name: /^Select .*\.(xlsx|xls|csv|sav)$/i }).first().click();
   }
 
+  /** The selected data file's Data quality tab panel. */
   function importQuality() {
-    // The data-quality block for the selected table document (a <details> group).
-    return page.locator("details", { has: page.locator(":scope > summary", { hasText: /^Data quality$/ }) }).first();
+    return page.getByRole("tabpanel", { name: "Data quality", exact: true });
   }
 
   async function expectReadyOrActionableRecovery() {
-    const block = importQuality();
-    if (!(await block.isVisible())) await selectTableDocument();
-    await expect(block).toBeVisible({ timeout: STEP_TIMEOUT });
-    if (!(await block.getAttribute("open"))) await block.locator(":scope > summary").click();
-    const ready = block.getByTestId("import-quality-table");
-    const recovery = block.getByTestId("import-preview-recovery");
+    await selectTableDocument();
+    const quality = page.getByRole("tab", { name: "Data quality", exact: true });
+    const preview = page.getByRole("tab", { name: "Preview", exact: true });
+    await expect(quality.or(preview).first()).toBeVisible({ timeout: STEP_TIMEOUT });
+    await expect.poll(async () => (await quality.count()) > 0 || (await page.getByTestId("import-preview-recovery").count()) > 0, { timeout: STEP_TIMEOUT }).toBe(true);
+    if (await quality.count()) await quality.click();
+    else await preview.click();
+    const ready = page.getByTestId("import-quality-table").filter({ visible: true });
+    const recovery = page.getByTestId("import-preview-recovery").filter({ visible: true });
     await expect(ready.or(recovery).first()).toBeVisible({ timeout: STEP_TIMEOUT });
     if (await recovery.isVisible()) {
       // A preview failure is the actionable path: it must say what to do, not be blank.

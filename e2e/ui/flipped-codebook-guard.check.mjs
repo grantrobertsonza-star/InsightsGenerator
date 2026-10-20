@@ -16,6 +16,8 @@
 // columnsAsCases.test.ts cover dictionary, categories, crosstab and driver refusal).
 // Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
+import { deleteSource, openSource } from "./helpers/sources.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,9 +60,7 @@ async function openSection(page, name) {
 
 async function upload(page, file) {
   await openSection(page, /Import data/);
-  const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-  await form.locator('input[name="rawTableFiles"]').setInputFiles(file);
-  await form.getByRole("button", { name: "Upload", exact: true }).click();
+  await addFiles(page, file, "Raw data");
 }
 
 test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respondent re-export recovers", async ({ page }) => {
@@ -74,17 +74,18 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
 
   await upload(page, files.flipped);
   const layout = () => page.getByLabel(/How the file is laid out: flipped-guard\.xlsx/);
+  await openSource(page, "flipped-guard.xlsx", "Setup");
   await expect(layout()).toBeEnabled({ timeout: 60_000 });
-  await expect(page.getByText("Accepted", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("source-acceptance")).toHaveText("Setup: Accepted", { timeout: 60_000 });
   const saved = page.waitForResponse((r) => r.request().method() === "POST" && !!r.request().headers()["next-action"]);
   await layout().selectOption("columns_are_cases");
   expect((await saved).status()).toBe(200);
 
   const notice = () => page.getByRole("alert").filter({ hasText: REFUSAL });
-  const showVariables = async () => {
-    const group = page.locator("details", { has: page.locator(":scope > summary", { hasText: /^Variables$/ }) }).first();
-    await expect(group).toBeVisible({ timeout: 60_000 });
-    if ((await group.getAttribute("open")) === null) await group.locator(":scope > summary").click();
+  // The selected data file's Variables tab (the refused file is listed first, as the newest, until
+  // the recovered file is added; then the check names the file it means).
+  const showVariables = async (name = "flipped-guard.xlsx") => {
+    await openSource(page, name, "Variables");
   };
 
   // 1. The file's Variables panel shows the refusal once, with its recovery guidance.
@@ -104,18 +105,20 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
   // 3. Recovery: the rows-per-respondent re-export reads normally.
   await upload(page, files.recovered);
   const recoveredLayout = page.getByLabel(/How the file is laid out: rows-recovered\.xlsx/);
+  await openSource(page, "rows-recovered.xlsx", "Setup");
   await expect(recoveredLayout).toBeEnabled({ timeout: 60_000 });
   await expect(recoveredLayout).toHaveValue("rows_are_cases");
+  await showVariables();
+  await expect(notice().first()).toBeVisible({ timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
 
   // Delete the refused file; the recovered one carries the analysis.
   page.on("dialog", (d) => d.accept());
-  const flippedCard = page.locator("div", { has: page.getByText("flipped-guard.xlsx", { exact: true }) }).filter({ has: page.getByRole("button", { name: "Delete document" }) }).last();
-  await flippedCard.getByRole("button", { name: "Delete document" }).click();
+  await deleteSource(page, "flipped-guard.xlsx");
   await expect(page.getByText("flipped-guard.xlsx", { exact: true })).toHaveCount(0, { timeout: 60_000 });
   await page.goto(runUrl, { waitUntil: "networkidle" });
   await openSection(page, /Import data/);
-  await showVariables();
+  await showVariables("rows-recovered.xlsx");
   await expect(notice()).toHaveCount(0);
   for (const v of ["Opt_A", "Opt_B"]) await expect(page.getByLabel(`Question type: ${v}`, { exact: true })).toHaveValue("multi", { timeout: 60_000 });
 

@@ -9,7 +9,7 @@ import { openDocumentAction } from "@/lib/documentOpenActions";
  * short-lived link once the server has checked the file belongs to this project; on failure the tab
  * is closed and the reason is shown here.
  */
-export default function OpenFileButton({ runId, documentId, filename, className }: { runId: string; documentId: string; filename: string; className?: string }) {
+export default function OpenFileButton({ runId, documentId, filename, className, label = "Open" }: { runId: string; documentId: string; filename: string; className?: string; label?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -37,7 +37,7 @@ export default function OpenFileButton({ runId, documentId, filename, className 
         className={className ?? "rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary-light disabled:opacity-50"}
         data-testid="open-file"
       >
-        {busy ? "Opening..." : "Open"}
+        {busy ? "Opening..." : label}
       </button>
       {error && (
         <span role="alert" className="mt-1 text-[11px] text-red-800">

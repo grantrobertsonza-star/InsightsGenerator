@@ -21,6 +21,7 @@
 // failure therefore looks specific to the dev runtime; hosted storage is not measured.
 // CONCURRENT_ROUNDS overrides the number of rounds.
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -56,9 +57,7 @@ test("concurrent exact-limit uploads either complete or fail visibly with nothin
         pages.map(async (page, i) => {
           const run = runs[i];
           const name = `at-both-limits-${round}-${i}.csv`;
-          const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-          await form.locator('input[name="rawTableFiles"]').setInputFiles({ name, mimeType: "text/csv", buffer });
-          await form.getByRole("button", { name: "Upload", exact: true }).click();
+          await addFiles(page, { name, mimeType: "text/csv", buffer }, "Raw data");
           const failedText = page.getByText(new RegExp(`Upload of ${name.replace(/\./g, "\\.")} failed`)).first();
           const rows = async () => (await db.query("select max(jsonb_array_length(dt.rows))::int n from document_tables dt join documents d on d.id=dt.document_id where d.run_id=$1", [run.id])).rows[0].n;
           let outcome = null;

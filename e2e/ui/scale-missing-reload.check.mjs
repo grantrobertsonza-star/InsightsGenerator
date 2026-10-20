@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
+import { openSourceTab } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -94,8 +95,9 @@ test("zero categories, missing-value exclusions and scale means read the same fr
   // The import's data audit still reports both user-missing declarations after a reload.
   await page.goto(run.url, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /^Import data/ }).first().click();
-  // The audit sits inside the import's collapsed "Data quality" section.
-  await page.getByText("Data quality", { exact: true }).first().click();
-  await page.getByText("Weights and missing codes", { exact: true }).first().click();
-  await expect(page.getByText(/2 variable\(s\) declare user-missing values/).first()).toBeVisible({ timeout: 60_000 });
+  // The audit sits in the data file's Data quality tab.
+  await page.getByRole("button", { name: /^Select .*\.sav$/ }).first().click();
+  const quality = await openSourceTab(page, "Data quality");
+  await quality.getByText("Weights and missing codes", { exact: true }).first().click();
+  await expect(quality.getByText(/2 variable\(s\) declare user-missing values/).first()).toBeVisible({ timeout: 60_000 });
 });

@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
@@ -59,7 +60,7 @@ import { decisionContextMismatch, decisionRefreshPending } from "@/lib/decisionR
 import { recommendationDecisionContextAvailable, recommendationDecisionStateSql, writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
-import UploadForm from "./UploadForm";
+import AddFilesPanel from "./AddFilesPanel";
 import { listProjects } from "@/lib/projectList";
 import StorageCleanupNotice from "./StorageCleanupNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
@@ -110,6 +111,8 @@ import DataAuditPanel from "./DataAuditPanel";
 import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
 import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
+import { flaggedChecks, sourceTypeLabel } from "@/lib/importSources";
+import { getDocumentRoles } from "@/lib/researchQualityRepository";
 import { getInstrumentSummaries, getConfirmedItemsForData } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
 import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
@@ -131,6 +134,8 @@ import TranscriptSetupTable, {
   CodeGate,
   ImportDetailProvider,
   SelectedFileDetail,
+  type SourcePanel,
+  type SourceRow,
   MODE_LABEL,
   SESSION_LABEL,
 } from "./TranscriptSetup";
@@ -3145,6 +3150,7 @@ export default async function RunPage({
     labelDiagnosticsByDoc,
     transcriptQuality,
     instrumentSummaries,
+    contextRoles,
     outputSets,
     reportReadStats,
     waveFilesResult,
@@ -3189,6 +3195,7 @@ export default async function RunPage({
     timing("labelDiagnosticsByDoc", getLabelDiagnostics(id)),
     timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
     timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
+    timing("contextRoles", getDocumentRoles(TENANT_ID, id)),
     timing("outputSets", getOutputSets(TENANT_ID, id)),
     timing("reportReadStats", getReportReadStats(id)),
     timing("waveFiles", listWaveFilesAction(id)),
@@ -3553,48 +3560,29 @@ export default async function RunPage({
   // is context, not mined for findings: its own quality is checked in Research quality review.
   const findingsByDocument = new Map<string, number>();
   for (const f of findings) if (f.source_document_id) findingsByDocument.set(f.source_document_id, (findingsByDocument.get(f.source_document_id) ?? 0) + 1);
-  // Each box carries a key, like `attached` and `quality` below: these elements are built inside the
-  // file list's map and rendered later in the right-hand pane, and React warns about an unkeyed
-  // element made in a list even when it is shown on its own.
-  const purposeFor = (d: (typeof documents)[number]): React.ReactNode => {
-    const box = "flex flex-col gap-2 rounded-lg border border-border bg-slate-50 p-3 text-xs text-foreground";
+  // What one source is for, in a line under its name, and its next step beside View original.
+  const purposeOf = (d: (typeof documents)[number]): { text: string; nextStep: React.ReactNode } => {
     const n = findingsByDocument.get(d.id) ?? 0;
-    if (d.kind === "evidence")
-      return (
-        <div key="purpose" className={box} data-testid="file-purpose">
-          <p>Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions.</p>
-          <p className="text-muted">Check how well it is written against good research practice:</p>
-          <ReviewResearchQualityLink documentId={d.id} />
-        </div>
-      );
-    if (d.kind === "report")
-      return (
-        <div key="purpose" className={box} data-testid="file-purpose">
-          <p>{`Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
-          <GoToSection id="findings">Open Findings</GoToSection>
-        </div>
-      );
-    if (d.kind === "instrument")
-      return (
-        <div key="purpose" className={box} data-testid="file-purpose">
-          <p>Questionnaire or guide. Link it to the data file or transcripts it belongs to so answers carry its wording and codes.</p>
-        </div>
-      );
-    if (d.kind === "table")
-      return (
-        <div key="purpose" className={box} data-testid="file-purpose">
-          <p>{d.ingestion_type === "raw" ? "Case-level data. Build tables in Analysis once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`}</p>
-          <GoToSection id="crosstabs">Open Analysis</GoToSection>
-        </div>
-      );
-    if (d.kind === "transcript")
-      return (
-        <div key="purpose" className={box} data-testid="file-purpose">
-          <p>Transcript. Code it under Coding once its set-up is confirmed.</p>
-          <GoToSection id="coding">Open Coding</GoToSection>
-        </div>
-      );
-    return null;
+    switch (d.kind) {
+      case "evidence":
+        return {
+          text: "Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions. Check how well it is written in Research quality.",
+          nextStep: <ReviewResearchQualityLink key="next-step" documentId={d.id} />,
+        };
+      case "report":
+        return { text: `Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`, nextStep: <GoToSection key="next-step" id="findings">Open Findings</GoToSection> };
+      case "instrument":
+        return { text: "Questionnaire or guide. Link it to the data file or transcripts it belongs to so answers carry its wording and codes.", nextStep: null };
+      case "table":
+        return {
+          text: d.ingestion_type === "raw" ? "Case-level data. Build tables in Cross tabs and run analyses in Analytics once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`,
+          nextStep: <GoToSection key="next-step" id="crosstabs">Open Analysis</GoToSection>,
+        };
+      case "transcript":
+        return { text: "Transcript. Code it under Coding once its setup is accepted.", nextStep: <GoToSection key="next-step" id="coding">Open Coding</GoToSection> };
+      default:
+        return { text: "", nextStep: null };
+    }
   };
   const attachedFor = (d: (typeof documents)[number]): React.ReactNode => {
     const hosted = documents.filter((x) => {
@@ -3617,7 +3605,6 @@ export default async function RunPage({
         />
     );
   };
-  const uploadDone = documents.length > 0;
   const objectiveDone = Boolean(run.research_objective);
   const decisionReached = generateMode ? insights.length > 0 : objectiveDone;
   const decisionDone = Boolean(run.decision_statement);
@@ -4940,6 +4927,171 @@ export default async function RunPage({
         ? "upload"
         : "findings";
 
+  // The Import screen's sources (TranscriptSetup.tsx): every document, then each statistical output
+  // set, with the tabs its type has after Preview and Setup. Grant, 2026-10-20, from his prototype:
+  // raw data has Variables, Data quality and Questionnaire links; qualitative data Data quality and
+  // Guide; aggregated tables Data quality; a questionnaire or guide its questions and links; a
+  // brief, proposal or report its document details; an output set its overview and related sets.
+  const importRows: SourceRow[] = [
+    ...documents
+      .filter((d) => d.kind !== "output")
+      .map((d): SourceRow => {
+        const isRaw = d.kind === "table" && d.ingestion_type === "raw";
+        const previewError = importPreviewIdentities.get(d.id)?.error ?? null;
+        const ownTables = importQualityTables.filter((t) => t.documentId === d.id);
+        const attached = attachedFor(d);
+        const instrument = d.kind === "instrument" ? instrumentSummaries.get(d.id) : undefined;
+        const isGuide = instrument?.type === "interview_guide" || instrument?.type === "focus_group_guide";
+        const panels: SourcePanel[] = [];
+        // A count on a tab brings a problem forward without opening it (Grant, 2026-10-20): the
+        // import checks flagged Check or Problem, and questionnaire links still to confirm.
+        const qualityBadge = (n: number): SourcePanel["badge"] =>
+          n > 0 ? { text: String(n), title: `${n} ${n === 1 ? "check is" : "checks are"} flagged Check or Problem` } : undefined;
+        const linksBadge = (n: number): SourcePanel["badge"] =>
+          n > 0 ? { text: `${n} to check`, title: `${n} suggested ${n === 1 ? "link is" : "links are"} waiting for your confirmation` } : undefined;
+        const tableFlags = ownTables
+          .filter((t) => !t.previewError)
+          .reduce((n, t) => n + flaggedChecks((t.quality ?? computeTableQuality(t.headers, t.rows, t.ingestionType, t.stated ?? [])).checks), 0);
+        if (previewError) panels.push({ id: "preview", label: "Preview", node: <ImportPreviewRecovery key="panel" error={previewError} /> });
+        if (d.kind === "table" && !previewError) {
+          if (isRaw && ownTables.length > 0) {
+            panels.push({ id: "variables", label: "Variables", node: <ImportVariablesPanel key="panel" runId={id} tables={ownTables} withinSource /> });
+            panels.push({
+              id: "quality",
+              label: "Data quality",
+              badge: qualityBadge(tableFlags),
+              node: (
+                <Fragment key="panel">
+                  <ImportQualityPanel tables={ownTables} hasReportOnly={false} withinSource />
+                  <DataAuditPanel runId={id} documentId={d.id} />
+                </Fragment>
+              ),
+            });
+          } else if (!isRaw && (documentTablesByDocument.get(d.id) ?? []).length > 0) {
+            const aggregated = computeAggregatedQuality(
+              (documentTablesByDocument.get(d.id) ?? [])
+                .filter((t) => t.table_index < 100)
+                .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
+            );
+            panels.push({ id: "quality", label: "Data quality", badge: qualityBadge(flaggedChecks(aggregated.checks)), node: <AggregatedQualityPanel key="panel" q={aggregated} /> });
+          } else if (ownTables.length > 0) {
+            panels.push({ id: "quality", label: "Data quality", badge: qualityBadge(tableFlags), node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource /> });
+          }
+        }
+        if (d.kind === "transcript" && transcriptQuality.has(d.id)) {
+          panels.push({ id: "quality", label: "Data quality", badge: qualityBadge(flaggedChecks(transcriptQuality.get(d.id)!.checks)), node: <TranscriptImportQualityPanel key="panel" q={transcriptQuality.get(d.id)!} /> });
+        }
+        if (attached)
+          panels.push({
+            id: "links",
+            label: d.kind === "transcript" ? "Guide" : "Questionnaire links",
+            badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.links.suggested ?? 0), 0)),
+            node: attached,
+          });
+        else if (isRaw) panels.push({ id: "links", label: "Questionnaire links", node: <p key="panel" className="text-xs text-muted">No questionnaire is linked to this file. Add one with Add files, as a questionnaire or guide; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p> });
+        if (instrument) {
+          panels.push({
+            id: "links",
+            label: isGuide ? "Guide" : "Questionnaire links",
+            badge: linksBadge(instrument.links.suggested),
+            node: (
+              <InstrumentCard
+                key="panel"
+                runId={id}
+                documentId={d.id}
+                summary={instrument}
+                dataDocs={
+                  instrument.type === "questionnaire" || instrument.type === null
+                    ? documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => ({ id: x.id, name: x.source_filename }))
+                    : []
+                }
+              />
+            ),
+          });
+        }
+        if (d.kind === "evidence" || d.kind === "report") {
+          panels.push({ id: "details", label: "Document details", node: <DocumentIndicatorsPanel key="panel" runId={id} documentId={d.id} /> });
+        }
+        const excerpt = documentExcerpts.get(d.id);
+        const purpose = purposeOf(d);
+        return {
+          documentId: d.id,
+          runId: id,
+          filename: d.source_filename,
+          kind: d.kind,
+          kindLabel: sourceTypeLabel(d.kind, d.ingestion_type, contextRoles === null ? undefined : (contextRoles.get(d.id) ?? [])),
+          uploadedAt: d.uploaded_at,
+          isRawData: isRaw,
+          dataSetup: dataSetups.get(d.id) ?? null,
+          // A questionnaire's own read record (instrument_items) says whether its questions were read,
+          // and whether that read was complete; every instrument has a summary, read or not.
+          processingStatus: instrument?.readStatus && !instrument.readStatus.complete ? "incomplete" : d.processing_status,
+          instrumentRead: instrument ? instrument.items > 0 || instrument.readStatus !== undefined : undefined,
+          previewUnverified: previewError !== null,
+          preview:
+            d.kind === "instrument" || previewError
+              ? null
+              : d.kind === "table"
+                ? {
+                    kind: "tables" as const,
+                    // row_count, not rows.length: getDocumentTablePreviews caps a raw table's rows at a
+                    // small sample, with row_count holding the true count. Counting rows.length here used
+                    // to read every raw file as having zero rows, which made the setup form see "no
+                    // tables yet" and re-read the file on every page load (IMP-010).
+                    tables: (documentTablesByDocument.get(d.id) ?? [])
+                      .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.row_count > 0)
+                      .map((t) => ({
+                        label: t.label ?? `Table ${t.table_index + 1}`,
+                        headers: t.headers.slice(0, 12),
+                        totalColumns: t.headers.length,
+                        rows: t.rows.slice(0, 8),
+                        totalRows: t.row_count,
+                      })),
+                  }
+                : excerpt
+                  ? { kind: "text" as const, excerpt: excerpt.excerpt, length: excerpt.length }
+                  : null,
+          linked: hostedBy(d).map((x) => ({ documentId: x.id, filename: x.source_filename })),
+          linkedTo:
+            d.kind === "instrument" && instrumentHome.has(d.id)
+              ? instrumentHome.get(d.id) === "*"
+                ? "your transcripts"
+                : (documents.find((x) => x.id === instrumentHome.get(d.id))?.source_filename ?? null)
+              : null,
+          purposeText: purpose.text,
+          nextStep: purpose.nextStep,
+          panels,
+          initial: transcriptSetups.get(d.id) ?? null,
+          waveAvailable: transcriptWaveSaves,
+          suggestion: setupSuggestions.get(d.id) ?? null,
+          hasCoding: codebooksByDocument.has(d.id),
+          deleteAction: deleteDocument.bind(null, id, d.id),
+          deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, d.id)),
+        };
+      }),
+    ...outputSets.map(
+      (set): SourceRow => ({
+        documentId: `output-set:${set.id}`,
+        runId: id,
+        filename: set.name,
+        kind: "output",
+        kindLabel: sourceTypeLabel("output", null),
+        isRawData: false,
+        dataSetup: null,
+        preview: null,
+        processingStatus: null,
+        purposeText: `${set.files.length} ${set.files.length === 1 ? "file" : "files"} of statistical output, checked and turned into findings from its Overview tab.`,
+        panels: [
+          { id: "overview", label: "Overview", node: <OutputSetCard key="panel" runId={id} set={set} /> },
+          ...(outputSets.length > 1 ? [{ id: "related", label: "Related sets", node: <RelatedOutputSets key="panel" runId={id} sets={outputSets} /> }] : []),
+        ],
+        initial: null,
+        suggestion: null,
+        hasCoding: false,
+      }),
+    ),
+  ];
+
   timing.bodyBuilt();
   return (
     <FigureChecksProvider checks={figureChecks}>
@@ -5052,28 +5204,50 @@ export default async function RunPage({
 
         <div className="px-6 pb-6 pt-2">
           <SectionPanel id="upload">
-            <ImportDetailProvider>
-            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Import data</h2>
-            <p className="mb-2 max-w-3xl text-sm text-muted">
-              Add files on the left. Everything you have added is listed in the middle, and the right pane
-              shows what to do next.
-            </p>
-            <ThreePane
-              wideRight
-              left={
-                <Pane side="left" title="Add files">
-                  <CollapsibleSection
-              key={`upload-${uploadDone}`}
-              title="Upload documents"
-              bare
-              icon={<UploadIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={!uploadDone}
-            >
-              <UploadForm runId={id} />
-            </CollapsibleSection>
+            <ImportDetailProvider rows={importRows}>
+            {/* Grant, 2026-10-20 (his Sources prototype): the heading with Add files, then the sources on
+                the left (search, filters, states) and the selected source on the right, in tabs. The
+                list can be collapsed, and the divider dragged; both are remembered for Import alone. */}
+            <AddFilesPanel runId={id} />
             <StorageCleanupNotice runId={id} />
-          
-                  
+            {importRows.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border bg-white p-6 text-sm text-muted">
+                Nothing here yet. Use Add files to add a data file, a report, a brief or a transcript.
+              </p>
+            ) : (
+              <ThreePane
+                storageKey="import"
+                left={
+                  <Pane
+                    side="right"
+                    title="Sources"
+                    badge={<span className="text-xs font-medium text-muted">{`(${importRows.length})`}</span>}
+                  >
+                    <TranscriptSetupTable />
+                  </Pane>
+                }
+                middle={
+                  <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected source">
+                    <SelectedFileDetail />
+                  </section>
+                }
+              />
+            )}
+            {/* Project totals, kept to one line. */}
+            <p className="mt-3 text-[11px] text-muted" data-testid="project-totals">
+              {`Project so far: ${[
+                ["report", "report(s)"],
+                ["table", "data table(s)"],
+                ["transcript", "transcript(s)"],
+                ["instrument", "questionnaire(s) or guide(s)"],
+                ["evidence", "context file(s)"],
+              ]
+                .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
+                .join(", ")}${outputSets.length > 0 ? `, ${outputSets.length} statistical output ${outputSets.length === 1 ? "set" : "sets"}` : ""}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}
+            </p>
+            <details className="mt-4 rounded-xl border border-border bg-white p-4" data-testid="programme-and-wave">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-foreground">Programme and wave (optional)</summary>
+              <div className="mt-3">
             <div className="rounded-lg border border-dashed border-border bg-slate-50 p-4">
               <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
                 <ChartIcon className="h-3.5 w-3.5 text-primary" />
@@ -5179,202 +5353,8 @@ export default async function RunPage({
                 </div>
               )}
             </div>
-          
-                </Pane>
-              }
-              middle={
-                <Pane
-                  side="middle"
-                  title="Documents"
-                  badge={
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                      {documents.filter((d) => d.kind !== "output").length}
-                    </span>
-                  }
-                >
-                  {outputSets.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-xl font-semibold text-foreground">
-                  Statistical output ({outputSets.length} {outputSets.length === 1 ? "set" : "sets"})
-                </h2>
-                {outputSets.map((set) => (
-                  <OutputSetCard key={set.id} runId={id} set={set} />
-                ))}
-                {outputSets.length > 1 && <RelatedOutputSets runId={id} sets={outputSets} />}
               </div>
-            )}
-                  {documents.some((d) => d.kind !== "output") && (
-              <div className="">
-                <TranscriptSetupTable
-                  runId={id}
-                  rows={documents.filter((d) => d.kind !== "output").map((d) => ({
-                    documentId: d.id,
-                    runId: id,
-                    filename: d.source_filename,
-                    kind: d.kind,
-                    kindLabel: d.kind === "table" && d.ingestion_type === "raw" ? "Raw data" : (DOC_KIND_STYLE[d.kind]?.label ?? d.kind),
-                    kindBadge: DOC_KIND_STYLE[d.kind]?.badge ?? "",
-                    uploadedAt: d.uploaded_at,
-                    isRawData: d.kind === "table" && d.ingestion_type === "raw",
-                    dataSetup: dataSetups.get(d.id) ?? null,
-                    preview:
-                      d.kind === "instrument" || importPreviewIdentities.get(d.id)?.error
-                        ? null
-                        : d.kind === "table"
-                        ? {
-                            kind: "tables" as const,
-                            // row_count, not rows.length: getDocumentTablePreviews caps a raw
-                            // table's rows at a small sample (it can be huge in full), with
-                            // row_count holding the true count instead. Filtering or counting by
-                            // rows.length here used to always read a raw file's table as having
-                            // zero rows - it was filtered out of this list entirely regardless of
-                            // its real size, which in turn made TranscriptSetup's `unread` check
-                            // see "no tables yet" for every raw import and re-trigger a re-read on
-                            // every page load, not only on a genuinely unread file (IMP-010).
-                            tables: (documentTablesByDocument.get(d.id) ?? [])
-                              .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.row_count > 0)
-                              .map((t) => ({
-                                label: t.label ?? `Table ${t.table_index + 1}`,
-                                headers: t.headers.slice(0, 12),
-                                totalColumns: t.headers.length,
-                                rows: t.rows.slice(0, 8),
-                                totalRows: t.row_count,
-                              })),
-                          }
-                        : documentExcerpts.has(d.id)
-                          ? {
-                              kind: "text" as const,
-                              excerpt: documentExcerpts.get(d.id)!.excerpt,
-                              length: documentExcerpts.get(d.id)!.length,
-                            }
-                          : null,
-                    attached: attachedFor(d),
-                    linked: hostedBy(d).map((x) => ({ documentId: x.id, filename: x.source_filename })),
-                    purpose: purposeFor(d),
-                    quality:
-                      importPreviewIdentities.get(d.id)?.error ? (
-                        <ImportPreviewRecovery key="preview-recovery" error={importPreviewIdentities.get(d.id)!.error!} />
-                      ) : d.kind === "instrument" && instrumentSummaries.has(d.id) ? (
-                        <InstrumentCard
-                          key="instrument"
-                          runId={id}
-                          documentId={d.id}
-                          summary={instrumentSummaries.get(d.id)!}
-                          dataDocs={
-                            instrumentSummaries.get(d.id)!.type === "questionnaire" ||
-                            instrumentSummaries.get(d.id)!.type === null
-                              ? documents
-                                  .filter((x) => x.kind === "table" && x.ingestion_type === "raw")
-                                  .map((x) => ({ id: x.id, name: x.source_filename }))
-                              : []
-                          }
-                        />
-                      ) : d.kind === "evidence" || d.kind === "report" ? (
-                        <DocumentIndicatorsPanel key="indicators" runId={id} documentId={d.id} />
-                      ) : d.kind === "transcript" && transcriptQuality.has(d.id) ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <TranscriptImportQualityPanel q={transcriptQuality.get(d.id)!} />
-                          </div>
-                        </details>
-                      ) : d.kind === "table" &&
-                        d.ingestion_type !== "raw" &&
-                        (documentTablesByDocument.get(d.id) ?? []).length > 0 ? (
-                        <details key="data-quality" className="rounded-lg border border-border bg-white p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                            Data quality
-                          </summary>
-                          <div className="mt-3">
-                            <AggregatedQualityPanel
-                              q={computeAggregatedQuality(
-                                (documentTablesByDocument.get(d.id) ?? [])
-                                  .filter((t) => t.table_index < 100)
-                                  .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
-                              )}
-                            />
-                          </div>
-                        </details>
-                      ) : d.kind === "table" &&
-                        importQualityTables.some((t) => t.documentId === d.id) ? (
-                        <div key="data-quality" className="flex flex-col gap-3">
-                          <details className="rounded-lg border border-border bg-white p-3">
-                            <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                              Data quality
-                            </summary>
-                            <div className="mt-3">
-                              <ImportQualityPanel
-                                tables={importQualityTables.filter((t) => t.documentId === d.id)}
-                                hasReportOnly={false}
-                              />
-                              {d.ingestion_type === "raw" && <DataAuditPanel runId={id} documentId={d.id} />}
-                            </div>
-                          </details>
-                          <details className="rounded-lg border border-border bg-white p-3">
-                            <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
-                              Variables
-                            </summary>
-                            <div className="mt-3">
-                              <ImportVariablesPanel
-                                runId={id}
-                                tables={importQualityTables.filter((t) => t.documentId === d.id)}
-                              />
-                            </div>
-                          </details>
-                        </div>
-                      ) : null,
-                    detail:
-                      d.kind === "instrument"
-                        ? instrumentHome.has(d.id)
-                          ? `Linked to ${instrumentHome.get(d.id) === "*" ? "your transcripts" : (documents.find((x) => x.id === instrumentHome.get(d.id))?.source_filename ?? "your data")}; its links and checks also show with that file.`
-                          : "Read for its questions, then linked to your data or transcripts. Nothing is applied until you confirm the links."
-                        : d.kind === "table"
-                        ? d.ingestion_type === "raw"
-                          ? "Case-level data. Tables are built in Analysis, Analytics once you accept it here."
-                          : "Already-aggregated table, read as it is."
-                        : d.kind === "transcript"
-                          ? "Qualitative data. Themes are coded in Analysis, Coding once you accept it here."
-                          : d.kind === "report"
-                          ? "Report, read for the findings it states."
-                          : "Context for the project, not mined for findings.",
-                    initial: transcriptSetups.get(d.id) ?? null,
-                    waveAvailable: transcriptWaveSaves,
-                    suggestion: setupSuggestions.get(d.id) ?? null,
-                    hasCoding: codebooksByDocument.has(d.id),
-                    accent:
-                      DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
-                    deleteAction: deleteDocument.bind(null, id, d.id),
-                    deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, d.id)),
-                  }))}
-                />
-              </div>
-            )}
-                  {documents.length === 0 && outputSets.length === 0 && (
-                    <p className="text-sm text-muted">Nothing here yet. Drop a report, data table or transcript on the left.</p>
-                  )}
-                </Pane>
-              }
-              right={
-                <Pane side="right" title="Selected file">
-                  <SelectedFileDetail />
-                  <div className="h-px shrink-0 bg-border" />
-                  {/* Project totals, kept to one line: the pane is about the selected file. */}
-                  <p className="text-[11px] text-muted" data-testid="project-totals">
-                    {`Project so far: ${[
-                      ["report", "report(s)"],
-                      ["table", "data table(s)"],
-                      ["transcript", "transcript(s)"],
-                      ["instrument", "questionnaire(s) or guide(s)"],
-                      ["evidence", "context file(s)"],
-                    ]
-                      .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
-                      .join(", ")}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}
-                  </p>
-                </Pane>
-              }
-            />
+            </details>
             </ImportDetailProvider>
           </SectionPanel>
 

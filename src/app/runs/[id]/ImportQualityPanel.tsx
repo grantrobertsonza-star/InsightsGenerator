@@ -166,12 +166,26 @@ function Stat({ value, label }: { value: string | number; label: string }) {
  * is counted straight from the stored rows, nothing is judged by a model,
  * and nothing is blocked: a Problem flag is a prompt to look, not a gate.
  */
+/**
+ * A table's heading. Inside a selected source's tab (withinSource) the file's name is already in the
+ * header above (Grant, 2026-10-20), so only the table's own name is given, and none for a file's only
+ * unnamed table.
+ */
+export function tableHeading(table: ImportQualityTable, withinSource: boolean): string | null {
+  const part = table.label ? table.label : table.tableIndex > 0 ? `table ${table.tableIndex + 1}` : null;
+  if (withinSource) return part ? part.charAt(0).toUpperCase() + part.slice(1) : null;
+  return `${table.documentName}${part ? `: ${part}` : ""}`;
+}
+
 export default function ImportQualityPanel({
   tables,
   hasReportOnly,
+  withinSource = false,
 }: {
   tables: ImportQualityTable[];
   hasReportOnly: boolean;
+  /** Shown in a selected source's tab: no file name and no box of its own. */
+  withinSource?: boolean;
 }) {
   if (tables.length === 0) {
     return (
@@ -201,26 +215,24 @@ export default function ImportQualityPanel({
             table.ingestionType,
             table.stated ?? [],
           );
-        const title = `${table.documentName}${table.label ? `: ${table.label}` : table.tableIndex > 0 ? `: table ${table.tableIndex + 1}` : ""}`;
+        const title = tableHeading(table, withinSource);
         const caseLabel = q.kind === "raw" ? "Cases" : "Rows";
         const variableLabel = q.kind === "raw" ? "Variables" : "Columns";
         return (
           <div
             key={table.id}
             data-testid="import-quality-table"
-            className="space-y-3 rounded-xl border border-border bg-white p-4"
+            className={withinSource ? "space-y-3" : "space-y-3 rounded-xl border border-border bg-white p-4"}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
-                <div
-                  className="truncate text-sm font-medium text-foreground"
-                  title={title}
-                >
-                  {title}
-                </div>
-                <div className="text-xs text-muted">
-                  {q.kind === "raw" ? "Case-level data" : "Aggregated table"}
-                </div>
+                {title && (
+                  <div className="truncate text-sm font-medium text-foreground" title={title}>
+                    {title}
+                  </div>
+                )}
+                {!withinSource && <div className="text-xs text-muted">{q.kind === "raw" ? "Case-level data" : "Aggregated table"}</div>}
+                {withinSource && !title && <div className="text-xs font-medium text-foreground">Overall</div>}
               </div>
               <StatusPill status={q.status} />
             </div>

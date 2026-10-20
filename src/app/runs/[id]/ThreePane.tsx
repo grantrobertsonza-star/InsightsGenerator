@@ -103,7 +103,8 @@ export function ThreePane({
   wideRight = false,
   storageKey,
 }: {
-  left: ReactNode;
+  /** Optional: without it the layout is the working list and a resizable detail pane (Import data). */
+  left?: ReactNode;
   middle: ReactNode;
   right?: ReactNode;
   /** A roomier right pane for dense content such as data quality tables. */
@@ -112,7 +113,8 @@ export function ThreePane({
   storageKey?: string;
 }) {
   const hasRight = right !== undefined && right !== null && right !== false;
-  const key = `three-pane:${storageKey ?? (hasRight ? (wideRight ? "wide" : "three") : "two")}`;
+  const hasLeft = left !== undefined && left !== null && left !== false;
+  const key = `three-pane:${storageKey ?? (!hasLeft ? "list-detail" : hasRight ? (wideRight ? "wide" : "three") : "two")}`;
   const raw = useSyncExternalStore(
     subscribe,
     () => readStored(key),
@@ -151,7 +153,7 @@ export function ThreePane({
         ? "minmax(min(24rem,50%),34%)"
         : `min(${DEFAULT_RIGHT_PX}px,50%)`
     : null;
-  const cols = [leftCol, "1rem", "minmax(0,1fr)", ...(rightCol ? ["1rem", rightCol] : [])].join(" ");
+  const cols = [...(hasLeft ? [leftCol, "1rem"] : []), "minmax(0,1fr)", ...(rightCol ? ["1rem", rightCol] : [])].join(" ");
 
   const widthOf = (el: HTMLDivElement | null, fallback: number) => (el ? el.getBoundingClientRect().width : fallback);
 
@@ -228,6 +230,8 @@ export function ThreePane({
       data-testid="three-pane"
       data-left-collapsed={layout.leftCollapsed ? "true" : "false"}
     >
+      {hasLeft && (
+      <>
       <div ref={leftRef} className="min-w-0" data-testid="three-pane-left">
         <div className={layout.leftCollapsed ? "lg:hidden" : undefined}>{left}</div>
         {layout.leftCollapsed && (
@@ -269,6 +273,8 @@ export function ThreePane({
           </>
         )}
       </div>
+      </>
+      )}
       <div className="min-w-0">{middle}</div>
       {hasRight && (
         <>

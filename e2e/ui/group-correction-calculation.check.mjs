@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { openSource } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -43,6 +44,8 @@ test("a saved group correction computes as corrected, and clearing it computes t
     const openImport = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Import data/ }).first().click();
+      // The data file's Variables tab (Grant's Sources layout, 2026-10-20).
+      await openSource(page, path.basename(GOLDEN), "Variables");
     };
     const reveal = async (control) => {
       await expect(control).toBeAttached({ timeout: 60_000 });

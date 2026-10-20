@@ -10,11 +10,13 @@
 //      message; the refusal is still shown after a reload; no table is stored for it. After the
 //      file is deleted, the corrected 100,000-case file imports with 100,000 stored rows.
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { deleteFirstSource } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -48,17 +50,15 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     const openImport = async (run) => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Import data/ }).first().click();
-      await expect(page.locator('input[name="rawTableFiles"]').first()).toBeAttached({ timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Add files", exact: true })).toBeVisible({ timeout: 60_000 });
     };
     // Written to disk first: Playwright refuses an in-memory file over 50 MB, and the byte limit is
     // 100 MB since 2026-10-19.
     const dir = mkdtempSync(path.join(tmpdir(), "limits-"));
     const upload = async (name, buffer) => {
-      const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
       const file = path.join(dir, name);
       writeFileSync(file, buffer);
-      await form.locator('input[name="rawTableFiles"]').setInputFiles(file);
-      await form.getByRole("button", { name: "Upload", exact: true }).click();
+      await addFiles(page, file, "Raw data");
     };
 
     // 1. One byte over.
@@ -84,7 +84,7 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     await openImport(casesRun);
     await expect(caseMessage).toBeVisible({ timeout: 120_000 });
     expect(await tables(casesRun)).toEqual([]);
-    await page.getByRole("button", { name: "Delete document", exact: true }).first().click();
+    await deleteFirstSource(page);
     await expect.poll(async () => (await docs(casesRun)).length, { timeout: 60_000 }).toBe(0);
     await openImport(casesRun);
     await upload("at-the-case-limit.csv", csv(500_000, limits.maxCases));

@@ -1,8 +1,8 @@
 // Import screen, Grant 2026-10-19: "I imported the questionnaire and it says it was imported but I
 // don't see it in the list", and the right-hand pane showed project totals rather than anything about
 // the selected file. Real browser on the disposable stack (model replay).
-//   1. A questionnaire linked to a raw data file is listed on that file's card ("Linked"), and the
-//      file count includes it, so nothing imported is missing from the list.
+//   1. A questionnaire linked to a raw data file is named on that file's row ("1 linked document"),
+//      and has its own row too, so nothing imported is missing from the list.
 //   2. Selecting a brief shows what that file is for, with "Review research quality",
 //      which opens that module with the document highlighted.
 //   3. Project totals are one line, not the body of the pane.
@@ -14,10 +14,13 @@
 //      warning only in development, so it passes trivially against a production build.
 //   6. A data file's pane names its linked questionnaire on one line (Grant, 2026-10-19: the full
 //      questionnaire card there duplicated its own); the first read still starts from that line.
-//   7. The purpose box (Open Analysis, Open Coding) is the last block in the pane.
+//   7. What the file is for and its next step (Open Analysis, Open Coding) sit in the selected
+//      source's header, above its tabs (Grant's Sources layout, 2026-10-20).
 //   8. A brief shows its size: pages, words, and how much of it a quality review reads.
 //   9. The project title lines up with the section heading (Grant, 2026-10-19).
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
+import { openSourceTab, selectSource } from "./helpers/sources.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -42,25 +45,22 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "brief");
 
   // The questionnaire, through the Questionnaire or guide control.
-  const form = page.locator("form", { has: page.locator('input[name="instrumentFiles"]') });
-  await form.locator('input[name="instrumentFiles"]').setInputFiles(path.join(FIXTURE, "questionnaire.docx"));
-  await form.getByRole("button", { name: "Upload", exact: true }).click();
-  const linked = page.getByTestId("linked-instrument").filter({ hasText: "questionnaire.docx" });
-  await expect(linked).toBeVisible({ timeout: 3 * 60_000 });
-  // Named on the data file's card, and with its own card too: three files imported, three listed.
-  await expect(page.getByRole("heading", { name: "Your files (3)" })).toBeVisible();
-  await expect(page.getByText(/^Linked to golden-survey-documented\.xlsx; /)).toBeVisible();
-  const dataCard = page.locator("div", { has: page.getByText("golden-survey-documented.xlsx", { exact: true }) }).filter({ has: linked }).last();
-  await expect(dataCard).toBeVisible();
+  await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire or guide");
+  const dataRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select golden-survey-documented.xlsx", exact: true }) });
+  await expect(dataRow.getByTestId("linked-instrument")).toContainText("1 linked document", { timeout: 3 * 60_000 });
+  // Named on the data file's row, and with its own row too: three files imported, three listed.
+  await expect(page.getByTestId("source-row")).toHaveCount(3);
+  const questionnaireRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select questionnaire.docx", exact: true }) });
+  await expect(questionnaireRow.getByTestId("linked-instrument")).toContainText("Linked to golden-survey-documented.xlsx");
 
   // 9. The project title and the section heading share one left edge (1600 px wide viewport).
   const titleBox = await page.locator("h1").first().boundingBox();
-  const headingBox = await page.getByRole("heading", { name: "Import data", exact: true }).boundingBox();
+  const headingBox = await page.getByRole("heading", { name: "Sources", exact: true, level: 2 }).boundingBox();
   expect(Math.abs(titleBox.x - headingBox.x)).toBeLessThanOrEqual(1);
 
   // Opening a file: the data file downloads under its own name, in a new tab, through a short-lived
   // link the server signed after checking the file belongs to this project.
-  const [tab] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: "Open golden-survey-documented.xlsx" }).first().click()]);
+  const [tab] = await Promise.all([page.waitForEvent("popup"), (await selectSource(page, "golden-survey-documented.xlsx"), page.getByTestId("selected-source").getByRole("button", { name: "Open golden-survey-documented.xlsx" }).click())]);
   const download = await tab.waitForEvent("download", { timeout: 60_000 });
   expect(download.suggestedFilename()).toMatch(/golden-survey-documented\.xlsx|^[^/]+$/);
   expect(download.url()).toMatch(/\/object\/sign\//);
@@ -68,14 +68,14 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(page.getByText(/could not be opened|not in this project/)).toHaveCount(0);
 
   // The questionnaire and the data file each describe themselves in the pane.
-  await page.getByText("questionnaire.docx", { exact: true }).first().click();
-  await expect(page.getByTestId("file-purpose")).toContainText(/Questionnaire or guide/);
-  await page.getByText("golden-survey-documented.xlsx", { exact: true }).first().click();
-  await expect(page.getByTestId("file-purpose")).toContainText(/Case-level data/);
-  // 6. The data file's pane names its questionnaire on one line, not a second copy of its card; the
-  //    first read still starts from here, and "Show" opens the questionnaire's own card.
-  const pane = page.getByTestId("file-purpose").locator("xpath=..");
-  const line = pane.getByTestId("attached-instrument");
+  await selectSource(page, "questionnaire.docx");
+  await expect(page.getByTestId("file-purpose-text")).toContainText(/Questionnaire or guide/);
+  await selectSource(page, "golden-survey-documented.xlsx");
+  await expect(page.getByTestId("file-purpose-text")).toContainText(/Case-level data/);
+  // 6. The data file's Questionnaire links tab names its questionnaire on one line, not a second copy
+  //    of its card; the first read still starts from here, and "Show" selects the questionnaire.
+  const links = await openSourceTab(page, "Questionnaire links");
+  const line = links.getByTestId("attached-instrument");
   await expect(line).toHaveCount(1);
   await expect(line).toContainText("Questionnaire: questionnaire.docx");
   // The read finishes from here: items read, or the reason it could not (with model replay this
@@ -85,20 +85,20 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
     const reason = (await line.locator(".text-danger").count()) > 0;
     expect(read || reason).toBe(true);
   }).toPass({ timeout: 3 * 60_000 });
-  await expect(pane.getByRole("button", { name: /Match to variables|Match again/ })).toHaveCount(0);
-  // 7. What the file is for, with Open Analysis, comes after the checks (the last block in the pane).
-  const lastBlock = pane.locator(":scope > *").last();
-  await expect(lastBlock).toHaveAttribute("data-testid", "file-purpose");
+  await expect(links.getByRole("button", { name: /Match to variables|Match again/ })).toHaveCount(0);
+  // 7. What the file is for, with Open Analysis, sits in the header above the tabs.
+  const header = page.getByTestId("selected-source");
+  await expect(header.getByTestId("file-purpose").getByRole("button", { name: "Open Analysis" })).toBeVisible();
+  expect((await header.boundingBox()).y).toBeLessThan((await page.getByRole("tablist", { name: "Parts of the selected source" }).boundingBox()).y);
   await line.getByRole("button", { name: "Show" }).click();
-  await expect(page.getByTestId("file-purpose")).toContainText(/Questionnaire or guide/);
+  await expect(page.getByTestId("file-purpose-text")).toContainText(/Questionnaire or guide/);
 
   // The brief: what it is for, and the way to its quality review.
-  await page.getByText("client-brief.docx", { exact: true }).first().click();
+  await selectSource(page, "client-brief.docx");
   const purpose = page.getByTestId("file-purpose");
-  await expect(purpose).toBeVisible();
-  await expect(purpose).toContainText(/brief or proposal/);
+  await expect(page.getByTestId("file-purpose-text")).toContainText(/brief or proposal/);
   // 8. Its size: pages (or why not known), words read, and that a quality review reads all of it.
-  const size = page.getByTestId("document-indicators");
+  const size = (await openSourceTab(page, "Document details")).getByTestId("document-indicators");
   await expect(size.getByTestId("indicator-words")).toContainText(/^\d[\d,]* \(as read from the file\)$/, { timeout: 60_000 });
   await expect(size.getByTestId("indicator-pages")).toContainText(/^(\d[\d,]*|Not known: .+)$/);
   await expect(size.getByTestId("indicator-coverage")).toContainText("A quality review reads all of it");

@@ -11,6 +11,7 @@
 // Not covered: concurrent uploads at the 20 MB / 100,000-case limit, and real hosted storage.
 // Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
+import { addFiles } from "./helpers/addFiles.mjs";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -46,9 +47,7 @@ test("a failed upload storage write is shown, leaves no document, cleanup record
 
     const upload = async () => {
       await page.getByRole("button", { name: /Import data/ }).first().click();
-      const form = page.locator("form", { has: page.locator('input[name="rawTableFiles"]') });
-      await form.locator('input[name="rawTableFiles"]').setInputFiles(file);
-      await form.getByRole("button", { name: "Upload", exact: true }).click();
+      await addFiles(page, file, "Raw data");
     };
     const documents = async () => Number((await db.query("select count(*) from documents where run_id=$1", [runId])).rows[0].count);
     const pendingCleanup = async () =>
