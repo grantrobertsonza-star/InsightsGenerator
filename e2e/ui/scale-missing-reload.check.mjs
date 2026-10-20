@@ -27,6 +27,7 @@ function fixture() {
   const file = path.join(mkdtempSync(path.join(tmpdir(), "scale-missing-")), "scales.sav");
   const script = String.raw`
 import sys, pandas as pd, pyreadstat
+import { openCrosstabs } from "./helpers/crosstabs.mjs";
 lab = [1.0]*10 + [2.0]*10 + [3.0]*10 + [4.0]*10 + [9.0]*5
 rec = [3.0]*18 + [7.0]*18 + [9.0]*9
 df = pd.DataFrame({"id": [float(i) for i in range(45)], "lab": lab, "unl": list(lab), "rec": rec})
@@ -40,10 +41,7 @@ pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels, missing_rang
 
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
-  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  await page.getByRole("button", { name: /^Cross tabs/ }).first().click();
-  await page.getByRole("button", { name: /^Crosstabs/ }).click();
-  await expect(dialog).toBeVisible({ timeout: 60_000 });
+  const dialog = await openCrosstabs(page);
   const matching = dialog.locator(`table[data-testid="crosstab-result-table"][data-question-keys*='"${row}"']`);
   await expect
     .poll(

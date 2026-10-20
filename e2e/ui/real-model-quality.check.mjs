@@ -25,6 +25,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { measureOmittedEffect } from "./omitted-effect-measure.mjs";
+import { crosstabWorkspace, openCrosstabs } from "./helpers/crosstabs.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -70,11 +71,7 @@ const OMITTED_EFFECT = {
 // button, so it is picked here with the workspace's own controls; everything else is the adapter's.
 async function buildSetTable(page, setName, column) {
   await page.reload({ waitUntil: "networkidle" });
-  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  if (!(await dialog.isVisible())) {
-    await page.getByRole("button", { name: /^Cross tabs(\s*\d+)?$/ }).first().click();
-    await page.getByRole("button", { name: /^Crosstabs/ }).click();
-  }
+  const dialog = (await crosstabWorkspace(page).isVisible()) ? crosstabWorkspace(page) : await openCrosstabs(page);
   const search = dialog.getByPlaceholder("Search name or label");
   const rowOf = (name) => dialog.locator(`div.grid:has(> span[title="${name}"])`).first();
   await search.fill(column);

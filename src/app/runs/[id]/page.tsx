@@ -123,6 +123,8 @@ import InstrumentAutoRead from "./InstrumentAutoRead";
 import AttachedInstruments from "./AttachedInstruments";
 import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
 import AcceptDataButton from "./AcceptDataButton";
+import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
+import { crosstabDatasetState } from "@/lib/crosstabEntry";
 import OutputSetCard from "./OutputSetCard";
 import RelatedOutputSets from "./RelatedOutputSets";
 import { getOutputSets } from "@/lib/outputSets";
@@ -4520,13 +4522,12 @@ export default async function RunPage({
                                   doc.ingestion_type === "raw" &&
                                   !single && (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
-                                      Case-level data. Nothing is compared automatically.
-                                      Build tables with the cross tab tool below, or start
-                                      from a set of suggested tables, and keep the ones
-                                      worth keeping. Committed tables become findings.
-                                      Every comparison is flagged as uncorrected for
-                                      multiple comparisons and assumes simple random
-                                      sampling; complex survey designs are not applied yet.
+                                      Case-level data. Nothing is compared until you build a
+                                      table in Cross tabs (or start from suggested tables), and
+                                      committed tables become findings. Column differences use
+                                      the multiple-comparison correction chosen there (false
+                                      discovery rate by default), and a survey design is applied
+                                      when a PSU or strata variable is set.
                                     </div>
                                   )}
                                 {doc.kind === "table" &&
@@ -5484,54 +5485,39 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="crosstabs">
-            <DocumentPicker
-              title="Data files"
-              empty="No data files yet. Add a survey data file or a table under Import data."
-              rightTitle="Before you build tables"
-              items={documents
+            {/* Grant's review, 2026-10-20: straight into the crosstab workspace, the file chosen in its
+                header (CrosstabsSection says where each part of the old gateway page went). */}
+            <CrosstabsSection
+              runId={id}
+              findings={findings.length}
+              datasets={documents
                 .filter((d) => d.kind === "table")
-                .map((d) => {
-                  const saved = (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length;
+                .map((d): CrosstabDataset => {
+                  const state = crosstabDatasetState({
+                    filename: d.source_filename,
+                    ingestion: d.ingestion_type,
+                    processingStatus: d.processing_status,
+                    setupAccepted: dataSetups.has(d.id) ? dataSetups.get(d.id)?.accepted === true : undefined,
+                  });
                   return {
                     id: d.id,
-                    name: d.source_filename,
-                    meta: d.ingestion_type === "raw" ? "Case-level data" : "Aggregated tables",
-                    badge: saved > 0 ? `${saved} table${saved === 1 ? "" : "s"}` : undefined,
-                    node: documentCards("table", true, d.id, false, "crosstabs"),
+                    filename: d.source_filename,
+                    state,
+                    savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
+                    node:
+                      state === "needs_setup" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <span>The setup for this file changed, or acceptance was undone. Accept it to open it here, or review it in Sources first.</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <GoToSection id="upload">Review in Sources</GoToSection>
+                            <AcceptDataButton runId={id} documentId={d.id} setup={dataSetups.get(d.id)!} />
+                          </span>
+                        </div>
+                      ) : state === "aggregated" ? (
+                        documentCards("table", true, d.id, false, "crosstabs")
+                      ) : undefined,
                   };
                 })}
-              accents={documents
-                .filter((d) => d.kind === "table")
-                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
-              right={
-                <>
-                  <p className="text-sm text-muted">
-                    Survey and other numeric data. Build tables here, commit the ones worth keeping, and
-                    their comparisons flow into Findings.
-                  </p>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Case-level data is not compared automatically. Every comparison is flagged as uncorrected
-                    for multiple comparisons and assumes simple random sampling. Complex survey designs are not
-                    applied yet.
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {documents.filter((d) => d.kind === "table").length}
-                      </div>
-                      <div className="text-xs text-muted">Data files</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">{findings.length}</div>
-                      <div className="text-xs text-muted">Findings so far</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Open the crosstab workspace to see the full variable list beside the table you are
-                    building. Driver analysis, NPS, charts and the other analyses are under Analytics.
-                  </p>
-                </>
-              }
             />
           </SectionPanel>
 

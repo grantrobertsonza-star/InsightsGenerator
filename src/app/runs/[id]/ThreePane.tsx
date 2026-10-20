@@ -91,8 +91,8 @@ function subscribe(onChange: () => void) {
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
-function panelBounds(side: "left" | "right", total: number) {
-  const max = Math.max(0, Math.min(MAX_SIDE_PX, Math.round(total * (side === "left" ? 0.35 : 0.5))));
+function panelBounds(side: "left" | "right", total: number, leftShare = 0.35) {
+  const max = Math.max(0, Math.min(MAX_SIDE_PX, Math.round(total * (side === "left" ? leftShare : 0.5))));
   return { min: Math.min(side === "left" ? MIN_LEFT_PX : MIN_RIGHT_PX, max), max };
 }
 
@@ -102,6 +102,8 @@ export function ThreePane({
   right,
   wideRight = false,
   storageKey,
+  leftDefaultPx = DEFAULT_LEFT_PX,
+  leftMaxShare = 0.35,
 }: {
   /** Optional: without it the layout is the working list and a resizable detail pane (Import data). */
   left?: ReactNode;
@@ -111,6 +113,10 @@ export function ThreePane({
   wideRight?: boolean;
   /** Remember this screen's layout separately; by default screens with the same shape share one. */
   storageKey?: string;
+  /** The left pane's starting width, for a screen whose list needs more room (Cross tabs' variable table). */
+  leftDefaultPx?: number;
+  /** The largest share of the layout the left pane may take (default 35%). */
+  leftMaxShare?: number;
 }) {
   const hasRight = right !== undefined && right !== null && right !== false;
   const hasLeft = left !== undefined && left !== null && left !== false;
@@ -145,7 +151,7 @@ export function ThreePane({
   }, [hasRight]);
 
   // CSS min() keeps the middle pane usable even when a stored width came from a wider window.
-  const leftCol = layout.leftCollapsed ? "2.75rem" : `min(${layout.left ?? DEFAULT_LEFT_PX}px, 35%)`;
+  const leftCol = layout.leftCollapsed ? "2.75rem" : `min(${layout.left ?? leftDefaultPx}px, ${Math.round(leftMaxShare * 100)}%)`;
   const rightCol = hasRight
     ? layout.right !== null
       ? `min(${layout.right}px, 50%)`
@@ -160,9 +166,9 @@ export function ThreePane({
   const limits = useCallback(
     (side: "left" | "right") => {
       const total = gridRef.current?.getBoundingClientRect().width ?? 1200;
-      return panelBounds(side, total);
+      return panelBounds(side, total, leftMaxShare);
     },
-    [],
+    [leftMaxShare],
   );
 
   const commit = useCallback((next: Layout) => writeStored(key, next), [key]);
@@ -173,7 +179,7 @@ export function ThreePane({
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const start = side === "left" ? widthOf(leftRef.current, DEFAULT_LEFT_PX) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
+    const start = side === "left" ? widthOf(leftRef.current, leftDefaultPx) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
     const { min, max } = limits(side);
     let current: Layout = layout;
     const move = (ev: globalThis.PointerEvent) => {
@@ -196,7 +202,7 @@ export function ThreePane({
 
   function onHandleKey(side: "left" | "right", e: KeyboardEvent<HTMLDivElement>) {
     const { min, max } = limits(side);
-    const now = side === "left" ? widthOf(leftRef.current, DEFAULT_LEFT_PX) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
+    const now = side === "left" ? widthOf(leftRef.current, leftDefaultPx) : widthOf(rightRef.current, DEFAULT_RIGHT_PX);
     const step = e.shiftKey ? KEY_STEP_LARGE_PX : KEY_STEP_PX;
     // The handle sits on the pane's inner edge, so an arrow moves the edge: right widens the left pane
     // and narrows the right pane.
@@ -216,10 +222,10 @@ export function ThreePane({
   const reset = (side: "left" | "right") => commit(side === "left" ? { ...layout, left: null } : { ...layout, right: null });
   const setCollapsed = (leftCollapsed: boolean) => commit({ ...layout, leftCollapsed });
 
-  const leftNow = measured?.left ?? layout.left ?? DEFAULT_LEFT_PX;
+  const leftNow = measured?.left ?? layout.left ?? leftDefaultPx;
   const rightNow = measured?.right ?? layout.right ?? DEFAULT_RIGHT_PX;
   const total = measured?.total ?? 1200;
-  const leftBounds = panelBounds("left", total);
+  const leftBounds = panelBounds("left", total, leftMaxShare);
   const rightBounds = panelBounds("right", total);
 
   return (

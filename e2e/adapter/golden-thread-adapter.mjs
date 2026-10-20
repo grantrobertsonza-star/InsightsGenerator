@@ -161,11 +161,9 @@ export async function bind({ page, target, testInfo }) {
   // ----- crosstab ---------------------------------------------------------------------------
 
   async function workspace() {
-    const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-    if (!(await dialog.isVisible())) {
-      await openSection("Cross tabs");
-      await page.getByRole("button", { name: /^Crosstabs/ }).click();
-    }
+    // Cross tabs opens straight into the workspace (2026-10-20), so there is no tile to click.
+    const dialog = page.getByTestId("crosstab-workspace").filter({ visible: true });
+    if (!(await dialog.isVisible())) await openSection("Cross tabs");
     await expect(dialog.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: STEP_TIMEOUT });
     return dialog;
   }
@@ -443,8 +441,6 @@ export async function bind({ page, target, testInfo }) {
     const dialog = table.dialog;
     await dialog.getByRole("button", { name: /^Commit \d+ table/ }).click();
     await expect(dialog.getByText(/Committed \d+ table\(s\)\. [1-9]\d* finding\(s\) generated\./)).toBeVisible({ timeout: STEP_TIMEOUT });
-    await page.keyboard.press("Escape");
-    if (await dialog.isVisible()) await dialog.getByRole("button", { name: /^(Close|Done)$/ }).first().click();
     await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
     await openSection("Findings");
     const card = page.getByTestId("finding-card").filter({ hasText: new RegExp(`On ${escapeRegExp(table.rowVariable)}, the most common answer`) });

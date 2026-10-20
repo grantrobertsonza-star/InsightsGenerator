@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { ThreePane } from "./ThreePane";
 import { useRouter } from "next/navigation";
 import {
   addCrosstabAction,
@@ -135,13 +136,26 @@ export default function CrosstabWorkspace({
   documentId,
   filename,
   onClose,
+  layout = "overlay",
+  fileSelector,
 }: {
   runId: string;
   documentId: string;
   filename: string;
   saved?: { id: string; label: string }[];
-  onClose: () => void;
+  /** Overlay only: closes the full-window workspace. */
+  onClose?: () => void;
+  /**
+   * "page": the Cross tabs section itself (Grant, 2026-10-20: open the workspace directly rather
+   * than through a gateway page), laid out in the shared resizable panes, with the file chooser in
+   * its header and no Close, as it is a page of the project. "overlay": the full-window workspace
+   * opened from a data file's launcher elsewhere, unchanged.
+   */
+  layout?: "overlay" | "page";
+  /** Page layout: the data file chooser, shown beside the title. */
+  fileSelector?: ReactNode;
 }) {
+  const asPage = layout === "page";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [dict, setDict] = useState<VariableDictionary | null>(null);
@@ -181,6 +195,8 @@ export default function CrosstabWorkspace({
     });
 
   useEffect(() => {
+    // A page keeps the browser's own scrolling and keys; only the full-window overlay takes them.
+    if (asPage || !onClose) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -189,7 +205,7 @@ export default function CrosstabWorkspace({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, [onClose, asPage]);
 
   useEffect(() => {
     // Overnight queue, package 4 (IMP-014/ANA-NPS-003): a documentId switch (the researcher
@@ -783,15 +799,170 @@ export default function CrosstabWorkspace({
   const btn = (on: boolean) =>
     `rounded border px-2 py-0.5 text-[11px] ${on ? "border-primary bg-primary text-white" : "border-border hover:border-slate-400"}`;
 
-  const body = (
-    <CellSelectContext.Provider value={{ sel: cellSel, select: setCellSel }}>
-    <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+  // The choices that change what every table means, said in one line that is always in view
+  // (Grant's review, 2026-10-20), so collapsing the settings never hides them. An unresolved design
+  // choice (several candidates, or a named variable not found) keeps the settings open.
+  const designText = noDesignChosen
+    ? "none (weights only)"
+    : designOk
+      ? `Taylor series (${[psuVar && `PSU ${psuVar}`, strataVar && `strata ${strataVar}`].filter(Boolean).join(", ")})`
+      : psuVar || strataVar
+        ? "variable not found"
+        : "not set (weights only)";
+  const designUnresolved = designAmbiguous || (!noDesignChosen && !designOk && (psuVar !== "" || strataVar !== ""));
+  const settingsSummary = (
+    <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600" data-testid="crosstab-settings-summary">
+      <span>
+        <span className="font-medium text-foreground">Weight:</span> {weightVar ? (weights.find((w) => w.name === weightVar)?.label ?? weightVar) : "none (unweighted)"}
+      </span>
+      <span className={designUnresolved ? "font-medium text-amber-800" : undefined}>
+        <span className="font-medium text-foreground">Survey design:</span> {designText}
+        {designAmbiguous ? ", several candidates: choose one" : ""}
+      </span>
+      <span>
+        <span className="font-medium text-foreground">Non-answers:</span> {excludeDk ? "excluded from bases" : "included as an answer"}
+      </span>
+      <span>
+        <span className="font-medium text-foreground">Filters:</span> {filters.length === 0 ? "none" : `${filters.length} applied`}
+      </span>
+      <span>
+        <span className="font-medium text-foreground">Comparisons:</span> {correction === "fdr" ? "false discovery rate correction" : correction === "bonferroni" ? "Bonferroni correction" : "uncorrected"}
+      </span>
+      {/* The controls sit in Table settings, below the rows and columns; this goes straight to them. */}
+      <button
+        type="button"
+        onClick={() => {
+          setSettingsOpen(true);
+          requestAnimationFrame(() => settingsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+        }}
+        className="font-medium text-primary underline"
+      >
+        Change settings
+      </button>
+    </p>
+  );
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const settingsRef = useRef<HTMLDetailsElement>(null);
+  const tableSettings = (
+    <details
+      ref={settingsRef}
+      open={settingsOpen || designUnresolved}
+      onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
+      className="rounded-lg border border-slate-200 bg-slate-50"
+      data-testid="crosstab-table-settings"
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+        {asPage && entry === "build" ? "3. Table settings" : "Table settings"}
+        <span className="ml-2 text-[11px] font-normal text-slate-600">weight, comparisons, survey design and non-answers</span>
+      </summary>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 px-3 py-2">
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Weight</span>
+                <select
+                  value={weightVar}
+                  onChange={(e) => setWeightChoice(e.target.value)}
+                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
+                >
+                  <option value="">None (unweighted)</option>
+                  {weights.map((w) => (
+                    <option key={w.name} value={w.name}>
+                      {w.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Multiple comparisons</span>
+                <select
+                  value={correction}
+                  onChange={(e) => setCorrection(e.target.value as Correction)}
+                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
+                  title="Many columns are tested at once, so some differences appear by chance. The correction is applied across the columns of each banner variable, for each row."
+                >
+                  <option value="fdr">False discovery rate (Benjamini-Hochberg)</option>
+                  <option value="bonferroni">Bonferroni (strictest)</option>
+                  <option value="none">None (uncorrected)</option>
+                </select>
+              </label>
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Survey design</span>
+                <input
+                  list="design-vars"
+                  value={psuVar}
+                  disabled={noDesignChosen}
+                  onChange={(e) => setPsuChoice(e.target.value.trim())}
+                  placeholder="PSU (cluster) variable"
+                  className="w-40 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                  title="The primary sampling unit, for example the enumeration area. Leave empty (with strata filled in) for a strata-only design, or leave both empty to use weights only."
+                />
+                <input
+                  list="design-vars"
+                  value={strataVar}
+                  disabled={noDesignChosen}
+                  onChange={(e) => setStrataChoice(e.target.value.trim())}
+                  placeholder="Strata variable"
+                  className="w-36 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+                  title="Optional. The stratum each case was sampled from. Can be used alone, with no PSU/clustering variable."
+                />
+                <label className="flex items-center gap-1 text-[11px] text-muted" title="Explicitly record that no survey design applies to this file, distinct from simply never having chosen one - this is persisted and overrides auto-detection for every tool that reads it.">
+                  <input
+                    type="checkbox"
+                    checked={noDesignChosen}
+                    onChange={(e) => setNoDesignChosen(e.target.checked)}
+                  />
+                  No design (weights only)
+                </label>
+                <datalist id="design-vars">
+                  {(dict?.variables ?? []).filter((v) => !v.weightLike).slice(0, 4000).map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.label}
+                    </option>
+                  ))}
+                </datalist>
+                <span className={designOk ? "text-success" : "text-muted"}>
+                  {designOk ? "Taylor series variance" : (psuVar || strataVar) ? "Variable not found" : "Weights only"}
+                </span>
+                {designAmbiguous && (
+                  <span className="text-warning" title="More than one variable name looked like a PSU or strata candidate, so none was picked automatically - choose one explicitly.">
+                    Multiple design candidates found - choose explicitly
+                  </span>
+                )}
+              </label>
+              <label className="flex min-w-0 items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Non-answers (don&apos;t know, refused, n/a)</span>
+                <select
+                  value={excludeDk ? "exclude" : "include"}
+                  onChange={(e) => setExcludeDk(e.target.value === "exclude")}
+                  className="rounded border border-border px-2 py-1 text-xs"
+                  title="Excluded: these answers are left out of the percentage bases. Included: they stay in as an answer and take a share."
+                >
+                  <option value="exclude">Exclude from bases</option>
+                  <option value="include">Include as an answer</option>
+                </select>
+              </label>
+      </div>
+    </details>
+  );
+  const headerBar = (
+      <div className={asPage ? "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm" : "flex items-center justify-between gap-3 border-b border-border px-5 py-3"}>
         <div className="min-w-0">
-          <h2 className="truncate text-base font-semibold text-foreground">Crosstab workspace</h2>
-          <p className="truncate text-xs text-muted">
-            {filename}
-            {dict ? ` · ${dict.variables.length.toLocaleString()} variables · ${dict.nCases.toLocaleString()} cases` : ""}
+          {asPage ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="text-lg font-semibold text-foreground">Cross tabs</h2>
+              {fileSelector}
+            </div>
+          ) : (
+            <h2 className="truncate text-base font-semibold text-foreground">Crosstab workspace</h2>
+          )}
+          <p className={asPage ? "mt-0.5 text-xs text-slate-600" : "truncate text-xs text-muted"} data-testid="crosstab-file-meta">
+            {asPage ? "" : filename}
+            {/* Variables are the file's columns; the list below shows fewer rows, as a question set
+                is one row and weights, open text and single-value columns are left out unless chosen. */}
+            {dict
+              ? `${asPage ? "" : " · "}${dict.nCases.toLocaleString()} cases · ${dict.variables.length.toLocaleString()} variables in the file`
+              : asPage
+                ? "Reading the file's variables..."
+                : ""}
             {dict?.sheets?.data
               ? ` · data from sheet "${dict.sheets.data}"` +
                 (dict.sheets.variables || dict.sheets.values
@@ -800,8 +971,8 @@ export default function CrosstabWorkspace({
               : ""}
           </p>
         </div>
-        <div className="flex min-w-0 flex-1 items-center justify-center">
-          <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-slate-100 p-1" role="group" aria-label="Choose the interface you prefer">
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1">
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-border bg-slate-100 p-1" role="group" aria-label="Choose the interface you prefer">
             {(
               [
                 ["build", "CrossTabs", "Build a table: pick columns and rows, add nets and groups"],
@@ -823,6 +994,18 @@ export default function CrosstabWorkspace({
               </button>
             ))}
           </div>
+          {/* What the chosen way of making tables does, said under the buttons rather than only on hover. */}
+          <p className="text-center text-[11px] text-slate-600" data-testid="crosstab-mode-hint">
+            {
+              {
+                build: "CrossTabs: build a table yourself by choosing columns and rows, with nets and groups.",
+                ask: "SemanticTabs: describe the table in plain English, then check the setup it proposes before adding it.",
+                starter: "StarterTabs: a suggested set of demographic tables, built as drafts.",
+                objectives: "ObjectiveTabs: tables the evidence check built from your research objectives.",
+                all: "All tables: every table from every way of making them, and the commit into findings.",
+              }[entry]
+            }
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {otherWaves.length > 0 && (
@@ -850,19 +1033,22 @@ export default function CrosstabWorkspace({
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-slate-400"
-          >
-            Close (Esc)
-          </button>
+          {!asPage && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-slate-400"
+            >
+              Close (Esc)
+            </button>
+          )}
         </div>
       </div>
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(34rem,48%)_minmax(0,1fr)] xl:grid-cols-[minmax(30rem,38%)_minmax(0,1fr)_22rem]">
+  );
+  const variablesPane = (
+    <>
         {/* Variable table */}
-        <section className="flex min-h-0 flex-col border-r-2 border-sky-200 bg-sky-50">
+        <section aria-label="Variables" className={asPage ? "flex h-[36rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-13rem)] lg:min-h-[32rem]" : "flex min-h-0 flex-col border-r-2 border-sky-200 bg-sky-50"}>
           <div className="flex flex-wrap items-center gap-3 border-b border-border p-3">
             <div className="relative min-w-0 flex-1">
             <input
@@ -874,7 +1060,7 @@ export default function CrosstabWorkspace({
               }}
               placeholder="Search name or label"
               className="w-full rounded-lg border border-border py-1.5 pl-3 pr-9 text-sm"
-              autoFocus
+              autoFocus={!asPage}
             />
               {query && (
                 <button
@@ -913,8 +1099,12 @@ export default function CrosstabWorkspace({
                 </option>
               ))}
             </select>
-            <span className="text-[11px] text-muted">
-              {dict ? `${entries.length.toLocaleString()} rows` : "Reading variables..."}
+            <span
+              className="text-[11px] text-muted"
+              title="Rows in this list, not variables: a question set (multiple response or grid) is one row, and weights, open text and columns with a single value are left out unless chosen under the type filter."
+              data-testid="crosstab-list-count"
+            >
+              {dict ? `${entries.length.toLocaleString()} ${entries.length === 1 ? "row" : "rows"} in the list` : "Reading variables..."}
             </span>
             {sort.key !== "order" && (
               <button
@@ -1036,7 +1226,10 @@ export default function CrosstabWorkspace({
             </div>
           </div>
         </section>
-
+    </>
+  );
+  const dialogs = (
+    <>
         {grouping && (
           <GroupDialog
             runId={runId}
@@ -1081,97 +1274,15 @@ export default function CrosstabWorkspace({
             }}
           />
         )}
+    </>
+  );
+  const buildPane = (
+    <>
         {/* Build, table set, viewer */}
-        <section className="flex min-h-0 flex-col overflow-y-auto">
+        <section aria-label="Tables" className={asPage ? "flex h-[36rem] flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-13rem)] lg:min-h-[32rem]" : "flex min-h-0 flex-col overflow-y-auto"}>
           <div className="space-y-3 border-b border-border p-4">
-            {entry !== "all" && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-slate-50 px-3 py-2">
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Weight</span>
-                <select
-                  value={weightVar}
-                  onChange={(e) => setWeightChoice(e.target.value)}
-                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
-                >
-                  <option value="">None (unweighted)</option>
-                  {weights.map((w) => (
-                    <option key={w.name} value={w.name}>
-                      {w.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Multiple comparisons</span>
-                <select
-                  value={correction}
-                  onChange={(e) => setCorrection(e.target.value as Correction)}
-                  className="min-w-0 max-w-xs rounded border border-border px-2 py-1 text-xs"
-                  title="Many columns are tested at once, so some differences appear by chance. The correction is applied across the columns of each banner variable, for each row."
-                >
-                  <option value="fdr">False discovery rate (Benjamini-Hochberg)</option>
-                  <option value="bonferroni">Bonferroni (strictest)</option>
-                  <option value="none">None (uncorrected)</option>
-                </select>
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Survey design</span>
-                <input
-                  list="design-vars"
-                  value={psuVar}
-                  disabled={noDesignChosen}
-                  onChange={(e) => setPsuChoice(e.target.value.trim())}
-                  placeholder="PSU (cluster) variable"
-                  className="w-40 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
-                  title="The primary sampling unit, for example the enumeration area. Leave empty (with strata filled in) for a strata-only design, or leave both empty to use weights only."
-                />
-                <input
-                  list="design-vars"
-                  value={strataVar}
-                  disabled={noDesignChosen}
-                  onChange={(e) => setStrataChoice(e.target.value.trim())}
-                  placeholder="Strata variable"
-                  className="w-36 rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
-                  title="Optional. The stratum each case was sampled from. Can be used alone, with no PSU/clustering variable."
-                />
-                <label className="flex items-center gap-1 text-[11px] text-muted" title="Explicitly record that no survey design applies to this file, distinct from simply never having chosen one - this is persisted and overrides auto-detection for every tool that reads it.">
-                  <input
-                    type="checkbox"
-                    checked={noDesignChosen}
-                    onChange={(e) => setNoDesignChosen(e.target.checked)}
-                  />
-                  No design (weights only)
-                </label>
-                <datalist id="design-vars">
-                  {(dict?.variables ?? []).filter((v) => !v.weightLike).slice(0, 4000).map((v) => (
-                    <option key={v.name} value={v.name}>
-                      {v.label}
-                    </option>
-                  ))}
-                </datalist>
-                <span className={designOk ? "text-success" : "text-muted"}>
-                  {designOk ? "Taylor series variance" : (psuVar || strataVar) ? "Variable not found" : "Weights only"}
-                </span>
-                {designAmbiguous && (
-                  <span className="text-warning" title="More than one variable name looked like a PSU or strata candidate, so none was picked automatically - choose one explicitly.">
-                    Multiple design candidates found - choose explicitly
-                  </span>
-                )}
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">Non-answers (don&apos;t know, refused, n/a)</span>
-                <select
-                  value={excludeDk ? "exclude" : "include"}
-                  onChange={(e) => setExcludeDk(e.target.value === "exclude")}
-                  className="rounded border border-border px-2 py-1 text-xs"
-                  title="Excluded: these answers are left out of the percentage bases. Included: they stay in as an answer and take a share."
-                >
-                  <option value="exclude">Exclude from bases</option>
-                  <option value="include">Include as an answer</option>
-                </select>
-              </label>
-            </div>
-            )}
+            {entry !== "all" && settingsSummary}
+            {entry !== "all" && entry !== "build" && tableSettings}
             {entry === "objectives" && (
               <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-3 text-xs">
                 <p className="text-muted">
@@ -1248,6 +1359,7 @@ export default function CrosstabWorkspace({
             )}
             {entry === "build" && (
               <>
+            <h3 className="text-sm font-semibold text-foreground">1. Rows and columns</h3>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <p className="mb-1.5 text-base font-semibold text-foreground">Columns (banner, side by side)</p>
@@ -1329,31 +1441,44 @@ export default function CrosstabWorkspace({
             {entry === "build" && (
               <>
             {dict && (
-              <CrosstabOptions
-                runId={runId}
-                documentId={documentId}
-                dict={dict}
-                weighted={weightVar !== ""}
-                filters={filters}
-                setFilters={setFilters}
-                cells={cellPrefs}
-                setCells={setCellPrefs}
-                net={cellNet}
-                setNet={setCellNet}
-                stats={statPrefs}
-                setStats={setStatPrefs}
-                layerVar={layerVar}
-                setLayerVar={setLayerVar}
-              />
+              <details className="rounded-lg border border-slate-200" open={filters.length > 0 || layerVar !== "" ? true : undefined} data-testid="crosstab-filters-section">
+                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+                  2. Filters and optional layers
+                  <span className="ml-2 text-[11px] font-normal text-slate-600">
+                    {`${filters.length === 0 ? "No filter" : `${filters.length} ${filters.length === 1 ? "filter" : "filters"}`} · ${layerVar ? `layered by ${byName.get(layerVar)?.label || layerVar}` : "no layer"}`}
+                  </span>
+                </summary>
+                <div className="border-t border-slate-200 p-2">
+                  <CrosstabOptions part="filters" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                </div>
+              </details>
             )}
-            <button
-              type="button"
-              onClick={() => addTable()}
-              disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
-              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-            >
-              {isPending ? "Working..." : layerVar ? "Add layered tables to set" : "Add table to set"}
-            </button>
+            {tableSettings}
+            {dict && (
+              <details className="rounded-lg border border-slate-200" data-testid="crosstab-display-section">
+                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+                  Display and statistics options
+                  <span className="ml-2 text-[11px] font-normal text-slate-600">cell figures, NET columns and sizes of association</span>
+                </summary>
+                <div className="border-t border-slate-200 p-2">
+                  <CrosstabOptions part="display" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                </div>
+              </details>
+            )}
+            {/* Kept in view at the foot of the pane while the sections above are scrolled. */}
+            <div className={asPage ? "sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-white/95 px-4 py-2 backdrop-blur" : "flex flex-wrap items-center gap-3"}>
+              <button
+                type="button"
+                onClick={() => addTable()}
+                disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
+                className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+              >
+                {isPending ? "Working..." : layerVar ? "Add layered tables to set" : "Add table to set"}
+              </button>
+              {columnVars.length === 0 && rowItems.length === 0 && nets.length === 0 && (
+                <span className="text-[11px] text-slate-600">Choose rows or columns in the variable list first.</span>
+              )}
+            </div>
               </>
             )}
             {message && <p className="text-xs text-success">{message}</p>}
@@ -1361,6 +1486,7 @@ export default function CrosstabWorkspace({
           </div>
 
           <div className="space-y-3 p-4">
+            {asPage && entry === "build" && <h3 className="text-sm font-semibold text-foreground">4. Results and saved tables</h3>}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-foreground">
                 {modeName}: {visible.length} table{visible.length === 1 ? "" : "s"}
@@ -1420,25 +1546,66 @@ export default function CrosstabWorkspace({
             })}
           </div>
         </section>
-        <CellDetailPane />
-      </div>
-    </div>
+    </>
+  );
+  const body = (
+    <CellSelectContext.Provider value={{ sel: cellSel, select: setCellSel }}>
+      {asPage ? (
+        // The page: the shared panes, so the variable list can be collapsed and each pane resized,
+        // and the cell pane is shown only while a cell is selected (it gives its room back on Close).
+        <div className="flex flex-col gap-3" data-testid="crosstab-workspace">
+          {headerBar}
+          {dialogs}
+          <ThreePane
+            storageKey="crosstab-workspace"
+            leftDefaultPx={560}
+            leftMaxShare={0.55}
+            left={variablesPane}
+            middle={buildPane}
+            right={cellSel ? <CellDetailPane onClose={() => setCellSel(null)} /> : undefined}
+          />
+        </div>
+      ) : (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">
+          {headerBar}
+          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(34rem,48%)_minmax(0,1fr)] xl:grid-cols-[minmax(30rem,38%)_minmax(0,1fr)_22rem]">
+            {variablesPane}
+            {dialogs}
+            {buildPane}
+            <CellDetailPane />
+          </div>
+        </div>
+      )}
     </CellSelectContext.Provider>
   );
 
-  return (
-    <>
-      {createPortal(body, document.body)}
-    </>
-  );
+  return asPage ? body : <>{createPortal(body, document.body)}</>;
 }
 
-/** The third pane: the figures behind the table cell the researcher clicked. Wide screens only. */
-function CellDetailPane() {
+/**
+ * The figures behind the table cell the researcher clicked. In the overlay, a third column on wide
+ * screens. On the page, a pane opened by selecting a cell, with Close (onClose) to give its room back.
+ */
+function CellDetailPane({ onClose }: { onClose?: () => void }) {
   const { sel } = useContext(CellSelectContext);
   return (
-    <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 xl:flex">
-      <h3 className="text-sm font-semibold text-foreground">Selected cell</h3>
+    <aside
+      aria-label="Selected cell"
+      className={
+        onClose
+          ? "flex h-[36rem] flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:h-[calc(100vh-13rem)] lg:min-h-[32rem]"
+          : "hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 xl:flex"
+      }
+      data-testid="crosstab-cell-pane"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Selected cell</h3>
+        {onClose && (
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-foreground hover:border-slate-400">
+            Close
+          </button>
+        )}
+      </div>
       {!sel ? (
         <p className="text-sm text-muted">
           Click a figure in a table to see its base, the test behind it and how it compares with the

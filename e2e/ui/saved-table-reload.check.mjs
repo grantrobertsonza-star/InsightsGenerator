@@ -39,10 +39,7 @@ async function adapter(page, testInfo) {
 // After a reload: open the Crosstab workspace and return the saved result table for `row`.
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
-  const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  await page.getByRole("button", { name: /^Cross tabs/ }).first().click();
-  await page.getByRole("button", { name: /^Crosstabs/ }).click();
-  await expect(dialog).toBeVisible({ timeout: 60_000 });
+  const dialog = await openCrosstabs(page);
   // Every saved table for this question (the same question can be saved more than once; each
   // copy is read the same way).
   const matching = dialog.locator(`table[data-testid="crosstab-result-table"][data-question-keys*='"${row}"']`);
@@ -64,6 +61,7 @@ async function reopenSaved(page, run, row) {
 function conflictWorkbook(dir) {
   const script = String.raw`
 import sys
+import { openCrosstabs } from "./helpers/crosstabs.mjs";
 from openpyxl import Workbook
 wb = Workbook(); ws = wb.active; ws.title = "Data"
 for r in [["id","q"],["001",1],["002",1],["003",1],["004",2]]: ws.append(r)

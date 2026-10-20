@@ -42,9 +42,9 @@ test("the sidebar's stages, Objectives tabs, split Cross tabs and Analytics, and
   await expect(objectives).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { name: "Review objectives", exact: true })).toBeVisible();
 
-  // 4. Cross tabs and Analytics, each with its own tiles.
+  // 4. Cross tabs opens its workspace directly; Analytics has its own tiles.
   await openSection(page, /^Cross tabs/);
-  await expect(page.getByRole("button", { name: /^Crosstabs/ })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("crosstab-workspace").filter({ visible: true }).getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("button", { name: /^Driver analysis/ })).toHaveCount(0);
   await openSection(page, /^Analytics/);
   await expect(page.getByRole("button", { name: /^Driver analysis/ })).toBeVisible({ timeout: 60_000 });

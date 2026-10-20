@@ -40,6 +40,7 @@ export default function CrosstabOptions({
   setStats,
   layerVar,
   setLayerVar,
+  part = "all",
 }: {
   runId: string;
   documentId: string;
@@ -55,6 +56,11 @@ export default function CrosstabOptions({
   setStats: React.Dispatch<React.SetStateAction<StatPrefs>>;
   layerVar: string;
   setLayerVar: (v: string) => void;
+  /**
+   * Which group of options to show (Grant's review, 2026-10-20: separate sections in the workspace):
+   * "filters" (Filter and Layer), "display" (Cell display and Statistics), or "all" as before.
+   */
+  part?: "filters" | "display" | "all";
 }) {
   const tickBox = (key: keyof CellPrefs, label: string, hint?: string, disabled?: boolean) => (
     <label key={key} className={`flex items-center gap-2 py-0.5 text-xs ${disabled ? "opacity-50" : ""}`} title={hint}>
@@ -69,11 +75,14 @@ export default function CrosstabOptions({
   );
   return (
     <div className="space-y-2">
+      {part !== "display" && (
       <div className="rounded-lg border border-border p-2">
         <p className="mb-1 text-xs font-semibold text-foreground">Filter</p>
         <p className="mb-1 text-[11px] text-muted">Limit the table to some cases, for example gender is Female and age from 24 to 36. All filters must hold.</p>
         <FilterBuilder runId={runId} documentId={documentId} dict={dict} value={filters} onChange={setFilters} />
       </div>
+      )}
+      {part !== "filters" && (
       <div className="rounded-lg border border-border p-2">
         <p className="mb-1 text-xs font-semibold text-foreground">Cell display</p>
         <div className="grid grid-cols-2 gap-x-3">
@@ -90,6 +99,8 @@ export default function CrosstabOptions({
         </div>
         <p className="mt-1 text-[11px] text-muted">The base rows and a Total row are always shown. These choices apply to tables you add from here; each table can still be changed afterwards.</p>
       </div>
+      )}
+      {part !== "display" && (
       <div className="rounded-lg border border-border p-2">
         <p className="mb-1 text-xs font-semibold text-foreground">Layer (optional)</p>
         <p className="mb-1 text-[11px] text-muted">
@@ -112,6 +123,8 @@ export default function CrosstabOptions({
             ))}
         </select>
       </div>
+      )}
+      {part !== "filters" && (
       <div className="rounded-lg border border-border p-2">
         <p className="mb-1 text-xs font-semibold text-foreground">Statistics</p>
         <p className="mb-1 text-[11px] text-muted">The chi-square test is always shown. Tick the sizes of association to show with it.</p>
@@ -125,6 +138,7 @@ export default function CrosstabOptions({
         </div>
         <p className="mt-1 text-[11px] text-muted">These need a column variable, so they are skipped for tables of all respondents.</p>
       </div>
+      )}
     </div>
   );
 }
