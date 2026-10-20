@@ -354,12 +354,15 @@ const SIDES = {
   left: "bg-sky-50 border-sky-200",
   middle: "bg-slate-50 border-slate-300",
   right: "bg-white border-slate-300",
+  /** White with a grey border on every side: Import, Research quality, Objectives and Business decisions (Grant, 2026-10-20). */
+  plain: "bg-white border-border",
 } as const;
 
 const HEADERS = {
   left: "bg-sky-100 border-sky-200",
   middle: "bg-white border-slate-300",
   right: "bg-white border-slate-300",
+  plain: "bg-white border-border",
 } as const;
 
 /** One pane: a header row (title, optional count and actions) over a body that scrolls on wide screens. */

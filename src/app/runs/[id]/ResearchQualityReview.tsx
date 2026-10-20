@@ -190,7 +190,7 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
           </section>
         }
         right={
-          <Pane side="right" title="Criterion details">
+          <Pane side="plain" title="Criterion details">
             {review ? (
               <CriterionPanel view={view} dimension={dimension} criterion={criterion} />
             ) : (

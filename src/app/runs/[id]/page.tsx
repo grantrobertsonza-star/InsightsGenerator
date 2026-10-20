@@ -5236,7 +5236,7 @@ export default async function RunPage({
                 storageKey="import"
                 left={
                   <Pane
-                    side="right"
+                    side="plain"
                     title="Sources"
                     badge={<span className="text-xs font-medium text-muted">{`(${importRows.length})`}</span>}
                   >
@@ -5384,7 +5384,7 @@ export default async function RunPage({
             </p>
             <ThreePane
               left={
-                <Pane side="left" title="Objective and context">
+                <Pane side="plain" title="Objective and context">
                   <RunContextForm
                     runId={id}
                     businessProblem={run.business_problem}
@@ -5398,7 +5398,7 @@ export default async function RunPage({
                 </Pane>
               }
               middle={
-                <Pane side="middle" title="Your objectives">
+                <Pane side="plain" title="Your objectives">
                   <StatedObjectivesList
                     runId={id}
                     lines={parseObjectiveLines(run.stated_objectives_text)}
@@ -5422,7 +5422,7 @@ export default async function RunPage({
             <ObjectiveSelectionProvider>
               <ThreePane
                 left={
-                  <Pane side="left" title="Objectives">
+                  <Pane side="plain" title="Objectives">
                     <ObjectiveList
                       rows={objectiveRows}
                       verdicts={objectiveValidations.map((v) => ({
@@ -5434,12 +5434,12 @@ export default async function RunPage({
                   </Pane>
                 }
                 middle={
-                  <Pane side="middle" title="Objective detail">
+                  <Pane side="plain" title="Objective detail">
                     <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
                   </Pane>
                 }
                 right={
-                  <Pane side="right" title="Objective review">
+                  <Pane side="plain" title="Objective review">
                     <ObjectiveCoverage
                       runId={id}
                       validations={objectiveValidations}

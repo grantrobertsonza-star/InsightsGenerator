@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { splitSentences } from "./sentences";
 
 // Pure helpers for the transcript coding pipeline (extractThemes.ts): turn a
 // transcript into speaker segments, check a quote against those segments,
@@ -752,7 +753,6 @@ export type ApplyItem = {
   units: string[];
 };
 
-const ABBREVIATIONS = /\b(e\.g|i\.e|etc|vs|mr|mrs|ms|dr|prof|no|approx|st)\.$/i;
 const MIN_UNIT_CHARS = 25;
 
 /**
@@ -762,24 +762,6 @@ const MIN_UNIT_CHARS = 25;
  * under 25 characters is joined to the sentence before it (or after it when it opens the turn), so
  * "Yes. Because of the fees." keeps its answer and its reason together enough to read.
  */
-export function splitSentences(flat: string): string[] {
-  const raw: string[] = [];
-  let start = 0;
-  const re = /[.!?]+["')\]]*\s+(?=[A-Z0-9"'(\[])/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(flat)) !== null) {
-    const end = m.index + m[0].length;
-    const piece = flat.slice(start, end).trim();
-    // Not a boundary: an abbreviation, or a number such as "3. " inside a list of one word.
-    if (ABBREVIATIONS.test(piece.replace(/\s+$/, "")) || /\b\d+\.$/.test(piece)) continue;
-    raw.push(piece);
-    start = end;
-  }
-  const tail = flat.slice(start).trim();
-  if (tail) raw.push(tail);
-  return raw;
-}
-
 export function splitIntoUnits(text: string): string[] {
   const flat = text.replace(/\s+/g, " ").trim();
   if (!flat) return [];

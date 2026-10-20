@@ -18,6 +18,7 @@ import {
 } from "@/lib/decisionCandidateActions";
 import { TrashIcon } from "@/components/icons";
 import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
+import { evidenceSummaryPoints } from "@/lib/decisionPresentation";
 import type { EarlierDecisionCounts } from "@/lib/decisionRefresh";
 
 type DecisionCandidate = {
@@ -285,10 +286,15 @@ export default function DecisionBriefReview({
 
   return (
     <ThreePane
-      storageKey="decisions-v2"
+      storageKey="decisions-v3"
+      left={
+        <Pane side="plain" title="What the evidence shows">
+          <EvidenceSummary text={evidenceSynthesis} />
+        </Pane>
+      }
       middle={
         <Pane
-          side="middle"
+          side="plain"
           title="Decisions"
           badge={
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
@@ -423,24 +429,6 @@ export default function DecisionBriefReview({
         </div>
       )}
 
-        </Pane>
-      }
-      right={
-        <Pane side="right" title="Evidence and rejected">
-      {evidenceSynthesis && (
-        <div className="rounded-lg border border-primary/20 bg-primary-light/40 px-4 py-3">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
-            What the evidence shows
-          </div>
-          <p className="text-sm text-foreground">{evidenceSynthesis}</p>
-        </div>
-      )}
-
-          {!evidenceSynthesis && rejected.length === 0 && (
-            <p className="text-sm text-muted">
-              The evidence summary and any rejected decisions show here.
-            </p>
-          )}
       {rejected.length > 0 && (
         <div className="rounded-lg border border-dashed border-border p-3">
           <button
@@ -450,7 +438,7 @@ export default function DecisionBriefReview({
           >
             <span>
               Rejected ({rejected.length})
-              {!rejectedOpen && " — kept in case nothing new turns up"}
+              {!rejectedOpen && ", kept in case nothing new turns up"}
             </span>
             <span className="text-xs">{rejectedOpen ? "Hide" : "Show"}</span>
           </button>
@@ -476,6 +464,33 @@ export default function DecisionBriefReview({
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The model's summary of what the evidence points to (decisionFramer.ts, first pass), shown on the
+ * left because the suggested decisions are drawn from it (Grant, 2026-10-20). Shown as its
+ * sentences, the first as the lead, so it can be read rather than scanned as one block; the
+ * wording is the model's, unchanged. It is rewritten only when suggestions are generated again.
+ */
+function EvidenceSummary({ text }: { text: string | null }) {
+  const points = text ? evidenceSummaryPoints(text) : [];
+  if (points.length === 0) {
+    return <p className="text-sm text-muted">A summary of what the evidence shows appears here when decisions are suggested. The suggestions are drawn from it.</p>;
+  }
+  const [lead, ...rest] = points;
+  return (
+    <div className="flex flex-col gap-3" data-testid="evidence-summary">
+      <p className="text-xs text-muted">Written by the AI when it suggested the decisions, which are drawn from it. Check the figures against the insights.</p>
+      <p className="text-sm font-medium leading-relaxed text-foreground">{lead}</p>
+      {rest.length > 0 && (
+        <ul className="flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed text-foreground marker:text-primary">
+          {rest.map((point, i) => (
+            <li key={i}>{point}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * Says when existing insights or AI recommendations may not reflect the current accepted
