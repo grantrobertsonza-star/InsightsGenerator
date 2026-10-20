@@ -112,7 +112,7 @@ export default function CrosstabsSection({ runId, datasets, findings }: { runId:
   );
 
   return (
-    <div className="-mx-2 flex flex-col gap-3 rounded-2xl bg-slate-100 p-4 sm:p-6" data-testid="crosstabs-section">
+    <div className="flex flex-col gap-3 rounded-2xl bg-slate-100 p-4 sm:p-6" data-testid="crosstabs-section">
       {datasets.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-foreground">Cross tabs</h2>
