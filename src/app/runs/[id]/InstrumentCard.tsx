@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  chooseInstrumentLinkAction,
   confirmLinksAction,
   guideCoverageAction,
   loadInstrumentReviewAction,
   readInstrumentAction,
   setInstrumentTargetAction,
+  listLinkableVariablesAction,
   setLinkStatusAction,
 } from "@/lib/instrumentActions";
 import type { InstrumentItem, InstrumentLink, InstrumentSummary } from "@/lib/instruments";
@@ -59,6 +61,20 @@ export default function InstrumentCard({
   const [review, setReview] = useState<{ items: InstrumentItem[]; links: InstrumentLink[] } | null>(null);
   const [report, setReport] = useState<GuideReport | null>(null);
   const [filter, setFilter] = useState<"suggested" | "unmatched" | "confirmed" | "all">("suggested");
+  // Choosing a variable by hand (Grant, 2026-10-20): the question whose picker is open, and the data
+  // file's variables, loaded once per data file when a picker first opens.
+  const [choosing, setChoosing] = useState<string | null>(null);
+  const [variables, setVariables] = useState<{ forTarget: string; list: { name: string; label: string }[] } | null>(null);
+  const [variablesError, setVariablesError] = useState<string | null>(null);
+
+  async function openPicker(itemId: string) {
+    setChoosing(itemId);
+    setVariablesError(null);
+    if (variables?.forTarget === target) return;
+    const r = await listLinkableVariablesAction(runId, target);
+    if (r.ok) setVariables({ forTarget: target, list: r.variables });
+    else setVariablesError(r.error);
+  }
 
   const isGuide = summary.type === "interview_guide" || summary.type === "focus_group_guide";
   const read = summary.items > 0;
@@ -99,6 +115,12 @@ export default function InstrumentCard({
 
   const linksByItem = new Map<string, InstrumentLink[]>();
   for (const l of review?.links ?? []) linksByItem.set(l.itemId, [...(linksByItem.get(l.itemId) ?? []), l]);
+  // Variables already confirmed for a question of this data file, with that question's code: they
+  // cannot be chosen for another one (chooseInstrumentLink refuses it too).
+  const itemCode = new Map((review?.items ?? []).map((i) => [i.id, i.code ?? i.text.slice(0, 30)]));
+  const takenBy = new Map(
+    (review?.links ?? []).filter((l) => l.status === "confirmed" && l.dataDocumentId === target).map((l) => [l.variable, { itemId: l.itemId, code: itemCode.get(l.itemId) ?? "" }]),
+  );
   const rows = (review?.items ?? []).filter((i) => {
     const ls = linksByItem.get(i.id) ?? [];
     if (filter === "all") return true;
@@ -149,7 +171,12 @@ export default function InstrumentCard({
           <Stat value={summary.items} label={isGuide ? "Questions and probes" : "Items read"} />
           {!isGuide && <Stat value={`${summary.withRouting} of ${summary.statedRoutingText}`} label={summary.fromJumps > 0 ? `Skip instructions understood (+${summary.fromJumps} from GO TO jumps)` : "Skip instructions understood"} />}
           {!isGuide && <Stat value={summary.links.confirmed} label="Links confirmed" />}
-          {!isGuide && <Stat value={summary.links.suggested} label="Links to check" />}
+          {!isGuide && (
+            <Stat
+              value={summary.itemsToCheck}
+              label={`Questions to check (${summary.links.suggested.toLocaleString("en-GB")} ${summary.links.suggested === 1 ? "link" : "links"}; a grid question can have many)`}
+            />
+          )}
         </div>
       )}
 
@@ -270,7 +297,7 @@ export default function InstrumentCard({
                         </div>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5" data-testid="item-links" data-item-code={i.code ?? ""}>
                       {(linksByItem.get(i.id) ?? []).length === 0 ? (
                         <span className="text-muted">No match</span>
                       ) : (
@@ -288,6 +315,31 @@ export default function InstrumentCard({
                           </div>
                         ))
                       )}
+                      {!isGuide && target && choosing !== i.id && (
+                        <button className={`${btn} mt-1`} disabled={pending} onClick={() => void openPicker(i.id)}>
+                          {(linksByItem.get(i.id) ?? []).length === 0 ? "Choose variable" : "Choose another"}
+                        </button>
+                      )}
+                      {choosing === i.id && (
+                        <VariablePicker
+                          variables={variables?.forTarget === target ? variables.list : null}
+                          error={variablesError}
+                          taken={takenBy}
+                          itemId={i.id}
+                          disabled={pending}
+                          onCancel={() => setChoosing(null)}
+                          onChoose={(name) =>
+                            run(
+                              async () => {
+                                const r = await chooseInstrumentLinkAction(runId, documentId, i.id, target, name);
+                                if (r.ok) setChoosing(null);
+                                return r;
+                              },
+                              () => `Linked ${i.code ?? "the question"} to ${name}, confirmed as chosen by you.`,
+                            )
+                          }
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -296,6 +348,72 @@ export default function InstrumentCard({
           </div>
           {rows.length > 300 && <p className="text-muted">Showing the first 300 of {rows.length}. Use the filters to narrow the list.</p>}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A search over the data file's variables, by name or label; one already confirmed elsewhere is shown, not offered. */
+function VariablePicker({
+  variables,
+  error,
+  taken,
+  itemId,
+  disabled,
+  onChoose,
+  onCancel,
+}: {
+  variables: { name: string; label: string }[] | null;
+  error: string | null;
+  taken: Map<string, { itemId: string; code: string }>;
+  itemId: string;
+  disabled: boolean;
+  onChoose: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const matches = (variables ?? []).filter((v) => needle === "" || v.name.toLowerCase().includes(needle) || v.label.toLowerCase().includes(needle));
+  return (
+    <div className="mt-1 space-y-1.5 rounded-lg border border-primary/30 bg-slate-50 p-2" data-testid="variable-picker">
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          aria-label="Search the data file's variables"
+          placeholder="Variable name or label"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-border bg-white px-2 py-1 text-[11px]"
+        />
+        <button className={btn} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-danger">{error}</p>}
+      {!error && !variables && <p className="text-muted">Loading the data file&apos;s variables...</p>}
+      {variables && (
+        <ul className="max-h-48 space-y-0.5 overflow-auto">
+          {matches.slice(0, 12).map((v) => {
+            const t = taken.get(v.name);
+            const elsewhere = t && t.itemId !== itemId;
+            return (
+              <li key={v.name}>
+                <button
+                  type="button"
+                  disabled={disabled || !!elsewhere}
+                  onClick={() => onChoose(v.name)}
+                  className="flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="font-medium text-foreground">{v.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{v.label}</span>
+                  {elsewhere && <span className="shrink-0 text-[10px] text-muted">{`confirmed for ${t.code}`}</span>}
+                </button>
+              </li>
+            );
+          })}
+          {matches.length === 0 && <li className="text-muted">No variable matches that.</li>}
+          {matches.length > 12 && <li className="text-[10px] text-muted">{`Showing 12 of ${matches.length}. Type more to narrow it.`}</li>}
+        </ul>
       )}
     </div>
   );

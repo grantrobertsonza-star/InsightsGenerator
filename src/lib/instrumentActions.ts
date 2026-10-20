@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
+import { loadVariableDictionary } from "./crosstabs";
 import {
+  InstrumentLinkTakenError,
+  chooseInstrumentLink,
   getInstrumentItems,
   getInstrumentLinks,
   readInstrumentItems,
@@ -113,5 +116,42 @@ export async function guideCoverageAction(runId: string, guideId: string, onlyDo
     return { ok: true, report: await getGuideCoverage(TENANT_ID, runId, guideId, onlyDocumentId) };
   } catch (e) {
     return { ok: false, error: explain(e) };
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The variables a question can be linked to by hand: the data file's dictionary, names and labels. */
+export async function listLinkableVariablesAction(
+  runId: string,
+  dataDocumentId: string,
+): Promise<Ok<{ variables: { name: string; label: string }[] }> | Fail> {
+  if (!UUID.test(runId) || !UUID.test(dataDocumentId)) return { ok: false, error: "Unknown project or data file." };
+  const TENANT_ID = await requireTenantId();
+  try {
+    const d = await loadVariableDictionary(TENANT_ID, runId, dataDocumentId);
+    return { ok: true, variables: d.variables.map((v) => ({ name: v.name, label: v.label })) };
+  } catch (e) {
+    return { ok: false, error: explain(e) };
+  }
+}
+
+/** Links a question to a variable the researcher chose; stored confirmed, as "Chosen by you" (chooseInstrumentLink). */
+export async function chooseInstrumentLinkAction(
+  runId: string,
+  instrumentId: string,
+  itemId: string,
+  dataDocumentId: string,
+  variable: string,
+): Promise<Ok | Fail> {
+  if (![runId, instrumentId, itemId, dataDocumentId].every((x) => UUID.test(x))) return { ok: false, error: "Unknown question or data file." };
+  if (typeof variable !== "string" || variable.trim() === "") return { ok: false, error: "Choose a variable." };
+  const TENANT_ID = await requireTenantId();
+  try {
+    await chooseInstrumentLink(TENANT_ID, runId, instrumentId, itemId, dataDocumentId, variable);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof InstrumentLinkTakenError ? e.message : explain(e) };
   }
 }

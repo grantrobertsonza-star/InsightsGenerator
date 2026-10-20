@@ -361,7 +361,19 @@ export async function suggestInstrumentLinks(
          and item_id in (select id from instrument_items where document_id = $1)`,
       [instrumentId, dataDocumentId],
     );
+    // A variable the researcher has already confirmed for a question (by hand or by confirming a
+    // suggestion) is not suggested again for a different question: matching again must not put a
+    // second claim on a decision already made (Grant, 2026-10-20, with manual matching).
+    const taken = new Map(
+      (
+        await client.query<{ variable: string; item_id: string }>(
+          "select variable, item_id from instrument_links where data_document_id = $1 and status = 'confirmed'",
+          [dataDocumentId],
+        )
+      ).rows.map((r) => [r.variable, r.item_id]),
+    );
     for (const c of candidates) {
+      if (taken.has(c.variable) && taken.get(c.variable) !== c.itemId) continue;
       // Everything starts as a suggestion. Confirming is the researcher's step.
       const r = await client.query(
         `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status)
@@ -421,6 +433,8 @@ export type InstrumentSummary = {
   fromJumps: number;
   statedRoutingText: number;
   links: { suggested: number; confirmed: number; rejected: number };
+  /** Questions with at least one suggested link still waiting for the researcher (a grid question's many links count once). */
+  itemsToCheck: number;
   readStatus?: { complete: boolean; failedChunks: number; incompleteItems: number };
 };
 
@@ -435,7 +449,7 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
       for (const d of docs.rows) {
         out.set(d.id, {
           documentId: d.id, type: d.instrument_type, forDocumentId: d.instrument_for,
-          items: 0, withRouting: 0, fromJumps: 0, statedRoutingText: 0, links: { suggested: 0, confirmed: 0, rejected: 0 },
+          items: 0, withRouting: 0, fromJumps: 0, statedRoutingText: 0, links: { suggested: 0, confirmed: 0, rejected: 0 }, itemsToCheck: 0,
         });
       }
       if (out.size === 0) return;
@@ -460,6 +474,16 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
       for (const r of links.rows) {
         const s = out.get(r.document_id);
         if (s) s.links[r.status] = Number(r.n);
+      }
+      const toCheck = await client.query<{ document_id: string; n: string }>(
+        `select i.document_id, count(distinct l.item_id) as n
+         from instrument_links l join instrument_items i on i.id = l.item_id
+         where l.run_id = $1 and l.status = 'suggested' group by i.document_id`,
+        [runId],
+      );
+      for (const r of toCheck.rows) {
+        const s = out.get(r.document_id);
+        if (s) s.itemsToCheck = Number(r.n);
       }
       const coverage = await client.query<{ detail: { documentId?: unknown; complete?: unknown; failedChunks?: unknown; incompleteItems?: unknown } }>(
         "select distinct on (detail->>'documentId') detail from trace where run_id=$1 and event='instrument_read_finished' order by detail->>'documentId', occurred_at desc, id desc", [runId],
@@ -513,4 +537,58 @@ export async function getLabelOverlay(tenantId: string, runId: string, dataDocum
   const items = (await getConfirmedItemsForData(tenantId, runId, dataDocumentId)).filter((i) => i.confirmed);
   if (items.length === 0) return null;
   return buildLabelOverlay(items.map((i) => ({ itemId: i.itemId, variable: i.variable, code: i.code, text: i.text, options: i.options })));
+}
+
+/** Raised when a chosen variable is already confirmed for another question of the same data file. */
+export class InstrumentLinkTakenError extends Error {}
+
+/**
+ * Links a questionnaire question to a data file variable the researcher chose (Grant, 2026-10-20:
+ * no way to pick a match by hand when matching found none, or the wrong one). The link is stored
+ * confirmed, with method "manual" ("Chosen by you"), so matching again keeps it and does not
+ * suggest that variable for another question.
+ *
+ * Checked, in one transaction: the question belongs to this questionnaire in this project; the data
+ * file is a raw data file of this project; the variable is in that file's dictionary (read before the
+ * transaction, as the dictionary is built from the stored file). The data file's row is locked first
+ * (and must exist), so two choices for the same file are made one after the other: a variable already
+ * confirmed for a different question is refused with that question named, never linked twice.
+ * Repeating the same choice (a retried request) confirms the same link and adds nothing.
+ */
+export async function chooseInstrumentLink(
+  tenantId: string,
+  runId: string,
+  instrumentId: string,
+  itemId: string,
+  dataDocumentId: string,
+  variable: string,
+): Promise<{ linkId: string }> {
+  const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
+  if (!dictionary.variables.some((v) => v.name === variable)) throw new Error(`${variable} is not a variable of this data file.`);
+  return withTenant(tenantId, async (client) => {
+    const doc = await client.query(
+      "select id from documents where id = $1 and run_id = $2 and kind = 'table' and ingestion_type = 'raw' for update",
+      [dataDocumentId, runId],
+    );
+    if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
+    const item = await client.query("select 1 from instrument_items where id = $1 and document_id = $2 and run_id = $3", [itemId, instrumentId, runId]);
+    if (item.rowCount !== 1) throw new Error("That question is not in this questionnaire.");
+    const other = await client.query<{ code: string | null; item_text: string }>(
+      `select i.code, i.item_text from instrument_links l join instrument_items i on i.id = l.item_id
+       where l.data_document_id = $1 and l.variable = $2 and l.status = 'confirmed' and l.item_id <> $3 limit 1`,
+      [dataDocumentId, variable, itemId],
+    );
+    if (other.rows[0]) {
+      const q = other.rows[0];
+      throw new InstrumentLinkTakenError(`${variable} is already confirmed for ${q.code ?? `"${q.item_text.slice(0, 60)}"`}. Reject that link first if it is wrong.`);
+    }
+    const r = await client.query<{ id: string }>(
+      `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status)
+       values ($1, $2, $3, $4, $5, 'manual', 1, 'confirmed')
+       on conflict (item_id, data_document_id, variable) do update set method = 'manual', confidence = 1, status = 'confirmed'
+       returning id`,
+      [tenantId, runId, itemId, dataDocumentId, variable],
+    );
+    return { linkId: r.rows[0].id };
+  });
 }

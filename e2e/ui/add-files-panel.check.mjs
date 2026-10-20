@@ -85,6 +85,10 @@ test("one Add files dialog takes a mixed batch, a type per file, into the Source
   await selectSource(page, "golden-survey-documented.xlsx");
   await expect(source("golden-survey-documented.xlsx")).toHaveAttribute("data-selected", "true");
   await expect(source("client-brief.docx")).toHaveAttribute("data-selected", "false");
+  // Each file keeps its own colour bar, as the earlier cards had (Grant, 2026-10-20).
+  const bar = (name) => source(name).evaluate((el) => getComputedStyle(el).borderLeftColor);
+  const bars = [await bar("golden-survey-documented.xlsx"), await bar("client-brief.docx"), await bar("report.docx")];
+  expect(new Set(bars).size).toBe(3);
   const selected = page.getByTestId("selected-source");
   // The file's name is in this header only, not repeated at the top of its Variables tab.
   const variables = await openSourceTab(page, "Variables");

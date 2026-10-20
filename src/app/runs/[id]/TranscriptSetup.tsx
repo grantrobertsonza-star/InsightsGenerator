@@ -110,6 +110,8 @@ export type SourceRow = {
   purposeText?: string;
   /** The file's next step (Open Analysis, Open Coding, ...), beside View original. */
   nextStep?: ReactNode;
+  /** The file's colour bar (a border-l class), matching its card under Analysis, as the earlier cards had. */
+  accent?: string;
   /** The tabs after Preview and Setup, in order. */
   panels: SourcePanel[];
   initial: TranscriptSetup | null;
@@ -970,7 +972,9 @@ function SourceListItem({ row, selected, onSelect, needle, role, state }: { row:
   const note = [s.wave, row.linked && row.linked.length > 0 ? `${row.linked.length} linked ${row.linked.length === 1 ? "document" : "documents"}` : null, row.linkedTo ? `Linked to ${row.linkedTo}` : null].filter(Boolean).join(" · ");
   return (
     <li
-      className={`${shown ? "flex" : "hidden"} items-start gap-2 border-b border-border px-4 py-3 last:border-0 ${selected ? "border-l-4 border-l-primary bg-primary-light pl-3 ring-1 ring-inset ring-primary/40" : "hover:bg-slate-50"}`}
+      // Each file keeps its colour bar (the same as its card under Analysis); the selected one is
+      // also filled and outlined.
+      className={`${shown ? "flex" : "hidden"} items-start gap-2 border-b border-l-4 border-border py-3 pl-3 pr-4 last:border-b-0 ${row.accent ?? "border-l-slate-300"} ${selected ? "bg-primary-light ring-2 ring-inset ring-primary/50" : "hover:bg-slate-50"}`}
       data-testid="source-row"
       data-document-id={row.documentId}
       data-selected={selected ? "true" : "false"}

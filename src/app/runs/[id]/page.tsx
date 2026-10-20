@@ -4944,11 +4944,12 @@ export default async function RunPage({
         const isGuide = instrument?.type === "interview_guide" || instrument?.type === "focus_group_guide";
         const panels: SourcePanel[] = [];
         // A count on a tab brings a problem forward without opening it (Grant, 2026-10-20): the
-        // import checks flagged Check or Problem, and questionnaire links still to confirm.
+        // import checks flagged Check or Problem, and questions whose suggested links are still to
+        // confirm (counted by question, as a grid question can carry dozens of links).
         const qualityBadge = (n: number): SourcePanel["badge"] =>
           n > 0 ? { text: String(n), title: `${n} ${n === 1 ? "check is" : "checks are"} flagged Check or Problem` } : undefined;
         const linksBadge = (n: number): SourcePanel["badge"] =>
-          n > 0 ? { text: `${n} to check`, title: `${n} suggested ${n === 1 ? "link is" : "links are"} waiting for your confirmation` } : undefined;
+          n > 0 ? { text: `${n} to check`, title: `${n} ${n === 1 ? "question has" : "questions have"} suggested links waiting for your confirmation` } : undefined;
         const tableFlags = ownTables
           .filter((t) => !t.previewError)
           .reduce((n, t) => n + flaggedChecks((t.quality ?? computeTableQuality(t.headers, t.rows, t.ingestionType, t.stated ?? [])).checks), 0);
@@ -4985,7 +4986,7 @@ export default async function RunPage({
           panels.push({
             id: "links",
             label: d.kind === "transcript" ? "Guide" : "Questionnaire links",
-            badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.links.suggested ?? 0), 0)),
+            badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.itemsToCheck ?? 0), 0)),
             node: attached,
           });
         else if (isRaw) panels.push({ id: "links", label: "Questionnaire links", node: <p key="panel" className="text-xs text-muted">No questionnaire is linked to this file. Add one with Add files, as a questionnaire or guide; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p> });
@@ -4993,7 +4994,7 @@ export default async function RunPage({
           panels.push({
             id: "links",
             label: isGuide ? "Guide" : "Questionnaire links",
-            badge: linksBadge(instrument.links.suggested),
+            badge: linksBadge(instrument.itemsToCheck),
             node: (
               <InstrumentCard
                 key="panel"
@@ -5060,6 +5061,8 @@ export default async function RunPage({
               : null,
           purposeText: purpose.text,
           nextStep: purpose.nextStep,
+          // The same colour as this file's card under Cross tabs, Analytics, Coding and Reports and decks.
+          accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,
           panels,
           initial: transcriptSetups.get(d.id) ?? null,
           waveAvailable: transcriptWaveSaves,
@@ -5076,6 +5079,7 @@ export default async function RunPage({
         filename: set.name,
         kind: "output",
         kindLabel: sourceTypeLabel("output", null),
+        accent: "border-l-slate-400",
         isRawData: false,
         dataSetup: null,
         preview: null,
