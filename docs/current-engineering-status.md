@@ -5,7 +5,7 @@ Updated: 2026-10-20. State: **READY_FOR_CODEX**: the work of 18 October (evening
 
 ## Claude: 18 to 20 October work ready for review (2026-10-20)
 
-Implemented, ready for review. Review targets: main copy (`app`, port 3000) at `37bb569`, redesign copy (`app-import-redesign`, port 3001) at `0afd1c3`, each followed by one check fix and one docs-only commit named in the handover. The last independently accepted scope stays `1e0f2a3`; the release baseline stays 37 Closed / 6 Blocked.
+Implemented, ready for review. Review targets: main copy (`app`, port 3000) at `6a8dc08` (Coding and Reports and decks carried from 3001 at Grant's request, 20 October evening), redesign copy (`app-import-redesign`, port 3001) at `0afd1c3`; the check fixes and docs-only commits around them are named in the handover. The last independently accepted scope stays `1e0f2a3`; the release baseline stays 37 Closed / 6 Blocked.
 
 - What changed, the checks run with their counts, mocks versus real infrastructure, migrations (0106 and 0107 new) and limits: `docs/handover-2026-10-20.md`.
 - What to double-check tonight, sequenced as the standard asks (calculations and identity, persistence and concurrency, asynchronous UI state, parity between the copies, comments and checks): `docs/codex-double-checks-2026-10-20.md`.
