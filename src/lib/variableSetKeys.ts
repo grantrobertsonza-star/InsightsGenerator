@@ -7,8 +7,11 @@
  * affected files are read again.
  */
 export function hasRepeatedSetKeys(sets: readonly { key: string }[] | null | undefined): boolean {
+  // A stored dictionary is read back from JSON, so its sets may not be a list at all (older or
+  // hand-made rows); anything but a list has no repeated keys to rebuild for.
+  if (!Array.isArray(sets)) return false;
   const seen = new Set<string>();
-  for (const s of sets ?? []) {
+  for (const s of sets) {
     if (seen.has(s.key)) return true;
     seen.add(s.key);
   }

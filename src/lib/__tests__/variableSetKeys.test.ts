@@ -6,6 +6,8 @@ describe("question-set keys", () => {
     expect(hasRepeatedSetKeys([{ key: "EN9" }, { key: "Q2" }, { key: "EN9" }])).toBe(true);
     expect(hasRepeatedSetKeys([{ key: "EN9" }, { key: "EN9 (battery)" }])).toBe(false);
     expect(hasRepeatedSetKeys(undefined)).toBe(false);
+    // A stored row whose sets are not a list (JSON from an older or hand-made row) is not rebuilt for this.
+    expect(hasRepeatedSetKeys({} as unknown as { key: string }[])).toBe(false);
   });
   it("asks to check a saved choice only where its stem now also has a set keyed apart", () => {
     const sets = [{ key: "EN9" }, { key: "EN9 (battery)" }, { key: "Q2" }, { key: "Q7" }, { key: "Q7 (grid)" }];
