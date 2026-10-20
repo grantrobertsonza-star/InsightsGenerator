@@ -53,6 +53,50 @@ describe("finding stated margins in a document", () => {
     expect(one("Results are accurate to plus or minus 3 percentage points.")).toMatchObject({ kind: "not_checked", reason: "No sample size stated in the same sentence." });
     expect(one("Subgroups of 200 men and 300 women have a margin of error of ±6%.")).toMatchObject({ kind: "not_checked", reason: expect.stringMatching(/More than one sample size/) });
   });
+  // Codex review IR-06 (2026-10-20). Expected values by hand: n=1,000 at 90% is
+  // 1.645 * 0.015811 = 0.026009 -> ±2.60 points; at 95% 3.10 (header).
+  it("uses a level stated as 'at the 90% level', labelled as stated, not an assumed 95%", () => {
+    const c = one("A sample of 1,000 respondents has a margin of error of 3% at the 90% level.");
+    expect(c).toMatchObject({ kind: "checked", n: 1000, statedMargin: 3, confidence: 90, confidenceStated: true, expectedMargin: 2.6, verdict: "conservative" });
+    expect(precisionCheckText(c)).not.toMatch(/Assumed, as none is stated: 95% confidence/);
+    expect(precisionCheckText(c)).toMatch(/at 90%/);
+  });
+  it("reads the other ordinary ways of stating a level", () => {
+    for (const [text, level] of [
+      ["With 1,000 interviews, the margin of error is ±2.6% at 90% confidence.", 90],
+      ["The margin of error for n=1000 is ±3.1% (95% CI).", 95],
+      ["With 99% confidence, 1,000 respondents give a margin of error of ±4.1%.", 99],
+      ["A confidence level of 95% and 1,000 cases give a margin of error of ±3.1%.", 95],
+      ["1,000 respondents: margin of error ±2.6% at a 90% confidence level.", 90],
+    ] as const) {
+      expect(one(text), text).toMatchObject({ kind: "checked", confidence: level, confidenceStated: true, verdict: "consistent" });
+    }
+  });
+  it("does not check a sentence that names two confidence levels", () => {
+    const c = one("For 1,000 respondents the margin of error is ±3.1% at 95% confidence and ±2.6% at 90% confidence.");
+    expect(c.kind).toBe("not_checked");
+    const both = one("For 1,000 respondents the margin of error of ±3% holds at 95% confidence (and better at the 90% level).");
+    expect(both).toMatchObject({ kind: "not_checked", reason: expect.stringMatching(/More than one confidence level.*90% and 95%|95% and 90%/) });
+  });
+  it("reports an unsupported stated level instead of assuming 95%", () => {
+    expect(one("With 1,000 respondents the margin of error is ±2% at 80% confidence.")).toMatchObject({ kind: "not_checked", reason: expect.stringMatching(/80% confidence level is stated/) });
+  });
+  it("reads ±3pp, points, and a margin stated before the words 'margin of error'", () => {
+    expect(one("The 1,000 interviews give ±3pp.")).toMatchObject({ kind: "checked", statedMargin: 3, n: 1000, verdict: "consistent" });
+    expect(one("The 1,000 interviews give a 3 percentage points margin of error.")).toMatchObject({ kind: "checked", statedMargin: 3, verdict: "consistent" });
+    expect(one("A 3% margin of error applies to the 1 000 respondents.")).toMatchObject({ kind: "checked", n: 1000, statedMargin: 3 });
+    expect(one("With n = 1 000 the margin of error is 3 points.")).toMatchObject({ kind: "checked", n: 1000, statedMargin: 3 });
+  });
+  it("never reads a confidence level as the margin", () => {
+    expect(one("The margin of error at the 95% level is ±3.1% for 1,000 respondents.")).toMatchObject({ kind: "checked", statedMargin: 3.1, confidence: 95, confidenceStated: true });
+  });
+  it("one margin repeated is one claim; two different margins are not checked", () => {
+    expect(one("1,000 interviews give a margin of error of ±3% (±3% at 95% confidence).")).toMatchObject({ kind: "checked", statedMargin: 3 });
+    expect(one("1,000 interviews give a margin of error of ±3%, or ±5% for regions.")).toMatchObject({ kind: "not_checked", reason: "More than one margin of error in the sentence." });
+  });
+  it("two sample sizes are still not checked", () => {
+    expect(one("A total of 1,000 interviews and 400 respondents per region give a margin of error of ±3%.")).toMatchObject({ kind: "not_checked", reason: expect.stringMatching(/More than one sample size/) });
+  });
   it("finds nothing in a document that states no margin", () => {
     expect(findPrecisionChecks("We will survey 1,000 customers online in March.")).toEqual([]);
   });

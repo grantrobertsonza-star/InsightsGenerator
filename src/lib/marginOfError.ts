@@ -9,8 +9,11 @@
 // Assumptions, said on screen: a 95% level when none is stated; no finite-population correction
 // (the population size is rarely stated, and it only narrows the margin for samples that are a large
 // share of the population); deff 1 (a simple random sample) when none is stated.
-// Limits: only sentences that name one sample size and one margin are checked; a sentence with
-// several sizes (total and subgroups) is reported as not checked rather than guessed at.
+// Limits: only sentences that name one sample size, one margin and at most one confidence level are
+// checked. A sentence with several sizes (total and subgroups), several margins or several confidence
+// levels is reported as not checked rather than guessed at (Codex review IR-06, 2026-10-20: the first
+// level found used to win, and "at the 90% level" was not read at all, so a 90% claim was checked at
+// an assumed 95%).
 
 export const Z_BY_CONFIDENCE: Record<number, number> = { 90: 1.645, 95: 1.96, 99: 2.576 };
 
@@ -45,9 +48,23 @@ export type PrecisionCheck =
   | { kind: "not_checked"; quote: string; reason: string };
 
 const NUMBER = String.raw`\d{1,3}(?:[ , ]\d{3})+|\d+`;
-const MARGIN_RE = new RegExp(String.raw`(?:margin of error|margin of sampling error|sampling error|\bMoE\b)[^.;\n]{0,40}?(?:±|\+/-|\+-|plus or minus)?\s*(\d+(?:[.,]\d+)?)\s*(?:%|per ?cent|percentage points?)|(?:±|\+/-|plus or minus)\s*(\d+(?:[.,]\d+)?)\s*(?:%|per ?cent|percentage points?)`, "gi");
+// A margin is a number with a percentage unit ("3%", "3 per cent", "3 percentage points", "3pp",
+// "3 points"), either after "margin of error" (or "sampling error", "MoE"), after a ± sign, or just
+// before "margin of error" ("a 3 percentage points margin of error"). A percentage followed by
+// "confidence", "level" or "CI" is a confidence level, never a margin.
+const MARGIN_TERM = String.raw`(?:margin of error|margin of sampling error|sampling error|\bMoE\b)`;
+const MARGIN_UNIT = String.raw`(?:%|per ?cent\b|percentage points?\b|pp\b|points?\b)(?!\s*(?:confidence|level|CI\b))`;
+const MARGIN_RE = new RegExp(
+  String.raw`${MARGIN_TERM}[^.;\n]{0,40}?(?:±|\+/-|\+-|plus or minus)?\s*(\d+(?:[.,]\d+)?)\s*${MARGIN_UNIT}` +
+    String.raw`|(?:±|\+/-|\+-|plus or minus)\s*(\d+(?:[.,]\d+)?)\s*${MARGIN_UNIT}` +
+    String.raw`|\b(\d+(?:[.,]\d+)?)\s*${MARGIN_UNIT}\s+${MARGIN_TERM}`,
+  "gi",
+);
 const SIZE_RE = new RegExp(String.raw`\bn\s*=\s*(${NUMBER})\b|\b(?:sample(?: size)?|total) of\s*(${NUMBER})\b|\b(${NUMBER})\s*(?:respondents|interviews|completes|completed interviews|participants|households|adults|people|cases|men|women|customers|users|members|clients|businesses|SMEs|consumers|voters|students|employees|farmers)\b`, "gi");
-const CONFIDENCE_RE = /\b(90|95|99)\s*%\s*(?:confidence|level of confidence|confidence level|CI)\b|\bconfidence (?:level )?of\s*(90|95|99)\s*%/i;
+// Every stated confidence level in the sentence: "90% confidence", "95% confidence level", "(95% CI)",
+// "at the 90% level", "with 99% confidence", "confidence level of 95%". Any level is collected, so an
+// unsupported one (80%) is reported rather than replaced by an assumed 95%.
+const CONFIDENCE_RE = /\b(\d{2}(?:\.\d+)?)\s*%\s*(?:confidence|level of confidence|level|CI\b|confidence interval)|\bconfidence (?:level |interval )?of\s*(\d{2}(?:\.\d+)?)\s*%/gi;
 const DEFF_RE = /\bdesign effect(?: \(deff\))?(?: of| =|:)?\s*(\d+(?:[.,]\d+)?)|\bdeff\s*(?:of|=|:)?\s*(\d+(?:[.,]\d+)?)/i;
 
 const toNumber = (s: string) => Number(s.replace(/[ , ]/g, ""));
@@ -70,7 +87,8 @@ export function findPrecisionChecks(text: string): PrecisionCheck[] {
   const out: PrecisionCheck[] = [];
   for (const sentence of sentences(text)) {
     MARGIN_RE.lastIndex = 0;
-    const margins = [...sentence.matchAll(MARGIN_RE)].map((m) => toDecimal(m[1] ?? m[2]));
+    // Distinct values: the same margin repeated ("±3% (3 points)") is one claim.
+    const margins = [...new Set([...sentence.matchAll(MARGIN_RE)].map((m) => toDecimal(m[1] ?? m[2] ?? m[3])))];
     if (margins.length === 0) continue;
     const quote = sentence.length > 400 ? `${sentence.slice(0, 397)}...` : sentence;
     if (margins.length > 1) {
@@ -87,8 +105,18 @@ export function findPrecisionChecks(text: string): PrecisionCheck[] {
       out.push({ kind: "not_checked", quote, reason: "More than one sample size in the sentence (a total and subgroups, for example)." });
       continue;
     }
-    const conf = CONFIDENCE_RE.exec(sentence);
-    const confidence = conf ? Number(conf[1] ?? conf[2]) : 95;
+    CONFIDENCE_RE.lastIndex = 0;
+    const levels = [...new Set([...sentence.matchAll(CONFIDENCE_RE)].map((m) => Number(m[1] ?? m[2])))];
+    if (levels.length > 1) {
+      out.push({ kind: "not_checked", quote, reason: `More than one confidence level in the sentence (${levels.map((l) => `${l}%`).join(" and ")}), so the margin cannot be tied to one.` });
+      continue;
+    }
+    if (levels.length === 1 && !Z_BY_CONFIDENCE[levels[0]]) {
+      out.push({ kind: "not_checked", quote, reason: `A ${levels[0]}% confidence level is stated; this check covers 90%, 95% and 99% only.` });
+      continue;
+    }
+    const confidenceStated = levels.length === 1;
+    const confidence = confidenceStated ? levels[0] : 95;
     const deffMatch = DEFF_RE.exec(sentence);
     const designEffect = deffMatch ? toDecimal(deffMatch[1] ?? deffMatch[2]) : 1;
     if (!(designEffect > 0)) {
@@ -108,7 +136,7 @@ export function findPrecisionChecks(text: string): PrecisionCheck[] {
       n,
       statedMargin,
       confidence,
-      confidenceStated: Boolean(conf),
+      confidenceStated,
       designEffect,
       designEffectStated: Boolean(deffMatch),
       expectedMargin: Math.round(expectedMargin * 10) / 10,
