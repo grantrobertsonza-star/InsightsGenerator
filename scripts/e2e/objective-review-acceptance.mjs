@@ -81,6 +81,9 @@ try {
     expect(rows.find(r => r.id === id)).toMatchObject({ candidate_text: 'Final human objective wording', status: 'accepted', edited: true });
     expect(rows.find(r => r.id === ai)).toMatchObject({ status: 'rejected' });
     expect((await db.query('select initial_research_objective from runs where id=$1', [run.id])).rows[0].initial_research_objective).toBe('Preserve this original research objective');
+    // The overview table shows each objective rolled up by default (2026-10-20): roll it down to read it.
+    const finalRow = middle.locator('tbody[data-objective-row]').filter({ hasText: 'Final human objective wording' });
+    await finalRow.getByTestId('objective-roll').click();
     await expect(middle.getByText('Final human objective wording', { exact: true })).toBeVisible();
     result.checks.push({ case: 'native regenerate/reload preserves human wording, rejected exclusion and original brief', status: 'passed' });
     result.status = 'passed';
