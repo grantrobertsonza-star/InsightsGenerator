@@ -60,6 +60,7 @@ import { recommendationDecisionContextAvailable, recommendationDecisionStateSql,
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
 import UploadForm from "./UploadForm";
+import { listProjects } from "@/lib/projectList";
 import StorageCleanupNotice from "./StorageCleanupNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
@@ -83,6 +84,7 @@ import {
   RunSectionProvider,
   RunNav,
   SectionPanel,
+  SectionTabs,
   type RunNavSection,
   GoToSection,
 } from "./RunShell";
@@ -3150,6 +3152,7 @@ export default async function RunPage({
     earlierDecisionCounts,
     deletionImpact,
     transcriptWaveSaves,
+    projectList,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3194,6 +3197,7 @@ export default async function RunPage({
     // GT-010: what deleting each document takes with it, for its confirmation.
     timing("deletionImpact", loadDocumentDeletionImpact(TENANT_ID, id)),
     timing("transcriptWaveAvailable", transcriptWaveAvailable(TENANT_ID)),
+    timing("projectList", listProjects(TENANT_ID)),
   ]);
   if (!run) {
     notFound();
@@ -4377,6 +4381,8 @@ export default async function RunPage({
     single = false,
     onlyId?: string,
     omitSide = false,
+    // Which tiles a data file's launcher shows: the Cross tabs and Analytics sections each show theirs.
+    analyticsPart: "crosstabs" | "analytics" | "all" = "all",
   ) => (
                         <ul
                           className={`grid grid-cols-1 items-start gap-4 ${single ? "" : "xl:grid-cols-2"}`}
@@ -4534,6 +4540,7 @@ export default async function RunPage({
                                       isCaseTableFileName(doc.source_filename))) &&
                                   (!dataSetups.has(doc.id) || dataSetups.get(doc.id)?.accepted ? (
                                     <AnalyticsBuilder
+                                      part={analyticsPart}
                                       runId={id}
                                       documentId={doc.id}
                                       filename={doc.source_filename}
@@ -4894,69 +4901,31 @@ export default async function RunPage({
     ) : null;
 
   const navSections: RunNavSection[] = [
-    // Order agreed with Grant, 2026-10-18: import first; the research quality review of the brief,
-    // proposal and other documents next, as its own module; then objectives with the business
-    // decisions they serve. The menu shows one section at a time, so this order is the menu's only.
-    { id: "upload", group: "Setup", label: "Import data" },
-    { id: "research-quality", group: "Quality review", label: "Research quality review" },
-    { id: "objective", group: "Objectives", label: "Set Objectives" },
-    { id: "objectives", group: "Objectives", label: "Review Objectives" },
-    // Under Objectives in both modes. Decisions can always be added by hand here. Suggestions are
-    // offered once there are findings; in generate mode generateDecisionCandidates reads insights,
-    // and says so when none exist yet, so suggestions there come after the analysis.
-    { id: "decisions", group: "Objectives", label: "Business decisions" },
-    {
-      id: "crosstabs",
-      group: "Analysis",
-      label: "Analytics",
-      badge: documents.filter((d) => d.kind === "table").length,
-    },
-    {
-      id: "coding",
-      group: "Analysis",
-      label: "Coding",
-      badge: documents.filter((d) => d.kind === "transcript").length,
-    },
-    {
-      id: "reports",
-      group: "Analysis",
-      label: "Reports and decks",
-      badge: documents.filter((d) => d.kind === "report").length,
-    },
-    {
-      id: "findings",
-      group: "Findings",
-      label: "Findings",
-      badge: findings.length,
-    },
-    {
-      id: "synthesized",
-      group: "Findings",
-      label: "Insights",
-      badge: synthesizedInsights.length,
-    },
-    {
-      id: "recommendations",
-      group: "Decisions",
-      label: "Recommendations",
-      badge: synthesizedRecommendations.length,
-    },
-    // Lives in Decisions, not Analysis: generating it draws on the
-    // decision statement and on accepted recommendations, both of which
-    // sit above it in this same group, not on raw findings analysis alone.
-    { id: "insights-report", group: "Decisions", label: "Insights report" },
+    // Grant's sidebar, 2026-10-19, adopted on this copy 2026-10-20 without the two-letter codes:
+    // four stages (Prepare, Analyse, Develop findings, Deliver), then Tools. Within Prepare the order
+    // agreed on 2026-10-18 stands: import first, then the research quality review, then objectives
+    // with the business decisions they serve. Objectives is one entry for two sections (Set and
+    // Review), switched by tabs inside them. Cross tabs and Analytics are two entries over the same
+    // data files, each showing its own part of a file's launcher.
+    { id: "upload", group: "Prepare", label: "Import data" },
+    { id: "research-quality", group: "Prepare", label: "Research quality" },
+    { id: "objective", group: "Prepare", label: "Objectives", activeFor: ["objectives"] },
+    // Decisions can always be added by hand here. Suggestions are offered once there are findings; in
+    // generate mode generateDecisionCandidates reads insights, and says so when none exist yet.
+    { id: "decisions", group: "Prepare", label: "Business decisions" },
+    { id: "crosstabs", group: "Analyse", label: "Cross tabs", badge: documents.filter((d) => d.kind === "table").length },
+    { id: "analytics", group: "Analyse", label: "Analytics" },
+    { id: "coding", group: "Analyse", label: "Coding", badge: documents.filter((d) => d.kind === "transcript").length },
+    { id: "reports", group: "Analyse", label: "Reports and decks", badge: documents.filter((d) => d.kind === "report").length },
+    { id: "findings", group: "Develop findings", label: "Findings", badge: findings.length },
+    { id: "synthesized", group: "Develop findings", label: "Insights", badge: synthesizedInsights.length },
+    { id: "recommendations", group: "Deliver", label: "Recommendations", badge: synthesizedRecommendations.length },
+    // In Deliver: generating it draws on the decision statement and on accepted recommendations.
+    { id: "insights-report", group: "Deliver", label: "Insights report" },
     { id: "assistant", group: "Tools", label: "Research assistant" },
-    // Grouped with Tools, not Analysis, and placed right before API usage &
-    // cost: this nav list is meant to mirror the page's own scroll order
-    // (see SectionPanel id="working-data" below, which sits directly between
-    // the assistant and api-usage panels), and "Analysis" would have put it
-    // near the top of the sidebar while the actual section lives at the very
-    // bottom of the page -- clicking it jumped the reader straight past
-    // everything the sidebar implied came after it.
+    // Working data sits at the very bottom of the page's own order, so it stays in Tools.
     { id: "working-data", group: "Tools", label: "Working data" },
-    ...(apiUsage.length > 0
-      ? [{ id: "api-usage", group: "Tools", label: "API usage & cost" }]
-      : []),
+    ...(apiUsage.length > 0 ? [{ id: "api-usage", group: "Tools", label: "API usage & cost" }] : []),
   ];
   // The section a researcher lands on: whichever of the workflow's own
   // gating steps (see the reached/done flags above) is next up, falling
@@ -4976,7 +4945,7 @@ export default async function RunPage({
     <FigureChecksProvider checks={figureChecks}>
     <RunSectionProvider
       defaultId={defaultSectionId}
-      validIds={navSections.map((s) => s.id)}
+      validIds={navSections.flatMap((s) => [s.id, ...(s.activeFor ?? [])])}
     >
       <main className="flex min-h-0 flex-1 flex-col">
         {/* Same left edge as every section below (px-6, no centring), so the project title lines up
@@ -5079,7 +5048,7 @@ export default async function RunPage({
           })}
         </div>
 
-        <RunNav sections={navSections} />
+        <RunNav sections={navSections} projects={projectList} currentProjectId={id} />
 
         <div className="px-6 pb-6 pt-2">
           <SectionPanel id="upload">
@@ -5410,6 +5379,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="objective">
+            <SectionTabs tabs={[{ id: "objective", label: "Set objectives" }, { id: "objectives", label: "Review objectives" }]} />
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">Set up objectives</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
               Add the business problem and your own objectives, or fill them in from a brief or proposal added under Import data.
@@ -5446,6 +5416,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="objectives">
+            <SectionTabs tabs={[{ id: "objective", label: "Set objectives" }, { id: "objectives", label: "Review objectives" }]} />
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">Review objectives</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
               Pick an objective to see its quality score and what the evidence says about it. With none picked,
@@ -5529,7 +5500,7 @@ export default async function RunPage({
                     name: d.source_filename,
                     meta: d.ingestion_type === "raw" ? "Case-level data" : "Aggregated tables",
                     badge: saved > 0 ? `${saved} table${saved === 1 ? "" : "s"}` : undefined,
-                    node: documentCards("table", true, d.id),
+                    node: documentCards("table", true, d.id, false, "crosstabs"),
                   };
                 })}
               accents={documents
@@ -5560,7 +5531,58 @@ export default async function RunPage({
                   </div>
                   <p className="text-xs text-muted">
                     Open the crosstab workspace to see the full variable list beside the table you are
-                    building. Analyses (drivers, segments) are run from the same file.
+                    building. Driver analysis, NPS, charts and the other analyses are under Analytics.
+                  </p>
+                </>
+              }
+            />
+          </SectionPanel>
+
+          <SectionPanel id="analytics">
+            <DocumentPicker
+              title="Data files"
+              empty="No data files yet. Add a survey data file or a table under Import data."
+              rightTitle="Before you run an analysis"
+              items={documents
+                .filter((d) => d.kind === "table")
+                .map((d) => {
+                  const saved = (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length;
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: d.ingestion_type === "raw" ? "Case-level data" : "Aggregated tables",
+                    badge: saved > 0 ? `${saved} table${saved === 1 ? "" : "s"}` : undefined,
+                    node: documentCards("table", true, d.id, false, "analytics"),
+                  };
+                })}
+              accents={documents
+                .filter((d) => d.kind === "table")
+                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
+              right={
+                <>
+                  <p className="text-sm text-muted">
+                    Driver analysis, NPS, charts, wave tracking, CSM and brand health on each data file. Results you
+                    add flow into Findings.
+                  </p>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Case-level data is not compared automatically. Every comparison is flagged as uncorrected
+                    for multiple comparisons and assumes simple random sampling. Complex survey designs are not
+                    applied yet.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-border bg-white px-3 py-2">
+                      <div className="text-lg font-semibold text-foreground">
+                        {documents.filter((d) => d.kind === "table").length}
+                      </div>
+                      <div className="text-xs text-muted">Data files</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-white px-3 py-2">
+                      <div className="text-lg font-semibold text-foreground">{findings.length}</div>
+                      <div className="text-xs text-muted">Findings so far</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Tables themselves are built under Cross tabs, from the same file.
                   </p>
                 </>
               }

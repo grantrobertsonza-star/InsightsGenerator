@@ -12,6 +12,7 @@
 //   4. Recommendations, "Edit and accept" then "Save and accept": reported, the edited action text
 //      is kept.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -45,7 +46,7 @@ test("refused review saves are reported and keep the researcher's text", async (
     const run = await ui.createRun({ name: `review-action-failure-${Date.now()}` });
     // Section buttons can carry a count ("Recommendations 1"), so a string name matches exactly
     // and a pattern is used where a count may follow.
-    const section = (name) => page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name }).first().click();
+    const section = (name) => openSection(page, name);
     const open = async (name) => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await section(name);

@@ -40,7 +40,7 @@ pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels, missing_rang
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
   const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  await page.getByRole("button", { name: /^Analytics/ }).first().click();
+  await page.getByRole("button", { name: /^Cross tabs/ }).first().click();
   await page.getByRole("button", { name: /^Crosstabs/ }).click();
   await expect(dialog).toBeVisible({ timeout: 60_000 });
   const matching = dialog.locator(`table[data-testid="crosstab-result-table"][data-question-keys*='"${row}"']`);

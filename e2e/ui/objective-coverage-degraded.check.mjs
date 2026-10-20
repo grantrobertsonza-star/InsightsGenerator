@@ -10,6 +10,7 @@
 // replay answer; the override matches the validator's fixed user message, since the objectives
 // travel in its system prompt). This tests the qualification's path, not model interpretation.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,7 +36,7 @@ test("a degraded coverage conclusion is qualified in Review Objectives, survives
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `coverage-degraded-${Date.now()}` });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
 
     await section("Set Objectives");
     const form = page.locator("form", { has: page.locator('textarea[name="researchObjective"]') });

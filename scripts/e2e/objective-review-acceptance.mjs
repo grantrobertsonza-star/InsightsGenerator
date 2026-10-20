@@ -1,5 +1,6 @@
 // Native OBJ-REV-004 detail/overview, human wording and exclusion regression. Run after e2e:stack.
 import { chromium, expect } from '@playwright/test';
+import { openSection } from "../../e2e/ui/helpers/nav.mjs";
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -24,14 +25,14 @@ try {
     const ui = await bind({ page, target, testInfo: { annotations: [] } });
     const run = await ui.createRun({ name: 'review-transitions-' + Date.now() });
     result.run = run;
-    await page.getByRole('button', { name: 'Set Objectives', exact: true }).click();
+    await openSection(page, "Set Objectives");
     const form = page.locator('form', { has: page.locator('textarea[name="researchObjective"]') });
     await form.locator('textarea[name="researchObjective"]').fill('Preserve this original research objective');
     await form.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Preserve this original research objective', { exact: true }).first()).toBeVisible();
     const id = (await db.query('select id from objective_candidates where run_id=$1', [run.id])).rows[0].id;
     const status = async (wanted) => expect.poll(async () => (await db.query('select status from objective_candidates where id=$1', [id])).rows[0].status, { timeout: 60000 }).toBe(wanted);
-    await page.getByRole('button', { name: 'Review Objectives', exact: true }).click();
+    await openSection(page, "Review Objectives");
     await page.getByRole('button').filter({ hasText: 'Preserve this original research objective' }).first().click();
     const middle = page.getByRole('heading', { name: 'Objective detail', exact: true }).locator('xpath=ancestor::section[1]');
     await middle.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -52,7 +53,7 @@ try {
     await status('accepted');
     result.checks.push({ case: 'detail edit/accept/unaccept/reaccept/reject and overview restore preserve human wording', status: 'passed' });
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: 'Review Objectives', exact: true }).click();
+    await openSection(page, "Review Objectives");
     row = page.locator('tr').filter({ hasText: 'Researcher wording preserved in both presentations' }).last();
     await post(row.getByRole('button', { name: 'Unaccept', exact: true }));
     await status('pending');
@@ -69,13 +70,13 @@ try {
     await db.query("insert into findings(tenant_id,run_id,origin,finding_text) values($1,$2,'generated','Synthetic bounded evidence for regeneration')", [target.tenantId, run.id]);
     const ai = (await db.query("insert into objective_candidates(tenant_id,run_id,source,status,candidate_text,rationale) values($1,$2,'ai_suggested','pending','Exclude this suggested objective','Synthetic exclusion fixture') returning id", [target.tenantId, run.id])).rows[0].id;
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: 'Review Objectives', exact: true }).click();
+    await openSection(page, "Review Objectives");
     await page.locator('tr').filter({ hasText: 'Exclude this suggested objective' }).getByRole('button', { name: 'Reject', exact: true }).click();
     await expect.poll(async () => (await db.query('select status from objective_candidates where id=$1', [ai])).rows[0].status).toBe('rejected');
     await page.getByRole('button', { name: 'Regenerate suggestions', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Regenerate suggestions', exact: true })).toBeEnabled({ timeout: 60000 });
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: 'Review Objectives', exact: true }).click();
+    await openSection(page, "Review Objectives");
     const rows = (await db.query('select id,candidate_text,status,edited from objective_candidates where run_id=$1', [run.id])).rows;
     expect(rows.find(r => r.id === id)).toMatchObject({ candidate_text: 'Final human objective wording', status: 'accepted', edited: true });
     expect(rows.find(r => r.id === ai)).toMatchObject({ status: 'rejected' });

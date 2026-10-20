@@ -70,9 +70,11 @@ function suggestImportance(pred: VariableInfo, candidates: VariableInfo[]): stri
 }
 
 /**
- * The launcher on a data file's card. One Analytics block with four tiles: Crosstabs, Driver analysis,
- * NPS and Clustering. The work for each happens in its own full-window workspace because a survey can
- * have thousands of variables.
+ * The launcher on a data file's card: Crosstabs, and the analytics tiles (drivers, NPS, charts, wave
+ * tracking, CSM, brand health, clustering). The work for each happens in its own full-window workspace
+ * because a survey can have thousands of variables. `part` shows the Crosstabs tile alone (the Cross
+ * tabs section) or the analytics tiles alone (the Analytics section); Grant, 2026-10-19, split the two
+ * in the sidebar. Both parts open the same workspaces on the same file.
  */
 export default function AnalyticsBuilder({
   runId,
@@ -80,12 +82,14 @@ export default function AnalyticsBuilder({
   filename,
   saved,
   waveFiles,
+  part = "all",
 }: {
   runId: string;
   documentId: string;
   filename: string;
   saved: { id: string; label: string }[];
   waveFiles?: WaveFile[];
+  part?: "crosstabs" | "analytics" | "all";
 }) {
   const [tool, setTool] = useState<"driver" | "nps" | "chart" | "wave" | null>(null);
   const [showClustering, setShowClustering] = useState(false);
@@ -95,8 +99,9 @@ export default function AnalyticsBuilder({
 
   return (
     <div className="rounded-lg border border-border bg-white p-3 text-xs">
-      <p className="mb-2 font-medium text-foreground">Analytics</p>
+      <p className="mb-2 font-medium text-foreground">{part === "crosstabs" ? "Cross tabs" : "Analytics"}</p>
       <div className="flex flex-wrap gap-2">
+        {part !== "analytics" && (
         <button
           type="button"
           onClick={() => setCrosstabOpen(true)}
@@ -109,6 +114,9 @@ export default function AnalyticsBuilder({
               : "Build a set of weighted crosstabs from the full variable list, then commit it to generate findings."}
           </p>
         </button>
+        )}
+        {part !== "crosstabs" && (
+        <>
         <button
           type="button"
           onClick={() => setTool("driver")}
@@ -187,6 +195,8 @@ export default function AnalyticsBuilder({
           </p>
           <p className="text-[11px] text-muted">Group respondents into segments from the questions you choose.</p>
         </button>
+        </>
+        )}
       </div>
       {showClustering && (
         <p className="mt-2 rounded border border-border bg-slate-50 px-2.5 py-2 text-[11px] text-muted">

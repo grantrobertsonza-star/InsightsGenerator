@@ -9,6 +9,7 @@
 //   4. After reload, Setup and Review both show exactly "Beta revised" and "Gamma revised"; the
 //      candidates are those two rows, with their original ids; the brief equals the saved text.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,7 +29,7 @@ test("numbered, hyphenated and bulleted objectives stay one each and consistent 
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `marker-variants-${Date.now()}` });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
     const candidates = async () => (await db.query("select id, candidate_text from objective_candidates where run_id=$1 order by candidate_text", [run.id])).rows;
     const reopen = async (name) => {
       await page.goto(run.url, { waitUntil: "networkidle" });

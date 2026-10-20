@@ -5,6 +5,7 @@
 // assertions, plus: after each reload the superseded wording is no longer shown.
 // Real browser against the disposable local stack; model replay only. Synthetic data.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -23,7 +24,7 @@ test("Setup A to B, Review B to C, delete in Review: one candidate id throughout
   try {
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
     const run = await ui.createRun({ name: `objective-identity-${Date.now()}` });
 
     await section("Set Objectives");

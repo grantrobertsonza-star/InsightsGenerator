@@ -40,7 +40,7 @@ async function adapter(page, testInfo) {
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
   const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
-  await page.getByRole("button", { name: /^Analytics/ }).first().click();
+  await page.getByRole("button", { name: /^Cross tabs/ }).first().click();
   await page.getByRole("button", { name: /^Crosstabs/ }).click();
   await expect(dialog).toBeVisible({ timeout: 60_000 });
   // Every saved table for this question (the same question can be saved more than once; each

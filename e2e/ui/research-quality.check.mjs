@@ -51,10 +51,10 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
 
     // 1. open the section: no model call; the menu order agreed 2026-10-18 still holds
     await page.goto(run.url, { waitUntil: "networkidle" });
-    const menu = (await page.locator("#run-nav-slot button").allInnerTexts()).map((t) => t.replace(/\s*\d+$/, "").trim());
+    const menu = (await page.locator("#run-nav-slot [data-nav-label]").allInnerTexts()).map((t) => t.trim());
     expect(menu.indexOf("Import data")).toBe(0);
-    expect(menu.indexOf("Research quality review")).toBe(1);
-    await page.getByRole("button", { name: /^Research quality review/ }).first().click();
+    expect(menu.indexOf("Research quality")).toBe(1);
+    await page.getByRole("button", { name: /^Research quality/ }).first().click();
     const section = page.getByTestId("research-quality");
     for (const title of ["Briefs and proposals", "Dashboard", "Criterion details"]) await expect(section.getByRole("heading", { name: title, exact: true })).toBeVisible({ timeout: 60_000 });
     const card = (name) => section.locator("[data-document-id]").filter({ hasText: name });

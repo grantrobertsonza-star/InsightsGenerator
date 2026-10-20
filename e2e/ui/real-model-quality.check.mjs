@@ -72,7 +72,7 @@ async function buildSetTable(page, setName, column) {
   await page.reload({ waitUntil: "networkidle" });
   const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
   if (!(await dialog.isVisible())) {
-    await page.getByRole("button", { name: /^Analytics(\s*\d+)?$/ }).first().click();
+    await page.getByRole("button", { name: /^Cross tabs(\s*\d+)?$/ }).first().click();
     await page.getByRole("button", { name: /^Crosstabs/ }).click();
   }
   const search = dialog.getByPlaceholder("Search name or label");

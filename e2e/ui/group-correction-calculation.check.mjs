@@ -83,7 +83,7 @@ test("a saved group correction computes as corrected, and clearing it computes t
     // The adapter's picker selects single variables by their "Row" toggle; a multiple-response set
     // offers "Row (all)", so the set table is built with the same workspace steps here.
     await page.goto(run.url, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: /^Analytics/ }).first().click();
+    await page.getByRole("button", { name: /^Cross tabs/ }).first().click();
     await page.getByRole("button", { name: /^Crosstabs/ }).click();
     const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
     await expect(dialog.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: 60_000 });

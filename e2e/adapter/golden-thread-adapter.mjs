@@ -34,7 +34,7 @@ const STEP_TIMEOUT = 180_000;
 // an export gets a longer wait, a failed export is reported at once with its HTTP status (see
 // exportFile), and the time taken is recorded on the test.
 const EXPORT_TIMEOUT = 600_000;
-const SECTION_NAMES = ["Findings", "Insights", "Recommendations", "Insights report", "Import data", "Analytics"];
+const SECTION_NAMES = ["Findings", "Insights", "Recommendations", "Insights report", "Import data", "Cross tabs", "Analytics"];
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const squash = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -161,7 +161,7 @@ export async function bind({ page, target, testInfo }) {
   async function workspace() {
     const dialog = page.getByRole("dialog", { name: "Crosstab workspace" });
     if (!(await dialog.isVisible())) {
-      await openSection("Analytics");
+      await openSection("Cross tabs");
       await page.getByRole("button", { name: /^Crosstabs/ }).click();
     }
     await expect(dialog.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: STEP_TIMEOUT });

@@ -28,7 +28,7 @@ test("the main menu hides to a strip, keeps a run's section list, and is remembe
 
   const rail = page.getByTestId("global-rail");
   const content = rail.locator("xpath=following-sibling::div[1]");
-  const sectionButton = page.locator("#run-nav-slot button", { hasText: "Research quality review" });
+  const sectionButton = page.locator("#run-nav-slot button", { hasText: "Research quality" });
   await expect(rail).toHaveAttribute("data-collapsed", "false");
   expect(await width(rail)).toBe(224);
   await expect(sectionButton).toBeVisible();

@@ -12,6 +12,7 @@
 //   4. The researcher deletes their own objective; a third regeneration does not bring it (or the
 //      original brief text) back, and the original brief is unchanged.
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,7 +36,7 @@ test("native regeneration keeps a rejection, edited wording and a deletion", asy
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
     const run = await ui.createRun({ name: `objective-regeneration-${Date.now()}` });
-    const section = (name) => page.getByRole("button", { name, exact: true }).first().click();
+    const section = (name) => openSection(page, name);
     const rows = async () => (await db.query("select candidate_text, status, source from objective_candidates where run_id=$1 order by candidate_text", [run.id])).rows;
     const openReview = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });

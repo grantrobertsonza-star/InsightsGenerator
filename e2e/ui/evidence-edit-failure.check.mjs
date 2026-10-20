@@ -10,6 +10,7 @@
 // Not covered natively: Continue reading staying offered after a failed evaluation round (it needs
 // the evaluate action to fail while the panel's own load still works).
 import { expect, test } from "@playwright/test";
+import { openSection } from "./helpers/nav.mjs";
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -46,7 +47,7 @@ test("a refused evidence question edit keeps the draft; a refused leave-out is r
     const stored = async () => (await db.query("select question, excluded from objective_evidence where id=$1", [evidence])).rows[0];
     const openReview = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
-      await page.getByRole("button", { name: "Review Objectives", exact: true }).click();
+      await openSection(page, "Review Objectives");
       await expect(page.getByText("Original evidence question?", { exact: true }).or(page.getByText("Revised evidence question?", { exact: true })).first()).toBeVisible({ timeout: 60_000 });
     };
     const question = () => page.locator("li", { hasText: /Original evidence question\?|Revised evidence question\?/ }).filter({ visible: true }).last();
