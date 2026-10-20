@@ -7,7 +7,7 @@
 //   4. The cell pane is not shown until a cell is chosen, and Close gives its room back.
 //   5. The variable pane collapses and expands.
 import { expect, test } from "@playwright/test";
-import { copyFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -37,12 +37,12 @@ test("Cross tabs: direct entry, file chooser, kept state, contextual cell pane",
     await expect(section.getByRole("button", { name: "Go to Sources" })).toBeVisible();
     await expect(crosstabWorkspace(page)).toHaveCount(0);
 
-    // 2. Two files; the workspace opens directly.
+    // 2. Two files; the workspace opens directly. Different content: an identical second upload is
+    //    recognised as the same file and not read again.
     const dir = mkdtempSync(path.join(tmpdir(), "xt-"));
-    for (const name of ["wave-a.xlsx", "wave-b.xlsx"]) {
-      copyFileSync(path.join(FIXTURE, "golden-survey-documented.xlsx"), path.join(dir, name));
-      await ui.upload(run, path.join(dir, name), "table");
-    }
+    copyFileSync(path.join(FIXTURE, "golden-survey-documented.xlsx"), path.join(dir, "wave-b.xlsx"));
+    writeFileSync(path.join(dir, "wave-a.csv"), ["id,Gender,Purchase", ...Array.from({ length: 40 }, (_, i) => `${i + 1},${1 + (i % 2)},${1 + (i % 3 === 0 ? 1 : 0)}`)].join("\n"));
+    for (const name of ["wave-a.csv", "wave-b.xlsx"]) await ui.upload(run, path.join(dir, name), "table");
     await expect.poll(async () => Number((await db.query("select count(distinct document_id) from document_tables where run_id=$1", [run.id])).rows[0].count), { timeout: 180_000 }).toBe(2);
     await page.goto(run.url, { waitUntil: "networkidle" });
     let ws = await openCrosstabs(page, "wave-b.xlsx");
@@ -61,7 +61,7 @@ test("Cross tabs: direct entry, file chooser, kept state, contextual cell pane",
     };
     await pickRow("Purchase");
     await expect(ws.locator('[data-row-key="Purchase"]')).toBeVisible();
-    ws = await openCrosstabs(page, "wave-a.xlsx");
+    ws = await openCrosstabs(page, "wave-a.csv");
     await expect(ws.locator('[data-row-key="Purchase"]')).toHaveCount(0);
     ws = await openCrosstabs(page, "wave-b.xlsx");
     await expect(ws.locator('[data-row-key="Purchase"]')).toBeVisible();

@@ -12,6 +12,7 @@
 //      labels and the same per-code counts after reload.
 // Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
+import { openCrosstabs } from "./helpers/crosstabs.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -61,7 +62,6 @@ async function reopenSaved(page, run, row) {
 function conflictWorkbook(dir) {
   const script = String.raw`
 import sys
-import { openCrosstabs } from "./helpers/crosstabs.mjs";
 from openpyxl import Workbook
 wb = Workbook(); ws = wb.active; ws.title = "Data"
 for r in [["id","q"],["001",1],["002",1],["003",1],["004",2]]: ws.append(r)

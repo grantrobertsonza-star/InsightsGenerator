@@ -20,12 +20,12 @@
 // This is a MEASUREMENT on one fixture and one run, not a pass threshold: the test fails only when
 // the pipeline itself does not complete. Results go to real-model-quality.json and stdout.
 import { expect, test } from "@playwright/test";
+import { crosstabWorkspace, openCrosstabs } from "./helpers/crosstabs.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { measureOmittedEffect } from "./omitted-effect-measure.mjs";
-import { crosstabWorkspace, openCrosstabs } from "./helpers/crosstabs.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));

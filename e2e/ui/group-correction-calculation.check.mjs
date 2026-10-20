@@ -11,12 +11,12 @@
 //      marked as possibly outdated.
 // Real browser on the disposable stack; the stored correction is checked in the database.
 import { expect, test } from "@playwright/test";
+import { openCrosstabs } from "./helpers/crosstabs.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { openSource } from "./helpers/sources.mjs";
-import { openCrosstabs } from "./helpers/crosstabs.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));

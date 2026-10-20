@@ -12,6 +12,7 @@
 // reload and read again; the import's data audit must still report both user-missing declarations
 // after the reload. Real browser, engine and database on the disposable stack. No model calls.
 import { expect, test } from "@playwright/test";
+import { openCrosstabs } from "./helpers/crosstabs.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -27,7 +28,6 @@ function fixture() {
   const file = path.join(mkdtempSync(path.join(tmpdir(), "scale-missing-")), "scales.sav");
   const script = String.raw`
 import sys, pandas as pd, pyreadstat
-import { openCrosstabs } from "./helpers/crosstabs.mjs";
 lab = [1.0]*10 + [2.0]*10 + [3.0]*10 + [4.0]*10 + [9.0]*5
 rec = [3.0]*18 + [7.0]*18 + [9.0]*9
 df = pd.DataFrame({"id": [float(i) for i in range(45)], "lab": lab, "unl": list(lab), "rec": rec})
