@@ -1603,7 +1603,9 @@ function AnalyticsWorkspace({
           )}
         </div>
         }
-        right={
+        // Driver analysis has nothing for this pane until an analysis is saved, so it gives the room
+        // back to the results instead of showing an empty column.
+        right={mode === "driver" && !savedBlock ? undefined : (
         <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 text-xs lg:h-[calc(100vh-5.5rem)]" data-testid="analytics-side-pane">
           {mode === "driver" ? (
             <>
@@ -1632,7 +1634,7 @@ function AnalyticsWorkspace({
             </>
           )}
         </aside>
-        }
+        )}
       />
       </div>
       )}
