@@ -2,7 +2,7 @@
 // the stable id (not wording), and an unknown id falls back to the id itself rather than to blank.
 import { describe, expect, it } from "vitest";
 import criteria from "../../research-quality/criteria/RQC-6.json";
-import { CRITERION_SHORT_LABEL, criterionShortLabel, reviewStepLabel, shownFailedSteps } from "../researchQualityPresentation";
+import { CRITERION_SHORT_LABEL, criterionRows, criterionShortLabel, filterCriterionRows, reviewStepLabel, shownFailedSteps } from "../researchQualityPresentation";
 import type { ReviewManifest } from "../researchQualityTypes";
 
 describe("criterion short names", () => {
@@ -72,5 +72,34 @@ describe("failed steps listed under a review", () => {
   });
   it("lists nothing when no step list is stored", () => {
     expect(shownFailedSteps({ state: "partial", progress: {}, coverage: {} })).toEqual([]);
+  });
+});
+
+describe("the Criteria tab's list and filters", () => {
+  const crit = (criterionId: string, state: string, score: number | null, label: string) => ({ criterionId, state, score, label, reason: "" });
+  const dashboards = [
+    {
+      dashboardId: "proposal", label: "Proposal", basis: "", pct: 60, band: "workable", ratedWeight: 2, totalWeight: 2,
+      dimensions: [
+        { dimensionId: "method", categoryLabel: "Methodological rigour", weight: 36, state: "rated", score: 3, label: "Workable", reason: "",
+          criteria: [crit("RQ-PROP-METHOD", "rated", 3, "Workable"), crit("RQ-PROP-DESIGN", "failed", null, "Failed")] },
+        { dimensionId: "price", categoryLabel: "Price", weight: 18, state: "not_rated", score: null, label: "Not rated", reason: "",
+          criteria: [crit("RQ-PROP-PRICE", "not_rated", null, "Not rated")] },
+      ],
+    },
+  ] as unknown as Parameters<typeof criterionRows>[0];
+  it("lists every criterion once, with its dimension and its status as the dashboard shows it", () => {
+    expect(criterionRows([...dashboards, ...dashboards]).map((r) => [r.criterionId, r.dimensionId, r.dimensionLabel, r.status])).toEqual([
+      ["RQ-PROP-METHOD", "method", "Methodological rigour", "Workable"],
+      ["RQ-PROP-DESIGN", "method", "Methodological rigour", "Failed"],
+      ["RQ-PROP-PRICE", "price", "Price", "Not rated"],
+    ]);
+  });
+  it("filters by dimension and by status, together or alone", () => {
+    const rows = criterionRows(dashboards);
+    expect(filterCriterionRows(rows, "method", "all").map((r) => r.criterionId)).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN"]);
+    expect(filterCriterionRows(rows, "all", "Not rated").map((r) => r.criterionId)).toEqual(["RQ-PROP-PRICE"]);
+    expect(filterCriterionRows(rows, "method", "Not rated")).toEqual([]);
+    expect(filterCriterionRows(rows, "all", "all")).toHaveLength(3);
   });
 });

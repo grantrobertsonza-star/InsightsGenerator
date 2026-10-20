@@ -1,14 +1,17 @@
 // Research Quality Review in a real browser on the disposable stack (production build, model REPLAY:
 // orchestration evidence only, never judgement quality). Grant 2026-10-19: one brief or one proposal
-// at a time, a separate proposal-against-brief comparison, view only.
+// at a time, a separate proposal-against-brief comparison, view only; laid out from 2026-10-20 as his
+// prototype, then with the document and review chosen at the top of the review pane, its actions and
+// Overview, Criteria and Improvements tabs, and the clicked bar's or criterion's detail on the right.
 //   1. Opening the section makes no model call; documents uploaded as a brief and a proposal are
-//      listed with their role and "Review as brief/proposal".
+//      listed with their role; the selected one offers Review brief, Review proposal and Compare.
 //   2. A start needs a confirmation; cancelling calls nothing.
 //   3. A brief review completes: ten bars, the overall recomputed here from the scores and weights on
-//      screen; clicking a bar shows that criterion on the right, with quotes that are verbatim spans of
-//      the stored document text.
+//      screen; clicking a bar opens the Criteria tab on that criterion, with quotes that are verbatim
+//      spans of the stored document text; the status filter narrows the criteria list.
 //   4. A proposal review shows six weighted categories; a category's detail lists its criteria.
-//   5. The comparison is its own review with seven equal-weight comparisons.
+//   5. The comparison is its own review with seven equal-weight comparisons, listed in the
+//      historical reviews of both of its documents.
 //   6. The Word export of the brief review carries the dashboard and the criteria.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -56,39 +59,68 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     expect(menu.indexOf("Research quality")).toBe(1);
     await page.getByRole("button", { name: /^Research quality/ }).first().click();
     const section = page.getByTestId("research-quality");
-    for (const title of ["Briefs and proposals", "Dashboard", "Criterion details"]) await expect(section.getByRole("heading", { name: title, exact: true })).toBeVisible({ timeout: 60_000 });
-    const card = (name) => section.locator("[data-document-id]").filter({ hasText: name });
-    await expect(card("client-brief.docx")).toBeVisible();
-    await expect(card("questionnaire.docx")).toHaveCount(0);
-    await expect(section.locator("[data-document-id]")).toHaveCount(2);
-    // The role recorded at upload is shown on each document.
-    await expect(card("client-brief.docx").getByTestId("rq-doc-role")).toHaveText("Brief");
-    await expect(card("report.docx").getByTestId("rq-doc-role")).toHaveText("Proposal");
+    const documentPicker = section.getByLabel("Document", { exact: true });
+    const reviewPicker = section.getByLabel("Review", { exact: true });
+    await expect(documentPicker).toBeVisible({ timeout: 60_000 });
+    await expect(section.getByRole("heading", { name: "Criterion details", exact: true })).toBeVisible();
+    // Chooses a document by its file name; the picker says which one is shown.
+    const choose = async (name) => {
+      const value = await documentPicker.locator("option", { hasText: name }).getAttribute("value");
+      await documentPicker.selectOption(value);
+      await expect(section.getByTestId("rq-picker")).toHaveAttribute("data-document-id", value);
+    };
+    // The shown document's reviews, as the review picker lists them.
+    const reviewsListed = () => reviewPicker.locator("option").allInnerTexts();
+    const actions = section.getByRole("group", { name: "Review actions" });
+    // Briefs and proposals only, each with the role recorded at upload.
+    expect((await documentPicker.locator("option").allInnerTexts()).sort()).toEqual(["client-brief.docx · Brief", "report.docx · Proposal"]);
     expect(await usage()).toBe(0);
 
     // 2. a start needs confirming; cancel calls nothing
-    await card("client-brief.docx").getByRole("button", { name: "Review as brief" }).click();
+    await choose("client-brief.docx");
+    await expect(section.getByTestId("rq-selected")).toContainText("No review yet");
+    await actions.getByRole("button", { name: "Review brief" }).click();
     await expect(section.getByTestId("rq-confirm")).toContainText("Brief review of client-brief.docx");
     await section.getByTestId("rq-confirm").getByRole("button", { name: "Cancel" }).click();
     await expect(section.getByTestId("rq-confirm")).toHaveCount(0);
     expect(await usage()).toBe(0);
 
     // 3. the brief review
-    const runReview = async (button) => {
-      await button.click();
+    // Starts a review and waits for it, by its number: the review shown before keeps its place until
+    // the new one has loaded, so its state alone would not say the new one finished.
+    let started = 0;
+    const runReview = async (button, start = true) => {
+      if (start) await button.click();
       await section.getByTestId("rq-confirm").getByRole("button", { name: "Start review" }).click();
+      started += 1;
+      await expect(section.getByTestId("rq-selected")).toContainText(`No. ${started} ·`, { timeout: 60_000 });
       await expect(section.getByTestId("rq-review-state")).toHaveAttribute("data-state", /complete|partial/, { timeout: 8 * 60_000 });
     };
-    await runReview(card("client-brief.docx").getByRole("button", { name: "Review as brief" }));
+    await runReview(actions.getByRole("button", { name: "Review brief" }));
+    await expect(section.getByTestId("rq-selected")).toContainText("Brief review");
     expect(await usage()).toBeGreaterThan(0);
     const brief = section.locator('[data-testid="rq-dashboard"][data-dashboard="brief"]');
     await expect(brief.locator("li[data-criterion]")).toHaveCount(10);
     await expect(brief).toHaveAttribute("data-pct", await expectedPct(brief));
     await expect(brief.locator('[data-criterion="RQ-BRIEF-DECISION"]')).toContainText("x2");
     await brief.locator('[data-criterion="RQ-BRIEF-DECISION"] button').click();
+    // The detail is in the right-hand pane, beside the dashboard.
     const details = section.getByTestId("rq-details");
     await expect(details).toHaveAttribute("data-dimension", "RQ-BRIEF-DECISION");
     await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(1);
+    // The criteria list: all ten, then narrowed by the status filter to those with that status.
+    await section.getByRole("tab", { name: "Criteria" }).click();
+    await section.getByLabel("Dimension", { exact: true }).selectOption("all");
+    const list = section.getByRole("list", { name: "Criteria" });
+    await expect(list.locator("li[data-criterion-row]")).toHaveCount(10);
+    const firstStatus = (await section.getByLabel("Assessment status", { exact: true }).locator("option").allInnerTexts())[1];
+    await section.getByLabel("Assessment status", { exact: true }).selectOption({ label: firstStatus });
+    const narrowed = await list.locator("li[data-criterion-row]").count();
+    expect(narrowed).toBeGreaterThan(0);
+    expect(narrowed).toBeLessThanOrEqual(10);
+    for (const t of await list.locator("li[data-criterion-row]").allInnerTexts()) expect(t.toUpperCase()).toContain(firstStatus.toUpperCase());
+    await section.getByLabel("Assessment status", { exact: true }).selectOption("all");
+    await list.locator('li[data-criterion-row="RQ-BRIEF-DECISION"] button').click();
     await expect(details.getByRole("heading", { name: "Decisions to inform" })).toBeVisible();
     // Every quote shown anywhere is a verbatim span of the stored document text.
     const review = (await db.query(`select id, manifest from research_quality_reviews where run_id=$1 order by sequence desc limit 1`, [run.id])).rows[0];
@@ -116,7 +148,9 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     expect(docText).toContain("Decisions to inform (counts x2)");
 
     // 4. the proposal review, its categories and a category's criteria
-    await runReview(card("report.docx").getByRole("button", { name: "Review as proposal" }));
+    await choose("report.docx");
+    await runReview(actions.getByRole("button", { name: "Review proposal" }));
+    await section.getByRole("tab", { name: "Overview" }).click();
     const proposal = section.locator('[data-testid="rq-dashboard"][data-dashboard="proposal"]');
     const cats = proposal.locator("li[data-criterion]");
     await expect(cats).toHaveCount(6);
@@ -139,23 +173,37 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     const precision = details.locator('[data-criterion="RQ-PROP-SAMPLE-SIZE"]').getByTestId("rq-precision-checks");
     await expect(precision).toContainText("Margin of error, calculated (not the model's rating)");
     await expect(precision).toContainText(/No margin of error is stated|Consistent|Claims more precision|Wider than needed|Not checked/);
+    // An item under a category shows that one criterion alone.
+    await method.locator('li[data-sub-criterion="RQ-PROP-DESIGN"] button').click();
+    await expect(details).toHaveAttribute("data-dimension", "RQ-PROP-DESIGN");
+    await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(1);
     // Each document lists its own reviews.
-    await expect(card("client-brief.docx").getByRole("button", { name: /^Brief review/ })).toHaveCount(1);
-    await expect(card("report.docx").getByRole("button", { name: /^Proposal review/ })).toHaveCount(1);
+    expect((await reviewsListed()).filter((t) => t.startsWith("Proposal review"))).toHaveLength(1);
+    await choose("client-brief.docx");
+    expect((await reviewsListed()).filter((t) => t.startsWith("Brief review"))).toHaveLength(1);
+    await choose("report.docx");
+    // The Improvements tab lists what to improve, or says there is none.
+    await section.getByRole("tab", { name: "Improvements" }).click();
+    await expect(section.getByRole("tabpanel", { name: "Improvements" })).toContainText(/\S{10,}/);
 
-    // 5. the comparison: its own review, seven equal comparisons
-    const compare = section.getByTestId("rq-compare");
-    await compare.getByLabel("Proposal to compare").selectOption({ label: "report.docx" });
-    await compare.getByLabel("Brief to compare").selectOption({ label: "client-brief.docx" });
-    await runReview(compare.getByRole("button", { name: "Compare" }));
+    // 5. the comparison: its own review, seven equal comparisons, in both documents' histories
+    await actions.getByRole("button", { name: "Compare with brief" }).click();
+    await section.getByTestId("rq-confirm").getByLabel("Brief to compare").selectOption({ label: "client-brief.docx" });
+    await runReview(null, false);
+    await section.getByRole("tab", { name: "Overview" }).click();
     const comparison = section.locator('[data-testid="rq-dashboard"][data-dashboard="comparison"]');
     await expect(comparison.locator("li[data-criterion]")).toHaveCount(7);
     await expect(comparison).toHaveAttribute("data-pct", await expectedPct(comparison));
-    await expect(compare.getByRole("button", { name: /^report\.docx against client-brief\.docx/ })).toBeVisible();
+    for (const name of ["report.docx", "client-brief.docx"]) {
+      await choose(name);
+      expect((await reviewsListed()).filter((t) => t.startsWith("Proposal against brief")), `${name} lists the comparison`).toHaveLength(1);
+    }
     if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 
     // Switching back to an earlier review shows it again.
-    await card("client-brief.docx").getByRole("button", { name: /^Brief review/ }).click();
+    await choose("client-brief.docx");
+    await reviewPicker.selectOption({ label: (await reviewsListed()).find((t) => t.startsWith("Brief review")) });
+    await section.getByRole("tab", { name: "Overview" }).click();
     await expect(section.locator('[data-testid="rq-dashboard"][data-dashboard="brief"]')).toBeVisible();
   } finally {
     await db.end();

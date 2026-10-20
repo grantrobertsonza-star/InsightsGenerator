@@ -4,6 +4,7 @@ import checklistRelease from "../research-quality/checklists/RQK-2.json";
 import criteriaRelease from "../research-quality/criteria/RQC-6.json";
 import type { DocumentedFact, ObservationPayload, ReviewManifest } from "./researchQualityTypes";
 import type { ObservationView } from "./researchQualityView";
+import type { DashboardView } from "./researchQualityDashboard";
 
 export const DOC_LABEL: Record<string, string> = {
   documented: "Documented",
@@ -205,4 +206,41 @@ type StepRow = { key: string; status: string };
 export function shownFailedSteps<T extends StepRow>(r: { state: string; progress: { interrupted?: boolean }; coverage: { tasks?: T[] } }): T[] {
   const running = (r.state === "pending" || r.state === "running") && !r.progress.interrupted;
   return running ? [] : (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
+}
+
+// ---------------------------------------------------------------- criteria tab
+
+
+/** One criterion in the Criteria tab's list, with the dimension (or category) it sits in. */
+export type CriterionRow = { criterionId: string; dimensionId: string; dimensionLabel: string; score: number | null; status: string };
+
+/**
+ * The Criteria tab's list (Grant, 2026-10-20, from his Research quality prototype): every criterion
+ * of a review's dashboards, in dashboard order, each with its status as shown on the dashboard: the
+ * rating's own label (Strong, Workable, Weak, Absent) once rated, otherwise Not rated, Pending or
+ * Failed. A criterion on two dashboards is listed once, under the first.
+ */
+export function criterionRows(dashboards: DashboardView[]): CriterionRow[] {
+  const seen = new Set<string>();
+  const rows: CriterionRow[] = [];
+  for (const d of dashboards)
+    for (const x of d.dimensions)
+      for (const c of x.criteria) {
+        if (seen.has(c.criterionId)) continue;
+        seen.add(c.criterionId);
+        rows.push({
+          criterionId: c.criterionId,
+          dimensionId: x.dimensionId,
+          dimensionLabel: x.categoryLabel ?? criterionShortLabel(x.dimensionId),
+          score: c.score,
+          status: c.state === "rated" ? c.label : CRITERION_STATE_LABEL[c.state] ?? c.state,
+        });
+      }
+  return rows;
+}
+const CRITERION_STATE_LABEL: Record<string, string> = { not_rated: "Not rated", pending: "Pending", failed: "Failed" };
+
+/** Rows kept by the Criteria tab's two filters; "all" keeps everything. */
+export function filterCriterionRows(rows: CriterionRow[], dimensionId: string, status: string): CriterionRow[] {
+  return rows.filter((r) => (dimensionId === "all" || r.dimensionId === dimensionId) && (status === "all" || r.status === status));
 }

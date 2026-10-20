@@ -111,5 +111,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   // The brief is the document highlighted in the quality review's list.
   await expect(section.locator('[data-document-id][data-highlight="true"]')).toContainText("client-brief.docx", { timeout: 60_000 });
   await expect(section.locator('[data-document-id][data-highlight="true"]')).toHaveCount(1);
+  // ...and the one shown, in the document picker.
+  await expect(section.getByLabel("Document", { exact: true }).locator("option:checked")).toContainText("client-brief.docx");
   expect(keyWarnings, "React key warnings while selecting files").toEqual([]);
 });
