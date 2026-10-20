@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { SectionIcon } from "@/components/sectionIcons";
 
 export type RunNavSection = {
   id: string;
@@ -153,9 +154,11 @@ export function RunNav({
   const { selected, setSelected } = useRunSection();
   const router = useRouter();
   const [portalEl, setPortalEl] = useState<Element | null>(null);
+  const [railEl, setRailEl] = useState<Element | null>(null);
 
   useEffect(() => {
     setPortalEl(document.getElementById("run-nav-slot"));
+    setRailEl(document.getElementById("run-nav-rail"));
   }, []);
 
   const groups: { name: string; items: RunNavSection[] }[] = [];
@@ -221,6 +224,38 @@ export function RunNav({
     </div>
   );
 
+  // The same sections as icons for the collapsed main menu (Grant, 2026-10-20), grouped as above
+  // with a rule between groups, each named on hover and to assistive technology.
+  const rail = (
+    <div className="flex w-full flex-col items-center" data-testid="run-nav-rail">
+      {groups.map((group) => (
+        <div key={group.name} role="group" aria-label={group.name} className="flex w-full flex-col items-center gap-1 border-t border-slate-200 py-2">
+          {group.items.map((section) => {
+            const active = section.id === selected || (section.activeFor ?? []).includes(selected);
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setSelected(section.id)}
+                aria-label={section.label}
+                title={section.label}
+                aria-current={active ? "page" : undefined}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition focus-visible:outline-2 focus-visible:outline-primary ${active ? "bg-primary-light text-primary" : "text-slate-600 hover:bg-surface hover:text-primary"}`}
+              >
+                <SectionIcon id={section.id} label={section.label} className="h-4 w-4" />
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+
   if (!portalEl) return null;
-  return createPortal(content, portalEl);
+  return (
+    <>
+      {createPortal(content, portalEl)}
+      {railEl && createPortal(rail, railEl)}
+    </>
+  );
 }
