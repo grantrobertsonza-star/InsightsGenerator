@@ -271,10 +271,9 @@ function DocumentPicker({
         <span data-testid="rq-doc-role">{roleOf(doc)}</span>
         {doc.source?.currentVersion ? (doc.source.currentVersion.purged ? " · kept text removed" : " · text kept for its reviews") : " · not reviewed yet"}
         {" · AI ratings of how well the document is written against good research practice, checked by code against its own words; a guide to what to improve, not a certification."}
+        {/* Deleted documents in the same paragraph, to keep the block short (Grant, 2026-10-20). */}
+        {view.detachedSources.map((s) => ` ${s.filename ?? "A document"} was deleted from the project; its reviews stay readable${s.purged ? " (text removed)" : ""}.`).join("")}
       </p>
-      {view.detachedSources.map((s) => (
-        <p key={s.sourceId} className="text-[11px] text-muted">{`${s.filename ?? "A document"} was deleted from the project; its reviews stay readable${s.purged ? " (text removed)" : ""}.`}</p>
-      ))}
     </div>
   );
 }
