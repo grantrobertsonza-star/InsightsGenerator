@@ -124,6 +124,7 @@ import AttachedInstruments from "./AttachedInstruments";
 import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
 import AcceptDataButton from "./AcceptDataButton";
 import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
+import DataFileSection from "./DataFileSection";
 import { crosstabDatasetState } from "@/lib/crosstabEntry";
 import OutputSetCard from "./OutputSetCard";
 import RelatedOutputSets from "./RelatedOutputSets";
@@ -4373,6 +4374,37 @@ export default async function RunPage({
   // order (RunPage) but never for this list.
   // Per-document cards, one list per kind of document, so Cross tabs (tables),
   // Coding (transcripts) and Reports each show only their own.
+  // The project's data files for Cross tabs and Analytics (DataFileSection): each file's state, and
+  // what the section shows for a file that cannot open there (or, with readyNode, for one that can).
+  const dataFileOptions = (readyNode?: (d: (typeof documents)[number]) => React.ReactNode): CrosstabDataset[] =>
+    documents
+                .filter((d) => d.kind === "table")
+                .map((d): CrosstabDataset => {
+                  const state = crosstabDatasetState({
+                    filename: d.source_filename,
+                    ingestion: d.ingestion_type,
+                    processingStatus: d.processing_status,
+                    setupAccepted: dataSetups.has(d.id) ? dataSetups.get(d.id)?.accepted === true : undefined,
+                  });
+                  return {
+                    id: d.id,
+                    filename: d.source_filename,
+                    state,
+                    savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
+                    node:
+                      state === "ready" ? readyNode?.(d) : state === "needs_setup" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <span>The setup for this file changed, or acceptance was undone. Accept it to open it here, or review it in Sources first.</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <GoToSection id="upload">Review in Sources</GoToSection>
+                            <AcceptDataButton runId={id} documentId={d.id} setup={dataSetups.get(d.id)!} />
+                          </span>
+                        </div>
+                      ) : state === "aggregated" ? (
+                        documentCards("table", true, d.id, false, "crosstabs")
+                      ) : undefined,
+                  };
+                });
   const documentCards = (
     kind: "table" | "transcript" | "report",
     single = false,
@@ -5490,85 +5522,40 @@ export default async function RunPage({
             <CrosstabsSection
               runId={id}
               findings={findings.length}
-              datasets={documents
-                .filter((d) => d.kind === "table")
-                .map((d): CrosstabDataset => {
-                  const state = crosstabDatasetState({
-                    filename: d.source_filename,
-                    ingestion: d.ingestion_type,
-                    processingStatus: d.processing_status,
-                    setupAccepted: dataSetups.has(d.id) ? dataSetups.get(d.id)?.accepted === true : undefined,
-                  });
-                  return {
-                    id: d.id,
-                    filename: d.source_filename,
-                    state,
-                    savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
-                    node:
-                      state === "needs_setup" ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                          <span>The setup for this file changed, or acceptance was undone. Accept it to open it here, or review it in Sources first.</span>
-                          <span className="flex flex-wrap items-center gap-2">
-                            <GoToSection id="upload">Review in Sources</GoToSection>
-                            <AcceptDataButton runId={id} documentId={d.id} setup={dataSetups.get(d.id)!} />
-                          </span>
-                        </div>
-                      ) : state === "aggregated" ? (
-                        documentCards("table", true, d.id, false, "crosstabs")
-                      ) : undefined,
-                  };
-                })}
+              datasets={dataFileOptions()}
             />
           </SectionPanel>
 
           <SectionPanel id="analytics">
-            <DocumentPicker
-              title="Data files"
-              empty="No data files yet. Add a survey data file or a table under Import data."
-              rightTitle="Before you run an analysis"
-              items={documents
-                .filter((d) => d.kind === "table")
-                .map((d) => {
-                  const saved = (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length;
-                  return {
-                    id: d.id,
-                    name: d.source_filename,
-                    meta: d.ingestion_type === "raw" ? "Case-level data" : "Aggregated tables",
-                    badge: saved > 0 ? `${saved} table${saved === 1 ? "" : "s"}` : undefined,
-                    node: documentCards("table", true, d.id, false, "analytics"),
-                  };
-                })}
-              accents={documents
-                .filter((d) => d.kind === "table")
-                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
-              right={
+            {/* Grant's review, 2026-10-20: one header with the data file chooser and a grid of the
+                analyses, each opening its own workspace with "All analytics" to come back. */}
+            <DataFileSection
+              runId={id}
+              title="Analytics"
+              intro="Choose an analysis to open it on this file. Nothing runs until you start it there, and opening this page calls no model."
+              howTitle="How Analytics works"
+              how={
                 <>
-                  <p className="text-sm text-muted">
-                    Driver analysis, NPS, charts, wave tracking, CSM and brand health on each data file. Results you
-                    add flow into Findings.
-                  </p>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Case-level data is not compared automatically. Every comparison is flagged as uncorrected
-                    for multiple comparisons and assumes simple random sampling. Complex survey designs are not
-                    applied yet.
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {documents.filter((d) => d.kind === "table").length}
-                      </div>
-                      <div className="text-xs text-muted">Data files</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">{findings.length}</div>
-                      <div className="text-xs text-muted">Findings so far</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Tables themselves are built under Cross tabs, from the same file.
-                  </p>
+                  <p>Each analysis opens in its own workspace on the chosen file, where you pick its variables and, where the file has one, a weight. Results you add there flow into Findings.</p>
+                  <p>NPS intervals take the file&apos;s survey design (PSU or strata) into account when one is set in Cross tabs; otherwise they assume a simple random sample. Driver analysis uses weights but not a full design-based variance, and its report says so.</p>
+                  <p>Tables themselves are built under Cross tabs, from the same file.</p>
                 </>
               }
+              emptyText="No data files yet. Add a survey data file (SPSS, Stata, SAS, CSV or Excel) in Sources, then run analyses here."
+              aggregatedText="This file holds tables that are already aggregated, so the analyses, which work on each respondent's answers, cannot run on it. Generate findings from its tables below."
+              findings={findings.length}
+              datasets={dataFileOptions((d) => (
+                <AnalyticsBuilder
+                  layout="grid"
+                  part="analytics"
+                  runId={id}
+                  documentId={d.id}
+                  filename={d.source_filename}
+                  waveFiles={waveFiles}
+                  saved={(documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).map((t) => ({ id: t.id, label: t.label ?? "Crosstab" }))}
+                />
+              ))}
+              testIds={{ section: "analytics-section", select: "analytics-file-select", state: "analytics-file-state", findings: "analytics-findings-link" }}
             />
           </SectionPanel>
 

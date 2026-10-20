@@ -43,12 +43,15 @@ export default function CsmAnalyticsPanel({
   filename,
   waveFiles,
   onClose,
+  closeLabel = "Close",
 }: {
   runId: string;
   documentId: string;
   filename: string;
   waveFiles?: WaveFile[];
   onClose: () => void;
+  /** "All analytics" when opened from the Analytics tool grid, which it returns to. */
+  closeLabel?: string;
 }) {
   const [variables, setVariables] = useState<VariableInfo[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -160,7 +163,7 @@ export default function CsmAnalyticsPanel({
           <p className="text-[11px] text-muted">{filename}</p>
         </div>
         <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-slate-50">
-          Close
+          {closeLabel === "Close" ? "Close" : `← ${closeLabel}`}
         </button>
       </div>
 

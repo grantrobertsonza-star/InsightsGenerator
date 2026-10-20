@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import type { ChartResult } from "@/lib/chartActions";
 import type { LegendPos } from "./ChartCustomize";
+import { ChartExportButtons, useSvgImageExport } from "./chartImageExport";
 
 /**
  * A slide-ready column chart of one variable's answer distribution, one series of columns per group
@@ -13,6 +14,11 @@ import type { LegendPos } from "./ChartCustomize";
  * Title, colours and legend position are controlled from the parent rather than held here: when several
  * of these sit in a grid together (the Analytics chart tool), one shared customise panel edits whichever
  * card is selected, instead of every card carrying its own copy of the same controls.
+ *
+ * `variant` (Grant, 2026-10-20) draws the same distribution three ways on the same axes: "bar" (the
+ * original columns, unchanged), "line" (one line with point markers per series across the same
+ * categories) and "histogram" (one series of touching columns, in the order the values come). The
+ * figures are identical in all three; only the drawing differs.
  */
 // Shades of the app's own primary blue (#2563eb) rather than a rainbow categorical palette, so a chart with
 // several series reads as part of the same product instead of clashing with it. Dark to light, with enough
@@ -40,16 +46,14 @@ export default function ChartVisual({
   title,
   colors,
   legendPos = "top",
+  variant = "bar",
 }: {
   result: ChartResult;
   title: string;
   colors: string[];
   legendPos?: LegendPos;
+  variant?: "bar" | "line" | "histogram";
 }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"copy" | "download" | null>(null);
-
   const series = result.series;
   const grouped = result.grouped && series.length > 1;
   const categories = series[0]?.bars.map((b) => b.label) ?? [];
@@ -83,76 +87,8 @@ export default function ChartVisual({
   // bar without reaching into the next one.
   const labelSize = grouped ? (series.length > 4 ? "7.5" : "8.5") : "12";
 
-  async function toPngBlob(scaleFactor = 2): Promise<Blob | null> {
-    const svg = svgRef.current;
-    if (!svg) return null;
-    const xml = new XMLSerializer().serializeToString(svg);
-    const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
-    try {
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const im = new Image();
-        im.onload = () => resolve(im);
-        im.onerror = () => reject(new Error("The image could not be rendered."));
-        im.src = url;
-      });
-      const w = svg.viewBox.baseVal.width || W;
-      const h = svg.viewBox.baseVal.height || H;
-      const canvas = document.createElement("canvas");
-      canvas.width = w * scaleFactor;
-      canvas.height = h * scaleFactor;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
-
-  async function download() {
-    setBusy("download");
-    setStatus(null);
-    const blob = await toPngBlob(2);
-    setBusy(null);
-    if (!blob) {
-      setStatus("Could not render the image.");
-      return;
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `chart-${result.variable}.png`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setStatus("Downloaded.");
-  }
-
-  async function copy() {
-    setBusy("copy");
-    setStatus(null);
-    const blob = await toPngBlob(2);
-    setBusy(null);
-    if (!blob) {
-      setStatus("Could not render the image.");
-      return;
-    }
-    try {
-      const Ctor = (window as unknown as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
-      if (navigator.clipboard && "write" in navigator.clipboard && Ctor) {
-        await navigator.clipboard.write([new Ctor({ "image/png": blob })]);
-        setStatus("Copied. Paste it into your slide.");
-      } else {
-        await download();
-        setStatus("This browser can't copy images, so it downloaded instead.");
-      }
-    } catch {
-      await download();
-      setStatus("Copying didn't work, so it downloaded instead.");
-    }
-  }
+  const svgRef = useRef<SVGSVGElement>(null);
+  const exp = useSvgImageExport(svgRef, `chart-${result.variable}.png`, W, H);
 
   if (n === 0) return null;
   // Long category text (full answer wording) reads better rotated under the column; a short scale like
@@ -197,66 +133,91 @@ export default function ChartVisual({
             const cx = xOf(i);
             const text = label.length > 22 ? `${label.slice(0, 21)}…` : label;
             return (
-              <g key={i}>
-                <text
-                  x={cx}
-                  y={baseline + (longLabels ? 14 : 16)}
-                  textAnchor={longLabels ? "end" : "middle"}
-                  fontSize="11"
-                  fill="#334155"
-                  fontFamily="system-ui, -apple-system, sans-serif"
-                  transform={longLabels ? `rotate(-35 ${cx} ${baseline + 14})` : undefined}
-                >
-                  {text}
-                </text>
-                {series.map((s, j) => {
-                  const b = s.bars[i];
-                  const pct = b?.pct ?? 0;
-                  const x0 = cx - clusterW / 2 + j * (clusterW / series.length) + (clusterW / series.length - barW) / 2;
-                  const y = yOf(pct);
-                  const h = Math.max(1, baseline - y);
-                  return (
-                    <g key={j}>
-                      <rect x={x0} y={y} width={barW} height={h} rx="3" fill={colorOf(j)} />
-                      <text
-                        x={x0 + barW / 2}
-                        y={y - 5}
-                        textAnchor="middle"
-                        fontSize={labelSize}
-                        fontWeight="700"
-                        fill="#0f172a"
-                        fontFamily="system-ui, -apple-system, sans-serif"
-                      >
-                        {round1(pct)}%
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
+              <text
+                key={`label-${i}`}
+                x={cx}
+                y={baseline + (longLabels ? 14 : 16)}
+                textAnchor={longLabels ? "end" : "middle"}
+                fontSize="11"
+                fill="#334155"
+                fontFamily="system-ui, -apple-system, sans-serif"
+                transform={longLabels ? `rotate(-35 ${cx} ${baseline + 14})` : undefined}
+              >
+                {text}
+              </text>
             );
           })}
+          {variant === "bar" &&
+            categories.map((_, i) => {
+              const cx = xOf(i);
+              return (
+                <g key={i}>
+                  {series.map((s, j) => {
+                    const b = s.bars[i];
+                    const pct = b?.pct ?? 0;
+                    const x0 = cx - clusterW / 2 + j * (clusterW / series.length) + (clusterW / series.length - barW) / 2;
+                    const y = yOf(pct);
+                    const h = Math.max(1, baseline - y);
+                    return (
+                      <g key={j}>
+                        <rect x={x0} y={y} width={barW} height={h} rx="3" fill={colorOf(j)} />
+                        <text
+                          x={x0 + barW / 2}
+                          y={y - 5}
+                          textAnchor="middle"
+                          fontSize={labelSize}
+                          fontWeight="700"
+                          fill="#0f172a"
+                          fontFamily="system-ui, -apple-system, sans-serif"
+                        >
+                          {round1(pct)}%
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          {variant === "histogram" &&
+            // Touching columns, one per bin or answer value: the gap a bar chart puts between separate
+            // categories would misread as a break in a continuous range.
+            categories.map((_, i) => {
+              const pct = series[0]?.bars[i]?.pct ?? 0;
+              const x0 = PAD_L + i * colW;
+              const y = yOf(pct);
+              return (
+                <g key={i}>
+                  <rect x={x0 + 0.5} y={y} width={colW - 1} height={Math.max(1, baseline - y)} fill={colorOf(0)} stroke="#ffffff" strokeWidth="1" />
+                  <text x={x0 + colW / 2} y={y - 5} textAnchor="middle" fontSize="11" fontWeight="700" fill="#0f172a" fontFamily="system-ui, -apple-system, sans-serif">
+                    {round1(pct)}%
+                  </text>
+                </g>
+              );
+            })}
+          {variant === "line" &&
+            series.map((s, j) => {
+              const pts = categories.map((_, i) => [xOf(i), yOf(s.bars[i]?.pct ?? 0)] as const);
+              return (
+                <g key={j}>
+                  <polyline points={pts.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={colorOf(j)} strokeWidth="2.5" strokeLinejoin="round" />
+                  {pts.map(([x, y], i) => (
+                    <g key={i}>
+                      <circle cx={x} cy={y} r="4" fill="#ffffff" stroke={colorOf(j)} strokeWidth="2" />
+                      {/* Values are captioned on a single line only; with several lines they would overprint. */}
+                      {series.length === 1 && (
+                        <text x={x} y={y - 9} textAnchor="middle" fontSize="11" fontWeight="700" fill="#0f172a" fontFamily="system-ui, -apple-system, sans-serif">
+                          {round1(s.bars[i]?.pct ?? 0)}%
+                        </text>
+                      )}
+                    </g>
+                  ))}
+                </g>
+              );
+            })}
           {grouped && legendPos === "bottom" && legendRow(baseline + PAD_BOTTOM + 10)}
         </svg>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={copy}
-          disabled={busy !== null}
-          className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
-        >
-          {busy === "copy" ? "Copying..." : "Copy image"}
-        </button>
-        <button
-          type="button"
-          onClick={download}
-          disabled={busy !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-slate-50 disabled:opacity-50"
-        >
-          {busy === "download" ? "Downloading..." : "Download PNG"}
-        </button>
-        {status && <span className="text-[11px] text-muted">{status}</span>}
-      </div>
+      <ChartExportButtons exp={exp} />
     </div>
   );
 }

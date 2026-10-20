@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { driverSummary } from "@/lib/driverPresentation";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { loadVariablesAction } from "@/lib/crosstabActions";
@@ -18,6 +19,7 @@ import BrandHealthAnalyticsPanel from "./BrandHealthAnalyticsPanel";
 import type { WaveFile } from "@/lib/waveTrackingActions";
 import { ChartCustomizePanel, type LegendPos } from "./ChartCustomize";
 import CrosstabWorkspace from "./CrosstabWorkspace";
+import { ThreePane } from "./ThreePane";
 import {
   runDistributionAction,
   addChartFindingAction,
@@ -26,6 +28,15 @@ import {
   type ChartResult,
 } from "@/lib/chartActions";
 import ChartVisual, { SERIES_COLORS } from "./ChartVisual";
+import ScatterVisual from "./ScatterVisual";
+import {
+  addScatterFindingAction,
+  removeScatterFindingAction,
+  runScatterAction,
+  scatterFindingStatusAction,
+  type ScatterResult,
+} from "@/lib/scatterActions";
+import { HISTOGRAM_SOURCE_NOTE, histogramSource } from "@/lib/chartKinds";
 import {
   addDriverFindingsAction,
   driverFindingCountsAction,
@@ -76,6 +87,8 @@ function suggestImportance(pred: VariableInfo, candidates: VariableInfo[]): stri
  * tabs section) or the analytics tiles alone (the Analytics section); Grant, 2026-10-19, split the two
  * in the sidebar. Both parts open the same workspaces on the same file.
  */
+type ToolId = "driver" | "nps" | "chart" | "wave" | "csm" | "brand";
+
 export default function AnalyticsBuilder({
   runId,
   documentId,
@@ -83,6 +96,7 @@ export default function AnalyticsBuilder({
   saved,
   waveFiles,
   part = "all",
+  layout = "card",
 }: {
   runId: string;
   documentId: string;
@@ -90,15 +104,80 @@ export default function AnalyticsBuilder({
   saved: { id: string; label: string }[];
   waveFiles?: WaveFile[];
   part?: "crosstabs" | "analytics" | "all";
+  /**
+   * "grid": the Analytics section's tool grid (Grant's review, 2026-10-20), every working tool as a
+   * card, Wave tracking shown with the reason when it cannot run, and tools not built yet set apart;
+   * each tool opens its own workspace with "All analytics" to come back. "card": the launcher on a
+   * data file's card elsewhere, as before.
+   */
+  layout?: "card" | "grid";
 }) {
   const [tool, setTool] = useState<"driver" | "nps" | "chart" | "wave" | null>(null);
   const [showClustering, setShowClustering] = useState(false);
   const [crosstabOpen, setCrosstabOpen] = useState(false);
   const [csmOpen, setCsmOpen] = useState(false);
   const [brandHealthOpen, setBrandHealthOpen] = useState(false);
+  const waves = waveFiles?.length ?? 0;
+  const open = (id: ToolId) => (id === "csm" ? setCsmOpen(true) : id === "brand" ? setBrandHealthOpen(true) : setTool(id));
+  // What each tool does, as its workspace does it (checked against the tools, 2026-10-20, instead of
+  // the old blanket "uncorrected, simple random sampling" warning).
+  const tools: { id: ToolId; name: string; text: string; unavailable?: string }[] = [
+    {
+      id: "driver",
+      name: "Driver analysis",
+      text: "Pick an outcome such as overall satisfaction and the questions that may explain it, and see which matter most, with the overlap between them handled.",
+    },
+    { id: "nps", name: "Net Promoter Score", text: "Pick a 0-10 likelihood-to-recommend question and get the score, promoters, passives, detractors and a 95% interval." },
+    { id: "chart", name: "Charts", text: "Chart a question's answers as bars, a line or a histogram, or plot two numeric questions against each other, ready to copy or download." },
+    {
+      id: "wave",
+      name: "Wave tracking",
+      text: "Compare NPS, distributions and driver weights across the files labelled as waves of this tracking study.",
+      unavailable: waves >= 2 ? undefined : `Needs two or more data files labelled as waves (in each file's Setup in Sources); ${waves === 1 ? "one is" : "none are"} labelled now.`,
+    },
+    {
+      id: "csm",
+      name: "CSM Analytics",
+      text: "Map overall satisfaction, attributes, loyalty and a segment once, then get a scorecard with top-box scores and a driver ranking, on this file or across its waves.",
+    },
+    {
+      id: "brand",
+      name: "Brand Health Analytics",
+      text: "Name the brand variable and which brand is ours, map the funnel, attributes, loyalty and category entry points once, then get a benchmark against every other brand in the file.",
+    },
+  ];
+  const closeLabel = layout === "grid" ? "All analytics" : "Close";
 
   return (
-    <div className="rounded-lg border border-border bg-white p-3 text-xs">
+    <div className={layout === "grid" ? "flex flex-col gap-4" : "rounded-lg border border-border bg-white p-3 text-xs"} data-testid={layout === "grid" ? "analytics-tools" : undefined}>
+      {layout === "grid" ? (
+        <>
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Analyses">
+            {tools.map((t) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => open(t.id)}
+                  disabled={!!t.unavailable}
+                  className="flex h-full w-full flex-col items-start gap-1.5 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:bg-slate-50 disabled:hover:border-slate-200"
+                >
+                  <span className="text-sm font-semibold text-foreground">{t.name}</span>
+                  <span className="text-xs leading-relaxed text-slate-600">{t.text}</span>
+                  {t.unavailable && <span className="mt-1 text-xs font-medium text-amber-800">{t.unavailable}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <section className="rounded-xl border border-dashed border-slate-300 bg-white/60 p-4" aria-label="Not available yet">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Not available yet</h3>
+            <p className="mt-2 text-sm font-medium text-foreground">Clustering</p>
+            <p className="text-xs leading-relaxed text-slate-600">
+              Group respondents into segments from the questions you choose. Not built yet: the plan is to try a range of cluster counts, suggest one by how stable and well-separated the segments are, then profile each segment in Cross tabs.
+            </p>
+          </section>
+        </>
+      ) : (
+      <>
       <p className="mb-2 font-medium text-foreground">{part === "crosstabs" ? "Cross tabs" : "Analytics"}</p>
       <div className="flex flex-wrap gap-2">
         {part !== "analytics" && (
@@ -117,73 +196,19 @@ export default function AnalyticsBuilder({
         )}
         {part !== "crosstabs" && (
         <>
-        <button
-          type="button"
-          onClick={() => setTool("driver")}
-          className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
-        >
-          <p className="font-medium text-foreground">Driver analysis</p>
-          <p className="text-[11px] text-muted">
-            Pick an outcome such as overall satisfaction and the questions that may explain it, and see which matter most,
-            with the overlap between them handled.
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => setTool("nps")}
-          className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
-        >
-          <p className="font-medium text-foreground">Net Promoter Score</p>
-          <p className="text-[11px] text-muted">
-            Pick a 0-10 likelihood-to-recommend question and get the score, promoters, passives, detractors and a 95%
-            interval.
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => setTool("chart")}
-          className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
-        >
-          <p className="font-medium text-foreground">Charts</p>
-          <p className="text-[11px] text-muted">
-            Pick any question and see its answer distribution as a bar chart instead of a table, ready to copy or download.
-          </p>
-        </button>
-        {(waveFiles?.length ?? 0) >= 2 && (
-          <button
-            type="button"
-            onClick={() => setTool("wave")}
-            className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
-          >
-            <p className="font-medium text-foreground">Wave tracking</p>
-            <p className="text-[11px] text-muted">
-              Compare NPS, distributions and driver weights across the files labelled as waves of this tracking
-              study.
-            </p>
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setCsmOpen(true)}
-          className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
-        >
-          <p className="font-medium text-foreground">CSM Analytics</p>
-          <p className="text-[11px] text-muted">
-            Map overall satisfaction, attributes, loyalty and a segment once, then get a scorecard with
-            top-box scores and a driver ranking, on this file or across its waves.
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => setBrandHealthOpen(true)}
-          className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
-        >
-          <p className="font-medium text-foreground">Brand Health Analytics</p>
-          <p className="text-[11px] text-muted">
-            Name the brand variable and which brand is ours, map the funnel, attributes, loyalty and
-            category entry points once, then get a benchmark against every other brand in the file.
-          </p>
-        </button>
+        {tools
+          .filter((t) => !t.unavailable)
+          .map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => open(t.id)}
+              className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-border bg-white p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
+            >
+              <p className="font-medium text-foreground">{t.name}</p>
+              <p className="text-[11px] text-muted">{t.text}</p>
+            </button>
+          ))}
         <button
           type="button"
           onClick={() => setShowClustering((v) => !v)}
@@ -205,12 +230,15 @@ export default function AnalyticsBuilder({
           working end to end, same as the other two.
         </p>
       )}
+      </>
+      )}
       {tool && (
         <AnalyticsWorkspace
           runId={runId}
           documentId={documentId}
           filename={filename}
           onClose={() => setTool(null)}
+          closeLabel={closeLabel}
           initialTool={tool}
         />
       )}
@@ -229,6 +257,7 @@ export default function AnalyticsBuilder({
           filename={filename}
           waveFiles={waveFiles}
           onClose={() => setCsmOpen(false)}
+          closeLabel={closeLabel}
         />
       )}
       {brandHealthOpen && (
@@ -238,6 +267,7 @@ export default function AnalyticsBuilder({
           filename={filename}
           waveFiles={waveFiles}
           onClose={() => setBrandHealthOpen(false)}
+          closeLabel={closeLabel}
         />
       )}
     </div>
@@ -255,7 +285,32 @@ type ChartCard = {
   title: string;
   colors: string[];
   legendPos: LegendPos;
+  /** How the distribution is drawn; bar and line switch on the card without running again. */
+  variant: "bar" | "line" | "histogram";
+  /** Histogram only: whether the bars are the engine's bins or one per answer value (chartKinds.ts). */
+  histSource?: "bins" | "values";
 };
+
+/** A scatter plot of two numeric variables; its correlation can be posted as a relationship finding. */
+type ScatterCard = {
+  id: string;
+  result: ScatterResult;
+  xVar: string;
+  yVar: string;
+  weightVar: string | null;
+  title: string;
+  spread: boolean;
+  committed: boolean;
+  commitBusy: boolean;
+};
+
+type ChartType = "bar" | "line" | "histogram" | "scatter";
+const CHART_TYPES: { id: ChartType; label: string }[] = [
+  { id: "bar", label: "Bar" },
+  { id: "line", label: "Line" },
+  { id: "histogram", label: "Histogram" },
+  { id: "scatter", label: "Scatter" },
+];
 
 function usable(v: VariableInfo): boolean {
   return v.numeric && !v.text && !v.weightLike && v.nDistinct >= 2;
@@ -334,12 +389,15 @@ function AnalyticsWorkspace({
   documentId,
   filename,
   onClose,
+  closeLabel = "Close",
   initialTool,
 }: {
   runId: string;
   documentId: string;
   filename: string;
   onClose: () => void;
+  /** "All analytics" when opened from the Analytics tool grid, which it returns to. */
+  closeLabel?: string;
   /** Which tool the workspace opens on; a researcher can switch between them without losing either one's setup. */
   initialTool: "driver" | "nps" | "chart" | "wave";
 }) {
@@ -367,6 +425,12 @@ function AnalyticsWorkspace({
   const [chartError, setChartError] = useState<string | null>(null);
   const [charts, setCharts] = useState<ChartCard[]>([]);
   const [selectedChartId, setSelectedChartId] = useState<string | null>(null);
+  const [chartType, setChartType] = useState<ChartType>("bar");
+  const [scatterX, setScatterX] = useState("");
+  const [scatterY, setScatterY] = useState("");
+  const [scatters, setScatters] = useState<ScatterCard[]>([]);
+  // Card ids only need to be unique within this workspace; a counter keeps them stable and pure.
+  const cardSeq = useRef(0);
   const [predictors, setPredictors] = useState<Set<string>>(new Set());
   const [predFilter, setPredFilter] = useState("");
   const [weightVar, setWeightVar] = useState("");
@@ -500,15 +564,18 @@ function AnalyticsWorkspace({
   }
 
   async function runChart() {
+    if (chartType === "scatter") return runScatter();
     if (!chartVariable) return;
     setChartBusy(true);
     setChartError(null);
-    const gv = chartGroupVar || null;
+    // The engine has no grouped histogram, so a histogram is always of all respondents.
+    const gv = chartType === "histogram" ? null : chartGroupVar || null;
+    const picked = vars.find((v) => v.name === chartVariable);
     const r = await runDistributionAction(runId, documentId, chartVariable, weightVar || null, gv);
     setChartBusy(false);
     if (r.ok) {
       const status = await chartFindingStatusAction(runId, documentId, r.result.variable, gv);
-      const cardId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const cardId = `chart-${++cardSeq.current}`;
       setCharts((prev) => [
         ...prev,
         {
@@ -520,10 +587,68 @@ function AnalyticsWorkspace({
           title: r.result.label,
           colors: r.result.series.map((_, i) => SERIES_COLORS[i % SERIES_COLORS.length]),
           legendPos: "top",
+          variant: chartType,
+          histSource: chartType === "histogram" && picked ? histogramSource(picked) : undefined,
         },
       ]);
       setSelectedChartId(cardId);
     } else setChartError(r.error);
+  }
+
+  async function runScatter() {
+    if (!scatterX || !scatterY || scatterX === scatterY) return;
+    setChartBusy(true);
+    setChartError(null);
+    const wv = weightVar || null;
+    // A call that fails outright (a dropped connection, a server error) says so here; before, it
+    // left nothing on screen (Grant, 2026-10-20: "scatter plot not rendering").
+    let r: Awaited<ReturnType<typeof runScatterAction>>;
+    try {
+      r = await runScatterAction(runId, documentId, scatterX, scatterY, wv);
+    } catch {
+      setChartBusy(false);
+      return setChartError("The scatter plot could not be built: the request to the server failed. Try again.");
+    }
+    setChartBusy(false);
+    if (!r.ok) return setChartError(r.error);
+    const status = await scatterFindingStatusAction(runId, documentId, scatterX, scatterY, wv).catch(() => ({ ok: false as const }));
+    const id = `scatter-${++cardSeq.current}`;
+    // Newest first, and brought into view: a new scatter used to land below every chart card,
+    // out of sight.
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    setScatters((prev) => [
+      {
+        id,
+        result: r.result,
+        xVar: scatterX,
+        yVar: scatterY,
+        weightVar: wv,
+        title: `${r.result.y.label} by ${r.result.x.label}`,
+        spread: false,
+        committed: status.ok ? status.committed : false,
+        commitBusy: false,
+      },
+      ...prev,
+    ]);
+  }
+
+  /** Posts or takes back a scatter's correlation; the server reads the file again to compute it. */
+  async function toggleScatterCommit(cardId: string) {
+    const card = scatters.find((c) => c.id === cardId);
+    if (!card) return;
+    const patch = (p: Partial<ScatterCard>) => setScatters((prev) => prev.map((c) => (c.id === cardId ? { ...c, ...p } : c)));
+    patch({ commitBusy: true });
+    const r = card.committed
+      ? await removeScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar)
+      : await addScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar);
+    if (r.ok) {
+      patch({ committed: !card.committed, commitBusy: false });
+      setMessage(card.committed ? "Took the finding out of use." : "Added to findings.");
+      startTransition(() => router.refresh());
+    } else {
+      setError(r.error);
+      patch({ commitBusy: false });
+    }
   }
 
   function removeChartCard(cardId: string) {
@@ -689,7 +814,7 @@ function AnalyticsWorkspace({
 
   const body = (
     <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Analytics workspace">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-2.5">
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-2.5">
         <div>
           <p className="text-sm font-semibold text-foreground">
             Analytics: {mode === "driver" ? "driver analysis" : mode === "nps" ? "Net Promoter Score" : mode === "wave" ? "wave tracking" : "charts"}
@@ -728,7 +853,7 @@ function AnalyticsWorkspace({
             </button>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-slate-50">
-            Close
+            {closeLabel === "Close" ? "Close" : `← ${closeLabel}`}
           </button>
         </div>
       </div>
@@ -737,8 +862,15 @@ function AnalyticsWorkspace({
           <WaveTrackingPanel runId={runId} />
         </div>
       ) : (
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-[22rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)_22rem]">
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r-2 border-sky-200 bg-sky-50 p-4 text-xs">
+      // The shared panes (Grant, 2026-10-20): the setup pane collapses to a rail and every pane can be
+      // dragged wider or narrower; the widths are remembered for this workspace.
+      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-3 lg:overflow-hidden">
+      <ThreePane
+        storageKey="analytics-workspace"
+        leftDefaultPx={384}
+        leftMaxShare={0.45}
+        left={
+        <div className={`flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 text-xs lg:h-[calc(100vh-5.5rem)] ${mode === "driver" ? "pb-0" : ""}`} data-testid="analytics-setup-pane">
           {!dict && !error && <p className="text-muted">Loading the variable list...</p>}
           {mode === "nps" && dict && (
             <>
@@ -823,9 +955,63 @@ function AnalyticsWorkspace({
           )}
           {mode === "chart" && dict && (
             <>
+              {/* The kind of chart is chosen first, as it decides what the rest of the setup asks for. */}
+              <section className="space-y-1.5">
+                <p className="font-medium text-foreground">Chart type</p>
+                <div className="grid grid-cols-4 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1" role="radiogroup" aria-label="Chart type">
+                  {CHART_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={chartType === t.id}
+                      onClick={() => setChartType(t.id)}
+                      className={`rounded-md px-1.5 py-1 text-xs font-medium ${chartType === t.id ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  {chartType === "bar" || chartType === "line"
+                    ? "A question's answer distribution. Bar and line can be switched on the chart afterwards."
+                    : chartType === "histogram"
+                      ? "How a numeric question's answers spread out, as touching bars."
+                      : "Two numeric questions, one point per respondent who answered both, with their correlation."}
+                </p>
+              </section>
+              {chartType === "scatter" ? (
+                <section className="space-y-2">
+                  {(
+                    [
+                      ["X axis", scatterX, setScatterX, scatterY],
+                      ["Y axis", scatterY, setScatterY, scatterX],
+                    ] as const
+                  ).map(([label, value, set, other]) => (
+                    <label key={label} className="block space-y-1">
+                      <span className="font-medium text-foreground">{label}</span>
+                      <select value={value} onChange={(e) => set(e.target.value)} className="w-full rounded border border-slate-200 px-1 py-1" aria-label={`${label} variable`}>
+                        <option value="">Choose a numeric question</option>
+                        {vars
+                          .filter((v) => v.name !== other)
+                          .map((v) => (
+                            <option key={v.name} value={v.name}>
+                              {v.name}: {v.label}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  ))}
+                </section>
+              ) : (
+              <>
               <section className="flex min-h-0 flex-1 flex-col space-y-1.5">
                 <p className="font-medium text-foreground">Question</p>
-                <p className="text-[11px] text-muted">Any question with discrete answers. Open ended and pure numeric averages don&apos;t chart here.</p>
+                <p className="text-[11px] text-muted">
+                  {chartType === "histogram"
+                    ? "A numeric question. A scale is drawn one bar per answer value; a question with many values, such as age, in the engine's bins."
+                    : "Any question with discrete answers. Open ended and pure numeric averages don't chart here."}
+                </p>
                 <input
                   value={chartFilter}
                   onChange={(e) => setChartFilter(e.target.value)}
@@ -851,6 +1037,7 @@ function AnalyticsWorkspace({
                     ))}
                 </select>
               </section>
+              {chartType !== "histogram" && (
               <section className="space-y-1.5">
                 <p className="font-medium text-foreground">Group by (optional)</p>
                 <p className="text-[11px] text-muted">Split the chart into one series per category of a second question, such as gender.</p>
@@ -870,6 +1057,9 @@ function AnalyticsWorkspace({
                     ))}
                 </select>
               </section>
+              )}
+              </>
+              )}
               {weights.length > 0 && (
                 <section className="space-y-1.5">
                   <p className="font-medium text-foreground">Weight (optional)</p>
@@ -885,17 +1075,20 @@ function AnalyticsWorkspace({
               )}
               <button
                 type="button"
-                disabled={!chartVariable || chartBusy}
+                disabled={(chartType === "scatter" ? !scatterX || !scatterY || scatterX === scatterY : !chartVariable) || chartBusy}
                 onClick={runChart}
                 className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
               >
-                {chartBusy ? "Charting..." : "Build chart"}
+                {chartBusy ? "Charting..." : chartType === "scatter" ? "Build scatter plot" : "Build chart"}
               </button>
             </>
           )}
           {mode === "driver" && (
           <>
-          <section className="flex min-h-0 flex-1 flex-col space-y-1.5">
+          {/* Required choices first (Grant's review, 2026-10-20); optional settings folded below with a
+              summary of what is set; Run kept at the foot of the pane, saying what is still missing. */}
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Required</p>
+          <section className="flex flex-col space-y-1.5">
             <p className="font-medium text-foreground">1. Outcome</p>
             <input
               value={outcomeFilter}
@@ -914,7 +1107,7 @@ function AnalyticsWorkspace({
                   return n;
                 });
               }}
-              className="w-full min-h-[8rem] flex-1 rounded border border-border px-1 py-1"
+              className="h-36 w-full rounded border border-slate-200 px-1 py-1"
               aria-label="Outcome variable"
             >
               {outcomeChoices.map((v) => (
@@ -946,7 +1139,7 @@ function AnalyticsWorkspace({
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-1 flex-col space-y-1.5">
+          <section className="flex flex-col space-y-1.5">
             <p className="font-medium text-foreground">
               2. Predictors <span className="font-normal text-muted">({predictors.size} chosen)</span>
             </p>
@@ -968,7 +1161,7 @@ function AnalyticsWorkspace({
                 Clear
               </button>
             </div>
-            <div className="min-h-[10rem] flex-1 space-y-0.5 overflow-y-auto rounded border border-border p-1.5">
+            <div className="max-h-64 min-h-[8rem] space-y-0.5 overflow-y-auto rounded border border-slate-200 p-1.5" data-testid="driver-predictor-list">
               {predChoices.slice(0, 300).map((v) => (
                 <label key={v.name} className="flex items-start gap-1.5">
                   <input type="checkbox" checked={predictors.has(v.name)} onChange={() => toggle(v.name)} className="mt-0.5" />
@@ -981,6 +1174,18 @@ function AnalyticsWorkspace({
             </div>
           </section>
 
+          <details className="rounded-lg border border-slate-200" data-testid="driver-optional-settings">
+            <summary className="cursor-pointer select-none px-2.5 py-2">
+              <span className="font-semibold text-foreground">Optional settings</span>
+              <span className="mt-0.5 block text-[11px] text-slate-600">
+                {[
+                  `Group by: ${driverGroupVar ? (vars.find((v) => v.name === driverGroupVar)?.label || driverGroupVar) : "none"}`,
+                  ...(weights.length > 0 ? [`Weight: ${weightVar ? (weights.find((w) => w.name === weightVar)?.label || weightVar) : "none"}`] : []),
+                  ...(predictors.size > 0 && importanceChoices.length > 0 ? [`Stated importance: ${chosenPreds.filter((p) => statedFor(p)).length} paired`] : []),
+                ].join(" · ")}
+              </span>
+            </summary>
+            <div className="flex flex-col gap-4 border-t border-slate-200 p-2.5">
           <section className="space-y-1.5">
             <p className="font-medium text-foreground">3. Group by (optional)</p>
             <p className="text-[11px] text-muted">
@@ -1057,24 +1262,44 @@ function AnalyticsWorkspace({
             </section>
           )}
 
-          <button
-            type="button"
-            disabled={!canRun}
-            onClick={run}
-            className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-          >
-            {busy ? "Working..." : "Run driver analysis"}
-          </button>
-          {predictors.size < 2 && <p className="text-muted">Choose an outcome and at least two predictors.</p>}
+            </div>
+          </details>
 
-          <div className="xl:hidden">{savedBlock}</div>
+          <div className="lg:hidden">{savedBlock}</div>
+
+          <div className="sticky bottom-0 -mx-4 mt-auto border-t border-slate-200 bg-white px-4 py-3">
+            <button
+              type="button"
+              disabled={!canRun}
+              onClick={run}
+              className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Working..." : "Run driver analysis"}
+            </button>
+            {!busy && !canRun && (
+              <p className="mt-1.5 text-slate-600" data-testid="driver-run-reason">
+                {outcome === "" ? (predictors.size < 2 ? "Choose an outcome and at least two predictors." : "Choose an outcome.") : "Choose at least two predictors."}
+              </p>
+            )}
+          </div>
           </>
           )}
         </div>
-
-        <div className="min-h-0 overflow-y-auto p-4 text-xs">
+        }
+        middle={
+        <div className="min-h-0 overflow-y-auto rounded-xl bg-slate-100 px-1 text-xs lg:h-[calc(100vh-5.5rem)]" data-testid="analytics-results-pane">
           {mode === "driver" && (
             <>
+              <details className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2" data-testid="driver-how-to-read">
+                <summary className="cursor-pointer select-none font-medium text-foreground">How to read this</summary>
+                <ul className="mt-2 list-disc space-y-1.5 pl-4 text-slate-600">
+                  <li>The ranking shows what goes with the outcome in this survey. It does not prove cause.</li>
+                  <li>Questions that overlap share their weight, so one of them does not take it all.</li>
+                  <li>Look at the rank range as well as the rank. A wide range means the order is not settled.</li>
+                  <li>Stated importance, if paired, shows what people say matters against what moves the outcome.</li>
+                  <li>Read the cases used and the variation explained first: a small sample or a small share explained limits what the ranking can say.</li>
+                </ul>
+              </details>
               {error && <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-danger">{error}</p>}
               {message && <p className="mb-3 text-muted">{message}</p>}
               <div
@@ -1106,7 +1331,7 @@ function AnalyticsWorkspace({
                 )}
                 <div className="space-y-3">
                   {!report && !error && (
-                    <p className="max-w-xl text-muted">
+                    <p className="max-w-xl rounded-xl border border-slate-200 bg-white p-4 text-slate-600">
                       Driver analysis shows which questions are most closely tied to the outcome. Questions that overlap,
                       such as two ways of asking about the same thing, share their weight between them instead of one of
                       them getting all of it or a negative score. The result is a ranking with an interval on each weight,
@@ -1191,12 +1416,75 @@ function AnalyticsWorkspace({
           {mode === "chart" && (
             <>
               {chartError && <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">{chartError}</p>}
-              {charts.length === 0 && !chartError && (
+              {charts.length === 0 && scatters.length === 0 && !chartError && (
                 <p className="max-w-xl text-muted">
                   Pick a question on the left and build its answer distribution as a chart, ready to copy or download for a
                   slide. Build another one straight after: each chart stays on screen below the last, in a grid, so you can
                   build out a whole set and commit the ones worth keeping together.
                 </p>
+              )}
+              {scatters.length > 0 && (
+                <div className={`grid grid-cols-1 gap-4 xl:grid-cols-2 mb-4`} data-testid="scatter-cards">
+                  {scatters.map((card) => {
+                    const res = card.result;
+                    const c = res.correlation;
+                    const shortScale = res.x.distinct <= 12 || res.y.distinct <= 12;
+                    const statText = c
+                      ? `Pearson correlation r = ${c.r.toFixed(2)} across ${c.n.toLocaleString()} complete cases (${res.weighted ? "weighted" : "unweighted"})`
+                      : "No correlation: fewer than three cases answered both, or one of the two does not vary.";
+                    const testText = !c ? "" : res.weighted ? "No significance test for a weighted correlation." : res.pValue === null ? "" : res.pValue < 0.001 ? "p < 0.001." : `p = ${res.pValue}.`;
+                    return (
+                      <div key={card.id} id={card.id} className="scroll-mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid="scatter-card">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-medium text-slate-600">{card.title}</p>
+                          <button
+                            type="button"
+                            onClick={() => setScatters((prev) => prev.filter((x) => x.id !== card.id))}
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-slate-50 hover:text-danger"
+                            aria-label="Delete this scatter plot"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        <p className="text-xs text-foreground" data-testid="scatter-correlation">
+                          {statText}
+                          {testText ? ` ${testText}` : ""}
+                        </p>
+                        <p className="text-[11px] text-slate-600">
+                          {`${res.complete.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases answered both.${res.capped ? ` ${res.capped.shown.toLocaleString()} of them are drawn, evenly spread; the correlation uses all ${res.capped.of.toLocaleString()}.` : ""} This describes association, not cause.`}
+                        </p>
+                        {shortScale && (
+                          <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={card.spread}
+                              onChange={(e) => setScatters((prev) => prev.map((x) => (x.id === card.id ? { ...x, spread: e.target.checked } : x)))}
+                            />
+                            Spread overlapping points (display only: on a short answer scale many points sit on the same spot; the values and the correlation are unchanged)
+                          </label>
+                        )}
+                        <ScatterVisual result={res} title={card.title} color={SERIES_COLORS[1]} spread={card.spread} />
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleScatterCommit(card.id)}
+                            disabled={card.commitBusy || !c}
+                            className={`w-full rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm disabled:opacity-50 ${
+                              card.committed ? "border-border text-muted hover:bg-slate-50" : "border-primary text-primary hover:bg-primary/5"
+                            }`}
+                          >
+                            {card.commitBusy ? "Working..." : card.committed ? "Remove from findings" : "Post to findings"}
+                          </button>
+                          {c && (
+                            <p className="text-[11px] text-slate-600" data-testid="scatter-post-limits">
+                              {`Posts the correlation: r = ${c.r.toFixed(2)}, ${c.n.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases, ${res.weighted ? "weighted, no significance test" : testText ? `unweighted, ${testText.replace(/\.$/, "")}` : "unweighted"}; worked out again from the file when posted.`}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
               {charts.length > 0 && (() => {
                 const editing = charts.find((c) => c.id === selectedChartId) ?? charts[charts.length - 1];
@@ -1266,7 +1554,29 @@ function AnalyticsWorkspace({
                               Delete
                             </button>
                           </div>
-                          <ChartVisual result={card.result} title={card.title} colors={card.colors} legendPos={card.legendPos} />
+                          {card.variant !== "histogram" ? (
+                            // Switching redraws the same figures; nothing is run again.
+                            <div className="inline-flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="radiogroup" aria-label="Draw as">
+                              {(["bar", "line"] as const).map((v) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={card.variant === v}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateChartCard(card.id, { variant: v });
+                                  }}
+                                  className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium ${card.variant === v ? "bg-primary text-white" : "text-slate-600 hover:bg-white"}`}
+                                >
+                                  {v === "bar" ? "Bar" : "Line"}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            card.histSource && <p className="text-[11px] text-slate-600" data-testid="histogram-source">{HISTOGRAM_SOURCE_NOTE[card.histSource]}</p>
+                          )}
+                          <ChartVisual result={card.result} title={card.title} colors={card.colors} legendPos={card.legendPos} variant={card.variant} />
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1288,47 +1598,15 @@ function AnalyticsWorkspace({
                   </>
                 );
               })()}
+
             </>
           )}
         </div>
-
-        <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 text-xs xl:flex">
+        }
+        right={
+        <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 text-xs lg:h-[calc(100vh-5.5rem)]" data-testid="analytics-side-pane">
           {mode === "driver" ? (
             <>
-              <h3 className="text-sm font-semibold text-foreground">How to read this</h3>
-              {report ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-border bg-slate-50 px-3 py-2">
-                    <div className="text-lg font-semibold text-foreground">{report.result.n.toLocaleString()}</div>
-                    <div className="text-[11px] text-muted">of {report.casesInFile.toLocaleString()} cases used</div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-slate-50 px-3 py-2">
-                    <div className="text-lg font-semibold text-foreground">
-                      {report.result.fit.mcFadden === null
-                        ? `${Math.round(report.result.fit.rSquared * 100)}%`
-                        : report.result.fit.mcFadden.toFixed(2)}
-                    </div>
-                    <div className="text-[11px] text-muted">
-                      {report.result.fit.mcFadden === null ? "variation explained" : "pseudo R-squared"}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted">Run an analysis to see how many cases it used and how well the questions explain the outcome.</p>
-              )}
-              <ul className="list-disc space-y-1.5 pl-4 text-muted">
-                <li>The ranking shows what goes with the outcome in this survey. It does not prove cause.</li>
-                <li>Questions that overlap share their weight, so one of them does not take it all.</li>
-                <li>Look at the rank range as well as the rank. A wide range means the order is not settled.</li>
-                <li>Stated importance, if paired, shows what people say matters against what moves the outcome.</li>
-                <li>
-                  {!report || report.result.method === "shapley"
-                    ? "The split itself is a Shapley decomposition: each question's weight is its average contribution to the explained variation across every order the questions could be added in, so two overlapping questions divide the credit between them rather than one taking it all."
-                    : report.result.method === "relative_weights"
-                      ? "With too many questions to check every order exactly, the split switches to Johnson's relative weights, which approximates the same Shapley idea through an orthogonal transformation of the predictors rather than full enumeration."
-                      : "With even more questions, the split falls back to the size of each standardised coefficient from the fitted model, quicker to compute but less reliable once questions overlap."}
-                </li>
-              </ul>
               {savedBlock}
             </>
           ) : mode === "nps" ? (
@@ -1354,6 +1632,8 @@ function AnalyticsWorkspace({
             </>
           )}
         </aside>
+        }
+      />
       </div>
       )}
     </div>
@@ -1381,40 +1661,70 @@ export function ReportView({
       : r.method === "relative_weights"
         ? "Importance uses Johnson's relative weights, which split the explained variance when questions overlap."
         : "Importance is the size of each standardised coefficient.";
+  const summary = driverSummary(report);
+  const fitBox = (
+    <div className="rounded-lg border border-slate-200 px-3 py-2">
+      <div className="text-lg font-semibold text-foreground">{summary.fitFigure}</div>
+      <div className="text-[11px] text-slate-600">{summary.fitText}</div>
+    </div>
+  );
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4" data-testid="driver-report">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">Drivers of {report.outcomeLabel}</p>
-          <p className="text-muted">{report.outcomeNote}</p>
-          <p className="text-muted">
-            {r.n.toLocaleString()} of {report.casesInFile.toLocaleString()} cases used{report.weighted ? ", weighted" : ""}.
-            {r.fit.mcFadden === null
-              ? ` The questions together explain ${pct(r.fit.rSquared)} of the variation (adjusted ${pct(r.fit.adjRSquared)}).`
-              : ` Pseudo R-squared ${r.fit.mcFadden.toFixed(2)} (McFadden), ${r.fit.nagelkerke?.toFixed(2)} (Nagelkerke). The model classifies ${pct(r.fit.classificationRate)} of cases correctly, against ${pct(r.fit.baseRate)} by always guessing the larger group.`}
-          </p>
+          <p className="text-slate-600">{report.outcomeNote}</p>
         </div>
         {onPost && (
-          <button
-            type="button"
-            onClick={onPost}
-            disabled={busy}
-            className={`rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
-              committed ? "border-border text-muted hover:bg-slate-50" : "border-primary bg-primary text-white hover:opacity-90"
-            }`}
-          >
-            {busy ? "Working..." : committed ? "Remove from findings" : "Post to findings"}
-          </button>
+          <div className="flex max-w-xs flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={onPost}
+              disabled={busy}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
+                committed ? "border-border text-muted hover:bg-slate-50" : "border-primary bg-primary text-white hover:opacity-90"
+              }`}
+            >
+              {busy ? "Working..." : committed ? "Remove from findings" : "Post to findings"}
+            </button>
+            {/* The limits travel with the result: the posted findings state the cases used (n) and
+                the fit, and are tagged when the fit is weak or cases are few (driverFindings.ts). */}
+            <p className="text-right text-[11px] text-slate-600" data-testid="driver-post-limits">
+              {`Posted with: ${summary.used.toLocaleString()} cases used, ${summary.fitFigure} ${r.fit.mcFadden === null ? "of the variation explained" : "pseudo R-squared"}${summary.limitations.length > 0 ? `, ${summary.limitations.length} ${summary.limitations.length === 1 ? "limitation" : "limitations"} below` : ""}.`}
+            </p>
+          </div>
         )}
       </div>
 
-      {r.warnings.length > 0 && (
-        <ul className="space-y-1 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-          {r.warnings.map((w, i) => (
-            <li key={i}>{w}</li>
-          ))}
-        </ul>
-      )}
+      {/* What the ranking rests on, read before the ranking (Grant's review, 2026-10-20). */}
+      <section className="space-y-2" aria-label="Result summary" data-testid="driver-summary">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 px-3 py-2">
+            <div className="text-lg font-semibold text-foreground">
+              {`${summary.used.toLocaleString()} of ${summary.inFile.toLocaleString()}`}
+            </div>
+            <div className="text-[11px] text-slate-600">
+              {`cases used${summary.usedShare !== null ? ` (${summary.usedShare < 0.01 && summary.usedShare > 0 ? "under 1" : Math.round(summary.usedShare * 100)}% of the file)` : ""}${summary.weighted ? ", weighted" : ""}`}
+            </div>
+          </div>
+          {fitBox}
+        </div>
+        {summary.exclusions.length > 0 && (
+          <ul className="space-y-0.5 text-[11px] text-slate-600" data-testid="driver-exclusions">
+            {summary.exclusions.map((x, i) => (
+              <li key={i}>{x}</li>
+            ))}
+          </ul>
+        )}
+        {summary.limitations.length > 0 && (
+          <ul className="space-y-1 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800" data-testid="driver-limitations">
+            {summary.limitations.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[11px] text-slate-600">This describes what goes with the outcome in this survey, not what causes it.</p>
+      </section>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-left">
@@ -1458,21 +1768,31 @@ export function ReportView({
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-muted">
-        {methodText} Intervals come from 95% bootstrap ranges, repeatable because the resampling is seeded. A rank range that spans
-        several places means those questions cannot be separated reliably. The p value tests whether the question adds
-        anything once the others are in the model. This describes association in this survey, not cause.
-      </p>
+      <details className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] text-slate-600" data-testid="driver-method-details">
+        <summary className="cursor-pointer select-none font-medium text-foreground">Method details</summary>
+        <div className="mt-2 space-y-1.5">
+          <p>
+            {methodText} Intervals come from 95% bootstrap ranges, repeatable because the resampling is seeded. A rank range that
+            spans several places means those questions cannot be separated reliably. The p value tests whether the question adds
+            anything once the others are in the model.
+          </p>
+          <p>
+            {r.method === "shapley"
+              ? "The split is a Shapley decomposition: each question's weight is its average contribution to the explained variation across every order the questions could be added in, so two overlapping questions divide the credit between them rather than one taking it all."
+              : r.method === "relative_weights"
+                ? "With too many questions to check every order exactly, the split uses Johnson's relative weights, which approximates the same Shapley idea through an orthogonal transformation of the predictors rather than full enumeration."
+                : "With even more questions, the split falls back to the size of each standardised coefficient from the fitted model, quicker to compute but less reliable once questions overlap."}
+          </p>
+          {r.fit.mcFadden !== null && (
+            <p>{`Nagelkerke pseudo R-squared ${r.fit.nagelkerke?.toFixed(2) ?? "-"}.`}</p>
+          )}
+        </div>
+      </details>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Quadrant report={report} />
         <StatedQuadrant report={report} />
       </div>
-      {report.skipped.length > 0 && (
-        <p className="text-[11px] text-muted">
-          Left out: {report.skipped.map((s) => `${s.variable} (${s.reason})`).join("; ")}.
-        </p>
-      )}
     </div>
   );
 }
@@ -1644,6 +1964,29 @@ function Quadrant({ report }: { report: DriverReport }) {
 
   return (
     <div>
+      {/* One compact toolbar above the chart: copy, download, and the styling folded away. */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="quadrant-toolbar">
+        <button
+          type="button"
+          onClick={copy}
+          disabled={busy !== null}
+          className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+        >
+          {busy === "copy" ? "Copying..." : "Copy image"}
+        </button>
+        <button
+          type="button"
+          onClick={download}
+          disabled={busy !== null}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {busy === "download" ? "Downloading..." : "Download PNG"}
+        </button>
+        <details className="relative">
+          <summary className="cursor-pointer select-none rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+            Chart style
+          </summary>
+          <div className="absolute left-0 z-20 mt-1 w-[34rem] max-w-[80vw] shadow-lg">
       <ChartCustomizePanel
         title={title}
         onTitle={setTitle}
@@ -1661,6 +2004,10 @@ function Quadrant({ report }: { report: DriverReport }) {
         }}
         onResetColors={() => setQuadColors(QUAD_DEFAULT_COLORS)}
       />
+          </div>
+        </details>
+        {status && <span className="text-[11px] text-muted">{status}</span>}
+      </div>
       <div className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-white p-3 sm:flex-row sm:items-center">
         <svg
           ref={svgRef}
@@ -1734,25 +2081,6 @@ function Quadrant({ report }: { report: DriverReport }) {
             </div>
           ))}
         </div>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={copy}
-          disabled={busy !== null}
-          className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
-        >
-          {busy === "copy" ? "Copying..." : "Copy image"}
-        </button>
-        <button
-          type="button"
-          onClick={download}
-          disabled={busy !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-slate-50 disabled:opacity-50"
-        >
-          {busy === "download" ? "Downloading..." : "Download PNG"}
-        </button>
-        {status && <span className="text-[11px] text-muted">{status}</span>}
       </div>
       <p className="text-[11px] text-muted">
         Questions high on importance and low on performance (red) are the first to fix. The dashed lines mark the middle of
