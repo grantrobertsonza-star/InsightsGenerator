@@ -1,7 +1,12 @@
 # Current engineering status
 
-Updated: 2026-10-20. State: **READY_FOR_CODEX**: the work of 18 October (evening) to 20 October, on both copies, awaits independent review; see the section below and `docs/codex-double-checks-2026-10-20.md`.
+Updated: 2026-10-21. State: **READY_FOR_CODEX**: repairs for every finding in `docs/independent-review-2026-10-20.md` (IR-01 to IR-11, M-01, M-02), on both copies; see `docs/repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
 
+## Claude: repairs for Codex's 20 October review (2026-10-21)
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE**: independent A–E review of both copies found 11 correctness issues and 2 maintainability concerns; see `docs/independent-review-2026-10-20.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked remain unchanged."
+
+Implemented, ready for review: three packages per copy (3000 `bee2612`, `356a3e9`, `dcefdc0`; 3001 `b8b4299`, `d8e4ba2`, `40be83b`) and this docs commit. Full suites on both copies: 63 browser checks passed (1 skipped), unit 1,184 / 1,192 passed, smoke and objective acceptance passed, lint unchanged at 349. Details, previous-code controls and limits: `docs/repair-handover-2026-10-21.md`.
 
 ## Claude: 18 to 20 October work ready for review (2026-10-20)
 
