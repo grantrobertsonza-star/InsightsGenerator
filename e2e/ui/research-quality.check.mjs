@@ -2,7 +2,7 @@
 // orchestration evidence only, never judgement quality). Grant 2026-10-19: one brief or one proposal
 // at a time, a separate proposal-against-brief comparison, view only; laid out from 2026-10-20 as his
 // prototype, then with the document and review chosen at the top of the review pane, its actions and
-// Overview, Criteria and Improvements tabs, and the clicked bar's or criterion's detail on the right.
+// Overview, Criteria, Improvements and Details tabs, and the clicked bar's or criterion's detail on the right.
 //   1. Opening the section makes no model call; documents uploaded as a brief and a proposal are
 //      listed with their role; the selected one offers Review brief, Review proposal and Compare.
 //   2. A start needs a confirmation; cancelling calls nothing.
@@ -185,6 +185,9 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     // The Improvements tab lists what to improve, or says there is none.
     await section.getByRole("tab", { name: "Improvements" }).click();
     await expect(section.getByRole("tabpanel", { name: "Improvements" })).toContainText(/\S{10,}/);
+    // The review's metadata is its own tab, next to Improvements, not a fold above the tabs.
+    await section.getByRole("tab", { name: "Details" }).click();
+    await expect(section.getByRole("tabpanel", { name: "Details" }).getByTestId("rq-metadata")).toContainText("Criteria release");
 
     // 5. the comparison: its own review, seven equal comparisons, in both documents' histories
     await actions.getByRole("button", { name: "Compare with brief" }).click();

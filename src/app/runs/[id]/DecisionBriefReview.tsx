@@ -285,54 +285,7 @@ export default function DecisionBriefReview({
 
   return (
     <ThreePane
-      left={
-        <Pane side="left" title="Suggest and add">
-        <p className="text-xs text-muted">
-          Every decision suggested here is already accepted, so the project moves on without waiting on a
-          review step; everything downstream (findings, verdicts, recommendations) is judged against
-          whichever decision(s) are currently accepted, and a project can genuinely be organized around
-          more than one. Reject anything that doesn&apos;t belong (it never affects another accepted one),
-          edit one in place, or write your own below.
-        </p>
-        {hasFindings && (
-          <button
-            disabled={isPending}
-            onClick={handleRegenerate}
-            className="self-start whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
-          >
-            {isPending ? regenerateBusyLabel : regenerateLabel}
-          </button>
-        )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = addText.trim();
-          if (!text) return;
-          runListAction(() => addOwnDecisionCandidate(runId, text), () => setAddText(""));
-        }}
-        className="rounded-lg border border-dashed border-border p-4"
-      >
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
-          Add your own decision
-        </label>
-        <textarea
-          rows={2}
-          value={addText}
-          onChange={(e) => setAddText(e.target.value)}
-          placeholder="e.g. Whether to launch the loyalty tier in Q2 or hold for the rebrand"
-          className={textareaClass}
-        />
-        <button
-          type="submit"
-          disabled={isPending || !addText.trim()}
-          className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
-        >
-          Add decision
-        </button>
-      </form>
-
-        </Pane>
-      }
+      storageKey="decisions-v2"
       middle={
         <Pane
           side="middle"
@@ -343,6 +296,54 @@ export default function DecisionBriefReview({
             </span>
           }
         >
+      {/* Suggest and add, at the top of the list (Grant, 2026-10-20): two panes, as on Research quality. */}
+      <div className="flex flex-col gap-3 border-b border-border pb-4" data-testid="decisions-suggest-add">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="min-w-0 flex-1 text-xs text-muted">
+            Every decision suggested here is already accepted, so the project moves on without waiting on a
+            review step; everything downstream (findings, verdicts, recommendations) is judged against
+            whichever decision(s) are currently accepted, and a project can genuinely be organized around
+            more than one. Reject anything that doesn&apos;t belong (it never affects another accepted one),
+            edit one in place, or write your own below.
+          </p>
+          {hasFindings && (
+            <button
+              disabled={isPending}
+              onClick={handleRegenerate}
+              className="self-start whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60"
+            >
+              {isPending ? regenerateBusyLabel : regenerateLabel}
+            </button>
+          )}
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = addText.trim();
+            if (!text) return;
+            runListAction(() => addOwnDecisionCandidate(runId, text), () => setAddText(""));
+          }}
+          className="rounded-lg border border-dashed border-border p-3"
+        >
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+            Add your own decision
+          </label>
+          <textarea
+            rows={2}
+            value={addText}
+            onChange={(e) => setAddText(e.target.value)}
+            placeholder="e.g. Whether to launch the loyalty tier in Q2 or hold for the rebrand"
+            className={textareaClass}
+          />
+          <button
+            type="submit"
+            disabled={isPending || !addText.trim()}
+            className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-50"
+          >
+            Add decision
+          </button>
+        </form>
+      </div>
       {actionError && (
         <p role="alert" className="rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
           Not saved: {actionError}
@@ -367,14 +368,14 @@ export default function DecisionBriefReview({
       {!hasFindings && candidates.length === 0 && (
         <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
           Nothing yet. Process at least one document above and we&apos;ll suggest decisions this project&apos;s
-          evidence could inform automatically, or add your own below in the meantime.
+          evidence could inform automatically, or add your own above in the meantime.
         </div>
       )}
 
       {hasFindings && candidates.length === 0 && (
         <div className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted">
           We tried to generate suggestions automatically and it didn&apos;t come back with anything, most
-          likely a temporary issue. Click &quot;Get suggestions&quot; above to try again, or add your own below.
+          likely a temporary issue. Click &quot;Get suggestions&quot; above to try again, or add your own above.
         </div>
       )}
 

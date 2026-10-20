@@ -55,7 +55,7 @@ const key = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? cry
 const reviewLabel = (x: ResearchQualityView["reviews"][number]) => (x.kind ? REVIEW_KIND_LABEL[x.kind] : "Review (older format)");
 
 type Doc = ResearchQualityView["documents"][number];
-type Tab = "overview" | "criteria" | "improvements";
+type Tab = "overview" | "criteria" | "improvements" | "details";
 
 // A pending start: the kind and documents, shown with its cost estimate until confirmed.
 type Pending = { kind: ReviewKind; documentIds: string[]; estimate: number | null };
@@ -445,7 +445,7 @@ function ReviewDetail({
             {msg.text}
           </p>
         )}
-        {review && <ReviewMetadata review={review} />}
+        {review && <PartlyReadNotes review={review} />}
         {review && <ReviewState runId={runId} review={review} reload={reload} />}
       </div>
       {review && (
@@ -456,6 +456,7 @@ function ReviewDetail({
                 ["overview", "Overview"],
                 ["criteria", "Criteria"],
                 ["improvements", "Improvements"],
+                ["details", "Details"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -509,6 +510,9 @@ function ReviewDetail({
             <div role="tabpanel" aria-labelledby="rq-tab-improvements" className={tab === "improvements" ? "" : "hidden"}>
               <Improvements view={view} />
             </div>
+            <div role="tabpanel" aria-labelledby="rq-tab-details" className={tab === "details" ? "" : "hidden"}>
+              <ReviewMetadata review={review} />
+            </div>
           </div>
         </>
       )}
@@ -516,38 +520,45 @@ function ReviewDetail({
   );
 }
 
-/** Who ran the review, on what, under which releases: folded, as it is for checking rather than reading. */
-function ReviewMetadata({ review }: { review: NonNullable<ResearchQualityView["review"]> }) {
-  const partlyRead = review.manifest.sources.filter((s) => readOf(s) < s.charCount);
+/** Sources the reviewer read only in part: shown above the tabs, as they limit what was rated. */
+function PartlyReadNotes({ review }: { review: NonNullable<ResearchQualityView["review"]> }) {
   return (
     <>
-      {partlyRead.map((s) => (
-        <p key={s.sourceId} className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{`${s.filename}: only the first ${readOf(s).toLocaleString("en-GB")} of ${s.charCount.toLocaleString("en-GB")} characters were read, so later sections are not rated.`}</p>
-      ))}
-      <details className="text-xs" data-testid="rq-metadata">
-        <summary className="cursor-pointer select-none text-sm font-medium text-foreground">Reviewer, source versions and review metadata</summary>
-        <dl className="mt-2 grid grid-cols-[10rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted">
-          <dt>Started</dt>
-          <dd className="text-foreground">{`${review.createdAt.slice(0, 16).replace("T", " ")}${review.createdBy ? `, by ${review.createdBy}` : ""}`}</dd>
-          {review.completedAt && (
-            <>
-              <dt>Finished</dt>
-              <dd className="text-foreground">{review.completedAt.slice(0, 16).replace("T", " ")}</dd>
-            </>
-          )}
-          {review.manifest.sources.map((s) => (
-            <MetaRow key={s.sourceVersionId} label={s.filename} value={`${s.roles.join(" and ") || "no role"}; ${s.charCount.toLocaleString("en-GB")} characters, ${readOf(s).toLocaleString("en-GB")} read`} />
-          ))}
-          <dt>Criteria release</dt>
-          <dd className="text-foreground">{review.criteriaRelease}</dd>
-          <dt>Model and prompt</dt>
-          <dd className="text-foreground">{`${review.model}, prompt ${review.promptVersion}`}</dd>
-          <dt>Cost</dt>
-          <dd className="text-foreground">{`US$${review.actualCostUsd.toFixed(2)}${review.estimatedCostUsd !== null ? ` (estimated US$${review.estimatedCostUsd.toFixed(2)})` : ""}`}</dd>
-        </dl>
-        {review.syntheticReferences && <p className="mt-1 font-semibold text-amber-800">Synthetic test references in use.</p>}
-      </details>
+      {review.manifest.sources
+        .filter((s) => readOf(s) < s.charCount)
+        .map((s) => (
+          <p key={s.sourceId} className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{`${s.filename}: only the first ${readOf(s).toLocaleString("en-GB")} of ${s.charCount.toLocaleString("en-GB")} characters were read, so later sections are not rated.`}</p>
+        ))}
     </>
+  );
+}
+
+/** Who ran the review, on what, under which releases: its own tab (Grant, 2026-10-20), as it is for checking rather than reading. */
+function ReviewMetadata({ review }: { review: NonNullable<ResearchQualityView["review"]> }) {
+  return (
+    <div className="text-xs" data-testid="rq-metadata">
+      <h3 className="text-sm font-medium text-foreground">Reviewer, source versions and review metadata</h3>
+      <dl className="mt-2 grid grid-cols-[10rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted">
+        <dt>Started</dt>
+        <dd className="text-foreground">{`${review.createdAt.slice(0, 16).replace("T", " ")}${review.createdBy ? `, by ${review.createdBy}` : ""}`}</dd>
+        {review.completedAt && (
+          <>
+            <dt>Finished</dt>
+            <dd className="text-foreground">{review.completedAt.slice(0, 16).replace("T", " ")}</dd>
+          </>
+        )}
+        {review.manifest.sources.map((s) => (
+          <MetaRow key={s.sourceVersionId} label={s.filename} value={`${s.roles.join(" and ") || "no role"}; ${s.charCount.toLocaleString("en-GB")} characters, ${readOf(s).toLocaleString("en-GB")} read`} />
+        ))}
+        <dt>Criteria release</dt>
+        <dd className="text-foreground">{review.criteriaRelease}</dd>
+        <dt>Model and prompt</dt>
+        <dd className="text-foreground">{`${review.model}, prompt ${review.promptVersion}`}</dd>
+        <dt>Cost</dt>
+        <dd className="text-foreground">{`US$${review.actualCostUsd.toFixed(2)}${review.estimatedCostUsd !== null ? ` (estimated US$${review.estimatedCostUsd.toFixed(2)})` : ""}`}</dd>
+      </dl>
+      {review.syntheticReferences && <p className="mt-1 font-semibold text-amber-800">Synthetic test references in use.</p>}
+    </div>
   );
 }
 const MetaRow = ({ label, value }: { label: string; value: string }) => (
