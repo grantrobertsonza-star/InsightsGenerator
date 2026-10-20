@@ -1588,12 +1588,19 @@ def dictionary(file_bytes: bytes, source_filename: str, args: dict | None = None
         if len(stem) < 5:
             continue
         grid = all(m["numeric"] and not m["labelled"] for m in members)
+        kind = "grid" if grid else "battery"
+        # A set's key is its identity ("set:<key>" in saved mappings), so it must be unique. The same
+        # stem can already name the multiple-response set made from this stem's yes/no columns
+        # (EN9_1..EN9_3 a multi set, EN9_4..EN9_6 a battery): that set keeps the stem, as it always
+        # did and as everything resolved by key already used, and this one is keyed apart.
+        if any(x["key"] == key for x in sets):
+            key = f"{key} ({kind})"
         for m in members:
             m["inSet"] = key
         sets.append(
             {
                 "key": key,
-                "kind": "grid" if grid else "battery",
+                "kind": kind,
                 "label": stem,
                 "vars": [m["name"] for m in members],
                 "nValid": max(m["nValid"] for m in members),

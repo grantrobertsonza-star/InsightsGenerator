@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { setChoicesToCheck } from "@/lib/variableSetKeys";
 import { createPortal } from "react-dom";
 
 import type { VariableInfo, VariableSet } from "@/lib/parseStatsFile";
@@ -154,6 +155,13 @@ export default function BrandHealthAnalyticsPanel({
     return key;
   }
   const attributeVars = [...attributes.keys()];
+  // Set choices whose stem now also names a battery or grid keyed apart (variableSetKeys.ts): the
+  // choice was computed with the multiple-response set, but the screen may have labelled it with the
+  // other, so it is pointed out rather than silently assumed.
+  const setChoices = [...Object.values(mapping.funnel).map((x) => sourceKey(x)), ...attributes.keys(), ...moments.keys()]
+    .filter((k) => k.startsWith("set:"))
+    .map((k) => k.slice(4));
+  const toCheck = setChoicesToCheck(setChoices, sets);
 
   function toggleIn(map: Map<string, CsmMetric | "">, setMap: (m: Map<string, CsmMetric | "">) => void, name: string) {
     const next = new Map(map);
@@ -224,6 +232,13 @@ export default function BrandHealthAnalyticsPanel({
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r-2 border-sky-200 bg-sky-50 p-4 text-xs">
           {loadError && <p className="text-red-600">{loadError}</p>}
           {!variables.length && !loadError && <p className="text-muted">Loading the variable list...</p>}
+          {toCheck.length > 0 && (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900" data-testid="brand-health-set-check">
+              {`Check ${toCheck.length === 1 ? "this choice" : "these choices"}: ${toCheck
+                .map((k) => `"${setsByKey.get(k)?.label || k}" (${k})`)
+                .join(", ")}. Two question sets in this file used to share ${toCheck.length === 1 ? "this name" : "these names"}; the name now means the multiple-response set, which the results were calculated with, and the other set is listed separately with "(battery)" or "(grid)" after it.`}
+            </p>
+          )}
 
           <section className="space-y-1.5">
             <p className="font-medium text-foreground">Brand variable</p>

@@ -1,5 +1,6 @@
 import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
 import { withTenant, withTenantRead } from "./db";
+import { hasRepeatedSetKeys } from "./variableSetKeys";
 import { assertImportCaseCount } from "./importLimits";
 import { loadDataSetup, loadDataSetupWithStatus } from "./dataSetup";
 import type { DataSetup } from "./dataSetupShared";
@@ -260,7 +261,8 @@ async function buildVariableDictionaryForSetup(
     const sheetMatches = !doc.selected_sheet || cachedSheet === doc.selected_sheet;
     // IMP-015: version 7 shows conflicting label definitions as conflicts; an older cache may
     // carry a silently chosen label, so it is recomputed.
-    if (cached && cached.sets && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && sheetMatches) {
+    // A cache that gives two question sets one key predates unique set keys: rebuilt (variableSetKeys.ts).
+    if (cached && cached.sets && !hasRepeatedSetKeys(cached.sets) && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && sheetMatches) {
       dictionary = cached;
     }
   } catch {
