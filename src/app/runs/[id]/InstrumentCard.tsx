@@ -26,6 +26,9 @@ const methodLabel: Record<InstrumentLink["method"], string> = {
 
 const btn =
   "rounded-lg border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50";
+// The per-link Confirm and Reject: small and on one line beside the variable.
+const linkBtn =
+  "whitespace-nowrap rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50";
 const btnPrimary =
   "rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-white hover:bg-primary-hover disabled:opacity-50";
 
@@ -276,12 +279,15 @@ export default function InstrumentCard({
             ))}
           </div>
           <div className="max-h-96 overflow-auto rounded-lg border border-border">
-            <table className="w-full min-w-[560px] text-left">
-              <thead className="sticky top-0 bg-slate-50">
+            {/* Fixed columns (Grant, 2026-10-20: the buttons were squeezed into a narrow last column and
+                stacked): the links column is wide enough for a variable, its method and both buttons on
+                one line, and the question wraps instead. */}
+            <table className="w-full min-w-[640px] table-fixed text-left">
+              <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted">
                   <th className="w-16 px-2 py-1.5">Code</th>
                   <th className="px-2 py-1.5">Question</th>
-                  <th className="px-2 py-1.5">Linked variable</th>
+                  <th className="w-[22rem] px-2 py-1.5">Linked variable</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,21 +308,30 @@ export default function InstrumentCard({
                         <span className="text-muted">No match</span>
                       ) : (
                         (linksByItem.get(i.id) ?? []).slice(0, 6).map((l) => (
-                          <div key={l.id} className="mb-1 flex flex-wrap items-center gap-1.5">
-                            <span className={l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}>{l.variable}</span>
-                            <span className="text-[10px] text-muted">{methodLabel[l.method]}, {Math.round(l.confidence * 100)}%</span>
-                            {l.status !== "confirmed" && (
-                              <button className={btn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>Confirm</button>
-                            )}
-                            {l.status !== "rejected" && (
-                              <button className={btn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>Reject</button>
-                            )}
-                            {l.status === "confirmed" && <span className="text-[10px] text-success">Confirmed</span>}
+                          <div key={l.id} className="mb-1 flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <span className={`block truncate ${l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}`} title={l.variable}>
+                                {l.variable}
+                              </span>
+                              <span className="block whitespace-nowrap text-[10px] text-muted">
+                                {`${methodLabel[l.method]}${l.method === "manual" ? "" : `, ${Math.round(l.confidence * 100)}%`}`}
+                                {l.status === "confirmed" && <span className="ml-1 text-success">· Confirmed</span>}
+                                {l.status === "rejected" && <span className="ml-1">· Rejected</span>}
+                              </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              {l.status !== "confirmed" && (
+                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>Confirm</button>
+                              )}
+                              {l.status !== "rejected" && (
+                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>Reject</button>
+                              )}
+                            </div>
                           </div>
                         ))
                       )}
                       {!isGuide && target && choosing !== i.id && (
-                        <button className={`${btn} mt-1`} disabled={pending} onClick={() => void openPicker(i.id)}>
+                        <button className="mt-0.5 text-[11px] font-medium text-primary hover:underline disabled:opacity-50" disabled={pending} onClick={() => void openPicker(i.id)}>
                           {(linksByItem.get(i.id) ?? []).length === 0 ? "Choose variable" : "Choose another"}
                         </button>
                       )}
