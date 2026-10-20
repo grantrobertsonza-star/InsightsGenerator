@@ -61,11 +61,11 @@ test("refused review saves are reported and keep the researcher's text", async (
 
     // 1. Edit and Save an objective in Review Objectives.
     await open("Review Objectives");
-    const row = page.locator("tr", { hasText: "Review failure objective" }).first();
+    const row = page.locator("tbody[data-objective-row]", { hasText: "Review failure objective" }).first();
     await expect(row).toBeVisible({ timeout: 60_000 });
     await refuse("objective_candidates", run.id);
     await row.getByRole("button", { name: "Edit", exact: true }).click();
-    const editingRow = page.locator("tr", { has: page.locator("textarea") }).first();
+    const editingRow = page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first();
     await editingRow.locator("textarea").fill("Review failure objective, edited");
     await editingRow.getByRole("button", { name: "Save", exact: true }).click();
     await expect(editingRow.getByRole("alert")).toContainText(OUTAGE, { timeout: 60_000 });

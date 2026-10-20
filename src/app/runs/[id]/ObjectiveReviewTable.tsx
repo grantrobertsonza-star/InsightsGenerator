@@ -70,36 +70,50 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
   const a = useObjectiveRowActions(runId, row);
   const tag = tagFor(row);
   const { selected, select } = useObjectiveSelection();
+  // Rolled up by default (Grant, 2026-10-20): one line of the objective under its scores; rolled down
+  // shows the full wording, "To sharpen it" and any rationale. Editing always shows it in full.
+  const [open, setOpen] = useState(false);
+  const full = open || a.editing;
 
   return (
-    <tr onClick={() => { if (!a.editing && a.accepted) select({ id: row.id, text: row.text }); }} className={`border-b border-border align-top last:border-0 ${a.accepted ? "cursor-pointer" : ""} ${sameObjective(selected, { id: row.id, text: row.text }) ? "bg-primary-light/40" : ""} ${a.rejected ? "opacity-50" : ""}`}>
-      <td className="max-w-md px-3 py-2 text-foreground">
-        <span className={`mb-1 mr-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tag.cls}`}>
+    // One objective is two rows in its own <tbody> (Grant, 2026-10-20): the tags, scores, rating and
+    // actions on top, aligned with the headings, and the wording with "To sharpen it" across the full
+    // width below, so long text is not squeezed into the first column.
+    <tbody
+      data-objective-row
+      onClick={() => { if (!a.editing && a.accepted) select({ id: row.id, text: row.text }); }}
+      className={`border-b border-border last:border-0 ${a.accepted ? "cursor-pointer" : ""} ${sameObjective(selected, { id: row.id, text: row.text }) ? "bg-primary-light/40" : ""} ${a.rejected ? "opacity-50" : ""}`}
+    >
+    <tr className="align-top">
+      <td className="whitespace-nowrap px-3 pb-1 pt-2 text-foreground">
+        <button
+          type="button"
+          aria-expanded={full}
+          aria-label={full ? "Roll up this objective" : "Roll down this objective"}
+          title={full ? "Roll up" : "Roll down"}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          disabled={a.editing}
+          className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-slate-100 hover:text-foreground"
+          data-testid="objective-roll"
+        >
+          {full ? "▾" : "▸"}
+        </button>
+        <span className={`mr-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tag.cls}`}>
           {tag.label}
         </span>
         {row.edited && (
-          <span className="mb-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             Edited
           </span>
-        )}
-        {a.editing ? (
-          <textarea autoFocus rows={2} value={a.draft} onChange={(e) => a.setDraft(e.target.value)} className={`${textareaClass} mt-1`} />
-        ) : (
-          <div>{row.text}</div>
-        )}
-        {row.scores?.suggestion && !a.editing && (
-          <div className="mt-1 text-[11px] text-muted">
-            <span className="font-medium">To sharpen it:</span> {row.scores.suggestion}
-          </div>
-        )}
-        {row.source === "ai_suggested" && row.rationale && !a.editing && (
-          <div className="mt-1 text-[11px] text-muted">{row.rationale}</div>
         )}
       </td>
       {COLUMNS.map(([key]) => {
         const v = row.scores ? row.scores[key] : null;
         return (
-          <td key={key} className="px-2 py-2 text-center">
+          <td key={key} className="px-2 pb-1 pt-2 text-center">
             {v === null ? (
               <span className="text-muted">-</span>
             ) : (
@@ -108,8 +122,8 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           </td>
         );
       })}
-      <td className="px-2 py-2 text-center font-semibold text-foreground">{row.scores ? `${row.scores.total}/20` : "-"}</td>
-      <td className="px-3 py-2">
+      <td className="px-2 pb-1 pt-2 text-center font-semibold text-foreground">{row.scores ? `${row.scores.total}/20` : "-"}</td>
+      <td className="px-3 pb-1 pt-2">
         {row.scores ? (
           <span
             title={row.scores.rationale}
@@ -121,7 +135,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           <span className="text-muted">Not scored</span>
         )}
       </td>
-      <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>
+      <td className="px-3 pb-1 pt-2" onClick={(event) => event.stopPropagation()}>
         {/* Row selection must not replace this editor while a status/edit action is clicked. */}
         <div className="flex flex-wrap items-center gap-1">
           {a.editing ? (
@@ -175,6 +189,24 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
         )}
       </td>
     </tr>
+    <tr>
+      <td colSpan={COLUMNS.length + 4} className="px-3 pb-3 pt-1 text-foreground">
+        {a.editing ? (
+          <textarea autoFocus rows={2} value={a.draft} onChange={(e) => a.setDraft(e.target.value)} onClick={(event) => event.stopPropagation()} className={textareaClass} />
+        ) : (
+          <div className={`text-xs leading-relaxed ${full ? "" : "line-clamp-1"}`} title={full ? undefined : row.text}>{row.text}</div>
+        )}
+        {full && row.scores?.suggestion && !a.editing && (
+          <div className="mt-1 text-[11px] leading-relaxed text-muted">
+            <span className="font-medium">To sharpen it:</span> {row.scores.suggestion}
+          </div>
+        )}
+        {full && row.source === "ai_suggested" && row.rationale && !a.editing && (
+          <div className="mt-1 text-[11px] text-muted">{row.rationale}</div>
+        )}
+      </td>
+    </tr>
+    </tbody>
   );
 }
 
@@ -297,7 +329,7 @@ export default function ObjectiveReviewTable({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-white">
-          <table className="w-full min-w-[860px] text-left text-[11px]">
+          <table className="w-full min-w-[640px] text-left text-[11px]">
             <thead>
               <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
                 <th className="px-3 py-2">Objective</th>
@@ -311,11 +343,9 @@ export default function ObjectiveReviewTable({
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {active.map((row) => (
-                <Row key={row.id} runId={runId} row={row} />
-              ))}
-            </tbody>
+            {active.map((row) => (
+              <Row key={row.id} runId={runId} row={row} />
+            ))}
           </table>
         </div>
       )}
@@ -358,12 +388,10 @@ export default function ObjectiveReviewTable({
           </button>
           {rejectedOpen && (
             <div className="mt-3 overflow-x-auto rounded-xl border border-border bg-white">
-              <table className="w-full min-w-[860px] text-left text-[11px]">
-                <tbody>
-                  {rejected.map((row) => (
-                    <Row key={row.id} runId={runId} row={row} />
-                  ))}
-                </tbody>
+              <table className="w-full min-w-[640px] text-left text-[11px]">
+                {rejected.map((row) => (
+                  <Row key={row.id} runId={runId} row={row} />
+                ))}
               </table>
             </div>
           )}
