@@ -21,6 +21,12 @@ import {
   fileTag,
   matchesSearch,
   matchesStateFilter,
+  matchesTypeFilter,
+  sortSources,
+  SOURCE_SORTS,
+  TYPE_GROUP_FILTERS,
+  type SourceGroup,
+  type SourceSort,
   needsAttention,
   processingState,
   type AcceptanceState,
@@ -114,6 +120,8 @@ export type SourceRow = {
   accent?: string;
   /** Work this source starts by itself on Import, whichever source is selected (a questionnaire's first read). */
   autoWork?: ReactNode;
+  /** Quantitative, qualitative or context (importSources.sourceGroup), for the type filter's groups. */
+  typeGroup?: SourceGroup;
   /** The tabs after Preview and Setup, in order. */
   panels: SourcePanel[];
   initial: TranscriptSetup | null;
@@ -216,7 +224,7 @@ function useSourceState(r: Row) {
 
 /** Whether the list's search and filters keep a source. */
 function keptByFilters(r: Row, s: ReturnType<typeof sourceStateOf>, needle: string, role: string, state: SourceStateFilter) {
-  return matchesSearch(needle, { filename: r.filename, wave: s.wave }) && (role === "all" || r.kindLabel === role) && matchesStateFilter(state, s);
+  return matchesSearch(needle, { filename: r.filename, wave: s.wave }) && matchesTypeFilter(role, { kindLabel: r.kindLabel, group: r.typeGroup ?? "context" }) && matchesStateFilter(state, s);
 }
 
 const TONE = {
@@ -920,7 +928,8 @@ function TranscriptSetupForm({ runId, row }: { runId: string; row: Row }) {
 
 /**
  * The left-hand pane (Grant, 2026-10-20, from his Sources prototype): every source in the project,
- * with a search, a type filter and a state filter, each row showing the file's type, its processing
+ * with a search, a type filter (one type, or every quantitative or qualitative file), a state filter
+ * and a sort (newest, oldest, type, name), each row showing the file's type, its processing
  * and acceptance states, its wave and links, and a menu with View original and Delete. Selecting a row
  * shows it on the right. The filters are a view only: a hidden source keeps its setup and its state.
  */
@@ -929,7 +938,9 @@ export default function TranscriptSetupTable() {
   const [needle, setNeedle] = useState("");
   const [role, setRole] = useState("all");
   const [state, setState] = useState<SourceStateFilter>("all");
+  const [sort, setSort] = useState<SourceSort>("newest");
   const roles = useMemo(() => [...new Set(rows.map((r) => r.kindLabel))], [rows]);
+  const ordered = useMemo(() => sortSources(rows, sort), [rows, sort]);
   if (rows.length === 0) return null;
   return (
     <div className="flex min-h-0 flex-col gap-3" data-testid="source-list">
@@ -944,11 +955,19 @@ export default function TranscriptSetupTable() {
       <div className="grid grid-cols-2 gap-2">
         <select aria-label="Filter by type" value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
           <option value="all">All types</option>
-          {roles.map((r) => (
-            <option key={r} value={r}>
-              {r}
+          {/* Grant, 2026-10-20: every quantitative or every qualitative file at once. */}
+          {TYPE_GROUP_FILTERS.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.label}
             </option>
           ))}
+          <optgroup label="One type">
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </optgroup>
         </select>
         <select aria-label="Filter by state" value={state} onChange={(e) => setState(e.target.value as SourceStateFilter)} className="rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
           {SOURCE_STATE_FILTERS.map((f) => (
@@ -958,8 +977,18 @@ export default function TranscriptSetupTable() {
           ))}
         </select>
       </div>
+      <label className="-mt-1 flex items-center justify-end gap-2 text-[11px] text-muted">
+        Sort by
+        <select aria-label="Sort sources" value={sort} onChange={(e) => setSort(e.target.value as SourceSort)} className="rounded-md border border-border bg-white px-1.5 py-0.5 text-[11px] text-foreground">
+          {SOURCE_SORTS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <ul className="-mx-4 flex flex-col border-y border-border" aria-label="Sources">
-        {rows.map((r) => (
+        {ordered.map((r) => (
           <SourceListItem key={r.documentId} row={r} selected={selectedId === r.documentId} onSelect={() => select(r.documentId)} needle={needle} role={role} state={state} />
         ))}
       </ul>

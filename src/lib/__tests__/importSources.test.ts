@@ -1,7 +1,7 @@
 // The Import source list's status rules (importSources.ts): processing and acceptance kept apart,
 // a stored failure outranking an older preview, and the state filters not hiding one another.
 import { describe, expect, it } from "vitest";
-import { fileTag, flaggedChecks, matchesSearch, matchesStateFilter, processingState, sourceTypeLabel } from "../importSources";
+import { fileTag, flaggedChecks, matchesSearch, matchesStateFilter, matchesTypeFilter, processingState, sortSources, sourceGroup, sourceTypeLabel } from "../importSources";
 
 describe("processing state", () => {
   it("reads a stored failure or partial read before anything previewed", () => {
@@ -89,5 +89,52 @@ describe("questionnaires and guides by their type", () => {
     expect(sourceTypeLabel("instrument", null, undefined, "interview_guide")).toBe("Interview guide");
     expect(sourceTypeLabel("instrument", null, undefined, "focus_group_guide")).toBe("Focus group guide");
     expect(sourceTypeLabel("instrument", null, undefined, null)).toBe("Questionnaire or guide");
+  });
+});
+
+describe("type groups", () => {
+  it("puts data, tables, output and questionnaires in quant; transcripts and guides in qual; the rest in neither", () => {
+    expect(["table", "output"].map((k) => sourceGroup(k))).toEqual(["quant", "quant"]);
+    expect(sourceGroup("instrument", "questionnaire")).toBe("quant");
+    expect(sourceGroup("transcript")).toBe("qual");
+    expect(sourceGroup("instrument", "focus_group_guide")).toBe("qual");
+    expect(sourceGroup("instrument", "interview_guide")).toBe("qual");
+    expect(sourceGroup("instrument", null)).toBe("context");
+    expect(sourceGroup("evidence")).toBe("context");
+    expect(sourceGroup("report")).toBe("context");
+  });
+  it("filters by group or by one type", () => {
+    const raw = { kindLabel: "Raw data", group: "quant" as const };
+    const guide = { kindLabel: "Focus group guide", group: "qual" as const };
+    expect([matchesTypeFilter("group:quant", raw), matchesTypeFilter("group:quant", guide)]).toEqual([true, false]);
+    expect([matchesTypeFilter("group:qual", raw), matchesTypeFilter("group:qual", guide)]).toEqual([false, true]);
+    expect(matchesTypeFilter("Raw data", raw)).toBe(true);
+    expect(matchesTypeFilter("all", guide)).toBe(true);
+  });
+});
+
+describe("sorting the sources", () => {
+  const rows = [
+    { filename: "Wave 10.sav", kindLabel: "Raw data", uploadedAt: "2026-10-19T10:00:00Z" },
+    { filename: "brief.docx", kindLabel: "Brief", uploadedAt: "2026-10-20T09:00:00Z" },
+    { filename: "models", kindLabel: "Statistical output" },
+    { filename: "Wave 2.sav", kindLabel: "Raw data", uploadedAt: "2026-10-18T10:00:00Z" },
+    { filename: "guide.pdf", kindLabel: "Focus group guide", uploadedAt: "2026-10-20T11:00:00Z" },
+  ];
+  const names = (order: Parameters<typeof sortSources>[1]) => sortSources(rows, order).map((r) => r.filename);
+  it("by date, newest or oldest first, a source with no upload time last either way", () => {
+    expect(names("newest")).toEqual(["guide.pdf", "brief.docx", "Wave 10.sav", "Wave 2.sav", "models"]);
+    expect(names("oldest")).toEqual(["Wave 2.sav", "Wave 10.sav", "brief.docx", "guide.pdf", "models"]);
+  });
+  it("by type in the Add files order, newest first within a type", () => {
+    expect(names("type")).toEqual(["brief.docx", "Wave 10.sav", "Wave 2.sav", "models", "guide.pdf"]);
+  });
+  it("by name, numbers in number order and case ignored", () => {
+    expect(names("name")).toEqual(["brief.docx", "guide.pdf", "models", "Wave 2.sav", "Wave 10.sav"]);
+  });
+  it("leaves the list it was given unchanged", () => {
+    const before = rows.map((r) => r.filename);
+    sortSources(rows, "name");
+    expect(rows.map((r) => r.filename)).toEqual(before);
   });
 });

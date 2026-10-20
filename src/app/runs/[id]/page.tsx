@@ -110,7 +110,7 @@ import DataAuditPanel from "./DataAuditPanel";
 import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
 import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
-import { flaggedChecks, sourceTypeLabel } from "@/lib/importSources";
+import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources";
 import { getDocumentRoles } from "@/lib/researchQualityRepository";
 import { getInstrumentSummaries, getConfirmedItemsForData } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
@@ -5069,6 +5069,7 @@ export default async function RunPage({
               : null,
           purposeText: purpose.text,
           nextStep: purpose.nextStep,
+          typeGroup: sourceGroup(d.kind, instrument?.type),
           autoWork: instrument ? (
             <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} dataDocIds={documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => x.id)} />
           ) : undefined,
@@ -5091,6 +5092,7 @@ export default async function RunPage({
         kind: "output",
         kindLabel: sourceTypeLabel("output", null),
         accent: "border-l-slate-400",
+        typeGroup: "quant",
         isRawData: false,
         dataSetup: null,
         preview: null,

@@ -131,7 +131,17 @@ test("one Add files dialog takes a mixed batch, a type per file, into the Source
   await expect(sources.filter({ visible: true })).toHaveText([/client-brief\.docx/]);
   await page.getByLabel("Filter by type").selectOption({ label: "Report" });
   await expect(sources.filter({ visible: true })).toHaveText([/report\.docx/]);
+  // Groups (Grant, 2026-10-20): the data file is quantitative; nothing here is qualitative.
+  await page.getByLabel("Filter by type").selectOption({ label: "All quantitative files" });
+  await expect(sources.filter({ visible: true })).toHaveText([/golden-survey-documented\.xlsx/]);
+  await page.getByLabel("Filter by type").selectOption({ label: "All qualitative files" });
+  await expect(sources.filter({ visible: true })).toHaveCount(0);
   await page.getByLabel("Filter by type").selectOption({ label: "All types" });
+  // Sorting: by name, then back to newest first.
+  const order = async () => (await sources.evaluateAll((els) => els.map((e) => e.querySelector("button")?.getAttribute("aria-label")?.replace(/^Select /, ""))));
+  await page.getByLabel("Sort sources").selectOption({ label: "Name" });
+  expect(await order()).toEqual(["client-brief.docx", "golden-survey-documented.xlsx", "report.docx"]);
+  await page.getByLabel("Sort sources").selectOption({ label: "Newest first" });
   await page.getByLabel("Filter by state").selectOption({ label: "Needs review" });
   await expect(sources.filter({ visible: true })).toHaveCount(0);
   await expect(page.getByTestId("source-filter-note")).toContainText("No sources match");
