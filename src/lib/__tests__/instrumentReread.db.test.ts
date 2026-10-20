@@ -4,7 +4,7 @@ import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type 
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
-const state = vi.hoisted(() => ({ partial: false }));
+const state = vi.hoisted(() => ({ partial: false, empty: false }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
@@ -12,6 +12,7 @@ vi.mock("../crosstabs", () => ({ loadVariableDictionary: vi.fn() }));
 vi.mock("../extractFindings", () => ({ extractDocumentText: vi.fn(async () => ({ fullText: "Synthetic questionnaire", pages: [{ pageNumber: 1, text: "FIRST_CHUNK " + "a".repeat(14000) }, { pageNumber: 2, text: "SECOND_CHUNK " + "b".repeat(14000) }] })) }));
 vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "controlled", anthropic: { messages: { create: vi.fn(async (request: { messages: { content: string }[] }) => {
   const second = request.messages[0].content.includes("SECOND_CHUNK");
+  if (state.empty) return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [] } }] };
   if (second && state.partial) throw new Error("Synthetic second-chunk outage");
   return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [{ code: second ? "Q2" : "Q1", text: second ? "Second question" : "First question", options: [{ code: "1", label: "Yes" }, { code: "2", label: "No" }], routing_text: null, section: null }] } }] };
 } ) } } }));
@@ -43,6 +44,17 @@ describe.skipIf(!TEST_DATABASE_URL)("IMP-012 instrument reread persistence", () 
     expect(await readInstrumentAction(run,instrument)).toMatchObject({ ok: true, complete: true, items: 2 });
     expect(await getInstrumentLinks(tenant,instrument)).toMatchObject([{ id: link, status: "confirmed" }]);
     expect((await getInstrumentSummaries(tenant,run)).get(instrument)).toMatchObject({ readStatus: { complete: true } });
+  });
+  it("a failed read is recorded for the automatic first read, and a later finished read supersedes it", async () => {
+    const { readInstrumentAction } = await import("../instrumentActions");
+    const { getInstrumentSummaries } = await import("../instruments");
+    const fresh = (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,instrument_type) values($1,$2,'instrument','guide.docx','synthetic2','focus_group_guide') returning id", [tenant,run])).rows[0].id;
+    state.empty = true;
+    expect(await readInstrumentAction(run, fresh)).toMatchObject({ ok: false, error: expect.stringMatching(/No question items/) });
+    expect((await getInstrumentSummaries(tenant, run)).get(fresh)).toMatchObject({ items: 0, readFailure: expect.stringMatching(/No question items/) });
+    state.empty = false;
+    expect(await readInstrumentAction(run, fresh)).toMatchObject({ ok: true, complete: true });
+    expect((await getInstrumentSummaries(tenant, run)).get(fresh)?.readFailure).toBeUndefined();
   });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("IMP-012 instrument reread persistence", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

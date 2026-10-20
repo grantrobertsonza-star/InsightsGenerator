@@ -112,6 +112,8 @@ export type SourceRow = {
   nextStep?: ReactNode;
   /** The file's colour bar (a border-l class), matching its card under Analysis, as the earlier cards had. */
   accent?: string;
+  /** Work this source starts by itself on Import, whichever source is selected (a questionnaire's first read). */
+  autoWork?: ReactNode;
   /** The tabs after Preview and Setup, in order. */
   panels: SourcePanel[];
   initial: TranscriptSetup | null;
@@ -289,6 +291,10 @@ export function SelectedFileDetail() {
           ))}
         </div>
       )}
+      {/* Each source's own start-up work (InstrumentAutoRead), for every source, not only the selected one. */}
+      <div className="hidden">
+        {rows.map((r) => (r.autoWork ? <span key={r.documentId}>{r.autoWork}</span> : null))}
+      </div>
       <div className="p-5">
         {row?.preview && (
           <div role="tabpanel" aria-labelledby="source-tab-preview" className={active === "preview" ? "" : "hidden"}>

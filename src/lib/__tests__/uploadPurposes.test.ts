@@ -14,7 +14,10 @@ describe("upload purposes", () => {
       ["Statistical output", "outputFiles"],
       ["Qual data", "transcriptFiles"],
       ["Report", "reportFiles"],
-      ["Questionnaire or guide", "instrumentFiles"],
+      // Three types, three fields (Grant, 2026-10-20): no separate step to say which it is.
+      ["Questionnaire", "questionnaireFiles"],
+      ["Interview guide", "interviewGuideFiles"],
+      ["Focus group guide", "focusGroupGuideFiles"],
     ]);
   });
 
@@ -29,7 +32,8 @@ describe("upload purposes", () => {
   it("refuses a file whose extension the chosen type cannot read, and says which it takes", () => {
     expect(purposeMismatch("survey.xlsx", "raw")).toBeNull();
     expect(purposeMismatch("survey.xlsx", "brief")).toBe("Brief takes .pdf, .docx, .txt files, not .xlsx.");
-    expect(purposeMismatch("guide.txt", "instrument")).toBe("Questionnaire or guide takes .pdf, .docx files, not .txt.");
+    expect(purposeMismatch("guide.txt", "focus_group_guide")).toBe("Focus group guide takes .pdf, .docx files, not .txt.");
+    expect(purposeMismatch("questionnaire.docx", "questionnaire")).toBeNull();
     expect(purposeMismatch("README", "proposal")).toMatch(/not a file with no extension\.$/);
     // Reports and transcripts take any file; the server reads what it can.
     expect(purposeMismatch("deck.pptx", "report")).toBeNull();

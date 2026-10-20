@@ -82,3 +82,12 @@ describe("flagged checks", () => {
     expect(flaggedChecks([])).toBe(0);
   });
 });
+
+describe("questionnaires and guides by their type", () => {
+  it("names each by the type it was added as, and keeps the joint name when none is recorded", () => {
+    expect(sourceTypeLabel("instrument", null, undefined, "questionnaire")).toBe("Questionnaire");
+    expect(sourceTypeLabel("instrument", null, undefined, "interview_guide")).toBe("Interview guide");
+    expect(sourceTypeLabel("instrument", null, undefined, "focus_group_guide")).toBe("Focus group guide");
+    expect(sourceTypeLabel("instrument", null, undefined, null)).toBe("Questionnaire or guide");
+  });
+});

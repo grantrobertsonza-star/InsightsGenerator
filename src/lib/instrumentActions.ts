@@ -6,6 +6,7 @@ import { loadVariableDictionary } from "./crosstabs";
 import {
   InstrumentLinkTakenError,
   chooseInstrumentLink,
+  recordInstrumentReadFailure,
   getInstrumentItems,
   getInstrumentLinks,
   readInstrumentItems,
@@ -37,7 +38,12 @@ export async function readInstrumentAction(
     revalidatePath(`/runs/${runId}`);
     return { ok: true, items: r.count, complete: r.complete, failedChunks: r.failedChunks, incompleteItems: r.incompleteItems };
   } catch (e) {
-    return { ok: false, error: explain(e) };
+    const error = explain(e);
+    // Recorded, so the Import screen's automatic first read (useInstrumentAutoStart) does not pay to
+    // try again on every visit; the card shows the reason, and "Read" again is the researcher's retry.
+    await recordInstrumentReadFailure(TENANT_ID, runId, documentId, error).catch(() => {});
+    revalidatePath(`/runs/${runId}`);
+    return { ok: false, error };
   }
 }
 

@@ -136,8 +136,10 @@ export default function InstrumentCard({
       {!read ? (
         <div className="space-y-2">
           <p className="text-muted">
-            {autoStart && !shownError
+            {auto.running
               ? "Reading now. This can take a minute and runs by itself."
+              : summary.readFailure && !shownError
+              ? `The last read failed: ${summary.readFailure} Read it again to try once more.`
               : isGuide
               ? "Read the guide to list its questions and probes. They will be matched to the questions asked in your transcripts."
               : "Read the questionnaire to list its questions, answer options and skip instructions. They are then matched to your data file's variables."}

@@ -436,6 +436,8 @@ export type InstrumentSummary = {
   /** Questions with at least one suggested link still waiting for the researcher (a grid question's many links count once). */
   itemsToCheck: number;
   readStatus?: { complete: boolean; failedChunks: number; incompleteItems: number };
+  /** The reason the latest read failed, when it is newer than any finished read. */
+  readFailure?: string;
 };
 
 export async function getInstrumentSummaries(tenantId: string, runId: string): Promise<Map<string, InstrumentSummary>> {
@@ -492,6 +494,20 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
         if (typeof detail.documentId !== "string" || typeof detail.complete !== "boolean" || !Number.isInteger(detail.failedChunks) || !Number.isInteger(detail.incompleteItems)) continue;
         const summary = out.get(detail.documentId);
         if (summary) summary.readStatus = { complete: detail.complete, failedChunks: Number(detail.failedChunks), incompleteItems: Number(detail.incompleteItems) };
+      }
+      // A failed read counts when it is the latest attempt: a later finished read supersedes it.
+      const failures = await client.query<{ detail: { documentId?: unknown; error?: unknown }; superseded: boolean }>(
+        `select distinct on (f.detail->>'documentId') f.detail,
+                exists (select 1 from trace t where t.run_id = f.run_id and t.event = 'instrument_read_finished'
+                          and t.detail->>'documentId' = f.detail->>'documentId' and t.occurred_at >= f.occurred_at) as superseded
+         from trace f where f.run_id = $1 and f.event = 'instrument_read_failed'
+         order by f.detail->>'documentId', f.occurred_at desc, f.id desc`,
+        [runId],
+      );
+      for (const { detail, superseded } of failures.rows) {
+        if (superseded || typeof detail.documentId !== "string" || typeof detail.error !== "string") continue;
+        const summary = out.get(detail.documentId);
+        if (summary) summary.readFailure = detail.error;
       }
     });
   } catch {
@@ -590,5 +606,12 @@ export async function chooseInstrumentLink(
       [tenantId, runId, itemId, dataDocumentId, variable],
     );
     return { linkId: r.rows[0].id };
+  });
+}
+
+/** Records that a read of a questionnaire or guide failed, with the reason shown to the researcher. */
+export async function recordInstrumentReadFailure(tenantId: string, runId: string, documentId: string, error: string): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_failed',$3)", [tenantId, runId, JSON.stringify({ documentId, error: error.slice(0, 500) })]);
   });
 }

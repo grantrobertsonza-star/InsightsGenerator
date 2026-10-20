@@ -44,8 +44,8 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
   await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "brief");
 
-  // The questionnaire, through the Questionnaire or guide control.
-  await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire or guide");
+  // The questionnaire, added as a Questionnaire (one of three types since 2026-10-20).
+  await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire");
   const dataRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select golden-survey-documented.xlsx", exact: true }) });
   await expect(dataRow.getByTestId("linked-instrument")).toContainText("1 linked document", { timeout: 3 * 60_000 });
   // Named on the data file's row, and with its own row too: three files imported, three listed.
@@ -69,7 +69,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
 
   // The questionnaire and the data file each describe themselves in the pane.
   await selectSource(page, "questionnaire.docx");
-  await expect(page.getByTestId("file-purpose-text")).toContainText(/Questionnaire or guide/);
+  await expect(page.getByTestId("file-purpose-text")).toContainText(/^Questionnaire\. /);
   await selectSource(page, "golden-survey-documented.xlsx");
   await expect(page.getByTestId("file-purpose-text")).toContainText(/Case-level data/);
   // 6. The data file's Questionnaire links tab names its questionnaire on one line, not a second copy
@@ -91,7 +91,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(header.getByTestId("file-purpose").getByRole("button", { name: "Open Analysis" })).toBeVisible();
   expect((await header.boundingBox()).y).toBeLessThan((await page.getByRole("tablist", { name: "Parts of the selected source" }).boundingBox()).y);
   await line.getByRole("button", { name: "Show" }).click();
-  await expect(page.getByTestId("file-purpose-text")).toContainText(/Questionnaire or guide/);
+  await expect(page.getByTestId("file-purpose-text")).toContainText(/^Questionnaire\. /);
 
   // The brief: what it is for, and the way to its quality review.
   await selectSource(page, "client-brief.docx");

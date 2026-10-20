@@ -4,7 +4,7 @@
 // under the same form field the old per-type pickers used, so its limits and checks still apply.
 import { LIMITS_CAPTION } from "./importLimits";
 
-export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "instrument";
+export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide";
 
 export type UploadPurpose = {
   id: UploadPurposeId;
@@ -16,8 +16,11 @@ export type UploadPurpose = {
   hint: string;
 };
 
-// In Grant's order: context first, then data, then what was written from it; a questionnaire last,
-// since it is linked to the data or transcripts it belongs to.
+// In Grant's order: context first, then data, then what was written from it; questionnaires and
+// guides last, since each is linked to the data or transcripts it belongs to. Questionnaire,
+// interview guide and focus group guide are three types (Grant, 2026-10-20), each sent under its own
+// field, so a batch can mix them and no separate "which is it" step is needed: a questionnaire is
+// matched to a raw data file, a guide to the transcripts.
 export const UPLOAD_PURPOSES: UploadPurpose[] = [
   { id: "brief", label: "Brief", field: "briefFiles", extensions: [".pdf", ".docx", ".txt"], hint: "The research brief: context, and checked in Research quality review." },
   { id: "proposal", label: "Proposal", field: "proposalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "A research proposal: context, and checked in Research quality review." },
@@ -26,7 +29,9 @@ export const UPLOAD_PURPOSES: UploadPurpose[] = [
   { id: "output", label: "Statistical output", field: "outputFiles", extensions: [".zip", ".csv", ".tsv", ".xlsx", ".xls", ".txt", ".md", ".docx"], hint: "A zip of models, clusters and logs." },
   { id: "transcript", label: "Qual data", field: "transcriptFiles", extensions: null, hint: "Transcripts, coded or uncoded." },
   { id: "report", label: "Report", field: "reportFiles", extensions: null, hint: "PDF, Word or PowerPoint, read for the findings it states." },
-  { id: "instrument", label: "Questionnaire or guide", field: "instrumentFiles", extensions: [".pdf", ".docx"], hint: "Linked to your data or transcripts." },
+  { id: "questionnaire", label: "Questionnaire", field: "questionnaireFiles", extensions: [".pdf", ".docx"], hint: "A survey questionnaire: read, then matched to your raw data file's variables." },
+  { id: "interview_guide", label: "Interview guide", field: "interviewGuideFiles", extensions: [".pdf", ".docx"], hint: "Read, then checked against your interview transcripts." },
+  { id: "focus_group_guide", label: "Focus group guide", field: "focusGroupGuideFiles", extensions: [".pdf", ".docx"], hint: "Read, then checked against your focus group transcripts." },
 ];
 
 export function purposeById(id: UploadPurposeId): UploadPurpose {

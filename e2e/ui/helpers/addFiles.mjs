@@ -1,7 +1,8 @@
 // The one way the browser checks add files on the Import screen (Grant's two-pane layout,
 // 2026-10-19; a dialog from 2026-10-20): open the Add files dialog if it is closed, choose the
 // files, give each the type named by `type` (its label in the panel, e.g. "Raw data",
-// "Questionnaire or guide"), press Upload, and wait for the dialog to close or show its error. Kept in one place so a later change to the panel touches one helper, not every check.
+// "Questionnaire", "Focus group guide"), press Upload, and wait for the dialog to close or show
+// its error. Kept in one place so a later change to the panel touches one helper, not every check.
 // `files` is anything Playwright's setInputFiles takes: a path, a list of paths, or
 // { name, mimeType, buffer } objects. The page must already show the Import section.
 import { expect } from "@playwright/test";

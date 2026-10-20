@@ -95,7 +95,7 @@ test("one Add files dialog takes a mixed batch, a type per file, into the Source
   await expect(variables.getByText("golden-survey-documented.xlsx", { exact: true })).toHaveCount(0);
   await expect(selected).toContainText("golden-survey-documented.xlsx");
   await expect(selected.getByTestId("source-processing")).toHaveText(/^Processing: (Read|Reading)$/);
-  await expect(page.getByRole("tab")).toHaveText(["Preview", "Setup", "Variables", "Data quality", "Questionnaire links"], { timeout: 3 * 60_000 });
+  await expect(page.getByRole("tab")).toHaveText(["Preview", "Setup", "Variables", "Data quality", "Weights and missing codes", "Questionnaire links"], { timeout: 3 * 60_000 });
   await expect(selected.getByTestId("source-acceptance")).toHaveText("Setup: Accepted", { timeout: 60_000 });
   await expect(source("golden-survey-documented.xlsx").getByTestId("source-row-acceptance")).toHaveText("Accepted");
   await openSourceTab(page, "Setup");

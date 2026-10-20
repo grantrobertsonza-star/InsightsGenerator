@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
@@ -120,6 +119,7 @@ import { loadVariableDictionary, resolveCurrentDesignSnapshotStatus, designFresh
 import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverrides";
 import type { VariableDictionary } from "@/lib/parseStatsFile";
 import InstrumentCard from "./InstrumentCard";
+import InstrumentAutoRead from "./InstrumentAutoRead";
 import AttachedInstruments from "./AttachedInstruments";
 import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
 import AcceptDataButton from "./AcceptDataButton";
@@ -3571,8 +3571,16 @@ export default async function RunPage({
         };
       case "report":
         return { text: `Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`, nextStep: <GoToSection key="next-step" id="findings">Open Findings</GoToSection> };
-      case "instrument":
-        return { text: "Questionnaire or guide. Link it to the data file or transcripts it belongs to so answers carry its wording and codes.", nextStep: null };
+      case "instrument": {
+        const type = instrumentSummaries.get(d.id)?.type;
+        return {
+          text:
+            type === "interview_guide" || type === "focus_group_guide"
+              ? `${type === "interview_guide" ? "Interview guide" : "Focus group guide"}. Read once it is added, then checked against your transcripts: which of its questions each session raised.`
+              : "Questionnaire. Read once it is added, then matched to your raw data file's variables, so answers carry its wording and codes once you confirm the links.",
+          nextStep: null,
+        };
+      }
       case "table":
         return {
           text: d.ingestion_type === "raw" ? "Case-level data. Build tables in Cross tabs and run analyses in Analytics once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`,
@@ -4962,12 +4970,11 @@ export default async function RunPage({
               label: "Data quality",
               badge: qualityBadge(tableFlags),
               node: (
-                <Fragment key="panel">
-                  <ImportQualityPanel tables={ownTables} hasReportOnly={false} withinSource />
-                  <DataAuditPanel runId={id} documentId={d.id} />
-                </Fragment>
+                <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource />
               ),
             });
+            // Its own tab (Grant, 2026-10-20), read from the whole file when the tab is first shown.
+            panels.push({ id: "weights", label: "Weights and missing codes", node: <DataAuditPanel key="panel" runId={id} documentId={d.id} asTab /> });
           } else if (!isRaw && (documentTablesByDocument.get(d.id) ?? []).length > 0) {
             const aggregated = computeAggregatedQuality(
               (documentTablesByDocument.get(d.id) ?? [])
@@ -5001,6 +5008,7 @@ export default async function RunPage({
                 runId={id}
                 documentId={d.id}
                 summary={instrument}
+                autoStart
                 dataDocs={
                   instrument.type === "questionnaire" || instrument.type === null
                     ? documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => ({ id: x.id, name: x.source_filename }))
@@ -5020,7 +5028,7 @@ export default async function RunPage({
           runId: id,
           filename: d.source_filename,
           kind: d.kind,
-          kindLabel: sourceTypeLabel(d.kind, d.ingestion_type, contextRoles === null ? undefined : (contextRoles.get(d.id) ?? [])),
+          kindLabel: sourceTypeLabel(d.kind, d.ingestion_type, contextRoles === null ? undefined : (contextRoles.get(d.id) ?? []), instrument?.type),
           uploadedAt: d.uploaded_at,
           isRawData: isRaw,
           dataSetup: dataSetups.get(d.id) ?? null,
@@ -5061,6 +5069,9 @@ export default async function RunPage({
               : null,
           purposeText: purpose.text,
           nextStep: purpose.nextStep,
+          autoWork: instrument ? (
+            <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} dataDocIds={documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => x.id)} />
+          ) : undefined,
           // The same colour as this file's card under Cross tabs, Analytics, Coding and Reports and decks.
           accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,
           panels,

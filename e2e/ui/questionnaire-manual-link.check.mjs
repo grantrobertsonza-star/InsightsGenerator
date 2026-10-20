@@ -33,7 +33,7 @@ test("a question with no match can be linked by hand to a variable from the data
     const run = await ui.createRun({ name: `manual-link-${Date.now()}` });
     await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
     await expect.poll(async () => Number((await db.query("select count(*) from document_tables where run_id=$1", [run.id])).rows[0].count), { timeout: 120_000 }).toBeGreaterThan(0);
-    await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire or guide");
+    await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire");
     await expect(page.getByTestId("source-row")).toHaveCount(2, { timeout: 120_000 });
     const instrument = (await db.query("select id, tenant_id from documents where run_id=$1 and kind='instrument'", [run.id])).rows[0];
     for (const [order, code, text] of [[0, "Region", "Which region do you live in?"], [1, "QX", "How likely are you to buy again?"]]) {
@@ -81,6 +81,7 @@ test("a question with no match can be linked by hand to a variable from the data
     const taken = region.getByTestId("variable-picker").getByRole("button", { name: /^Purchase/ });
     await expect(taken).toBeDisabled();
     await expect(taken).toContainText("confirmed for QX");
+    if (process.env.SHOT) await again.screenshot({ path: process.env.SHOT });
     await openSourceTab(page, "Questionnaire links");
   } finally {
     await db.end();

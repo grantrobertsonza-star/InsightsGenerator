@@ -27,7 +27,6 @@ const sizeText = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}
 export default function AddFilesPanel({ runId }: { runId: string }) {
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<Picked[]>([]);
-  const [instrumentType, setInstrumentType] = useState("questionnaire");
   const [outputWave, setOutputWave] = useState("");
   const [dragging, setDragging] = useState(false);
   const [pending, start] = useTransition();
@@ -59,7 +58,6 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
     // Only these go: files chosen while this upload runs stay in the list for the next one.
     const sent = new Set(picked.map((p) => p.key));
     for (const p of picked) if (p.purpose !== "") data.append(purposeById(p.purpose).field, p.file);
-    data.set("instrumentType", instrumentType);
     data.set("outputWave", outputWave);
     setMessage(null);
     setError(null);
@@ -184,16 +182,6 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
                 </li>
               ))}
             </ul>
-          )}
-          {has("instrument") && (
-            <label className="flex flex-col gap-1 text-xs text-muted">
-              The questionnaire or guide is a
-              <select value={instrumentType} onChange={(e) => setInstrumentType(e.target.value)} className="w-fit rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground">
-                <option value="questionnaire">survey questionnaire</option>
-                <option value="interview_guide">interview guide</option>
-                <option value="focus_group_guide">focus group guide</option>
-              </select>
-            </label>
           )}
           {has("output") && (
             <label className="flex flex-col gap-1 text-xs text-muted">

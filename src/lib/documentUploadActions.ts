@@ -62,7 +62,14 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   const tables = files("tableFiles");
   const raw = files("rawTableFiles");
   const transcripts = files("transcriptFiles");
+  // A questionnaire or guide comes under its own field per type (the Add files panel, 2026-10-20), or,
+  // from older forms, under instrumentFiles with one instrumentType for the batch.
   const instruments = files("instrumentFiles");
+  const typed: [File, InstrumentTypeChoice][] = [
+    ...files("questionnaireFiles").map((f): [File, InstrumentTypeChoice] => [f, "questionnaire"]),
+    ...files("interviewGuideFiles").map((f): [File, InstrumentTypeChoice] => [f, "interview_guide"]),
+    ...files("focusGroupGuideFiles").map((f): [File, InstrumentTypeChoice] => [f, "focus_group_guide"]),
+  ];
   const outputs = files("outputFiles");
   const briefs = files("briefFiles");
   const proposals = files("proposalFiles");
@@ -73,7 +80,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     typeof typeRaw === "string" && (INSTRUMENT_TYPES as readonly string[]).includes(typeRaw)
       ? (typeRaw as InstrumentTypeChoice)
       : "questionnaire";
-  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...outputs, ...briefs, ...proposals];
+  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...typed.map(([f]) => f), ...outputs, ...briefs, ...proposals];
   if (all.length === 0) return { ok: false, error: "Choose at least one file first.", added: [] };
 
   const added: string[] = [];
@@ -85,6 +92,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     ...raw.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "table", f, "raw")]),
     ...transcripts.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "transcript", f)]),
     ...instruments.map((f): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "instrument", f, undefined, instrumentType)]),
+    ...typed.map(([f, type]): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "instrument", f, undefined, type)]),
     ...briefs.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "brief")]),
     ...proposals.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "proposal")]),
   ];

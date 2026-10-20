@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadVariablesAction } from "@/lib/crosstabActions";
 import type { DataAudit, WeightAudit } from "@/lib/parseStatsFile";
 
@@ -21,31 +21,47 @@ function weightNotes(w: WeightAudit): string[] {
 }
 
 /**
- * Weights and missing codes for a case-level data file. Loaded when opened,
- * because it needs the whole file read once (afterwards it is cached).
+ * Weights and missing codes for a case-level data file. Loaded when first shown, because it needs
+ * the whole file read once (afterwards it is cached): when its fold is opened, or, as its own tab
+ * in the Import screen (`asTab`, Grant 2026-10-20), when the tab first comes into view. The tab is
+ * mounted, hidden, as soon as its file is selected, so "shown" is watched rather than "mounted":
+ * selecting a file must not read the whole file for a tab nobody opened.
  */
-export default function DataAuditPanel({ runId, documentId }: { runId: string; documentId: string }) {
+export default function DataAuditPanel({ runId, documentId, asTab = false }: { runId: string; documentId: string; asTab?: boolean }) {
   const [audit, setAudit] = useState<DataAudit | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
 
-  function load() {
-    if (audit !== undefined) return;
+  // Once per mounted panel, however it is first shown (the fold, or the tab coming into view).
+  const requested = useRef(false);
+  const load = useCallback(() => {
+    if (requested.current) return;
+    requested.current = true;
     setAudit(null);
     void loadVariablesAction(runId, documentId).then((r) => {
       if (r.ok) setAudit(r.dictionary.audit ?? null);
       else setError(r.error);
     });
-  }
+  }, [runId, documentId]);
 
-  return (
-    <details
-      className="mt-3 rounded-lg border border-border bg-white p-3"
-      onToggle={(e) => {
-        if ((e.target as HTMLDetailsElement).open) load();
-      }}
-    >
-      <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">Weights and missing codes</summary>
-      <div className="mt-3 space-y-3 text-xs text-foreground">
+  useEffect(() => {
+    if (!asTab || !root.current) return;
+    if (typeof IntersectionObserver === "undefined") {
+      load();
+      return;
+    }
+    const watch = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        load();
+        watch.disconnect();
+      }
+    });
+    watch.observe(root.current);
+    return () => watch.disconnect();
+  }, [asTab, load]);
+
+  const body = (
+      <div className={`${asTab ? "" : "mt-3 "}space-y-3 text-xs text-foreground`}>
         {error && <p className="text-danger">{error}</p>}
         {!error && audit === null && <p className="text-muted">Reading the file…</p>}
         {audit && (
@@ -102,6 +118,23 @@ export default function DataAuditPanel({ runId, documentId }: { runId: string; d
           </>
         )}
       </div>
+  );
+  if (asTab) {
+    return (
+      <div ref={root} data-testid="data-audit">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <details
+      className="mt-3 rounded-lg border border-border bg-white p-3"
+      onToggle={(e) => {
+        if ((e.target as HTMLDetailsElement).open) load();
+      }}
+    >
+      <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">Weights and missing codes</summary>
+      {body}
     </details>
   );
 }

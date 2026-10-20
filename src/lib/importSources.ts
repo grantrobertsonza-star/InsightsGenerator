@@ -113,8 +113,9 @@ export function fileTag(filename: string, kind: string): string {
  * Briefs and proposals are both stored as context ("evidence"); their Research quality roles (recorded
  * at upload, changeable in Research quality) say which. `roles` undefined means the roles could not be
  * read, and a context file with no brief or proposal role is named for both, rather than guessed.
+ * A questionnaire or guide is named by its stored type; with none recorded it keeps the joint name.
  */
-export function sourceTypeLabel(kind: string, ingestionType: string | null, roles?: readonly string[]): string {
+export function sourceTypeLabel(kind: string, ingestionType: string | null, roles?: readonly string[], instrumentType?: string | null): string {
   switch (kind) {
     case "table":
       return ingestionType === "raw" ? "Raw data" : "Aggregated tables";
@@ -128,7 +129,8 @@ export function sourceTypeLabel(kind: string, ingestionType: string | null, role
       return brief && proposal ? "Brief and proposal" : brief ? "Brief" : proposal ? "Proposal" : "Brief or proposal";
     }
     case "instrument":
-      return "Questionnaire or guide";
+      // Named by the type it was added as (Grant, 2026-10-20: three types in Add files).
+      return INSTRUMENT_LABEL[instrumentType ?? ""] ?? "Questionnaire or guide";
     case "output":
       return "Statistical output";
     default:
@@ -140,3 +142,5 @@ export function sourceTypeLabel(kind: string, ingestionType: string | null, role
 export function flaggedChecks(checks: readonly { status: string }[]): number {
   return checks.filter((c) => c.status === "warn" || c.status === "fail").length;
 }
+
+const INSTRUMENT_LABEL: Record<string, string> = { questionnaire: "Questionnaire", interview_guide: "Interview guide", focus_group_guide: "Focus group guide" };
