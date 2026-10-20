@@ -1,5 +1,7 @@
-// IMP-017: two uploads at both limits (20,000,000 bytes and 100,000 cases) at the same time, three
-// rounds, through the real browser on the disposable stack. Ported from Codex's
+// IMP-017: two uploads at the case limit (100,000 cases) at the same time, in 20,000,000-byte files,
+// three rounds. The byte limit is now 100,000,000 (api/import-limits.json), so this check does NOT test
+// uploads at the byte limit; over-limit-refusal and large-spss-crosstab cover the byte limit. Runs
+// through the real browser on the disposable stack. Ported from Codex's
 // repair7/concurrent-boundary-native-v12.mjs, whose first invocation left one project with no
 // document after "Upload of ... failed: fetch failed".
 // Each upload must end in one of the two acceptable outcomes:
@@ -35,7 +37,7 @@ if (target.disposable !== true || !/^\/ie_e2e_[a-f0-9]{10}$/.test(dbUrl.pathname
 }
 const ROUNDS = Number(process.env.CONCURRENT_ROUNDS ?? 3);
 
-test("concurrent exact-limit uploads either complete or fail visibly with nothing left behind", async ({ browser }, testInfo) => {
+test("concurrent case-limit uploads either complete or fail visibly with nothing left behind", async ({ browser }, testInfo) => {
   test.setTimeout(30 * 60_000);
   const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
   await db.connect();

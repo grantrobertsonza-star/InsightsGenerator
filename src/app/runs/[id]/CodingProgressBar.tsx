@@ -22,7 +22,16 @@ function eta(ms: number): string {
  * It shows the current pass; a stability check names its pass in the label. If nothing has finished for
  * a while it says the model is still working, since a few slow calls are normal.
  */
-export default function CodingProgressBar({ runId, active }: { runId: string; active: boolean }) {
+export default function CodingProgressBar({
+  runId,
+  active,
+  documentId,
+}: {
+  runId: string;
+  active: boolean;
+  /** Show only this transcript's progress (Code themes on one card); all of the run's otherwise. */
+  documentId?: string;
+}) {
   const [entries, setEntries] = useState<Entry[]>([]);
   // When the last poll answered: the "still working" hint compares against this rather than
   // reading the clock during render (the bar re-renders on every poll, so the timing is the same).
@@ -40,7 +49,7 @@ export default function CodingProgressBar({ runId, active }: { runId: string; ac
         if (!response.ok || cancelled) return;
         const data = (await response.json()) as { progress: Entry[] };
         if (!cancelled) {
-          setEntries(data.progress);
+          setEntries(documentId ? data.progress.filter((p) => p.documentId === documentId) : data.progress);
           setPolledAt(Date.now());
         }
       } catch {
@@ -53,7 +62,7 @@ export default function CodingProgressBar({ runId, active }: { runId: string; ac
       cancelled = true;
       clearInterval(timer);
     };
-  }, [active, runId]);
+  }, [active, runId, documentId]);
 
   if (!active || entries.length === 0) return null;
   return (

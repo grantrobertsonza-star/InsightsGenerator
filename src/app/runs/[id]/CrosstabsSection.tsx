@@ -31,7 +31,7 @@ export default function CrosstabsSection({ runId, datasets, findings }: { runId:
           <p>Driver analysis, NPS, charts and the other analyses are under Analytics.</p>
         </>
       }
-      emptyText="No data files yet. Add a survey data file (SPSS, Stata, SAS, CSV or Excel) in Sources, then build tables here."
+      emptyText="No data files yet. Add a survey data file (SPSS, Stata, CSV or Excel; SAS files are not supported yet) in Sources, then build tables here."
       aggregatedText="This file holds tables that are already aggregated, so there is no variable list to cross-tabulate. Generate findings from its tables below."
       datasets={datasets}
       findings={findings}

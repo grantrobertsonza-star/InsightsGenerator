@@ -125,7 +125,7 @@ const fmtPct = (v: number) => (v === 0 ? "0" : v.toFixed(1));
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 
 /**
- * Full-window crosstab workspace for SPSS, Stata and SAS files.
+ * Crosstab workspace for case-level files (SPSS, Stata, CSV and Excel; SAS imports are refused, importLimits.ts).
  * Left: every variable in a sortable table (name, label, responses, asked of).
  * Right: choose banner (column) variables and row questions, add the table to
  * a draft set, review each one, then commit the set to generate findings.
@@ -1801,15 +1801,20 @@ function TableCard({
 
   return (
     <div ref={ref} className="rounded-xl border border-border bg-white shadow-sm">
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* The row wraps (Codex IR-08, 2026-10-20): in a narrow results pane the action buttons keep
+          their width, so the title and its "may be outdated" qualifications used to shrink to zero
+          width. The title keeps at least 16rem and its labels wrap under it; the actions drop to
+          the next line instead. */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          data-testid="crosstab-table-toggle"
+          className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-x-2 gap-y-1 text-left"
         >
           <span className="text-xs text-muted">{open ? "▾" : "▸"}</span>
-          <span className="truncate text-sm font-medium text-foreground" title={title}>
+          <span className="min-w-0 max-w-full truncate text-sm font-medium text-foreground" title={title}>
             {title}
           </span>
           {layerBadge && (
@@ -1849,6 +1854,7 @@ function TableCard({
             </span>
           )}
         </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -1897,6 +1903,7 @@ function TableCard({
         >
           Delete
         </button>
+        </div>
       </div>
       {open && (
         <div className="border-t border-border p-3">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useGoToSection } from "./RunShell";
 import { Pane, ThreePane } from "./ThreePane";
 
@@ -66,12 +66,27 @@ export default function DocumentPicker({
 }) {
   const goTo = useGoToSection();
   const [selectedId, setSelectedId] = useState<string | null>(items[0]?.id ?? null);
+  // Files opened so far. Their cards stay mounted, hidden, when another file is chosen (Codex IR-07,
+  // 2026-10-20): a remount used to drop a running "Code themes" job's progress (so it looked idle and
+  // could be started again) and any file chosen but not yet sent. Each file keeps its own subtree,
+  // keyed by its id, so one file's state never shows on another. A file that has left the list (for
+  // example deleted in Sources) is simply not rendered, and the selection falls back to the first.
+  const [opened, setOpened] = useState<string[]>([]);
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
+  const shown = items.filter((i) => i.id === selected?.id || opened.includes(i.id));
+  const choose = (id: string) => {
+    setOpened((o) => (selected && !o.includes(selected.id) ? [...o, selected.id] : o));
+    setSelectedId(id);
+  };
   // The file's state rides in the option text, since a native list cannot show the row badges.
   const optionText = (i: PickerItem) => [i.name, i.meta, i.flag].filter(Boolean).join(" · ");
   const work = selected && (
     <Pane side="workspace" title={workLabel}>
-      <Fragment key={`node-${selected.id}`}>{selected.node}</Fragment>
+      {shown.map((i) => (
+        <div key={`node-${i.id}`} className={i.id === selected.id ? "contents" : "hidden"}>
+          {i.node}
+        </div>
+      ))}
     </Pane>
   );
   return (
@@ -83,7 +98,7 @@ export default function DocumentPicker({
             <select
               aria-label={chooserLabel}
               value={selected?.id ?? ""}
-              onChange={(e) => setSelectedId(e.target.value)}
+              onChange={(e) => choose(e.target.value)}
               className="max-w-[28rem] rounded-lg border border-primary/40 bg-white px-2.5 py-1.5 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
               data-testid={`${testId}-select`}
             >
@@ -123,11 +138,11 @@ export default function DocumentPicker({
           middle={work}
           right={
             <Pane side="workspace" title={sideLabel}>
-              {selected.side ? (
-                <Fragment key={`side-${selected.id}`}>{selected.side}</Fragment>
-              ) : (
-                <p className="text-sm text-slate-600">{sideEmpty}</p>
-              )}
+              {shown.map((i) => (
+                <div key={`side-${i.id}`} className={i.id === selected.id ? "contents" : "hidden"}>
+                  {i.side ?? <p className="text-sm text-slate-600">{sideEmpty}</p>}
+                </div>
+              ))}
             </Pane>
           }
         />

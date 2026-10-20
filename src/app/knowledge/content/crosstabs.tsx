@@ -54,7 +54,7 @@ export default function CrosstabGuide() {
 
       <H2 id="data">What survey data usually looks like</H2>
       <P>
-        Survey data comes as a file from SPSS (.sav), Stata or SAS, or as a CSV or Excel sheet with one row per person. Think of one big grid. <strong>Each row is a
+        Survey data comes as a file from SPSS (.sav) or Stata (SAS files are not supported yet), or as a CSV or Excel sheet with one row per person. Think of one big grid. <strong>Each row is a
         respondent and each column is a variable</strong>, usually one question or one answer option. Large national
         surveys have thousands of rows and thousands of columns. The app never loads the whole grid into the page.
         It keeps your file in storage, reads only the list of variables for the picker, and computes each table

@@ -182,6 +182,23 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     await choose("client-brief.docx");
     expect((await reviewsListed()).filter((t) => t.startsWith("Brief review"))).toHaveLength(1);
     await choose("report.docx");
+    // Codex IR-11: proposal, brief, proposal in quick succession, with the server's answers slowed,
+    // still shows the proposal's own review (the brief's late answer used to replace it with
+    // "No review yet").
+    const slow = async (route) => {
+      if (route.request().method() === "POST" && route.request().headers()["next-action"]) await new Promise((r) => setTimeout(r, 800));
+      await route.continue();
+    };
+    await page.route("**/*", slow);
+    const valueOf = async (name) => documentPicker.locator("option", { hasText: name }).getAttribute("value");
+    await documentPicker.selectOption(await valueOf("client-brief.docx"));
+    await documentPicker.selectOption(await valueOf("report.docx"));
+    await expect(section.getByRole("tab", { name: "Improvements" })).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(2000); // let the brief's late answer arrive
+    await expect(section.getByRole("tab", { name: "Improvements" })).toBeVisible();
+    await expect(section.getByText("No review yet")).toHaveCount(0);
+    expect((await reviewsListed()).filter((t) => t.startsWith("Proposal review"))).toHaveLength(1);
+    await page.unroute("**/*", slow);
     // The Improvements tab lists what to improve, or says there is none.
     await section.getByRole("tab", { name: "Improvements" }).click();
     await expect(section.getByRole("tabpanel", { name: "Improvements" })).toContainText(/\S{10,}/);

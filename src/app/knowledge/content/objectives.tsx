@@ -266,7 +266,7 @@ export default function ObjectiveGuide() {
       <P>
         The right pane also asks the data directly. Each stated objective and confirmed decision is broken into up to
         three questions, written before any table is seen. Each question is answered with a table built from your
-        case-level data files (SPSS, Stata or SAS files, and raw case tables) by the same engine as Cross tabs, and
+        case-level data files (SPSS or Stata files, and raw case tables) by the same engine as Cross tabs, and
         read as supporting, against, mixed, inconclusive or silent. Objectives the app inferred itself are skipped,
         because testing them against the same data would be circular. It does not read the uploaded reports or any
         table you already built or imported.

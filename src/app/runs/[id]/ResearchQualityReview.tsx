@@ -151,7 +151,12 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
   const chooseDoc = (d: Doc) => {
     setDocId(d.id);
     const latest = reviewsOf(view, d.id)[0];
-    if (latest && latest.id !== view.review?.id) openReview(latest.id);
+    // Compared with the review last requested, not the one still on screen (Codex IR-11,
+    // 2026-10-20): switching A, B, A before B's read returned left A unrequested, and B's late
+    // answer then showed "No review yet" for A. Requesting it again makes it the newest load, so the
+    // older one is dropped by the request counter in load().
+    const requested = reviewId ?? view.review?.id ?? null;
+    if (latest && latest.id !== requested) openReview(latest.id);
   };
   return (
     <div data-testid="research-quality">

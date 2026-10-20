@@ -97,7 +97,23 @@ test("a saved group correction computes as corrected, and clearing it computes t
     await expect(setTable).toBeVisible({ timeout: 60_000 });
     const shareText = await setTable.locator("tr", { hasText: "Convenience" }).first().innerText();
     const shares = [...shareText.matchAll(/(\d+(?:\.\d+)?)%/g)].map((m) => Number(m[1]));
-    await expect(dialog.getByRole("button", { name: /^▸ Convenience, all respondents.*may be outdated/ })).toBeVisible();
+    const toggle = dialog.getByRole("button", { name: /^▸ Convenience, all respondents.*may be outdated/ });
+    await expect(toggle).toBeVisible();
+    // Codex IR-08: at the default 1280px viewport the title and its "may be outdated" label had
+    // collapsed to 0px beside the table's action buttons. They must keep a usable width, here and
+    // with the variable pane dragged to its widest (the narrowest results pane).
+    const usable = async () => {
+      expect((await toggle.boundingBox())?.width ?? 0, "table title toggle width").toBeGreaterThanOrEqual(200);
+      expect((await toggle.getByText("may be outdated").boundingBox())?.width ?? 0, "outdated label width").toBeGreaterThan(40);
+    };
+    await usable();
+    const divider = page.getByRole("separator").first();
+    if (await divider.isVisible()) {
+      await divider.focus();
+      await page.keyboard.press("End");
+      await usable();
+      await page.keyboard.press("Home");
+    }
     testInfo.annotations.push({ type: "set-row", description: shareText.replace(/\s+/g, " ") });
     expect(shares.some((v) => Math.abs(v - reference.expectedValue) <= tol), `set Convenience share ${shares} vs reference ${reference.expectedValue}`).toBe(true);
   } finally {

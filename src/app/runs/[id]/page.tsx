@@ -99,6 +99,8 @@ import { Pane, ThreePane } from "./ThreePane";
 import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
 import CodingFormProgress from "./CodingFormProgress";
+import CodeThemesSubmit from "./CodeThemesSubmit";
+import { claimCodingRun, releaseCodingRun } from "@/lib/codingProgress";
 import ReportReadSummary, { type ReportReadStats } from "./ReportReadSummary";
 import PipelineStatus from "./PipelineStatus";
 import WorkingDataTabs from "./WorkingDataTabs";
@@ -2386,6 +2388,16 @@ async function codeThemesAction(runId: string, documentId: string) {
     revalidatePath(`/runs/${runId}`);
     return;
   }
+  // One run per transcript (Codex IR-07): a second start while one is running is refused, not queued.
+  if (!claimCodingRun(runId, documentId)) {
+    await recordSingleDocumentError(
+      runId,
+      documentId,
+      new Error("This transcript is already being coded. Wait for that run to finish; its progress shows on the transcript's card."),
+    );
+    revalidatePath(`/runs/${runId}`);
+    return;
+  }
   try {
     // ANA-QUAL-001: extractThemesFromTranscript now stamps "ready" or "incomplete" itself
     // (see its own comment) based on whether coding actually reached full per-unit coverage,
@@ -2408,6 +2420,8 @@ async function codeThemesAction(runId: string, documentId: string) {
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
     await setDocumentProcessingStatus(documentId, "failed");
+  } finally {
+    releaseCodingRun(documentId);
   }
   await refreshAfterCoding(runId);
 }
@@ -4733,16 +4747,16 @@ export default async function RunPage({
                                     })()}
                                   >
                                     <form action={codeAction}>
-                                      <SubmitButton
-                                        pendingLabel="Coding..."
+                                      <CodeThemesSubmit
+                                        runId={id}
+                                        documentId={doc.id}
                                         className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
                                         icon={
                                           <DocumentIcon className="h-3.5 w-3.5" />
                                         }
                                       >
                                         Code themes
-                                      </SubmitButton>
-                                      <CodingFormProgress runId={id} />
+                                      </CodeThemesSubmit>
                                     </form>
                                     <details className="rounded-lg border border-border bg-white p-2 text-xs">
                                       <summary className="cursor-pointer select-none font-medium text-muted">
@@ -5558,7 +5572,7 @@ export default async function RunPage({
                   <p>Tables themselves are built under Cross tabs, from the same file.</p>
                 </>
               }
-              emptyText="No data files yet. Add a survey data file (SPSS, Stata, SAS, CSV or Excel) in Sources, then run analyses here."
+              emptyText="No data files yet. Add a survey data file (SPSS, Stata, CSV or Excel; SAS files are not supported yet) in Sources, then run analyses here."
               aggregatedText="This file holds tables that are already aggregated, so the analyses, which work on each respondent's answers, cannot run on it. Generate findings from its tables below."
               findings={findings.length}
               datasets={dataFileOptions((d) => (

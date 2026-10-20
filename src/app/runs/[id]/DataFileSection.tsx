@@ -174,7 +174,7 @@ export default function DataFileSection({
                 <p className="text-sm text-danger">The last processing of this file failed, so it cannot be opened here. Fix or replace it in Sources.</p>
               )}
               {current.state === "unsupported" && (
-                <p className="text-sm text-slate-600">This file is case-level data in a format this section does not read. Add it as SPSS, Stata, SAS, CSV or Excel in Sources.</p>
+                <p className="text-sm text-slate-600">This file is case-level data in a format this section does not read. Add it as SPSS, Stata, CSV or Excel in Sources (SAS files are not supported yet).</p>
               )}
               {current.state === "aggregated" && <p className="text-sm text-slate-600">{aggregatedText}</p>}
               {current.node}

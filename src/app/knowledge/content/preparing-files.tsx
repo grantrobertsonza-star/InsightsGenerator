@@ -117,7 +117,7 @@ export default function PreparingFilesGuide() {
       </P>
       <UL>
         <li>
-          <strong>Prefer SPSS, Stata or SAS to CSV.</strong> They carry variable labels and value labels, so the tool
+          <strong>Prefer SPSS or Stata to CSV.</strong> They carry variable labels and value labels, so the tool
           shows &quot;Very satisfied&quot; and the full question wording instead of codes such as 5 and Q12. A CSV has
           only what is in its cells, so add a questionnaire if you can.
         </li>
