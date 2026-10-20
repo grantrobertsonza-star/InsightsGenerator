@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
+import { instrumentReadInFlightAction, readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
 import type { InstrumentSummary } from "@/lib/instruments";
 
 /**
@@ -17,7 +17,21 @@ import type { InstrumentSummary } from "@/lib/instruments";
  * read that failed is not retried by itself, in this page or on a later visit (the failure is
  * recorded, InstrumentSummary.readFailure); "Read" again on the card is the researcher's retry.
  * The actions revalidate the page, so the summary that drives this updates by itself.
+ *
+ * Once per page is not once per project: another tab or person may be reading the same file. The
+ * server allows one read per document at a time (IR-05); a page told that a read is already under
+ * way shows so and checks back every few seconds, without starting a read of its own, until the
+ * other read ends and the page is refreshed with its result.
  */
+const IN_FLIGHT_POLL_MS = 5000;
+const waitForOtherRead = async (runId: string, documentId: string) => {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_POLL_MS));
+    const r = await instrumentReadInFlightAction(runId, documentId).catch(() => null);
+    // A failed check is not a reason to start a paid read; stop waiting and let the summary decide.
+    if (!r || !r.ok || !r.inFlight) return;
+  }
+};
 type AutoState = { running: boolean; error: string | null; message: string | null };
 const IDLE: AutoState = { running: false, error: null, message: null };
 const states = new Map<string, AutoState>();
@@ -68,6 +82,11 @@ export function useInstrumentAutoStart({
     void (async () => {
       if (needsRead) {
         const r = await readInstrumentAction(runId, documentId).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while reading. Use Read again." }));
+        if (!r.ok && "inFlight" in r && r.inFlight) {
+          setState(documentId, { running: true, error: null, message: r.error });
+          await waitForOtherRead(runId, documentId);
+          return setState(documentId, IDLE);
+        }
         if (!r.ok) return setState(documentId, { running: false, error: r.error, message: null });
       }
       if (!isGuide && target) {

@@ -284,6 +284,28 @@ export async function runDriverAnalysisFor(
 
 export type SavedDriverAnalysis = { id: string; title: string; createdAt: string; report: DriverReport };
 
+/** Postgres "undefined_table": the one failure that means "not migrated yet" rather than a real error. */
+const UNDEFINED_TABLE = "42P01";
+
+/**
+ * Locks this organisation's project row (FOR UPDATE) for the rest of the transaction, so saves and
+ * posts for one project go one at a time and a duplicate check made after the lock sees the other
+ * request's write. Throws when the project is not this organisation's: the lock query confirms the
+ * row exists, it does not assume it.
+ */
+async function lockOwnedRun(client: import("pg").PoolClient, tenantId: string, runId: string): Promise<void> {
+  const owned = await client.query("select id from runs where id = $1 and tenant_id = $2 for update", [runId, tenantId]);
+  if (owned.rowCount === 0) throw new Error("That project was not found.");
+}
+
+/**
+ * Saves a driver analysis once (IR-03, 2026-10-20). Saving the same result again (the same data
+ * file, the same request and the same report, compared as JSON values) returns the analysis already
+ * saved instead of inserting a second copy, so posting a reopened or re-run analysis cannot create a
+ * parallel artifact with its own set of findings. A different report for the same request (the data
+ * or its setup changed) is a different result and is saved as such. Ownership of the project and the
+ * data file is checked on this write, under the project lock.
+ */
 export async function saveDriverAnalysis(
   tenantId: string,
   runId: string,
@@ -292,56 +314,86 @@ export async function saveDriverAnalysis(
   report: DriverReport,
 ): Promise<string> {
   return withTenant(tenantId, async (client) => {
+    await lockOwnedRun(client, tenantId, runId);
+    const doc = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3", [documentId, runId, tenantId]);
+    if (doc.rowCount === 0) throw new Error("That data file is not in this project.");
+    const request = JSON.stringify(report.request);
+    const body = JSON.stringify(report);
+    const same = await client.query<{ id: string }>(
+      `select id from driver_analyses
+        where run_id = $1 and document_id = $2 and request = $3::jsonb and report = $4::jsonb
+        order by created_at limit 1`,
+      [runId, documentId, request, body],
+    );
+    if (same.rows[0]) return same.rows[0].id;
     const r = await client.query<{ id: string }>(
       `insert into driver_analyses (tenant_id, run_id, document_id, title, request, report)
        values ($1, $2, $3, $4, $5, $6) returning id`,
-      [tenantId, runId, documentId, title.trim() || "Driver analysis", JSON.stringify(report.request), JSON.stringify(report)],
+      [tenantId, runId, documentId, title.trim() || "Driver analysis", request, body],
     );
     return r.rows[0].id;
   });
 }
 
+/**
+ * The saved analyses for one data file. Only a table that does not exist yet (migration 0072 not
+ * applied) reads as "none saved"; any other failure is thrown, so a failed read is never shown as an
+ * empty list.
+ */
 export async function listDriverAnalyses(tenantId: string, runId: string, documentId: string): Promise<SavedDriverAnalysis[]> {
   try {
     return await withTenant(tenantId, async (client) => {
       const r = await client.query<{ id: string; title: string; created_at: Date; report: DriverReport }>(
         `select id, title, created_at, report from driver_analyses
-          where run_id = $1 and document_id = $2 order by created_at desc`,
-        [runId, documentId],
+          where run_id = $1 and document_id = $2 and tenant_id = $3 order by created_at desc`,
+        [runId, documentId, tenantId],
       );
       return r.rows.map((row) => ({ id: row.id, title: row.title, createdAt: new Date(row.created_at).toISOString(), report: row.report }));
     });
-  } catch {
-    return []; // table not migrated yet (0072)
+  } catch (error) {
+    if ((error as { code?: string }).code === UNDEFINED_TABLE) return [];
+    throw error;
   }
 }
 
 export async function deleteDriverAnalysis(tenantId: string, runId: string, id: string): Promise<void> {
   await withTenant(tenantId, async (client) => {
-    await client.query("delete from driver_analyses where id = $1 and run_id = $2", [id, runId]);
+    await client.query("delete from driver_analyses where id = $1 and run_id = $2 and tenant_id = $3", [id, runId, tenantId]);
   });
 }
 
-/** Adds a saved analysis to the project's findings, once. Returns how many were added (0 if already added). */
-export async function addDriverFindings(tenantId: string, runId: string, analysisId: string): Promise<number> {
+/**
+ * Adds a saved analysis to the project's findings, once (IR-03). The analysis row is locked FOR
+ * UPDATE first (which also confirms it is this organisation's and this project's), so two posts of
+ * the same analysis go one at a time and the second sees the first one's findings. Findings already
+ * in use are left as they are, wording included; findings taken out of use are put back as they
+ * were, never rewritten from the report. `added` counts findings inserted or put back;
+ * `alreadyPosted` counts those that were already in use.
+ */
+export async function addDriverFindings(
+  tenantId: string,
+  runId: string,
+  analysisId: string,
+): Promise<{ added: number; alreadyPosted: number }> {
   const { driverFindings } = await import("./driverFindings");
   return withTenant(tenantId, async (client) => {
     const saved = await client.query<{ report: DriverReport }>(
-      "select report from driver_analyses where id = $1 and run_id = $2",
-      [analysisId, runId],
+      "select report from driver_analyses where id = $1 and run_id = $2 and tenant_id = $3 for update",
+      [analysisId, runId, tenantId],
     );
     if (!saved.rows[0]) throw new Error("That analysis was not found.");
     const existing = await client.query<{ n: number }>(
       "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status <> 'rejected'",
       [runId, analysisId],
     );
-    if ((existing.rows[0]?.n ?? 0) > 0) return 0;
+    const alreadyPosted = existing.rows[0]?.n ?? 0;
+    if (alreadyPosted > 0) return { added: 0, alreadyPosted };
     const revived = await client.query<{ id: string }>(
       "update findings set status = 'accepted' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status = 'rejected' returning id",
       [runId, analysisId],
     );
     await recordHumanReview(client, revived.rows.map((row) => row.id), "tool_add");
-    if ((revived.rowCount ?? 0) > 0) return revived.rowCount ?? 0;
+    if ((revived.rowCount ?? 0) > 0) return { added: revived.rowCount ?? 0, alreadyPosted: 0 };
     const drafts = driverFindings(saved.rows[0].report, analysisId);
     for (const f of drafts) {
       const touched = await client.query<{ id: string }>(
@@ -352,7 +404,7 @@ export async function addDriverFindings(tenantId: string, runId: string, analysi
       );
       await recordHumanReview(client, touched.rows.map((row) => row.id), "tool_add");
     }
-    return drafts.length;
+    return { added: drafts.length, alreadyPosted: 0 };
   });
 }
 
@@ -368,16 +420,17 @@ export async function removeDriverFindings(tenantId: string, runId: string, anal
   });
 }
 
+/**
+ * How many findings in use each saved analysis has. A failed read is thrown, not returned as an
+ * empty map: "could not check" must not read as "nothing posted" (the screen would then offer to
+ * post again).
+ */
 export async function driverFindingCounts(tenantId: string, runId: string): Promise<Map<string, number>> {
-  try {
-    return await withTenant(tenantId, async (client) => {
-      const r = await client.query<{ id: string; n: number }>(
-        "select stated_stats->>'analysisId' as id, count(*)::int as n from findings where run_id = $1 and pattern_type = 'driver' and status <> 'rejected' group by 1",
-        [runId],
-      );
-      return new Map(r.rows.map((row) => [row.id, row.n] as const));
-    });
-  } catch {
-    return new Map();
-  }
+  return withTenant(tenantId, async (client) => {
+    const r = await client.query<{ id: string; n: number }>(
+      "select stated_stats->>'analysisId' as id, count(*)::int as n from findings where run_id = $1 and tenant_id = $2 and pattern_type = 'driver' and status <> 'rejected' group by 1",
+      [runId, tenantId],
+    );
+    return new Map(r.rows.map((row) => [row.id, row.n] as const));
+  });
 }

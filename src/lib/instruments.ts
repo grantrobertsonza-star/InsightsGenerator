@@ -2,6 +2,7 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant, withTenantRead } from "./db";
+import type { PoolClient } from "pg";
 import { extractDocumentText } from "./extractFindings";
 import { loadVariableDictionary } from "./crosstabs";
 import { matchItems } from "./instrumentMatch";
@@ -119,16 +120,90 @@ export type InstrumentReadResult = {
   incompleteItems: number;
 };
 
-export async function readInstrumentItems(tenantId: string, runId: string, documentId: string): Promise<InstrumentReadResult> {
-  const doc = await withTenantRead(tenantId, async (client) => {
-    const r = await client.query<{ storage_path: string; source_filename: string }>(
-      "select storage_path, source_filename from documents where id = $1 and run_id = $2 and kind = 'instrument'",
+/** How long a claim on a read stands before another session may take it over (an abandoned read). */
+export const INSTRUMENT_READ_CLAIM_MINUTES = 15;
+
+/** Raised when another session is already reading this questionnaire or guide. Nothing was paid for. */
+export class InstrumentReadInFlightError extends Error {}
+
+/**
+ * IR-05: the paid read of a questionnaire or guide runs once at a time per document, across every
+ * session and server instance, not only once per page. The claim is taken in one short transaction
+ * that first locks the document's row (FOR UPDATE, and the row must exist in this project), so two
+ * requests decide one after the other; the second sees the first's claim and is refused before any
+ * model call. The claim itself is an 'instrument_read_started' trace row (no migration needed): it
+ * stands until a later 'instrument_read_finished', 'instrument_read_failed' or
+ * 'instrument_read_released' row for the same document (trace ids only grow, so "later" is the id),
+ * or until INSTRUMENT_READ_CLAIM_MINUTES pass, after which a read that crashed without releasing can
+ * be retried. The trace row is only the record; the serialisation comes from the row lock.
+ */
+async function claimInstrumentRead(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+): Promise<{ claimId: string; storage_path: string; source_filename: string }> {
+  return withTenant(tenantId, async (client) => {
+    const doc = await client.query<{ storage_path: string; source_filename: string; content_sha256: string | null }>(
+      "select storage_path, source_filename, content_sha256 from documents where id = $1 and run_id = $2 and kind = 'instrument' for update",
       [documentId, runId],
     );
-    return r.rows[0];
+    if (doc.rowCount !== 1) throw new Error("Questionnaire or guide not found for this run");
+    if (await hasActiveReadClaim(client, runId, documentId)) {
+      throw new InstrumentReadInFlightError("This file is already being read in another session. It will show here when that read finishes.");
+    }
+    const claim = await client.query<{ id: string }>(
+      "insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_started',$3) returning id::text",
+      [tenantId, runId, JSON.stringify({ documentId, contentSha256: doc.rows[0].content_sha256 })],
+    );
+    return { claimId: claim.rows[0].id, storage_path: doc.rows[0].storage_path, source_filename: doc.rows[0].source_filename };
   });
-  if (!doc) throw new Error("Questionnaire or guide not found for this run");
+}
 
+/** True while a claim on this document's read stands (see claimInstrumentRead). */
+async function hasActiveReadClaim(client: PoolClient, runId: string, documentId: string): Promise<boolean> {
+  const active = await client.query(
+    `select c.id from trace c
+     where c.run_id = $1 and c.event = 'instrument_read_started' and c.detail->>'documentId' = $2
+       and c.occurred_at > now() - make_interval(mins => $3)
+       and not exists (
+         select 1 from trace t
+         where t.run_id = c.run_id and t.id > c.id and t.detail->>'documentId' = $2
+           and t.event in ('instrument_read_finished', 'instrument_read_failed', 'instrument_read_released'))
+     limit 1`,
+    [runId, documentId, INSTRUMENT_READ_CLAIM_MINUTES],
+  );
+  return (active.rowCount ?? 0) > 0;
+}
+
+/** Whether a read of this questionnaire or guide is under way in some session now. */
+export async function isInstrumentReadInFlight(tenantId: string, runId: string, documentId: string): Promise<boolean> {
+  return withTenantRead(tenantId, (client) => hasActiveReadClaim(client, runId, documentId));
+}
+
+/** Ends a claim that did not finish (any error after the claim), so a retry need not wait for it to expire. */
+async function releaseInstrumentRead(tenantId: string, runId: string, documentId: string, claimId: string): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_released',$3)", [tenantId, runId, JSON.stringify({ documentId, claimId })]);
+  });
+}
+
+export async function readInstrumentItems(tenantId: string, runId: string, documentId: string): Promise<InstrumentReadResult> {
+  const doc = await claimInstrumentRead(tenantId, runId, documentId);
+  try {
+    return await readClaimedInstrument(tenantId, runId, documentId, doc);
+  } catch (e) {
+    // Best effort: if even this write fails, the claim lapses after INSTRUMENT_READ_CLAIM_MINUTES.
+    await releaseInstrumentRead(tenantId, runId, documentId, doc.claimId).catch(() => {});
+    throw e;
+  }
+}
+
+async function readClaimedInstrument(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  doc: { claimId: string; storage_path: string; source_filename: string },
+): Promise<InstrumentReadResult> {
   const extracted = await extractDocumentText(doc.storage_path, doc.source_filename, documentId);
   const pages = extracted.pages.length > 0 ? extracted.pages : splitText(extracted.fullText);
   const allChunks = chunkPages(pages);
@@ -335,7 +410,7 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
     const r = await client.query<{ n: string }>("select count(*)::text as n from instrument_items where document_id = $1", [documentId]);
     // Coverage belongs to the persisted item set: a reload must not turn an incomplete reread
     // into an apparently complete questionnaire merely because older confirmed items survived.
-    await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_finished',$3)", [tenantId, runId, JSON.stringify({ documentId, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems })]);
+    await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_finished',$3)", [tenantId, runId, JSON.stringify({ documentId, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems, claimId: doc.claimId })]);
     return Number(r.rows[0]?.n ?? rows.length);
   });
   return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems };
@@ -555,8 +630,108 @@ export async function getLabelOverlay(tenantId: string, runId: string, dataDocum
   return buildLabelOverlay(items.map((i) => ({ itemId: i.itemId, variable: i.variable, code: i.code, text: i.text, options: i.options })));
 }
 
-/** Raised when a chosen variable is already confirmed for another question of the same data file. */
+
+/** Raised when a variable is already confirmed for another question of the same data file. */
 export class InstrumentLinkTakenError extends Error {}
+
+
+/**
+ * IR-04: the one rule every confirmation path follows (a hand-chosen variable, Confirm on a
+ * suggestion, and Confirm on all strong same-code matches). A variable of a data file means one
+ * question: it may be confirmed for a question only when no OTHER question of the same data file
+ * already has it confirmed. Callers lock the data file's row first (lockDataDocuments), so two
+ * confirmations for the same file are decided one after the other and cannot both pass this check.
+ * Returns the message naming the question that already has the variable, or null when it is free.
+ */
+async function variableTakenBy(client: PoolClient, dataDocumentId: string, variable: string, itemId: string): Promise<string | null> {
+  const other = await client.query<{ code: string | null; item_text: string }>(
+    `select i.code, i.item_text from instrument_links l join instrument_items i on i.id = l.item_id
+     where l.data_document_id = $1 and l.variable = $2 and l.status = 'confirmed' and l.item_id <> $3
+     order by i.item_order limit 1`,
+    [dataDocumentId, variable, itemId],
+  );
+  const q = other.rows[0];
+  return q ? `${variable} is already confirmed for ${q.code ?? `"${q.item_text.slice(0, 60)}"`}. Reject that link first if it is wrong.` : null;
+}
+
+/** Locks the data files' rows in id order (the same order everywhere, so two callers cannot deadlock). */
+async function lockDataDocuments(client: PoolClient, runId: string, dataDocumentIds: string[]): Promise<void> {
+  const ids = [...new Set(dataDocumentIds)].sort();
+  if (ids.length === 0) return;
+  const r = await client.query("select id from documents where id = any($1::uuid[]) and run_id = $2 order by id for update", [ids, runId]);
+  if ((r.rowCount ?? 0) !== ids.length) throw new Error("That data file is not in this project.");
+}
+
+/**
+ * Sets one link's status (Confirm or Reject on the review table). Confirming goes through the
+ * shared rule above with the data file locked; a variable taken by another question is refused with
+ * that question named (InstrumentLinkTakenError) and nothing changes. Rejecting, or returning a link
+ * to suggested, never conflicts. The link must belong to this project; repeating a status is a no-op.
+ */
+export async function setInstrumentLinkStatus(tenantId: string, runId: string, linkId: string, status: LinkStatus): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    const found = await client.query<{ data_document_id: string }>("select data_document_id from instrument_links where id = $1 and run_id = $2", [linkId, runId]);
+    if (!found.rows[0]) throw new Error("That link is not in this project.");
+    if (status === "confirmed") {
+      await lockDataDocuments(client, runId, [found.rows[0].data_document_id]);
+      // Read again after the lock: the link may have changed while this request waited.
+      const link = await client.query<{ item_id: string; variable: string; status: LinkStatus }>(
+        "select item_id, variable, status from instrument_links where id = $1 and run_id = $2 for update",
+        [linkId, runId],
+      );
+      const l = link.rows[0];
+      if (!l) throw new Error("That link is not in this project.");
+      if (l.status === "confirmed") return;
+      const taken = await variableTakenBy(client, found.rows[0].data_document_id, l.variable, l.item_id);
+      if (taken) throw new InstrumentLinkTakenError(taken);
+    }
+    await client.query("update instrument_links set status = $1 where id = $2 and run_id = $3", [status, linkId, runId]);
+  });
+}
+
+/**
+ * Confirms every suggested link of a questionnaire at or above the confidence given, through the
+ * shared rule. A suggestion whose variable is already confirmed for another question, or that loses
+ * to a stronger suggestion of the same variable in this batch, stays a suggestion and is returned in
+ * `refused` with the reason, so the researcher decides it by hand. The rest are confirmed: one
+ * conflict does not hold back every other strong match. Repeating it confirms nothing new.
+ */
+export async function confirmInstrumentLinks(
+  tenantId: string,
+  runId: string,
+  instrumentId: string,
+  minConfidence: number,
+): Promise<{ confirmed: number; refused: { variable: string; reason: string }[] }> {
+  return withTenant(tenantId, async (client) => {
+    const inst = await client.query("select 1 from documents where id = $1 and run_id = $2 and kind = 'instrument'", [instrumentId, runId]);
+    if (inst.rowCount !== 1) throw new Error("Questionnaire or guide not found for this run");
+    const pending = async () =>
+      (
+        await client.query<{ id: string; item_id: string; data_document_id: string; variable: string }>(
+          `select l.id, l.item_id, l.data_document_id, l.variable
+           from instrument_links l join instrument_items i on i.id = l.item_id
+           where l.run_id = $1 and i.document_id = $2 and l.status = 'suggested' and l.confidence >= $3
+           order by l.confidence desc, i.item_order, l.id`,
+          [runId, instrumentId, minConfidence],
+        )
+      ).rows;
+    await lockDataDocuments(client, runId, (await pending()).map((c) => c.data_document_id));
+    let confirmed = 0;
+    const refused: { variable: string; reason: string }[] = [];
+    // Read again under the locks, then decide in order of confidence: an earlier confirmation in
+    // this batch counts as taken for the ones after it.
+    for (const c of await pending()) {
+      const taken = await variableTakenBy(client, c.data_document_id, c.variable, c.item_id);
+      if (taken) {
+        refused.push({ variable: c.variable, reason: taken });
+        continue;
+      }
+      const r = await client.query("update instrument_links set status = 'confirmed' where id = $1 and status = 'suggested'", [c.id]);
+      confirmed += r.rowCount ?? 0;
+    }
+    return { confirmed, refused };
+  });
+}
 
 /**
  * Links a questionnaire question to a data file variable the researcher chose (Grant, 2026-10-20:
@@ -568,7 +743,8 @@ export class InstrumentLinkTakenError extends Error {}
  * file is a raw data file of this project; the variable is in that file's dictionary (read before the
  * transaction, as the dictionary is built from the stored file). The data file's row is locked first
  * (and must exist), so two choices for the same file are made one after the other: a variable already
- * confirmed for a different question is refused with that question named, never linked twice.
+ * confirmed for a different question is refused with that question named, never linked twice. The
+ * same rule (variableTakenBy, under the same lock) governs Confirm on a suggestion and bulk Confirm.
  * Repeating the same choice (a retried request) confirms the same link and adds nothing.
  */
 export async function chooseInstrumentLink(
@@ -582,22 +758,13 @@ export async function chooseInstrumentLink(
   const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
   if (!dictionary.variables.some((v) => v.name === variable)) throw new Error(`${variable} is not a variable of this data file.`);
   return withTenant(tenantId, async (client) => {
-    const doc = await client.query(
-      "select id from documents where id = $1 and run_id = $2 and kind = 'table' and ingestion_type = 'raw' for update",
-      [dataDocumentId, runId],
-    );
+    const doc = await client.query("select id from documents where id = $1 and run_id = $2 and kind = 'table' and ingestion_type = 'raw'", [dataDocumentId, runId]);
     if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
+    await lockDataDocuments(client, runId, [dataDocumentId]);
     const item = await client.query("select 1 from instrument_items where id = $1 and document_id = $2 and run_id = $3", [itemId, instrumentId, runId]);
     if (item.rowCount !== 1) throw new Error("That question is not in this questionnaire.");
-    const other = await client.query<{ code: string | null; item_text: string }>(
-      `select i.code, i.item_text from instrument_links l join instrument_items i on i.id = l.item_id
-       where l.data_document_id = $1 and l.variable = $2 and l.status = 'confirmed' and l.item_id <> $3 limit 1`,
-      [dataDocumentId, variable, itemId],
-    );
-    if (other.rows[0]) {
-      const q = other.rows[0];
-      throw new InstrumentLinkTakenError(`${variable} is already confirmed for ${q.code ?? `"${q.item_text.slice(0, 60)}"`}. Reject that link first if it is wrong.`);
-    }
+    const taken = await variableTakenBy(client, dataDocumentId, variable, itemId);
+    if (taken) throw new InstrumentLinkTakenError(taken);
     const r = await client.query<{ id: string }>(
       `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status)
        values ($1, $2, $3, $4, $5, 'manual', 1, 'confirmed')

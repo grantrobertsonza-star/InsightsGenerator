@@ -37,6 +37,19 @@ const btnPrimary =
  * data file's variables, and check the links. Nothing is applied until a link
  * is confirmed here.
  */
+/**
+ * After "Confirm same-code matches": a variable already confirmed for another question is left as a
+ * suggestion (instruments.confirmInstrumentLinks, Codex IR-04), and the message says so with the first
+ * reason, rather than reporting only the ones confirmed.
+ */
+function confirmedMessage(r: Record<string, unknown>): string {
+  const confirmed = Number(r.confirmed ?? 0);
+  const refused = Array.isArray(r.refused) ? (r.refused as { reason: string }[]) : [];
+  const head = `Confirmed ${confirmed} same-code ${confirmed === 1 ? "match" : "matches"}.`;
+  if (refused.length === 0) return head;
+  return `${head} ${refused.length} left as ${refused.length === 1 ? "a suggestion" : "suggestions"}: ${refused[0].reason}`;
+}
+
 export default function InstrumentCard({
   runId,
   documentId,
@@ -212,7 +225,7 @@ export default function InstrumentCard({
             </>
           )}
           {summary.links.suggested > 0 && (
-            <button className={btn} disabled={pending} onClick={() => run(() => confirmLinksAction(runId, documentId), (r) => `Confirmed ${r.confirmed} same-code matches.`)}>
+            <button className={btn} disabled={pending} onClick={() => run(() => confirmLinksAction(runId, documentId), (r) => confirmedMessage(r))}>
               Confirm same-code matches
             </button>
           )}

@@ -1,10 +1,13 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { loadDocumentFile, loadVariableDictionaryWithStatus, overlayFor } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
-import { withTenant } from "./db";
-import { recordHumanReview } from "./findingProvenance";
+import { withTenant, withTenantRead } from "./db";
+import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
+import type { LabelOverlay } from "./labelOverlay";
+import { canonicalJson } from "./researchQualityRules";
 import { runStatsTool } from "./parseStatsFile";
 import { requireTenantId } from "./requestContext";
 import { capByStride, pearsonCorrelation, scatterFinding } from "./scatter";
@@ -62,13 +65,18 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
   for (const [what, name] of [["X axis", xVar], ["Y axis", yVar], ["weight", weightVar]] as const) {
     if (name && !names.has(name)) throw new Error(`The ${what} variable "${name}" is not in this file.`);
   }
-  const [doc, overlay, setupStatus] = await Promise.all([
+  const [doc, overlay, setupStatus, contentSha] = await Promise.all([
     loadDocumentFile(tenantId, runId, documentId),
     overlayFor(tenantId, runId, documentId),
     loadDataSetupWithStatus(tenantId, documentId),
+    documentContentSha(tenantId, runId, documentId),
   ]);
   // The layout decides how the file is read, so a failed lookup must not fall back to a default.
   if (!setupStatus.ok) throw new Error(`This file's saved set-up could not be read: ${setupStatus.error}`);
+  const basis = scatterBasis(
+    { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha, layout: setupStatus.setup.layout, overlay },
+    [xVar, yVar, weightVar],
+  );
   const cols = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
     outcome: yVar,
     predictors: [xVar],
@@ -96,7 +104,45 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
     ys.push(yv);
     ws.push(wv);
   }
-  return { xInfo, yInfo: cols.outcome, casesInFile: cols.n, weighted: !!cols.weights, xs, ys, ws: cols.weights ? ws : null };
+  return { xInfo, yInfo: cols.outcome, casesInFile: cols.n, weighted: !!cols.weights, xs, ys, ws: cols.weights ? ws : null, basis };
+}
+
+/** The file's recorded content hash (migration 0098); null when not recorded or not readable. */
+async function documentContentSha(tenantId: string, runId: string, documentId: string): Promise<string | null> {
+  try {
+    return await withTenantRead(tenantId, async (client) => {
+      const r = await client.query<{ content_sha256: string | null }>("select content_sha256 from documents where id = $1 and run_id = $2", [documentId, runId]);
+      return r.rows[0]?.content_sha256 ?? null;
+    });
+  } catch {
+    return null; // 0098 not applied: the stored path and set-up still identify the file read
+  }
+}
+
+type BasisInputs = {
+  storagePath: string;
+  selectedSheet: string | null;
+  contentSha: string | null;
+  layout: unknown;
+  overlay: LabelOverlay | null;
+};
+
+/**
+ * IR-01 (Codex, 2026-10-20): what a posted correlation was computed from, as one hash: the stored
+ * file (its path, recorded content hash and chosen sheet), the saved layout, and the questionnaire
+ * labels for the three variables used (the columns tool reads "no usable answer" codes from them).
+ * Labels of other variables are left out, so correcting an unrelated question does not make this
+ * finding look out of date. Variable names, never labels, identify the finding itself.
+ */
+function scatterBasis(inputs: BasisInputs, variables: (string | null)[]): string {
+  const used = variables.filter((v): v is string => !!v);
+  const pick = (map: Record<string, unknown> | undefined) => Object.fromEntries(used.filter((v) => map && v in map).map((v) => [v, map![v]]));
+  const overlay = inputs.overlay
+    ? { variableLabels: pick(inputs.overlay.variableLabels), valueLabels: pick(inputs.overlay.valueLabels) }
+    : null;
+  return createHash("sha256")
+    .update(canonicalJson({ file: inputs.storagePath, sheet: inputs.selectedSheet, content: inputs.contentSha, layout: inputs.layout ?? null, overlay }))
+    .digest("hex");
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -141,9 +187,35 @@ const SAME_FINDING = `run_id = $1 and pattern_type = 'relationship' and stated_s
   and coalesce(stated_stats->>'weightVar', '') = coalesce($4, '') and source_document_id = $5`;
 
 /**
+ * The figures of a posted correlation, compared to decide whether a repost changes anything. Display
+ * fields (labels, wording) are compared through the finding text instead, and `basis` separately.
+ */
+function figuresOf(stats: Record<string, unknown>): string {
+  const { r, n, casesInFile, weighted, weightVar, pValue, points } = stats;
+  return canonicalJson({ r, n, casesInFile, weighted, weightVar: weightVar ?? null, pValue: pValue ?? null, points: points ?? null });
+}
+
+type PostedRow = { id: string; status: string; finding_text: string; stated_stats: Record<string, unknown> | null };
+
+/**
  * Posts the scatter's correlation as a finding (Grant, 2026-10-20). The correlation is computed again
- * here from the file, never taken from the page. Posting again does nothing while one is in use; a
- * removed one is brought back rather than duplicated, as the chart tool does.
+ * here from the file, never taken from the page.
+ *
+ * Repair of IR-01 and IR-02 (Codex, 2026-10-20):
+ * - One finding per file, pair of variable NAMES and weight. A post, repost or revival always
+ *   writes the figures computed now: when the file, its set-up or the labels used changed since the
+ *   finding was posted (recorded as `stated_stats.basis`), the existing finding's text and figures
+ *   are updated in place rather than left at the old correlation. As for the other analysis tools
+ *   (brandHealthActions.ts), a theme the researcher changed by hand is kept. Updating in place keeps
+ *   the finding's id, so an insight built on it is shown as having changed figures (supportStatus).
+ * - The file's document row is locked FOR UPDATE (and must exist in this project) before the
+ *   existing finding is looked up, the pattern chooseInstrumentLink uses, so two posts of the same
+ *   correlation run one after the other and the second finds the first: one finding, never two.
+ * - The file is read before the transaction; if the read fails nothing is written and the previous
+ *   finding stays as it was.
+ *
+ * `added` is true when a finding was created or brought back; `updated` when an existing one's
+ * figures or wording were brought up to date.
  */
 export async function addScatterFindingAction(
   runId: string,
@@ -151,37 +223,60 @@ export async function addScatterFindingAction(
   xVar: string,
   yVar: string,
   weightVar: string | null,
-): Promise<{ ok: true; added: boolean } | Fail> {
+): Promise<{ ok: true; added: boolean; updated: boolean } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const d = await readPairs(TENANT_ID, runId, documentId, xVar, yVar, weightVar);
     const finding = scatterFinding({ x: d.xInfo, y: d.yInfo, xs: d.xs, ys: d.ys, ws: d.ws, weightVar: d.ws ? weightVar : null, casesInFile: d.casesInFile });
     if (!finding) return { ok: false, error: "There is no correlation to post: fewer than three cases answered both, or one of them does not vary." };
     const weightKey = d.ws ? weightVar : null;
-    let added = false;
-    await withTenant(TENANT_ID, async (client) => {
-      const existing = await client.query<{ n: number }>(`select count(*)::int as n from findings where ${SAME_FINDING} and status <> 'rejected'`, [runId, xVar, yVar, weightKey, documentId]);
-      if ((existing.rows[0]?.n ?? 0) > 0) return;
-      const revived = await client.query<{ id: string }>(
-        `update findings set status = 'accepted' where ${SAME_FINDING} and status = 'rejected' returning id`,
-        [runId, xVar, yVar, weightKey, documentId],
-      );
-      await recordHumanReview(client, revived.rows.map((row) => row.id), "tool_add");
-      if ((revived.rowCount ?? 0) > 0) {
-        added = true;
-        return;
+    const stats = { ...finding.statedStats, basis: d.basis };
+    const statsJson = JSON.stringify(stats);
+    const result = await withTenant(TENANT_ID, async (client) => {
+      const doc = await client.query("select id from documents where id = $1 and run_id = $2 for update", [documentId, runId]);
+      if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
+      // Oldest first, a finding in use before a removed one: the one kept if earlier duplicates exist.
+      const rows = (
+        await client.query<PostedRow>(
+          `select id, status, finding_text, stated_stats from findings where ${SAME_FINDING}
+           order by (status = 'rejected'), created_at, id`,
+          [runId, xVar, yVar, weightKey, documentId],
+        )
+      ).rows;
+      const target = rows[0];
+      if (!target) {
+        const inserted = await client.query<{ id: string }>(
+          `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, data_type, status, source_document_id)
+           values ($1, $2, 'generated', $3, $4, 'relationship', $5, 'quantitative', 'accepted', $6)
+           returning id`,
+          [TENANT_ID, runId, finding.text, finding.theme, statsJson, documentId],
+        );
+        await recordHumanReview(client, inserted.rows.map((row) => row.id), "tool_add");
+        return { added: true, updated: false };
       }
-      const touched = await client.query<{ id: string }>(
-        `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, data_type, status, source_document_id)
-         values ($1, $2, 'generated', $3, $4, 'relationship', $5, 'quantitative', 'accepted', $6)
-         returning id`,
-        [TENANT_ID, runId, finding.text, finding.theme, JSON.stringify(finding.statedStats), documentId],
-      );
-      await recordHumanReview(client, touched.rows.map((row) => row.id), "tool_add");
-      added = true;
+      const old = target.stated_stats ?? {};
+      const changed = target.finding_text !== finding.text || figuresOf(old) !== figuresOf(stats);
+      const reviving = target.status === "rejected";
+      if (changed) {
+        const provenance = await findingProvenanceAvailable(client);
+        await client.query(
+          `update findings set finding_text = $2,
+             theme = ${provenance ? "case when human_edited_fields @> array['theme'] then theme else $3 end" : "$3"},
+             stated_stats = $4
+           where id = $1`,
+          [target.id, finding.text, finding.theme, statsJson],
+        );
+      } else if (old.basis !== d.basis) {
+        // Same figures and wording from a changed basis (for example a relabelled answer that is
+        // not missing): only the record of what they were computed from moves on.
+        await client.query("update findings set stated_stats = $2 where id = $1", [target.id, statsJson]);
+      }
+      if (reviving) await client.query("update findings set status = 'accepted' where id = $1", [target.id]);
+      if (reviving || changed) await recordHumanReview(client, [target.id], "tool_add");
+      return { added: reviving, updated: changed };
     });
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, added };
+    return { ok: true, ...result };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }
@@ -212,21 +307,50 @@ export async function removeScatterFindingAction(
   }
 }
 
-/** Whether this scatter's correlation (file, pair and weight) is currently posted. */
+/**
+ * Whether this scatter's correlation (file, pair and weight) is currently posted, and whether the
+ * posted figures were computed from the file and set-up as they are now (`current`): false when
+ * the file, its layout or the labels used have changed since (post again to update it), null when
+ * that cannot be told (a finding posted before this was recorded, or a lookup that failed). The
+ * file itself is not read here.
+ */
 export async function scatterFindingStatusAction(
   runId: string,
   documentId: string,
   xVar: string,
   yVar: string,
   weightVar: string | null,
-): Promise<{ ok: true; committed: boolean } | Fail> {
+): Promise<{ ok: true; committed: boolean; current: boolean | null } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    const committed = await withTenant(TENANT_ID, async (client) => {
-      const r = await client.query<{ n: number }>(`select count(*)::int as n from findings where ${SAME_FINDING} and status <> 'rejected'`, [runId, xVar, yVar, weightVar || null, documentId]);
-      return (r.rows[0]?.n ?? 0) > 0;
+    const posted = await withTenant(TENANT_ID, async (client) => {
+      const r = await client.query<{ basis: string | null }>(
+        `select stated_stats->>'basis' as basis from findings where ${SAME_FINDING} and status <> 'rejected' order by created_at, id limit 1`,
+        [runId, xVar, yVar, weightVar || null, documentId],
+      );
+      return r.rows[0] ?? null;
     });
-    return { ok: true, committed };
+    if (!posted) return { ok: true, committed: false, current: null };
+    if (!posted.basis) return { ok: true, committed: true, current: null };
+    let current: boolean | null = null;
+    try {
+      const [doc, overlay, setupStatus, contentSha] = await Promise.all([
+        loadDocumentFile(TENANT_ID, runId, documentId),
+        overlayFor(TENANT_ID, runId, documentId),
+        loadDataSetupWithStatus(TENANT_ID, documentId),
+        documentContentSha(TENANT_ID, runId, documentId),
+      ]);
+      if (setupStatus.ok) {
+        const now = scatterBasis(
+          { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha, layout: setupStatus.setup.layout, overlay },
+          [xVar, yVar, weightVar],
+        );
+        current = now === posted.basis;
+      }
+    } catch {
+      current = null; // could not be checked: never reported as current
+    }
+    return { ok: true, committed: true, current };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

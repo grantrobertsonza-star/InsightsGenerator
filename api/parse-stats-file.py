@@ -868,8 +868,24 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
         import openpyxl
         wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
         ws = wb[sheet_name]
-    except Exception:
-        return unsupported  # best effort: a read failure here just leaves the plain numeric string
+    except Exception as exc:
+        # Codex IR-09 (2026-10-20): this used to return an empty set, so the bare digits pandas
+        # read ("7" for a cell shown as "0007") went on as if they were confirmed identifiers and
+        # two different respondents could share one identity while the read reported success.
+        # For .xlsx/.xlsm the format check is part of reading the file correctly, so a failure
+        # here fails the read with the reason; a retry reads the formats again. A legacy .xls
+        # file cannot be opened by openpyxl at all (no format codes are available to anyone in
+        # this reader), so it keeps the plain values as before; that limit is not a transient
+        # failure and is outside this check.
+        if os.path.splitext(str(path))[1].lower() in (".xlsx", ".xlsm"):
+            columns = ", ".join(headers[i] for i in id_positions)
+            raise ValueError(
+                f"Could not check the Excel number formats of the identifier column(s) {columns}, "
+                "so leading zeros (for example 0007) cannot be confirmed and identifiers could merge. "
+                "Read the file again; if it keeps failing, re-save "
+                f"the workbook or store the identifiers as text. ({type(exc).__name__})"
+            ) from exc
+        return unsupported
     # One forward pass over the data rows, reading only the id-like columns. A read-only
     # workbook streams its XML: ws.cell(row, column) re-scans the sheet from the top on every
     # call, so the earlier per-column, per-row lookups cost rows x rows and a 1,000-case,

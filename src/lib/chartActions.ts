@@ -31,7 +31,18 @@ export type ChartResult = {
   grouped: boolean;
   groupLabel: string | null;
   series: ChartSeries[];
+  /**
+   * How the bars were made, as this action actually built them (IR-10, 2026-10-20): "bins" when the
+   * engine returned no answer categories and its histogram ranges were used, "values" when each bar
+   * is one answer category (which includes a numeric question tabulated as categories, for example
+   * after a researcher's categorical correction). Charts describe their encoding from this, never
+   * from a guess about the variable. Absent on results built elsewhere (wave tracking).
+   */
+  method?: ChartMethod;
 };
+
+/** See ChartResult.method. */
+export type ChartMethod = "bins" | "values";
 
 type Fail = { ok: false; error: string };
 
@@ -121,6 +132,7 @@ export async function runDistributionAction(
             weighted: !!result.weightVar,
             grouped: false,
             groupLabel: null,
+            method: "bins",
             series: [
               {
                 name: "All respondents",
@@ -151,6 +163,7 @@ export async function runDistributionAction(
           weighted: !!result.weightVar,
           grouped: false,
           groupLabel: null,
+          method: "values",
           series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), rawCode: r.rawCode })) }],
         },
       };
@@ -185,6 +198,7 @@ export async function runDistributionAction(
         n: Math.round(n0),
         weighted: !!result.weightVar,
         grouped: true,
+        method: "values",
         groupLabel: g.label || g.name,
         series,
       },

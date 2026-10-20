@@ -25,6 +25,7 @@ import {
   addChartFindingAction,
   removeChartFindingAction,
   chartFindingStatusAction,
+  type ChartMethod,
   type ChartResult,
 } from "@/lib/chartActions";
 import ChartVisual, { SERIES_COLORS } from "./ChartVisual";
@@ -36,7 +37,7 @@ import {
   scatterFindingStatusAction,
   type ScatterResult,
 } from "@/lib/scatterActions";
-import { HISTOGRAM_SOURCE_NOTE, histogramSource } from "@/lib/chartKinds";
+import { histogramNote } from "@/lib/chartKinds";
 import {
   addDriverFindingsAction,
   driverFindingCountsAction,
@@ -81,11 +82,12 @@ function suggestImportance(pred: VariableInfo, candidates: VariableInfo[]): stri
 }
 
 /**
- * The launcher on a data file's card: Crosstabs, and the analytics tiles (drivers, NPS, charts, wave
- * tracking, CSM, brand health, clustering). The work for each happens in its own full-window workspace
- * because a survey can have thousands of variables. `part` shows the Crosstabs tile alone (the Cross
- * tabs section) or the analytics tiles alone (the Analytics section); Grant, 2026-10-19, split the two
- * in the sidebar. Both parts open the same workspaces on the same file.
+ * The analytics tools for one data file (drivers, NPS, charts, wave tracking, CSM, brand health;
+ * clustering is listed as not available yet). Each tool works in its own workspace because a survey can
+ * have thousands of variables. The Analytics section shows them as a grid of cards (`layout="grid"`,
+ * Grant, 2026-10-20); a data file's card elsewhere shows them as tiles, and `part` there shows the
+ * Crosstabs tile alone or the analytics tiles alone (Cross tabs itself opens its workspace directly,
+ * CrosstabsSection).
  */
 type ToolId = "driver" | "nps" | "chart" | "wave" | "csm" | "brand";
 
@@ -287,8 +289,8 @@ type ChartCard = {
   legendPos: LegendPos;
   /** How the distribution is drawn; bar and line switch on the card without running again. */
   variant: "bar" | "line" | "histogram";
-  /** Histogram only: whether the bars are the engine's bins or one per answer value (chartKinds.ts). */
-  histSource?: "bins" | "values";
+  /** Histogram only: how the bars were made, as the distribution action reported it (ChartResult.method). */
+  histSource?: ChartMethod;
 };
 
 /** A scatter plot of two numeric variables; its correlation can be posted as a relationship finding. */
@@ -301,6 +303,8 @@ type ScatterCard = {
   title: string;
   spread: boolean;
   committed: boolean;
+  /** Whether the posted finding was worked out from the file as it is now; null when unknown. */
+  current: boolean | null;
   commitBusy: boolean;
 };
 
@@ -446,6 +450,9 @@ function AnalyticsWorkspace({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  // Whether the findings counts were read. Unknown is not zero: a saved analysis whose count could
+  // not be read is not shown as "not posted" (the server refuses duplicates either way).
+  const [countsKnown, setCountsKnown] = useState(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -456,10 +463,16 @@ function AnalyticsWorkspace({
       else setError(r.error);
     });
     listDriverAnalysesAction(runId, documentId).then((r) => {
-      if (live && r.ok) setSaved(r.items);
+      if (!live) return;
+      if (r.ok) setSaved(r.items);
+      else setError(`Saved analyses could not be loaded: ${r.error}`);
     });
     driverFindingCountsAction(runId).then((r) => {
-      if (live && r.ok) setCounts(r.counts);
+      if (!live) return;
+      if (r.ok) {
+        setCounts(r.counts);
+        setCountsKnown(true);
+      }
     });
     return () => {
       live = false;
@@ -570,7 +583,6 @@ function AnalyticsWorkspace({
     setChartError(null);
     // The engine has no grouped histogram, so a histogram is always of all respondents.
     const gv = chartType === "histogram" ? null : chartGroupVar || null;
-    const picked = vars.find((v) => v.name === chartVariable);
     const r = await runDistributionAction(runId, documentId, chartVariable, weightVar || null, gv);
     setChartBusy(false);
     if (r.ok) {
@@ -588,7 +600,8 @@ function AnalyticsWorkspace({
           colors: r.result.series.map((_, i) => SERIES_COLORS[i % SERIES_COLORS.length]),
           legendPos: "top",
           variant: chartType,
-          histSource: chartType === "histogram" && picked ? histogramSource(picked) : undefined,
+          // The note says how the bars were actually made, from the result (IR-10), not from the variable.
+          histSource: chartType === "histogram" ? r.result.method : undefined,
         },
       ]);
       setSelectedChartId(cardId);
@@ -626,24 +639,29 @@ function AnalyticsWorkspace({
         title: `${r.result.y.label} by ${r.result.x.label}`,
         spread: false,
         committed: status.ok ? status.committed : false,
+        current: status.ok ? status.current : null,
         commitBusy: false,
       },
       ...prev,
     ]);
   }
 
-  /** Posts or takes back a scatter's correlation; the server reads the file again to compute it. */
-  async function toggleScatterCommit(cardId: string) {
+  /**
+   * Posts or takes back a scatter's correlation; the server reads the file again to compute it.
+   * `update` posts again over a finding worked out from an earlier version of the file, which the
+   * server updates in place with the current figures (scatterActions, Codex IR-01).
+   */
+  async function toggleScatterCommit(cardId: string, update = false) {
     const card = scatters.find((c) => c.id === cardId);
     if (!card) return;
     const patch = (p: Partial<ScatterCard>) => setScatters((prev) => prev.map((c) => (c.id === cardId ? { ...c, ...p } : c)));
     patch({ commitBusy: true });
-    const r = card.committed
+    const r = card.committed && !update
       ? await removeScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar)
       : await addScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar);
     if (r.ok) {
-      patch({ committed: !card.committed, commitBusy: false });
-      setMessage(card.committed ? "Took the finding out of use." : "Added to findings.");
+      patch({ committed: update ? true : !card.committed, current: card.committed && !update ? card.current : true, commitBusy: false });
+      setMessage(update ? "Updated the finding with the current figures." : card.committed ? "Took the finding out of use." : "Added to findings.");
       startTransition(() => router.refresh());
     } else {
       setError(r.error);
@@ -750,11 +768,46 @@ function AnalyticsWorkspace({
     setDriverCommitBusy(false);
     if (r.ok) {
       setDriverCommitted(true);
-      setCounts((c) => ({ ...c, [id as string]: r.added }));
-      setMessage(`Posted ${r.added} finding${r.added === 1 ? "" : "s"}.`);
+      setCounts((c) => ({ ...c, [id as string]: r.added + r.alreadyPosted }));
+      setMessage(postedMessage(r.added, r.alreadyPosted));
       startTransition(() => router.refresh());
     } else setError(r.error);
   }
+
+  /**
+   * Reopens a saved analysis as it was made (IR-03, 2026-10-20): its result, the request behind it in
+   * the controls (outcome, outcome type and top box, predictors, weight, group by, stated importance),
+   * its saved identity and whether it is in findings. Posting it again then works on this same
+   * analysis instead of saving a copy. The result comes from the saved list already on screen, so
+   * there is no second read whose late answer could overwrite a newer choice.
+   */
+  function reopenSaved(s: SavedDriverAnalysis) {
+    const req = s.report.request;
+    setOutcomeFilter("");
+    setPredFilter("");
+    setOutcome(req.outcome);
+    setOutcomeType(req.outcomeType);
+    setTopBoxMin(req.outcomeType === "binary" && req.topBoxMin != null ? String(req.topBoxMin) : "");
+    setPredictors(new Set(req.predictors));
+    setWeightVar(req.weightVar ?? "");
+    setDriverGroupVar(req.groupVar ?? "");
+    // Predictors without a stated-importance question were saved without one: "" keeps that choice
+    // instead of falling back to a suggestion the saved result never used.
+    const stated = req.statedImportance ?? {};
+    setStatedPick(Object.fromEntries(req.predictors.map((p) => [p, stated[p] ?? ""] as const)));
+    setReport(s.report);
+    setDriverSeg(null);
+    setDriverSavedId(s.id);
+    setDriverCommitted(countsKnown && (counts[s.id] ?? 0) > 0);
+    setError(null);
+    setMessage(null);
+  }
+
+  /** The message after a post: says so when the findings were already there instead of "Posted 0". */
+  const postedMessage = (added: number, alreadyPosted: number) =>
+    added === 0 && alreadyPosted > 0
+      ? `Already in findings (${alreadyPosted}); nothing was added again.`
+      : `Posted ${added} finding${added === 1 ? "" : "s"}, marked as modelled results.`;
 
   const savedBlock =
     saved.length > 0 ? (
@@ -762,7 +815,7 @@ function AnalyticsWorkspace({
               <p className="font-medium text-foreground">Saved analyses</p>
               {saved.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1">
-                  <button type="button" className="text-left text-primary hover:underline" onClick={() => { setReport(s.report); setDriverSeg(null); }}>
+                  <button type="button" className="text-left text-primary hover:underline" aria-current={driverSavedId === s.id ? "true" : undefined} onClick={() => reopenSaved(s)}>
                     {s.title} <span className="text-muted">({new Date(s.createdAt).toLocaleDateString()})</span>
                   </button>
                   <span className="flex shrink-0 items-center gap-2">
@@ -774,6 +827,7 @@ function AnalyticsWorkspace({
                           const r = await removeDriverFindingsAction(runId, s.id);
                           if (r.ok) {
                             setCounts((c) => ({ ...c, [s.id]: 0 }));
+                            if (driverSavedId === s.id) setDriverCommitted(false);
                             setMessage(`Took ${r.removed} findings out of use.`);
                           } else setError(r.error);
                         }}
@@ -787,8 +841,9 @@ function AnalyticsWorkspace({
                         onClick={async () => {
                           const r = await addDriverFindingsAction(runId, s.id);
                           if (r.ok) {
-                            setCounts((c) => ({ ...c, [s.id]: r.added }));
-                            setMessage(`Added ${r.added} findings, marked as modelled results.`);
+                            setCounts((c) => ({ ...c, [s.id]: r.added + r.alreadyPosted }));
+                            if (driverSavedId === s.id) setDriverCommitted(true);
+                            setMessage(postedMessage(r.added, r.alreadyPosted));
                             startTransition(() => router.refresh());
                           } else setError(r.error);
                         }}
@@ -800,8 +855,16 @@ function AnalyticsWorkspace({
                       type="button"
                       className="text-muted hover:text-danger"
                       onClick={async () => {
-                        await deleteDriverAnalysisAction(runId, s.id);
+                        const r = await deleteDriverAnalysisAction(runId, s.id);
+                        if (!r.ok) {
+                          setError(r.error);
+                          return;
+                        }
                         setSaved((p) => p.filter((x) => x.id !== s.id));
+                        if (driverSavedId === s.id) {
+                          setDriverSavedId(null);
+                          setDriverCommitted(false);
+                        }
                       }}
                     >
                       Delete
@@ -1475,6 +1538,19 @@ function AnalyticsWorkspace({
                           >
                             {card.commitBusy ? "Working..." : card.committed ? "Remove from findings" : "Post to findings"}
                           </button>
+                          {card.committed && card.current === false && (
+                            <div className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-outdated">
+                              The posted finding was worked out from an earlier version of this file or its setup.{" "}
+                              <button type="button" onClick={() => toggleScatterCommit(card.id, true)} disabled={card.commitBusy} className="font-semibold underline">
+                                Update it with the current figures
+                              </button>
+                            </div>
+                          )}
+                          {card.committed && card.current === null && (
+                            <p className="text-[11px] text-slate-600" data-testid="scatter-finding-unknown">
+                              Whether the posted finding matches this file as it is now could not be checked.
+                            </p>
+                          )}
                           {c && (
                             <p className="text-[11px] text-slate-600" data-testid="scatter-post-limits">
                               {`Posts the correlation: r = ${c.r.toFixed(2)}, ${c.n.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases, ${res.weighted ? "weighted, no significance test" : testText ? `unweighted, ${testText.replace(/\.$/, "")}` : "unweighted"}; worked out again from the file when posted.`}
@@ -1574,7 +1650,7 @@ function AnalyticsWorkspace({
                               ))}
                             </div>
                           ) : (
-                            card.histSource && <p className="text-[11px] text-slate-600" data-testid="histogram-source">{HISTOGRAM_SOURCE_NOTE[card.histSource]}</p>
+                            histogramNote(card.histSource) && <p className="text-[11px] text-slate-600" data-testid="histogram-source">{histogramNote(card.histSource)}</p>
                           )}
                           <ChartVisual result={card.result} title={card.title} colors={card.colors} legendPos={card.legendPos} variant={card.variant} />
                           <button

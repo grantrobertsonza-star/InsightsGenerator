@@ -82,13 +82,16 @@ export async function deleteDriverAnalysisAction(runId: string, id: string): Pro
   }
 }
 
-export async function addDriverFindingsAction(runId: string, analysisId: string): Promise<{ ok: true; added: number } | Fail> {
+export async function addDriverFindingsAction(
+  runId: string,
+  analysisId: string,
+): Promise<{ ok: true; added: number; alreadyPosted: number } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    const added = await addDriverFindings(TENANT_ID, runId, analysisId);
+    const { added, alreadyPosted } = await addDriverFindings(TENANT_ID, runId, analysisId);
     if (added > 0) after(() => verifyAfterGenerate(TENANT_ID, runId));
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, added };
+    return { ok: true, added, alreadyPosted };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }
