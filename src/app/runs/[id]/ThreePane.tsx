@@ -356,19 +356,26 @@ function Chevron({ direction }: { direction: "left" | "right" }) {
   );
 }
 
+// Border width is part of each style: the workspace style is the only one with a thin border.
 const SIDES = {
-  left: "bg-sky-50 border-sky-200",
-  middle: "bg-slate-50 border-slate-300",
-  right: "bg-white border-slate-300",
+  left: "border-2 bg-sky-50 border-sky-200",
+  middle: "border-2 bg-slate-50 border-slate-300",
+  right: "border-2 bg-white border-slate-300",
   /** White with a grey border on every side: Import, Research quality, Objectives and Business decisions (Grant, 2026-10-20). */
-  plain: "bg-white border-border",
+  plain: "border-2 bg-white border-border",
+  /**
+   * A white surface on a pale grey workspace, with a thin neutral border, so blue is left for
+   * selection and actions (Grant's visual review, 2026-10-20): Coding and Reports and decks.
+   */
+  workspace: "border bg-white border-slate-200 shadow-sm",
 } as const;
 
 const HEADERS = {
-  left: "bg-sky-100 border-sky-200",
-  middle: "bg-white border-slate-300",
-  right: "bg-white border-slate-300",
-  plain: "bg-white border-border",
+  left: "border-b-2 bg-sky-100 border-sky-200",
+  middle: "border-b-2 bg-white border-slate-300",
+  right: "border-b-2 bg-white border-slate-300",
+  plain: "border-b-2 bg-white border-border",
+  workspace: "border-b bg-white border-slate-200",
 } as const;
 
 /** One pane: a header row (title, optional count and actions) over a body that scrolls on wide screens. */
@@ -387,9 +394,9 @@ export function Pane({
 }) {
   return (
     <section
-      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border-2 lg:max-h-[calc(100vh-10rem)] ${SIDES[side]}`}
+      className={`flex min-h-0 flex-col overflow-hidden rounded-xl lg:max-h-[calc(100vh-10rem)] ${SIDES[side]}`}
     >
-      <header className={`flex shrink-0 items-center gap-2 border-b-2 ${HEADERS[side]} px-4 py-3`}>
+      <header className={`flex shrink-0 items-center gap-2 ${HEADERS[side]} px-4 py-3`}>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         {badge}
         <div className="ml-auto flex items-center gap-2">{actions}</div>

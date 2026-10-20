@@ -3102,6 +3102,11 @@ function startPageTiming() {
   return timing;
 }
 
+/** "1 transcript", "3 transcripts": a count with its noun, singular for one. */
+function countOf(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export default async function RunPage({
   params,
 }: {
@@ -4442,16 +4447,23 @@ export default async function RunPage({
                             return (
                               <li
                                 key={doc.id}
-                                className={`flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`}
+                                className={
+                                  single
+                                    ? "flex flex-col gap-3"
+                                    : `flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`
+                                }
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <div
-                                      className="truncate text-sm font-medium text-foreground"
-                                      title={doc.source_filename}
-                                    >
-                                      {doc.source_filename}
-                                    </div>
+                                    {/* Alone in a pane, the pane's title already names the file. */}
+                                    {!single && (
+                                      <div
+                                        className="truncate text-sm font-medium text-foreground"
+                                        title={doc.source_filename}
+                                      >
+                                        {doc.source_filename}
+                                      </div>
+                                    )}
                                     <div className="text-xs text-muted">
                                       <span
                                         className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${DOC_KIND_STYLE[doc.kind]?.badge ?? ""}`}
@@ -4480,15 +4492,19 @@ export default async function RunPage({
                                       ).toLocaleDateString()}
                                     </div>
                                   </div>
-                                  {/\.(pdf|docx|txt)$/i.test(doc.source_filename) && (
+                                  {/* Research quality reviews briefs and proposals, which are context files. */}
+                                  {doc.kind === "evidence" && /\.(pdf|docx|txt)$/i.test(doc.source_filename) && (
                                     <ReviewResearchQualityLink documentId={doc.id} />
                                   )}
-                                  <form
-                                    action={deleteAction}
-                                    className="shrink-0"
-                                  >
-                                    <DeleteDocumentButton confirmMessage={deleteDocumentConfirmation(impactFor(deletionImpact, doc.id))} />
-                                  </form>
+                                  {/* Alone in a section's pane, a file is deleted in Sources, with the rest. */}
+                                  {!single && (
+                                    <form
+                                      action={deleteAction}
+                                      className="shrink-0"
+                                    >
+                                      <DeleteDocumentButton confirmMessage={deleteDocumentConfirmation(impactFor(deletionImpact, doc.id))} />
+                                    </form>
+                                  )}
                                 </div>
                                 {doc.kind === "report" && (
                                   <form action={extractAction}>
@@ -4719,7 +4735,7 @@ export default async function RunPage({
                                     <form action={codeAction}>
                                       <SubmitButton
                                         pendingLabel="Coding..."
-                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
                                         icon={
                                           <DocumentIcon className="h-3.5 w-3.5" />
                                         }
@@ -4763,7 +4779,7 @@ export default async function RunPage({
                                         />
                                         <SubmitButton
                                           pendingLabel="Importing..."
-                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:opacity-90"
+                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-primary-hover"
                                           icon={
                                             <UploadIcon className="h-3.5 w-3.5" />
                                           }
@@ -4843,7 +4859,8 @@ export default async function RunPage({
                         </ul>
   );
   // The quality checks, extras and exports of one transcript, shown in the right-hand pane of Coding.
-  const transcriptSide = (doc: (typeof documents)[number]) => (
+  // Nothing until the transcript is coded, so its pane is not shown empty.
+  const transcriptSide = (doc: (typeof documents)[number]) => !codebooksByDocument.has(doc.id) && !codingAnalysis.has(doc.id) ? null : (
     <div className="flex flex-col gap-3">
                                 {doc.kind === "transcript" &&
                                   codebooksByDocument.has(doc.id) && (
@@ -5560,101 +5577,83 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="coding">
+            {/* Grant, 2026-10-20: the Sources workspace style, one transcript at a time. */}
             <DocumentPicker
-              title="Transcripts"
-              empty="No transcripts yet. Add one under Import data."
-              rightTitle="Quality and exports"
+              title="Coding"
+              chooserLabel="Transcript"
+              intro="Code the themes in each interview or group discussion; the coded themes flow into Findings."
+              howTitle="How Coding works"
+              how={
+                <>
+                  <p>A transcript is coded once its setup (who is speaking, the kind of interview, its wave) is accepted in Sources. Code themes reads it and groups what was said into themes.</p>
+                  <p>Quality control, beside the coding, checks the coding for this transcript, and the coded themes can be exported. With more than one transcript coded, themes are compared across them below.</p>
+                </>
+              }
+              findings={findings.length}
+              storageKey="coding"
+              testId="coding-section"
+              empty="No transcripts yet. Add an interview or focus group transcript in Sources, then code it here."
+              workLabel="Coding"
+              sideLabel="Quality and exports"
+              sideEmpty="Quality control and exports appear here once this transcript is coded."
+              summary={`${countOf(documents.filter((d) => d.kind === "transcript").length, "transcript")} · ${codebooksByDocument.size} coded`}
               items={documents
                 .filter((d) => d.kind === "transcript")
                 .map((d) => {
-                  const view = codingAnalysis.get(d.id);
                   const confirmed = transcriptSetups.get(d.id)?.confirmed ?? false;
+                  const coded = codebooksByDocument.has(d.id);
                   return {
                     id: d.id,
                     name: d.source_filename,
-                    meta: codebooksByDocument.has(d.id) ? "Coded" : confirmed ? "Ready to code" : "Needs set-up",
-                    badge: view ? "Analysed" : undefined,
+                    meta: coded ? "Coded" : confirmed ? "Ready to code" : "Not coded",
+                    flag: !coded && !confirmed ? "Needs set-up" : undefined,
                     node: documentCards("transcript", true, d.id, true),
                     side: transcriptSide(d),
                   };
                 })}
-              accents={documents
-                .filter((d) => d.kind === "transcript")
-                .map((d) => DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border)}
-              right={
-                <p className="text-xs text-muted">
-                  Interviews and group discussions. Code the themes in the middle, and the coded themes
-                  flow into Findings.
-                </p>
+              footer={
+                codingAnalysis.size > 1 ? (
+                  <AcrossTranscripts
+                    rows={crossTranscriptThemes(codingAnalysis)}
+                    documentNames={Object.fromEntries(documents.map((d) => [d.id, d.source_filename]))}
+                    runId={id}
+                  />
+                ) : null
               }
             />
-            {codingAnalysis.size > 1 && (
-              <div className="mt-4">
-                <AcrossTranscripts
-                  rows={crossTranscriptThemes(codingAnalysis)}
-                  documentNames={Object.fromEntries(
-                    documents.map((d) => [d.id, d.source_filename]),
-                  )}
-                  runId={id}
-                />
-              </div>
-            )}
           </SectionPanel>
 
           <SectionPanel id="reports">
-            <ThreePane
-              left={
-                <Pane side="left" title="About reports and decks">
-                  <p className="text-sm text-muted">
-                    Written reports and presentations. Extract the claims they make, which are then
-                    checked in Findings.
-                  </p>
-                  <p className="text-xs text-muted">
-                    Add more under Import. Each card has its own Extract findings and Run again
-                    buttons.
-                  </p>
-                </Pane>
+            {/* Grant, 2026-10-20: the Sources workspace style, one report at a time. */}
+            <DocumentPicker
+              title="Reports and decks"
+              chooserLabel="Report or deck"
+              intro="Extract the claims a written report or presentation makes; they are then checked in Findings."
+              howTitle="How Reports and decks works"
+              how={
+                <>
+                  <p>Extract findings reads the selected report and lists the claims it states. Each becomes a finding, checked against the data in Findings; nothing is read until you press it.</p>
+                  <p>Run again reads the report afresh. Findings from every report and table are reviewed together under Findings.</p>
+                </>
               }
-              middle={
-                <Pane
-                  side="middle"
-                  title="Reports and decks"
-                  badge={
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
-                      {documents.filter((d) => d.kind === "report").length}
-                    </span>
-                  }
-                >
-                  {!documents.some((d) => d.kind === "report") ? (
-                    <p className="text-sm text-muted">
-                      No reports yet. Add one under Import data.
-                    </p>
-                  ) : (
-                    documentCards("report", true)
-                  )}
-                </Pane>
-              }
-              right={
-                <Pane side="right" title="At a glance">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {documents.filter((d) => d.kind === "report").length}
-                      </div>
-                      <div className="text-xs text-muted">Reports and decks</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-white px-3 py-2">
-                      <div className="text-lg font-semibold text-foreground">
-                        {findings.length}
-                      </div>
-                      <div className="text-xs text-muted">Findings so far</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Findings from every report and table are reviewed together under Findings.
-                  </p>
-                </Pane>
-              }
+              findings={findings.length}
+              storageKey="reports"
+              testId="reports-section"
+              empty="No reports yet. Add a report or deck (Word, PDF or PowerPoint) in Sources, then extract its findings here."
+              workLabel="Report"
+              summary={`${countOf(documents.filter((d) => d.kind === "report").length, "report or deck", "reports and decks")} · ${countOf(findings.length, "finding")} so far, from every report and table`}
+              items={documents
+                .filter((d) => d.kind === "report")
+                .map((d) => {
+                  const n = rawFindings.filter((f) => f.source_document_id === d.id).length;
+                  const read = reportReadStats.get(d.id)?.ranAt;
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: n > 0 || read ? `Extracted, ${n} ${n === 1 ? "finding" : "findings"}` : "Not extracted yet",
+                    node: documentCards("report", true, d.id, true),
+                  };
+                })}
             />
           </SectionPanel>
 

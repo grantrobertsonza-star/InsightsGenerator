@@ -1125,8 +1125,8 @@ export function CodeGate({
     <>
       <p className="text-[11px] text-muted">
         {summary
-          ? `Setup: ${summary}. Change it in Import data, on the transcript's Setup tab.`
-          : "Setup needed: choose who is in each session in Import data, on the transcript's Setup tab."}
+          ? `Setup: ${summary}. Change it in Sources, on the transcript's Setup tab.`
+          : "Setup needed: choose who is in each session in Sources, on the transcript's Setup tab."}
       </p>
       {summary ? (
         children
