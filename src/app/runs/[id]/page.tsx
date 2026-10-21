@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -3736,8 +3737,10 @@ export default async function RunPage({
   );
 
   // The exports and Run synthesis, shown above the Insights review (InsightsWorkspace).
+  // Elements built here and handed to a client workspace sit beside its own children, so each carries a
+  // key (React warns about unkeyed server elements in that position in development).
   const synthesizedToolbar = (
-      <div className="flex flex-wrap items-center gap-3">
+      <div key="insights-toolbar" className="flex flex-wrap items-center gap-3">
         <div className="ml-auto">
         <div className="flex flex-wrap items-center gap-2">
           {synthesizedInsights.length > 0 && (
@@ -3854,7 +3857,7 @@ export default async function RunPage({
       className="flex flex-col gap-4"
     >
       <RecommendationsWorkspace
-        toolbar={mainRecommendationExportControls ? <div className="flex justify-end">{mainRecommendationExportControls}</div> : null}
+        toolbar={mainRecommendationExportControls ? <div key="recommendations-toolbar" className="flex justify-end">{mainRecommendationExportControls}</div> : null}
         runId={id}
         recommendations={synthesizedRecommendations}
         insightOptions={synthesizedInsights
@@ -4190,7 +4193,7 @@ export default async function RunPage({
   // Re-verify and the exports, shown above the Findings review (FindingsWorkspace).
   const findingsToolbar =
         findings.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <div key="findings-toolbar" className="flex flex-wrap items-center gap-2">
             <form action={reverifyFindingsWithId}>
               <SubmitButton
                 pendingLabel="Re-verifying..."
@@ -5709,10 +5712,10 @@ export default async function RunPage({
               claims={statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier }))}
               reviewToolbar={findingsToolbar}
               claimsContent={
-                <>
+                <Fragment key="findings-claims">
                   {statedInsightValidationsSection}
                   <ClaimTableChecks runId={id} />
-                </>
+                </Fragment>
               }
             />
           </SectionPanel>
