@@ -2,7 +2,8 @@
 
 import { useActionState, useRef } from "react";
 import SubmitButton from "@/components/SubmitButton";
-import { saveRunContextFromForm, type RunContextSaveResult } from "@/lib/runContextActions";
+import { saveRunContextFromForm } from "@/lib/runContextActions";
+import { INITIAL_BRIEF_FILL_FORM_STATE, nextBriefFillFormState, type BriefFillFormState } from "./briefFillCarry";
 import type { BriefFill, FailedBriefFill } from "@/lib/briefFillRecord";
 import { FAILED_FILL_NOT_RECORDED, FAILED_FILL_UNKNOWN, LAST_FILL_UNKNOWN, failedFillText, lastFillText } from "@/lib/briefFillText";
 
@@ -30,16 +31,21 @@ export default function RunContextForm({
   failedFill?: FailedBriefFill | null | { error: string };
 }) {
   // The result of this page's last save (GT500-F02): a fill that did not happen is said here, from
-  // the response itself, even when recording it failed too. Otherwise the shown failure is the
-  // stored, unresolved one: from the save's own read of it once there is a save (R500-01: a save
-  // with no document requested is not a successful fill, so an earlier failure and its retry stay
-  // shown), from the page's (failedFill) before.
-  const [result, formAction] = useActionState<RunContextSaveResult | null, FormData>(saveRunContextFromForm.bind(null, runId), null);
+  // the response itself, even when recording it failed too; one that could not be recorded is
+  // carried through later ordinary saves in this open form until a newer failure or a successful
+  // fill (R500-R01, briefFillCarry.ts). Otherwise the shown failure is the stored, unresolved one:
+  // from the save's own read of it once there is a save (R500-01: a save with no document requested
+  // is not a successful fill, so an earlier failure and its retry stay shown), from the page's
+  // (failedFill) before.
+  const [{ result, unrecordedFailure }, formAction] = useActionState<BriefFillFormState, FormData>(
+    async (prev, formData) => nextBriefFillFormState(prev, await saveRunContextFromForm(runId, prev.result, formData)),
+    INITIAL_BRIEF_FILL_FORM_STATE,
+  );
   const formRef = useRef<HTMLFormElement>(null);
   const briefRef = useRef<HTMLSelectElement>(null);
   const proposalRef = useRef<HTMLSelectElement>(null);
   const documentIds = new Set(documents.map((d) => d.id));
-  const responseFailure = result?.fill?.status === "failed" ? result.fill : null;
+  const responseFailure = (result?.fill?.status === "failed" ? result.fill : null) ?? unrecordedFailure;
   const stored = result ? result.unresolvedFailure : failedFill;
   const recordedFailure = stored && !("error" in stored) ? stored : null;
   const failure = responseFailure ?? recordedFailure;

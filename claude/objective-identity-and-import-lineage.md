@@ -45,7 +45,11 @@ successful fill was". Every save result also carries `unresolvedFailure`, that s
 after the save (R500-01): a save with no document chosen is not a successful fill, so an earlier
 failure and its retry stay shown after it exactly as after a reload; another failed attempt replaces
 it; only a successful fill resolves it. When it cannot be read, the form says the state is unknown,
-never "no failure". A save that fails outright still throws.
+never "no failure". A failure that could not be recorded exists only in the response that reported
+it (R500-R01): the open form carries it through later ordinary saves, with its retry and the note
+that it was not recorded, until a newer failed fill replaces it or a fill succeeds
+(`briefFillCarry.ts`, the form's `useActionState` reducer). A reload cannot bring an unrecorded
+failure back; the note says so. A save that fails outright still throws.
 
 **Edits (GT500-F03, R500-02).** An edit is bound to the record its editor was opened on, with the
 wording it opened with as that record's expected state. Setup: the page gives each Setup line its

@@ -270,3 +270,55 @@ test("R500-01: an ordinary save keeps an unresolved failed fill and its retry; t
     await client.end();
   }
 });
+
+test("R500-R01: a failed fill that could not be recorded stays shown through ordinary saves in the open form", async ({ page }, testInfo) => {
+  const marker = `R500-R01-${Date.now()}`;
+  const run = await setUp(page, testInfo, "r500-r01", `Proposal ${marker}.`);
+  const client = db();
+  await client.connect();
+  // Recording the failure is refused for this run only, as when the failure log cannot be written.
+  const fn = `refuse_intake_error_${run.id.replace(/-/g, "")}`;
+  await client.query(`create function ${fn}() returns trigger language plpgsql as $$ begin
+    if new.event = 'brief_intake_error' and new.run_id = '${run.id}' then raise exception 'synthetic: failure log refused'; end if;
+    return new; end $$`);
+  await client.query(`create trigger ${fn} before insert on trace for each row execute function ${fn}()`);
+  try {
+    await openSection(page, "Set Objectives");
+    writeFileSync(fixtureFile, JSON.stringify({ tools: { record_brief_fields: [{ match: marker, status: 503 }] } }));
+    await fillFromProposal(page, client, run.id);
+    await expect(page.getByTestId("brief-fill-failed")).toContainText("did not happen");
+    await expect(page.getByTestId("brief-fill-failed")).toContainText("could not be recorded");
+    expect(Number((await client.query("select count(*) from trace where run_id=$1 and event='brief_intake_error'", [run.id])).rows[0].count)).toBe(0);
+    await client.query(`drop trigger ${fn} on trace`);
+
+    // Two ordinary saves: no document chosen, only the business problem changed.
+    const form = objectiveForm(page);
+    for (const text of ["First change by hand", "Second change by hand"]) {
+      await expect(form.locator('select[name="proposalDocumentId"]')).toHaveValue("");
+      await form.locator('textarea[name="businessProblem"]').fill(text);
+      const response = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/runs/${run.id}`));
+      await form.getByRole("button", { name: "Save", exact: true }).click();
+      expect((await response).ok()).toBe(true);
+      await expect(form.getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
+      await expect.poll(async () => (await client.query("select business_problem from runs where id=$1", [run.id])).rows[0].business_problem).toBe(text);
+      await expect(page.getByTestId("brief-fill-failed")).toContainText("did not happen");
+      await expect(page.getByTestId("brief-fill-failed")).toContainText("could not be recorded");
+      await expect(page.getByTestId("brief-fill-retry")).toBeVisible();
+    }
+    expect(Number((await client.query("select count(*) from trace where run_id=$1 and event='brief_intake_used'", [run.id])).rows[0].count)).toBe(0);
+
+    // A healthy retry fills once and clears it; the typed text stays.
+    writeFileSync(fixtureFile, JSON.stringify({ tools: { record_brief_fields: [{ match: marker, input: { business_problem: null, research_objective: "Objective after the unrecorded failure" } }] } }));
+    const retried = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/runs/${run.id}`));
+    await page.getByTestId("brief-fill-retry").click();
+    expect((await retried).ok()).toBe(true);
+    await expect(objectiveForm(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
+    await expect(page.getByTestId("brief-fill-failed")).toHaveCount(0, { timeout: 60_000 });
+    expect((await client.query("select candidate_text from objective_candidates where run_id=$1", [run.id])).rows.map((r) => r.candidate_text)).toEqual(["Objective after the unrecorded failure"]);
+    expect((await client.query("select business_problem from runs where id=$1", [run.id])).rows[0].business_problem).toBe("Second change by hand");
+  } finally {
+    await client.query(`drop trigger if exists ${fn} on trace`);
+    await client.query(`drop function if exists ${fn}()`);
+    await client.end();
+  }
+});

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RunContextSaveResult } from "../runContextActions";
 import type { FailedBriefFill } from "../briefFillRecord";
+import { INITIAL_BRIEF_FILL_FORM_STATE, nextBriefFillFormState, type BriefFillFormState } from "../../app/runs/[id]/briefFillCarry";
 
 const state = vi.hoisted(() => ({ result: null as unknown }));
 vi.mock("react", async (importOriginal) => {
@@ -33,8 +34,10 @@ const saved = (over: Partial<RunContextSaveResult>): RunContextSaveResult => ({
   unresolvedFailure: null,
   ...over,
 });
-const render = (result: RunContextSaveResult | null, failedFill: FailedBriefFill | null | { error: string } = null) => {
-  state.result = result;
+// The form's state after a sequence of saves, built with the form's own reducer (briefFillCarry).
+const after = (...results: RunContextSaveResult[]): BriefFillFormState => results.reduce(nextBriefFillFormState, INITIAL_BRIEF_FILL_FORM_STATE);
+const render = (result: RunContextSaveResult | BriefFillFormState | null, failedFill: FailedBriefFill | null | { error: string } = null) => {
+  state.result = result === null ? INITIAL_BRIEF_FILL_FORM_STATE : "unrecordedFailure" in result ? result : after(result);
   return renderToStaticMarkup(
     <RunContextForm
       runId="synthetic-run"
@@ -85,5 +88,40 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
     const html = render(saved({ fill: null, unresolvedFailure: { error: "synthetic read failure" } }), { error: "synthetic read failure" });
     expect(html).toContain('data-testid="brief-fill-unknown"');
     expect(html).not.toContain('data-testid="brief-fill-failed"');
+  });
+
+  // R500-R01: a failure that could not be recorded exists only in the response; the open form keeps it.
+  const unrecorded = saved({
+    fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Synthetic outage, not recorded", recorded: false, briefDocumentId: null, proposalDocumentId: DOC },
+    unresolvedFailure: null,
+  });
+  const ordinary = saved({ fill: null, unresolvedFailure: null });
+
+  it("an unrecorded failure stays, with its retry and the not-recorded note, through several ordinary saves", () => {
+    const html = render(after(unrecorded, ordinary, ordinary));
+    expect(html).toContain("Synthetic outage, not recorded");
+    expect(html).toContain('data-testid="brief-fill-retry"');
+    expect(html).toContain("could not be recorded");
+  });
+
+  it("a successful fill clears an unrecorded failure", () => {
+    const html = render(after(unrecorded, ordinary, saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false }, unresolvedFailure: null }), ordinary));
+    expect(html).not.toContain('data-testid="brief-fill-failed"');
+  });
+
+  it("a newer recorded failure replaces an unrecorded one", () => {
+    const newer = saved({
+      fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Second synthetic timeout", recorded: true, briefDocumentId: null, proposalDocumentId: DOC },
+      unresolvedFailure: { ...stored, reason: "Second synthetic timeout" },
+    });
+    const html = render(after(unrecorded, newer, saved({ fill: null, unresolvedFailure: { ...stored, reason: "Second synthetic timeout" } })));
+    expect(html).toContain("Second synthetic timeout");
+    expect(html).not.toContain("Synthetic outage, not recorded");
+  });
+
+  it("an unrecorded failure is still shown when the stored state cannot be read either", () => {
+    const html = render(after(unrecorded, saved({ fill: null, unresolvedFailure: { error: "synthetic read failure" } })));
+    expect(html).toContain("Synthetic outage, not recorded");
+    expect(html).not.toContain('data-testid="brief-fill-unknown"');
   });
 });
