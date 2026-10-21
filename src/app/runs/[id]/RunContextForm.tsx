@@ -30,16 +30,20 @@ export default function RunContextForm({
   failedFill?: FailedBriefFill | null | { error: string };
 }) {
   // The result of this page's last save (GT500-F02): a fill that did not happen is said here, from
-  // the response itself, even when recording it failed too. After a reload the recorded failure
-  // (failedFill) says it instead.
+  // the response itself, even when recording it failed too. Otherwise the shown failure is the
+  // stored, unresolved one: from the save's own read of it once there is a save (R500-01: a save
+  // with no document requested is not a successful fill, so an earlier failure and its retry stay
+  // shown), from the page's (failedFill) before.
   const [result, formAction] = useActionState<RunContextSaveResult | null, FormData>(saveRunContextFromForm.bind(null, runId), null);
   const formRef = useRef<HTMLFormElement>(null);
   const briefRef = useRef<HTMLSelectElement>(null);
   const proposalRef = useRef<HTMLSelectElement>(null);
   const documentIds = new Set(documents.map((d) => d.id));
   const responseFailure = result?.fill?.status === "failed" ? result.fill : null;
-  const recordedFailure = !result && failedFill && !("error" in failedFill) ? failedFill : null;
+  const stored = result ? result.unresolvedFailure : failedFill;
+  const recordedFailure = stored && !("error" in stored) ? stored : null;
   const failure = responseFailure ?? recordedFailure;
+  const failureUnknown = !responseFailure && !!stored && "error" in stored;
   // Retrying submits the whole form again, so the fields as they now stand are saved with it and
   // nothing typed is overwritten; only documents still in the project are chosen again.
   function retryFill(target: { briefDocumentId: string | null; proposalDocumentId: string | null }) {
@@ -77,7 +81,7 @@ export default function RunContextForm({
               )}
             </div>
           )}
-          {!result && failedFill && "error" in failedFill && (
+          {failureUnknown && (
             <p className="mt-1.5 text-xs font-medium text-amber-800" data-testid="brief-fill-unknown">{FAILED_FILL_UNKNOWN}</p>
           )}
           {lastFill && (

@@ -23,7 +23,7 @@ function splitLabel(text: string): { label: string | null; body: string } {
   return { label: null, body: text };
 }
 
-function Item({ runId, text, index, source }: { runId: string; text: string; index: number; source: string | null }) {
+function Item({ runId, text, index, source, candidateId }: { runId: string; text: string; index: number; source: string | null; candidateId: string | null }) {
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -75,7 +75,7 @@ function Item({ runId, text, index, source }: { runId: string; text: string; ind
               onClick={() =>
                 start(async () => {
                   setError(null);
-                  const result = await saveStatedObjectiveEdit(runId, text, draft);
+                  const result = await saveStatedObjectiveEdit(runId, text, draft, { candidateId });
                   if (result.ok) setEditing(false);
                   else setError(`Not saved: ${result.error}`);
                 })
@@ -106,7 +106,7 @@ function Item({ runId, text, index, source }: { runId: string; text: string; ind
                 if (!confirm("Delete this objective?")) return;
                 start(async () => {
                   setError(null);
-                  const result = await saveStatedObjectiveEdit(runId, text, null);
+                  const result = await saveStatedObjectiveEdit(runId, text, null, { candidateId });
                   if (!result.ok) setError(`Not deleted: ${result.error}`);
                 });
               }}
@@ -128,10 +128,17 @@ function Item({ runId, text, index, source }: { runId: string; text: string; ind
 export default function StatedObjectivesList({
   runId,
   lines,
+  candidateIds,
   sources,
 }: {
   runId: string;
   lines: string[];
+  /**
+   * Per line, the candidate it stands for (setupLineCandidateIds), or null for a Setup-only line.
+   * An edit or delete is bound to it, so a stale editor never changes a record it was not opened
+   * on (R500-02).
+   */
+  candidateIds: (string | null)[];
   /** Per line, the brief or proposal it was added from ("the proposal X.docx"), or null (briefFillRecord). */
   sources?: (string | null)[];
 }) {
@@ -140,7 +147,7 @@ export default function StatedObjectivesList({
     <div>
       <ul className="space-y-2">
         {lines.map((l, i) => (
-          <Item key={l} runId={runId} text={l} index={i} source={sources?.[i] ?? null} />
+          <Item key={`${candidateIds[i] ?? "line"}:${l}`} runId={runId} text={l} index={i} source={sources?.[i] ?? null} candidateId={candidateIds[i] ?? null} />
         ))}
       </ul>
     </div>

@@ -8,6 +8,7 @@ import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines, normalizeObjectiveLine, objectiveIdentityKey } from "./objectiveLines";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { requireTenantId } from "./requestContext";
+import { loadFailedBriefFill, type FailedBriefFill } from "./briefFillRecord";
 
 
 /**
@@ -59,6 +60,13 @@ export type RunContextSaveResult = {
         briefDocumentId: string | null;
         proposalDocumentId: string | null;
       };
+  /**
+   * The project's unresolved failed fill as stored after this save (loadFailedBriefFill), read
+   * whatever the save did (R500-01): a save with no document leaves an earlier failure unresolved,
+   * so the form keeps showing it and its retry, as a reload does; only a successful fill resolves
+   * it. `{ error }` when it could not be read, never null.
+   */
+  unresolvedFailure: FailedBriefFill | null | { error: string };
 };
 
 /** "the brief A.docx and the proposal B.docx" for a message; ids whose name is unknown are "the chosen document". */
@@ -290,8 +298,10 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
   // shown on Review, never blocks the save.
   await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
+  const unresolvedFailure = await loadFailedBriefFill(TENANT_ID, runId);
   return {
     ok: true,
+    unresolvedFailure,
     alreadyInProject: counts.alreadyInProject,
     importedBefore: counts.importedBefore,
     fill: failedFill ?? (fill ? { status: "filled", objectivesAdded: fill.objectivesFromDocument ? counts.added : 0, filledBusinessProblem: fill.filledBusinessProblem } : null),
@@ -317,19 +327,26 @@ export async function saveStatedObjectiveEdit(
   runId: string,
   oldText: string,
   newText: string | null,
+  target: StatedObjectiveTarget,
 ): Promise<{ ok: true } | { ok: false; error: string; conflict: boolean }> {
   // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
   await requireTenantId();
   try {
-    await editStatedObjective(runId, oldText, newText);
+    await editStatedObjective(runId, oldText, newText, target);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error), conflict: error instanceof ObjectiveEditConflict };
   }
 }
 
-/** The objective an editor opened is no longer there as it was (GT500-F03). */
+/** The objective an editor opened is no longer there as it was (GT500-F03, R500-02). */
 class ObjectiveEditConflict extends Error {}
+
+/**
+ * The record a Setup editor was opened on (R500-02): the candidate id the page gave its line
+ * (setupLineCandidateIds), or null for a Setup-only line that had no candidate.
+ */
+export type StatedObjectiveTarget = { candidateId: string | null };
 
 const EDIT_CONFLICT_MESSAGE =
   "This objective was changed or removed after you opened it, so your edit was not saved and nothing was added. Your wording is still in the box: copy it, then Cancel to see the current objective, and edit that.";
@@ -340,14 +357,28 @@ const EDIT_CONFLICT_MESSAGE =
  * never runs.initial_research_objective, which is write-once and reserved
  * for objectiveFramer.ts's "researcher's true starting point" read.
  *
- * `oldText` is the wording the editor opened with, and is the edit's expected current state
- * (GT500-F03): the target is the list line with that wording, or a researcher-authored
- * candidate with it (an objective added on Review has a candidate but may have no Setup line).
- * When neither is there any more (another editor changed or removed it) the edit is refused as
- * a conflict. It used to append the new wording instead, so a stale editor silently added a
- * second accepted objective. Adding stays a separate, deliberate action.
+ * The edit is bound to the record the editor was opened on (R500-02), with `oldText`, the wording
+ * it opened with, as that record's expected state (GT500-F03):
+ * - `target.candidateId` set: that researcher-authored candidate must still exist with that
+ *   wording (compared marker-stripped). Only it is edited or removed. Deleted, or changed since,
+ *   is a conflict, even when another candidate now has the same wording: a candidate deleted and
+ *   then deliberately added again is a different record, and an editor opened on the first never
+ *   touches the second.
+ * - `target.candidateId` null (compatibility, a Setup-only line saved before candidates were
+ *   kept for Setup lines): the Setup line with that wording must still be there and no
+ *   researcher-authored candidate may have that wording (one created since means the line is no
+ *   longer the candidate-less line the editor opened on). The line is edited in place and gets
+ *   its candidate.
+ * A conflict writes nothing. A stale editor used to append its wording, or edit whichever record
+ * currently had the old wording. Adding stays a separate, deliberate action.
  */
-export async function editStatedObjective(runId: string, oldText: string, newText: string | null) {
+export async function editStatedObjective(runId: string, oldText: string, newText: string | null, target: StatedObjectiveTarget) {
+  // Validated at the action boundary: the id comes from the client. A caller that sends no target
+  // takes the strict candidate-less path below, so it can never edit a record by wording alone.
+  const targetId = target?.candidateId ?? null;
+  if (targetId !== null && (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId))) {
+    throw new ObjectiveEditConflict(EDIT_CONFLICT_MESSAGE);
+  }
   const TENANT_ID = await requireTenantId();
   // OBJ-SET-M02: only trimming here, instead of running the replacement through the same
   // normalizeObjectiveLine stripping parseObjectiveLines applies on every read, let a
@@ -380,27 +411,28 @@ export async function editStatedObjective(runId: string, oldText: string, newTex
     const normalizedOldText = normalizeObjectiveLine(oldText);
     const idx = lines.indexOf(normalizedOldText);
 
-    // OBJ-SET-001/M02: `trim(candidate_text) = $N` only ever found a row saved with the
-    // exact same whitespace-trimmed text. A candidate accepted on Review with its bullet or
-    // number still attached ("- B", not the stripped "B" this module always works with) was
-    // therefore invisible to this match, so an edit made here added a second, divergent
-    // candidate instead of updating the one Review had already created. Comparing both sides
-    // through normalizeObjectiveLine finds that row regardless of which marker it carries.
+    // The expected wording is compared marker-stripped on both sides (OBJ-SET-001/M02): a
+    // candidate accepted on Review with its bullet or number still attached ("- B") is the same
+    // wording as the stripped Setup line "B". The record itself is chosen by id, never by wording
+    // (R500-02).
     const existingCandidates = await client.query<{ id: string; candidate_text: string }>(
       `select id, candidate_text from objective_candidates where run_id = $1 and source = 'researcher_authored' for update`,
       [runId],
     );
-    const matchingIds = existingCandidates.rows
-      .filter((row) => normalizeObjectiveLine(row.candidate_text) === normalizedOldText)
-      .map((row) => row.id);
-    if (idx < 0 && matchingIds.length === 0) throw new ObjectiveEditConflict(EDIT_CONFLICT_MESSAGE);
+    const sameWording = (row: { candidate_text: string }) => normalizeObjectiveLine(row.candidate_text) === normalizedOldText;
+    if (targetId) {
+      const opened = existingCandidates.rows.find((row) => row.id === targetId);
+      if (!opened || !sameWording(opened)) throw new ObjectiveEditConflict(EDIT_CONFLICT_MESSAGE);
+    } else if (idx < 0 || existingCandidates.rows.some(sameWording)) {
+      throw new ObjectiveEditConflict(EDIT_CONFLICT_MESSAGE);
+    }
 
     if (idx >= 0) {
       if (next) lines[idx] = next;
       else lines.splice(idx, 1);
     } else if (next) {
-      // A Review-added objective being edited from Setup for the first time: its wording joins
-      // the Setup list here, the same as it always did.
+      // The candidate the editor was opened on has no Setup line (added on Review): its wording
+      // joins the Setup list here, the same as it always did.
       lines.push(next);
     }
     await client.query("update runs set stated_objectives_text = $1, updated_at = now() where id = $2", [
@@ -409,10 +441,11 @@ export async function editStatedObjective(runId: string, oldText: string, newTex
     ]);
 
     if (next) {
-      if (matchingIds.length > 0) {
-        await client.query(`update objective_candidates set candidate_text = $1, edited = true where id = any($2)`, [
+      if (targetId) {
+        await client.query(`update objective_candidates set candidate_text = $1, edited = true where id = $2 and run_id = $3`, [
           next,
-          matchingIds,
+          targetId,
+          runId,
         ]);
       } else {
         // A Setup line with no candidate row yet (a list saved before candidates were kept for
@@ -423,8 +456,8 @@ export async function editStatedObjective(runId: string, oldText: string, newTex
           [TENANT_ID, runId, next],
         );
       }
-    } else if (matchingIds.length > 0) {
-      await client.query(`delete from objective_candidates where id = any($1)`, [matchingIds]);
+    } else if (targetId) {
+      await client.query(`delete from objective_candidates where id = $1 and run_id = $2`, [targetId, runId]);
     }
     await syncResearchObjective(client, runId);
   });

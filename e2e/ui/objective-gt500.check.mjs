@@ -6,6 +6,11 @@
 //        is labelled as the previous one; Try the fill again then fills once.
 //   F03: two editors opened on the same objective: the second save is refused, its draft stays in
 //        the editor, and no second objective appears.
+//   R500-02: a Setup editor is open on an objective; in another tab Review deletes it and adds the
+//        same wording again (a new record): the old Setup save is refused, its draft stays, and
+//        the new record is unchanged.
+//   R500-01: after a failed fill, an ordinary save (no document chosen) keeps the failure and its
+//        retry on the page, as a reload does; the retry then fills and clears it.
 // Real browser against the disposable local stack; the model replay is scripted through the
 // stack's model-fixture.json. Synthetic data only.
 import { expect, test } from "@playwright/test";
@@ -165,6 +170,102 @@ test("F03: two editors opened on the same objective; the stale one is refused an
     await expect(second.getByText("Measure rural demand by province", { exact: true })).toHaveCount(0);
     await expect(second.getByText("Measure rural demand by income", { exact: true }).first()).toBeVisible();
     await second.close();
+  } finally {
+    await client.end();
+  }
+});
+
+test("R500-02: a Setup editor opened before Review deletes and re-adds the same wording is refused", async ({ page, context }, testInfo) => {
+  const run = await setUp(page, testInfo, "r500-02", "Unused proposal text.");
+  const client = db();
+  await client.connect();
+  try {
+    await openSection(page, "Set Objectives");
+    const form = objectiveForm(page);
+    await form.locator('textarea[name="researchObjective"]').fill("Objective A");
+    await form.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.locator("li").filter({ has: page.getByText("Objective A", { exact: true }) }).last()).toBeVisible({ timeout: 60_000 });
+    const original = (await client.query("select id from objective_candidates where run_id=$1", [run.id])).rows[0].id;
+
+    // Tab 1: the Setup editor opens on Objective A and its draft is typed, not saved.
+    await page.locator("li").filter({ has: page.getByText("Objective A", { exact: true }) }).last().getByRole("button", { name: "Edit", exact: true }).click();
+    const editor = page.locator("li").filter({ has: page.locator("textarea:not([name])") }).last();
+    await editor.locator("textarea").fill("Stale wording from the old editor");
+
+    // Tab 2: Review deletes it, then adds the same wording on purpose.
+    const second = await context.newPage();
+    second.on("dialog", (d) => d.accept());
+    await second.goto(run.url, { waitUntil: "networkidle" });
+    await openSection(second, "Review Objectives");
+    await second.getByRole("button").filter({ hasText: "Objective A" }).first().click();
+    await second.getByRole("button", { name: "Delete", exact: true }).first().click();
+    await expect.poll(async () => Number((await client.query("select count(*) from objective_candidates where run_id=$1", [run.id])).rows[0].count)).toBe(0);
+    const add = second.locator("form", { hasText: "Add your own objective" });
+    await add.locator("textarea").fill("Objective A");
+    await add.getByRole("button", { name: "Add objective" }).click();
+    await expect.poll(async () => (await client.query("select id from objective_candidates where run_id=$1", [run.id])).rows.length).toBe(1);
+    const replacement = (await client.query("select id, candidate_text, status from objective_candidates where run_id=$1", [run.id])).rows[0];
+    expect(replacement.id).not.toBe(original);
+    const statedBefore = (await client.query("select stated_objectives_text from runs where id=$1", [run.id])).rows[0].stated_objectives_text;
+
+    // Tab 1: the old editor saves. Refused, the draft stays, the new record is unchanged.
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(editor.getByRole("alert")).toContainText("changed or removed after you opened it", { timeout: 60_000 });
+    await expect(editor.locator("textarea")).toHaveValue("Stale wording from the old editor");
+    expect((await client.query("select id, candidate_text, status from objective_candidates where run_id=$1", [run.id])).rows).toEqual([replacement]);
+    expect((await client.query("select stated_objectives_text from runs where id=$1", [run.id])).rows[0].stated_objectives_text).toBe(statedBefore);
+
+    // After a reload the page shows the new record and none of the stale wording.
+    await page.reload({ waitUntil: "networkidle" });
+    await openSection(page, "Review Objectives");
+    await expect(page.getByText("Stale wording from the old editor", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button").filter({ hasText: "Objective A" }).first()).toBeVisible();
+    await second.close();
+  } finally {
+    await client.end();
+  }
+});
+
+test("R500-01: an ordinary save keeps an unresolved failed fill and its retry; the retry fills and clears it", async ({ page }, testInfo) => {
+  const marker = `R500-01-${Date.now()}`;
+  const run = await setUp(page, testInfo, "r500-01", `Proposal ${marker}.`);
+  const client = db();
+  await client.connect();
+  try {
+    await openSection(page, "Set Objectives");
+    writeFileSync(fixtureFile, JSON.stringify({ tools: { record_brief_fields: [{ match: marker, status: 503 }] } }));
+    await fillFromProposal(page, client, run.id);
+    await expect(page.getByTestId("brief-fill-failed")).toContainText("did not happen");
+
+    // An ordinary save: no document chosen, only the business problem changed.
+    const form = objectiveForm(page);
+    await expect(form.locator('select[name="proposalDocumentId"]')).toHaveValue("");
+    await form.locator('textarea[name="businessProblem"]').fill("Changed by hand after the failure");
+    const response = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/runs/${run.id}`));
+    await form.getByRole("button", { name: "Save", exact: true }).click();
+    expect((await response).ok()).toBe(true);
+    await expect(form.getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
+    await expect.poll(async () => (await client.query("select business_problem from runs where id=$1", [run.id])).rows[0].business_problem).toBe("Changed by hand after the failure");
+    await expect(page.getByTestId("brief-fill-failed")).toContainText("did not happen");
+    await expect(page.getByTestId("brief-fill-retry")).toBeVisible();
+    expect(Number((await client.query("select count(*) from trace where run_id=$1 and event='brief_intake_used'", [run.id])).rows[0].count)).toBe(0);
+
+    await page.reload({ waitUntil: "networkidle" });
+    await openSection(page, "Set Objectives");
+    await expect(page.getByTestId("brief-fill-failed")).toContainText("did not happen");
+
+    writeFileSync(fixtureFile, JSON.stringify({ tools: { record_brief_fields: [{ match: marker, input: { business_problem: null, research_objective: "Objective from the recovery" } }] } }));
+    const retried = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/runs/${run.id}`));
+    await page.getByTestId("brief-fill-retry").click();
+    expect((await retried).ok()).toBe(true);
+    await expect(objectiveForm(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
+    await expect(page.getByTestId("brief-fill-failed")).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByText("Objective from the recovery", { exact: true }).first()).toBeVisible();
+    expect((await client.query("select candidate_text from objective_candidates where run_id=$1", [run.id])).rows.map((r) => r.candidate_text)).toEqual(["Objective from the recovery"]);
+    expect((await client.query("select business_problem from runs where id=$1", [run.id])).rows[0].business_problem).toBe("Changed by hand after the failure");
+    await page.reload({ waitUntil: "networkidle" });
+    await openSection(page, "Set Objectives");
+    await expect(page.getByTestId("brief-fill-failed")).toHaveCount(0);
   } finally {
     await client.end();
   }

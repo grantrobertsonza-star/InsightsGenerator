@@ -9,6 +9,7 @@
 //   P01: manual Add uses the same objective identity as the fill and the scorer.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { setupTarget } from "./helpers/setupTarget";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -73,7 +74,7 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       expect((await fill(run, doc)).fill).toMatchObject({ status: "filled", objectivesAdded: 1 });
       const [original] = await candidates(run);
       const { editStatedObjective } = await import("../runContextActions");
-      await editStatedObjective(run, original.candidate_text, "Measure rural mobile bundle demand by household income");
+      await editStatedObjective(run, original.candidate_text, "Measure rural mobile bundle demand by household income", await setupTarget(db.pool, run, original.candidate_text));
       const reread = await fill(run, doc);
       expect(reread).toMatchObject({ importedBefore: 1, fill: { status: "filled", objectivesAdded: 0 } });
       const after = await candidates(run);
@@ -110,7 +111,7 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       intake.objective = "Shared objective\nOnly in the first";
       await fill(run, first);
       const { editStatedObjective } = await import("../runContextActions");
-      await editStatedObjective(run, "Shared objective", "Shared objective, reworded");
+      await editStatedObjective(run, "Shared objective", "Shared objective, reworded", await setupTarget(db.pool, run, "Shared objective"));
       intake.objective = "Shared objective.\nOnly in the second";
       expect(await fill(run, second)).toMatchObject({ importedBefore: 1, fill: { objectivesAdded: 1 } });
       expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Only in the first", "Only in the second", "Shared objective, reworded"]);
@@ -122,7 +123,7 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       intake.objective = "Imported then deleted";
       await fill(run, doc);
       const { editStatedObjective, saveRunContext } = await import("../runContextActions");
-      await editStatedObjective(run, "Imported then deleted", null);
+      await editStatedObjective(run, "Imported then deleted", null, await setupTarget(db.pool, run, "Imported then deleted"));
       const form = new FormData();
       form.set("businessProblem", "");
       form.set("researchObjective", "Imported then deleted");
@@ -186,6 +187,44 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Objective from the first fill", "Objective from the retry"]);
     });
 
+    it("R500-01: an ordinary save reports the still unresolved failure; another failure replaces it; only a successful fill resolves it", async () => {
+      const run = await newRun();
+      const doc = await newDoc(run);
+      intake.fail = "Synthetic model chunk outage (HTTP 503)";
+      const failed = await fill(run, doc);
+      expect(failed.fill).toMatchObject({ status: "failed", recorded: true });
+      expect(failed.unresolvedFailure).toMatchObject({ reason: "Synthetic model chunk outage (HTTP 503)", proposalDocumentId: doc });
+      intake.fail = null;
+      // An ordinary save: no document chosen, only the business problem changed.
+      const ordinary = await fill(run, "", { businessProblem: "Changed by hand" });
+      expect(ordinary.fill).toBeNull();
+      expect(ordinary.unresolvedFailure).toMatchObject({ reason: "Synthetic model chunk outage (HTTP 503)", proposalDocumentId: doc });
+      expect(intake.calls).toBe(1);
+      // Another failed attempt replaces it.
+      intake.fail = "Second synthetic timeout";
+      expect((await fill(run, doc)).unresolvedFailure).toMatchObject({ reason: "Second synthetic timeout" });
+      // A successful fill resolves it; a later ordinary save keeps it resolved.
+      intake.fail = null;
+      intake.objective = "Objective from the recovery";
+      const recovered = await fill(run, doc);
+      expect(recovered.fill).toMatchObject({ status: "filled", objectivesAdded: 1 });
+      expect(recovered.unresolvedFailure).toBeNull();
+      expect((await fill(run, "")).unresolvedFailure).toBeNull();
+      expect((await candidates(run)).map((r) => [r.candidate_text, r.rationale])).toEqual([["Objective from the recovery", 'Added from the proposal "Independent500_Proposal.txt"']]);
+    });
+
+    it("R500-01: when the failure state cannot be read, the save says so instead of reporting none", async () => {
+      const run = await newRun();
+      await db.pool.query("alter table trace rename to trace_hidden_r500");
+      try {
+        const result = await fill(run, "");
+        expect(result.fill).toBeNull();
+        expect(result.unresolvedFailure).toMatchObject({ error: expect.any(String) });
+      } finally {
+        await db.pool.query("alter table trace_hidden_r500 rename to trace");
+      }
+    });
+
     it("a deleted or foreign document fails visibly, naming what is known", async () => {
       const run = await newRun();
       const otherRun = await newRun();
@@ -231,21 +270,25 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       const run = await setUp("Understand rural demand");
       const [original] = await candidates(run);
       const { saveStatedObjectiveEdit } = await import("../runContextActions");
-      expect(await saveStatedObjectiveEdit(run, "Understand rural demand", "Measure rural demand by income")).toEqual({ ok: true });
-      const stale = await saveStatedObjectiveEdit(run, "Understand rural demand", "Measure rural demand by province");
+      // Both editors open now, on the same record.
+      const opened = await setupTarget(db.pool, run, "Understand rural demand");
+      expect(opened.candidateId).toBe(original.id);
+      expect(await saveStatedObjectiveEdit(run, "Understand rural demand", "Measure rural demand by income", opened)).toEqual({ ok: true });
+      const stale = await saveStatedObjectiveEdit(run, "Understand rural demand", "Measure rural demand by province", opened);
       expect(stale).toMatchObject({ ok: false, conflict: true });
       expect(stale.ok === false && stale.error).toMatch(/changed or removed after you opened it/);
       expect(await candidates(run)).toEqual([expect.objectContaining({ id: original.id, candidate_text: "Measure rural demand by income", status: "accepted" })]);
       expect(await stated(run)).toBe("Measure rural demand by income");
       // Retry after the conflict, from the current wording, succeeds.
-      expect(await saveStatedObjectiveEdit(run, "Measure rural demand by income", "Measure rural demand by province")).toEqual({ ok: true });
+      expect(await saveStatedObjectiveEdit(run, "Measure rural demand by income", "Measure rural demand by province", await setupTarget(db.pool, run, "Measure rural demand by income"))).toEqual({ ok: true });
       expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Measure rural demand by province"]);
     });
 
     it("simultaneous saves of the same objective: one wins, the other conflicts", async () => {
       const run = await setUp("Same record");
       const { saveStatedObjectiveEdit } = await import("../runContextActions");
-      const results = await Promise.all([saveStatedObjectiveEdit(run, "Same record", "Winner one"), saveStatedObjectiveEdit(run, "Same record", "Winner two")]);
+      const opened = await setupTarget(db.pool, run, "Same record");
+      const results = await Promise.all([saveStatedObjectiveEdit(run, "Same record", "Winner one", opened), saveStatedObjectiveEdit(run, "Same record", "Winner two", opened)]);
       expect(results.filter((r) => r.ok)).toHaveLength(1);
       expect(results.filter((r) => !r.ok && r.conflict)).toHaveLength(1);
       expect(await candidates(run)).toHaveLength(1);
@@ -254,7 +297,8 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
     it("simultaneous edits of different objectives both land", async () => {
       const run = await setUp("Objective one\nObjective two");
       const { saveStatedObjectiveEdit } = await import("../runContextActions");
-      const results = await Promise.all([saveStatedObjectiveEdit(run, "Objective one", "Objective one, edited"), saveStatedObjectiveEdit(run, "Objective two", "Objective two, edited")]);
+      const [one, two] = [await setupTarget(db.pool, run, "Objective one"), await setupTarget(db.pool, run, "Objective two")];
+      const results = await Promise.all([saveStatedObjectiveEdit(run, "Objective one", "Objective one, edited", one), saveStatedObjectiveEdit(run, "Objective two", "Objective two, edited", two)]);
       expect(results).toEqual([{ ok: true }, { ok: true }]);
       expect(await stated(run)).toBe("Objective one, edited\nObjective two, edited");
       expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Objective one, edited", "Objective two, edited"]);
@@ -265,8 +309,9 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       const [row] = await candidates(run);
       const a = await import("../objectiveCandidateActions");
       const { saveStatedObjectiveEdit } = await import("../runContextActions");
+      const opened = await setupTarget(db.pool, run, "Deleted meanwhile");
       await a.deleteObjectiveCandidate(run, row.id);
-      expect(await saveStatedObjectiveEdit(run, "Deleted meanwhile", "Edited after deletion")).toMatchObject({ ok: false, conflict: true });
+      expect(await saveStatedObjectiveEdit(run, "Deleted meanwhile", "Edited after deletion", opened)).toMatchObject({ ok: false, conflict: true });
       expect(await a.acceptObjectiveCandidate(run, row.id, "Edited after deletion", "Deleted meanwhile")).toMatchObject({ ok: false, conflict: true });
       expect(await candidates(run)).toEqual([]);
       expect(await stated(run)).toBeNull();
@@ -277,14 +322,86 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       const [row] = await candidates(run);
       const a = await import("../objectiveCandidateActions");
       const { saveStatedObjectiveEdit } = await import("../runContextActions");
-      expect(await saveStatedObjectiveEdit(run, "Set and Review", "Changed on Setup")).toEqual({ ok: true });
+      expect(await saveStatedObjectiveEdit(run, "Set and Review", "Changed on Setup", await setupTarget(db.pool, run, "Set and Review"))).toEqual({ ok: true });
+      const setupOpenedBeforeReviewEdit = await setupTarget(db.pool, run, "Changed on Setup");
       expect(await a.acceptObjectiveCandidate(run, row.id, "Changed on Review", "Set and Review")).toMatchObject({ ok: false, conflict: true });
       expect((await candidates(run))[0]).toMatchObject({ id: row.id, candidate_text: "Changed on Setup" });
       expect(await a.acceptObjectiveCandidate(run, row.id, "Changed on Review", "Changed on Setup")).toEqual({ ok: true });
       expect(await stated(run)).toBe("Changed on Review");
       // And a Setup editor opened before that Review edit is refused in turn.
-      expect(await saveStatedObjectiveEdit(run, "Changed on Setup", "Stale Setup edit")).toMatchObject({ ok: false, conflict: true });
+      expect(await saveStatedObjectiveEdit(run, "Changed on Setup", "Stale Setup edit", setupOpenedBeforeReviewEdit)).toMatchObject({ ok: false, conflict: true });
       expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Changed on Review"]);
+    });
+  });
+
+  // R500-02 (Codex re-review): a Setup edit is bound to the record its editor was opened on.
+  describe("R500-02 Setup edits keep their target", () => {
+    const setUp = async (lines: string) => {
+      const run = await newRun();
+      const { saveRunContext } = await import("../runContextActions");
+      const form = new FormData();
+      form.set("researchObjective", lines);
+      await saveRunContext(run, form);
+      return run;
+    };
+
+    for (const readded of ["Objective A", "- objective a."]) {
+      it(`deleted on Review and added again as "${readded}": the old Setup editor is refused and the new record is untouched`, async () => {
+        const run = await setUp("Objective A");
+        const [original] = await candidates(run);
+        const opened = await setupTarget(db.pool, run, "Objective A");
+        expect(opened.candidateId).toBe(original.id);
+        const a = await import("../objectiveCandidateActions");
+        const { saveStatedObjectiveEdit } = await import("../runContextActions");
+        await a.deleteObjectiveCandidate(run, original.id);
+        expect(await a.addOwnObjectiveCandidate(run, readded)).toEqual({ ok: true });
+        const [replacement] = await candidates(run);
+        expect(replacement.id).not.toBe(original.id);
+        const statedBefore = await stated(run);
+
+        const edit = await saveStatedObjectiveEdit(run, "Objective A", "Stale wording from the old editor", opened);
+        expect(edit).toMatchObject({ ok: false, conflict: true });
+        const remove = await saveStatedObjectiveEdit(run, "Objective A", null, opened);
+        expect(remove).toMatchObject({ ok: false, conflict: true });
+        expect(await candidates(run)).toEqual([expect.objectContaining({ id: replacement.id, candidate_text: replacement.candidate_text, status: "accepted" })]);
+        expect(await stated(run)).toBe(statedBefore);
+
+        // An editor opened on the replacement edits it.
+        const fresh = await setupTarget(db.pool, run, replacement.candidate_text);
+        expect(fresh.candidateId).toBe(replacement.id);
+        expect(await saveStatedObjectiveEdit(run, replacement.candidate_text, "Objective A, reworded", fresh)).toEqual({ ok: true });
+        expect(await candidates(run)).toEqual([expect.objectContaining({ id: replacement.id, candidate_text: "Objective A, reworded" })]);
+      });
+    }
+
+    it("a caller that sends no target cannot edit a candidate by its wording", async () => {
+      const run = await setUp("Bound objective");
+      const [row] = await candidates(run);
+      const { saveStatedObjectiveEdit } = await import("../runContextActions");
+      expect(await saveStatedObjectiveEdit(run, "Bound objective", "Edited without a target", undefined as never)).toMatchObject({ ok: false, conflict: true });
+      expect(await saveStatedObjectiveEdit(run, "Bound objective", "Edited with a forged id", { candidateId: "not-an-id" })).toMatchObject({ ok: false, conflict: true });
+      expect(await saveStatedObjectiveEdit(run, "Bound objective", "Edited with another id", { candidateId: randomUUID() })).toMatchObject({ ok: false, conflict: true });
+      expect(await candidates(run)).toEqual([expect.objectContaining({ id: row.id, candidate_text: "Bound objective" })]);
+    });
+
+    it("a legacy Setup-only line (no candidate) is edited in place and gets its candidate; a stale or changed one is refused", async () => {
+      const run = (await db.pool.query("insert into runs(tenant_id,project_name,stated_objectives_text,objective_candidates_seeded) values($1,'Legacy','Legacy line one\nLegacy line two',true) returning id", [tenant])).rows[0].id as string;
+      const { saveStatedObjectiveEdit } = await import("../runContextActions");
+      const a = await import("../objectiveCandidateActions");
+      const one = await setupTarget(db.pool, run, "Legacy line one");
+      const two = await setupTarget(db.pool, run, "Legacy line two");
+      expect(one).toEqual({ candidateId: null });
+      expect(await saveStatedObjectiveEdit(run, "Legacy line one", "Legacy line one, edited", one)).toEqual({ ok: true });
+      expect(await stated(run)).toBe("Legacy line one, edited\nLegacy line two");
+      expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Legacy line one, edited"]);
+      // A second editor opened on the old line is refused.
+      expect(await saveStatedObjectiveEdit(run, "Legacy line one", "Stale legacy edit", one)).toMatchObject({ ok: false, conflict: true });
+      // A candidate with line two's wording added since: the line is no longer candidate-less.
+      expect(await a.addOwnObjectiveCandidate(run, "Legacy line two")).toEqual({ ok: true });
+      const before = await candidates(run);
+      expect(await saveStatedObjectiveEdit(run, "Legacy line two", "Stale legacy edit two", two)).toMatchObject({ ok: false, conflict: true });
+      expect(await candidates(run)).toEqual(before);
+      expect(await stated(run)).toBe("Legacy line one, edited\nLegacy line two");
     });
   });
 

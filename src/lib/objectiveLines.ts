@@ -58,3 +58,24 @@ export function objectiveIdentityKey(line: string): string {
     .replace(/[\s.;:!,]+$/, "")
     .trim();
 }
+
+/**
+ * The candidate each Setup line stands for, by the same marker-stripped comparison the edit has
+ * always used (R500-02): the researcher-authored candidate whose wording is the line, earliest
+ * first, each candidate given to at most one line. A Setup editor carries this id, so a save edits
+ * the record it was opened on and nothing else. null is a Setup-only line with no candidate (a
+ * list saved before candidates were kept for Setup lines).
+ */
+export function setupLineCandidateIds(
+  lines: string[],
+  candidates: { id: string; candidate_text: string; source: string }[],
+): (string | null)[] {
+  const used = new Set<string>();
+  return lines.map((line) => {
+    const wanted = normalizeObjectiveLine(line);
+    const match = candidates.find((c) => c.source === "researcher_authored" && !used.has(c.id) && normalizeObjectiveLine(c.candidate_text) === wanted);
+    if (!match) return null;
+    used.add(match.id);
+    return match.id;
+  });
+}

@@ -169,7 +169,7 @@ import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
-import { objectiveIdentityKey, parseObjectiveLines } from "@/lib/objectiveLines";
+import { objectiveIdentityKey, parseObjectiveLines, setupLineCandidateIds } from "@/lib/objectiveLines";
 import ResearchAssistantCard, {
   type AssistantChatMessage,
 } from "./ResearchAssistantCard";
@@ -5513,6 +5513,7 @@ export default async function RunPage({
                   <StatedObjectivesList
                     runId={id}
                     lines={parseObjectiveLines(run.stated_objectives_text)}
+                    candidateIds={setupLineCandidateIds(parseObjectiveLines(run.stated_objectives_text), objectiveCandidates)}
                     sources={objectiveSourceLabels(parseObjectiveLines(run.stated_objectives_text))}
                   />
                   <p className="text-xs text-muted">

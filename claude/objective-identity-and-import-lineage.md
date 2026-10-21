@@ -41,13 +41,28 @@ form shows it from the response itself, so it is visible even when recording fai
 Try the fill again, which resubmits the whole form with those documents chosen again (so nothing
 typed is overwritten). `loadFailedBriefFill` returns the latest recorded failure while no later fill
 has succeeded, so a reload still shows it; the earlier successful record is then labelled "The last
-successful fill was". A save that fails outright still throws.
+successful fill was". Every save result also carries `unresolvedFailure`, that same stored state read
+after the save (R500-01): a save with no document chosen is not a successful fill, so an earlier
+failure and its retry stay shown after it exactly as after a reload; another failed attempt replaces
+it; only a successful fill resolves it. When it cannot be read, the form says the state is unknown,
+never "no failure". A save that fails outright still throws.
 
-**Edits (GT500-F03).** An edit names the wording its editor opened with. Setup
-(`editStatedObjective`, via `saveStatedObjectiveEdit`) locks the run row, then finds the list line
-or a researcher-authored candidate with that wording; when neither is there any more, the edit is a
-conflict (`conflict: true`, an actionable message) and nothing is written. It used to append the
-new wording, so a stale editor added a second accepted objective. Review (`acceptObjectiveCandidate`
+**Edits (GT500-F03, R500-02).** An edit is bound to the record its editor was opened on, with the
+wording it opened with as that record's expected state. Setup: the page gives each Setup line its
+candidate (`setupLineCandidateIds` in `objectiveLines.ts`: the researcher-authored candidate with the
+line's marker-stripped wording, earliest first, each used once), and `StatedObjectivesList` sends it
+with every edit or delete. `editStatedObjective` (via `saveStatedObjectiveEdit`) locks the run row
+and the researcher-authored candidates; that candidate must still exist with the expected wording,
+and only it is changed or removed. Deleted, or changed since, is a conflict (`conflict: true`, an
+actionable message, nothing written), even when a candidate with the same or normalised-same wording
+was added since: delete then add again makes a different record, and an editor opened on the first
+never touches the second. Compatibility: a Setup-only line with no candidate (lists saved before
+candidates were kept for Setup lines) is sent with `candidateId: null`; its edit needs the line to
+be there and no researcher-authored candidate to have its wording (one added since means the line is
+no longer the line the editor opened on), then edits the line in place and gives it its candidate. A
+caller that sends no target takes that strict path, so nothing edits a record by wording alone. A
+stale editor used to append its wording, then (after GT500-F03) to edit whichever record had the old
+wording now. Review (`acceptObjectiveCandidate`
 with `expectedText`) locks the run row and the candidate, and refuses when the candidate's wording
 differs or the candidate is gone. Both lock the run row first, so Setup and Review edits of one
 objective are serialized and the second sees the first. Edits to different objectives both land.
@@ -64,8 +79,13 @@ stricter.
 
 **Tests.** `objectiveImportLineage.db.test.ts` (real PostgreSQL; extraction and scoring mocked),
 `briefFillFromImport.db.test.ts`, `candidateLifecycle.db.test.ts`, `objectiveDecisionClosure.db.test.ts`,
-`actionFailure.test.ts`; browser `e2e/ui/objective-gt500.check.mjs` (edit then refill, 503 then
-reload then retry, two stale editors), `objective-setup-review-identity.check.mjs`.
+`actionFailure.test.ts`, `runContextFormFailure.test.tsx` (the form's shown failure for each save
+result); browser `e2e/ui/objective-gt500.check.mjs` (edit then refill, 503 then reload then retry,
+two stale editors, delete and add again under an open Setup editor, a failed fill kept through an
+ordinary save), `objective-setup-review-identity.check.mjs`. Tests edit through
+`helpers/setupTarget.ts`, which gives an editor the target the page would.
 
-**Limits.** Lineage lives in trace rows; a trace row removed by hand removes its lineage. The
+**Limits.** Lineage lives in trace rows; a trace row removed by hand removes its lineage. Legacy
+duplicate candidates with one wording: a Setup edit changes the one its line maps to, not every
+copy. The
 decision candidates keep their own, unchanged rules.
