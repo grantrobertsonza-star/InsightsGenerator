@@ -1,6 +1,12 @@
 # Current engineering status
 
-Updated: 2026-10-21. State: **READY_FOR_CODEX**: repairs for every finding in `docs/independent-review-2026-10-21.md` (RR-01 to RR-05, V-01), on both copies; see `docs/rr-repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-21. State: **READY_FOR_CODEX** (main copy only; Grant is retiring 3001): repairs for GT100-F01 to GT100-F03 (`docs/golden-thread-100-independent-review-2026-10-21.md`) and RRV-01 (`docs/independent-rr-review-2026-10-21.md`), the rename to Secondary analysis and the new section design with OV-01 to OV-04; see `docs/gt100-repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: repairs for Codex's 100-case and RR re-reviews, and the new section design (2026-10-21)
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE**: the full 100-case golden-thread review found shared GT100-F01 to GT100-F03; RRV-01 remains open. See `docs/golden-thread-100-independent-review-2026-10-21.md` and its case matrix. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged."
+
+Implemented, ready for review, main copy only: `df90a55` (RRV-01), `053a475` (rename), `2322679` (GT100-F01), `ddb4c00` (GT100-F02, F03), `670eb38` (Findings, Insights, Recommendations and Insights report overviews with OV-01 to OV-04; please assess apart from the repairs) and this docs commit. Full suite on `670eb38`: browser 67 passed (1 skipped), unit 1,257 passed, smoke and objective acceptance passed, lint errors unchanged at 349. Details, controls and limits: `docs/gt100-repair-handover-2026-10-21.md`.
 
 ## Claude: repairs for Codex's 21 October re-review (2026-10-21)
 
