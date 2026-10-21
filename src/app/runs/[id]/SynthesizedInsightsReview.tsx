@@ -366,6 +366,8 @@ export default function SynthesizedInsightsReview({
     >
       <ThreePane
         leftOnTop
+        // Its own key, so folding or resizing here leaves the other sections as they are (DESIGN-GTR-01).
+        storageKey="insights-review"
         left={
           <Pane side="left" title="Filters">
           {acceptedCount > 0 && (

@@ -905,6 +905,8 @@ export default function SynthesizedRecommendationsReview({
   return (
     <ThreePane
         leftOnTop
+        // Its own key, so folding or resizing here leaves the other sections as they are (DESIGN-GTR-01).
+        storageKey="recommendations-review"
       left={
         <Pane side="left" title="Filters and actions">
         <p className="text-xs text-muted">

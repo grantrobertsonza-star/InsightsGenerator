@@ -1955,7 +1955,7 @@ export default function FindingsTable({
                   })()}
                   {(() => {
                     const cardsGrid = (
-                      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
                         {block.findings.map((finding) => (
                           <FindingCard
                             key={finding.id}
@@ -2327,7 +2327,7 @@ export default function FindingsTable({
           // its own "show comparisons" disclosure opens, so the expanded
           // card grid underneath has room rather than being squeezed into
           // one grid column.
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(420px,1fr))] items-start gap-5">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] items-start gap-5">
             {groupedByTheme.map((group) => {
               const chartSpec = buildChartForThemeGroup(group.findings);
               if (!chartSpec) return null; // defensive only; visibleFindings already guarantees this
@@ -2378,7 +2378,7 @@ export default function FindingsTable({
                       Show the {group.findings.length} individual comparisons
                       behind this chart
                     </summary>
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
                       {group.findings.map((finding) => (
                         <FindingCard
                           key={finding.id}
@@ -2424,7 +2424,7 @@ export default function FindingsTable({
                       : "Show all sub-themes"}
                   </button>
                 </div>
-                <div className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+                <div className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3">
                   {mainThemeBlocks.map((block) => {
                     const isOpen =
                       openMainTheme === "__all" || openMainTheme === block.key;
@@ -2474,7 +2474,7 @@ export default function FindingsTable({
                     </span>
                   </div>
                 )}
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
                   {block.groups.map((group) =>
                     group.findings.map((finding) => (
                       <FindingCard
@@ -2524,7 +2524,7 @@ export default function FindingsTable({
                     ({ groupId, findings: groupFindings }) => (
                       <div
                         key={groupId}
-                        className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3"
+                        className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 p-3"
                       >
                         {groupFindings.map((finding) => (
                           <FindingCard

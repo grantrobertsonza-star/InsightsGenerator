@@ -167,6 +167,8 @@ export default function StatedInsightValidationsReview({
   return (
     <ThreePane
         leftOnTop
+        // Its own key, so folding or resizing here leaves the other sections as they are (DESIGN-GTR-01).
+        storageKey="report-claims"
       left={
         <Pane side="left" title="Filter by outcome">
       <div>
