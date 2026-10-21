@@ -5,7 +5,7 @@ import { withTenant } from "./db";
 import { readContextDocument } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
-import { parseObjectiveLines, normalizeObjectiveLine } from "./objectiveLines";
+import { parseObjectiveLines, normalizeObjectiveLine, objectiveIdentityKey } from "./objectiveLines";
 import { requireTenantId } from "./requestContext";
 
 
@@ -73,16 +73,34 @@ export async function saveRunContext(runId: string, formData: FormData) {
   }
 
   await withTenant(TENANT_ID, async (client) => {
+    // Locked, so two saves at once cannot both add the same objective; the row must exist.
     const prev = await client.query<{ stated_objectives_text: string | null }>(
-      "select stated_objectives_text from runs where id = $1",
+      "select stated_objectives_text from runs where id = $1 for update",
       [runId],
     );
+    if (prev.rowCount !== 1) throw new Error("This project was not found.");
     const prevObjective = prev.rows[0]?.stated_objectives_text?.trim() ?? null;
 
     // The objective box only adds. Saved objectives live in the list beside
     // the form, where they are edited or deleted one by one.
+    //
+    // A line already in the project is not added again (Grant, 2026-10-21): it is compared, through
+    // objectiveIdentityKey, with the saved list and with every objective candidate of this project
+    // whatever its source or status, so filling from the same proposal twice, or from a brief whose
+    // objectives Review already holds or the researcher rejected, adds nothing.
     const prevLines = parseObjectiveLines(prevObjective);
-    const newLines = parseObjectiveLines(objective).filter((l) => !prevLines.includes(l));
+    const candidateRows = await client.query<{ candidate_text: string }>(
+      "select candidate_text from objective_candidates where run_id = $1",
+      [runId],
+    );
+    const known = new Set([...prevLines, ...candidateRows.rows.map((r) => r.candidate_text)].map(objectiveIdentityKey));
+    const newLines: string[] = [];
+    for (const line of parseObjectiveLines(objective)) {
+      const key = objectiveIdentityKey(line);
+      if (key.length === 0 || known.has(key)) continue;
+      known.add(key);
+      newLines.push(line);
+    }
     const merged = [...prevLines, ...newLines].join("\n") || null;
 
     // OBJ-SET-003: this is "Setup's own first save" the objectiveFramer.ts carry-over comment
@@ -120,17 +138,12 @@ export async function saveRunContext(runId: string, formData: FormData) {
     }
 
     for (const line of newLines) {
-      const exists = await client.query(
-        "select 1 from objective_candidates where run_id = $1 and trim(candidate_text) = $2",
-        [runId, line],
+      // Every line here is new to the project by objectiveIdentityKey (above).
+      await client.query(
+        `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+         values ($1, $2, $3, 'Written or imported at project set-up.', 'researcher_authored', 'accepted')`,
+        [TENANT_ID, runId, line],
       );
-      if (exists.rows.length === 0) {
-        await client.query(
-          `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-           values ($1, $2, $3, 'Written or imported at project set-up.', 'researcher_authored', 'accepted')`,
-          [TENANT_ID, runId, line],
-        );
-      }
     }
     await syncResearchObjective(client, runId);
   });

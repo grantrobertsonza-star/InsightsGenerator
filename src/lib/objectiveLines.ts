@@ -39,3 +39,22 @@ export function parseObjectiveLines(text: string | null): string[] {
     .filter((l) => l.length > 0)
     .filter((l) => !(l.endsWith(":") && l.split(/\s+/).length <= 8));
 }
+
+/**
+ * When two objective lines are the same objective (Grant, 2026-10-21: filling from the same
+ * proposal again added every objective a second time). A re-read of a brief or proposal can come
+ * back with a trailing full stop, different capitals, curly quotes or extra spaces, so the stored
+ * text is compared through this key, never character for character. It is only an identity for
+ * matching; the researcher's wording is stored and shown as written.
+ */
+export function objectiveIdentityKey(line: string): string {
+  return normalizeObjectiveLine(line)
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[\s.;:!,]+$/, "")
+    .trim();
+}
