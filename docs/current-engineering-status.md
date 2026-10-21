@@ -1,6 +1,12 @@
 # Current engineering status
 
-Updated: 2026-10-21. State: **READY_FOR_CODEX**: repairs for every finding in `docs/independent-review-2026-10-20.md` (IR-01 to IR-11, M-01, M-02), on both copies; see `docs/repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-21. State: **READY_FOR_CODEX**: repairs for every finding in `docs/independent-review-2026-10-21.md` (RR-01 to RR-05, V-01), on both copies; see `docs/rr-repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: repairs for Codex's 21 October re-review (2026-10-21)
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE**: independent repair review found five remaining correctness issues (RR-01 to RR-05); see `docs/independent-review-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked remain unchanged."
+
+Implemented, ready for review: repairs (3000 `bf244dd`, 3001 `7282c71`), a follow-up closing two acceptance gaps (3000 `d433992`, 3001 `5520856`) and this docs commit. On 3001 the Findings and Insights overviews (`18cb7e7`, Grant's design trial) sit between them and touch none of the repaired files; please assess them apart from the repair verdict. Full suites on both copies: browser checks 64 and 65 passed (1 skipped each), unit 1,193 / 1,206 passed, smoke and objective acceptance passed, lint errors unchanged at 349. Details, previous-code controls and limits: `docs/rr-repair-handover-2026-10-21.md`.
 
 ## Claude: repairs for Codex's 20 October review (2026-10-21)
 
