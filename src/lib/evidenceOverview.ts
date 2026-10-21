@@ -110,27 +110,35 @@ export type FindingsOverview = {
   };
 };
 
-/** The name shown for a finding with no theme. */
-export const NO_THEME = "No theme";
 /**
- * The key shared by findings with no theme: missing, empty and whitespace-only alike. Not a
- * readable word, so a researcher's theme that happens to read "No theme" stays its own theme.
+ * The name shown for findings with no theme. Worded apart from any plain theme name, so a
+ * researcher's theme that reads "No theme" is never shown as if it were the absence of one.
  */
-export const NO_THEME_KEY = "\u0000no-theme";
+export const NO_THEME = "No theme set";
+/**
+ * The key shared by findings with no theme: missing, empty and whitespace-only alike. Named themes
+ * have keys that begin "t:", so no theme text can produce this key, and every key is plain text
+ * that survives an HTML attribute (Codex SEC-02: a control character in an option value was
+ * replaced by U+FFFD in the server-rendered page, so the native select then matched nothing).
+ */
+export const NO_THEME_KEY = "none";
+const NAMED_THEME_PREFIX = "t:";
 
 /**
- * The one rule for which theme a finding belongs to (Codex OV-03), used by the overview's counts,
- * its links and the review's theme filter alike: the stored text with surrounding spaces ignored,
- * and blank or missing themes together. Only the key is normalised; the researcher's stored
- * wording is never rewritten.
+ * The one rule for which theme a finding belongs to (Codex OV-03, SEC-01), used by the overview's
+ * counts and links and by the review's pills, groups, select and filter alike: the stored text with
+ * surrounding spaces ignored, and blank or missing themes together. The key is identity only; the
+ * label is themeLabelOf(key), and the researcher's stored wording is never rewritten.
  */
 export function themeKeyOf(theme: string | null | undefined): string {
   const t = theme?.trim();
-  return t ? t : NO_THEME_KEY;
+  return t ? `${NAMED_THEME_PREFIX}${t}` : NO_THEME_KEY;
 }
 
+/** The theme as shown for a key: the trimmed stored text, or NO_THEME. */
 export function themeLabelOf(key: string): string {
-  return key === NO_THEME_KEY ? NO_THEME : key;
+  if (key === NO_THEME_KEY) return NO_THEME;
+  return key.startsWith(NAMED_THEME_PREFIX) ? key.slice(NAMED_THEME_PREFIX.length) : key;
 }
 
 export type FindingAttention = "contradictions" | "designChanged" | "designUnknown" | "quoteNotFound";

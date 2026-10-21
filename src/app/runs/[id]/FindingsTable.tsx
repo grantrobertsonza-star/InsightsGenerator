@@ -980,7 +980,6 @@ function ReviewButtons({
 }
 
 const ALL = "__all__";
-const NO_THEME_LABEL = "No theme";
 
 // A small, muted palette used to color-code theme groups so related cards
 // are easy to spot at a glance. Picked deterministically from the theme
@@ -1037,9 +1036,10 @@ function hashThemeName(value: string): number {
   return hash;
 }
 
-function colorFor(theme: string) {
-  if (theme === NO_THEME_LABEL) return NEUTRAL_THEME_COLOR;
-  return THEME_PALETTE[hashThemeName(theme) % THEME_PALETTE.length];
+/** A theme's colour, by its key (themeKeyOf); findings with no theme are neutral. */
+function colorFor(themeKey: string) {
+  if (themeKey === NO_THEME_KEY) return NEUTRAL_THEME_COLOR;
+  return THEME_PALETTE[hashThemeName(themeLabelOf(themeKey)) % THEME_PALETTE.length];
 }
 
 // Reach summary for a coded (transcript) theme finding: a ring for the share
@@ -1629,7 +1629,7 @@ export default function FindingsTable({
   const chartEligibleThemeNames = (() => {
     const byTheme = new Map<string, Finding[]>();
     for (const finding of findings) {
-      const key = finding.theme ?? NO_THEME_LABEL;
+      const key = themeKeyOf(finding.theme);
       if (!byTheme.has(key)) byTheme.set(key, []);
       byTheme.get(key)!.push(finding);
     }
@@ -1643,7 +1643,7 @@ export default function FindingsTable({
   const visibleFindings =
     activeTab === "charts"
       ? findings.filter((f) =>
-          chartEligibleThemeNames.has(f.theme ?? NO_THEME_LABEL),
+          chartEligibleThemeNames.has(themeKeyOf(f.theme)),
         )
       : activeTab === "stated"
         ? findings.filter((f) => f.origin === "stated" || f.origin === "coded")
@@ -1664,7 +1664,7 @@ export default function FindingsTable({
     new Set([...visibleFindings.map((f) => themeKeyOf(f.theme)), ...extraThemes.map((t) => themeKeyOf(t))]),
   )
     .filter((k) => k !== NO_THEME_KEY)
-    .sort();
+    .sort((a, b) => themeLabelOf(a).localeCompare(themeLabelOf(b)));
   const anyWithoutTheme = visibleFindings.some((f) => themeKeyOf(f.theme) === NO_THEME_KEY);
 
   const sources = Array.from(
@@ -1679,7 +1679,7 @@ export default function FindingsTable({
     if (sourceFilter !== ALL && finding.source_filename !== sourceFilter)
       return false;
     // Filtered by theme key (OV-03), the overview's own rule: surrounding spaces ignored, and blank
-    // or missing themes together under "No theme".
+    // or missing themes together under NO_THEME.
     if (themeFilter !== ALL && themeKeyOf(finding.theme) !== themeFilter) return false;
     if (kindFilter !== ALL && finding.finding_kind !== kindFilter) return false;
     if (statusFilter !== ALL && finding.status !== statusFilter) return false;
@@ -1728,23 +1728,26 @@ export default function FindingsTable({
   const groupedByTheme = (() => {
     const groups = new Map<string, Finding[]>();
     for (const finding of themeEligibleFindings) {
-      const key = finding.theme ?? NO_THEME_LABEL;
+      // Grouped by theme key (SEC-01), so "Trust" and " Trust " are one group and a theme named
+      // "No theme" is never merged with findings that have none.
+      const key = themeKeyOf(finding.theme);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(finding);
     }
-    const orderedKeys = [...themes, NO_THEME_LABEL].filter((key) =>
+    const orderedKeys = [...themeFilterKeys, NO_THEME_KEY].filter((key) =>
       groups.has(key),
     );
-    const builtAll = orderedKeys.map((theme) => ({
-      theme,
-      findings: groups.get(theme)!,
+    const builtAll = orderedKeys.map((key) => ({
+      key,
+      theme: themeLabelOf(key),
+      findings: groups.get(key)!,
     }));
     // Themes that gather several findings (the high-level themes) come
     // first, each with its sub-themes beneath; findings that stand alone
     // follow, together, at the end. The sort is stable.
     const built = [
-      ...builtAll.filter((g) => g.theme !== NO_THEME_LABEL && g.findings.length > 1),
-      ...builtAll.filter((g) => g.theme === NO_THEME_LABEL || g.findings.length <= 1),
+      ...builtAll.filter((g) => g.key !== NO_THEME_KEY && g.findings.length > 1),
+      ...builtAll.filter((g) => g.key === NO_THEME_KEY || g.findings.length <= 1),
     ];
     if (!sortByReach) return built;
     // Highest share of participants first: the figure inside each card's
@@ -1765,6 +1768,7 @@ export default function FindingsTable({
     };
     return built
       .map((group) => ({
+        key: group.key,
         theme: group.theme,
         findings: [...group.findings].sort((x, y) => reachOf(y) - reachOf(x)),
       }))
@@ -1786,7 +1790,7 @@ export default function FindingsTable({
   // place of the heading that would otherwise sit above just one card.
   type ThemeGroup = (typeof groupedByTheme)[number];
   type RenderBlock =
-    | { kind: "group"; theme: string; findings: ThemeGroup["findings"] }
+    | { kind: "group"; key: string; theme: string; findings: ThemeGroup["findings"] }
     | { kind: "single-run"; groups: ThemeGroup[] };
   const renderBlocks = (() => {
     const blocks: RenderBlock[] = [];
@@ -1804,6 +1808,7 @@ export default function FindingsTable({
         flush();
         blocks.push({
           kind: "group",
+          key: group.key,
           theme: group.theme,
           findings: group.findings,
         });
@@ -1841,16 +1846,17 @@ export default function FindingsTable({
     const counts = new Map<string, number>();
     for (const finding of pillEligibleFindings) {
       if (finding.duplicate_group_id) continue;
-      const key = finding.theme ?? NO_THEME_LABEL;
+      // Counted by theme key (SEC-01), the key each pill filters on, so a pill opens what it counts.
+      const key = themeKeyOf(finding.theme);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
   })();
   const pillThemeOrder = (() => {
-    const all = [...themes, NO_THEME_LABEL].filter(
+    const all = [...themeFilterKeys, NO_THEME_KEY].filter(
       (key) => (themeCounts.get(key) ?? 0) > 0,
     );
-    const multi = (k: string) => k !== NO_THEME_LABEL && (themeCounts.get(k) ?? 0) > 1;
+    const multi = (k: string) => k !== NO_THEME_KEY && (themeCounts.get(k) ?? 0) > 1;
     return [...all.filter(multi), ...all.filter((k) => !multi(k))];
   })();
 
@@ -1870,24 +1876,24 @@ export default function FindingsTable({
   }
 
   const chartableFindingsCount = findings.filter((f) =>
-    chartEligibleThemeNames.has(f.theme ?? NO_THEME_LABEL),
+    chartEligibleThemeNames.has(themeKeyOf(f.theme)),
   ).length;
   const statedFindingsCount = findings.filter(
     (f) => f.origin === "stated" || f.origin === "coded",
   ).length;
 
   const renderGroup = (block: Extract<RenderBlock, { kind: "group" }>) => (
-                <div key={block.theme}>
+                <div key={block.key}>
                   <div className="mb-3 flex items-center gap-2">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${colorFor(block.theme).dot}`}
+                      className={`h-2.5 w-2.5 rounded-full ${colorFor(block.key).dot}`}
                       aria-hidden
                     />
                     <h3 className="text-sm font-semibold text-foreground">
                       {block.theme}
                     </h3>
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(block.theme).badge}`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(block.key).badge}`}
                     >
                       {block.findings.length}
                     </span>
@@ -1907,10 +1913,10 @@ export default function FindingsTable({
                     {(() => {
                       const chartSpec = buildChartForThemeGroup(block.findings);
                       if (!chartSpec) return null;
-                      const open = chartOpenThemes.has(block.theme);
+                      const open = chartOpenThemes.has(block.key);
                       return (
                         <button
-                          onClick={() => toggleChartForTheme(block.theme)}
+                          onClick={() => toggleChartForTheme(block.key)}
                           className={`ml-1 flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium transition ${
                             open
                               ? "border-primary text-primary"
@@ -1924,7 +1930,7 @@ export default function FindingsTable({
                     })()}
                   </div>
                   {(() => {
-                    if (!chartOpenThemes.has(block.theme)) return null;
+                    if (!chartOpenThemes.has(block.key)) return null;
                     const chartSpec = buildChartForThemeGroup(block.findings);
                     if (!chartSpec) return null;
                     return (
@@ -1947,7 +1953,7 @@ export default function FindingsTable({
                             viewerLoadingId={viewerLoadingId}
                             openPreview={openPreview}
                             cardBorderClass="border-border"
-                            borderLeftClass={colorFor(block.theme).borderLeft}
+                            borderLeftClass={colorFor(block.key).borderLeft}
                           />
                         ))}
                       </div>
@@ -1957,7 +1963,7 @@ export default function FindingsTable({
                     // 2026-10-05 decision) -- still there, one click away,
                     // rather than removed. With the chart closed (the
                     // default), nothing changes from before this feature.
-                    if (!chartOpenThemes.has(block.theme)) {
+                    if (!chartOpenThemes.has(block.key)) {
                       const hasRoll = block.findings.some(
                         (f) => f.coding_counts?.themeRollup,
                       );
@@ -2116,13 +2122,14 @@ export default function FindingsTable({
                 Clear filters
               </button>
             )}
-            {pillThemeOrder.map((theme) => {
-              // A pill groups by the stored text; it filters by that text's theme key, like the rest.
-              const key = theme === NO_THEME_LABEL ? NO_THEME_KEY : themeKeyOf(theme);
+            {pillThemeOrder.map((key) => {
+              // A pill counts, filters and is keyed by the theme key; its label is only for reading.
               const isActive = themeFilter === key;
               return (
                 <button
-                  key={theme}
+                  key={key}
+                  data-testid="theme-pill"
+                  data-theme-key={key}
                   onClick={() => setThemeFilter(isActive ? ALL : key)}
                   className={`flex items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium leading-none transition ${
                     isActive
@@ -2132,13 +2139,13 @@ export default function FindingsTable({
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${colorFor(theme).dot}`}
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${colorFor(key).dot}`}
                       aria-hidden
                     />
-                    <span className="truncate">{theme}</span>
+                    <span className="truncate">{themeLabelOf(key)}</span>
                   </span>
-                  <span className="shrink-0 text-muted">
-                    {themeCounts.get(theme) ?? 0}
+                  <span className="shrink-0 text-muted" data-testid="theme-pill-count">
+                    {themeCounts.get(key) ?? 0}
                   </span>
                 </button>
               );
@@ -2276,19 +2283,19 @@ export default function FindingsTable({
               if (!chartSpec) return null; // defensive only; visibleFindings already guarantees this
               return (
                 <div
-                  key={group.theme}
+                  key={group.key}
                   className="rounded-xl border border-border bg-slate-50/60 p-3 has-[details[open]]:col-span-full"
                 >
                   <div className="mb-3 flex items-center gap-2">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${colorFor(group.theme).dot}`}
+                      className={`h-2.5 w-2.5 rounded-full ${colorFor(group.key).dot}`}
                       aria-hidden
                     />
                     <h3 className="text-sm font-semibold text-foreground">
                       {group.theme}
                     </h3>
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(group.theme).badge}`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colorFor(group.key).badge}`}
                     >
                       {group.findings.length}
                     </span>
@@ -2333,7 +2340,7 @@ export default function FindingsTable({
                           viewerLoadingId={viewerLoadingId}
                           openPreview={openPreview}
                           cardBorderClass="border-border"
-                          borderLeftClass={colorFor(group.theme).borderLeft}
+                          borderLeftClass={colorFor(group.key).borderLeft}
                         />
                       ))}
                     </div>
@@ -2370,17 +2377,17 @@ export default function FindingsTable({
                 <div className="grid grid-flow-row-dense grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
                   {mainThemeBlocks.map((block) => {
                     const isOpen =
-                      openMainTheme === "__all" || openMainTheme === block.theme;
+                      openMainTheme === "__all" || openMainTheme === block.key;
                     return (
-                      <Fragment key={block.theme}>
+                      <Fragment key={block.key}>
                         <ThemeSummaryCard
                           theme={block.theme}
                           findings={block.findings}
-                          dotClass={colorFor(block.theme).dot}
+                          dotClass={colorFor(block.key).dot}
                           active={isOpen}
                           onClick={() =>
                             setOpenMainTheme(
-                              openMainTheme === block.theme ? null : block.theme,
+                              openMainTheme === block.key ? null : block.key,
                             )
                           }
                         />
@@ -2430,10 +2437,10 @@ export default function FindingsTable({
                         viewerLoadingId={viewerLoadingId}
                         openPreview={openPreview}
                         cardBorderClass="border-border"
-                        borderLeftClass={colorFor(group.theme).borderLeft}
+                        borderLeftClass={colorFor(group.key).borderLeft}
                         themeLabel={{
                           theme: group.theme,
-                          dotClass: colorFor(group.theme).dot,
+                          dotClass: colorFor(group.key).dot,
                         }}
                       />
                     )),

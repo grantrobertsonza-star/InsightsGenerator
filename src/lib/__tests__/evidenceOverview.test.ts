@@ -12,6 +12,7 @@ import {
   summarizeInsights,
   SUPPORT_STATES,
   themeKeyOf,
+  themeLabelOf,
   type InsightFilter,
   type OverviewFinding,
   type OverviewInsight,
@@ -214,7 +215,7 @@ describe("theme keys (OV-03)", () => {
     finding({ id: "named", theme: "No theme" }),
   ];
   it("groups padded and plain themes together, and missing, empty and blank themes together", () => {
-    expect(themeKeyOf("  Trust  ")).toBe("Trust");
+    expect(themeKeyOf("  Trust  ")).toBe(themeKeyOf("Trust"));
     expect([themeKeyOf(null), themeKeyOf(undefined), themeKeyOf(""), themeKeyOf("   ")]).toEqual([NO_THEME_KEY, NO_THEME_KEY, NO_THEME_KEY, NO_THEME_KEY]);
     // A researcher's theme that reads "No theme" is its own theme.
     expect(themeKeyOf("No theme")).not.toBe(NO_THEME_KEY);
@@ -226,12 +227,43 @@ describe("theme keys (OV-03)", () => {
       expect(opened.length).toBe(t.status.total);
     }
     const byKey = Object.fromEntries(o.themes.map((t) => [t.key, ids(rows.filter((f) => themeKeyOf(f.theme) === t.key))]));
-    expect(byKey.Trust).toEqual(["padded", "plain"]);
+    expect(byKey[themeKeyOf("Trust")]).toEqual(["padded", "plain"]);
     expect(byKey[NO_THEME_KEY]).toEqual(["blank", "null", "spaces"]);
-    expect(byKey["No theme"]).toEqual(["named"]);
+    expect(byKey[themeKeyOf("No theme")]).toEqual(["named"]);
     // The label shows the stored text trimmed; the stored text itself is untouched.
     expect(o.themes.find((t) => t.key === NO_THEME_KEY)!.theme).toBe(NO_THEME);
     expect(rows.find((r) => r.id === "padded")!.theme).toBe("  Trust  ");
+  });
+  // Codex SEC-01 and SEC-02: the review's pills group by the same key they filter on, a named "No
+  // theme" never reads like the absence of one, and every key survives an HTML attribute value.
+  it("labels a named 'No theme' apart from unthemed findings, and round-trips every key", () => {
+    const keys = [...new Set(rows.map((f) => themeKeyOf(f.theme)))];
+    const labels = keys.map(themeLabelOf);
+    expect(new Set(labels).size).toBe(keys.length);
+    expect(themeLabelOf(NO_THEME_KEY)).toBe(NO_THEME);
+    expect(themeLabelOf(themeKeyOf("No theme"))).toBe("No theme");
+    expect(NO_THEME).not.toBe("No theme");
+    for (const t of ["Trust", "  Trust  ", "No theme", "none", "t:odd", "Price & value", "\"quoted\""]) {
+      expect(themeLabelOf(themeKeyOf(t))).toBe(t.trim());
+      expect(themeKeyOf(t)).not.toBe(NO_THEME_KEY);
+    }
+  });
+  it("keys contain no character an HTML attribute value would replace", () => {
+    const samples = ["Trust", "  Trust  ", null, "", "   ", "No theme", "Ünïcödé", "a\tb"];
+    for (const t of samples) {
+      const key = themeKeyOf(t);
+      // U+0000 is replaced by U+FFFD in parsed HTML; other C0 controls (bar tab/newline, which a
+      // trimmed key keeps only inside text) and noncharacters are not allowed in attribute values.
+      expect(/[\u0000-\u0008\u000B\u000E-\u001F\u007F\uFFFD\uFFFE\uFFFF]/.test(key)).toBe(false);
+    }
+  });
+  it("pill counts by key equal the findings each pill opens", () => {
+    const counts = new Map<string, number>();
+    for (const f of rows) counts.set(themeKeyOf(f.theme), (counts.get(themeKeyOf(f.theme)) ?? 0) + 1);
+    for (const [key, n] of counts) expect(rows.filter((f) => themeKeyOf(f.theme) === key).length).toBe(n);
+    expect(counts.get(themeKeyOf("Trust"))).toBe(2);
+    expect(counts.get(NO_THEME_KEY)).toBe(3);
+    expect(counts.get(themeKeyOf("No theme"))).toBe(1);
   });
   it("attention figures and their filter use the same test", () => {
     const mixed = [

@@ -11,6 +11,9 @@
 //      the padded theme opens its one finding), and at 375 and 768 px the overviews fit their
 //      workspace, add no horizontal page overflow, keep the top insight readable and reachable by
 //      keyboard.
+//      Codex SEC-01/SEC-02: theme pills count, label and open by the same key (padded names together,
+//      a theme named "No theme" apart from unthemed findings), and the native theme select's unthemed
+//      option, chosen by click or keyboard, selects exactly the unthemed findings, before and after a reload.
 //   4. Opening the sections calls no model.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -123,6 +126,82 @@ test("Findings and Insights overviews count the records and open them filtered",
     await expect(page.locator(`[data-testid="finding-card"][data-finding-id="${spacedFinding}"]`).filter({ visible: true })).toBeVisible();
     // The stored text is the researcher's, spaces and all.
     expect((await db.query("select theme from findings where id=$1 and run_id=$2", [spacedFinding, run.id])).rows[0].theme).toBe(`   ${spacedTheme}  `);
+
+    // Codex SEC-01 and SEC-02: the review's theme pills and native select use the overview's theme
+    // key. Seeded: "SEC Trust" and " SEC Trust " (one theme), no theme at all, and a theme literally
+    // named "No theme" (its own theme, never merged with or labelled like the unthemed findings).
+    const seedTheme = async (theme) =>
+      (await db.query(
+        `insert into findings
+           select (jsonb_populate_record(null::findings,
+             to_jsonb(f) || jsonb_build_object('id', gen_random_uuid(), 'theme', $2::text, 'status', 'accepted', 'duplicate_group_id', null))).*
+           from findings f where f.id = $1 returning id::text`,
+        [finding.id, theme],
+      )).rows[0].id;
+    const secPlain = await seedTheme("SEC Trust");
+    const secPadded = await seedTheme(" SEC Trust ");
+    const secNull = await seedTheme(null);
+    const secNamed = await seedTheme("No theme");
+    const allFindings = (await db.query("select id::text, theme, duplicate_group_id from findings where run_id=$1", [run.id])).rows;
+    const keyOf = (t) => (t && t.trim() ? `t:${t.trim()}` : "none");
+    const idsFor = (key) => allFindings.filter((f) => keyOf(f.theme) === key).map((f) => f.id).sort();
+    // Pills leave grouped duplicates out of their count, as the strip always has.
+    const pillCountFor = (key) => allFindings.filter((f) => keyOf(f.theme) === key && !f.duplicate_group_id).length;
+    expect(idsFor("t:SEC Trust")).toEqual([secPlain, secPadded].sort());
+    expect(idsFor("t:No theme")).toEqual([secNamed]);
+    expect(idsFor("none")).toContain(secNull);
+    const secTotal = allFindings.length;
+    const showing = page.getByTestId("findings-showing").filter({ visible: true });
+    const visibleCardIds = async () =>
+      (await page.locator('[data-testid="finding-card"]').filter({ visible: true }).evaluateAll((els) => els.map((e) => e.getAttribute("data-finding-id")))).sort();
+    const openReview = async () => {
+      await page.goto(run.url, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Findings(\s*\d+)?$/ }).first().click();
+      await page.getByTestId("findings-tab-review").click();
+      await expect(showing).toContainText(`Showing ${secTotal} of ${secTotal}`);
+    };
+    await openReview();
+    const pill = (key) => page.locator(`[data-testid="theme-pill"][data-theme-key="${key}"]`).filter({ visible: true });
+    for (const [key, label] of [["t:SEC Trust", "SEC Trust"], ["t:No theme", "No theme"], ["none", "No theme set"]]) {
+      // One pill per theme, labelled apart, counting what it opens.
+      await expect(pill(key)).toHaveCount(1);
+      await expect(pill(key).locator("span.truncate")).toHaveText(label);
+      await expect(pill(key).getByTestId("theme-pill-count")).toHaveText(String(pillCountFor(key)));
+      await pill(key).click();
+      await expect(showing).toContainText(`Showing ${idsFor(key).length} of ${secTotal}`);
+      expect(await visibleCardIds()).toEqual(idsFor(key));
+      await pill(key).click(); // clicking the active pill clears it
+      await expect(showing).toContainText(`Showing ${secTotal} of ${secTotal}`);
+    }
+    expect(await page.locator('[data-testid="theme-pill"]').filter({ visible: true, hasText: /^SEC Trust/ }).count()).toBe(1);
+    // The native select: every option value is the plain key, and the unthemed option selects exactly
+    // the findings with no theme.
+    const themeSelect = page.locator("select").filter({ has: page.locator("option", { hasText: "All themes" }) }).filter({ visible: true }).first();
+    const optionValues = await themeSelect.locator("option").evaluateAll((els) => els.map((e) => e.value));
+    expect(optionValues.some((v) => v.includes("\uFFFD") || /[\u0000-\u001F]/.test(v))).toBe(false);
+    expect(optionValues).toContain("none");
+    expect(optionValues.filter((v) => v === "t:SEC Trust")).toHaveLength(1);
+    const selectUnthemed = async () => {
+      await themeSelect.selectOption("none");
+      await expect(showing).toContainText(`Showing ${idsFor("none").length} of ${secTotal}`);
+      expect(await visibleCardIds()).toEqual(idsFor("none"));
+    };
+    await selectUnthemed();
+    // Keyboard: the unthemed option is the last one, so End selects it from All themes.
+    await themeSelect.selectOption("__all__");
+    await expect(showing).toContainText(`Showing ${secTotal} of ${secTotal}`);
+    await themeSelect.focus();
+    await page.keyboard.press("End");
+    await expect(themeSelect).toHaveValue("none");
+    await expect(showing).toContainText(`Showing ${idsFor("none").length} of ${secTotal}`);
+    // Clear, then after a reload the same option still works.
+    await themeSelect.selectOption("__all__");
+    await expect(showing).toContainText(`Showing ${secTotal} of ${secTotal}`);
+    await openReview();
+    await selectUnthemed();
+    // Stored themes are untouched.
+    expect((await db.query("select theme from findings where id=$1", [secPadded])).rows[0].theme).toBe(" SEC Trust ");
+    expect((await db.query("select theme from findings where id=$1", [secNamed])).rows[0].theme).toBe("No theme");
 
     const visibleInsights = () =>
       page.locator('[data-testid="synthesized-insight-card"]').filter({ visible: true }).evaluateAll((els) =>
