@@ -169,7 +169,9 @@ function Detail({ runId, row, index }: { runId: string; row: ObjectiveRow; index
           )}
         </div>
       ) : (
-        <p className="text-xs text-muted">{a.accepted ? "Not scored yet. Use Score objectives on the overview." : "Accept this objective to have it scored."}</p>
+        <p className="text-xs text-muted" data-testid="objective-unscored-reason">
+          {a.accepted ? (row.unscoredReason ?? "Not scored yet: it will be scored after your next change, or use Rescore.") : "Accept this objective to have it scored."}
+        </p>
       )}
     </div>
   );

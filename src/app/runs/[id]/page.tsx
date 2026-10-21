@@ -67,6 +67,7 @@ import StorageCleanupNotice from "./StorageCleanupNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
+import { loadObjectiveQualityStatus, objectiveQualityLookup, unscoredReasonFor, unscoredReasonText } from "@/lib/objectiveQualityStatus";
 import ObjectiveCoverage from "./ObjectiveCoverage";
 import ObjectiveEvidence from "./ObjectiveEvidence";
 import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
@@ -4265,12 +4266,20 @@ export default async function RunPage({
       return rationale ? sourceLabelFromRationale(rationale) : null;
     });
   const objectiveQuality = await getObjectiveQuality(id);
-  const qualityByText = new Map(
-    objectiveQuality.rows.map((r) => [r.item_text.trim(), r] as const),
-  );
+  // Scores are matched by objective identity (markers, case, punctuation ignored), and an unscored
+  // accepted objective carries the reason it is unscored (objectiveQualityStatus.ts).
+  const objectiveQualityStatus = await loadObjectiveQualityStatus(TENANT_ID, id);
+  const qualityFor = objectiveQualityLookup(objectiveQuality.rows);
   const objectiveRows: ObjectiveRow[] = objectiveCandidates.map((c): ObjectiveRow => {
-        const q = qualityByText.get(c.candidate_text.trim());
+        const q = qualityFor(c.candidate_text);
+        const accepted = c.status === "accepted";
         return {
+          unscoredReason:
+            q && accepted
+              ? null
+              : "error" in objectiveQualityStatus
+                ? unscoredReasonText(null, accepted)
+                : unscoredReasonText(unscoredReasonFor(objectiveQualityStatus, c.candidate_text), accepted),
           id: c.id,
           text: c.candidate_text,
           rationale: c.rationale,

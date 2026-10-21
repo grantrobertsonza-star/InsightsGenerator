@@ -6,6 +6,7 @@ import { readContextDocument } from "./extractFindings";
 import { extractBriefFields } from "./briefIntake";
 import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines, normalizeObjectiveLine, objectiveIdentityKey } from "./objectiveLines";
+import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { requireTenantId } from "./requestContext";
 
 
@@ -191,6 +192,9 @@ export async function saveRunContext(runId: string, formData: FormData) {
 
   // Setup only records objectives. Scoring and checking against the insights
   // happen later, in Objective review, once there is data to judge them by.
+  // Scored straight away (Grant, 2026-10-21: automate where possible). An unchanged list makes
+  // no model call; a failure is recorded and shown on Review, never blocks the save.
+  await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -320,5 +324,8 @@ export async function editStatedObjective(runId: string, oldText: string, newTex
     }
     await syncResearchObjective(client, runId);
   });
+  // Scored straight away (Grant, 2026-10-21: automate where possible). An unchanged list makes
+  // no model call; a failure is recorded and shown on Review, never blocks the save.
+  await refreshObjectiveQuality(TENANT_ID, runId);
   revalidatePath(`/runs/${runId}`);
 }

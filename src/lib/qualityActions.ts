@@ -17,13 +17,15 @@ export async function scoreObjectivesAction(
   try {
     const r = await scoreObjectiveQuality(TENANT_ID, runId, { force });
     revalidatePath(`/runs/${runId}`);
-    // OBJ-REV-M04: more than 20 stated objectives/decisions means the rest
-    // were silently left unscored (scoreObjectiveQuality's MAX_ITEMS cap) -
-    // surfaced here rather than just in a code comment, since the
-    // researcher has no other way to notice.
+    // OBJ-REV-M04: objectives are scored in batches; past the scorer's hard bound of 200 the rest
+    // are not scored, and that is said here rather than left for the researcher to notice.
     const truncatedNote = r.truncated
-      ? " Only the first 20 were scored; there are more than that in the list."
+      ? " Only the first 200 were scored; there are more than that in the list."
       : "";
+    const unscoredNote =
+      r.unscored > 0
+        ? ` ${r.unscored} could not be scored this time; the reason is shown on each, and the next change or Rescore tries again.`
+        : "";
     if (r.skipped)
       return {
         ok: true,
@@ -32,7 +34,7 @@ export async function scoreObjectivesAction(
       };
     return {
       ok: true,
-      message: `${r.scored} objective${r.scored === 1 ? "" : "s"} scored.${truncatedNote}`,
+      message: `${r.scored} objective${r.scored === 1 ? "" : "s"} scored.${unscoredNote}${truncatedNote}`,
     };
   } catch (error) {
     return {

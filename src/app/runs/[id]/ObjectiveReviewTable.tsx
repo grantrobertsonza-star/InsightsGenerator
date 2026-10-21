@@ -32,6 +32,8 @@ export type ObjectiveRow = {
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
   scores: ObjectiveScores | null;
+  /** Why an objective has no score (objectiveQualityStatus.unscoredReasonText); absent where not loaded. */
+  unscoredReason?: string | null;
 };
 
 export const scoreCellClass: Record<number, string> = {
@@ -133,7 +135,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             {tierLabel[row.scores.tier]}
           </span>
         ) : (
-          <span className="text-muted">Not scored</span>
+          <span className="text-muted" title={row.unscoredReason ?? undefined} data-testid="objective-not-scored">Not scored</span>
         )}
       </td>
       <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>

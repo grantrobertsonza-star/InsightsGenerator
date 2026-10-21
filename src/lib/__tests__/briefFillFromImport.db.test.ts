@@ -17,6 +17,8 @@ vi.mock("../briefIntake", () => ({
   }),
 }));
 vi.mock("../extractFindings", () => ({ readContextDocument: vi.fn() }));
+// Scoring now runs after each save; the model is not this test's subject.
+vi.mock("../objectiveQualityScorer", () => ({ refreshObjectiveQuality: vi.fn(async () => {}) }));
 
 describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an imported brief (real database)", () => {
   let db: DisposableDb;

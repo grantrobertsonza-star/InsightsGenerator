@@ -2,22 +2,22 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { parseNumberedItems } from "./text";
+import { objectiveIdentityKey } from "./objectiveLines";
+import { OBJECTIVE_QUALITY_PASS_EVENT, type UnscoredRecord } from "./objectiveQualityStatus";
 import {
   OBJECTIVE_MAX,
   objectiveRating,
   objectiveScoresCurrent,
   parseObjectiveScores,
+  type ObjectiveScore,
 } from "./qualityRubrics";
 
-// A research objective list is usually a handful of lines, so one call
-// covers a run in the common case (OBJ-REV-M04) - but this is a real cap,
-// not a guarantee: parseNumberedItems(...).slice(0, MAX_ITEMS) below
-// silently drops anything past the 20th item rather than scoring it in a
-// second call, so a project with more than 20 stated objectives/decisions
-// has some left unscored. scoreObjectiveQuality's `truncated` return flag
-// is how a caller finds out that happened; scoreObjectivesAction surfaces
-// it to the researcher.
-const MAX_ITEMS = 20;
+// Objectives are sent to the scorer in batches of BATCH_SIZE (Grant, 2026-10-21: score everything
+// automatically). MAX_ITEMS_SCORED is the one hard bound left: at most 10 model calls in one pass.
+// Anything past it is reported through `truncated` (scoreObjectivesAction says so), never dropped
+// silently.
+const BATCH_SIZE = 20;
+const MAX_ITEMS_SCORED = 200;
 const MAX_VARIABLES_LISTED = 60;
 
 type RunContext = {
@@ -149,17 +149,23 @@ const TOOLS = [
 ];
 
 /**
- * Scores each numbered item of the run's research objective. Scores are keyed
- * by the item's text, so an unchanged objective list is left alone (no model
- * call) unless `force` is set, and an edited one is scored again. The data
- * inventory is read at scoring time, so "answerable" reflects what had been
- * uploaded then; rescoring after more data arrives is what `force` is for.
+ * Scores the accepted objectives (runs.research_objective, kept in sync with the accepted candidates)
+ * on four dimensions. Scores are kept per objective, keyed by objectiveIdentityKey, so a pass scores
+ * only what has no score yet: a new or reworded objective, or one a previous pass could not score.
+ * An unchanged list makes no model call. `force` rescores everything (after more data arrives, for
+ * "answerable"). Objectives are sent in batches of BATCH_SIZE; a batch that fails, or a reply that
+ * leaves an objective out, leaves those objectives unscored with the reason recorded in an
+ * OBJECTIVE_QUALITY_PASS_EVENT trace row, and the scores that did come back are kept.
+ *
+ * Writes happen under the run row's lock, against the objective list as it is at write time, so an
+ * objective removed while the model was answering gets no row. Throws only when every batch failed,
+ * after recording why, so the Rescore button can show the error.
  */
 export async function scoreObjectiveQuality(
   tenantId: string,
   runId: string,
   options: { force?: boolean } = {},
-): Promise<{ scored: number; skipped: boolean; truncated: boolean }> {
+): Promise<{ scored: number; kept: number; unscored: number; skipped: boolean; truncated: boolean }> {
   const context = await withTenant(tenantId, async (client) => {
     const r = await client.query<RunContext>(
       "select research_objective, decision_statement, business_problem from runs where id = $1",
@@ -167,95 +173,174 @@ export async function scoreObjectiveQuality(
     );
     return r.rows[0] ?? null;
   });
-  if (!context) return { scored: 0, skipped: true, truncated: false };
+  const none = { scored: 0, kept: 0, unscored: 0, skipped: true, truncated: false };
+  if (!context) return none;
   const allItems = parseNumberedItems(context.research_objective);
-  const truncated = allItems.length > MAX_ITEMS;
-  const items = allItems.slice(0, MAX_ITEMS);
-  if (items.length === 0) return { scored: 0, skipped: true, truncated: false };
+  const truncated = allItems.length > MAX_ITEMS_SCORED;
+  const items = allItems.slice(0, MAX_ITEMS_SCORED);
+  if (items.length === 0) return { ...none, truncated };
 
-  if (!options.force) {
-    const stored = await withTenant(tenantId, async (client) => {
-      const r = await client.query<{ item_order: number; item_text: string }>(
-        "select item_order, item_text from objective_quality where run_id = $1",
-        [runId],
-      );
-      return r.rows;
-    });
-    if (objectiveScoresCurrent(items, stored))
-      return { scored: 0, skipped: true, truncated };
+  const stored = await withTenant(tenantId, async (client) => {
+    const r = await client.query<StoredScoreRow>(
+      `select item_order, item_text, specific_score, measurable_score, answerable_score, relevant_score,
+              rationale, suggestion
+       from objective_quality where run_id = $1 order by item_order`,
+      [runId],
+    );
+    return r.rows;
+  });
+  const storedByKey = new Map<string, StoredScoreRow>();
+  for (const row of stored) {
+    const key = objectiveIdentityKey(row.item_text);
+    if (!storedByKey.has(key)) storedByKey.set(key, row);
+  }
+
+  // One request per distinct objective: two lines that are the same objective share a score.
+  const pending = new Map<string, string>();
+  for (const text of items) {
+    const key = objectiveIdentityKey(text);
+    if (key && !pending.has(key) && (options.force || !storedByKey.has(key))) pending.set(key, text);
+  }
+
+  if (pending.size === 0) {
+    if (objectiveScoresCurrent(items, stored)) return { ...none, truncated, kept: stored.length };
+    // Same objectives, new order or spelling: rewrite the rows to match, no model call.
+    const kept = await writeScores(tenantId, runId, new Map());
+    return { scored: 0, kept, unscored: 0, skipped: false, truncated };
   }
 
   const inventory = await evidenceInventory(tenantId, runId);
-  const user =
-    `Business problem: ${context.business_problem?.trim() || "(not given)"}\n` +
-    `Decision statement: ${context.decision_statement?.trim() || "(not given)"}\n\n` +
-    `What the project holds:\n${inventory}\n\n` +
-    `Objectives:\n${items.map((t, i) => `${i}. ${t}`).join("\n")}`;
+  const queue = [...pending.entries()];
+  const batches: [string, string][][] = [];
+  for (let i = 0; i < queue.length; i += BATCH_SIZE) batches.push(queue.slice(i, i + BATCH_SIZE));
 
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 4096,
-    system: SYSTEM,
-    tool_choice: { type: "tool", name: "record_scores" },
-    tools: TOOLS,
-    messages: [{ role: "user", content: user }],
-  });
-  await logApiUsage(
-    tenantId,
-    runId,
-    "objective_quality_scorer",
-    response.usage,
-  );
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  const scores = parseObjectiveScores(
-    toolUse && toolUse.type === "tool_use"
-      ? (toolUse.input as { scores?: unknown }).scores
-      : undefined,
-    items.length,
-  );
-  if (scores.length === 0)
-    throw new Error(
-      `The scorer returned nothing usable (stop reason: ${response.stop_reason ?? "unknown"}).`,
+  const fresh = new Map<string, Omit<ObjectiveScore, "index">>();
+  const unscored: UnscoredRecord[] = [];
+  let failedBatches = 0;
+  let firstFailure = "";
+  for (const batch of batches) {
+    try {
+      const user =
+        `Business problem: ${context.business_problem?.trim() || "(not given)"}\n` +
+        `Decision statement: ${context.decision_statement?.trim() || "(not given)"}\n\n` +
+        `What the project holds:\n${inventory}\n\n` +
+        `Objectives:\n${batch.map(([, t], i) => `${i}. ${t}`).join("\n")}`;
+      const response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 4096,
+        system: SYSTEM,
+        tool_choice: { type: "tool", name: "record_scores" },
+        tools: TOOLS,
+        messages: [{ role: "user", content: user }],
+      });
+      await logApiUsage(tenantId, runId, "objective_quality_scorer", response.usage);
+      const toolUse = response.content.find((b) => b.type === "tool_use");
+      const scores = parseObjectiveScores(
+        toolUse && toolUse.type === "tool_use" ? (toolUse.input as { scores?: unknown }).scores : undefined,
+        batch.length,
+      );
+      if (scores.length === 0)
+        throw new Error(`The scorer returned nothing usable (stop reason: ${response.stop_reason ?? "unknown"}).`);
+      for (const sc of scores) fresh.set(batch[sc.index][0], sc);
+      for (const [key] of batch) if (!fresh.has(key)) unscored.push({ key, reason: "no_score" });
+    } catch (error) {
+      failedBatches += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      firstFailure ||= message;
+      for (const [key] of batch) unscored.push({ key, reason: "failed", message: message.slice(0, 300) });
+    }
+  }
+
+  const kept = await writeScores(tenantId, runId, fresh, { force: options.force === true, unscored });
+  if (failedBatches === batches.length) throw new Error(firstFailure);
+  return { scored: fresh.size, kept, unscored: unscored.length, skipped: false, truncated };
+}
+
+type StoredScoreRow = {
+  item_order: number;
+  item_text: string;
+  specific_score: number;
+  measurable_score: number;
+  answerable_score: number;
+  relevant_score: number;
+  rationale: string;
+  suggestion: string;
+};
+
+/**
+ * Rewrites the run's objective_quality rows for the objective list as it is now: a fresh score where
+ * one came back, otherwise the stored score for the same objective (by objectiveIdentityKey). With
+ * `unscored`, records the pass in the same transaction. The run row is locked and must exist.
+ * Returns how many rows kept an earlier score.
+ */
+async function writeScores(
+  tenantId: string,
+  runId: string,
+  fresh: Map<string, Omit<ObjectiveScore, "index">>,
+  pass?: { force: boolean; unscored: UnscoredRecord[] },
+): Promise<number> {
+  return withTenant(tenantId, async (client) => {
+    const run = await client.query<{ research_objective: string | null }>(
+      "select research_objective from runs where id = $1 for update",
+      [runId],
     );
-
-  await withTenant(tenantId, async (client) => {
-    await client.query("delete from objective_quality where run_id = $1", [
-      runId,
-    ]);
-    for (const s of scores) {
-      const total = s.specific + s.measurable + s.answerable + s.relevant;
+    if (run.rowCount !== 1) throw new Error("This project was not found.");
+    const current = parseNumberedItems(run.rows[0].research_objective).slice(0, MAX_ITEMS_SCORED);
+    const old = await client.query<StoredScoreRow>(
+      `select item_order, item_text, specific_score, measurable_score, answerable_score, relevant_score,
+              rationale, suggestion
+       from objective_quality where run_id = $1`,
+      [runId],
+    );
+    const oldByKey = new Map<string, StoredScoreRow>();
+    for (const row of old.rows) {
+      const key = objectiveIdentityKey(row.item_text);
+      if (!oldByKey.has(key)) oldByKey.set(key, row);
+    }
+    await client.query("delete from objective_quality where run_id = $1", [runId]);
+    let keptCount = 0;
+    for (let i = 0; i < current.length; i++) {
+      const key = objectiveIdentityKey(current[i]);
+      const f = fresh.get(key);
+      const o = oldByKey.get(key);
+      const score = f
+        ? { specific: f.specific, measurable: f.measurable, answerable: f.answerable, relevant: f.relevant, rationale: f.rationale, suggestion: f.suggestion }
+        : o
+          ? { specific: o.specific_score, measurable: o.measurable_score, answerable: o.answerable_score, relevant: o.relevant_score, rationale: o.rationale, suggestion: o.suggestion }
+          : null;
+      if (!score) continue;
+      if (!f) keptCount += 1;
+      const total = score.specific + score.measurable + score.answerable + score.relevant;
       await client.query(
         `insert into objective_quality
            (tenant_id, run_id, item_order, item_text, specific_score, measurable_score, answerable_score,
             relevant_score, quality_score, quality_tier, rationale, suggestion)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [
-          tenantId,
-          runId,
-          s.index,
-          items[s.index],
-          s.specific,
-          s.measurable,
-          s.answerable,
-          s.relevant,
-          total,
-          objectiveRating(total),
-          s.rationale,
-          s.suggestion,
-        ],
+        [tenantId, runId, i, current[i], score.specific, score.measurable, score.answerable, score.relevant, total, objectiveRating(total), score.rationale, score.suggestion],
       );
     }
+    if (pass) {
+      // An objective that kept an earlier score (a forced rescore it did not come back for) is not
+      // reported as unscored.
+      const stillUnscored = pass.unscored.filter((u) => !fresh.has(u.key) && !oldByKey.has(u.key));
+      await client.query(
+        "insert into trace (tenant_id, run_id, event, detail) values ($1, $2, $3, $4)",
+        [tenantId, runId, OBJECTIVE_QUALITY_PASS_EVENT, JSON.stringify({ scored: fresh.size, force: pass.force, unscored: stillUnscored })],
+      );
+    }
+    return keptCount;
   });
-  return { scored: scores.length, skipped: false, truncated };
 }
 
 export { OBJECTIVE_MAX };
 
 /**
- * Safe wrapper for automatic trigger points: a failure is logged to trace and
- * swallowed, same pattern as refreshSynthesizedInsightQuality, so scoring
- * never blocks the step the researcher actually clicked. Also swallows the
- * "table does not exist" case before migration 0045 is applied.
+ * Safe wrapper for automatic trigger points (the Review actions, and Set objectives saves: Grant,
+ * 2026-10-21): a failure is logged to trace and swallowed, same pattern as
+ * refreshSynthesizedInsightQuality, so scoring never blocks the step the researcher actually
+ * clicked, and an unchanged list makes no model call. Call it after the save's transaction has
+ * committed, since it reads the saved list. Also swallows the "table does not exist" case before
+ * migration 0045 is applied.
  */
 export async function refreshObjectiveQuality(
   tenantId: string,
