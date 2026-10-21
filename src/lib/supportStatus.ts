@@ -8,7 +8,9 @@
 // calculated table, that table's recorded design/corrections snapshots compared with the data
 // file's CURRENT settings - resolved with the same unchanged helpers the Findings table and the
 // cross-tab list already use (resolveCurrentDesignSnapshotStatus, loadVariableOverrides), so the
-// three cannot disagree about what "current settings" means.
+// three cannot disagree about what "current settings" means. For a finding read from a report
+// with a recorded quote, also whether that quote appears in the report's current stored text
+// (withQuoteGrounding, GT100-F02).
 //
 // Missing migration: detected with a catalog pre-check (no failing statement, so the read
 // transaction is never left aborted). Without 0096 every link is "not recorded" (unknown);
@@ -22,6 +24,7 @@ import type { PoolClient } from "pg";
 import { withTenantRead } from "./db";
 import { designFreshnessStatus, resolveCurrentDesignSnapshotStatus } from "./crosstabs";
 import { loadVariableOverrides } from "./variableOverrides";
+import { quoteGroundingChecker } from "./quoteMatch";
 import {
   classifyInsightSupport,
   correctionsFor,
@@ -46,7 +49,46 @@ type RawRow = {
   design_snapshot: SupportLinkRow["designSnapshot"];
   overrides_snapshot: unknown;
   saved_request: unknown;
+  /** Set for a quoted report finding (see withQuoteGrounding); absent otherwise. */
+  quote_document_id: string | null;
+  source_quote: string | null;
+  quote_grounding?: SupportLinkRow["quoteGrounding"];
 };
+
+/**
+ * GT100-F02: whether each quoted report finding's quote still appears in its report's CURRENT
+ * stored text. A re-read keeps a reviewed finding (its id, wording and fingerprint) even when the
+ * new text no longer contains its quote, so the fingerprint cannot see this. Read in the same
+ * transaction as the links (one consistent version of the text), each report's text fetched and
+ * normalised once, with the same quote rule as extraction (quoteMatch). Read-only.
+ *
+ * A failed or partial re-read still stores the newly read text before the model is called
+ * (extractFindings), so the check is against what the report says now; a re-read whose text read
+ * itself fails stores nothing and changes nothing here. A text too short to judge (the same
+ * threshold extraction refuses below) is "unreadable": unknown, never missing and never present.
+ */
+async function withQuoteGrounding(client: PoolClient, rows: RawRow[]): Promise<RawRow[]> {
+  const documentIds = Array.from(
+    new Set(rows.filter((r) => r.quote_document_id && r.source_quote?.trim()).map((r) => r.quote_document_id as string)),
+  );
+  if (documentIds.length === 0) return rows;
+  const texts = await client.query<{ id: string; extracted_text: string | null }>(
+    "select id, extracted_text from documents where id = any($1::uuid[])",
+    [documentIds],
+  );
+  const checkers = new Map(texts.rows.map((d) => [d.id, quoteGroundingChecker(d.extracted_text)]));
+  return rows.map((r) => {
+    if (!r.quote_document_id || !r.source_quote?.trim()) return r;
+    // A document gone from the run takes its findings with it, so a missing row here means the
+    // text could not be read for this check: unknown, not missing.
+    const check = checkers.get(r.quote_document_id);
+    return { ...r, quote_grounding: check ? check(r.source_quote) : "unreadable" };
+  });
+}
+
+/** The columns withQuoteGrounding needs: only a finding read from a report's text, never a table's. */
+const QUOTE_COLUMNS = `case when f.origin = 'stated' and f.source_table_id is null then f.source_document_id else null end as quote_document_id,
+              case when f.origin = 'stated' and f.source_table_id is null then f.source_quote else null end as source_quote`;
 
 /** Key-order-independent JSON, for comparing two corrections maps read from jsonb. */
 function stableJson(value: unknown): string {
@@ -135,7 +177,8 @@ export async function loadInsightSupport(
               f.id as finding_id, f.status as finding_status, f.finding_text,
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
-              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request
+              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
+              ${QUOTE_COLUMNS}
        from synthesized_insights si
        left join synthesized_insight_sources s on s.synthesized_insight_id = si.id
        left join insights i on i.id = s.pre_insight_id
@@ -145,7 +188,7 @@ export async function loadInsightSupport(
        order by si.id, s.pre_insight_id`,
       insightIds ? [runId, insightIds] : [runId],
     );
-    return { rows: result.rows, snapshotsAvailable: available };
+    return { rows: await withQuoteGrounding(client, result.rows), snapshotsAvailable: available };
   });
 
   return classifyRows(tenantId, runId, rows, snapshotsAvailable);
@@ -162,6 +205,7 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
       findingId: r.finding_id,
       findingStatus: r.finding_status,
       findingText: r.finding_text,
+      quoteGrounding: r.quote_grounding ?? null,
       recorded: r.support_snapshot,
       current: r.current_parts,
       calculatedTableDocumentId: r.calculated_table_document_id,
@@ -251,7 +295,8 @@ export async function loadPreInsightSupport(tenantId: string, runId: string, ins
               f.id as finding_id, f.status as finding_status, f.finding_text,
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
-              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request
+              dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
+              ${QUOTE_COLUMNS}
        from insights i
        join findings f on f.id = i.finding_id
        left join document_tables dt on dt.id = f.source_table_id
@@ -259,7 +304,7 @@ export async function loadPreInsightSupport(tenantId: string, runId: string, ins
        order by i.id`,
       insightIds ? [runId, insightIds] : [runId],
     );
-    return { rows: result.rows, snapshotsAvailable: available };
+    return { rows: await withQuoteGrounding(client, result.rows), snapshotsAvailable: available };
   });
   return classifyRows(tenantId, runId, rows, snapshotsAvailable);
 }

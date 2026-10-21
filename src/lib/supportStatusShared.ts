@@ -21,6 +21,10 @@ export type SupportReasonKind =
   | "source_missing"
   /** A supporting finding was rejected after the insight was drafted. */
   | "rejected"
+  /** A supporting report finding's recorded quote no longer appears in the text its report was last
+   * read as (GT100-F02): the evidence it cites is gone from its source. The finding, its wording and
+   * its review decision are kept; only its support is no longer valid. */
+  | "quote_missing"
   /** A supporting finding's wording changed in place (same id). */
   | "wording"
   /** A supporting finding's stated figures changed in place. */
@@ -76,17 +80,32 @@ export type SupportLinkRow = {
   calculatedTableDocumentId: string | null;
   designSnapshot: { design: { psu: string | null; strata: string | null } | null } | null;
   overridesSnapshot: unknown;
+  /**
+   * For a finding read from a report (origin 'stated') with a recorded quote: whether that quote
+   * appears in the report's CURRENT stored text (quoteMatch.quoteGroundingChecker). "unreadable"
+   * when there is no usable stored text to check against. Null or absent: not a quoted report
+   * finding, so there is nothing to check.
+   */
+  quoteGrounding?: "present" | "missing" | "unreadable" | null;
   /** Variables the calculated table used (tableVariablesFromSavedRequest), so only corrections to
    * THOSE variables mark it changed. Null/absent: not recorded, compared file-wide (cautious). */
   tableVariables?: string[] | null;
 };
 
 /**
- * Golden-thread repair: the variables a calculated table used, from its saved request (rows,
- * columns, filters and weight). Corrections are saved per variable, so a correction to a variable
- * the table never used cannot change it; comparing the whole file's corrections marked every table
- * from that file "changed" after one unrelated correction. Null when the request was not recorded,
- * in which case the caller compares file-wide (the cautious fallback).
+ * The variables a calculated table depends on, from its saved request, read the way the engine
+ * reads the request (api/parse-stats-file.py crosstab): the banner columns, every row item's
+ * variables and, for a NET row, each NET's member variables (the UI saves NET rows with `vars: []`
+ * and the members under `nets[].vars`: Codex GT100-F03), the filters and the older single `layer`
+ * filter, the weight, and a survey design's PSU and strata when the request names them.
+ * Corrections are saved per variable, so a correction to a variable the table never used cannot
+ * change it; comparing the whole file's corrections marked every table from that file "changed"
+ * after one unrelated correction.
+ *
+ * Null means the dependencies cannot be resolved from the request, and the caller compares
+ * file-wide (the cautious fallback): no recorded request, a request in a shape this does not
+ * recognise, or a multiple-response banner set ("set:<key>"), whose member variables the engine
+ * resolves from the file at build time and the request does not record.
  */
 export function tableVariablesFromSavedRequest(saved: unknown): string[] | null {
   if (!saved || typeof saved !== "object") return null;
@@ -94,20 +113,47 @@ export function tableVariablesFromSavedRequest(saved: unknown): string[] | null 
     columnVars?: unknown;
     rowItems?: unknown;
     filters?: unknown;
+    layer?: unknown;
     weightVar?: unknown;
+    design?: unknown;
   };
   if (!Array.isArray(r.rowItems) && !Array.isArray(r.columnVars)) return null;
   const out = new Set<string>();
-  for (const c of Array.isArray(r.columnVars) ? r.columnVars : []) if (typeof c === "string") out.add(c);
+  const add = (v: unknown) => {
+    if (typeof v === "string" && v) out.add(v);
+  };
+  // A list that is present but not a list of names is a shape the engine would not read either.
+  const names = (list: unknown): string[] | null =>
+    list === undefined || list === null ? [] : Array.isArray(list) && list.every((v) => typeof v === "string") ? (list as string[]) : null;
+
+  const columns = names(r.columnVars);
+  if (!columns) return null;
+  for (const c of columns) {
+    if (c.startsWith("set:")) return null;
+    add(c);
+  }
   for (const item of Array.isArray(r.rowItems) ? r.rowItems : []) {
-    const vars = (item as { vars?: unknown })?.vars;
-    for (const v of Array.isArray(vars) ? vars : []) if (typeof v === "string") out.add(v);
+    if (!item || typeof item !== "object") return null;
+    const { vars, nets } = item as { vars?: unknown; nets?: unknown };
+    const own = names(vars);
+    if (!own) return null;
+    own.forEach(add);
+    if (nets !== undefined && nets !== null) {
+      if (!Array.isArray(nets)) return null;
+      for (const net of nets) {
+        const listed = (net as { vars?: unknown } | null)?.vars;
+        const members = Array.isArray(listed) ? names(listed) : null;
+        if (!members) return null;
+        members.forEach(add);
+      }
+    }
   }
-  for (const f of Array.isArray(r.filters) ? r.filters : []) {
-    const v = (f as { variable?: unknown })?.variable;
-    if (typeof v === "string") out.add(v);
-  }
-  if (typeof r.weightVar === "string" && r.weightVar) out.add(r.weightVar);
+  for (const f of Array.isArray(r.filters) ? r.filters : []) add((f as { variable?: unknown } | null)?.variable);
+  add((r.layer as { variable?: unknown } | null)?.variable);
+  add(r.weightVar);
+  const design = r.design as { psu?: unknown; strata?: unknown } | null | undefined;
+  add(design?.psu);
+  add(design?.strata);
   return Array.from(out);
 }
 
@@ -143,6 +189,8 @@ const REASON_STATUS: Record<SupportReasonKind, SupportStatus> = {
   no_sources: "invalid",
   source_missing: "invalid",
   rejected: "invalid",
+  // Evidence gone from its source is treated as a deleted source is (source_missing): no longer valid.
+  quote_missing: "invalid",
   wording: "stale",
   figures: "stale",
   verdict: "stale",
@@ -192,6 +240,14 @@ export function classifyInsightSupport(
     if (link.findingStatus === "rejected") {
       reasons.push({ kind: "rejected", ...base });
       continue;
+    }
+    // GT100-F02: a kept report finding keeps its id, wording and fingerprint through a re-read, so
+    // the fingerprint alone cannot see that its quote is no longer in the report. Checked against
+    // the report's current stored text; text too short or absent to judge is "could not check".
+    if (link.quoteGrounding === "missing") {
+      reasons.push({ kind: "quote_missing", ...base });
+    } else if (link.quoteGrounding === "unreadable") {
+      reasons.push({ kind: "check_failed", ...base, detail: "its report's stored text could not be read to check the quote" });
     }
     if (!snapshotsAvailable || !link.recorded) {
       reasons.push({ kind: "not_recorded", ...base });
@@ -258,6 +314,8 @@ export function describeSupportReason(reason: SupportReason): string {
       return reason.detail ?? `${f} no longer exists`;
     case "rejected":
       return `${f} was rejected`;
+    case "quote_missing":
+      return `the quote behind ${f} no longer appears in its report`;
     case "wording":
       return `the wording of ${f} changed`;
     case "figures":

@@ -10,6 +10,9 @@ import { withTenant } from "./db";
 import type { PoolClient } from "pg";
 import { findingProvenanceAvailable } from "./findingProvenance";
 import { findingOriginalAvailable } from "./findingWording";
+import { MIN_READABLE_SOURCE_CHARS, quoteAppearsIn } from "./quoteMatch";
+// Re-exported for existing callers; the rule itself lives in quoteMatch.ts.
+export { quoteAppearsIn };
 import mammoth from "mammoth";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -151,33 +154,6 @@ export async function readContextDocument(tenantId: string, runId: string, docum
     ]);
   });
   return { length: extracted.fullText.length };
-}
-
-/**
- * Loose match used to check whether a claimed quote really appears in the
- * source text. Normalizes away things that are extraction artifacts, not
- * real differences: curly quotes vs straight ones, en/em dashes, ligatures,
- * non-breaking spaces, and words hyphenated across a line break.
- */
-function normalizeForMatch(text: string): string {
-  return text
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, "-")
-    .replace(/ /g, " ")
-    .replace(/­/g, "")
-    .replace(/ﬁ/g, "fi")
-    .replace(/ﬂ/g, "fl")
-    .replace(/-\s*\n\s*/g, "")
-    .replace(/\s+/g, " ")
-    .toLowerCase()
-    .trim();
-}
-
-export function quoteAppearsIn(quote: string, sourceText: string): boolean {
-  const normalizedQuote = normalizeForMatch(quote);
-  if (normalizedQuote.length === 0) return false;
-  return normalizeForMatch(sourceText).includes(normalizedQuote);
 }
 
 // How much text goes to Claude in one extraction call. This used to be a
@@ -838,7 +814,7 @@ export async function extractFindingsFromDocument(
 
   // If almost nothing came out of the file, calling Claude is pointless and
   // the resulting error is confusing. Record why and stop here instead.
-  if (extracted.fullText.trim().length < 50) {
+  if (extracted.fullText.trim().length < MIN_READABLE_SOURCE_CHARS) {
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_empty_text', $3)`,
