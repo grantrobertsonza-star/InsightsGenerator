@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-21. State: **READY_FOR_CODEX** (main only): repairs for GT500-F01, F02, F03, P01, M-GT500-01 and UI-GT500-01 (`docs/golden-thread-500-independent-review-2026-10-21.md`, frozen `4a4563b`) in `0e37127` (correctness, briefs) and `b07a79a` (category strip, design); see `docs/gt500-repair-handover-2026-10-21.md`. No migration. Prior GTR repairs and DESIGN-GTR-01 remain accepted at their recorded boundaries. Not go-live approval; target-environment and real-model gates remain separate. 3001 is out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-21. State: **READY_FOR_CODEX** (main only): repairs for R500-02, R500-01 and UI-R500-01 (`docs/independent-gt500-repair-review-main-2026-10-21.md`, frozen `6307ca2`) in `678bbf8` (correctness, brief) and `26a37ee` (design); see `docs/r500-repair-handover-2026-10-21.md`. No migration. GT500-F01, P01, M-GT500-01 and the UI-GT500-01 category strip remain accepted at their recorded boundaries. Not go-live approval; target-environment and real-model gates remain separate. 3001 and uncommitted Analytics are out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: repairs for Codex's GT500 re-review, main copy (2026-10-21)
+
+Implemented, ready for review: `678bbf8` (R500-02 Setup edits bound to their candidate; R500-01 failed fill kept through ordinary saves) and `26a37ee` (UI-R500-01). Checks and limits in `docs/r500-repair-handover-2026-10-21.md`. Codex's previous status line is kept in `.fnd001/backup-status-1021c/`.
+
 
 ## Claude: repairs for Codex's GT500 review, main copy (2026-10-21)
 
