@@ -904,6 +904,7 @@ export default function SynthesizedRecommendationsReview({
 
   return (
     <ThreePane
+        leftOnTop
       left={
         <Pane side="left" title="Filters and actions">
         <p className="text-xs text-muted">

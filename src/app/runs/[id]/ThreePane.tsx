@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -27,6 +29,11 @@ import {
  *
  * Collapsing hides the left pane's content but keeps it mounted, so filters or a half-typed entry in it
  * are not lost.
+ *
+ * `leftOnTop` (Grant, 2026-10-21) puts the left pane above the other two as a full-width band, for
+ * sections that open on an overview and whose list and detail need the width: its blocks flow into
+ * columns, it can be folded to its header (kept mounted), and the middle and right panes keep their
+ * resizable split below it.
  */
 
 const DEFAULT_LEFT_PX = 352; // 22rem, the original fixed width
@@ -96,15 +103,7 @@ function panelBounds(side: "left" | "right", total: number, leftShare = 0.35) {
   return { min: Math.min(side === "left" ? MIN_LEFT_PX : MIN_RIGHT_PX, max), max };
 }
 
-export function ThreePane({
-  left,
-  middle,
-  right,
-  wideRight = false,
-  storageKey,
-  leftDefaultPx = DEFAULT_LEFT_PX,
-  leftMaxShare = 0.35,
-}: {
+type ThreePaneProps = {
   /** Optional: without it the layout is the working list and a resizable detail pane (Import data). */
   left?: ReactNode;
   middle: ReactNode;
@@ -117,7 +116,45 @@ export function ThreePane({
   leftDefaultPx?: number;
   /** The largest share of the layout the left pane may take (default 35%). */
   leftMaxShare?: number;
-}) {
+  /** Put the left pane above the other two as a foldable full-width band. */
+  leftOnTop?: boolean;
+};
+
+/** How a left pane is placed, so Pane can lay its blocks out across a top band and add the fold control. */
+const TopBandContext = createContext<{ folded: boolean; setFolded: (folded: boolean) => void } | null>(null);
+
+export function ThreePane(props: ThreePaneProps) {
+  const { left, leftOnTop, ...rest } = props;
+  const hasLeft = left !== undefined && left !== null && left !== false;
+  if (!leftOnTop || !hasLeft) return <ThreePaneColumns {...props} />;
+  return <TopBandLayout left={left} {...rest} />;
+}
+
+function TopBandLayout({ left, storageKey, ...rest }: Omit<ThreePaneProps, "leftOnTop">) {
+  const key = `three-pane-top:${storageKey ?? "band"}`;
+  const raw = useSyncExternalStore(subscribe, () => readStored(key), () => null);
+  const folded = parseLayout(raw).leftCollapsed;
+  const setFolded = useCallback((next: boolean) => writeStored(key, { ...DEFAULT_LAYOUT, leftCollapsed: next }), [key]);
+  const band = useMemo(() => ({ folded, setFolded }), [folded, setFolded]);
+  return (
+    <div className="flex flex-col gap-4" data-testid="three-pane-top-layout">
+      <div className="min-w-0" data-testid="three-pane-left" data-left-placement="top" data-left-collapsed={folded ? "true" : "false"}>
+        <TopBandContext.Provider value={band}>{left}</TopBandContext.Provider>
+      </div>
+      <ThreePaneColumns {...rest} storageKey={storageKey ? `${storageKey}:below-band` : "below-band"} />
+    </div>
+  );
+}
+
+function ThreePaneColumns({
+  left,
+  middle,
+  right,
+  wideRight = false,
+  storageKey,
+  leftDefaultPx = DEFAULT_LEFT_PX,
+  leftMaxShare = 0.35,
+}: Omit<ThreePaneProps, "leftOnTop">) {
   const hasRight = right !== undefined && right !== null && right !== false;
   const hasLeft = left !== undefined && left !== null && left !== false;
   const key = `three-pane:${storageKey ?? (!hasLeft ? "list-detail" : hasRight ? (wideRight ? "wide" : "three") : "two")}`;
@@ -392,6 +429,39 @@ export function Pane({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const band = useContext(TopBandContext);
+  if (band) {
+    // A left pane laid across the top: its blocks flow into columns, and it folds to its header.
+    return (
+      <section className={`flex min-h-0 flex-col overflow-hidden rounded-xl ${SIDES[side]}`}>
+        <header className={`flex shrink-0 flex-wrap items-center gap-2 ${band.folded ? "" : HEADERS[side]} px-4 py-3`}>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {badge}
+          <div className="ml-auto flex items-center gap-2">
+            {actions}
+            <button
+              type="button"
+              onClick={() => band.setFolded(!band.folded)}
+              aria-expanded={!band.folded}
+              data-testid="three-pane-top-toggle"
+              className="rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {band.folded ? `Show ${title.toLowerCase()}` : `Hide ${title.toLowerCase()}`}
+            </button>
+          </div>
+        </header>
+        <div
+          className={
+            band.folded
+              ? "hidden"
+              : "grid min-h-0 items-start gap-4 overflow-y-auto p-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,18rem),1fr))] lg:max-h-[45vh]"
+          }
+        >
+          {children}
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className={`flex min-h-0 flex-col overflow-hidden rounded-xl lg:max-h-[calc(100vh-10rem)] ${SIDES[side]}`}

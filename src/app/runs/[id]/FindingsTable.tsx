@@ -1561,6 +1561,10 @@ export default function FindingsTable({
 
   const [sourceFilter, setSourceFilter] = useState(ALL);
   const [themeFilter, setThemeFilter] = useState(ALL);
+  // Theme tiles (Grant, 2026-10-21): a project can have hundreds of themes, so the tiles show the
+  // most common first, a search narrows them, and "Show all" lists the rest.
+  const [themeQuery, setThemeQuery] = useState("");
+  const [showAllThemes, setShowAllThemes] = useState(false);
   // Which main theme has its sub-theme cards open ("__all" opens every one).
   const [openMainTheme, setOpenMainTheme] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState(ALL);
@@ -1859,6 +1863,16 @@ export default function FindingsTable({
     const multi = (k: string) => k !== NO_THEME_KEY && (themeCounts.get(k) ?? 0) > 1;
     return [...all.filter(multi), ...all.filter((k) => !multi(k))];
   })();
+  const THEME_TILES_SHOWN = 15;
+  const themeTiles = (() => {
+    const q = themeQuery.trim().toLowerCase();
+    const byCount = [...pillThemeOrder].sort((a, b) => (themeCounts.get(b) ?? 0) - (themeCounts.get(a) ?? 0) || themeLabelOf(a).localeCompare(themeLabelOf(b)));
+    const matching = q ? byCount.filter((k) => themeLabelOf(k).toLowerCase().includes(q)) : byCount;
+    const shown = showAllThemes || q ? matching : matching.slice(0, THEME_TILES_SHOWN);
+    // The chosen theme stays visible even when it is not among the most common.
+    if (themeFilter !== ALL && !shown.includes(themeFilter) && pillThemeOrder.includes(themeFilter)) shown.unshift(themeFilter);
+    return { shown, matching: matching.length };
+  })();
 
   function scrollToDuplicates() {
     duplicatesRef.current?.scrollIntoView({
@@ -1999,9 +2013,15 @@ export default function FindingsTable({
         below and editing is off until the page reloads successfully.
       </p>
     )}
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_24rem]">
-      <aside className="flex flex-col gap-4 rounded-xl border-2 border-sky-200 bg-sky-50 p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
-        <div className="text-sm font-semibold text-foreground">Filters</div>
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      {/* The filters lie across the top (Grant, 2026-10-21), so the list and the detail get the width; folded,
+          they stay mounted with their choices. */}
+      <details open className="group rounded-xl border-2 border-sky-200 bg-sky-50 lg:col-span-2" data-testid="findings-filters-band">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-t-xl px-3 py-2.5 text-sm font-semibold text-foreground group-open:border-b-2 group-open:border-sky-200 group-open:bg-sky-100">
+          Filters
+          <span className="ml-auto rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-800"><span className="group-open:hidden">Show filters</span><span className="hidden group-open:inline">Hide filters</span></span>
+        </summary>
+        <div className="grid items-start gap-4 p-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))] lg:max-h-[45vh] lg:overflow-y-auto">
         <div className="flex flex-col gap-1.5">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">How it was drawn</div>
         <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
@@ -2106,8 +2126,23 @@ export default function FindingsTable({
         {(pillThemeOrder.length > 0 ||
           pillDuplicateCount > 0 ||
           filtersActive) && (
-          <div className="flex flex-col gap-1.5">
-            {filtersActive && (
+          <div className="flex min-w-0 flex-col gap-2 [grid-column:1/-1]" data-testid="theme-tiles">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                {`Themes (${pillThemeOrder.length})`}
+              </span>
+              {pillThemeOrder.length > THEME_TILES_SHOWN && (
+                <input
+                  type="search"
+                  value={themeQuery}
+                  onChange={(e) => setThemeQuery(e.target.value)}
+                  placeholder="Find a theme"
+                  aria-label="Find a theme"
+                  data-testid="theme-search"
+                  className="w-56 max-w-full rounded-lg border border-border bg-white px-2.5 py-1 text-xs"
+                />
+              )}
+              {filtersActive && (
               <button
                 onClick={() => {
                   setSourceFilter(ALL);
@@ -2117,12 +2152,14 @@ export default function FindingsTable({
                   setEvidenceFilter(ALL);
                   setAttentionFilter(null);
                 }}
-                className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary-light px-2.5 py-1.5 text-xs font-medium text-primary transition hover:border-primary/60"
+                className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary-light px-2.5 py-1 text-xs font-medium text-primary transition hover:border-primary/60"
               >
                 Clear filters
               </button>
-            )}
-            {pillThemeOrder.map((key) => {
+              )}
+            </div>
+            <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(100%,13rem),1fr))]">
+            {themeTiles.shown.map((key) => {
               // A pill counts, filters and is keyed by the theme key; its label is only for reading.
               const isActive = themeFilter === key;
               return (
@@ -2142,7 +2179,7 @@ export default function FindingsTable({
                       className={`h-1.5 w-1.5 shrink-0 rounded-full ${colorFor(key).dot}`}
                       aria-hidden
                     />
-                    <span className="truncate">{themeLabelOf(key)}</span>
+                    <span className="truncate" title={themeLabelOf(key)}>{themeLabelOf(key)}</span>
                   </span>
                   <span className="shrink-0 text-muted" data-testid="theme-pill-count">
                     {themeCounts.get(key) ?? 0}
@@ -2167,9 +2204,22 @@ export default function FindingsTable({
                 </span>
               </button>
             )}
+            </div>
+            {!themeQuery.trim() && themeTiles.matching > THEME_TILES_SHOWN && (
+              <button
+                type="button"
+                onClick={() => setShowAllThemes((v) => !v)}
+                data-testid="theme-show-all"
+                className="self-start text-xs font-semibold text-primary hover:underline"
+              >
+                {showAllThemes ? "Show the most common only" : `Show all ${themeTiles.matching} themes`}
+              </button>
+            )}
+            {themeQuery.trim() && themeTiles.matching === 0 && <p className="text-xs text-muted">No theme matches.</p>}
           </div>
         )}
-      </aside>
+        </div>
+      </details>
       <div ref={topRef} className="min-w-0">
         <div className="mb-3 inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
           {(

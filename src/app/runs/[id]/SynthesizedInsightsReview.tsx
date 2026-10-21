@@ -365,6 +365,7 @@ export default function SynthesizedInsightsReview({
       value={{ selectedId, select: setSelectedId }}
     >
       <ThreePane
+        leftOnTop
         left={
           <Pane side="left" title="Filters">
           {acceptedCount > 0 && (

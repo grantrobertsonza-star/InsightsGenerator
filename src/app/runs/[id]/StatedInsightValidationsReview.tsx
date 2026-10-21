@@ -166,6 +166,7 @@ export default function StatedInsightValidationsReview({
 
   return (
     <ThreePane
+        leftOnTop
       left={
         <Pane side="left" title="Filter by outcome">
       <div>
