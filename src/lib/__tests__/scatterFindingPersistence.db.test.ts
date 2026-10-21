@@ -14,6 +14,11 @@
 //     removal and revival, and a refused read; changed figures keep it and ask for a review
 //   - a failed content-hash lookup is unknown, never current, and a post on it writes nothing;
 //     a missing hash column (0098 not applied) still works and is never compared across
+// RRV-01 (Codex, 2026-10-21): the wording review is resolved on the Analytics card:
+//   - keep the wording for these figures (not raised again for the same figures, raised again for
+//     new ones), or use the current sentence (the researcher's wording and provenance kept on record)
+//   - a decision on a suggestion that has moved on, or for another project or organisation, writes
+//     nothing; repeating a decision already made succeeds without writing
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
@@ -396,5 +401,117 @@ describe.skipIf(!TEST_DATABASE_URL)("scatter findings follow their source and ar
     expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
     expect((await rows())[0].stated_stats.basis_without_content_hash).toBeUndefined();
     expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, committed: true, current: true, wordingReview: null });
+  });
+  // RRV-01: resolving the wording review.
+  const snapshot = async () => (await db.pool.query("select id, finding_text, theme, status, stated_stats, human_edited_fields from findings where run_id = $1", [run])).rows;
+  const flagged = async () => {
+    await reset();
+    const { addScatterFindingAction } = await import("../scatterActions");
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [first] = await rows();
+    await editWording(first.id, RESEARCHER);
+    source.y = [6, 5, 4, 3, 2, 1];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const [after] = await rows();
+    expect(after.stated_stats.wording_review?.reason).toBe("figures_changed");
+    return { id: first.id as string, suggested: after.stated_stats.wording_review.suggested_text as string };
+  };
+
+  it("RRV-01: keep my wording, then use the current wording, through reposts and a reload of the status", async () => {
+    const { addScatterFindingAction, scatterFindingStatusAction, resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { id, suggested } = await flagged();
+    const status = await scatterFindingStatusAction(run, data, "EASE", "TRUST", null);
+    expect(status).toMatchObject({ ok: true, committed: true, wordingReview: { reason: "figures_changed", suggested_text: suggested } });
+
+    // Keep: the wording stays the researcher's, the review clears, and the status says so.
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", suggested)).toEqual({ ok: true, changed: true });
+    let [f] = await rows();
+    expect(f).toMatchObject({ id, finding_text: RESEARCHER, status: "accepted" });
+    expect(f.stated_stats.wording_review).toBeUndefined();
+    expect(f.stated_stats.r).toBe(-1);
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, wordingReview: null });
+    // The same figures posted again do not raise it again.
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toEqual({ ok: true, added: false, updated: false });
+    expect((await rows())[0].stated_stats.wording_review).toBeUndefined();
+
+    // New figures raise it again.
+    source.y = [1, 3, 2, 4, 6, 5];
+    expect(await addScatterFindingAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, updated: true });
+    [f] = await rows();
+    const next = f.stated_stats.wording_review.suggested_text as string;
+    expect(f.finding_text).toBe(RESEARCHER);
+
+    // Use the current wording: the text becomes the tool's, the researcher's is kept on record.
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", next)).toEqual({ ok: true, changed: true });
+    [f] = await rows();
+    expect(f).toMatchObject({ id, finding_text: next, status: "accepted" });
+    expect(f.stated_stats.wording_review).toBeUndefined();
+    expect(f.stated_stats.wording_history).toEqual([
+      expect.objectContaining({ text: RESEARCHER, human_edited_fields: ["finding_text"], reason: "figures_changed", replaced_with: next }),
+    ]);
+    const prov = (await db.pool.query("select human_edited_fields from findings where id = $1", [id])).rows[0].human_edited_fields;
+    expect(prov ?? []).not.toContain("finding_text");
+    expect(await scatterFindingStatusAction(run, data, "EASE", "TRUST", null)).toMatchObject({ ok: true, wordingReview: null });
+    // From now on the text is the tool's: new figures update it, and the history stays.
+    source.y = [6, 5, 4, 3, 2, 1];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    [f] = await rows();
+    expect(f.finding_text).toBe(suggested);
+    expect(f.stated_stats.wording_review).toBeUndefined();
+    expect(f.stated_stats.wording_history).toHaveLength(1);
+  });
+
+  it("RRV-01: repeating a decision already made succeeds and writes nothing", async () => {
+    const { resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { suggested } = await flagged();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", suggested)).toEqual({ ok: true, changed: true });
+    const before = await snapshot();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", suggested)).toEqual({ ok: true, changed: false });
+    expect(await snapshot()).toEqual(before);
+    // The other choice on a review already resolved is stale, not silently applied.
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", suggested)).toMatchObject({ ok: false, stale: true });
+    expect(await snapshot()).toEqual(before);
+
+    const again = await flagged();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", again.suggested)).toEqual({ ok: true, changed: true });
+    const used = await snapshot();
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", again.suggested)).toEqual({ ok: true, changed: false });
+    expect(await snapshot()).toEqual(used);
+  });
+
+  it("RRV-01: a decision on a suggestion that has moved on writes nothing, and the current one can then be made", async () => {
+    const { addScatterFindingAction, scatterFindingStatusAction, resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { suggested } = await flagged();
+    // The card shows this suggestion; the figures change again before the researcher decides.
+    source.y = [1, 3, 2, 4, 6, 5];
+    await addScatterFindingAction(run, data, "EASE", "TRUST", null);
+    const before = await snapshot();
+    for (const choice of ["keep", "use_current"] as const) {
+      expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, choice, suggested)).toMatchObject({ ok: false, stale: true, error: expect.stringMatching(/changed again/) });
+    }
+    expect(await snapshot()).toEqual(before);
+    const status = await scatterFindingStatusAction(run, data, "EASE", "TRUST", null);
+    const current = status.ok ? status.wordingReview!.suggested_text : "";
+    expect(current).not.toBe(suggested);
+    expect(await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "keep", current)).toEqual({ ok: true, changed: true });
+  });
+
+  it("RRV-01: refuses a decision for another project or organisation, writing nothing", async () => {
+    const { resolveScatterWordingReviewAction } = await import("../scatterActions");
+    const { suggested } = await flagged();
+    const before = await snapshot();
+    const otherRun = (await db.pool.query("insert into runs(tenant_id) values($1) returning id", [tenant])).rows[0].id;
+    expect(await resolveScatterWordingReviewAction(otherRun, data, "EASE", "TRUST", null, "use_current", suggested)).toMatchObject({ ok: false, error: expect.stringMatching(/not in this project/) });
+    const otherTenant = randomUUID();
+    await db.pool.query("insert into tenants(id,name) values($1,'Synthetic other organisation')", [otherTenant]);
+    process.env.DEFAULT_TENANT_ID = otherTenant;
+    try {
+      const res = await resolveScatterWordingReviewAction(run, data, "EASE", "TRUST", null, "use_current", suggested);
+      expect(res.ok).toBe(false);
+    } finally {
+      process.env.DEFAULT_TENANT_ID = tenant;
+    }
+    expect(await snapshot()).toEqual(before);
+    expect((await db.pool.query("select count(*)::int as n from trace where event like 'scatter_wording_%' and run_id = $1", [otherRun])).rows[0].n).toBe(0);
   });
 });

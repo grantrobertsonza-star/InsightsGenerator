@@ -217,8 +217,36 @@ type PostedRow = {
  * Recorded in `stated_stats.wording_review` when the figures of a finding whose wording the
  * researcher edited have changed since: the wording is kept, and this says it was written for
  * earlier figures and offers the sentence the tool would write now (Codex RR-01, 2026-10-21).
+ * It is resolved on the Analytics card (resolveScatterWordingReviewAction): calculated findings
+ * cannot be reworded in Findings (findingWording.ts), so the card is where the choice is made.
  */
 export type ScatterWordingReview = { reason: "figures_changed"; suggested_text: string };
+
+/**
+ * A researcher wording replaced by the tool's current sentence at the researcher's request
+ * (`stated_stats.wording_history`, oldest first): the text, and the edit provenance it carried.
+ */
+export type ScatterWordingHistoryEntry = {
+  text: string;
+  human_edited_fields: string[];
+  human_edited_at: string | null;
+  replaced_at: string;
+  reason: "figures_changed";
+  replaced_with: string;
+};
+
+/**
+ * What a researcher's wording decision records, carried over every repost: the figures they chose
+ * to keep their wording for (`wording_confirmed_for`, a figuresOf value) and the wording they
+ * replaced (`wording_history`). A repost rebuilds `stated_stats` from the file, so these are copied
+ * from the stored row rather than lost.
+ */
+function wordingRecordOf(stats: Record<string, unknown>): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  if (typeof stats.wording_confirmed_for === "string") kept.wording_confirmed_for = stats.wording_confirmed_for;
+  if (Array.isArray(stats.wording_history)) kept.wording_history = stats.wording_history;
+  return kept;
+}
 
 /**
  * Posts the scatter's correlation as a finding (Grant, 2026-10-20). The correlation is computed again
@@ -289,14 +317,19 @@ export async function addScatterFindingAction(
       // Unchanged figures leave it as it is (a label change included); changed figures update the
       // figures and record that the wording was written for earlier ones, with the sentence the
       // tool would write now, for the researcher to review. A qualification already recorded stays
-      // until the researcher rewords the finding, since the wording still predates those figures.
+      // until the researcher decides on the Analytics card (RRV-01: keep the wording for these
+      // figures, or use the current sentence); figures they already kept their wording for are
+      // not flagged again.
       const keepWording = target.wording_edited === true;
-      let next: Record<string, unknown> = stats;
+      let next: Record<string, unknown> = { ...stats, ...wordingRecordOf(old) };
       if (keepWording) {
-        const review: ScatterWordingReview | undefined = figuresChanged
-          ? { reason: "figures_changed", suggested_text: finding.text }
-          : (old.wording_review as ScatterWordingReview | undefined);
-        next = review ? { ...stats, wording_review: review } : stats;
+        const confirmed = old.wording_confirmed_for === figuresOf(stats);
+        const review: ScatterWordingReview | undefined = confirmed
+          ? undefined
+          : figuresChanged
+            ? { reason: "figures_changed", suggested_text: finding.text }
+            : (old.wording_review as ScatterWordingReview | undefined);
+        if (review) next = { ...next, wording_review: review };
       }
       const text = keepWording ? target.finding_text : finding.text;
       const changed = target.finding_text !== text || figuresChanged || canonicalJson(old.wording_review ?? null) !== canonicalJson(next.wording_review ?? null);
@@ -401,6 +434,108 @@ export async function scatterFindingStatusAction(
       current = null; // could not be checked: never reported as current
     }
     return { ok: true, committed: true, current, wordingReview };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/**
+ * RRV-01 (Codex, 2026-10-21): the researcher's decision on wording kept over changed figures.
+ * - "keep": the wording stays theirs, the review is cleared and the figures it was kept for are
+ *   recorded (`wording_confirmed_for`), so a repost with the same figures does not raise it again
+ *   and one with different figures does.
+ * - "use_current": the finding takes the sentence offered in the review. The researcher's wording
+ *   and the edit provenance it carried are kept in `stated_stats.wording_history`, and
+ *   'finding_text' leaves `human_edited_fields`, as reverting a wording edit does
+ *   (findingWording.revertFindingWordingTx): the text is the tool's again and later reposts update it.
+ * The finding's id, figures, theme and review status never change. The file's document row and
+ * then the finding row are locked, each lock confirming the row exists in this project, so a
+ * repost cannot change the figures between the check and the write. The decision carries the
+ * sentence the researcher saw (`expectedSuggestedText`): a different stored suggestion, or no
+ * review at all, is stale and nothing is written, except that repeating a decision already made
+ * succeeds without writing (a retry after a lost response).
+ */
+export async function resolveScatterWordingReviewAction(
+  runId: string,
+  documentId: string,
+  xVar: string,
+  yVar: string,
+  weightVar: string | null,
+  choice: "keep" | "use_current",
+  expectedSuggestedText: string,
+): Promise<{ ok: true; changed: boolean } | (Fail & { stale?: true })> {
+  if (choice !== "keep" && choice !== "use_current") return { ok: false, error: "Unknown wording choice." };
+  const TENANT_ID = await requireTenantId();
+  try {
+    const result = await withTenant(TENANT_ID, async (client) => {
+      // Ownership on the write itself: the file must be in this project and this organisation.
+      const doc = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update", [documentId, runId, TENANT_ID]);
+      if (doc.rowCount !== 1) return { ok: false as const, error: "That data file is not in this project. Nothing was changed." };
+      if (!(await findingProvenanceAvailable(client))) {
+        return { ok: false as const, error: "Wording decisions need database migration 0094. Nothing was changed." };
+      }
+      const r = await client.query<{
+        id: string;
+        finding_text: string;
+        stated_stats: Record<string, unknown> | null;
+        human_edited_fields: string[] | null;
+        human_edited_at: string | null;
+      }>(
+        `select id, finding_text, stated_stats, human_edited_fields, human_edited_at::text
+           from findings where ${SAME_FINDING} and status <> 'rejected'
+          order by created_at, id limit 1 for update`,
+        [runId, xVar, yVar, weightVar || null, documentId],
+      );
+      const f = r.rows[0];
+      if (!f) return { ok: false as const, error: "This correlation is not posted any more. Nothing was changed." };
+      const stats = f.stated_stats ?? {};
+      const review = stats.wording_review as ScatterWordingReview | undefined;
+      const stale = {
+        ok: false as const,
+        stale: true as const,
+        error: "The figures behind this finding changed again since this card was loaded. Nothing was changed; check the current wording and choose again.",
+      };
+      if (!review) {
+        // Already decided: the same decision again is a success that writes nothing.
+        const history = Array.isArray(stats.wording_history) ? (stats.wording_history as ScatterWordingHistoryEntry[]) : [];
+        const kept = choice === "keep" && stats.wording_confirmed_for === figuresOf(stats) && (f.human_edited_fields ?? []).includes("finding_text");
+        const used = choice === "use_current" && f.finding_text === expectedSuggestedText && history.at(-1)?.replaced_with === expectedSuggestedText;
+        return kept || used ? { ok: true as const, changed: false } : stale;
+      }
+      if (review.suggested_text !== expectedSuggestedText) return stale;
+      const { wording_review: _resolved, ...rest } = stats;
+      void _resolved;
+      if (choice === "keep") {
+        await client.query("update findings set stated_stats = $2 where id = $1", [f.id, JSON.stringify({ ...rest, wording_confirmed_for: figuresOf(stats) })]);
+      } else {
+        const entry: ScatterWordingHistoryEntry = {
+          text: f.finding_text,
+          human_edited_fields: f.human_edited_fields ?? [],
+          human_edited_at: f.human_edited_at,
+          replaced_at: new Date().toISOString(),
+          reason: review.reason,
+          replaced_with: review.suggested_text,
+        };
+        const { wording_confirmed_for: _confirmed, ...withoutConfirmation } = rest;
+        void _confirmed;
+        const history = Array.isArray(stats.wording_history) ? (stats.wording_history as ScatterWordingHistoryEntry[]) : [];
+        await client.query(
+          `update findings set finding_text = $2, stated_stats = $3,
+                  human_edited_at = now(), human_edited_fields = array_remove(human_edited_fields, 'finding_text')
+            where id = $1`,
+          [f.id, review.suggested_text, JSON.stringify({ ...withoutConfirmation, wording_history: [...history, entry] })],
+        );
+      }
+      await client.query("insert into trace (tenant_id, run_id, event, detail) values ($1, $2, $3, $4)", [
+        TENANT_ID,
+        runId,
+        choice === "keep" ? "scatter_wording_kept" : "scatter_wording_replaced",
+        JSON.stringify({ finding_id: f.id, wording: f.finding_text, suggested_text: review.suggested_text }),
+      ]);
+      return { ok: true as const, changed: true };
+    });
+    if (result.ok) revalidatePath(`/runs/${runId}`);
+    return result;
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

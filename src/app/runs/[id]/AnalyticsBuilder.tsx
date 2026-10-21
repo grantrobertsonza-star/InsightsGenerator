@@ -33,6 +33,7 @@ import ScatterVisual from "./ScatterVisual";
 import {
   addScatterFindingAction,
   removeScatterFindingAction,
+  resolveScatterWordingReviewAction,
   runScatterAction,
   scatterFindingStatusAction,
   type ScatterResult,
@@ -308,9 +309,12 @@ type ScatterCard = {
   current: boolean | null;
   /**
    * Set when the researcher's own wording was kept while the figures changed under it (Codex
-   * RR-01): the finding needs rewording, and the sentence the tool would write now is offered.
+   * RR-01): the card offers keeping it for these figures or using the sentence the tool would
+   * write now (RRV-01; calculated findings cannot be reworded in Findings).
    */
   wordingReview: ScatterWordingReview | null;
+  wordingBusy: boolean;
+  wordingError: string | null;
   /** The posted-state check failed, so committed=false means "not known", not "not posted". */
   statusFailed: boolean;
   commitBusy: boolean;
@@ -707,6 +711,8 @@ function AnalyticsWorkspace({
         committed: status.ok ? status.committed : false,
         current: status.ok ? status.current : null,
         wordingReview: status.ok ? status.wordingReview : null,
+        wordingBusy: false,
+        wordingError: null,
         statusFailed: !status.ok,
         commitBusy: false,
       },
@@ -739,6 +745,28 @@ function AnalyticsWorkspace({
     } else {
       setError(r.error);
       patch({ commitBusy: false });
+    }
+  }
+
+  /**
+   * The researcher's decision on wording kept over changed figures (RRV-01). It carries the
+   * sentence the card showed; when the server's suggestion has moved on it refuses as stale and
+   * writes nothing. Either way the card reads the finding's state again rather than assuming it.
+   */
+  async function resolveScatterWording(cardId: string, choice: "keep" | "use_current") {
+    const card = scatters.find((c) => c.id === cardId);
+    if (!card?.wordingReview) return;
+    const patch = (p: Partial<ScatterCard>) => setScatters((prev) => prev.map((c) => (c.id === cardId ? { ...c, ...p } : c)));
+    patch({ wordingBusy: true, wordingError: null });
+    const r = await resolveScatterWordingReviewAction(runId, documentId, card.xVar, card.yVar, card.weightVar, choice, card.wordingReview.suggested_text).catch(
+      () => ({ ok: false as const, error: "The request to the server failed. Nothing is known to have changed; try again." }),
+    );
+    const status = await scatterFindingStatusAction(runId, documentId, card.xVar, card.yVar, card.weightVar).catch(() => ({ ok: false as const }));
+    if (status.ok) patch({ committed: status.committed, current: status.current, wordingReview: status.wordingReview, statusFailed: false });
+    patch({ wordingBusy: false, wordingError: r.ok ? null : r.error });
+    if (r.ok) {
+      setMessage(choice === "keep" ? "Kept your wording for the current figures." : "The finding now uses the current wording; your earlier wording is kept on record.");
+      startTransition(() => router.refresh());
     }
   }
 
@@ -1624,9 +1652,25 @@ function AnalyticsWorkspace({
                             </p>
                           )}
                           {card.committed && card.wordingReview && (
-                            <div className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-wording-review">
-                              Your wording of this finding was kept, but it was written for earlier figures. Reword it in Findings. The current figures read: {card.wordingReview.suggested_text}
+                            <div className="space-y-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-wording-review">
+                              <p>Your wording of this finding was kept, but it was written for earlier figures. With the current figures the finding would read:</p>
+                              <p className="italic" data-testid="scatter-finding-suggested-text">{card.wordingReview.suggested_text}</p>
+                              <div className="flex flex-wrap gap-2">
+                                <button type="button" onClick={() => resolveScatterWording(card.id, "keep")} disabled={card.wordingBusy} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold disabled:opacity-50">
+                                  Keep my wording
+                                </button>
+                                <button type="button" onClick={() => resolveScatterWording(card.id, "use_current")} disabled={card.wordingBusy} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold disabled:opacity-50">
+                                  Use the current wording
+                                </button>
+                                {card.wordingBusy && <span>Saving...</span>}
+                              </div>
+                              <p className="text-amber-800">Using the current wording keeps yours on record with the finding.</p>
                             </div>
+                          )}
+                          {card.wordingError && (
+                            <p className="text-[11px] text-red-700" role="alert" data-testid="scatter-finding-wording-error">
+                              {card.wordingError}
+                            </p>
                           )}
                           {card.committed && card.current === null && (
                             <p className="text-[11px] text-slate-600" data-testid="scatter-finding-unknown">
