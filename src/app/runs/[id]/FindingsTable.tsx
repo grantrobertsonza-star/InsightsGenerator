@@ -2024,7 +2024,8 @@ export default function FindingsTable({
         <div className="grid items-start gap-4 p-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))] lg:max-h-[45vh] lg:overflow-y-auto">
         <div className="flex flex-col gap-1.5">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">How it was drawn</div>
-        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+        {/* Wraps inside its column (UI-R500-01: at 320px "From numbers" ran past the page). */}
+        <div role="group" aria-label="How it was drawn" data-testid="findings-evidence-type" className="inline-flex max-w-full flex-wrap items-center gap-0.5 self-start rounded-lg border border-border bg-white p-0.5">
           {(
             [
               [ALL, "All evidence"],
@@ -2034,6 +2035,8 @@ export default function FindingsTable({
           ).map(([value, label]) => (
             <button
               key={value}
+              type="button"
+              aria-pressed={dataTypeFilter === value}
               onClick={() => setDataTypeFilter(value)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 dataTypeFilter === value

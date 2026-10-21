@@ -318,7 +318,8 @@ export default function SynthesizedInsightsReview({
   const selected = insights.find((i) => i.id === selectedId) ?? null;
 
   const tabsBar = (
-      <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+      // Wraps on a narrow column rather than widening the page (same treatment as UI-GT500-01).
+      <div className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
         {(
           [
             ["insights", "Insights", insights.length],
