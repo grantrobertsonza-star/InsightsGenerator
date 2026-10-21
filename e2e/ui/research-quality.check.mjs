@@ -198,7 +198,9 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     await expect(section.getByRole("tab", { name: "Improvements" })).toBeVisible();
     await expect(section.getByText("No review yet")).toHaveCount(0);
     expect((await reviewsListed()).filter((t) => t.startsWith("Proposal review"))).toHaveLength(1);
-    await page.unroute("**/*", slow);
+    // Codex V-01: a plain unroute can run while a slowed request is still inside its handler, whose
+    // route.continue() then throws "Route is already handled!". Wait for pending handlers to finish.
+    await page.unrouteAll({ behavior: "wait" });
     // The Improvements tab lists what to improve, or says there is none.
     await section.getByRole("tab", { name: "Improvements" }).click();
     await expect(section.getByRole("tabpanel", { name: "Improvements" })).toContainText(/\S{10,}/);

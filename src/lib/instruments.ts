@@ -127,15 +127,25 @@ export const INSTRUMENT_READ_CLAIM_MINUTES = 15;
 export class InstrumentReadInFlightError extends Error {}
 
 /**
+ * RR-03: raised when a read finishes after its claim lapsed and a newer read has claimed the same
+ * document. Its results are discarded, so they cannot overwrite the newer read's, and it is not
+ * recorded as a failure (a read is still under way, or has already finished, under the newer claim).
+ */
+export class InstrumentReadSupersededError extends InstrumentReadInFlightError {}
+
+/**
  * IR-05: the paid read of a questionnaire or guide runs once at a time per document, across every
  * session and server instance, not only once per page. The claim is taken in one short transaction
  * that first locks the document's row (FOR UPDATE, and the row must exist in this project), so two
  * requests decide one after the other; the second sees the first's claim and is refused before any
  * model call. The claim itself is an 'instrument_read_started' trace row (no migration needed): it
- * stands until a later 'instrument_read_finished', 'instrument_read_failed' or
- * 'instrument_read_released' row for the same document (trace ids only grow, so "later" is the id),
- * or until INSTRUMENT_READ_CLAIM_MINUTES pass, after which a read that crashed without releasing can
- * be retried. The trace row is only the record; the serialisation comes from the row lock.
+ * stands until an 'instrument_read_finished' or 'instrument_read_released' row naming that claim's id
+ * (detail.claimId), or until INSTRUMENT_READ_CLAIM_MINUTES pass, after which a read that crashed
+ * without releasing can be retried. RR-03: a terminal row ends only its own claim, so a read that
+ * outlived its claim cannot end the claim of the read that took over; and that late read writes
+ * nothing (see the ownership check in readClaimedInstrument). A terminal row without a claimId (written
+ * before this rule) ends nothing; the claim it belonged to lapses on time. The trace row is only the
+ * record; the serialisation comes from the row lock.
  */
 async function claimInstrumentRead(
   tenantId: string,
@@ -167,8 +177,8 @@ async function hasActiveReadClaim(client: PoolClient, runId: string, documentId:
        and c.occurred_at > now() - make_interval(mins => $3)
        and not exists (
          select 1 from trace t
-         where t.run_id = c.run_id and t.id > c.id and t.detail->>'documentId' = $2
-           and t.event in ('instrument_read_finished', 'instrument_read_failed', 'instrument_read_released'))
+         where t.run_id = c.run_id and t.detail->>'documentId' = $2 and t.detail->>'claimId' = c.id::text
+           and t.event in ('instrument_read_finished', 'instrument_read_released'))
      limit 1`,
     [runId, documentId, INSTRUMENT_READ_CLAIM_MINUTES],
   );
@@ -351,6 +361,21 @@ async function readClaimedInstrument(
   const itemKey = (code: string | null, text: string) => `${(code ?? "").toLowerCase()}|${text.toLowerCase().slice(0, 80)}`;
 
   const count = await withTenant(tenantId, async (client) => {
+    // RR-03: the results are written only while this read still owns the document. The same row lock
+    // the claim is taken under serialises this check with a newer claim: either the newer read claimed
+    // first (seen here, so nothing is written), or it claims after this commit and its own results
+    // replace these. The lock query must find the row, so a document deleted meanwhile is refused.
+    const owner = await client.query("select id from documents where id = $1 and run_id = $2 for update", [documentId, runId]);
+    if (owner.rowCount !== 1) throw new Error("Questionnaire or guide not found for this run");
+    const newer = await client.query(
+      "select 1 from trace where run_id = $1 and event = 'instrument_read_started' and detail->>'documentId' = $2 and id > $3::bigint limit 1",
+      [runId, documentId, doc.claimId],
+    );
+    if ((newer.rowCount ?? 0) > 0) {
+      throw new InstrumentReadSupersededError(
+        "This read took too long and a newer read of the file has taken over. Its results are kept instead; nothing from this read was saved.",
+      );
+    }
     // Matched by the same (code, text-prefix) key the read itself dedupes
     // chunk boundaries with, so an item that still appears keeps its
     // database identity - and so keeps every instrument_links row pointing

@@ -43,6 +43,8 @@ export async function readInstrumentAction(
   } catch (e) {
     // Another session holds the read (IR-05): nothing was paid for and nothing failed, so it is not
     // recorded as a failure; the caller shows that a read is under way.
+    // The same holds for a read that outlived its claim (RR-03, InstrumentReadSupersededError): its
+    // results were discarded and a newer read owns the document.
     if (e instanceof InstrumentReadInFlightError) return { ok: false, error: e.message, inFlight: true };
     const error = explain(e);
     // Recorded, so the Import screen's automatic first read (useInstrumentAutoStart) does not pay to

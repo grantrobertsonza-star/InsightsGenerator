@@ -6,6 +6,8 @@
 //     a failure, and reported as in progress until that read ends
 //   - a failed read releases its claim: Read again works straight away
 //   - a claim abandoned by a crashed read lapses after INSTRUMENT_READ_CLAIM_MINUTES; a fresh one does not
+//   - RR-03: a read that outlives its claim, after a newer read took over, ends neither the newer claim
+//     nor overwrites its results; the newer read's items and completion are the ones kept
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
@@ -17,7 +19,7 @@ vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../crosstabs", () => ({ loadVariableDictionary: vi.fn() }));
 vi.mock("../extractFindings", () => ({ extractDocumentText: vi.fn(async () => ({ fullText: "Q1 First question", pages: [{ pageNumber: 1, text: "Q1 First question" }] })) }));
 const model = vi.hoisted(() => {
-  const m = { calls: 0, fail: false, gate: null as Promise<void> | null };
+  const m = { calls: 0, fail: false, gate: null as Promise<void> | null, text: "First question" };
   return m;
 });
 vi.mock("../anthropic", () => ({
@@ -26,9 +28,12 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async () => {
         model.calls += 1;
-        if (model.gate) await model.gate;
+        // Each call keeps the gate and wording in force when it started, so two overlapping reads
+        // can be released separately and told apart by what they return.
+        const { gate, text } = model;
+        if (gate) await gate;
         if (model.fail) throw new Error("Synthetic model outage");
-        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [{ code: "Q1", text: "First question", options: [], routing_text: null, section: null }] } }] };
+        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [{ code: "Q1", text, options: [], routing_text: null, section: null }] } }] };
       }),
     },
   },
@@ -124,6 +129,49 @@ describe.skipIf(!TEST_DATABASE_URL)("IR-05 one read of a questionnaire at a time
     expect(await readInstrumentAction(run, stale)).toMatchObject({ ok: true, items: 1 });
     expect(await readInstrumentAction(run, fresh)).toMatchObject({ ok: false, inFlight: true });
     expect(model.calls).toBe(1);
+  });
+
+  it("RR-03: a read that outlived its claim neither ends the newer claim nor overwrites its results", async () => {
+    const { readInstrumentAction } = await import("../instrumentActions");
+    const { INSTRUMENT_READ_CLAIM_MINUTES, isInstrumentReadInFlight } = await import("../instruments");
+    const doc = await newInstrument();
+    const claims = async () =>
+      (await db.pool.query("select id::text from trace where event = 'instrument_read_started' and detail->>'documentId' = $1 order by id", [doc])).rows.map((r) => r.id as string);
+    model.calls = 0;
+    model.text = "Wording read by the expired claim";
+    const releaseOld = opened();
+    const late = readInstrumentAction(run, doc);
+    await until(() => model.calls >= 1);
+    // The first read stalls past the claim window, so the claim lapses and a newer read takes over.
+    await db.pool.query(
+      "update trace set occurred_at = now() - make_interval(mins => $2) where event = 'instrument_read_started' and detail->>'documentId' = $1",
+      [doc, INSTRUMENT_READ_CLAIM_MINUTES + 1],
+    );
+    model.text = "Wording read by the newer claim";
+    const releaseNew = opened();
+    const current = readInstrumentAction(run, doc);
+    await until(() => model.calls >= 2);
+    const [oldClaim, newClaim] = await claims();
+    expect(newClaim).toBeDefined();
+
+    // The late read completes now: refused as superseded, nothing written, no failure recorded.
+    releaseOld();
+    expect(await late).toMatchObject({ ok: false, inFlight: true, error: expect.stringMatching(/newer read/) });
+    expect((await db.pool.query("select count(*)::int as n from instrument_items where document_id = $1", [doc])).rows[0].n).toBe(0);
+    expect((await db.pool.query("select count(*)::int as n from trace where event = 'instrument_read_finished' and detail->>'documentId' = $1", [doc])).rows[0].n).toBe(0);
+    // Its own release names its own claim, so the newer claim still stands.
+    expect((await db.pool.query("select detail->>'claimId' as c from trace where event = 'instrument_read_released' and detail->>'documentId' = $1", [doc])).rows.map((r) => r.c)).toEqual([oldClaim]);
+    expect(await isInstrumentReadInFlight(tenant, run, doc)).toBe(true);
+    expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: false, inFlight: true });
+
+    // The newer read's results are the ones kept, and its finish names its own claim.
+    releaseNew();
+    expect(await current).toMatchObject({ ok: true, items: 1, complete: true });
+    expect((await db.pool.query("select item_text from instrument_items where document_id = $1", [doc])).rows.map((r) => r.item_text)).toEqual(["Wording read by the newer claim"]);
+    expect((await db.pool.query("select detail->>'claimId' as c from trace where event = 'instrument_read_finished' and detail->>'documentId' = $1", [doc])).rows.map((r) => r.c)).toEqual([newClaim]);
+    expect(await isInstrumentReadInFlight(tenant, run, doc)).toBe(false);
+    expect(model.calls).toBe(2);
+    model.text = "First question";
   });
 
   it("refuses a document of another project before claiming anything", async () => {

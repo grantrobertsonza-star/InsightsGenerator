@@ -36,6 +36,7 @@ import {
   runScatterAction,
   scatterFindingStatusAction,
   type ScatterResult,
+  type ScatterWordingReview,
 } from "@/lib/scatterActions";
 import { histogramNote } from "@/lib/chartKinds";
 import {
@@ -305,6 +306,13 @@ type ScatterCard = {
   committed: boolean;
   /** Whether the posted finding was worked out from the file as it is now; null when unknown. */
   current: boolean | null;
+  /**
+   * Set when the researcher's own wording was kept while the figures changed under it (Codex
+   * RR-01): the finding needs rewording, and the sentence the tool would write now is offered.
+   */
+  wordingReview: ScatterWordingReview | null;
+  /** The posted-state check failed, so committed=false means "not known", not "not posted". */
+  statusFailed: boolean;
   commitBusy: boolean;
 };
 
@@ -444,16 +452,63 @@ function AnalyticsWorkspace({
   const [driverGroupVar, setDriverGroupVar] = useState("");
   const [driverSeg, setDriverSeg] = useState<string | null>(null);
   const [driverSavedId, setDriverSavedId] = useState<string | null>(null);
-  const [driverCommitted, setDriverCommitted] = useState(false);
   const [driverCommitBusy, setDriverCommitBusy] = useState(false);
   const [saved, setSaved] = useState<SavedDriverAnalysis[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Whether each saved analysis is in findings (RR-04, 2026-10-21). `counts` holds the counts known
+  // for certain: from the last successful read, or from a post or removal made here since.
+  // `countsRead` is the state of that read. While it is loading or has failed, an analysis with no
+  // count here is unknown: neither Post nor Remove is offered for it (driverPostState), so a failed
+  // read can never present a posted analysis as not posted. The server refuses duplicate findings
+  // either way; this keeps the screen from offering the wrong action.
   const [counts, setCounts] = useState<Record<string, number>>({});
-  // Whether the findings counts were read. Unknown is not zero: a saved analysis whose count could
-  // not be read is not shown as "not posted" (the server refuses duplicates either way).
-  const [countsKnown, setCountsKnown] = useState(false);
+  // The outcome of the last read that answered, for the run it was made for; a read for another run
+  // (or none yet) means this run's read is still loading.
+  const [countsRead, setCountsRead] = useState<{ runId: string; state: "known" } | { runId: string; state: "failed"; error: string } | null>(null);
+  const [countsRetrying, setCountsRetrying] = useState(false);
+  // Ordering for count reads: only the newest read may publish (an older, slower answer must not
+  // overwrite a newer one), and counts written here after a read started are not overwritten by it.
+  const countsSeq = useRef(0);
+  const countsWrittenSince = useRef(new Set<string>());
   const [, startTransition] = useTransition();
+
+  /** Reads which saved analyses are in findings, on opening. A failure is shown, never read as zero. */
+  function requestDriverCounts() {
+    const seq = ++countsSeq.current;
+    const forRun = runId;
+    countsWrittenSince.current = new Set();
+    const publish = (r: Awaited<ReturnType<typeof driverFindingCountsAction>>) => {
+      if (seq !== countsSeq.current) return;
+      setCountsRetrying(false);
+      if (!r.ok) {
+        setCountsRead({ runId: forRun, state: "failed", error: r.error });
+        return;
+      }
+      const written = countsWrittenSince.current;
+      setCounts((prev) => {
+        const next: Record<string, number> = { ...r.counts };
+        for (const id of written) {
+          if (id in prev) next[id] = prev[id];
+        }
+        return next;
+      });
+      setCountsRead({ runId: forRun, state: "known" });
+    };
+    driverFindingCountsAction(forRun).then(publish, (e: unknown) => publish({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+  }
+
+  /** Retry after a failed read: shows "Checking..." again until the new read answers. */
+  function readDriverCounts() {
+    setCountsRetrying(true);
+    requestDriverCounts();
+  }
+
+  /** Records a count learnt from a post or removal made here: known, and kept over an older read. */
+  function setDriverCount(id: string, n: number) {
+    countsWrittenSince.current.add(id);
+    setCounts((c) => ({ ...c, [id]: n }));
+  }
 
   useEffect(() => {
     let live = true;
@@ -467,17 +522,29 @@ function AnalyticsWorkspace({
       if (r.ok) setSaved(r.items);
       else setError(`Saved analyses could not be loaded: ${r.error}`);
     });
-    driverFindingCountsAction(runId).then((r) => {
-      if (!live) return;
-      if (r.ok) {
-        setCounts(r.counts);
-        setCountsKnown(true);
-      }
-    });
+    requestDriverCounts();
     return () => {
       live = false;
+      countsSeq.current += 1; // a read still in flight for the previous run no longer publishes
     };
-  }, [runId, documentId]);
+  }, [runId, documentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Whether a saved analysis is in findings: known (from a count), or loading / failed while the
+   * read has not answered for it. A successful read lists only analyses with findings, so an
+   * analysis it does not list is known to have none.
+   */
+  function driverPostState(id: string): DriverPostState {
+    if (id in counts) return { state: "known", n: counts[id] };
+    const read = countsRead?.runId === runId && !countsRetrying ? countsRead : null;
+    if (read?.state === "known") return { state: "known", n: 0 };
+    if (read?.state === "failed") return { state: "failed", error: read.error };
+    return { state: "loading" };
+  }
+  // The result on screen: an analysis not yet saved has no findings. Derived on every render, so a
+  // count that arrives, or a Retry that succeeds, updates the open result without reselecting it.
+  const openPostState: DriverPostState = driverSavedId ? driverPostState(driverSavedId) : { state: "known", n: 0 };
+  const driverCommitted = openPostState.state === "known" && openPostState.n > 0;
 
   const vars = useMemo(() => (dict?.variables ?? []).filter(usable), [dict]);
   const weights = useMemo(() => (dict?.variables ?? []).filter((v) => v.weightLike), [dict]);
@@ -529,7 +596,6 @@ function AnalyticsWorkspace({
     const r = await runDriverAnalysisAction(runId, documentId, request);
     setBusy(false);
     setDriverSavedId(null);
-    setDriverCommitted(false);
     setDriverSeg(null);
     if (r.ok) setReport(r.report);
     else {
@@ -640,6 +706,8 @@ function AnalyticsWorkspace({
         spread: false,
         committed: status.ok ? status.committed : false,
         current: status.ok ? status.current : null,
+        wordingReview: status.ok ? status.wordingReview : null,
+        statusFailed: !status.ok,
         commitBusy: false,
       },
       ...prev,
@@ -660,7 +728,12 @@ function AnalyticsWorkspace({
       ? await removeScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar)
       : await addScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar);
     if (r.ok) {
-      patch({ committed: update ? true : !card.committed, current: card.committed && !update ? card.current : true, commitBusy: false });
+      patch({ committed: update ? true : !card.committed, current: card.committed && !update ? card.current : true, statusFailed: false, commitBusy: false });
+      // A post can keep the researcher's wording and flag it for rewording (RR-01), which only the
+      // server knows, so the card reads the finding's state again rather than assuming it.
+      const status = await scatterFindingStatusAction(runId, documentId, card.xVar, card.yVar, card.weightVar).catch(() => ({ ok: false as const }));
+      if (status.ok) patch({ committed: status.committed, current: status.current, wordingReview: status.wordingReview });
+      else patch({ current: null, wordingReview: null });
       setMessage(update ? "Updated the finding with the current figures." : card.committed ? "Took the finding out of use." : "Added to findings.");
       startTransition(() => router.refresh());
     } else {
@@ -714,7 +787,6 @@ function AnalyticsWorkspace({
     setPredictors(new Set());
     setReport(null);
     setDriverSavedId(null);
-    setDriverCommitted(false);
     setDriverSeg(null);
     setDriverGroupVar(npsGroupVar); // carry the same grouping across, if one was set for NPS
     setMode("driver");
@@ -737,14 +809,13 @@ function AnalyticsWorkspace({
   /** The single commit action for the analysis on screen: saves it if it isn't already, then posts or takes
    * back its findings, the same "post to findings" action the other Analytics tools use. */
   async function postDriverToFindings() {
-    if (!report) return;
+    if (!report || openPostState.state !== "known") return;
     setDriverCommitBusy(true);
     if (driverCommitted && driverSavedId) {
       const r = await removeDriverFindingsAction(runId, driverSavedId);
       setDriverCommitBusy(false);
       if (r.ok) {
-        setDriverCommitted(false);
-        setCounts((c) => ({ ...c, [driverSavedId]: 0 }));
+        setDriverCount(driverSavedId, 0);
         setMessage("Took the findings out of use.");
         startTransition(() => router.refresh());
       } else setError(r.error);
@@ -760,6 +831,7 @@ function AnalyticsWorkspace({
         return;
       }
       id = saveResult.id;
+      setDriverCount(id, 0); // just saved, so known to have no findings yet
       setDriverSavedId(id);
       const list = await listDriverAnalysesAction(runId, documentId);
       if (list.ok) setSaved(list.items);
@@ -767,8 +839,7 @@ function AnalyticsWorkspace({
     const r = await addDriverFindingsAction(runId, id);
     setDriverCommitBusy(false);
     if (r.ok) {
-      setDriverCommitted(true);
-      setCounts((c) => ({ ...c, [id as string]: r.added + r.alreadyPosted }));
+      setDriverCount(id, r.added + r.alreadyPosted);
       setMessage(postedMessage(r.added, r.alreadyPosted));
       startTransition(() => router.refresh());
     } else setError(r.error);
@@ -777,7 +848,8 @@ function AnalyticsWorkspace({
   /**
    * Reopens a saved analysis as it was made (IR-03, 2026-10-20): its result, the request behind it in
    * the controls (outcome, outcome type and top box, predictors, weight, group by, stated importance),
-   * its saved identity and whether it is in findings. Posting it again then works on this same
+   * and its saved identity; whether it is in findings is derived from its count as that is known.
+   * Posting it again then works on this same
    * analysis instead of saving a copy. The result comes from the saved list already on screen, so
    * there is no second read whose late answer could overwrite a newer choice.
    */
@@ -797,8 +869,7 @@ function AnalyticsWorkspace({
     setStatedPick(Object.fromEntries(req.predictors.map((p) => [p, stated[p] ?? ""] as const)));
     setReport(s.report);
     setDriverSeg(null);
-    setDriverSavedId(s.id);
-    setDriverCommitted(countsKnown && (counts[s.id] ?? 0) > 0);
+    setDriverSavedId(s.id); // whether it is in findings follows from its count (openPostState)
     setError(null);
     setMessage(null);
   }
@@ -819,38 +890,40 @@ function AnalyticsWorkspace({
                     {s.title} <span className="text-muted">({new Date(s.createdAt).toLocaleDateString()})</span>
                   </button>
                   <span className="flex shrink-0 items-center gap-2">
-                    {(counts[s.id] ?? 0) > 0 ? (
-                      <button
-                        type="button"
-                        className="text-muted hover:underline"
-                        onClick={async () => {
-                          const r = await removeDriverFindingsAction(runId, s.id);
-                          if (r.ok) {
-                            setCounts((c) => ({ ...c, [s.id]: 0 }));
-                            if (driverSavedId === s.id) setDriverCommitted(false);
-                            setMessage(`Took ${r.removed} findings out of use.`);
-                          } else setError(r.error);
-                        }}
-                      >
-                        Remove from findings
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={async () => {
-                          const r = await addDriverFindingsAction(runId, s.id);
-                          if (r.ok) {
-                            setCounts((c) => ({ ...c, [s.id]: r.added + r.alreadyPosted }));
-                            if (driverSavedId === s.id) setDriverCommitted(true);
-                            setMessage(postedMessage(r.added, r.alreadyPosted));
-                            startTransition(() => router.refresh());
-                          } else setError(r.error);
-                        }}
-                      >
-                        Post to findings
-                      </button>
-                    )}
+                    {(() => {
+                      const ps = driverPostState(s.id);
+                      if (ps.state !== "known") return <DriverPostStatus state={ps} onRetry={readDriverCounts} compact />;
+                      return ps.n > 0 ? (
+                        <button
+                          type="button"
+                          className="text-muted hover:underline"
+                          onClick={async () => {
+                            const r = await removeDriverFindingsAction(runId, s.id);
+                            if (r.ok) {
+                              setDriverCount(s.id, 0);
+                              setMessage(`Took ${r.removed} findings out of use.`);
+                            } else setError(r.error);
+                          }}
+                        >
+                          Remove from findings
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          onClick={async () => {
+                            const r = await addDriverFindingsAction(runId, s.id);
+                            if (r.ok) {
+                              setDriverCount(s.id, r.added + r.alreadyPosted);
+                              setMessage(postedMessage(r.added, r.alreadyPosted));
+                              startTransition(() => router.refresh());
+                            } else setError(r.error);
+                          }}
+                        >
+                          Post to findings
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
                       className="text-muted hover:text-danger"
@@ -861,10 +934,7 @@ function AnalyticsWorkspace({
                           return;
                         }
                         setSaved((p) => p.filter((x) => x.id !== s.id));
-                        if (driverSavedId === s.id) {
-                          setDriverSavedId(null);
-                          setDriverCommitted(false);
-                        }
+                        if (driverSavedId === s.id) setDriverSavedId(null);
                       }}
                     >
                       Delete
@@ -1420,6 +1490,8 @@ function AnalyticsWorkspace({
                           <ReportView
                             report={driverReportForSegment(report, driverSeg)}
                             committed={driverCommitted}
+                            postState={openPostState.state === "known" ? undefined : openPostState}
+                            onRetryPostState={readDriverCounts}
                             busy={driverCommitBusy}
                             onPost={postDriverToFindings}
                           />
@@ -1544,6 +1616,16 @@ function AnalyticsWorkspace({
                               <button type="button" onClick={() => toggleScatterCommit(card.id, true)} disabled={card.commitBusy} className="font-semibold underline">
                                 Update it with the current figures
                               </button>
+                            </div>
+                          )}
+                          {card.statusFailed && (
+                            <p className="text-[11px] text-amber-900" data-testid="scatter-finding-status-failed">
+                              Whether this correlation is already posted could not be checked. Posting again does not add a second finding.
+                            </p>
+                          )}
+                          {card.committed && card.wordingReview && (
+                            <div className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-wording-review">
+                              Your wording of this finding was kept, but it was written for earlier figures. Reword it in Findings. The current figures read: {card.wordingReview.suggested_text}
                             </div>
                           )}
                           {card.committed && card.current === null && (
@@ -1720,14 +1802,55 @@ function AnalyticsWorkspace({
   return createPortal(body, document.body);
 }
 
+/** Whether a saved driver analysis is in findings (RR-04): known, still being read, or unreadable. */
+export type DriverPostState =
+  | { state: "known"; n: number }
+  | { state: "loading" }
+  | { state: "failed"; error: string };
+
+/** Stands in for Post / Remove while whether the analysis is posted is not known. */
+function DriverPostStatus({
+  state,
+  onRetry,
+  compact = false,
+}: {
+  state: Exclude<DriverPostState, { state: "known" }>;
+  onRetry?: () => void;
+  compact?: boolean;
+}) {
+  if (state.state === "loading") {
+    return (
+      <span className="text-[11px] text-slate-600" role="status" data-testid="driver-post-checking">
+        Checking whether this is posted...
+      </span>
+    );
+  }
+  return (
+    <span className={`flex items-center gap-2 text-[11px] text-danger ${compact ? "" : "text-right"}`} role="alert" data-testid="driver-post-unknown">
+      <span>{compact ? "Could not check whether this is posted." : `Could not check whether this is posted: ${state.error}`}</span>
+      {onRetry && (
+        <button type="button" onClick={onRetry} className="font-semibold underline">
+          Retry
+        </button>
+      )}
+    </span>
+  );
+}
+
 export function ReportView({
   report,
   committed = false,
+  postState,
+  onRetryPostState,
   busy = false,
   onPost,
 }: {
   report: DriverReport;
   committed?: boolean;
+  /** Set while whether this result is in findings is not known: Post and Remove are withheld. */
+  postState?: Exclude<DriverPostState, { state: "known" }>;
+  /** Reads the posted state again after it failed. */
+  onRetryPostState?: () => void;
   busy?: boolean;
   onPost?: () => void;
 }) {
@@ -1755,16 +1878,20 @@ export function ReportView({
         </div>
         {onPost && (
           <div className="flex max-w-xs flex-col items-end gap-1">
-            <button
-              type="button"
-              onClick={onPost}
-              disabled={busy}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
-                committed ? "border-border text-muted hover:bg-slate-50" : "border-primary bg-primary text-white hover:opacity-90"
-              }`}
-            >
-              {busy ? "Working..." : committed ? "Remove from findings" : "Post to findings"}
-            </button>
+            {postState ? (
+              <DriverPostStatus state={postState} onRetry={onRetryPostState} />
+            ) : (
+              <button
+                type="button"
+                onClick={onPost}
+                disabled={busy}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
+                  committed ? "border-border text-muted hover:bg-slate-50" : "border-primary bg-primary text-white hover:opacity-90"
+                }`}
+              >
+                {busy ? "Working..." : committed ? "Remove from findings" : "Post to findings"}
+              </button>
+            )}
             {/* The limits travel with the result: the posted findings state the cases used (n) and
                 the fit, and are tagged when the fit is weak or cases are few (driverFindings.ts). */}
             <p className="text-right text-[11px] text-slate-600" data-testid="driver-post-limits">

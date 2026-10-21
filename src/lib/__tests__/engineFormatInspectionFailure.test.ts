@@ -116,4 +116,55 @@ print(json.dumps({"shortFault": short_fault, "shortOk": short_ok, "plain": plain
     expect(out.shortOk).toEqual({ ok: true, value: ["0007", "0008", "0009", "7"] });
     expect(out.plain).toEqual({ ok: true, value: 2 });
   });
+  // Codex RR-05 (re-review, 2026-10-21): the new format-inspection failure raised after pd.ExcelFile
+  // opened the workbook and before it was closed, so on Windows the uploaded temp file stayed locked.
+  // Every opened workbook is counted, and each exit must leave none open: the inspection failure,
+  // a lost sheet choice, a failure while reading the label sheets, and an ordinary success.
+  it("closes the workbook on every exit: format failure, lost sheet, label-sheet failure and success", () => {
+    const out = runDriver(
+      PRELUDE +
+        String.raw`
+import pandas as pd
+OPEN = {"n": 0}
+real_init, real_close = pd.ExcelFile.__init__, pd.ExcelFile.close
+def counting_init(self, *a, **k):
+    real_init(self, *a, **k); self._rr05_open = True; OPEN["n"] += 1
+def counting_close(self):
+    if getattr(self, "_rr05_open", False):
+        self._rr05_open = False; OPEN["n"] -= 1
+    return real_close(self)
+pd.ExcelFile.__init__, pd.ExcelFile.close = counting_init, counting_close
+def outcome(fn):
+    try:
+        fn(); res = "ok"
+    except Exception as e:
+        res = type(e).__name__
+    return {"result": res, "leftOpen": OPEN["n"]}
+b = colliding_workbook()
+spec = {"layout": "rows_are_cases", "selectedSheet": "Data"}
+FAULT["on"] = True
+fmt = outcome(lambda: eng.dictionary(b, "f.xlsx", spec))
+FAULT["on"] = False
+lost = outcome(lambda: eng.dictionary(b, "f.xlsx", {"layout": "rows_are_cases", "selectedSheet": "Gone"}))
+# A second sheet makes the label reading run; make it fail once.
+wb = Workbook(); ws = wb.active; ws.title = "Data"
+ws.append(["Region", "Q1"]); ws.append(["North", 1]); ws.append(["South", 2])
+lab = wb.create_sheet("Labels"); lab.append(["Variable", "Label"]); lab.append(["Q1", "Question one"])
+two = save(wb)
+real_labels = eng._excel_labels
+def failing_labels(*a, **k):
+    raise RuntimeError("simulated: label sheet unreadable")
+eng._excel_labels = failing_labels
+labels = outcome(lambda: eng.dictionary(two, "f.xlsx", spec))
+eng._excel_labels = real_labels
+ok = outcome(lambda: eng.dictionary(two, "f.xlsx", spec))
+print(json.dumps({"fmt": fmt, "lost": lost, "labels": labels, "ok": ok}))
+`,
+    );
+    expect(out.fmt).toEqual({ result: "ValueError", leftOpen: 0 });
+    expect((out.lost as { result: string; leftOpen: number }).result).not.toBe("ok");
+    expect((out.lost as { leftOpen: number }).leftOpen).toBe(0);
+    expect(out.labels).toEqual({ result: "RuntimeError", leftOpen: 0 });
+    expect(out.ok).toEqual({ result: "ok", leftOpen: 0 });
+  });
 });

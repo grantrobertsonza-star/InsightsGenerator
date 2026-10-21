@@ -65,7 +65,7 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
   for (const [what, name] of [["X axis", xVar], ["Y axis", yVar], ["weight", weightVar]] as const) {
     if (name && !names.has(name)) throw new Error(`The ${what} variable "${name}" is not in this file.`);
   }
-  const [doc, overlay, setupStatus, contentSha] = await Promise.all([
+  const [doc, overlay, setupStatus, content] = await Promise.all([
     loadDocumentFile(tenantId, runId, documentId),
     overlayFor(tenantId, runId, documentId),
     loadDataSetupWithStatus(tenantId, documentId),
@@ -74,7 +74,7 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
   // The layout decides how the file is read, so a failed lookup must not fall back to a default.
   if (!setupStatus.ok) throw new Error(`This file's saved set-up could not be read: ${setupStatus.error}`);
   const basis = scatterBasis(
-    { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha, layout: setupStatus.setup.layout, overlay },
+    { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha: content.sha, layout: setupStatus.setup.layout, overlay },
     [xVar, yVar, weightVar],
   );
   const cols = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
@@ -104,18 +104,27 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
     ys.push(yv);
     ws.push(wv);
   }
-  return { xInfo, yInfo: cols.outcome, casesInFile: cols.n, weighted: !!cols.weights, xs, ys, ws: cols.weights ? ws : null, basis };
+  return { xInfo, yInfo: cols.outcome, casesInFile: cols.n, weighted: !!cols.weights, xs, ys, ws: cols.weights ? ws : null, basis, hashColumn: content.column };
 }
 
-/** The file's recorded content hash (migration 0098); null when not recorded or not readable. */
-async function documentContentSha(tenantId: string, runId: string, documentId: string): Promise<string | null> {
+/**
+ * The file's recorded content hash (migration 0098). `sha` is null when the lookup succeeded and no
+ * hash is recorded. `column` is false when the column does not exist (0098 not applied, SQLSTATE
+ * 42703): the stored path and set-up then still identify the file read, as before. Any other failure
+ * (a dropped connection, a permission refusal) is thrown, never read as "no hash", so a basis is
+ * never built from a lookup that failed (Codex RR-02, 2026-10-21).
+ */
+type ContentIdentity = { sha: string | null; column: boolean };
+
+async function documentContentSha(tenantId: string, runId: string, documentId: string): Promise<ContentIdentity> {
   try {
     return await withTenantRead(tenantId, async (client) => {
       const r = await client.query<{ content_sha256: string | null }>("select content_sha256 from documents where id = $1 and run_id = $2", [documentId, runId]);
-      return r.rows[0]?.content_sha256 ?? null;
+      return { sha: r.rows[0]?.content_sha256 ?? null, column: true };
     });
-  } catch {
-    return null; // 0098 not applied: the stored path and set-up still identify the file read
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "42703") return { sha: null, column: false };
+    throw error;
   }
 }
 
@@ -195,7 +204,21 @@ function figuresOf(stats: Record<string, unknown>): string {
   return canonicalJson({ r, n, casesInFile, weighted, weightVar: weightVar ?? null, pValue: pValue ?? null, points: points ?? null });
 }
 
-type PostedRow = { id: string; status: string; finding_text: string; stated_stats: Record<string, unknown> | null };
+type PostedRow = {
+  id: string;
+  status: string;
+  finding_text: string;
+  stated_stats: Record<string, unknown> | null;
+  /** Null when migration 0094 is not applied: wording is then treated as never edited by hand. */
+  wording_edited: boolean | null;
+};
+
+/**
+ * Recorded in `stated_stats.wording_review` when the figures of a finding whose wording the
+ * researcher edited have changed since: the wording is kept, and this says it was written for
+ * earlier figures and offers the sentence the tool would write now (Codex RR-01, 2026-10-21).
+ */
+export type ScatterWordingReview = { reason: "figures_changed"; suggested_text: string };
 
 /**
  * Posts the scatter's correlation as a finding (Grant, 2026-10-20). The correlation is computed again
@@ -206,7 +229,8 @@ type PostedRow = { id: string; status: string; finding_text: string; stated_stat
  *   writes the figures computed now: when the file, its set-up or the labels used changed since the
  *   finding was posted (recorded as `stated_stats.basis`), the existing finding's text and figures
  *   are updated in place rather than left at the old correlation. As for the other analysis tools
- *   (brandHealthActions.ts), a theme the researcher changed by hand is kept. Updating in place keeps
+ *   (brandHealthActions.ts), a theme the researcher changed by hand is kept, and so is wording the
+ *   researcher edited (RR-01, see ScatterWordingReview below). Updating in place keeps
  *   the finding's id, so an insight built on it is shown as having changed figures (supportStatus).
  * - The file's document row is locked FOR UPDATE (and must exist in this project) before the
  *   existing finding is looked up, the pattern chooseInstrumentLink uses, so two posts of the same
@@ -230,15 +254,20 @@ export async function addScatterFindingAction(
     const finding = scatterFinding({ x: d.xInfo, y: d.yInfo, xs: d.xs, ys: d.ys, ws: d.ws, weightVar: d.ws ? weightVar : null, casesInFile: d.casesInFile });
     if (!finding) return { ok: false, error: "There is no correlation to post: fewer than three cases answered both, or one of them does not vary." };
     const weightKey = d.ws ? weightVar : null;
-    const stats = { ...finding.statedStats, basis: d.basis };
+    // Whether the hash column existed when the basis was computed: a basis computed without it
+    // cannot be compared with one computed with it (see scatterFindingStatusAction).
+    const stats = { ...finding.statedStats, basis: d.basis, ...(d.hashColumn ? {} : { basis_without_content_hash: true }) };
     const statsJson = JSON.stringify(stats);
     const result = await withTenant(TENANT_ID, async (client) => {
       const doc = await client.query("select id from documents where id = $1 and run_id = $2 for update", [documentId, runId]);
       if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
       // Oldest first, a finding in use before a removed one: the one kept if earlier duplicates exist.
+      const provenance = await findingProvenanceAvailable(client);
       const rows = (
         await client.query<PostedRow>(
-          `select id, status, finding_text, stated_stats from findings where ${SAME_FINDING}
+          `select id, status, finding_text, stated_stats,
+                  ${provenance ? "human_edited_fields @> array['finding_text']" : "null::boolean"} as wording_edited
+             from findings where ${SAME_FINDING}
            order by (status = 'rejected'), created_at, id`,
           [runId, xVar, yVar, weightKey, documentId],
         )
@@ -255,21 +284,36 @@ export async function addScatterFindingAction(
         return { added: true, updated: false };
       }
       const old = target.stated_stats ?? {};
-      const changed = target.finding_text !== finding.text || figuresOf(old) !== figuresOf(stats);
+      const figuresChanged = figuresOf(old) !== figuresOf(stats);
+      // RR-01: wording the researcher edited is theirs. A repost or a revival never replaces it.
+      // Unchanged figures leave it as it is (a label change included); changed figures update the
+      // figures and record that the wording was written for earlier ones, with the sentence the
+      // tool would write now, for the researcher to review. A qualification already recorded stays
+      // until the researcher rewords the finding, since the wording still predates those figures.
+      const keepWording = target.wording_edited === true;
+      let next: Record<string, unknown> = stats;
+      if (keepWording) {
+        const review: ScatterWordingReview | undefined = figuresChanged
+          ? { reason: "figures_changed", suggested_text: finding.text }
+          : (old.wording_review as ScatterWordingReview | undefined);
+        next = review ? { ...stats, wording_review: review } : stats;
+      }
+      const text = keepWording ? target.finding_text : finding.text;
+      const changed = target.finding_text !== text || figuresChanged || canonicalJson(old.wording_review ?? null) !== canonicalJson(next.wording_review ?? null);
+      const nextJson = JSON.stringify(next);
       const reviving = target.status === "rejected";
       if (changed) {
-        const provenance = await findingProvenanceAvailable(client);
         await client.query(
           `update findings set finding_text = $2,
              theme = ${provenance ? "case when human_edited_fields @> array['theme'] then theme else $3 end" : "$3"},
              stated_stats = $4
            where id = $1`,
-          [target.id, finding.text, finding.theme, statsJson],
+          [target.id, text, finding.theme, nextJson],
         );
-      } else if (old.basis !== d.basis) {
+      } else if (old.basis !== d.basis || !!old.basis_without_content_hash !== !d.hashColumn) {
         // Same figures and wording from a changed basis (for example a relabelled answer that is
         // not missing): only the record of what they were computed from moves on.
-        await client.query("update findings set stated_stats = $2 where id = $1", [target.id, statsJson]);
+        await client.query("update findings set stated_stats = $2 where id = $1", [target.id, nextJson]);
       }
       if (reviving) await client.query("update findings set status = 'accepted' where id = $1", [target.id]);
       if (reviving || changed) await recordHumanReview(client, [target.id], "tool_add");
@@ -311,8 +355,10 @@ export async function removeScatterFindingAction(
  * Whether this scatter's correlation (file, pair and weight) is currently posted, and whether the
  * posted figures were computed from the file and set-up as they are now (`current`): false when
  * the file, its layout or the labels used have changed since (post again to update it), null when
- * that cannot be told (a finding posted before this was recorded, or a lookup that failed). The
- * file itself is not read here.
+ * that cannot be told (a finding posted before this was recorded, or a lookup that failed, the
+ * file's content hash included: RR-02). `wordingReview` is set when the researcher's wording was
+ * kept over changed figures and is waiting for their review (RR-01). The file itself is not read
+ * here.
  */
 export async function scatterFindingStatusAction(
   runId: string,
@@ -320,29 +366,33 @@ export async function scatterFindingStatusAction(
   xVar: string,
   yVar: string,
   weightVar: string | null,
-): Promise<{ ok: true; committed: boolean; current: boolean | null } | Fail> {
+): Promise<{ ok: true; committed: boolean; current: boolean | null; wordingReview: ScatterWordingReview | null } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const posted = await withTenant(TENANT_ID, async (client) => {
-      const r = await client.query<{ basis: string | null }>(
-        `select stated_stats->>'basis' as basis from findings where ${SAME_FINDING} and status <> 'rejected' order by created_at, id limit 1`,
+      const r = await client.query<{ basis: string | null; without_hash: boolean; wording_review: ScatterWordingReview | null }>(
+        `select stated_stats->>'basis' as basis, coalesce((stated_stats->>'basis_without_content_hash')::boolean, false) as without_hash,
+                stated_stats->'wording_review' as wording_review from findings where ${SAME_FINDING} and status <> 'rejected' order by created_at, id limit 1`,
         [runId, xVar, yVar, weightVar || null, documentId],
       );
       return r.rows[0] ?? null;
     });
-    if (!posted) return { ok: true, committed: false, current: null };
-    if (!posted.basis) return { ok: true, committed: true, current: null };
+    if (!posted) return { ok: true, committed: false, current: null, wordingReview: null };
+    const wordingReview = posted.wording_review ?? null;
+    if (!posted.basis) return { ok: true, committed: true, current: null, wordingReview };
     let current: boolean | null = null;
     try {
-      const [doc, overlay, setupStatus, contentSha] = await Promise.all([
+      const [doc, overlay, setupStatus, content] = await Promise.all([
         loadDocumentFile(TENANT_ID, runId, documentId),
         overlayFor(TENANT_ID, runId, documentId),
         loadDataSetupWithStatus(TENANT_ID, documentId),
         documentContentSha(TENANT_ID, runId, documentId),
       ]);
-      if (setupStatus.ok) {
+      // Computed with the hash column and checked without it, or the other way round: the two
+      // cannot be compared, so this is unknown rather than current or changed.
+      if (setupStatus.ok && content.column === !posted.without_hash) {
         const now = scatterBasis(
-          { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha, layout: setupStatus.setup.layout, overlay },
+          { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha: content.sha, layout: setupStatus.setup.layout, overlay },
           [xVar, yVar, weightVar],
         );
         current = now === posted.basis;
@@ -350,7 +400,7 @@ export async function scatterFindingStatusAction(
     } catch {
       current = null; // could not be checked: never reported as current
     }
-    return { ok: true, committed: true, current };
+    return { ok: true, committed: true, current, wordingReview };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

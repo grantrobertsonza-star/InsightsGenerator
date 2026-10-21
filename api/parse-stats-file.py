@@ -1071,94 +1071,99 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         xl = None
     else:
         xl = pd.ExcelFile(path)
-        sheets = list(xl.sheet_names)
-        # IMP-SHIP-001 (Codex round 2): a sheet choice a prior read of this same document
-        # already resolved (persisted on documents.selected_sheet) is used directly rather
-        # than re-derived. If it no longer names a real sheet in this workbook (a
-        # re-uploaded file could have dropped it), this raises SheetSelectionLostError
-        # instead of silently falling back to an independently re-derived sheet - "a
-        # missing selected sheet must produce an explicit recovery state, never automatic
-        # substitution". A selected_sheet of None/"" (nothing persisted for this document
-        # yet) is the legitimate first-ever read and still resolves via the ranking rule.
-        if selected_sheet:
-            if selected_sheet not in sheets:
-                raise SheetSelectionLostError(selected_sheet, sheets)
-            data_sheet = selected_sheet
-        else:
-            candidates = [n for n in sheets if not _DICT_SHEET_RE.search(n)] or sheets
-            data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
-        if layout == "columns_are_cases":
-            try:
+        # RR-05: every exit after the workbook opens must close it, the refusals and the
+        # format-inspection failure included, or Windows keeps the uploaded temp file locked
+        # and the caller cannot delete it. Success closes it after the label sheets are read below.
+        try:
+            sheets = list(xl.sheet_names)
+            # IMP-SHIP-001 (Codex round 2): a sheet choice a prior read of this same document
+            # already resolved (persisted on documents.selected_sheet) is used directly rather
+            # than re-derived. If it no longer names a real sheet in this workbook (a
+            # re-uploaded file could have dropped it), this raises SheetSelectionLostError
+            # instead of silently falling back to an independently re-derived sheet - "a
+            # missing selected sheet must produce an explicit recovery state, never automatic
+            # substitution". A selected_sheet of None/"" (nothing persisted for this document
+            # yet) is the legitimate first-ever read and still resolves via the ranking rule.
+            if selected_sheet:
+                if selected_sheet not in sheets:
+                    raise SheetSelectionLostError(selected_sheet, sheets)
+                data_sheet = selected_sheet
+            else:
+                candidates = [n for n in sheets if not _DICT_SHEET_RE.search(n)] or sheets
+                data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
+            if layout == "columns_are_cases":
                 _refuse_flipped_codebook_metadata(xl, [n for n in sheets if n != data_sheet])
-            except Exception:
-                xl.close()
-                raise
-        # IMP-003: same reasoning as the CSV branch above - xl.parse(..., header=0) would let
-        # pandas mangle a duplicate header to its own "name"/"name.1" convention before this
-        # file's own _dedupe_header_names ever ran. header=None + nrows=1 reads the header
-        # row as plain data instead, so this file keeps full control of the resulting name.
-        raw_row = xl.parse(data_sheet, header=None, nrows=1).iloc[0].tolist()
-        raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
-        headers = _dedupe_header_names(raw_headers)
-        id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
-        if layout == "columns_are_cases":
-            # As in the CSV branch: no per-column type inference across a case's mixed cells;
-            # Excel's own cell types are kept and each variable is typed after the flip.
-            id_dtype = object
-        df = xl.parse(data_sheet, header=None, skiprows=1, dtype=id_dtype)
-        df.columns = headers
-        unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
-    df = _normalize_na_strings(df)
-    df = df.dropna(how="all")
-    meta = _PlainMeta(unsupported_identifier_columns=sorted(unsupported_id_formats))
-    if xl is not None and len(sheets) > 1:
-        numeric_cols = {c for c in df.columns if df[c].dtype.kind in "fiu"}
-        other = [n for n in sheets if n != data_sheet]
-        labs, vlabs, used, conflicts = _excel_labels(xl, other, list(df.columns), numeric_cols)
-        # A one-row-per-variable codebook sheet (see _excel_codebook) is a
-        # different shape from the row-per-value layout _excel_labels reads,
-        # so it is tried separately; where both find something for the same
-        # variable the codebook's own column wins, since it is the more
-        # deliberately authored source. That preference is itself a kind of
-        # override, so a difference between the two sources is recorded here
-        # too, not just overwrites within one source.
-        cb_labs, cb_vlabs, mr_sets, cb_conflicts = _excel_codebook(xl, other, list(df.columns))
-        conflicts = conflicts + cb_conflicts
-        if cb_labs:
-            for name, lab in cb_labs.items():
-                if name in labs and labs[name] != lab:
-                    conflicts.append(
-                        {
-                            "variable": name,
-                            "kind": "variable_label",
-                            "keptSheet": "codebook",
-                            "kept": lab,
-                            "discardedSheet": used.get("variables"),
-                            "discarded": labs[name],
-                        }
-                    )
-            labs = {**labs, **cb_labs}
-            used["variables"] = "codebook"
-        if cb_vlabs:
-            for name, entries in cb_vlabs.items():
-                if name in vlabs and vlabs[name] != entries:
-                    conflicts.append(
-                        {
-                            "variable": name,
-                            "kind": "value_label",
-                            "keptSheet": "codebook",
-                            "kept": entries,
-                            "discardedSheet": used.get("values"),
-                            "discarded": vlabs[name],
-                        }
-                    )
-            vlabs = {**vlabs, **cb_vlabs}
-            used["values"] = "codebook"
-        used["data"] = data_sheet
-        labs, vlabs = _show_label_conflicts(labs, vlabs, conflicts)
-        meta = _PlainMeta(labs, vlabs, used, mr_sets, label_conflicts=conflicts)
-    if xl is not None:
-        xl.close()  # Windows will not delete a temp file that is still open
+            # IMP-003: same reasoning as the CSV branch above - xl.parse(..., header=0) would let
+            # pandas mangle a duplicate header to its own "name"/"name.1" convention before this
+            # file's own _dedupe_header_names ever ran. header=None + nrows=1 reads the header
+            # row as plain data instead, so this file keeps full control of the resulting name.
+            raw_row = xl.parse(data_sheet, header=None, nrows=1).iloc[0].tolist()
+            raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
+            headers = _dedupe_header_names(raw_headers)
+            id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
+            if layout == "columns_are_cases":
+                # As in the CSV branch: no per-column type inference across a case's mixed cells;
+                # Excel's own cell types are kept and each variable is typed after the flip.
+                id_dtype = object
+            df = xl.parse(data_sheet, header=None, skiprows=1, dtype=id_dtype)
+            df.columns = headers
+            unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
+        except BaseException:
+            xl.close()
+            raise
+    try:
+        df = _normalize_na_strings(df)
+        df = df.dropna(how="all")
+        meta = _PlainMeta(unsupported_identifier_columns=sorted(unsupported_id_formats))
+        if xl is not None and len(sheets) > 1:
+            numeric_cols = {c for c in df.columns if df[c].dtype.kind in "fiu"}
+            other = [n for n in sheets if n != data_sheet]
+            labs, vlabs, used, conflicts = _excel_labels(xl, other, list(df.columns), numeric_cols)
+            # A one-row-per-variable codebook sheet (see _excel_codebook) is a
+            # different shape from the row-per-value layout _excel_labels reads,
+            # so it is tried separately; where both find something for the same
+            # variable the codebook's own column wins, since it is the more
+            # deliberately authored source. That preference is itself a kind of
+            # override, so a difference between the two sources is recorded here
+            # too, not just overwrites within one source.
+            cb_labs, cb_vlabs, mr_sets, cb_conflicts = _excel_codebook(xl, other, list(df.columns))
+            conflicts = conflicts + cb_conflicts
+            if cb_labs:
+                for name, lab in cb_labs.items():
+                    if name in labs and labs[name] != lab:
+                        conflicts.append(
+                            {
+                                "variable": name,
+                                "kind": "variable_label",
+                                "keptSheet": "codebook",
+                                "kept": lab,
+                                "discardedSheet": used.get("variables"),
+                                "discarded": labs[name],
+                            }
+                        )
+                labs = {**labs, **cb_labs}
+                used["variables"] = "codebook"
+            if cb_vlabs:
+                for name, entries in cb_vlabs.items():
+                    if name in vlabs and vlabs[name] != entries:
+                        conflicts.append(
+                            {
+                                "variable": name,
+                                "kind": "value_label",
+                                "keptSheet": "codebook",
+                                "kept": entries,
+                                "discardedSheet": used.get("values"),
+                                "discarded": vlabs[name],
+                            }
+                        )
+                vlabs = {**vlabs, **cb_vlabs}
+                used["values"] = "codebook"
+            used["data"] = data_sheet
+            labs, vlabs = _show_label_conflicts(labs, vlabs, conflicts)
+            meta = _PlainMeta(labs, vlabs, used, mr_sets, label_conflicts=conflicts)
+    finally:
+        if xl is not None:
+            xl.close()  # Windows will not delete a temp file that is still open
     if layout == "columns_are_cases":
         # A raw file laid out with variables in rows and cases in columns, flipped here the same
         # way transposeTable (dataSetup.ts) flips the stored preview table - so the dictionary,
