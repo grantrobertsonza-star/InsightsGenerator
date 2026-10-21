@@ -7,6 +7,7 @@
 //      the open result shows "Remove from findings" without being reselected.
 //   3. Failed count read: the result and the saved list show the error with Retry and offer no Post;
 //      once the read works again, Retry restores "Remove from findings".
+//   4. Known zero: removed from the findings, the reopened result offers Post once its count arrives.
 //
 // The count read is identified as a server-action POST (it carries a `next-action` header) whose body
 // is exactly the one-argument list [runId]: driverFindingCountsAction(runId). The other actions the
@@ -131,6 +132,16 @@ test("a reopened driver analysis never offers Post while its findings count is l
     await expect(ws.getByRole("button", { name: "Post to findings" }).filter({ visible: true })).toHaveCount(0);
     // Nothing was posted or removed along the way.
     expect(await findings()).toBeGreaterThan(0);
+
+    // 4. A known zero: taken out of the findings, the reopened result offers Post once its count
+    // has arrived, and only then.
+    await report.getByRole("button", { name: "Remove from findings" }).click();
+    await expect.poll(findings, { timeout: 60_000 }).toBe(0);
+    ws = await openDriver();
+    await ws.getByRole("button", { name: /^Drivers of / }).filter({ visible: true }).first().click();
+    await expect(report.getByRole("button", { name: "Post to findings" })).toBeVisible({ timeout: 30_000 });
+    await expect(ws.getByTestId("driver-post-checking")).toHaveCount(0);
+    await expect(ws.getByTestId("driver-post-unknown")).toHaveCount(0);
   } finally {
     await db.end();
   }

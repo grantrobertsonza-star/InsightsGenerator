@@ -7,8 +7,9 @@
 //   - a failed read releases its claim: Read again works straight away
 //   - a claim abandoned by a crashed read lapses after INSTRUMENT_READ_CLAIM_MINUTES; a fresh one does not
 //   - RR-03: a read that outlives its claim, after a newer read took over, ends neither the newer claim
-//     nor overwrites its results; the newer read's items and completion are the ones kept
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+//     nor overwrites its results; the newer read's items and completion are the ones kept. A late
+//     failure records nothing; the newer read failing is recorded, and Read again recovers
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -54,6 +55,12 @@ describe.skipIf(!TEST_DATABASE_URL)("IR-05 one read of a questionnaire at a time
     const { pool } = await import("../db");
     await pool.end();
     await db.drop();
+  });
+  // A failed assertion must not leave the model failing or held for the next case.
+  beforeEach(() => {
+    model.fail = false;
+    model.gate = null;
+    model.text = "First question";
   });
   const newInstrument = async () =>
     (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,instrument_type) values($1,$2,'instrument','q.docx',$3,'questionnaire') returning id", [tenant, run, randomUUID()])).rows[0].id as string;
@@ -171,6 +178,68 @@ describe.skipIf(!TEST_DATABASE_URL)("IR-05 one read of a questionnaire at a time
     expect((await db.pool.query("select detail->>'claimId' as c from trace where event = 'instrument_read_finished' and detail->>'documentId' = $1", [doc])).rows.map((r) => r.c)).toEqual([newClaim]);
     expect(await isInstrumentReadInFlight(tenant, run, doc)).toBe(false);
     expect(model.calls).toBe(2);
+    model.text = "First question";
+  });
+
+  // Read A stalls past the claim window and read B takes over; both are held at the model call.
+  const takeOver = async (doc: string) => {
+    const { readInstrumentAction } = await import("../instrumentActions");
+    const { INSTRUMENT_READ_CLAIM_MINUTES } = await import("../instruments");
+    model.calls = 0;
+    model.text = "Wording read by the expired claim";
+    const releaseOld = opened();
+    const late = readInstrumentAction(run, doc);
+    await until(() => model.calls >= 1);
+    await db.pool.query(
+      "update trace set occurred_at = now() - make_interval(mins => $2) where event = 'instrument_read_started' and detail->>'documentId' = $1",
+      [doc, INSTRUMENT_READ_CLAIM_MINUTES + 1],
+    );
+    model.text = "Wording read by the newer claim";
+    const releaseNew = opened();
+    const current = readInstrumentAction(run, doc);
+    await until(() => model.calls >= 2);
+    return { late, current, releaseOld, releaseNew };
+  };
+  const failures = async (doc: string) =>
+    (await db.pool.query("select count(*)::int as n from trace where event = 'instrument_read_failed' and detail->>'documentId' = $1", [doc])).rows[0].n;
+
+  it("RR-03: a read that fails after a newer read took over records no failure and leaves the newer read running", async () => {
+    const { readInstrumentAction } = await import("../instrumentActions");
+    const { getInstrumentSummaries } = await import("../instruments");
+    const doc = await newInstrument();
+    const { late, current, releaseOld, releaseNew } = await takeOver(doc);
+    model.fail = true;
+    releaseOld();
+    expect(await late).toMatchObject({ ok: false, inFlight: true, error: expect.stringMatching(/newer read/) });
+    model.fail = false;
+    expect(await failures(doc)).toBe(0);
+    expect((await getInstrumentSummaries(tenant, run)).get(doc)?.readFailure).toBeUndefined();
+    // A third request while the newer read runs is refused without a model call.
+    expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: false, inFlight: true });
+    releaseNew();
+    expect(await current).toMatchObject({ ok: true, items: 1 });
+    expect((await db.pool.query("select item_text from instrument_items where document_id = $1", [doc])).rows.map((r) => r.item_text)).toEqual(["Wording read by the newer claim"]);
+    expect(model.calls).toBe(2);
+    model.text = "First question";
+  });
+
+  it("RR-03: when the newer read fails after the old one was refused, its failure is recorded and Read again works", async () => {
+    const { readInstrumentAction } = await import("../instrumentActions");
+    const { getInstrumentSummaries } = await import("../instruments");
+    const doc = await newInstrument();
+    const { late, current, releaseOld, releaseNew } = await takeOver(doc);
+    releaseOld();
+    expect(await late).toMatchObject({ ok: false, inFlight: true });
+    model.fail = true;
+    releaseNew();
+    expect(await current).toMatchObject({ ok: false, error: expect.stringMatching(/No question items/) });
+    model.fail = false;
+    expect(await failures(doc)).toBe(1);
+    expect((await getInstrumentSummaries(tenant, run)).get(doc)?.readFailure).toMatch(/No question items/);
+    model.text = "Wording read by the retry";
+    expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: true, items: 1 });
+    expect((await db.pool.query("select item_text from instrument_items where document_id = $1", [doc])).rows.map((r) => r.item_text)).toEqual(["Wording read by the retry"]);
+    expect(model.calls).toBe(3);
     model.text = "First question";
   });
 

@@ -127,8 +127,8 @@ export const INSTRUMENT_READ_CLAIM_MINUTES = 15;
 export class InstrumentReadInFlightError extends Error {}
 
 /**
- * RR-03: raised when a read finishes after its claim lapsed and a newer read has claimed the same
- * document. Its results are discarded, so they cannot overwrite the newer read's, and it is not
+ * RR-03: raised when a read finishes, or fails, after its claim lapsed and a newer read has claimed
+ * the same document. Its results are discarded, so they cannot overwrite the newer read's, and it is not
  * recorded as a failure (a read is still under way, or has already finished, under the newer claim).
  */
 export class InstrumentReadSupersededError extends InstrumentReadInFlightError {}
@@ -197,6 +197,15 @@ async function releaseInstrumentRead(tenantId: string, runId: string, documentId
   });
 }
 
+/** True when a read of this document was claimed after `claimId`, so that claim no longer owns it (RR-03). */
+async function claimSuperseded(client: PoolClient, runId: string, documentId: string, claimId: string): Promise<boolean> {
+  const newer = await client.query(
+    "select 1 from trace where run_id = $1 and event = 'instrument_read_started' and detail->>'documentId' = $2 and id > $3::bigint limit 1",
+    [runId, documentId, claimId],
+  );
+  return (newer.rowCount ?? 0) > 0;
+}
+
 export async function readInstrumentItems(tenantId: string, runId: string, documentId: string): Promise<InstrumentReadResult> {
   const doc = await claimInstrumentRead(tenantId, runId, documentId);
   try {
@@ -204,6 +213,17 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
   } catch (e) {
     // Best effort: if even this write fails, the claim lapses after INSTRUMENT_READ_CLAIM_MINUTES.
     await releaseInstrumentRead(tenantId, runId, documentId, doc.claimId).catch(() => {});
+    if (e instanceof InstrumentReadInFlightError) throw e;
+    // RR-03: a read that failed after a newer read took over is not the document's read any more, so
+    // its failure is not recorded on the card (it would show as the outcome while the newer read
+    // runs). If ownership cannot be checked, the failure is reported as it is.
+    const superseded = await withTenantRead(tenantId, (client) => claimSuperseded(client, runId, documentId, doc.claimId)).catch(() => false);
+    if (superseded) {
+      throw new InstrumentReadSupersededError(
+        "This read failed after a newer read of the file had taken over. The newer read continues; nothing from this read was saved.",
+        { cause: e },
+      );
+    }
     throw e;
   }
 }
@@ -367,11 +387,7 @@ async function readClaimedInstrument(
     // replace these. The lock query must find the row, so a document deleted meanwhile is refused.
     const owner = await client.query("select id from documents where id = $1 and run_id = $2 for update", [documentId, runId]);
     if (owner.rowCount !== 1) throw new Error("Questionnaire or guide not found for this run");
-    const newer = await client.query(
-      "select 1 from trace where run_id = $1 and event = 'instrument_read_started' and detail->>'documentId' = $2 and id > $3::bigint limit 1",
-      [runId, documentId, doc.claimId],
-    );
-    if ((newer.rowCount ?? 0) > 0) {
+    if (await claimSuperseded(client, runId, documentId, doc.claimId)) {
       throw new InstrumentReadSupersededError(
         "This read took too long and a newer read of the file has taken over. Its results are kept instead; nothing from this read was saved.",
       );
