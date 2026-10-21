@@ -74,7 +74,7 @@ vi.mock("../db", () => {
     },
   };
   const run = async (_tenant: string, cb: (c: typeof client) => unknown) => cb(client);
-  return { withTenant: run, withTenantRead: run };
+  return { withTenant: run, withTenantRead: run, withTenantRepeatableRead: run };
 });
 vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "test-model",

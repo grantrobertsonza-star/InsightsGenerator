@@ -1,7 +1,7 @@
 // FND-001 / REP-OUT-001 and ANA-NPS-003 downstream freshness: the support-status rule and its
 // loader. The classifier tests are pure (actual classifyInsightSupport with constructed link rows).
 // The loader tests run the actual loadInsightSupport against a fake database client: the db
-// wrapper is mocked at its boundary (withTenantRead hands the callback a scripted client), and the
+// wrapper is mocked at its boundary (withTenantRepeatableRead hands the callback a scripted client), and the
 // two current-settings lookups (resolveCurrentDesignSnapshotStatus, loadVariableOverrides) are
 // mocked as external lookups while designFreshnessStatus stays real.
 //
@@ -27,7 +27,7 @@ vi.mock("../db", () => {
     },
   };
   const run = async (_tenant: string, cb: (c: typeof client) => unknown) => cb(client);
-  return { withTenant: run, withTenantRead: run };
+  return { withTenant: run, withTenantRead: run, withTenantRepeatableRead: run };
 });
 
 const settings = vi.hoisted(() => ({

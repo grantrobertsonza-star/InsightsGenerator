@@ -12,6 +12,15 @@
 // with a recorded quote, also whether that quote appears in the report's current stored text
 // (withQuoteGrounding, GT100-F02).
 //
+// Snapshot (Codex GTR-02): each loader reads its insight/link/finding rows, their quotes and the
+// report texts those quotes are checked against inside one REPEATABLE READ transaction
+// (withTenantRepeatableRead), so every statement sees the same committed state. Under READ
+// COMMITTED each statement took its own snapshot: a document deleted, or a quote and its text
+// replaced together, between the two reads produced a state belonging to neither version. The
+// per-data-file settings lookups in classifyRows run afterwards on their own connections, and the
+// two loaders (synthesized insights, pre-insights) are separate snapshots: an export that calls
+// several loaders is not one atomic read.
+//
 // Missing migration: detected with a catalog pre-check (no failing statement, so the read
 // transaction is never left aborted). Without 0096 every link is "not recorded" (unknown);
 // rejection and deletion are still detected because they need no snapshot.
@@ -21,7 +30,7 @@
 // loadInsightSupportOrUnchecked, which turns a failed check into "unknown" WITH the error
 // attached - visible and qualified, never silently "current" and never an empty success.
 import type { PoolClient } from "pg";
-import { withTenantRead } from "./db";
+import { withTenantRepeatableRead } from "./db";
 import { designFreshnessStatus, resolveCurrentDesignSnapshotStatus } from "./crosstabs";
 import { loadVariableOverrides } from "./variableOverrides";
 import { quoteGroundingChecker } from "./quoteMatch";
@@ -58,9 +67,10 @@ type RawRow = {
 /**
  * GT100-F02: whether each quoted report finding's quote still appears in its report's CURRENT
  * stored text. A re-read keeps a reviewed finding (its id, wording and fingerprint) even when the
- * new text no longer contains its quote, so the fingerprint cannot see this. Read in the same
- * transaction as the links (one consistent version of the text), each report's text fetched and
- * normalised once, with the same quote rule as extraction (quoteMatch). Read-only.
+ * new text no longer contains its quote, so the fingerprint cannot see this. Called with the
+ * loader's REPEATABLE READ client, so the text read here is the version the link rows were read
+ * from (GTR-02); each report's text is fetched and normalised once, with the same quote rule as
+ * extraction (quoteMatch). Read-only.
  *
  * A failed or partial re-read still stores the newly read text before the model is called
  * (extractFindings), so the check is against what the report says now; a re-read whose text read
@@ -79,8 +89,9 @@ async function withQuoteGrounding(client: PoolClient, rows: RawRow[]): Promise<R
   const checkers = new Map(texts.rows.map((d) => [d.id, quoteGroundingChecker(d.extracted_text)]));
   return rows.map((r) => {
     if (!r.quote_document_id || !r.source_quote?.trim()) return r;
-    // A document gone from the run takes its findings with it, so a missing row here means the
-    // text could not be read for this check: unknown, not missing.
+    // A document deleted from the run takes its findings with it in the same transaction, and both
+    // reads share one snapshot, so a finding whose document row is absent here is not a deletion
+    // seen half-way: the text could not be read for this check, so unknown, not missing.
     const check = checkers.get(r.quote_document_id);
     return { ...r, quote_grounding: check ? check(r.source_quote) : "unreadable" };
   });
@@ -147,16 +158,16 @@ export type InsightSupportResult = {
 };
 
 /**
- * Support status for every synthesized insight in a run (or just `insightIds`). One read
- * transaction for the insight/link/finding rows; the per-data-file settings lookups use their
- * existing helpers. Throws on failure.
+ * Support status for every synthesized insight in a run (or just `insightIds`). One REPEATABLE READ
+ * snapshot for the insight/link/finding rows and the report texts behind their quotes; the
+ * per-data-file settings lookups use their existing helpers afterwards. Throws on failure.
  */
 export async function loadInsightSupport(
   tenantId: string,
   runId: string,
   insightIds?: string[],
 ): Promise<InsightSupportResult> {
-  const { rows, snapshotsAvailable } = await withTenantRead(tenantId, async (client) => {
+  const { rows, snapshotsAvailable } = await withTenantRepeatableRead(tenantId, async (client) => {
     const probe = await client.query<{ available: boolean }>(
       `select (
          exists (
@@ -284,7 +295,7 @@ export async function preInsightSupportSnapshotAvailable(client: PoolClient): Pr
  * Throws on failure; exports use loadPreInsightSupportOrUnchecked.
  */
 export async function loadPreInsightSupport(tenantId: string, runId: string, insightIds?: string[]): Promise<InsightSupportResult> {
-  const { rows, snapshotsAvailable } = await withTenantRead(tenantId, async (client) => {
+  const { rows, snapshotsAvailable } = await withTenantRepeatableRead(tenantId, async (client) => {
     const available = await preInsightSupportSnapshotAvailable(client);
     const snapshotColumns = available
       ? "i.support_snapshot, finding_support_parts(f.id) as current_parts"

@@ -164,7 +164,7 @@ vi.mock("../db", () => {
     },
   };
   const run = async (_t: string, cb: (c: typeof client) => unknown) => cb(client);
-  return { withTenant: run, withTenantRead: run };
+  return { withTenant: run, withTenantRead: run, withTenantRepeatableRead: run };
 });
 vi.mock("../supportStatus", () => ({
   loadInsightSupportOrUnchecked: async () => ({ statusOf: () => ({ status: "current", reasons: [] }) }),
