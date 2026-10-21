@@ -2221,7 +2221,9 @@ export default function FindingsTable({
         </div>
       </details>
       <div ref={topRef} className="min-w-0">
-        <div className="mb-3 inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+        {/* Wraps rather than running past a narrow column (UI-GT500-01: at 375px the unwrapped strip
+            widened the whole page); every category keeps its full name and count. */}
+        <div data-testid="findings-category-strip" className="mb-3 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
           {(
             [
               ["all", "All findings", findings.length],
