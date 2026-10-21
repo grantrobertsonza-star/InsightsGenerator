@@ -365,7 +365,7 @@ const SIDES = {
   plain: "border-2 bg-white border-border",
   /**
    * A white surface on a pale grey workspace, with a thin neutral border, so blue is left for
-   * selection and actions (Grant's visual review, 2026-10-20): Coding and Reports and decks.
+   * selection and actions (Grant's visual review, 2026-10-20): Coding and Secondary analysis.
    */
   workspace: "border bg-white border-slate-200 shadow-sm",
 } as const;

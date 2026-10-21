@@ -1,4 +1,4 @@
-// Coding and Reports and decks in the Sources workspace style (Grant, 2026-10-20), in a real
+// Coding and Secondary analysis in the Sources workspace style (Grant, 2026-10-20), in a real
 // browser on the disposable stack:
 //   1. With no files, each says so and links to Sources.
 //   2. A report is offered in the chooser beside the title with its state ("Not extracted yet"); its
@@ -20,7 +20,7 @@ const FIXTURE = path.resolve("fixtures/golden-thread-1");
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test("Coding and Reports and decks: empty states, one file at a time, nothing read on opening", async ({ page }, testInfo) => {
+test("Coding and Secondary analysis: empty states, one file at a time, nothing read on opening", async ({ page }, testInfo) => {
   test.setTimeout(5 * 60_000);
   const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
   await db.connect();
@@ -35,7 +35,7 @@ test("Coding and Reports and decks: empty states, one file at a time, nothing re
     await page.getByRole("button", { name: /^Coding/ }).first().click();
     await expect(coding).toContainText("No transcripts yet");
     await expect(coding.getByRole("button", { name: "Go to Sources" })).toBeVisible();
-    await page.getByRole("button", { name: /^Reports and decks/ }).first().click();
+    await page.getByRole("button", { name: /^Secondary analysis/ }).first().click();
     await expect(reports).toContainText("No reports yet");
 
     // 2. A report.
@@ -43,13 +43,13 @@ test("Coding and Reports and decks: empty states, one file at a time, nothing re
     await page.goto(run.url, { waitUntil: "networkidle" });
     const usage = async () => Number((await db.query("select count(*) from trace where run_id=$1 and event='api_usage'", [run.id])).rows[0].count);
     const before = await usage();
-    await page.getByRole("button", { name: /^Reports and decks/ }).first().click();
+    await page.getByRole("button", { name: /^Secondary analysis/ }).first().click();
     const reportChooser = reports.getByRole("combobox", { name: "Report or deck" });
     await expect(reportChooser).toBeVisible({ timeout: 60_000 });
     await expect(reportChooser.locator("option:checked")).toHaveText(/^report\.docx · Not extracted yet/);
     await expect(reports.getByRole("button", { name: /Extract findings/ })).toBeVisible();
     await page.waitForLoadState("networkidle");
-    expect(await usage(), "opening Reports and decks called the model").toBe(before);
+    expect(await usage(), "opening Secondary analysis called the model").toBe(before);
 
     // 3. A transcript.
     await page.getByRole("button", { name: /^Import data/ }).first().click();

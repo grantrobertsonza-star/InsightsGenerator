@@ -4975,7 +4975,7 @@ export default async function RunPage({
     { id: "crosstabs", group: "Analyse", label: "Cross tabs", badge: documents.filter((d) => d.kind === "table").length },
     { id: "analytics", group: "Analyse", label: "Analytics" },
     { id: "coding", group: "Analyse", label: "Coding", badge: documents.filter((d) => d.kind === "transcript").length },
-    { id: "reports", group: "Analyse", label: "Reports and decks", badge: documents.filter((d) => d.kind === "report").length },
+    { id: "reports", group: "Analyse", label: "Secondary analysis", badge: documents.filter((d) => d.kind === "report").length },
     { id: "findings", group: "Develop findings", label: "Findings", badge: findings.length },
     { id: "synthesized", group: "Develop findings", label: "Insights", badge: synthesizedInsights.length },
     { id: "recommendations", group: "Deliver", label: "Recommendations", badge: synthesizedRecommendations.length },
@@ -5137,7 +5137,7 @@ export default async function RunPage({
           autoWork: instrument ? (
             <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} dataDocIds={documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => x.id)} />
           ) : undefined,
-          // The same colour as this file's card under Cross tabs, Analytics, Coding and Reports and decks.
+          // The same colour as this file's card under Cross tabs, Analytics, Coding and Secondary analysis.
           accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,
           panels,
           initial: transcriptSetups.get(d.id) ?? null,
@@ -5640,10 +5640,10 @@ export default async function RunPage({
           <SectionPanel id="reports">
             {/* Grant, 2026-10-20: the Sources workspace style, one report at a time. */}
             <DocumentPicker
-              title="Reports and decks"
+              title="Secondary analysis"
               chooserLabel="Report or deck"
               intro="Extract the claims a written report or presentation makes; they are then checked in Findings."
-              howTitle="How Reports and decks works"
+              howTitle="How Secondary analysis works"
               how={
                 <>
                   <p>Extract findings reads the selected report and lists the claims it states. Each becomes a finding, checked against the data in Findings; nothing is read until you press it.</p>

@@ -18,7 +18,7 @@ export type PickerItem = {
 };
 
 /**
- * A section that works on one file at a time (Coding, Reports and decks), laid out like Cross tabs
+ * A section that works on one file at a time (Coding, Secondary analysis), laid out like Cross tabs
  * and Analytics (Grant, 2026-10-20): the file is chosen from a list beside the title, with a line on
  * what the section does, a short summary, links to Findings and to Sources, and "How it works"
  * underneath. Below that the selected file's work fills the main pane and, for a section with notes
