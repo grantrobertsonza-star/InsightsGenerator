@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type MouseEvent } from "react";
 import { driverSummary } from "@/lib/driverPresentation";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -51,6 +51,16 @@ import {
 } from "@/lib/driverActions";
 import type { DriverReport, DriverRequest, SavedDriverAnalysis } from "@/lib/drivers";
 import type { VariableDictionary, VariableInfo } from "@/lib/parseStatsFile";
+import {
+  readWorkspaceMemory,
+  writeWorkspaceMemory,
+  type RememberedCard,
+  type ChartVariant,
+  type RememberedDriver,
+  type RememberedNps,
+  type WorkspaceMemory,
+} from "./analyticsWorkspaceMemory";
+import { placeScatterCard, rebuiltCardNeedsRead, ScatterStatusClock, scatterRequestKey } from "./scatterCardState";
 import { KANO_LABELS, kanoPlace, type KanoQuadrantName } from "@/lib/driverQuadrant";
 
 const IMPORTANCE_LIKE = /importan|(^|[^a-z])imp([^a-z]|$)/i;
@@ -238,6 +248,8 @@ export default function AnalyticsBuilder({
       )}
       {tool && (
         <AnalyticsWorkspace
+          // A different file is a different workspace with its own remembered cards.
+          key={`${runId}:${documentId}`}
           runId={runId}
           documentId={documentId}
           filename={filename}
@@ -282,6 +294,11 @@ const pct = (v: number | null | undefined, d = 0) => (v === null || v === undefi
 
 type ChartCard = {
   id: string;
+  /** Creation order across every card in the grid; higher is newer (restored cards are negative). */
+  seq: number;
+  /** The variable as requested, which is what a return to the workspace asks for again. */
+  requestVariable: string;
+  weightVar: string | null;
   result: ChartResult;
   groupVar: string | null;
   committed: boolean;
@@ -298,6 +315,8 @@ type ChartCard = {
 /** A scatter plot of two numeric variables; its correlation can be posted as a relationship finding. */
 type ScatterCard = {
   id: string;
+  /** Creation order across every card in the grid; higher is newer (restored cards are negative). */
+  seq: number;
   result: ScatterResult;
   xVar: string;
   yVar: string;
@@ -319,6 +338,30 @@ type ScatterCard = {
   statusFailed: boolean;
   commitBusy: boolean;
 };
+
+/**
+ * A remembered card being worked out again on a return to the workspace, or one that could not be.
+ * It holds the remembered request until it is rebuilt or cleared, so a failure (the variable has
+ * gone, the server did not answer) is shown with its reason and never silently forgotten.
+ */
+type RestoreSlot = { id: string; seq: number; entry: RememberedCard; state: "loading" | "failed"; error?: string };
+type NpsSlot = { req: RememberedNps; state: "loading" | "failed"; error?: string };
+type DriverSlot = { remembered: RememberedDriver; state: "loading" | "failed"; error?: string };
+
+// The chart type is part of a chart's identity: a bar and a line chart of the same question are two
+// cards, both remembered and both rebuilt.
+const chartKey = (variable: string, groupVar: string | null, weightVar: string | null, variant: ChartVariant) =>
+  JSON.stringify([variable, groupVar, weightVar, variant]);
+const scatterKey = scatterRequestKey;
+const slotKey = (e: RememberedCard) =>
+  e.kind === "chart" ? chartKey(e.variable, e.groupVar, e.weightVar, e.variant) : scatterKey(e.x, e.y, e.weightVar);
+const describeRemembered = (e: RememberedCard) =>
+  e.kind === "chart"
+    ? `${e.variant === "histogram" ? "Histogram" : "Chart"} of ${e.variable}${e.groupVar ? ` by ${e.groupVar}` : ""}`
+    : `Scatter plot of ${e.y} by ${e.x}`;
+/** A server action that throws (a dropped connection) is reported, never treated as an empty result. */
+const failedRequest = () => ({ ok: false as const, error: "The request to the server failed. Try again." });
+const CLEAR_KEEPS = "Posted findings stay as they are.";
 
 type ChartType = "bar" | "line" | "histogram" | "scatter";
 const CHART_TYPES: { id: ChartType; label: string }[] = [
@@ -477,6 +520,32 @@ function AnalyticsWorkspace({
   const countsWrittenSince = useRef(new Set<string>());
   const [, startTransition] = useTransition();
 
+  // What this browser remembered for this run and file (analyticsWorkspaceMemory). Read once, on
+  // opening: requests and saved ids only, each worked out again below, never cached figures.
+  const [remembered] = useState(() => readWorkspaceMemory(runId, documentId));
+  const [cardSlots, setCardSlots] = useState<RestoreSlot[]>(() =>
+    // Newest first, as stored; negative seqs keep them in that order behind anything built now.
+    remembered.memory.cards.map((entry, i) => ({ id: `restore-${i}`, seq: -(i + 1), entry, state: "loading" })),
+  );
+  const [npsSlot, setNpsSlot] = useState<NpsSlot | null>(() => (remembered.memory.nps ? { req: remembered.memory.nps, state: "loading" } : null));
+  const [driverSlot, setDriverSlot] = useState<DriverSlot | null>(() =>
+    remembered.memory.driver ? { remembered: remembered.memory.driver, state: "loading" } : null,
+  );
+  // The request behind the NPS result on screen, which is what the memory keeps for it.
+  const [npsRequest, setNpsRequest] = useState<RememberedNps | null>(null);
+  // Late answers must not overwrite newer actions (the countsSeq pattern): a restore publishes only
+  // while its epoch is current (Clear all and closing end every restore in flight), only into a slot
+  // that has not been cleared, and the NPS and driver results only while no newer run, reopen or
+  // Clear has happened for that tool (npsSeq, driverSeq).
+  const restoreEpoch = useRef(0);
+  const liveSlots = useRef(new Set(cardSlots.map((s) => s.id)));
+  const npsSeq = useRef(0);
+  const driverSeq = useRef(0);
+  // Which scatter status read is newest per request; a post, take-back or wording decision starts a
+  // new generation so a read from before it never lands over it (scatterCardState).
+  const scatterStatusClock = useRef(new ScatterStatusClock());
+  const openingListing = useRef<Promise<Awaited<ReturnType<typeof listDriverAnalysesAction>>> | null>(null);
+
   /** Reads which saved analyses are in findings, on opening. A failure is shown, never read as zero. */
   function requestDriverCounts() {
     const seq = ++countsSeq.current;
@@ -521,7 +590,9 @@ function AnalyticsWorkspace({
       if (r.ok) setDict(r.dictionary);
       else setError(r.error);
     });
-    listDriverAnalysesAction(runId, documentId).then((r) => {
+    const listing = listDriverAnalysesAction(runId, documentId).catch(failedRequest);
+    openingListing.current = listing; // a remembered saved analysis is found in this same read
+    listing.then((r) => {
       if (!live) return;
       if (r.ok) setSaved(r.items);
       else setError(`Saved analyses could not be loaded: ${r.error}`);
@@ -583,6 +654,8 @@ function AnalyticsWorkspace({
   const canRun = outcome !== "" && predictors.size >= 2 && !busy;
 
   async function run() {
+    const seq = ++driverSeq.current;
+    setDriverSlot(null);
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -597,8 +670,9 @@ function AnalyticsWorkspace({
       ),
       groupVar: driverGroupVar || null,
     };
-    const r = await runDriverAnalysisAction(runId, documentId, request);
+    const r = await runDriverAnalysisAction(runId, documentId, request).catch(failedRequest);
     setBusy(false);
+    if (seq !== driverSeq.current) return; // cleared or replaced while it ran
     setDriverSavedId(null);
     setDriverSeg(null);
     if (r.ok) setReport(r.report);
@@ -610,18 +684,54 @@ function AnalyticsWorkspace({
 
   async function runNps() {
     if (!npsVariable) return;
+    const seq = ++npsSeq.current;
+    const req: RememberedNps = { variable: npsVariable, weightVar: weightVar || null, groupVar: npsGroupVar || null };
+    setNpsSlot(null);
     setNpsBusy(true);
     setNpsError(null);
     setNpsResult(null);
+    setNpsRequest(null);
     setNpsCommitted(false);
     setNpsSeg(null);
-    const r = await runNpsAction(runId, documentId, npsVariable, weightVar || null, npsGroupVar || null);
+    const r = await runNpsAction(runId, documentId, req.variable, req.weightVar, req.groupVar).catch(failedRequest);
     setNpsBusy(false);
+    if (seq !== npsSeq.current) return;
     if (r.ok) {
       setNpsResult(r.result);
-      const status = await npsFindingStatusAction(runId, documentId, r.result.variable);
-      if (status.ok) setNpsCommitted(status.committed);
+      setNpsRequest(req);
+      const status = await npsFindingStatusAction(runId, documentId, r.result.variable).catch(failedRequest);
+      if (seq === npsSeq.current && status.ok) setNpsCommitted(status.committed);
     } else setNpsError(r.error);
+  }
+
+  /** Works a remembered NPS result out again from the current file; a newer NPS action wins. */
+  async function restoreNps(req: RememberedNps, epoch: number) {
+    const seq = npsSeq.current;
+    const stillWanted = () => epoch === restoreEpoch.current && seq === npsSeq.current;
+    setNpsSlot({ req, state: "loading" });
+    const r = await runNpsAction(runId, documentId, req.variable, req.weightVar, req.groupVar).catch(failedRequest);
+    if (!stillWanted()) return;
+    if (!r.ok) return setNpsSlot({ req, state: "failed", error: r.error });
+    const status = await npsFindingStatusAction(runId, documentId, r.result.variable).catch(failedRequest);
+    if (!stillWanted()) return;
+    setNpsSlot(null);
+    setNpsVariable(req.variable);
+    setNpsGroupVar(req.groupVar ?? "");
+    setNpsResult(r.result);
+    setNpsRequest(req);
+    setNpsSeg(null);
+    setNpsCommitted(status.ok ? status.committed : false);
+  }
+
+  /** Clear: takes the NPS result off the workspace and out of the memory; findings are untouched. */
+  function clearNps() {
+    npsSeq.current += 1;
+    setNpsSlot(null);
+    setNpsResult(null);
+    setNpsRequest(null);
+    setNpsCommitted(false);
+    setNpsSeg(null);
+    setNpsError(null);
   }
 
   async function toggleNpsFinding() {
@@ -646,68 +756,76 @@ function AnalyticsWorkspace({
     }
   }
 
-  async function runChart() {
-    if (chartType === "scatter") return runScatter();
-    if (!chartVariable) return;
-    setChartBusy(true);
-    setChartError(null);
+  /**
+   * Works out one chart card from the current file: the distribution, then whether it is posted.
+   * Shared by building and by restoring, so a restored card is made exactly as a new one is.
+   * `look` carries remembered presentation choices (title, colours, legend), never figures.
+   */
+  async function computeChartCard(
+    variable: string,
+    wv: string | null,
+    groupVar: string | null,
+    variant: "bar" | "line" | "histogram",
+    seq: number,
+    look?: { title: string | null; colors: string[] | null; legendPos: LegendPos },
+  ): Promise<{ ok: true; card: ChartCard } | { ok: false; error: string }> {
     // The engine has no grouped histogram, so a histogram is always of all respondents.
-    const gv = chartType === "histogram" ? null : chartGroupVar || null;
-    const r = await runDistributionAction(runId, documentId, chartVariable, weightVar || null, gv);
-    setChartBusy(false);
-    if (r.ok) {
-      const status = await chartFindingStatusAction(runId, documentId, r.result.variable, gv);
-      const cardId = `chart-${++cardSeq.current}`;
-      setCharts((prev) => [
-        ...prev,
-        {
-          id: cardId,
-          result: r.result,
-          groupVar: gv,
-          committed: status.ok ? status.committed : false,
-          commitBusy: false,
-          title: r.result.label,
-          colors: r.result.series.map((_, i) => SERIES_COLORS[i % SERIES_COLORS.length]),
-          legendPos: "top",
-          variant: chartType,
-          // The note says how the bars were actually made, from the result (IR-10), not from the variable.
-          histSource: chartType === "histogram" ? r.result.method : undefined,
-        },
-      ]);
-      setSelectedChartId(cardId);
-    } else setChartError(r.error);
+    const gv = variant === "histogram" ? null : groupVar;
+    const r = await runDistributionAction(runId, documentId, variable, wv, gv).catch(failedRequest);
+    if (!r.ok) return r;
+    const status = await chartFindingStatusAction(runId, documentId, r.result.variable, gv).catch(failedRequest);
+    const defaults = r.result.series.map((_, i) => SERIES_COLORS[i % SERIES_COLORS.length]);
+    return {
+      ok: true,
+      card: {
+        id: `chart-${++cardSeq.current}`,
+        seq,
+        requestVariable: variable,
+        weightVar: wv,
+        result: r.result,
+        groupVar: gv,
+        committed: status.ok ? status.committed : false,
+        commitBusy: false,
+        title: look?.title || r.result.label,
+        // Remembered colours fit only while the file gives the same number of series.
+        colors: look?.colors && look.colors.length === defaults.length ? look.colors : defaults,
+        legendPos: look?.legendPos ?? "top",
+        variant,
+        // The note says how the bars were actually made, from the result (IR-10), not from the variable.
+        histSource: variant === "histogram" ? r.result.method : undefined,
+      },
+    };
   }
 
-  async function runScatter() {
-    if (!scatterX || !scatterY || scatterX === scatterY) return;
-    setChartBusy(true);
-    setChartError(null);
-    const wv = weightVar || null;
-    // A call that fails outright (a dropped connection, a server error) says so here; before, it
-    // left nothing on screen (Grant, 2026-10-20: "scatter plot not rendering").
-    let r: Awaited<ReturnType<typeof runScatterAction>>;
-    try {
-      r = await runScatterAction(runId, documentId, scatterX, scatterY, wv);
-    } catch {
-      setChartBusy(false);
-      return setChartError("The scatter plot could not be built: the request to the server failed. Try again.");
-    }
-    setChartBusy(false);
-    if (!r.ok) return setChartError(r.error);
-    const status = await scatterFindingStatusAction(runId, documentId, scatterX, scatterY, wv).catch(() => ({ ok: false as const }));
-    const id = `scatter-${++cardSeq.current}`;
-    // Newest first, and brought into view: a new scatter used to land below every chart card,
-    // out of sight.
-    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }));
-    setScatters((prev) => [
-      {
-        id,
+  /** Works out one scatter card from the current file; shared by building and restoring. */
+  async function computeScatterCard(
+    x: string,
+    y: string,
+    wv: string | null,
+    seq: number,
+    spread = false,
+  ): Promise<{ ok: true; card: ScatterCard; statusGeneration: number } | { ok: false; error: string }> {
+    // A call that fails outright (a dropped connection, a server error) says so; before, it left
+    // nothing on screen (Grant, 2026-10-20: "scatter plot not rendering").
+    const r = await runScatterAction(runId, documentId, x, y, wv).catch(() => ({
+      ok: false as const,
+      error: "The scatter plot could not be built: the request to the server failed. Try again.",
+    }));
+    if (!r.ok) return r;
+    const statusGeneration = scatterStatusClock.current.begin(scatterKey(x, y, wv));
+    const status = await scatterFindingStatusAction(runId, documentId, x, y, wv).catch(() => ({ ok: false as const }));
+    return {
+      ok: true,
+      statusGeneration,
+      card: {
+        id: `scatter-${++cardSeq.current}`,
+        seq,
         result: r.result,
-        xVar: scatterX,
-        yVar: scatterY,
+        xVar: x,
+        yVar: y,
         weightVar: wv,
         title: `${r.result.y.label} by ${r.result.x.label}`,
-        spread: false,
+        spread,
         committed: status.ok ? status.committed : false,
         current: status.ok ? status.current : null,
         wordingReview: status.ok ? status.wordingReview : null,
@@ -716,8 +834,126 @@ function AnalyticsWorkspace({
         statusFailed: !status.ok,
         commitBusy: false,
       },
-      ...prev,
-    ]);
+    };
+  }
+
+  /** New cards land at the start of the one grid; this brings the new one into view. */
+  const scrollToCard = (id: string) =>
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+
+  async function runChart() {
+    if (chartType === "scatter") return runScatter();
+    if (!chartVariable) return;
+    setChartBusy(true);
+    setChartError(null);
+    const r = await computeChartCard(chartVariable, weightVar || null, chartGroupVar || null, chartType, ++cardSeq.current);
+    setChartBusy(false);
+    if (!r.ok) return setChartError(r.error);
+    setCharts((prev) => [...prev, r.card]);
+    setSelectedChartId(r.card.id);
+    scrollToCard(r.card.id);
+  }
+
+  async function runScatter() {
+    if (!scatterX || !scatterY || scatterX === scatterY) return;
+    setChartBusy(true);
+    setChartError(null);
+    const wv = weightVar || null;
+    const r = await computeScatterCard(scatterX, scatterY, wv, ++cardSeq.current);
+    setChartBusy(false);
+    if (!r.ok) return setChartError(r.error);
+    // One card per scatter request: a scatter card carries its finding's posted and wording state,
+    // and two copies of the same pair would disagree once one of them is acted on. Building it again
+    // replaces the earlier card (or a remembered one still waiting) and brings it to the front.
+    // If the researcher acted on the earlier card while this one was being built, that card's state
+    // is newer than this card's read: placeScatterCard keeps it, and a fresh read settles it.
+    const key = scatterKey(scatterX, scatterY, wv);
+    const statusIsLatest = scatterStatusClock.current.isLatest(key, r.statusGeneration);
+    dropSlots((e) => slotKey(e) === key);
+    setScatters((prev) => placeScatterCard(prev, r.card, statusIsLatest));
+    if (rebuiltCardNeedsRead(scatterStatusClock.current, key, r.statusGeneration)) void refreshScatterStatus(r.card);
+    scrollToCard(r.card.id);
+  }
+
+  /** Updates the scatter card for a request, whichever card currently stands for it. */
+  function patchScatter(key: string, p: Partial<ScatterCard>) {
+    setScatters((prev) => prev.map((c) => (scatterKey(c.xVar, c.yVar, c.weightVar) === key ? { ...c, ...p } : c)));
+  }
+
+  /**
+   * Reads a scatter finding's state again and shows it only if no newer read or action has started
+   * for the request meanwhile. Returns whether it was shown. A failed read shows the state as not
+   * known ("unknown"), or leaves the card as it was ("keep", after a wording decision whose own
+   * error is shown on the card).
+   */
+  async function refreshScatterStatus(
+    req: { xVar: string; yVar: string; weightVar: string | null },
+    onFail: "unknown" | "keep" = "unknown",
+  ): Promise<boolean> {
+    const key = scatterKey(req.xVar, req.yVar, req.weightVar);
+    const generation = scatterStatusClock.current.begin(key);
+    const status = await scatterFindingStatusAction(runId, documentId, req.xVar, req.yVar, req.weightVar).catch(() => ({ ok: false as const }));
+    if (!scatterStatusClock.current.isLatest(key, generation)) return false;
+    if (status.ok) patchScatter(key, { committed: status.committed, current: status.current, wordingReview: status.wordingReview, statusFailed: false });
+    else if (onFail === "unknown") patchScatter(key, { current: null, wordingReview: null });
+    return true;
+  }
+
+  /** Removes remembered cards still waiting (or failed) that match, so they never publish later. */
+  function dropSlots(match: (e: RememberedCard) => boolean) {
+    setCardSlots((prev) =>
+      prev.filter((sl) => {
+        if (!match(sl.entry)) return true;
+        liveSlots.current.delete(sl.id);
+        return false;
+      }),
+    );
+  }
+
+  /**
+   * Rebuilds one remembered card in its remembered place. It publishes only while its epoch is
+   * current and its slot has not been cleared, and never beside a card for the same request built
+   * meanwhile. A failure keeps the slot, with the reason, Try again and Clear.
+   */
+  async function restoreCard(slot: RestoreSlot, epoch: number) {
+    const e = slot.entry;
+    const r =
+      e.kind === "chart"
+        ? await computeChartCard(e.variable, e.weightVar, e.groupVar, e.variant, slot.seq, e)
+        : await computeScatterCard(e.x, e.y, e.weightVar, slot.seq, e.spread);
+    if (epoch !== restoreEpoch.current || !liveSlots.current.has(slot.id)) return;
+    if (!r.ok) {
+      setCardSlots((prev) => prev.map((sl) => (sl.id === slot.id ? { ...sl, state: "failed", error: r.error } : sl)));
+      return;
+    }
+    liveSlots.current.delete(slot.id);
+    setCardSlots((prev) => prev.filter((sl) => sl.id !== slot.id));
+    const key = slotKey(e);
+    if (e.kind === "chart") {
+      const card = r.card as ChartCard;
+      setCharts((prev) =>
+        // Skipped only when the researcher built the same chart during this visit (a positive seq);
+        // other remembered cards never knock each other out.
+        prev.some((c) => c.seq > 0 && chartKey(c.requestVariable, c.groupVar, c.weightVar, c.variant) === key) ? prev : [...prev, card],
+      );
+    } else {
+      const card = r.card as ScatterCard;
+      // A card for the same request built meanwhile is newer and stays; otherwise the restored card
+      // goes in, with a fresh read if an action started for the request while it was rebuilt.
+      const needsRead = "statusGeneration" in r && rebuiltCardNeedsRead(scatterStatusClock.current, key, r.statusGeneration);
+      setScatters((prev) => (prev.some((c) => scatterKey(c.xVar, c.yVar, c.weightVar) === key) ? prev : [...prev, card]));
+      if (needsRead) void refreshScatterStatus(card);
+    }
+  }
+
+  function retrySlot(slot: RestoreSlot) {
+    setCardSlots((prev) => prev.map((sl) => (sl.id === slot.id ? { ...sl, state: "loading", error: undefined } : sl)));
+    void restoreCard(slot, restoreEpoch.current);
+  }
+
+  function clearSlot(id: string) {
+    liveSlots.current.delete(id);
+    setCardSlots((prev) => prev.filter((sl) => sl.id !== id));
   }
 
   /**
@@ -728,7 +964,18 @@ function AnalyticsWorkspace({
   async function toggleScatterCommit(cardId: string, update = false) {
     const card = scatters.find((c) => c.id === cardId);
     if (!card) return;
-    const patch = (p: Partial<ScatterCard>) => setScatters((prev) => prev.map((c) => (c.id === cardId ? { ...c, ...p } : c)));
+    // Addressed by request, so the result lands on the card on screen even if a rebuild replaced it.
+    const key = scatterKey(card.xVar, card.yVar, card.weightVar);
+    const patch = (p: Partial<ScatterCard>) => patchScatter(key, p);
+    scatterStatusClock.current.beginWrite(key); // reads already in flight predate this write
+    try {
+      await commitScatter(card, update, patch);
+    } finally {
+      scatterStatusClock.current.endWrite(key);
+    }
+  }
+
+  async function commitScatter(card: ScatterCard, update: boolean, patch: (p: Partial<ScatterCard>) => void) {
     patch({ commitBusy: true });
     const r = card.committed && !update
       ? await removeScatterFindingAction(runId, documentId, card.xVar, card.yVar, card.weightVar)
@@ -737,9 +984,7 @@ function AnalyticsWorkspace({
       patch({ committed: update ? true : !card.committed, current: card.committed && !update ? card.current : true, statusFailed: false, commitBusy: false });
       // A post can keep the researcher's wording and flag it for rewording (RR-01), which only the
       // server knows, so the card reads the finding's state again rather than assuming it.
-      const status = await scatterFindingStatusAction(runId, documentId, card.xVar, card.yVar, card.weightVar).catch(() => ({ ok: false as const }));
-      if (status.ok) patch({ committed: status.committed, current: status.current, wordingReview: status.wordingReview });
-      else patch({ current: null, wordingReview: null });
+      await refreshScatterStatus(card);
       setMessage(update ? "Updated the finding with the current figures." : card.committed ? "Took the finding out of use." : "Added to findings.");
       startTransition(() => router.refresh());
     } else {
@@ -756,13 +1001,23 @@ function AnalyticsWorkspace({
   async function resolveScatterWording(cardId: string, choice: "keep" | "use_current") {
     const card = scatters.find((c) => c.id === cardId);
     if (!card?.wordingReview) return;
-    const patch = (p: Partial<ScatterCard>) => setScatters((prev) => prev.map((c) => (c.id === cardId ? { ...c, ...p } : c)));
+    const key = scatterKey(card.xVar, card.yVar, card.weightVar);
+    const patch = (p: Partial<ScatterCard>) => patchScatter(key, p);
+    scatterStatusClock.current.beginWrite(key); // a read already in flight would show the review from before this decision
+    try {
+      await decideScatterWording(card, choice, patch);
+    } finally {
+      scatterStatusClock.current.endWrite(key);
+    }
+  }
+
+  async function decideScatterWording(card: ScatterCard, choice: "keep" | "use_current", patch: (p: Partial<ScatterCard>) => void) {
+    if (!card.wordingReview) return;
     patch({ wordingBusy: true, wordingError: null });
     const r = await resolveScatterWordingReviewAction(runId, documentId, card.xVar, card.yVar, card.weightVar, choice, card.wordingReview.suggested_text).catch(
       () => ({ ok: false as const, error: "The request to the server failed. Nothing is known to have changed; try again." }),
     );
-    const status = await scatterFindingStatusAction(runId, documentId, card.xVar, card.yVar, card.weightVar).catch(() => ({ ok: false as const }));
-    if (status.ok) patch({ committed: status.committed, current: status.current, wordingReview: status.wordingReview, statusFailed: false });
+    await refreshScatterStatus(card, "keep");
     patch({ wordingBusy: false, wordingError: r.ok ? null : r.error });
     if (r.ok) {
       setMessage(choice === "keep" ? "Kept your wording for the current figures." : "The finding now uses the current wording; your earlier wording is kept on record.");
@@ -809,6 +1064,8 @@ function AnalyticsWorkspace({
 
   /** Switches to driver analysis with this NPS question as a top-box (promoter) outcome, inside the same workspace. */
   function driveNps(variable: string) {
+    driverSeq.current += 1;
+    setDriverSlot(null);
     setOutcome(variable);
     setOutcomeType("binary");
     setTopBoxMin("9");
@@ -882,7 +1139,23 @@ function AnalyticsWorkspace({
    * there is no second read whose late answer could overwrite a newer choice.
    */
   function reopenSaved(s: SavedDriverAnalysis) {
-    const req = s.report.request;
+    driverSeq.current += 1; // the researcher's choice wins over a restore still in flight
+    setDriverSlot(null);
+    showSavedAnalysis(s);
+    setError(null);
+    setMessage(null);
+  }
+
+  /** Puts a saved analysis on screen with the request behind it in the controls. */
+  function showSavedAnalysis(s: SavedDriverAnalysis) {
+    showDriverRequest(s.report.request);
+    setReport(s.report);
+    setDriverSeg(null);
+    setDriverSavedId(s.id); // whether it is in findings follows from its count (openPostState)
+  }
+
+  /** The controls as the request set them: outcome and top box, predictors, weight, group by, stated importance. */
+  function showDriverRequest(req: DriverRequest) {
     setOutcomeFilter("");
     setPredFilter("");
     setOutcome(req.outcome);
@@ -895,11 +1168,139 @@ function AnalyticsWorkspace({
     // instead of falling back to a suggestion the saved result never used.
     const stated = req.statedImportance ?? {};
     setStatedPick(Object.fromEntries(req.predictors.map((p) => [p, stated[p] ?? ""] as const)));
-    setReport(s.report);
+  }
+
+  /**
+   * Reopens the remembered driver result. A saved analysis is found by its id in the saved list
+   * read on opening (one read, shared with the list on screen); if the list no longer has it, the
+   * slot says so rather than showing an older copy. An unsaved result is run again from its
+   * request on the current file: the statistics engine, not a model, and nothing is saved.
+   */
+  async function restoreDriver(
+    rem: RememberedDriver,
+    epoch: number,
+    listing: Promise<Awaited<ReturnType<typeof listDriverAnalysesAction>>>,
+  ) {
+    const seq = driverSeq.current;
+    const stillWanted = () => epoch === restoreEpoch.current && seq === driverSeq.current;
+    setDriverSlot({ remembered: rem, state: "loading" });
+    if (rem.kind === "saved") {
+      const list = await listing;
+      if (!stillWanted()) return;
+      if (!list.ok) return setDriverSlot({ remembered: rem, state: "failed", error: `Saved analyses could not be read: ${list.error}` });
+      const found = list.items.find((x) => x.id === rem.savedId);
+      if (!found)
+        return setDriverSlot({
+          remembered: rem,
+          state: "failed",
+          error: "This saved analysis is no longer in Saved analyses for this file; it may have been deleted.",
+        });
+      setDriverSlot(null);
+      showSavedAnalysis(found);
+      return;
+    }
+    const r = await runDriverAnalysisAction(runId, documentId, rem.request).catch(failedRequest);
+    if (!stillWanted()) return;
+    if (!r.ok) return setDriverSlot({ remembered: rem, state: "failed", error: r.error });
+    setDriverSlot(null);
+    showDriverRequest(rem.request);
+    setReport(r.report);
     setDriverSeg(null);
-    setDriverSavedId(s.id); // whether it is in findings follows from its count (openPostState)
-    setError(null);
-    setMessage(null);
+    setDriverSavedId(null);
+  }
+
+  function retryDriverSlot() {
+    if (!driverSlot) return;
+    const listing = listDriverAnalysesAction(runId, documentId).catch(failedRequest);
+    listing.then((r) => {
+      if (r.ok) setSaved(r.items);
+    });
+    void restoreDriver(driverSlot.remembered, restoreEpoch.current, listing);
+  }
+
+  /** Clear: takes the driver result off the workspace and out of the memory. A saved analysis stays saved. */
+  function clearDriver() {
+    driverSeq.current += 1;
+    setDriverSlot(null);
+    setReport(null);
+    setDriverSavedId(null);
+    setDriverSeg(null);
+  }
+
+  // One grid for every chart kind (Grant, 2026-10-21: a scatter sat alone and full width above the
+  // tiled charts). Newest first by creation order; remembered cards still being rebuilt hold their
+  // place in it.
+  type GridItem =
+    | { kind: "chart"; seq: number; card: ChartCard }
+    | { kind: "scatter"; seq: number; card: ScatterCard }
+    | { kind: "slot"; seq: number; slot: RestoreSlot };
+  const grid: GridItem[] = [
+    ...charts.map((card) => ({ kind: "chart" as const, seq: card.seq, card })),
+    ...scatters.map((card) => ({ kind: "scatter" as const, seq: card.seq, card })),
+    ...cardSlots.map((slot) => ({ kind: "slot" as const, seq: slot.seq, slot })),
+  ].sort((a, b) => b.seq - a.seq);
+
+  // What the memory keeps: the grid in its order, and the NPS and driver results by request or
+  // saved id. A slot still rebuilding, or one that failed, is kept as remembered until cleared.
+  const memory: WorkspaceMemory = {
+    cards: grid.map((g): RememberedCard =>
+      g.kind === "slot"
+        ? g.slot.entry
+        : g.kind === "chart"
+          ? {
+              kind: "chart",
+              variable: g.card.requestVariable,
+              groupVar: g.card.groupVar,
+              weightVar: g.card.weightVar,
+              variant: g.card.variant,
+              title: g.card.title !== g.card.result.label ? g.card.title : null,
+              colors: g.card.colors,
+              legendPos: g.card.legendPos,
+            }
+          : { kind: "scatter", x: g.card.xVar, y: g.card.yVar, weightVar: g.card.weightVar, spread: g.card.spread },
+    ),
+    nps: npsResult && npsRequest ? npsRequest : (npsSlot?.req ?? null),
+    driver: report
+      ? driverSavedId
+        ? { kind: "saved", savedId: driverSavedId }
+        : { kind: "request", request: report.request }
+      : (driverSlot?.remembered ?? null),
+  };
+  const memoryJson = JSON.stringify(memory);
+  // The chart whose title and colours are being edited: the one last clicked, else the newest.
+  const newestChart = grid.find((g) => g.kind === "chart");
+  const editingChartId =
+    charts.find((c) => c.id === selectedChartId)?.id ?? (newestChart?.kind === "chart" ? newestChart.card.id : null);
+  useEffect(() => {
+    // Written after every change, so leaving by any route (Close, another section, a reload) keeps it.
+    writeWorkspaceMemory(runId, documentId, JSON.parse(memoryJson) as WorkspaceMemory);
+  }, [runId, documentId, memoryJson]);
+  const keptCount = memory.cards.length + (memory.nps ? 1 : 0) + (memory.driver ? 1 : 0);
+
+  useEffect(() => {
+    // Rebuild what was on screen last time, after the opening reads above have started (effects
+    // run in order). Reads only: no finding is posted, nothing is saved and no model is called.
+    const epoch = ++restoreEpoch.current;
+    for (const slot of cardSlots) void restoreCard(slot, epoch);
+    if (npsSlot) void restoreNps(npsSlot.req, epoch);
+    if (driverSlot) void restoreDriver(driverSlot.remembered, epoch, openingListing.current ?? listDriverAnalysesAction(runId, documentId).catch(failedRequest));
+    return () => {
+      restoreEpoch.current += 1; // a restore in flight no longer publishes (React runs this twice in development)
+    };
+  }, [runId, documentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Clear all: every card and result for this file leaves the workspace and the memory. */
+  function clearAll() {
+    restoreEpoch.current += 1; // no restore still in flight may put a card back
+    liveSlots.current.clear();
+    setCardSlots([]);
+    setCharts([]);
+    setScatters([]);
+    setSelectedChartId(null);
+    setChartError(null);
+    clearNps();
+    clearDriver();
+    setMessage("Cleared this file's results from the workspace. Saved analyses and posted findings are unchanged.");
   }
 
   /** The message after a post: says so when the findings were already there instead of "Posted 0". */
@@ -1051,8 +1452,12 @@ function AnalyticsWorkspace({
                   size={4}
                   value={npsVariable}
                   onChange={(e) => {
+                    // Choosing another question supersedes the result on screen, and a restore of it.
+                    npsSeq.current += 1;
+                    setNpsSlot(null);
                     setNpsVariable(e.target.value);
                     setNpsResult(null);
+                    setNpsRequest(null);
                   }}
                   className="w-full min-h-[14rem] flex-1 rounded border border-border px-1 py-1"
                   aria-label="NPS question"
@@ -1449,6 +1854,26 @@ function AnalyticsWorkspace({
         }
         middle={
         <div className="min-h-0 overflow-y-auto rounded-xl bg-slate-100 px-1 text-xs lg:h-[calc(100vh-5.5rem)]" data-testid="analytics-results-pane">
+          {(keptCount > 0 || !remembered.available) && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2" data-testid="analytics-kept-bar">
+              <p className="text-slate-600">
+                {remembered.available
+                  ? `${keptCount} result${keptCount === 1 ? "" : "s"} kept for this file in this browser. When you come back they are worked out again from the file as it is then; a saved analysis is reopened from Saved analyses.`
+                  : "This browser does not allow this site to store anything, so these results will not be kept after you leave."}
+              </p>
+              {keptCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="rounded-lg border border-border px-2.5 py-1 font-medium text-muted hover:bg-slate-50 hover:text-danger"
+                  title={`Removes every chart, scatter plot, NPS and driver result for this file from the workspace. Saved analyses stay in Saved analyses. ${CLEAR_KEEPS}`}
+                  data-testid="analytics-clear-all"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
           {mode === "driver" && (
             <>
               <details className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2" data-testid="driver-how-to-read">
@@ -1491,7 +1916,18 @@ function AnalyticsWorkspace({
                   </div>
                 )}
                 <div className="space-y-3">
-                  {!report && !error && (
+                  {driverSlot && !report && (
+                    <RestoreNotice
+                      testId="driver-restore-slot"
+                      what={driverSlot.remembered.kind === "saved" ? "The saved driver analysis you had open" : `Driver analysis of ${driverSlot.remembered.request.outcome}`}
+                      state={driverSlot.state}
+                      error={driverSlot.error}
+                      onRetry={retryDriverSlot}
+                      onClear={clearDriver}
+                      clearLabel="Clear this driver result"
+                    />
+                  )}
+                  {!report && !error && !driverSlot && (
                     <p className="max-w-xl rounded-xl border border-slate-200 bg-white p-4 text-slate-600">
                       Driver analysis shows which questions are most closely tied to the outcome. Questions that overlap,
                       such as two ways of asking about the same thing, share their weight between them instead of one of
@@ -1502,6 +1938,14 @@ function AnalyticsWorkspace({
                   )}
                   {report && (
                     <>
+                      <div className="flex justify-end">
+                        <ClearButton
+                          label="Clear this driver result"
+                          title={`Removes this result from the workspace. ${driverSavedId ? "The saved analysis stays in Saved analyses. " : ""}${CLEAR_KEEPS}`}
+                          onClick={clearDriver}
+                          testId="driver-clear"
+                        />
+                      </div>
                       {report.segments && report.segments.length > 0 && (
                         <SegmentTabs options={report.segments.map((s) => s.name)} value={driverSeg} onChange={setDriverSeg} />
                       )}
@@ -1534,7 +1978,18 @@ function AnalyticsWorkspace({
           {mode === "nps" && (
             <>
               {npsError && <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">{npsError}</p>}
-              {!npsResult && !npsError && (
+              {npsSlot && !npsResult && (
+                <RestoreNotice
+                  testId="nps-restore-slot"
+                  what={`NPS of ${npsSlot.req.variable}${npsSlot.req.groupVar ? ` by ${npsSlot.req.groupVar}` : ""}`}
+                  state={npsSlot.state}
+                  error={npsSlot.error}
+                  onRetry={() => void restoreNps(npsSlot.req, restoreEpoch.current)}
+                  onClear={clearNps}
+                  clearLabel="Clear this NPS result"
+                />
+              )}
+              {!npsResult && !npsError && !npsSlot && (
                 <p className="max-w-xl text-muted">
                   Pick an 11-point 0 to 10 &quot;how likely are you to recommend...&quot; question on the left. Promoters are
                   9-10, detractors 0-6, everyone else is a passive. The score is the promoter share minus the detractor
@@ -1543,6 +1998,9 @@ function AnalyticsWorkspace({
               )}
               {npsResult && (
                 <div className="max-w-3xl space-y-3">
+                  <div className="flex justify-end">
+                    <ClearButton label="Clear this NPS result" title={`Removes this NPS result from the workspace. ${CLEAR_KEEPS}`} onClick={clearNps} testId="nps-clear" />
+                  </div>
                   {npsResult.segments && npsResult.segments.length > 0 && (
                     <SegmentTabs options={npsResult.segments.map((s) => s.name)} value={npsSeg} onChange={setNpsSeg} />
                   )}
@@ -1579,183 +2037,180 @@ function AnalyticsWorkspace({
           {mode === "chart" && (
             <>
               {chartError && <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">{chartError}</p>}
-              {charts.length === 0 && scatters.length === 0 && !chartError && (
+              {grid.length === 0 && !chartError && (
                 <p className="max-w-xl text-muted">
                   Pick a question on the left and build its answer distribution as a chart, ready to copy or download for a
-                  slide. Build another one straight after: each chart stays on screen below the last, in a grid, so you can
-                  build out a whole set and commit the ones worth keeping together.
+                  slide. Build another one straight after: each new chart lands first in the grid, so you can build out a
+                  whole set and commit the ones worth keeping together.
                 </p>
               )}
-              {scatters.length > 0 && (
-                <div className={`grid grid-cols-1 gap-4 xl:grid-cols-2 mb-4`} data-testid="scatter-cards">
-                  {scatters.map((card) => {
-                    const res = card.result;
-                    const c = res.correlation;
-                    const shortScale = res.x.distinct <= 12 || res.y.distinct <= 12;
-                    const statText = c
-                      ? `Pearson correlation r = ${c.r.toFixed(2)} across ${c.n.toLocaleString()} complete cases (${res.weighted ? "weighted" : "unweighted"})`
-                      : "No correlation: fewer than three cases answered both, or one of the two does not vary.";
-                    const testText = !c ? "" : res.weighted ? "No significance test for a weighted correlation." : res.pValue === null ? "" : res.pValue < 0.001 ? "p < 0.001." : `p = ${res.pValue}.`;
-                    return (
-                      <div key={card.id} id={card.id} className="scroll-mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid="scatter-card">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-medium text-slate-600">{card.title}</p>
-                          <button
-                            type="button"
-                            onClick={() => setScatters((prev) => prev.filter((x) => x.id !== card.id))}
-                            className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-slate-50 hover:text-danger"
-                            aria-label="Delete this scatter plot"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                        <p className="text-xs text-foreground" data-testid="scatter-correlation">
-                          {statText}
-                          {testText ? ` ${testText}` : ""}
-                        </p>
-                        <p className="text-[11px] text-slate-600">
-                          {`${res.complete.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases answered both.${res.capped ? ` ${res.capped.shown.toLocaleString()} of them are drawn, evenly spread; the correlation uses all ${res.capped.of.toLocaleString()}.` : ""} This describes association, not cause.`}
-                        </p>
-                        {shortScale && (
-                          <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                            <input
-                              type="checkbox"
-                              checked={card.spread}
-                              onChange={(e) => setScatters((prev) => prev.map((x) => (x.id === card.id ? { ...x, spread: e.target.checked } : x)))}
+              {grid.length > 0 && (
+                  <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2" data-testid="analytics-card-grid">
+                    {grid.map((g) => {
+                      if (g.kind === "slot") {
+                        const slot = g.slot;
+                        return (
+                          <div key={slot.id} id={slot.id} className="scroll-mt-4 min-w-0 rounded-xl border border-slate-200 bg-white p-3" data-testid="analytics-card" data-card-kind={slot.entry.kind === "chart" ? slot.entry.variant : "scatter"}>
+                            <RestoreNotice
+                              testId="analytics-restore-slot"
+                              what={describeRemembered(slot.entry)}
+                              state={slot.state}
+                              error={slot.error}
+                              onRetry={() => retrySlot(slot)}
+                              onClear={() => clearSlot(slot.id)}
+                              clearLabel={slot.entry.kind === "chart" ? "Clear this chart" : "Clear this scatter plot"}
+                              bare
                             />
-                            Spread overlapping points (display only: on a short answer scale many points sit on the same spot; the values and the correlation are unchanged)
-                          </label>
-                        )}
-                        <ScatterVisual result={res} title={card.title} color={SERIES_COLORS[1]} spread={card.spread} />
-                        <div className="space-y-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleScatterCommit(card.id)}
-                            disabled={card.commitBusy || !c}
-                            className={`w-full rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm disabled:opacity-50 ${
-                              card.committed ? "border-border text-muted hover:bg-slate-50" : "border-primary text-primary hover:bg-primary/5"
-                            }`}
-                          >
-                            {card.commitBusy ? "Working..." : card.committed ? "Remove from findings" : "Post to findings"}
-                          </button>
-                          {card.committed && card.current === false && (
-                            <div className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-outdated">
-                              The posted finding was worked out from an earlier version of this file or its setup.{" "}
-                              <button type="button" onClick={() => toggleScatterCommit(card.id, true)} disabled={card.commitBusy} className="font-semibold underline">
-                                Update it with the current figures
+                          </div>
+                        );
+                      }
+                      if (g.kind === "scatter") {
+                        const card = g.card;
+                        const res = card.result;
+                        const c = res.correlation;
+                        const shortScale = res.x.distinct <= 12 || res.y.distinct <= 12;
+                        const statText = c
+                          ? `Pearson correlation r = ${c.r.toFixed(2)} across ${c.n.toLocaleString()} complete cases (${res.weighted ? "weighted" : "unweighted"})`
+                          : "No correlation: fewer than three cases answered both, or one of the two does not vary.";
+                        const testText = !c ? "" : res.weighted ? "No significance test for a weighted correlation." : res.pValue === null ? "" : res.pValue < 0.001 ? "p < 0.001." : `p = ${res.pValue}.`;
+                        return (
+                          <div key={card.id} id={card.id} className="scroll-mt-4 min-w-0 space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid="scatter-card" data-card-kind="scatter">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs font-medium text-muted">{card.title}</p>
+                              <ClearButton
+                                label="Clear this scatter plot"
+                                title={`Removes this scatter plot from the workspace. ${CLEAR_KEEPS}`}
+                                onClick={() => setScatters((prev) => prev.filter((x) => x.id !== card.id))}
+                              />
+                            </div>
+                            <p className="text-xs text-foreground" data-testid="scatter-correlation">
+                              {statText}
+                              {testText ? ` ${testText}` : ""}
+                            </p>
+                            <p className="text-[11px] text-slate-600">
+                              {`${res.complete.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases answered both.${res.capped ? ` ${res.capped.shown.toLocaleString()} of them are drawn, evenly spread; the correlation uses all ${res.capped.of.toLocaleString()}.` : ""} This describes association, not cause.`}
+                            </p>
+                            {shortScale && (
+                              <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={card.spread}
+                                  onChange={(e) => setScatters((prev) => prev.map((x) => (x.id === card.id ? { ...x, spread: e.target.checked } : x)))}
+                                />
+                                Spread overlapping points (display only: on a short answer scale many points sit on the same spot; the values and the correlation are unchanged)
+                              </label>
+                            )}
+                            <ScatterVisual result={res} title={card.title} color={SERIES_COLORS[1]} spread={card.spread} />
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => toggleScatterCommit(card.id)}
+                                disabled={card.commitBusy || !c}
+                                className={`w-full rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm disabled:opacity-50 ${
+                                  card.committed ? "border-border text-muted hover:bg-slate-50" : "border-primary text-primary hover:bg-primary/5"
+                                }`}
+                              >
+                                {card.commitBusy ? "Working..." : card.committed ? "Remove from findings" : "Post to findings"}
                               </button>
+                              {card.committed && card.current === false && (
+                                <div className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-outdated">
+                                  The posted finding was worked out from an earlier version of this file or its setup.{" "}
+                                  <button type="button" onClick={() => toggleScatterCommit(card.id, true)} disabled={card.commitBusy} className="font-semibold underline">
+                                    Update it with the current figures
+                                  </button>
+                                </div>
+                              )}
+                              {card.statusFailed && (
+                                <p className="text-[11px] text-amber-900" data-testid="scatter-finding-status-failed">
+                                  Whether this correlation is already posted could not be checked. Posting again does not add a second finding.
+                                </p>
+                              )}
+                              {card.committed && card.wordingReview && (
+                                <div className="space-y-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-wording-review">
+                                  <p>Your wording of this finding was kept, but it was written for earlier figures. With the current figures the finding would read:</p>
+                                  <p className="italic" data-testid="scatter-finding-suggested-text">{card.wordingReview.suggested_text}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button type="button" onClick={() => resolveScatterWording(card.id, "keep")} disabled={card.wordingBusy} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold disabled:opacity-50">
+                                      Keep my wording
+                                    </button>
+                                    <button type="button" onClick={() => resolveScatterWording(card.id, "use_current")} disabled={card.wordingBusy} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold disabled:opacity-50">
+                                      Use the current wording
+                                    </button>
+                                    {card.wordingBusy && <span>Saving...</span>}
+                                  </div>
+                                  <p className="text-amber-800">Using the current wording keeps yours on record with the finding.</p>
+                                </div>
+                              )}
+                              {card.wordingError && (
+                                <p className="text-[11px] text-red-700" role="alert" data-testid="scatter-finding-wording-error">
+                                  {card.wordingError}
+                                </p>
+                              )}
+                              {card.committed && card.current === null && (
+                                <p className="text-[11px] text-slate-600" data-testid="scatter-finding-unknown">
+                                  Whether the posted finding matches this file as it is now could not be checked.
+                                </p>
+                              )}
+                              {c && (
+                                <p className="text-[11px] text-slate-600" data-testid="scatter-post-limits">
+                                  {`Posts the correlation: r = ${c.r.toFixed(2)}, ${c.n.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases, ${res.weighted ? "weighted, no significance test" : testText ? `unweighted, ${testText.replace(/\.$/, "")}` : "unweighted"}; worked out again from the file when posted.`}
+                                </p>
+                              )}
                             </div>
-                          )}
-                          {card.statusFailed && (
-                            <p className="text-[11px] text-amber-900" data-testid="scatter-finding-status-failed">
-                              Whether this correlation is already posted could not be checked. Posting again does not add a second finding.
-                            </p>
-                          )}
-                          {card.committed && card.wordingReview && (
-                            <div className="space-y-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900" data-testid="scatter-finding-wording-review">
-                              <p>Your wording of this finding was kept, but it was written for earlier figures. With the current figures the finding would read:</p>
-                              <p className="italic" data-testid="scatter-finding-suggested-text">{card.wordingReview.suggested_text}</p>
-                              <div className="flex flex-wrap gap-2">
-                                <button type="button" onClick={() => resolveScatterWording(card.id, "keep")} disabled={card.wordingBusy} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold disabled:opacity-50">
-                                  Keep my wording
-                                </button>
-                                <button type="button" onClick={() => resolveScatterWording(card.id, "use_current")} disabled={card.wordingBusy} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold disabled:opacity-50">
-                                  Use the current wording
-                                </button>
-                                {card.wordingBusy && <span>Saving...</span>}
-                              </div>
-                              <p className="text-amber-800">Using the current wording keeps yours on record with the finding.</p>
-                            </div>
-                          )}
-                          {card.wordingError && (
-                            <p className="text-[11px] text-red-700" role="alert" data-testid="scatter-finding-wording-error">
-                              {card.wordingError}
-                            </p>
-                          )}
-                          {card.committed && card.current === null && (
-                            <p className="text-[11px] text-slate-600" data-testid="scatter-finding-unknown">
-                              Whether the posted finding matches this file as it is now could not be checked.
-                            </p>
-                          )}
-                          {c && (
-                            <p className="text-[11px] text-slate-600" data-testid="scatter-post-limits">
-                              {`Posts the correlation: r = ${c.r.toFixed(2)}, ${c.n.toLocaleString()} of ${res.casesInFile.toLocaleString()} cases, ${res.weighted ? "weighted, no significance test" : testText ? `unweighted, ${testText.replace(/\.$/, "")}` : "unweighted"}; worked out again from the file when posted.`}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {charts.length > 0 && (() => {
-                const editing = charts.find((c) => c.id === selectedChartId) ?? charts[charts.length - 1];
-                const editingGrouped = editing.result.grouped && editing.result.series.length > 1;
-                return (
-                  <>
-                    <div className="mb-3 space-y-2">
-                      <label className="inline-flex items-center gap-1.5 text-xs">
-                        <span className="font-medium text-muted">Editing</span>
-                        <select
-                          value={editing.id}
-                          onChange={(e) => setSelectedChartId(e.target.value)}
-                          className="rounded border border-border px-1.5 py-1 text-xs"
-                        >
-                          {charts.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.title}
-                              {c.groupVar ? ` × ${c.result.groupLabel}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <ChartCustomizePanel
-                        title={editing.title}
-                        onTitle={(v) => updateChartCard(editing.id, { title: v })}
-                        legendPos={editingGrouped ? editing.legendPos : undefined}
-                        onLegendPos={editingGrouped ? (v) => updateChartCard(editing.id, { legendPos: v }) : undefined}
-                        colors={editing.result.series.map((s, i) => ({
-                          label: s.name,
-                          value: editing.colors[i] ?? SERIES_COLORS[i % SERIES_COLORS.length],
-                        }))}
-                        onColor={(i, v) =>
-                          updateChartCard(editing.id, {
-                            colors: editing.colors.map((c, j) => (j === i ? v : c)),
-                          })
-                        }
-                        onResetColors={() =>
-                          updateChartCard(editing.id, {
-                            colors: editing.result.series.map((_, i) => SERIES_COLORS[i % SERIES_COLORS.length]),
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                      {charts.map((card) => (
+                          </div>
+                        );
+                      }
+                      const card = g.card;
+                      const isEditing = card.id === editingChartId;
+                      const grouped = card.result.grouped && card.result.series.length > 1;
+                      return (
                         <div
                           key={card.id}
+                          id={card.id}
                           onClick={() => setSelectedChartId(card.id)}
-                          className={`cursor-pointer space-y-2 rounded-xl border bg-white p-3 ${
-                            card.id === editing.id ? "border-primary ring-1 ring-primary" : "border-border"
+                          className={`scroll-mt-4 min-w-0 cursor-pointer space-y-2 rounded-xl border bg-white p-3 ${
+                            isEditing ? "border-primary ring-1 ring-primary" : "border-slate-200"
                           }`}
+                          data-testid="chart-card"
+                          data-card-kind={card.variant}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-xs font-medium text-muted">
                               {card.title}
                               {card.groupVar ? ` × ${card.result.groupLabel}` : ""}
                             </p>
-                            <button
-                              type="button"
+                            <ClearButton
+                              label="Clear this chart"
+                              title={`Removes this chart from the workspace. ${CLEAR_KEEPS}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 removeChartCard(card.id);
                               }}
-                              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-slate-50 hover:text-danger"
-                              aria-label="Delete this chart"
-                            >
-                              Delete
-                            </button>
+                            />
                           </div>
+                          {/* The title and colour controls sit in the chart they edit, so they never push other cards apart. */}
+                          {isEditing ? (
+                            <div onClick={(e) => e.stopPropagation()} data-testid="chart-customize">
+                              <ChartCustomizePanel
+                                title={card.title}
+                                onTitle={(v) => updateChartCard(card.id, { title: v })}
+                                legendPos={grouped ? card.legendPos : undefined}
+                                onLegendPos={grouped ? (v) => updateChartCard(card.id, { legendPos: v }) : undefined}
+                                colors={card.result.series.map((sr, i) => ({
+                                  label: sr.name,
+                                  value: card.colors[i] ?? SERIES_COLORS[i % SERIES_COLORS.length],
+                                }))}
+                                onColor={(i, v) => updateChartCard(card.id, { colors: card.colors.map((c, j) => (j === i ? v : c)) })}
+                                onResetColors={() =>
+                                  updateChartCard(card.id, { colors: card.result.series.map((_, i) => SERIES_COLORS[i % SERIES_COLORS.length]) })
+                                }
+                              />
+                            </div>
+                          ) : (
+                            <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => setSelectedChartId(card.id)}>
+                              Edit title and colours
+                            </button>
+                          )}
                           {card.variant !== "histogram" ? (
                             // Switching redraws the same figures; nothing is run again.
                             <div className="inline-flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="radiogroup" aria-label="Draw as">
@@ -1795,11 +2250,10 @@ function AnalyticsWorkspace({
                             {card.commitBusy ? "Working..." : card.committed ? "Remove from findings" : "Post to findings"}
                           </button>
                         </div>
-                      ))}
-                    </div>
-                  </>
-                );
-              })()}
+                      );
+                    })}
+                  </div>
+              )}
 
             </>
           )}
@@ -2456,6 +2910,74 @@ function StatedQuadrant({ report }: { report: DriverReport }) {
         corner names are a market research convention, not a strict Kano survey. The gap between the two axes is the
         finding: a question high on derived and low on stated importance is doing more than people say.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Clear takes a result off the workspace and out of what this browser remembers for the file. It
+ * never deletes a saved analysis or a posted finding; its tooltip says so.
+ */
+function ClearButton({ label, title, onClick, testId }: { label: string; title: string; onClick: (e: MouseEvent) => void; testId?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={label}
+      data-testid={testId}
+      className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-slate-50 hover:text-danger"
+    >
+      Clear
+    </button>
+  );
+}
+
+/**
+ * A remembered result being worked out again, or one that could not be: the reason is shown with
+ * Try again and Clear, so a request that no longer applies is neither shown as a result nor
+ * silently dropped.
+ */
+function RestoreNotice({
+  testId,
+  what,
+  state,
+  error,
+  onRetry,
+  onClear,
+  clearLabel,
+  bare = false,
+}: {
+  testId: string;
+  what: string;
+  state: "loading" | "failed";
+  error?: string;
+  onRetry: () => void;
+  onClear: () => void;
+  clearLabel: string;
+  bare?: boolean;
+}) {
+  return (
+    <div
+      className={`space-y-1.5 ${bare ? "" : "max-w-xl rounded-xl border border-slate-200 bg-white p-3"} ${state === "failed" ? "text-amber-900" : "text-slate-600"}`}
+      data-testid={testId}
+      data-state={state}
+      role={state === "failed" ? "alert" : "status"}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium">{what}</p>
+        <ClearButton label={clearLabel} title={`Removes this from the workspace. ${CLEAR_KEEPS}`} onClick={onClear} />
+      </div>
+      {state === "loading" ? (
+        <p>Working this out again from the current file...</p>
+      ) : (
+        <>
+          <p>Kept from your last visit, but it could not be worked out again: {error}</p>
+          <button type="button" onClick={onRetry} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-semibold">
+            Try again
+          </button>
+        </>
+      )}
     </div>
   );
 }
