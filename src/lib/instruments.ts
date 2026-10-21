@@ -660,13 +660,34 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
       return r.rows.map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed" }));
     });
   } catch (e) {
-    // Migration 0060 (instrument tables) or a later column not applied: this database has no
-    // questionnaire links at all, which is a supported state, so the file's own labels stand.
-    if (isMissingInstrumentSchema(e)) return [];
-    // GT100-F01: anything else (a permission, connection or query failure) means the confirmed
-    // meaning exists but could not be read. Returning [] here used to look exactly like "no
-    // confirmed links", so a table was computed with the file's own labels and missing codes: a
-    // confirmed "Don't know" became a valid answer and changed bases and percentages.
+    // GTR-01: an undefined table or column alone does not show that this database has no
+    // questionnaire links. Only a database where the questionnaire feature was never installed (both
+    // tables of migration 0060 absent, positively checked) supports "the file's own labels stand".
+    // When either table exists, a missing column (for example routing_text renamed away) or a missing
+    // dependent object is schema drift over links that may well be confirmed, so it refuses like any
+    // other failed read; no compatibility query drops routing while keeping labels.
+    if (isMissingInstrumentSchema(e) && (await questionnaireSchemaAbsent(tenantId))) return [];
+    // GT100-F01: anything else (a permission, connection or query failure, or schema drift) means
+    // the confirmed meaning may exist but could not be read. Returning [] here used to look exactly
+    // like "no confirmed links", so a table was computed with the file's own labels and missing
+    // codes: a confirmed "Don't know" became a valid answer and changed bases and percentages.
+    throw new InstrumentMeaningUnavailableError(INSTRUMENT_MEANING_UNAVAILABLE, { cause: e });
+  }
+}
+
+/**
+ * GTR-01: true only when neither questionnaire table exists (a database before migration 0060).
+ * A failed check is not an answer, so it refuses rather than treating the schema as absent.
+ */
+async function questionnaireSchemaAbsent(tenantId: string): Promise<boolean> {
+  try {
+    return await withTenantRead(tenantId, async (client) => {
+      const r = await client.query<{ absent: boolean }>(
+        "select to_regclass('instrument_links') is null and to_regclass('instrument_items') is null as absent",
+      );
+      return r.rows[0]?.absent === true;
+    });
+  } catch (e) {
     throw new InstrumentMeaningUnavailableError(INSTRUMENT_MEANING_UNAVAILABLE, { cause: e });
   }
 }
@@ -681,7 +702,7 @@ export class InstrumentMeaningUnavailableError extends Error {}
 export const INSTRUMENT_MEANING_UNAVAILABLE =
   "The confirmed questionnaire labels could not be read, so this was not calculated: answer meanings and Don't know codes would be wrong. Try again.";
 
-/** undefined_table (42P01) or undefined_column (42703): the questionnaire schema is not migrated here. */
+/** undefined_table (42P01) or undefined_column (42703): possibly an old schema, confirmed by questionnaireSchemaAbsent. */
 function isMissingInstrumentSchema(e: unknown): boolean {
   const code = (e as { code?: unknown } | null)?.code;
   return code === "42P01" || code === "42703";

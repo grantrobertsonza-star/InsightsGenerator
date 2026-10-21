@@ -11,14 +11,19 @@
 //     categories and cross tab refuse before any engine call; nothing is written, the saved table
 //     and the confirmed link are unchanged
 //   - retry after access returns: the confirmed overlay reaches the engine again
-//   - a database without the questionnaire table (42P01) is the supported old schema: no overlay
+//   - GTR-01: only a database where neither questionnaire table exists is the supported old schema
+//     (no overlay, the engine runs); a missing column (routing_text renamed away) or a missing links
+//     table beside existing items is schema drift over stored links: refused like a failed read, and
+//     the confirmed overlay returns once the column is back; a failed presence check also refuses
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 
-const { engineCalls, DICTIONARY } = vi.hoisted(() => ({
+const { engineCalls, DICTIONARY, presenceFault } = vi.hoisted(() => ({
   engineCalls: [] as unknown[][],
+  // GTR-01: when on, the questionnaire presence check (and only it) fails as a dropped connection would.
+  presenceFault: { on: false },
   DICTIONARY: {
     version: 10,
     layout: "rows_are_cases",
@@ -29,6 +34,24 @@ const { engineCalls, DICTIONARY } = vi.hoisted(() => ({
     ],
   },
 }));
+vi.mock("../db", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../db")>();
+  type Client = Parameters<Parameters<typeof real.withTenantRead>[1]>[0];
+  const faulty = (client: Client): Client =>
+    new Proxy(client, {
+      get(target, prop) {
+        if (prop === "query" && presenceFault.on) {
+          return (sql: unknown, ...rest: unknown[]) =>
+            String(sql).includes("to_regclass")
+              ? Promise.reject(Object.assign(new Error("simulated: connection lost during the presence check"), { code: "08006" }))
+              : (target.query as (...a: unknown[]) => unknown)(sql, ...rest);
+        }
+        const value = (target as unknown as Record<PropertyKey, unknown>)[prop];
+        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  return { ...real, withTenantRead: ((tenantId, fn) => real.withTenantRead(tenantId, (client) => fn(faulty(client)))) as typeof real.withTenantRead };
+});
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
 vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "synthetic", anthropic: { messages: { create: vi.fn() } } }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
@@ -158,18 +181,73 @@ describe.skipIf(!TEST_DATABASE_URL)("GT100-F01 a failed confirmed-questionnaire 
     expect(link).toBeTruthy();
   });
 
-  it("a database without the questionnaire table is the supported old schema: no overlay, no error", async () => {
+  it("GTR-01: a database with neither questionnaire table is the supported old schema: no overlay, no error", async () => {
     const { getLabelOverlay } = await import("../instruments");
     const { loadCategories } = await import("../crosstabs");
-    await db.pool.query("alter table instrument_links rename to instrument_links_hidden");
+    await db.pool.query("alter table instrument_links rename to instrument_links_hidden; alter table instrument_items rename to instrument_items_hidden");
     try {
       expect(await getLabelOverlay(tenant, run, data)).toBeNull();
       await loadCategories(tenant, run, data, "Q1");
       expect(engineCalls.map((c) => c[0])).toEqual(["categories"]);
       expect((engineCalls[0][3] as { overlay: unknown }).overlay).toBeNull();
     } finally {
+      await db.pool.query("alter table instrument_items_hidden rename to instrument_items; alter table instrument_links_hidden rename to instrument_links");
+    }
+  });
+
+  const expectRefusedWithNothingChanged = async () => {
+    const { getLabelOverlay, InstrumentMeaningUnavailableError } = await import("../instruments");
+    const { loadCategories, buildCrosstab } = await import("../crosstabs");
+    const before = await snapshot();
+    await expect(getLabelOverlay(tenant, run, data)).rejects.toBeInstanceOf(InstrumentMeaningUnavailableError);
+    await expect(loadCategories(tenant, run, data, "Q1")).rejects.toBeInstanceOf(InstrumentMeaningUnavailableError);
+    await expect(
+      buildCrosstab(tenant, run, data, { rowItems: [{ key: "Q1", label: "Q1", vars: ["Q1"] }], columnVars: [] } as never),
+    ).rejects.toBeInstanceOf(InstrumentMeaningUnavailableError);
+    expect(engineCalls.filter((c) => c[0] !== "dictionary")).toHaveLength(0);
+    expect(await snapshot()).toEqual(before);
+  };
+  const expectConfirmedOverlayBack = async () => {
+    const { getLabelOverlay } = await import("../instruments");
+    const { loadCategories } = await import("../crosstabs");
+    expect((await getLabelOverlay(tenant, run, data))?.valueLabels.Q1).toEqual({ "1": "Yes", "2": "No", "99": "Don't know" });
+    engineCalls.length = 0;
+    await loadCategories(tenant, run, data, "Q1");
+    expect((engineCalls[0][3] as { overlay: { valueLabels: Record<string, unknown> } }).overlay.valueLabels.Q1).toEqual({ "1": "Yes", "2": "No", "99": "Don't know" });
+  };
+
+  it("GTR-01: a missing routing column with confirmed links stored refuses, changes nothing, and recovers", async () => {
+    await db.pool.query("alter table instrument_items rename column routing_text to routing_text_hidden");
+    try {
+      await expectRefusedWithNothingChanged();
+      expect((await db.pool.query("select status from instrument_links where id = $1", [link])).rows[0].status).toBe("confirmed");
+    } finally {
+      await db.pool.query("alter table instrument_items rename column routing_text_hidden to routing_text");
+    }
+    await expectConfirmedOverlayBack();
+  });
+
+  it("GTR-01: a missing links table beside existing questionnaire items is drift, not the old schema", async () => {
+    await db.pool.query("alter table instrument_links rename to instrument_links_hidden");
+    try {
+      const { getLabelOverlay, InstrumentMeaningUnavailableError } = await import("../instruments");
+      await expect(getLabelOverlay(tenant, run, data)).rejects.toBeInstanceOf(InstrumentMeaningUnavailableError);
+    } finally {
       await db.pool.query("alter table instrument_links_hidden rename to instrument_links");
     }
+    await expectConfirmedOverlayBack();
+  });
+
+  it("GTR-01: a failed presence check refuses rather than treating the schema as absent", async () => {
+    await db.pool.query("alter table instrument_items rename column routing_text to routing_text_hidden");
+    presenceFault.on = true;
+    try {
+      await expectRefusedWithNothingChanged();
+    } finally {
+      presenceFault.on = false;
+      await db.pool.query("alter table instrument_items rename column routing_text_hidden to routing_text");
+    }
+    await expectConfirmedOverlayBack();
   });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("GT100-F01 a failed confirmed-questionnaire lookup refuses the calculation", () => {
