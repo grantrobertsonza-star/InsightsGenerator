@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-21. State: **READY_FOR_CODEX** (main copy only): repairs for GTR-01, GTR-02, SEC-01, SEC-02 and M-GTR-01 (`docs/independent-gt100-rereview-main-2026-10-21.md`) and, at Grant's request, filters across the top with theme tiles; see `docs/gtr-repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-21. State: **READY_FOR_CODEX** (main only): repairs for GT500-F01, F02, F03, P01, M-GT500-01 and UI-GT500-01 (`docs/golden-thread-500-independent-review-2026-10-21.md`, frozen `4a4563b`) in `0e37127` (correctness, briefs) and `b07a79a` (category strip, design); see `docs/gt500-repair-handover-2026-10-21.md`. No migration. Prior GTR repairs and DESIGN-GTR-01 remain accepted at their recorded boundaries. Not go-live approval; target-environment and real-model gates remain separate. 3001 is out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: repairs for Codex's GT500 review, main copy (2026-10-21)
+
+Implemented, ready for review: `0e37127` (GT500-F01 import lineage, F02 visible failed fills, F03 stale-edit conflicts, P01 one identity for Add, Fill and scoring, M-GT500-01 briefs and comments) and `b07a79a` (UI-GT500-01). Checks and limits in `docs/gt500-repair-handover-2026-10-21.md`. Codex's previous status line is kept in `.fnd001/backup-status-1021b/`.
+
 
 ## Claude: repairs for Codex's GT100 re-review, main copy (2026-10-21)
 
