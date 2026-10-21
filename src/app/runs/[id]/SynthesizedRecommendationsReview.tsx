@@ -924,46 +924,47 @@ export default function SynthesizedRecommendationsReview({
           </button>
         )}
       {live.length > 0 && (
-        <div className="grid grid-cols-2 gap-2">
+        // One compact row of priority filters (Grant, 2026-10-21): the count beside its label.
+        <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(7.5rem,1fr))]" data-testid="recommendation-priority-filters">
           <button
             type="button"
             onClick={() => setPriorityFilter("all")}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "all" ? "border-primary bg-primary-light" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-foreground">{live.length}</div>
-            <div className="text-xs text-muted">Total</div>
+            <span className="text-base font-semibold text-foreground">{live.length}</span>
+            <span className="text-xs text-muted">Total</span>
           </button>
           <button
             type="button"
             onClick={() => setPriorityFilter((f) => (f === "high" ? "all" : "high"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "high" ? "border-danger bg-danger-light" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-danger">{highCount}</div>
-            <div className="text-xs text-muted">High priority</div>
+            <span className="text-base font-semibold text-danger">{highCount}</span>
+            <span className="text-xs text-muted">High priority</span>
           </button>
           <button
             type="button"
             onClick={() => setPriorityFilter((f) => (f === "medium" ? "all" : "medium"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "medium" ? "border-amber-400 bg-amber-50" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-amber-700">{mediumCount}</div>
-            <div className="text-xs text-muted">Medium priority</div>
+            <span className="text-base font-semibold text-amber-700">{mediumCount}</span>
+            <span className="text-xs text-muted">Medium priority</span>
           </button>
           <button
             type="button"
             onClick={() => setPriorityFilter((f) => (f === "low" ? "all" : "low"))}
-            className={`rounded-lg border px-3 py-2 text-left transition ${
+            className={`flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-left transition ${
               priorityFilter === "low" ? "border-slate-400 bg-slate-100" : "border-border bg-white hover:border-slate-300"
             }`}
           >
-            <div className="text-lg font-semibold text-slate-600">{lowCount}</div>
-            <div className="text-xs text-muted">Low priority</div>
+            <span className="text-base font-semibold text-slate-600">{lowCount}</span>
+            <span className="text-xs text-muted">Low priority</span>
           </button>
         </div>
       )}

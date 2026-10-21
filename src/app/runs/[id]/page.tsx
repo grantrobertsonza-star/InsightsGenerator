@@ -5322,6 +5322,8 @@ export default async function RunPage({
             ) : (
               <ThreePane
                 storageKey="import"
+                // The left list may take up to half the width, as Research quality's panes can (Grant, 2026-10-21).
+                leftMaxShare={0.5}
                 left={
                   <Pane
                     side="plain"
@@ -5471,6 +5473,7 @@ export default async function RunPage({
               They are scored and checked against the evidence on the Objectives page.
             </p>
             <ThreePane
+              leftMaxShare={0.5}
               left={
                 <Pane side="plain" title="Objective and context">
                   <RunContextForm
@@ -5509,6 +5512,7 @@ export default async function RunPage({
             </p>
             <ObjectiveSelectionProvider>
               <ThreePane
+                leftMaxShare={0.5}
                 left={
                   <Pane side="plain" title="Objectives">
                     <ObjectiveList

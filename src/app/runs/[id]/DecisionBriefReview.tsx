@@ -287,6 +287,7 @@ export default function DecisionBriefReview({
   return (
     <ThreePane
       storageKey="decisions-v3"
+      leftMaxShare={0.5}
       left={
         <Pane side="plain" title="What the evidence shows">
           <EvidenceSummary text={evidenceSynthesis} />

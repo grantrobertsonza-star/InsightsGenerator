@@ -86,7 +86,7 @@ export default function FindingsWorkspace({
           // OV-04: everything shrinks to the workspace, which the sidebar can leave very narrow; long
           // words break rather than push the page sideways (the themes table scrolls inside itself).
           <div className="flex min-w-0 flex-col gap-4 rounded-2xl bg-slate-100 p-3 [overflow-wrap:anywhere] sm:p-5" data-testid="findings-overview">
-            <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr))]">
               <StatTile
                 title="Findings reviewed"
                 total={`${overview.status.total} findings`}

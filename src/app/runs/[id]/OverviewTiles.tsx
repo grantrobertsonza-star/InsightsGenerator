@@ -35,30 +35,31 @@ export function StatTile({
 }) {
   const sum = segments.reduce((n, s) => n + s.count, 0);
   return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4" data-testid={testId} aria-label={title}>
+    // Compact, dashboard-style (Grant, 2026-10-21): four fit across a wide screen.
+    <section className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm" data-testid={testId} aria-label={title}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-        <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-        <span className="text-xs text-slate-600">{total}</span>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
+        <span className="text-[11px] text-slate-500">{total}</span>
       </div>
       {onOpen ? (
         <button type="button" onClick={onOpen} className="flex flex-wrap items-baseline gap-x-2 text-left hover:underline">
-          <span className="text-3xl font-bold text-foreground" data-testid={`${testId}-headline`}>{headline}</span>
-          <span className="text-sm text-slate-600">{headlineLabel}</span>
+          <span className="text-2xl font-bold leading-tight text-foreground" data-testid={`${testId}-headline`}>{headline}</span>
+          <span className="text-xs text-slate-600">{headlineLabel}</span>
         </button>
       ) : (
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="text-3xl font-bold text-foreground" data-testid={`${testId}-headline`}>{headline}</span>
-          <span className="text-sm text-slate-600">{headlineLabel}</span>
+          <span className="text-2xl font-bold leading-tight text-foreground" data-testid={`${testId}-headline`}>{headline}</span>
+          <span className="text-xs text-slate-600">{headlineLabel}</span>
         </div>
       )}
       <div
-        className="flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-slate-100"
+        className="flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-slate-100"
         role="img"
         aria-label={segments.map((s) => `${s.label} ${s.count}`).join(", ")}
       >
         {sum > 0 && segments.filter((s) => s.count > 0).map((s) => <span key={s.key} className={s.color} style={{ flex: s.count }} />)}
       </div>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-700">
+      <ul className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-slate-700">
         {segments.map((s) => (
           <li key={s.key}>
             {s.onOpen && s.count > 0 ? (
@@ -107,7 +108,7 @@ export function AttentionRow({
   }[tone];
   const body = (
     <>
-      <span className={`min-w-[2.5rem] text-xl font-bold ${toneClass.split(" ")[1]}`}>{count}</span>
+      <span className={`min-w-[2rem] text-lg font-bold leading-tight ${toneClass.split(" ")[1]}`}>{count}</span>
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold text-foreground">{title}</span>
         {detail && <span className="text-xs text-slate-600">{detail}</span>}
@@ -115,11 +116,11 @@ export function AttentionRow({
     </>
   );
   return onOpen ? (
-    <button type="button" onClick={onOpen} className={`flex w-full items-start gap-3 rounded-lg p-3 text-left hover:ring-1 hover:ring-slate-300 ${toneClass.split(" ")[0]}`} data-testid={testId}>
+    <button type="button" onClick={onOpen} className={`flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left hover:ring-1 hover:ring-slate-300 ${toneClass.split(" ")[0]}`} data-testid={testId}>
       {body}
     </button>
   ) : (
-    <div className={`flex items-start gap-3 rounded-lg p-3 ${toneClass.split(" ")[0]}`} data-testid={testId}>
+    <div className={`flex items-start gap-2.5 rounded-md px-2.5 py-2 ${toneClass.split(" ")[0]}`} data-testid={testId}>
       {body}
     </div>
   );
