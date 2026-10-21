@@ -109,6 +109,7 @@ test("C1 deleting the data file after downstream work: what is removed, what is 
     expect.soft(obs.recommendation?.action_text, "researcher recommendation kept").toBe(t.action);
     // Every insight that rested on the deleted file is shown as no longer supported.
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
     const cards = page.locator('[data-testid="synthesized-insight-card"]');
     obs.insightCards = await cards.evaluateAll((els) => els.map((e) => ({ status: e.getAttribute("data-support-status"), text: (e.innerText || "").slice(0, 200) })));
     for (const c of obs.insightCards) expect.soft(c.status, `insight shown with its support qualified: ${c.text.slice(0, 60)}`).not.toBe("current");
@@ -155,8 +156,12 @@ test("C2 uploading the same data file again does not add corroboration", async (
     obs.documents = (await client.query("select source_filename, content_sha256 from documents where run_id=$1 order by created_at", [t.run.id]).catch(async () => (await client.query("select source_filename from documents where run_id=$1", [t.run.id])))).rows;
     // Re-run synthesis: the duplicate must not raise any insight's independent-source count or tier.
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
+    // Waits for the synthesis action itself: once there are insights the section shows its overview,
+    // so the button may no longer be on screen when it finishes.
+    const synthesized = page.waitForResponse((r) => r.request().method() === "POST" && Boolean(r.request().headers()["next-action"]), { timeout: 180_000 });
     await page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click();
-    await expect(page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ })).toBeEnabled({ timeout: 180_000 });
+    await synthesized;
     obs.after = await tiers();
     for (const b of obs.before) {
       const a = obs.after.find((x) => x.id === b.id);
@@ -179,6 +184,7 @@ test("C3 a save lost in transit is not shown as saved, and a retry saves once", 
     // Recommendation edit: the first server-action POST from the page is dropped before it reaches the server.
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Recommendations(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("rec-tab-review"); if (await t.count()) await t.click(); } // the section opens on an overview
     const card = page.locator(`[data-testid="recommendation-card"][data-recommendation-id="${t.recommendation.id}"]`);
     await card.getByRole("button", { name: /^Edit/ }).first().click();
     const edited = `${t.action} Edited once.`;
@@ -203,6 +209,7 @@ test("C3 a save lost in transit is not shown as saved, and a retry saves once", 
     await page.unroute("**/*");
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Recommendations(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("rec-tab-review"); if (await t.count()) await t.click(); } // the section opens on an overview
     await expect(card).toContainText("Edited once.");
     obs.copies = Number((await client.query("select count(*) from recommendations where run_id=$1 and action_text=$2", [t.run.id, edited])).rows[0].count);
     expect.soft(obs.copies, "saved once").toBe(1);
@@ -226,6 +233,7 @@ test("C4 leaving the page while the narrative is generating, then retrying", asy
     obs.before = await narratives();
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights report(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("report-tab-narrative"); if (await t.count()) await t.click(); } // the section opens on an overview
     // Hold the regeneration request, leave the page, then let it continue.
     let held = null;
     await page.route("**/*", async (route) => {
@@ -241,12 +249,14 @@ test("C4 leaving the page while the narrative is generating, then retrying", asy
     await page.waitForTimeout(5000);
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights report(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("report-tab-narrative"); if (await t.count()) await t.click(); } // the section opens on an overview
     obs.afterInterrupt = { narratives: await narratives(), generated: await page.getByText(/^Generated \d/).count() };
     // Retry.
     await page.getByRole("button", { name: /^(Generate Insights Report|Regenerate report content)$/ }).click();
     await expect(page.getByRole("button", { name: "Regenerate report content", exact: true })).toBeVisible({ timeout: 180_000 });
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights report(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("report-tab-narrative"); if (await t.count()) await t.click(); } // the section opens on an overview
     await expect(page.getByText(/^Generated \d/)).toBeVisible();
     obs.afterRetry = await narratives();
     expect.soft(obs.afterRetry, "one current narrative after an interrupted run and a retry").toBe(obs.before);
@@ -289,10 +299,12 @@ test("C5 a data correction behind an accepted finding after downstream work: sta
     await page.reload({ waitUntil: "networkidle" });
     // Findings, insights and the narrative after the correction.
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
     const card = page.locator(`[data-testid="synthesized-insight-card"][data-insight-id="${t.insight.id}"]`);
     obs.insightCard = squash(await card.innerText()).slice(0, 400);
     expect.soft(obs.insightCard, "the insight resting on the corrected variable is qualified").toMatch(QUALIFIER);
     await page.getByRole("button", { name: /^Insights report(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("report-tab-narrative"); if (await t.count()) await t.click(); } // the section opens on an overview
     obs.narrativeBanner = await page.locator('[data-support-status]').evaluateAll((els) => els.map((e) => `${e.getAttribute("data-support-status")}: ${(e.innerText || "").slice(0, 160)}`));
     const ex = await exportsOf(page, t.run);
     for (const key of ["storyPptx", "storyDocx"]) {
@@ -323,6 +335,7 @@ test("C6 rejecting an insight after the narrative exists: left out of accepted e
     const t = await thread(page, testInfo, "change-reject-insight");
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
     const card = page.locator(`[data-testid="synthesized-insight-card"][data-insight-id="${t.insight.id}"]`);
     await card.getByRole("button", { name: "Reject", exact: true }).click();
     await expect.poll(async () => (await client.query("select review_status from synthesized_insights where id=$1", [t.insight.id])).rows[0].review_status, { timeout: 60_000 }).toBe("rejected");
@@ -338,6 +351,7 @@ test("C6 rejecting an insight after the narrative exists: left out of accepted e
     }
     // Regenerate the narrative: the rejected insight is no longer used.
     await page.getByRole("button", { name: /^Insights report(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("report-tab-narrative"); if (await t.count()) await t.click(); } // the section opens on an overview
     await page.getByRole("button", { name: /^(Generate Insights Report|Regenerate report content)$/ }).click();
     await expect(page.getByRole("button", { name: "Regenerate report content", exact: true })).toBeEnabled({ timeout: 180_000 });
     await page.reload({ waitUntil: "networkidle" });
@@ -366,6 +380,7 @@ test("C7 an edited AI recommendation keeps its wording through re-synthesis, rel
     expect(ai, "an AI recommendation exists on a synthesized insight").toBeTruthy();
     await page.goto(t.run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Recommendations(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("rec-tab-review"); if (await t.count()) await t.click(); } // the section opens on an overview
     const card = page.locator(`[data-testid="recommendation-card"][data-recommendation-id="${ai.id}"]`);
     await card.getByRole("button", { name: /^Edit/ }).first().click();
     const edited = "Researcher-edited action: test the offer with the female segment first.";
@@ -374,14 +389,20 @@ test("C7 an edited AI recommendation keeps its wording through re-synthesis, rel
     await expect.poll(async () => (await client.query("select action_text from recommendations where id=$1", [ai.id])).rows[0]?.action_text, { timeout: 60_000 }).toBe(edited);
     // Re-run synthesis.
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
+    // Waits for the synthesis action itself: once there are insights the section shows its overview,
+    // so the button may no longer be on screen when it finishes.
+    const synthesized = page.waitForResponse((r) => r.request().method() === "POST" && Boolean(r.request().headers()["next-action"]), { timeout: 180_000 });
     await page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click();
-    await expect(page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ })).toBeEnabled({ timeout: 180_000 });
+    await synthesized;
     await page.reload({ waitUntil: "networkidle" });
     obs.afterResynthesis = (await client.query("select id, action_text, edited, status from recommendations where run_id=$1 and action_text=$2", [t.run.id, edited])).rows;
     expect.soft(obs.afterResynthesis.length, "the edited recommendation survives re-synthesis exactly once").toBe(1);
     await page.getByRole("button", { name: /^Recommendations(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("rec-tab-review"); if (await t.count()) await t.click(); } // the section opens on an overview
     await expect.soft(page.getByText(edited).first(), "edited wording shown after reload").toBeVisible();
     await page.getByRole("button", { name: /^Insights report(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("report-tab-narrative"); if (await t.count()) await t.click(); } // the section opens on an overview
     await page.getByRole("button", { name: /^(Generate Insights Report|Regenerate report content)$/ }).click();
     await expect(page.getByRole("button", { name: "Regenerate report content", exact: true })).toBeEnabled({ timeout: 180_000 });
     const ex = await exportsOf(page, t.run);

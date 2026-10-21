@@ -71,6 +71,18 @@ export async function bind({ page, target, testInfo }) {
       .getByRole("button", { name: new RegExp(`^${escapeRegExp(name)}(\\s*\\d+)?$`) })
       .first()
       .click();
+    // Findings, Insights, Recommendations and the Insights report open on an overview (2026-10-21);
+    // the journeys work in the review list or the narrative.
+    const reviewTab = {
+      Findings: "findings-tab-review",
+      Insights: "insights-tab-review",
+      Recommendations: "rec-tab-review",
+      "Insights report": "report-tab-narrative",
+    }[name];
+    if (reviewTab) {
+      const tab = page.getByTestId(reviewTab).filter({ visible: true });
+      if (await tab.count()) await tab.first().click();
+    }
   }
 
   const findingCard = (finding) => page.locator(`[data-testid="finding-card"][data-finding-id="${finding.id}"]`);
@@ -485,8 +497,9 @@ export async function bind({ page, target, testInfo }) {
     const wanted = run.independentEvidence ? 2 : 1;
     const accepted = page.locator('[data-testid="synthesized-insight-card"][data-review-status="accepted"]');
     for (let attempt = 0; attempt < 12 && ((await citing.count()) === 0 || (await accepted.count()) < wanted); attempt++) {
-      await page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click();
-      await expect(page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ })).toBeEnabled({ timeout: STEP_TIMEOUT });
+      // Waits for the synthesis action itself: once it has insights the section shows its overview,
+      // so the button may no longer be on screen when it finishes.
+      await viaServerAction(() => page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click());
       await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
       await openSection("Insights");
       if ((await citing.count()) === 0) await page.waitForTimeout(5_000);

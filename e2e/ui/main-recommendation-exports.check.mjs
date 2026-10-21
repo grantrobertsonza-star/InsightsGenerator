@@ -81,6 +81,7 @@ test("GT-007 main Recommendations list: native Excel and Slides exports agree wi
     const openRecommendations = async () => {
       await page.goto(run.url, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /^Recommendations(\s*\d+)?$/ }).first().click();
+      { const t = page.getByTestId("rec-tab-review"); if (await t.count()) await t.click(); } // the section opens on an overview
       await page.waitForTimeout(500);
     };
     await openRecommendations();

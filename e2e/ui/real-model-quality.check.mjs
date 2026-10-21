@@ -164,6 +164,7 @@ test("real-model quality on golden-thread-1: claim verdicts, omitted effect, fig
     // Synthesis.
     await page.goto(run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
     const synth = page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).first();
     // Synthesis needs insights; when none were drafted it produces nothing, which is recorded, not
     // a harness failure, so the measurements below always run.

@@ -35,6 +35,17 @@ import { buildChartForThemeGroup } from "@/lib/findingsChartData";
 import { classifyFindingDiscovery } from "@/lib/discoveryClassification";
 import { BASIS_LABEL, findingBasis, provenanceNotes } from "@/lib/findingBasis";
 import FindingsChart from "./FindingsChart";
+import {
+  EVIDENCE_KINDS,
+  EVIDENCE_KIND_LABEL,
+  evidenceKindOf,
+  findingNeedsAttention,
+  NO_THEME_KEY,
+  themeKeyOf,
+  themeLabelOf,
+  type EvidenceKind,
+  type FindingAttention,
+} from "@/lib/evidenceOverview";
 import { createContext, useContext } from "react";
 
 const SelectionContext = createContext<{ selectedId: string | null; select: (id: string) => void }>({
@@ -1421,15 +1432,41 @@ function ThemeRollupLine({
   );
 }
 
+/** What the overview asks to see (FindingsWorkspace): a starting filter, which stays editable here. */
+export type FindingsFilter = {
+  /** A theme key (lib/evidenceOverview.themeKeyOf), not the stored text. */
+  theme?: string;
+  status?: "pending" | "accepted" | "rejected";
+  evidence?: EvidenceKind;
+  attention?: FindingAttention;
+};
+export type { FindingAttention };
+const ATTENTION_LABEL: Record<FindingAttention, string> = {
+  contradictions: "Contradicts or is contradicted by a report",
+  designChanged: "Survey design changed since the table was built",
+  designUnknown: "Survey design could not be checked",
+  quoteNotFound: "Report quote not found in the source",
+};
+// The same test the overview counts with (lib/evidenceOverview.findingNeedsAttention), so a figure
+// there opens exactly the findings it counted.
+const needsAttention = findingNeedsAttention;
+
 export default function FindingsTable({
   runId,
   findings: findingsProp,
   wordingEdits,
+  filterRequest,
 }: {
   runId: string;
   findings: Finding[];
   /** FND-001 probe B. Absent: editing unavailable, nothing shown as edited. */
   wordingEdits?: WordingEdits;
+  /**
+   * Where the overview sent the researcher. Each new request (a higher `n`) replaces the filters;
+   * between requests the filters are the researcher's own. Applied without remounting, so an
+   * unsaved note or wording edit in the list is never lost by opening a figure.
+   */
+  filterRequest?: { filter: FindingsFilter; n: number };
 }) {
   const [isPending, startTransition] = useTransition();
   const [extraThemes, setExtraThemes] = useState<string[]>([]);
@@ -1527,8 +1564,26 @@ export default function FindingsTable({
   // Which main theme has its sub-theme cards open ("__all" opens every one).
   const [openMainTheme, setOpenMainTheme] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState(ALL);
-  const [statusFilter, setStatusFilter] = useState(ALL);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [dataTypeFilter, setDataTypeFilter] = useState(ALL);
+  const [evidenceFilter, setEvidenceFilter] = useState<string>(ALL);
+  const [attentionFilter, setAttentionFilter] = useState<FindingAttention | null>(null);
+  // A new request from the overview resets every filter to what it asks for, during render (React's
+  // pattern for state that follows a prop), so the list shows the right findings on its first paint.
+  const [appliedRequest, setAppliedRequest] = useState<number | null>(null);
+  if (filterRequest && filterRequest.n !== appliedRequest) {
+    setAppliedRequest(filterRequest.n);
+    const f = filterRequest.filter;
+    // The overview counts every finding, so the list starts on All, not a chart or stated-only tab.
+    setActiveTab("all");
+    setSourceFilter(ALL);
+    setKindFilter(ALL);
+    setDataTypeFilter(ALL);
+    setThemeFilter(f.theme ?? ALL);
+    setStatusFilter(f.status ?? ALL);
+    setEvidenceFilter(f.evidence ?? ALL);
+    setAttentionFilter(f.attention ?? null);
+  }
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [viewerLoadingId, setViewerLoadingId] = useState<string | null>(null);
@@ -1603,6 +1658,15 @@ export default function FindingsTable({
     ]),
   ).sort();
 
+  // The theme filter's choices are theme keys (themeKeyOf), so "Trust" and " Trust " are one choice
+  // and the overview's theme links select one of them; "No theme" appears when any finding has none.
+  const themeFilterKeys = Array.from(
+    new Set([...visibleFindings.map((f) => themeKeyOf(f.theme)), ...extraThemes.map((t) => themeKeyOf(t))]),
+  )
+    .filter((k) => k !== NO_THEME_KEY)
+    .sort();
+  const anyWithoutTheme = visibleFindings.some((f) => themeKeyOf(f.theme) === NO_THEME_KEY);
+
   const sources = Array.from(
     new Set(
       visibleFindings
@@ -1614,11 +1678,15 @@ export default function FindingsTable({
   const filteredFindings = visibleFindings.filter((finding) => {
     if (sourceFilter !== ALL && finding.source_filename !== sourceFilter)
       return false;
-    if (themeFilter !== ALL && finding.theme !== themeFilter) return false;
+    // Filtered by theme key (OV-03), the overview's own rule: surrounding spaces ignored, and blank
+    // or missing themes together under "No theme".
+    if (themeFilter !== ALL && themeKeyOf(finding.theme) !== themeFilter) return false;
     if (kindFilter !== ALL && finding.finding_kind !== kindFilter) return false;
     if (statusFilter !== ALL && finding.status !== statusFilter) return false;
     if (dataTypeFilter !== ALL && finding.data_type !== dataTypeFilter)
       return false;
+    if (evidenceFilter !== ALL && evidenceKindOf(finding) !== evidenceFilter) return false;
+    if (attentionFilter && !needsAttention(finding, attentionFilter)) return false;
     return true;
   });
 
@@ -1626,7 +1694,9 @@ export default function FindingsTable({
     sourceFilter !== ALL ||
     themeFilter !== ALL ||
     kindFilter !== ALL ||
-    statusFilter !== ALL;
+    statusFilter !== ALL ||
+    evidenceFilter !== ALL ||
+    attentionFilter !== null;
 
   // Findings flagged as probable duplicates of each other get pulled out into
   // their own review section rather than showing up (twice) in the normal
@@ -1760,6 +1830,8 @@ export default function FindingsTable({
     if (statusFilter !== ALL && finding.status !== statusFilter) return false;
     if (dataTypeFilter !== ALL && finding.data_type !== dataTypeFilter)
       return false;
+    if (evidenceFilter !== ALL && evidenceKindOf(finding) !== evidenceFilter) return false;
+    if (attentionFilter && !needsAttention(finding, attentionFilter)) return false;
     return true;
   });
   const pillDuplicateCount = pillEligibleFindings.filter(
@@ -1968,11 +2040,12 @@ export default function FindingsTable({
             className={`${selectClass} w-full`}
           >
             <option value={ALL}>All themes</option>
-            {themes.map((theme) => (
-              <option key={theme} value={theme}>
-                {theme}
+            {themeFilterKeys.map((key) => (
+              <option key={key} value={key}>
+                {themeLabelOf(key)}
               </option>
             ))}
+            {(anyWithoutTheme || themeFilter === NO_THEME_KEY) && <option value={NO_THEME_KEY}>{themeLabelOf(NO_THEME_KEY)}</option>}
           </select>
           <select
             value={kindFilter}
@@ -1996,7 +2069,31 @@ export default function FindingsTable({
             <option value="accepted">Accepted</option>
             <option value="rejected">Rejected</option>
           </select>
-          <span className="text-xs text-muted">
+          <select
+            value={evidenceFilter}
+            onChange={(e) => setEvidenceFilter(e.target.value)}
+            aria-label="Evidence source"
+            className={`${selectClass} w-full`}
+          >
+            <option value={ALL}>All evidence sources</option>
+            {EVIDENCE_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {EVIDENCE_KIND_LABEL[kind]}
+              </option>
+            ))}
+          </select>
+          {attentionFilter && (
+            <button
+              type="button"
+              onClick={() => setAttentionFilter(null)}
+              data-testid="findings-attention-filter"
+              className="flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-xs font-medium text-amber-900"
+            >
+              <span>{ATTENTION_LABEL[attentionFilter]}</span>
+              <span aria-label="Clear this filter">×</span>
+            </button>
+          )}
+          <span className="text-xs text-muted" data-testid="findings-showing">
             Showing {filteredFindings.length} of {visibleFindings.length}
           </span>
         </div>
@@ -2011,6 +2108,8 @@ export default function FindingsTable({
                   setThemeFilter(ALL);
                   setKindFilter(ALL);
                   setStatusFilter(ALL);
+                  setEvidenceFilter(ALL);
+                  setAttentionFilter(null);
                 }}
                 className="flex items-center justify-center rounded-lg border border-primary/30 bg-primary-light px-2.5 py-1.5 text-xs font-medium text-primary transition hover:border-primary/60"
               >
@@ -2018,11 +2117,13 @@ export default function FindingsTable({
               </button>
             )}
             {pillThemeOrder.map((theme) => {
-              const isActive = themeFilter === theme;
+              // A pill groups by the stored text; it filters by that text's theme key, like the rest.
+              const key = theme === NO_THEME_LABEL ? NO_THEME_KEY : themeKeyOf(theme);
+              const isActive = themeFilter === key;
               return (
                 <button
                   key={theme}
-                  onClick={() => setThemeFilter(isActive ? ALL : theme)}
+                  onClick={() => setThemeFilter(isActive ? ALL : key)}
                   className={`flex items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium leading-none transition ${
                     isActive
                       ? "border-primary bg-primary-light text-primary"

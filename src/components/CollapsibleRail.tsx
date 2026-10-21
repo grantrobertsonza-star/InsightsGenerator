@@ -17,10 +17,23 @@ import { useSyncExternalStore, type ReactNode } from "react";
  * hydration mismatch), and a remembered hidden rail is applied straight after. Storage that throws
  * (private window, blocked site data) means the choice applies to this page view only; an in-page
  * copy keeps the toggle working.
+ *
+ * On a narrow window (under 768px, Codex OV-04) the open rail would leave the page about 100px, so
+ * with no remembered choice it starts hidden there, and when opened it lies over the page instead of
+ * pushing it aside; the page keeps the strip's width either way.
  */
 
 const STORAGE_KEY = "global-rail:collapsed";
 const CHANGE_EVENT = "global-rail-layout";
+const NARROW_QUERY = "(max-width: 767px)";
+
+function isNarrow(): boolean {
+  try {
+    return window.matchMedia(NARROW_QUERY).matches;
+  } catch {
+    return false;
+  }
+}
 let pageValue: string | null | undefined; // undefined: not set in this page view
 
 function readStored(): string | null {
@@ -49,20 +62,37 @@ function subscribe(onChange: () => void) {
   };
   window.addEventListener("storage", storageChanged);
   window.addEventListener(CHANGE_EVENT, onChange);
+  let narrow: MediaQueryList | null = null;
+  try {
+    narrow = window.matchMedia(NARROW_QUERY);
+    narrow.addEventListener("change", onChange);
+  } catch {
+    narrow = null;
+  }
   return () => {
     window.removeEventListener("storage", storageChanged);
     window.removeEventListener(CHANGE_EVENT, onChange);
+    narrow?.removeEventListener("change", onChange);
   };
 }
 
 export default function CollapsibleRail({ children, rail }: { children: ReactNode; rail?: ReactNode }) {
-  const collapsed = useSyncExternalStore(subscribe, () => readStored() === "1", () => false);
+  const collapsed = useSyncExternalStore(
+    subscribe,
+    () => {
+      const stored = readStored();
+      return stored === "1" || (stored === null && isNarrow());
+    },
+    () => false,
+  );
   const toggleClass =
     "flex h-7 w-7 flex-none items-center justify-center rounded-md border border-border bg-white text-muted hover:border-slate-400 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
   return (
+    // The wrapper keeps the strip's width in the page on a narrow window, so the open rail can lie over it.
+    <div className="relative flex flex-none max-md:w-12">
     <aside
-      className={`flex flex-none flex-col border-r border-border bg-white py-5 ${collapsed ? "w-12 items-center" : "w-56"}`}
+      className={`flex flex-none flex-col border-r border-border bg-white py-5 ${collapsed ? "w-12 items-center" : "w-56 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl"}`}
       data-testid="global-rail"
       data-collapsed={collapsed ? "true" : "false"}
     >
@@ -95,6 +125,7 @@ export default function CollapsibleRail({ children, rail }: { children: ReactNod
         {children}
       </div>
     </aside>
+    </div>
   );
 }
 

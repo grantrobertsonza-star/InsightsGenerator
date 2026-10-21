@@ -11,6 +11,7 @@ vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusS
 vi.mock("@/lib/recommendationQualification", async () => await import("../recommendationQualification"));
 vi.mock("@/lib/figureChecks", async () => await import("../figureChecks"));
 vi.mock("@/lib/numberTrace", async () => await import("../numberTrace"));
+vi.mock("@/lib/recommendationOverview", async () => await import("../recommendationOverview"));
 
 const { MissingRecommendationsNotice, missingRecommendationCount } = await import("../../app/runs/[id]/SynthesizedRecommendationsReview");
 

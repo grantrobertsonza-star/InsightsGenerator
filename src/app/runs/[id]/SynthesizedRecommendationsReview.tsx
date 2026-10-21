@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { attempt } from "./actionFailure";
 import { Pane, ThreePane } from "./ThreePane";
 import {
@@ -18,6 +18,15 @@ import { decisionsWrittenFor } from "@/lib/recommendationQualification";
 import { SupportStatusNotice } from "./SupportStatusNotice";
 import { scoreRecommendationsAction } from "@/lib/qualityActions";
 import { FigureCheckFor } from "./FigureCheckNotice";
+import {
+  insightsWithoutRecommendationCount,
+  recommendationMatches,
+  type RecommendationDecision,
+  type RecommendationFilter,
+  type RecommendationQuality,
+  type RecommendationReview,
+  type RecommendationSupport,
+} from "@/lib/recommendationOverview";
 
 type Priority = "high" | "medium" | "low";
 
@@ -287,7 +296,7 @@ type ParkedInsight = {
  * at all - what a partial or failed generation run leaves behind. Derived from the data on every
  * load, so it survives reloads; regenerating covers only these (nothing is duplicated). */
 export function missingRecommendationCount(parked: ParkedInsight[]): number {
-  return parked.filter((p) => p.action_plan_status === "has_action" && p.has_any_recommendation === false).length;
+  return insightsWithoutRecommendationCount(parked);
 }
 
 /** REC-002: the notice for insights left without a recommendation. Renders nothing when none are. */
@@ -450,8 +459,24 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
   );
 }
 
-function RecommendationCard({ runId, recommendation }: { runId: string; recommendation: Recommendation }) {
+function RecommendationCard({
+  runId,
+  recommendation,
+  selected = false,
+  selectionKey = 0,
+}: {
+  runId: string;
+  recommendation: Recommendation;
+  /** Opened from the overview's action plan: highlighted and brought into view. */
+  selected?: boolean;
+  /** Changes with each request, so choosing the same recommendation again scrolls to it again. */
+  selectionKey?: number;
+}) {
   const [isPending, startTransition] = useTransition();
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected) cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [selected, selectionKey]);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(draftFrom(recommendation));
   // Each action reports its failure here instead of throwing out of the transition, which
@@ -475,8 +500,11 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
 
   return (
     <div
+      ref={cardRef}
       data-testid="recommendation-card"
       data-recommendation-id={recommendation.id}
+      data-priority={recommendation.priority}
+      data-selected={selected ? "true" : undefined}
       data-insight-id={recommendation.synthesized_insight_id}
       data-source={recommendation.source}
       data-status={recommendation.status}
@@ -484,7 +512,7 @@ function RecommendationCard({ runId, recommendation }: { runId: string; recommen
       data-decision-state={recommendation.decision_state ?? "current"}
       className={`card-surface flex flex-col gap-4 rounded-xl border bg-white p-5 ${
         isAccepted ? "border-success" : isRejected ? "border-border opacity-50" : "border-border"
-      }`}
+      } ${selected ? "ring-2 ring-primary ring-offset-2" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -708,6 +736,19 @@ const emptyDraft: Draft = {
  * framing -- minus the theme filter, since a synthesized insight doesn't
  * carry a single theme the way a pre-insight does.
  */
+/** Where the Recommendations overview sent the researcher (RecommendationsWorkspace): applied once, then editable here. */
+export type RecommendationsReviewStart = RecommendationFilter & { selectedId?: string };
+
+const REVIEW_FILTER_LABEL: Record<RecommendationReview, string> = { accepted: "Accepted", pending: "Not yet reviewed", rejected: "Rejected" };
+const QUALITY_FILTER_LABEL: Record<RecommendationQuality | "unscored", string> = { strong: "Strong", workable: "Workable", weak: "Needs work", unscored: "Not scored" };
+const SUPPORT_FILTER_LABEL: Record<RecommendationSupport, string> = { current: "Support current", stale: "Support changed", invalid: "Support no longer valid", unknown: "Support not checked" };
+const DECISION_FILTER_LABEL: Record<RecommendationDecision, string> = {
+  current: "Written for the current decisions",
+  earlier: "Written for earlier decisions",
+  unknown: "Decisions not recorded",
+  researcher: "Written by the researcher",
+};
+
 export default function SynthesizedRecommendationsReview({
   runId,
   recommendations,
@@ -715,6 +756,7 @@ export default function SynthesizedRecommendationsReview({
   parkedInsights,
   hasDecision,
   hasInsights,
+  request,
 }: {
   runId: string;
   recommendations: Recommendation[];
@@ -727,6 +769,12 @@ export default function SynthesizedRecommendationsReview({
   parkedInsights: ParkedInsight[];
   hasDecision: boolean;
   hasInsights: boolean;
+  /**
+   * Where the overview sent the researcher. Each new request (a higher `n`) replaces the filters and
+   * the selection; between requests they are the researcher's own. Applied during render, without
+   * remounting, so a draft open in a card is not lost.
+   */
+  request?: { start: RecommendationsReviewStart; n: number };
 }) {
   const [isPending, startTransition] = useTransition();
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
@@ -737,19 +785,65 @@ export default function SynthesizedRecommendationsReview({
   const [addInsightId, setAddInsightId] = useState(insightOptions[0]?.id ?? "");
   const [addDraft, setAddDraft] = useState<Draft>(emptyDraft);
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
+  const [reviewFilter, setReviewFilter] = useState<"all" | RecommendationReview>("all");
+  const [qualityFilter, setQualityFilter] = useState<"all" | RecommendationQuality | "unscored">("all");
+  const [supportFilter, setSupportFilter] = useState<"all" | RecommendationSupport>("all");
+  const [decisionFilter, setDecisionFilter] = useState<"all" | RecommendationDecision>("all");
+  // "In use" (not rejected), which the overview's in-use figures carry so a drill-down never lists a
+  // rejected recommendation it did not count (Codex OV-01).
+  const [inUseOnly, setInUseOnly] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"recommendations" | "scores">("recommendations");
+  const [appliedRequest, setAppliedRequest] = useState<number | null>(null);
+  if (request && request.n !== appliedRequest) {
+    setAppliedRequest(request.n);
+    const st = request.start;
+    setPriorityFilter(st.priority ?? "all");
+    setReviewFilter(st.review ?? "all");
+    setQualityFilter(st.quality ?? "all");
+    setSupportFilter(st.support ?? "all");
+    setDecisionFilter(st.decision ?? "all");
+    setInUseOnly(st.inUse === true);
+    setSelectedId(st.selectedId ?? null);
+    setActiveTab("recommendations");
+    // A rejected recommendation is listed under the folded "Rejected" group: open it so the one asked for shows.
+    if (st.selectedId && recommendations.find((r) => r.id === st.selectedId)?.status === "rejected") setRejectedOpen(true);
+  }
 
   const live = recommendations.filter((r) => r.status !== "rejected");
   const highCount = live.filter((r) => r.priority === "high").length;
   const mediumCount = live.filter((r) => r.priority === "medium").length;
   const lowCount = live.filter((r) => r.priority === "low").length;
 
-  const filteredRecommendations = recommendations.filter((rec) => {
-    if (priorityFilter !== "all" && rec.priority !== priorityFilter) return false;
-    return true;
-  });
+  // The same matcher the overview counts with (lib/recommendationOverview), so a figure opens exactly
+  // the recommendations it counted.
+  const activeFilter: RecommendationFilter = {
+    ...(priorityFilter !== "all" ? { priority: priorityFilter } : {}),
+    ...(reviewFilter !== "all" ? { review: reviewFilter } : {}),
+    ...(qualityFilter !== "all" ? { quality: qualityFilter } : {}),
+    ...(supportFilter !== "all" ? { support: supportFilter } : {}),
+    ...(decisionFilter !== "all" ? { decision: decisionFilter } : {}),
+    ...(inUseOnly ? { inUse: true } : {}),
+  };
+  const filteredRecommendations = recommendations.filter((rec) => recommendationMatches(rec, activeFilter));
 
-  const isFiltering = priorityFilter !== "all";
+  const isFiltering = Object.keys(activeFilter).length > 0;
+  // The filters the overview can set that the left pane has no buttons for, shown as removable chips.
+  const activeChips: { key: string; label: string; clear: () => void }[] = [
+    ...(reviewFilter !== "all" ? [{ key: "review", label: REVIEW_FILTER_LABEL[reviewFilter], clear: () => setReviewFilter("all") }] : []),
+    ...(qualityFilter !== "all" ? [{ key: "quality", label: `Quality: ${QUALITY_FILTER_LABEL[qualityFilter]}`, clear: () => setQualityFilter("all") }] : []),
+    ...(supportFilter !== "all" ? [{ key: "support", label: SUPPORT_FILTER_LABEL[supportFilter], clear: () => setSupportFilter("all") }] : []),
+    ...(decisionFilter !== "all" ? [{ key: "decision", label: DECISION_FILTER_LABEL[decisionFilter], clear: () => setDecisionFilter("all") }] : []),
+    ...(inUseOnly ? [{ key: "in-use", label: "In use (not rejected)", clear: () => setInUseOnly(false) }] : []),
+  ];
+  const clearFilters = () => {
+    setPriorityFilter("all");
+    setReviewFilter("all");
+    setQualityFilter("all");
+    setSupportFilter("all");
+    setDecisionFilter("all");
+    setInUseOnly(false);
+  };
 
   const accepted = filteredRecommendations.filter((r) => r.status === "accepted");
   const pending = filteredRecommendations.filter((r) => r.status === "pending");
@@ -930,6 +1024,27 @@ export default function SynthesizedRecommendationsReview({
           }
         >
           {tabsBar}
+      {isFiltering && (
+        <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="recommendations-filters">
+          <span className="font-medium text-slate-700" data-testid="recommendations-showing">
+            {`Showing ${filteredRecommendations.length} of ${recommendations.length}`}
+          </span>
+          {activeChips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={c.clear}
+              className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700 hover:bg-slate-200"
+              aria-label={`Remove filter: ${c.label}`}
+            >
+              {c.label} ×
+            </button>
+          ))}
+          <button type="button" onClick={clearFilters} className="font-medium text-primary hover:underline">
+            Clear filters
+          </button>
+        </div>
+      )}
       <MissingRecommendationsNotice count={missingRecommendationCount(parkedInsights)} onRetry={handleRegenerate} busy={isPending} />
       {regenerateError && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-danger bg-danger-light px-4 py-3 text-sm text-danger">
@@ -962,14 +1077,23 @@ export default function SynthesizedRecommendationsReview({
         </div>
       )}
 
-      {isFiltering && accepted.length === 0 && pending.length === 0 && (
+      {isFiltering && filteredRecommendations.length === 0 && (
         <p className="text-sm text-muted">No recommendations match this filter.</p>
+      )}
+
+      {/* Asked for by the overview: the rejected ones are listed here, and not again in the folded group on the right. */}
+      {reviewFilter === "rejected" && rejected.length > 0 && (
+        <div className="space-y-3">
+          {rejected.map((rec) => (
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
+          ))}
+        </div>
       )}
 
       {accepted.length > 0 && (
         <div className="space-y-3">
           {accepted.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -978,7 +1102,7 @@ export default function SynthesizedRecommendationsReview({
         <div className="space-y-3">
           {accepted.length > 0 && <div className="text-xs font-semibold uppercase tracking-wide text-muted">Other recommendations</div>}
           {pending.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -992,7 +1116,7 @@ export default function SynthesizedRecommendationsReview({
               Rejected recommendations and accepted insights still waiting for an action show here.
             </p>
           )}
-      {rejected.length > 0 && (
+      {rejected.length > 0 && reviewFilter !== "rejected" && (
         <div className="rounded-lg border border-dashed border-border p-3">
           <button
             type="button"
@@ -1005,7 +1129,7 @@ export default function SynthesizedRecommendationsReview({
           {rejectedOpen && (
             <div className="mt-3 space-y-2">
               {rejected.map((rec) => (
-                <RecommendationCard key={rec.id} runId={runId} recommendation={rec} />
+                <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
               ))}
             </div>
           )}

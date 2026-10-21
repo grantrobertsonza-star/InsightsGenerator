@@ -93,6 +93,12 @@ test("journey: upload to every export, numbers against the reference, screen and
       await page.goto(run.url, { waitUntil: "networkidle" });
       const read = async (section, selector, attrs) => {
         await page.getByRole("button", { name: new RegExp(`^${section}(\\s*\\d+)?$`) }).first().click();
+        // Findings and Insights open on an overview; the cards are in the review tab.
+        const tabId = { Findings: "findings-tab-review", Insights: "insights-tab-review", Recommendations: "rec-tab-review", "Insights report": "report-tab-narrative" }[section];
+        if (tabId) {
+          const t = page.getByTestId(tabId);
+          if (await t.count()) await t.click();
+        }
         await page.waitForTimeout(500);
         return page.locator(selector).evaluateAll((els, attrs) => els.map((e) => ({ ...Object.fromEntries(attrs.map((a) => [a, e.getAttribute(a)])), text: (e.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400) })), attrs);
       };

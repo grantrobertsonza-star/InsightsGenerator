@@ -71,7 +71,7 @@ import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
 import { ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
 import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
-import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
+import RecommendationsWorkspace from "./RecommendationsWorkspace";
 import InsightsReview from "./InsightsReview";
 import StatedInsightValidationsReview, {
   type StatedInsightValidation,
@@ -100,6 +100,9 @@ import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
 import CodingFormProgress from "./CodingFormProgress";
 import CodeThemesSubmit from "./CodeThemesSubmit";
+import FindingsWorkspace from "./FindingsWorkspace";
+import InsightsWorkspace from "./InsightsWorkspace";
+import InsightsReportWorkspace from "./InsightsReportWorkspace";
 import { claimCodingRun, releaseCodingRun } from "@/lib/codingProgress";
 import ReportReadSummary, { type ReportReadStats } from "./ReportReadSummary";
 import PipelineStatus from "./PipelineStatus";
@@ -3732,11 +3735,8 @@ export default async function RunPage({
     />
   );
 
-  const synthesizedInsightsSection = (
-    <div
-      key={`synthesized-insights-${synthesizedInsights.length}`}
-      className="flex flex-col gap-4"
-    >
+  // The exports and Run synthesis, shown above the Insights review (InsightsWorkspace).
+  const synthesizedToolbar = (
       <div className="flex flex-wrap items-center gap-3">
         <div className="ml-auto">
         <div className="flex flex-wrap items-center gap-2">
@@ -3794,9 +3794,8 @@ export default async function RunPage({
         </div>
         </div>
       </div>
-      <SynthesizedInsightsReview runId={id} insights={synthesizedInsights} />
-    </div>
   );
+
 
   // GT-007: exports of this (main) list, separate from the per-pre-insight list's exports on the
   // Working data tab. Shown whenever the list has anything, including only rejected items. The
@@ -3854,8 +3853,8 @@ export default async function RunPage({
       key={`recommendations-${recommendationsReached}`}
       className="flex flex-col gap-4"
     >
-      {mainRecommendationExportControls && <div className="flex justify-end">{mainRecommendationExportControls}</div>}
-      <SynthesizedRecommendationsReview
+      <RecommendationsWorkspace
+        toolbar={mainRecommendationExportControls ? <div className="flex justify-end">{mainRecommendationExportControls}</div> : null}
         runId={id}
         recommendations={synthesizedRecommendations}
         insightOptions={synthesizedInsights
@@ -3939,9 +3938,23 @@ export default async function RunPage({
   );
 
   const storyReportSection = (
-    <div
-      key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}
-    >
+    <div>
+      {/* The readiness overview first, this screen as its second tab (Grant, 2026-10-21). */}
+      <InsightsReportWorkspace
+        runId={id}
+        insights={synthesizedInsights.map((insight) => ({ id: insight.id, review_status: insight.review_status, support: insight.support }))}
+        recommendations={synthesizedRecommendations.map((rec) => ({ id: rec.id, status: rec.status, synthesized_insight_id: rec.synthesized_insight_id }))}
+        narrative={
+          storyNarrative
+            ? { generated_at: storyNarrative.generated_at, pillars: storyNarrative.pillars.map((pillar) => ({ insight_ids: pillar.insight_ids, insight_overflow_count: pillar.insight_overflow_count })) }
+            : null
+        }
+        // A failed load is not "nothing to review": the overview then claims nothing about figures.
+        narrativeFigures={figureChecks.error ? null : (figureChecks.narrative?.status ?? null)}
+        // Keyed on the narrative so a new one resets the narrative screen's state; the key sits
+        // here, not on the workspace, so regenerating keeps the researcher on this tab.
+        narrativeView={
+      <div key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}>
       <ThreePane
         left={
           <Pane side="left" title="Generate and export">
@@ -4160,6 +4173,9 @@ export default async function RunPage({
           </Pane>
         }
       />
+      </div>
+        }
+      />
     </div>
   );
 
@@ -4171,19 +4187,8 @@ export default async function RunPage({
   // its decision framer reads raw findings rather than insights, Decision
   // too) can render ahead of Findings, since generateObjectiveCandidates
   // has no evidence to infer an objective from until findings exist.
-  const findingsSection = (
-    <CollapsibleSection
-      key={`findings-${findings.length > 0}`}
-      title="Findings"
-      bare
-      icon={<ChartIcon className="h-4 w-4 text-primary" />}
-      // Findings insert as 'accepted' by default now, so there's no
-      // 'pending' state left to key this open/closed on; it opens whenever
-      // there's anything to look at, since review is now by exception
-      // (rejecting the ones that are wrong) rather than a gate everything
-      // waits behind.
-      defaultOpen={findings.length > 0}
-      headerRight={
+  // Re-verify and the exports, shown above the Findings review (FindingsWorkspace).
+  const findingsToolbar =
         findings.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             <form action={reverifyFindingsWithId}>
@@ -4232,16 +4237,8 @@ export default async function RunPage({
               </a>
             </div>
           </div>
-        ) : undefined
-      }
-    >
-      {findings.length === 0 ? (
-        <p className="text-sm text-muted">None extracted yet.</p>
-      ) : (
-        <FindingsTable runId={id} findings={findings} wordingEdits={wordingEdits} />
-      )}
-    </CollapsibleSection>
-  );
+        ) : undefined;
+
 
   // Objective setting sits adjacent to Findings, but which side depends on
   // whether the objective was already known before any evidence existed
@@ -5704,24 +5701,19 @@ export default async function RunPage({
               claims extracted from reports.
             </p>
             {documentsToolbar && <div className="mb-4">{documentsToolbar}</div>}
-            <WorkingDataTabs
-              tabs={[
-                {
-                  id: "findings",
-                  label: `Findings (${findings.length})`,
-                  content: findingsSection,
-                },
-                {
-                  id: "report-claims",
-                  label: `Report claims${statedInsightValidations.length > 0 ? ` (${statedInsightValidations.length})` : ""}`,
-                  content: (
-                    <>
-                      {statedInsightValidationsSection}
-                      <ClaimTableChecks runId={id} />
-                    </>
-                  ),
-                },
-              ]}
+            {/* Grant, 2026-10-21: an overview first, the review and the report claims as tabs. */}
+            <FindingsWorkspace
+              runId={id}
+              findings={findings}
+              wordingEdits={wordingEdits}
+              claims={statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier }))}
+              reviewToolbar={findingsToolbar}
+              claimsContent={
+                <>
+                  {statedInsightValidationsSection}
+                  <ClaimTableChecks runId={id} />
+                </>
+              }
             />
           </SectionPanel>
 
@@ -5730,7 +5722,13 @@ export default async function RunPage({
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Synthesized insights
             </h2>
-            {synthesizedInsightsSection}
+            {/* Grant, 2026-10-21: an overview first, the review as a tab. */}
+            <InsightsWorkspace
+              key={`synthesized-insights-${synthesizedInsights.length}`}
+              runId={id}
+              insights={synthesizedInsights}
+              toolbar={synthesizedToolbar}
+            />
           </SectionPanel>
 
           <SectionPanel id="decisions">

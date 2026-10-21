@@ -15,4 +15,12 @@ export async function openSection(page, name) {
     return;
   }
   await page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name }).first().click();
+  // Recommendations and the Insights report open on an overview (2026-10-21); the checks that use
+  // this helper work in the review list and the narrative, so their tab is opened when it is shown.
+  const label = typeof name === "string" ? name : name.source;
+  const tabId = /Recommendations/.test(label) ? "rec-tab-review" : /Insights report/.test(label) ? "report-tab-narrative" : null;
+  if (tabId) {
+    const tab = page.getByTestId(tabId).filter({ visible: true });
+    if (await tab.count()) await tab.first().click();
+  }
 }
