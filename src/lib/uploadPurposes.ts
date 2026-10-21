@@ -43,18 +43,6 @@ function extensionOf(filename: string): string {
   return dot < 0 ? "" : filename.slice(dot).toLowerCase();
 }
 
-/**
- * A starting type, only where the extension leaves one sensible answer: SPSS and Stata files are
- * case-level data and a zip is statistical output. Anything else (a PDF can be a report, a
- * questionnaire, a brief or a proposal; a spreadsheet can be raw data or tables) is left for the
- * researcher to choose, because a wrong guess sends the file down the wrong reading path.
- */
-export function suggestPurpose(filename: string): UploadPurposeId | null {
-  const ext = extensionOf(filename);
-  if (ext === ".sav" || ext === ".dta") return "raw";
-  if (ext === ".zip") return "output";
-  return null;
-}
 
 /** Why this file cannot go in as this type, or null when it can. */
 export function purposeMismatch(filename: string, id: UploadPurposeId): string | null {
@@ -62,4 +50,82 @@ export function purposeMismatch(filename: string, id: UploadPurposeId): string |
   if (!p.extensions) return null;
   const ext = extensionOf(filename);
   return p.extensions.includes(ext) ? null : `${p.label} takes ${p.extensions.join(", ")} files, not ${ext || "a file with no extension"}.`;
+}
+
+/**
+ * A starting type for every added file (Grant, 2026-10-21: "should we not automatically select a
+ * type? If wrong they can change it"). The panel shows it marked as suggested until the researcher
+ * changes it, so a guess is visible, never silent. Rules, first match wins, read from the file name
+ * and, for a CSV, its first lines:
+ * - SPSS and Stata files are one row per respondent; a zip is statistical output.
+ * - A PDF or Word file named as a focus group guide, an interview or discussion guide, or a
+ *   questionnaire is that; one named as a brief (or terms of reference) or a proposal is that.
+ * - A file named as a transcript, FGD, IDI or interview (not a guide) is qualitative data.
+ * - A PDF, Word or PowerPoint file named as a report, deck or presentation is a report.
+ * - A spreadsheet named as cross tabs, tables, a banner, a tabulation or output is tables.
+ * - A CSV whose first lines read like tables (Total or Base rows, many percentages) is tables.
+ * - Otherwise a spreadsheet is raw data (the most common case), a PDF, Word or PowerPoint file a
+ *   report, and a text file qualitative data.
+ * The suggestion always fits the file's extension (purposeMismatch is null); anything left over is a
+ * report, a type that takes any file.
+ */
+export type PurposeSuggestion = {
+  id: UploadPurposeId;
+  /** Why it was suggested, for the select's title. */
+  reason: string;
+  /** Where questionnaires and guides share one type, which of them this file looks like. */
+  instrument?: "questionnaire" | "interview_guide" | "focus_group_guide";
+};
+
+const SPREADSHEET = [".csv", ".xlsx", ".xls"];
+const DOCUMENT = [".pdf", ".docx"];
+
+function hasPurpose(id: string): boolean {
+  return UPLOAD_PURPOSES.some((p) => p.id === id);
+}
+
+function instrumentSuggestion(kind: "questionnaire" | "interview_guide" | "focus_group_guide", reason: string): PurposeSuggestion {
+  // One type per kind where this copy has three; one shared "instrument" type where it has one.
+  return hasPurpose(kind) ? { id: kind as string as UploadPurposeId, reason } : { id: "instrument" as string as UploadPurposeId, reason, instrument: kind };
+}
+
+/** True when a CSV's first lines read like aggregated tables rather than one row per respondent. */
+export function csvLooksLikeTables(sample: string): boolean {
+  const lines = sample.split(/\r?\n/).slice(0, 40).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return false;
+  if (lines.some((l) => /^\s*"?\s*(total|base|unweighted base|weighted base)\b/i.test(l))) return true;
+  const cells = lines.flatMap((l) => l.split(/[,;\t]/));
+  const percent = cells.filter((c) => /^\s*"?\s*-?\d+(\.\d+)?\s*%\s*"?\s*$/.test(c)).length;
+  return cells.length > 0 && percent / cells.length >= 0.2;
+}
+
+export function suggestPurposeFor(filename: string, csvSample?: string | null): PurposeSuggestion {
+  const ext = extensionOf(filename);
+  const dot = filename.lastIndexOf(".");
+  const name = ` ${(dot < 0 ? filename : filename.slice(0, dot)).toLowerCase().replace(/[_\-.]+/g, " ")} `;
+  const fromName = "Suggested from the file name";
+  const fits = (s: PurposeSuggestion): PurposeSuggestion =>
+    purposeMismatch(filename, s.id) === null ? s : { id: "report", reason: "Suggested: a report takes any file" };
+
+  if (ext === ".sav" || ext === ".dta") return { id: "raw", reason: "Suggested: SPSS and Stata files are one row per respondent" };
+  if (ext === ".zip") return { id: "output", reason: "Suggested: a zip is statistical output" };
+  if (DOCUMENT.includes(ext)) {
+    if (/focus group guide|fgd guide/.test(name)) return fits(instrumentSuggestion("focus_group_guide", fromName));
+    if (/interview guide|discussion guide|topic guide|idi guide/.test(name)) return fits(instrumentSuggestion("interview_guide", fromName));
+    if (/questionnaire|survey instrument/.test(name)) return fits(instrumentSuggestion("questionnaire", fromName));
+  }
+  if ([...DOCUMENT, ".txt"].includes(ext)) {
+    if (/ brief |\btor\b|terms of reference/.test(name)) return fits({ id: "brief", reason: fromName });
+    if (/proposal/.test(name)) return fits({ id: "proposal", reason: fromName });
+  }
+  if (/transcript|\bfgd\b|\bidi\b|interview|focus group/.test(name) && !/guide/.test(name)) return { id: "transcript", reason: fromName };
+  if ([...DOCUMENT, ".pptx"].includes(ext) && /report|deck|presentation|findings/.test(name)) return { id: "report", reason: fromName };
+  if (SPREADSHEET.includes(ext)) {
+    if (/cross ?tabs?|crosstab|\btables?\b|\btabs\b|banner|tabulation|output/.test(name)) return { id: "tables", reason: fromName };
+    if (ext === ".csv" && csvSample && csvLooksLikeTables(csvSample)) return { id: "tables", reason: "Suggested: its first lines read like totals or percentages" };
+    return { id: "raw", reason: "Suggested: most spreadsheets are raw data, one row per respondent" };
+  }
+  if (ext === ".tsv") return { id: "output", reason: "Suggested: a TSV file is read as statistical output" };
+  if (ext === ".txt" || ext === ".md") return { id: "transcript", reason: "Suggested: a text file is read as qualitative data" };
+  return fits({ id: "report", reason: "Suggested: read as a report" });
 }

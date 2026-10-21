@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useTransition, type DragEvent } from "reac
 import Link from "next/link";
 import { UploadIcon } from "@/components/icons";
 import { uploadDocumentsAction } from "@/lib/documentUploadActions";
-import { UPLOAD_PURPOSES, purposeById, purposeMismatch, suggestPurpose, type UploadPurposeId } from "@/lib/uploadPurposes";
+import { UPLOAD_PURPOSES, purposeById, purposeMismatch, suggestPurposeFor, type UploadPurposeId } from "@/lib/uploadPurposes";
 
-type Picked = { key: number; file: File; purpose: UploadPurposeId | "" };
+/** `suggested` is the reason while the type is the panel's own suggestion; null once the researcher chooses. */
+type Picked = { key: number; file: File; purpose: UploadPurposeId | ""; suggested: string | null };
 
 const btn = "rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:border-slate-400 disabled:opacity-50";
 const primary = "flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover disabled:opacity-60";
@@ -17,10 +18,12 @@ const sizeText = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}
 /**
  * The Import heading with one "Add files" button, and the dialog it opens (Grant, 2026-10-19, from
  * his two-pane mock-up; a dialog from 2026-10-20, from his Sources prototype): drop or choose files, give each its own type, then upload. One type per
- * file, not per batch, because a batch can mix a data file and a PDF. A type is suggested only
- * where the extension settles it (uploadPurposes.ts); otherwise the researcher chooses, and Upload
- * waits until every file has a type that fits it. Each file is sent under the form field its type
- * always used, so the server's checks and limits are unchanged.
+ * file, not per batch, because a batch can mix a data file and a PDF. Every file arrives with a
+ * suggested type (Grant, 2026-10-21; suggestPurposeFor in uploadPurposes.ts, from the file name and,
+ * for a CSV, its first lines), marked "Suggested" until the researcher changes it, so Upload need
+ * not wait on a choice but a guess is never silent. Upload still waits until every file has a type
+ * that fits it. Each file is sent under the form field its type always used, so the server's checks
+ * and limits are unchanged.
  */
 // Closed until asked for, even on an empty project: as a dialog over the page it would otherwise block
 // the menu (an empty project shows its own "Use Add files" note instead).
@@ -42,11 +45,33 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
 
   function addPicked(list: FileList | null) {
     if (!list) return;
-    const added = Array.from(list).map((file) => ({ key: nextKey.current++, file, purpose: suggestPurpose(file.name) ?? ("" as const) }));
+    const added = Array.from(list).map((file) => {
+      const s = suggestPurposeFor(file.name);
+      return { key: nextKey.current++, file, purpose: s.id as UploadPurposeId | "", suggested: s.reason };
+    });
     setPicked((p) => [...p, ...added]);
+    sniffCsvs(added);
     setMessage(null);
     setError(null);
     if (inputRef.current) inputRef.current.value = "";
+  }
+
+  // A CSV's first lines can show it is aggregated tables; read in the background, and applied only
+  // while its type is still the panel's own suggestion, so a choice made meanwhile is never undone.
+  function sniffCsvs(added: Picked[]) {
+    for (const p of added) {
+      if (!p.file.name.toLowerCase().endsWith(".csv")) continue;
+      p.file
+        .slice(0, 8192)
+        .text()
+        .then((sample) => {
+          const s = suggestPurposeFor(p.file.name, sample);
+          setPicked((all) => all.map((x) => (x.key === p.key && x.suggested !== null ? { ...x, purpose: s.id, suggested: s.reason } : x)));
+        })
+        .catch(() => {
+          // Unreadable here: the name-based suggestion stands.
+        });
+    }
   }
 
   const problems = picked.map((p) => (p.purpose === "" ? "Choose what this file is." : purposeMismatch(p.file.name, p.purpose)));
@@ -149,7 +174,7 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
             className={`flex flex-col items-center gap-2 rounded-xl border border-dashed border-primary/60 bg-primary-light/30 px-4 py-6 text-center ${dragging ? "ring-2 ring-primary" : ""}`}
           >
             <p className="text-sm font-semibold text-foreground">Drop files here</p>
-            <p className="text-xs text-muted">or choose several from your device, then say what each one is.</p>
+            <p className="text-xs text-muted">or choose several from your device. Each gets a suggested type; change any that is wrong.</p>
             <input ref={inputRef} type="file" multiple aria-label="Choose files to add" data-testid="add-files-input" className="text-xs" onChange={(e) => addPicked(e.target.files)} />
           </div>
           {picked.length > 0 && (
@@ -162,7 +187,9 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
                     <select
                       aria-label={`Type of ${p.file.name}`}
                       value={p.purpose}
-                      onChange={(e) => setPicked((all) => all.map((x) => (x.key === p.key ? { ...x, purpose: e.target.value as UploadPurposeId | "" } : x)))}
+                      title={p.suggested ?? undefined}
+                      aria-describedby={p.suggested ? `suggested-${p.key}` : undefined}
+                      onChange={(e) => setPicked((all) => all.map((x) => (x.key === p.key ? { ...x, purpose: e.target.value as UploadPurposeId | "", suggested: null } : x)))}
                       className="rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground"
                     >
                       <option value="" disabled>
@@ -174,6 +201,12 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
                         </option>
                       ))}
                     </select>
+                    {p.suggested && (
+                      <span id={`suggested-${p.key}`} title={p.suggested} data-testid="add-files-suggested" className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+                        Suggested
+                        <span className="sr-only">{`: ${p.suggested}. Change it if this is wrong.`}</span>
+                      </span>
+                    )}
                     <button type="button" className="text-muted underline" onClick={() => setPicked((all) => all.filter((x) => x.key !== p.key))} aria-label={`Remove ${p.file.name}`}>
                       Remove
                     </button>

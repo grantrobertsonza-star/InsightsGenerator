@@ -1,8 +1,9 @@
 // The Import screen's Add files dialog and Sources layout (Grant, 2026-10-19 and 2026-10-20, from
 // his mock-up and his Sources prototype). Real browser on the disposable stack (model replay).
 //   1. A new project says to use Add files; the dialog opens from the button and closes again.
-//   2. One mixed batch: each file gets its own type. Upload waits until every file has one that
-//      fits (a spreadsheet chosen as a Brief is refused with the reason, and Upload stays off).
+//   2. Every file arrives with a suggested type, marked Suggested until changed (Grant, 2026-10-21):
+//      a spreadsheet with no hint as Raw data, "Crosstabs" as Tables, "Proposal" as Proposal. Upload
+//      need not wait on a choice; a type that does not fit is still refused with the reason.
 //   3. The batch goes in as three sources, each listed under its own type, and a file chosen while it
 //      uploads stays in the dialog for the next upload.
 //   4. The list on the left, the selected source on the right with its type's tabs; a draggable,
@@ -42,23 +43,46 @@ test("one Add files dialog takes a mixed batch, a type per file, into the Source
   await expect(page.getByTestId("add-files")).toHaveCount(0);
   const panel = await openAddFiles(page);
 
-  // 2. A mixed batch, one type each.
+  // 2. Suggested types from the file name; changing one clears its mark.
+  const rows = panel.getByTestId("add-files-row");
+  const upload = panel.getByRole("button", { name: /^Upload/ });
+  const suggestedIn = (name) => rows.filter({ hasText: name }).getByTestId("add-files-suggested");
+  await panel.getByTestId("add-files-input").setInputFiles([
+    { name: "Wave 2 Crosstabs.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("x") },
+    { name: "Proposal.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("x") },
+  ]);
+  await expect(rows).toHaveCount(2);
+  await expect(panel.getByLabel("Type of Wave 2 Crosstabs.xlsx")).toHaveValue("tables");
+  await expect(panel.getByLabel("Type of Proposal.docx")).toHaveValue("proposal");
+  await expect(suggestedIn("Wave 2 Crosstabs.xlsx")).toBeVisible();
+  await expect(suggestedIn("Proposal.docx")).toBeVisible();
+  await expect(upload).toBeEnabled();
+  await panel.getByLabel("Type of Proposal.docx").selectOption({ label: "Brief" });
+  await expect(suggestedIn("Proposal.docx")).toHaveCount(0);
+  await expect(suggestedIn("Wave 2 Crosstabs.xlsx")).toBeVisible();
+  await panel.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(rows).toHaveCount(0);
+
+  // A mixed batch, one type each.
   await panel.getByTestId("add-files-input").setInputFiles([
     path.join(FIXTURE, "golden-survey-documented.xlsx"),
     path.join(FIXTURE, "client-brief.docx"),
     path.join(FIXTURE, "report.docx"),
   ]);
-  const rows = panel.getByTestId("add-files-row");
   await expect(rows).toHaveCount(3);
-  const upload = panel.getByRole("button", { name: /^Upload/ });
   await expect(upload).toHaveText(/Upload 3 files/);
-  await expect(upload).toBeDisabled(); // no type suggested for .xlsx or .docx: each must be chosen
+  // A spreadsheet with no hint arrives as Raw data, marked; the brief and report from their names.
+  await expect(panel.getByLabel("Type of golden-survey-documented.xlsx")).toHaveValue("raw");
+  await expect(suggestedIn("golden-survey-documented.xlsx")).toBeVisible();
+  await expect(panel.getByLabel("Type of client-brief.docx")).toHaveValue("brief");
+  await expect(panel.getByLabel("Type of report.docx")).toHaveValue("report");
+  await expect(upload).toBeEnabled();
+  // A type that does not fit is refused with the reason, and holds Upload back.
   await panel.getByLabel("Type of golden-survey-documented.xlsx").selectOption({ label: "Brief" });
   await expect(rows.nth(0)).toContainText("Brief takes .pdf, .docx, .txt files, not .xlsx.");
-  await panel.getByLabel("Type of golden-survey-documented.xlsx").selectOption({ label: "Raw data" });
-  await panel.getByLabel("Type of client-brief.docx").selectOption({ label: "Brief" });
+  await expect(suggestedIn("golden-survey-documented.xlsx")).toHaveCount(0);
   await expect(upload).toBeDisabled();
-  await panel.getByLabel("Type of report.docx").selectOption({ label: "Report" });
+  await panel.getByLabel("Type of golden-survey-documented.xlsx").selectOption({ label: "Raw data" });
   await expect(upload).toBeEnabled();
   await upload.click();
   // A file chosen while that upload runs stays for the next one, and keeps the dialog open.
