@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-21. State: **READY_FOR_CODEX** (main copy only; Grant is retiring 3001): repairs for GT100-F01 to GT100-F03 (`docs/golden-thread-100-independent-review-2026-10-21.md`) and RRV-01 (`docs/independent-rr-review-2026-10-21.md`), the rename to Secondary analysis and the new section design with OV-01 to OV-04; see `docs/gt100-repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-21. State: **READY_FOR_CODEX** (main copy only): repairs for GTR-01, GTR-02, SEC-01, SEC-02 and M-GTR-01 (`docs/independent-gt100-rereview-main-2026-10-21.md`) and, at Grant's request, filters across the top with theme tiles; see `docs/gtr-repair-handover-2026-10-21.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: repairs for Codex's GT100 re-review, main copy (2026-10-21)
+
+Implemented, ready for review: `9ff70e5` (keys), `12ae030` (GTR-01), `bfb6df5` (GTR-02), `b007ef4` (SEC-01, SEC-02), `979cdc9` (M-GTR-01 briefs), `74ed2ef` (filters across the top and theme tiles, design) and this docs commit. Full suite on `74ed2ef`: browser 67 passed (1 skipped), unit 1,269 passed, smoke and objective acceptance passed, lint errors unchanged at 349. Details: `docs/gtr-repair-handover-2026-10-21.md`.
 
 ## Claude: repairs for Codex's 100-case and RR re-reviews, and the new section design (2026-10-21)
 
