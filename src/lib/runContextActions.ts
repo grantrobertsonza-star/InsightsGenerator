@@ -26,6 +26,14 @@ import { requireTenantId } from "./requestContext";
  * point rather than something this function (or editStatedObjective) has
  * been quietly rewriting on every add, edit, or delete.
  */
+/** The rationale of an objective added from a document; the prefix is what briefFillRecord matches. */
+function addedFromRationale(brief: string | null, proposal: string | null): string | null {
+  if (brief && proposal) return `Added from the brief "${brief}" and the proposal "${proposal}"`;
+  if (brief) return `Added from the brief "${brief}"`;
+  if (proposal) return `Added from the proposal "${proposal}"`;
+  return null;
+}
+
 export async function saveRunContext(runId: string, formData: FormData) {
   const TENANT_ID = await requireTenantId();
   const clean = (key: string) => {
@@ -40,25 +48,40 @@ export async function saveRunContext(runId: string, formData: FormData) {
   // ordinary save never calls the model.
   const briefId = clean("briefDocumentId");
   const proposalId = clean("proposalDocumentId");
+  // Which document filled what (Grant, 2026-10-21: the screen did not say which brief or proposal
+  // was used). Set only after a successful read; recorded with the save below.
+  let fill: {
+    brief: { id: string; filename: string } | null;
+    proposal: { id: string; filename: string } | null;
+    filledBusinessProblem: boolean;
+    objectivesFromDocument: boolean;
+  } | null = null;
 
   if (briefId || proposalId) {
     try {
-      const textOf = async (documentId: string): Promise<string> => {
+      const textOf = async (documentId: string): Promise<{ text: string; filename: string }> => {
         const read = async () =>
           withTenant(TENANT_ID, async (client) => {
-            const r = await client.query<{ extracted_text: string | null }>(
-              "select extracted_text from documents where id = $1 and run_id = $2 and tenant_id = $3",
+            const r = await client.query<{ extracted_text: string | null; source_filename: string }>(
+              "select extracted_text, source_filename from documents where id = $1 and run_id = $2 and tenant_id = $3",
               [documentId, runId, TENANT_ID],
             );
             if (r.rowCount !== 1) throw new Error("That document is not in this project.");
-            return r.rows[0].extracted_text;
+            return r.rows[0];
           });
         // A document whose text was never read (an old upload) is read now, the same way Import does.
-        const text = (await read()) ?? (await readContextDocument(TENANT_ID, runId, documentId), await read());
-        return text ?? "";
+        const first = await read();
+        const row = first.extracted_text !== null ? first : (await readContextDocument(TENANT_ID, runId, documentId), await read());
+        return { text: row.extracted_text ?? "", filename: row.source_filename };
       };
-      const [briefText, proposalText] = await Promise.all([briefId ? textOf(briefId) : Promise.resolve(null), proposalId ? textOf(proposalId) : Promise.resolve(null)]);
-      const extracted = await extractBriefFields(TENANT_ID, runId, { briefText, proposalText });
+      const [brief, proposal] = await Promise.all([briefId ? textOf(briefId) : Promise.resolve(null), proposalId ? textOf(proposalId) : Promise.resolve(null)]);
+      const extracted = await extractBriefFields(TENANT_ID, runId, { briefText: brief?.text ?? null, proposalText: proposal?.text ?? null });
+      fill = {
+        brief: brief && briefId ? { id: briefId, filename: brief.filename } : null,
+        proposal: proposal && proposalId ? { id: proposalId, filename: proposal.filename } : null,
+        filledBusinessProblem: businessProblem === null && !!extracted.businessProblem,
+        objectivesFromDocument: objective === null && !!extracted.researchObjective,
+      };
       businessProblem = businessProblem ?? extracted.businessProblem;
       objective = objective ?? extracted.researchObjective;
     } catch (error) {
@@ -137,13 +160,31 @@ export async function saveRunContext(runId: string, formData: FormData) {
       );
     }
 
+    // Lines read from a brief or proposal say which one (briefFillRecord.loadObjectiveSources shows it).
+    const rationale = fill?.objectivesFromDocument ? addedFromRationale(fill.brief?.filename ?? null, fill.proposal?.filename ?? null) : null;
     for (const line of newLines) {
       // Every line here is new to the project by objectiveIdentityKey (above).
       await client.query(
         `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-         values ($1, $2, $3, 'Written or imported at project set-up.', 'researcher_authored', 'accepted')`,
-        [TENANT_ID, runId, line],
+         values ($1, $2, $3, $4, 'researcher_authored', 'accepted')`,
+        [TENANT_ID, runId, line, rationale ?? "Written or imported at project set-up."],
       );
+    }
+    if (fill) {
+      // The record Set objectives shows as "Last filled from ..." (briefFillRecord.loadLastBriefFill),
+      // written with the save it describes.
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_used', $3)`, [
+        TENANT_ID,
+        runId,
+        JSON.stringify({
+          briefDocumentId: fill.brief?.id ?? null,
+          briefFilename: fill.brief?.filename ?? null,
+          proposalDocumentId: fill.proposal?.id ?? null,
+          proposalFilename: fill.proposal?.filename ?? null,
+          filledBusinessProblem: fill.filledBusinessProblem,
+          objectivesAdded: fill.objectivesFromDocument ? newLines.length : 0,
+        }),
+      ]);
     }
     await syncResearchObjective(client, runId);
   });

@@ -8,10 +8,11 @@ import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./help
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-const intake = vi.hoisted(() => ({ calls: [] as { briefText?: string | null; proposalText?: string | null }[], objective: "Objective from the brief" }));
+const intake = vi.hoisted(() => ({ calls: [] as { briefText?: string | null; proposalText?: string | null }[], objective: "Objective from the brief", fail: false }));
 vi.mock("../briefIntake", () => ({
   extractBriefFields: vi.fn(async (_t: string, _r: string, docs: { briefText?: string | null; proposalText?: string | null }) => {
     intake.calls.push(docs);
+    if (intake.fail) throw new Error("Synthetic extraction failure");
     return { businessProblem: `Problem from: ${docs.briefText ?? docs.proposalText}`, researchObjective: intake.objective };
   }),
 }));
@@ -40,6 +41,7 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
   beforeEach(() => {
     intake.calls.length = 0;
     intake.objective = "Objective from the brief";
+    intake.fail = false;
   });
   const save = async (runId: string, fields: Record<string, string>) => {
     const { saveRunContext } = await import("../runContextActions");
@@ -103,5 +105,66 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
     ]);
     expect((await db.pool.query("select count(*)::int as n from objective_candidates where run_id=$1", [fresh])).rows[0].n).toBe(1);
     expect((await db.pool.query("select stated_objectives_text from runs where id=$1", [fresh])).rows[0].stated_objectives_text.split("\n")).toHaveLength(1);
+  });
+
+  // Grant, 2026-10-21: Set objectives did not say which brief or proposal filled it.
+  describe("which document filled Set objectives", () => {
+    const usedRows = async (runId: string) =>
+      (await db.pool.query("select detail from trace where run_id=$1 and event='brief_intake_used' order by id", [runId])).rows.map((r) => r.detail);
+    const newRun = async (name: string) => (await db.pool.query("insert into runs(tenant_id,project_name) values($1,$2) returning id", [tenant, name])).rows[0].id as string;
+    const newDoc = async (runId: string, filename: string) =>
+      (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'evidence',$3,$4,'Document text') returning id", [tenant, runId, filename, `${tenant}/${runId}/${filename}`])).rows[0].id as string;
+
+    it("records the document and what it filled, labels the objectives it added, and leaves typed ones alone", async () => {
+      const r = await newRun("Fill record");
+      const proposal = await newDoc(r, "ConnectMobile_Proposal.docx");
+      const brief = await newDoc(r, "Client_Brief.pdf");
+      const { loadLastBriefFill, loadObjectiveSources } = await import("../briefFillRecord");
+      const { objectiveIdentityKey } = await import("../objectiveLines");
+      expect(await loadLastBriefFill(tenant, r)).toBeNull();
+      intake.objective = "Reach rural users\nTest the bundle offer";
+      await save(r, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: proposal });
+      expect(await usedRows(r)).toEqual([
+        { briefDocumentId: null, briefFilename: null, proposalDocumentId: proposal, proposalFilename: "ConnectMobile_Proposal.docx", filledBusinessProblem: true, objectivesAdded: 2 },
+      ]);
+      const rationales = (await db.pool.query("select candidate_text, rationale from objective_candidates where run_id=$1 order by candidate_text", [r])).rows;
+      expect(rationales).toEqual([
+        { candidate_text: "Reach rural users", rationale: 'Added from the proposal "ConnectMobile_Proposal.docx"' },
+        { candidate_text: "Test the bundle offer", rationale: 'Added from the proposal "ConnectMobile_Proposal.docx"' },
+      ]);
+      // Typed text wins and keeps its own rationale; the document then filled only the problem.
+      await save(r, { businessProblem: "", researchObjective: "My own objective", audience: "", briefDocumentId: brief, proposalDocumentId: proposal });
+      expect((await db.pool.query("select rationale from objective_candidates where run_id=$1 and candidate_text='My own objective'", [r])).rows[0].rationale).toBe("Written or imported at project set-up.");
+      const last = await loadLastBriefFill(tenant, r);
+      expect(last).toMatchObject({
+        brief: { id: brief, filename: "Client_Brief.pdf", stillImported: true },
+        proposal: { id: proposal, filename: "ConnectMobile_Proposal.docx", stillImported: true },
+        objectivesAdded: 0,
+      });
+      const sources = await loadObjectiveSources(tenant, r);
+      expect(sources instanceof Map && sources.get(objectiveIdentityKey("reach rural users."))).toBe('Added from the proposal "ConnectMobile_Proposal.docx"');
+      expect(sources instanceof Map && sources.has(objectiveIdentityKey("My own objective"))).toBe(false);
+      // A deleted document is named, as no longer imported.
+      await db.pool.query("delete from documents where id=$1", [brief]);
+      expect(await loadLastBriefFill(tenant, r)).toMatchObject({ brief: { filename: "Client_Brief.pdf", stillImported: false }, proposal: { stillImported: true } });
+    });
+
+    it("records nothing for a refused document or a failed read", async () => {
+      const r = await newRun("No record");
+      await save(r, { businessProblem: "", researchObjective: "", audience: "", briefDocumentId: foreign });
+      const doc = await newDoc(r, "Brief.docx");
+      intake.fail = true;
+      await save(r, { businessProblem: "", researchObjective: "", audience: "", briefDocumentId: doc });
+      expect(await usedRows(r)).toEqual([]);
+      const { loadLastBriefFill } = await import("../briefFillRecord");
+      expect(await loadLastBriefFill(tenant, r)).toBeNull();
+    });
+
+    it("a failed lookup is reported as unknown, not as never filled", async () => {
+      const { loadLastBriefFill, loadObjectiveSources } = await import("../briefFillRecord");
+      // Not a uuid: the query itself fails.
+      expect(await loadLastBriefFill(tenant, "not-a-run-id")).toEqual({ error: expect.any(String) });
+      expect(await loadObjectiveSources(tenant, "not-a-run-id")).toEqual({ error: expect.any(String) });
+    });
   });
 });

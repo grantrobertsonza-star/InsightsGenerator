@@ -60,6 +60,7 @@ import { decisionContextMismatch, decisionRefreshPending } from "@/lib/decisionR
 import { recommendationDecisionContextAvailable, recommendationDecisionStateSql, writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
 import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
 import RunContextForm from "./RunContextForm";
+import { loadLastBriefFill, loadObjectiveSources, sourceLabelFromRationale } from "@/lib/briefFillRecord";
 import AddFilesPanel from "./AddFilesPanel";
 import { listProjects } from "@/lib/projectList";
 import StorageCleanupNotice from "./StorageCleanupNotice";
@@ -167,7 +168,7 @@ import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
-import { parseObjectiveLines } from "@/lib/objectiveLines";
+import { objectiveIdentityKey, parseObjectiveLines } from "@/lib/objectiveLines";
 import ResearchAssistantCard, {
   type AssistantChatMessage,
 } from "./ResearchAssistantCard";
@@ -4255,6 +4256,14 @@ export default async function RunPage({
   // below, computed once in RunPage and used to order both this section and
   // Decision (in validate mode only; in generate mode Decision has its own
   // hard dependency on Insights, unrelated to this).
+  // Which brief or proposal last filled Set objectives, and which objectives came from one.
+  const [lastBriefFill, objectiveSources] = await Promise.all([loadLastBriefFill(TENANT_ID, id), loadObjectiveSources(TENANT_ID, id)]);
+  const objectiveSourceLabels = (lines: string[]) =>
+    lines.map((line) => {
+      if (!(objectiveSources instanceof Map)) return null;
+      const rationale = objectiveSources.get(objectiveIdentityKey(line));
+      return rationale ? sourceLabelFromRationale(rationale) : null;
+    });
   const objectiveQuality = await getObjectiveQuality(id);
   const qualityByText = new Map(
     objectiveQuality.rows.map((r) => [r.item_text.trim(), r] as const),
@@ -5485,6 +5494,7 @@ export default async function RunPage({
                       // Briefs and proposals only: imported as context, or given that role by a review.
                       .filter((d) => (d.kind === "evidence" || documentReviewRoles.has(d.id)) && /\.(pdf|docx|pptx|txt)$/i.test(d.source_filename))
                       .map((d) => ({ id: d.id, filename: d.source_filename, role: documentReviewRoles.get(d.id) ?? null }))}
+                    lastFill={lastBriefFill}
                   />
                 </Pane>
               }
@@ -5493,6 +5503,7 @@ export default async function RunPage({
                   <StatedObjectivesList
                     runId={id}
                     lines={parseObjectiveLines(run.stated_objectives_text)}
+                    sources={objectiveSourceLabels(parseObjectiveLines(run.stated_objectives_text))}
                   />
                   <p className="text-xs text-muted">
                     Quality scores, the evidence check and suggested objectives are on the{" "}

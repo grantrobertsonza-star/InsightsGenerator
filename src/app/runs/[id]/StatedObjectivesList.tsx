@@ -23,7 +23,7 @@ function splitLabel(text: string): { label: string | null; body: string } {
   return { label: null, body: text };
 }
 
-function Item({ runId, text, index }: { runId: string; text: string; index: number }) {
+function Item({ runId, text, index, source }: { runId: string; text: string; index: number; source: string | null }) {
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -59,6 +59,11 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
             </span>
           )}
           <p className="text-sm text-foreground">{body}</p>
+          {source && (
+            <p className="mt-0.5 text-[11px] text-slate-500" data-testid="objective-source">
+              {`From ${source}`}
+            </p>
+          )}
         </div>
       )}
       <div className="flex shrink-0 gap-1.5">
@@ -120,13 +125,22 @@ function Item({ runId, text, index }: { runId: string; text: string; index: numb
   );
 }
 
-export default function StatedObjectivesList({ runId, lines }: { runId: string; lines: string[] }) {
+export default function StatedObjectivesList({
+  runId,
+  lines,
+  sources,
+}: {
+  runId: string;
+  lines: string[];
+  /** Per line, the brief or proposal it was added from ("the proposal X.docx"), or null (briefFillRecord). */
+  sources?: (string | null)[];
+}) {
   if (lines.length === 0) return null;
   return (
     <div>
       <ul className="space-y-2">
         {lines.map((l, i) => (
-          <Item key={l} runId={runId} text={l} index={i} />
+          <Item key={l} runId={runId} text={l} index={i} source={sources?.[i] ?? null} />
         ))}
       </ul>
     </div>

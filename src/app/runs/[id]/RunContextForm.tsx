@@ -1,5 +1,7 @@
 import SubmitButton from "@/components/SubmitButton";
 import { saveRunContext } from "@/lib/runContextActions";
+import type { BriefFill } from "@/lib/briefFillRecord";
+import { LAST_FILL_UNKNOWN, lastFillText } from "@/lib/briefFillText";
 
 const field =
   "mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -10,6 +12,7 @@ export default function RunContextForm({
   objective,
   audience,
   documents,
+  lastFill,
 }: {
   runId: string;
   businessProblem: string | null;
@@ -17,6 +20,8 @@ export default function RunContextForm({
   audience: string | null;
   /** The project's imported documents that can be read as a brief or proposal, with any role recorded at import. */
   documents: { id: string; filename: string; role: "brief" | "proposal" | null }[];
+  /** The last successful fill (briefFillRecord.loadLastBriefFill): null when never filled, error when unknown. */
+  lastFill?: BriefFill | null | { error: string };
 }) {
   return (
     <form
@@ -29,7 +34,13 @@ export default function RunContextForm({
           <span className="ml-1.5 text-xs font-normal text-muted">(optional)</span>
           <p className="mt-1 text-xs text-muted">
             Choose an imported brief and/or proposal and we will fill in whichever fields below you leave blank when you save. Text you type yourself always wins. Add files under Import data.
+            The choice applies to one save, so it shows Not used again afterwards; choose a document again to fill again.
           </p>
+          {lastFill && (
+            <p className="mt-1.5 text-xs font-medium text-slate-700" data-testid="brief-last-fill">
+              {"error" in lastFill ? LAST_FILL_UNKNOWN : lastFillText(lastFill)}
+            </p>
+          )}
           <div className="mt-2 grid grid-cols-1 gap-2">
             {(
               [
