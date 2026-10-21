@@ -10,10 +10,12 @@ import { normalizeObjectiveLine, objectiveIdentityKey, parseObjectiveLines } fro
 import { requireTenantId } from "./requestContext";
 
 /** A refused objective action, returned rather than thrown so its wording reaches the researcher. */
-export type ObjectiveActionResult = { ok: true } | { ok: false; error: string; conflict: boolean };
+// On a conflict, `currentText` is the objective's wording as stored now (null when it was deleted),
+// read under the same lock as the refusal, so the editor can show it without waiting for a refresh.
+export type ObjectiveActionResult = { ok: true } | { ok: false; error: string; conflict: boolean; currentText?: string | null };
 
 const REVIEW_EDIT_CONFLICT =
-  "This objective was changed or removed after you opened it, so your edit was not saved. Your wording is still in the box: copy it, then Cancel to see the current objective, and edit that.";
+  "This objective was changed or removed after you opened it, so your edit was not saved. Your wording is still in the box: use the current wording, or replace it with yours.";
 
 /**
  * Accepts a candidate, optionally with edited wording. `expectedText` is the wording the editor
@@ -32,9 +34,9 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
       [candidateId, runId]
     );
     const candidate = result.rows[0];
-    if (!candidate) return { ok: false, error: "This objective is no longer in the project; it may have been deleted. Reload to see the current list.", conflict: true };
+    if (!candidate) return { ok: false, error: "This objective is no longer in the project; it may have been deleted. Reload to see the current list.", conflict: true, currentText: null };
     if (expectedText !== undefined && normalizeObjectiveLine(candidate.candidate_text) !== normalizeObjectiveLine(expectedText)) {
-      return { ok: false, error: REVIEW_EDIT_CONFLICT, conflict: true };
+      return { ok: false, error: REVIEW_EDIT_CONFLICT, conflict: true, currentText: candidate.candidate_text };
     }
 
     // OBJ-SET-001/M02: this used to only trim the edit, while Setup's own edit path

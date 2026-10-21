@@ -312,7 +312,7 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       const opened = await setupTarget(db.pool, run, "Deleted meanwhile");
       await a.deleteObjectiveCandidate(run, row.id);
       expect(await saveStatedObjectiveEdit(run, "Deleted meanwhile", "Edited after deletion", opened)).toMatchObject({ ok: false, conflict: true });
-      expect(await a.acceptObjectiveCandidate(run, row.id, "Edited after deletion", "Deleted meanwhile")).toMatchObject({ ok: false, conflict: true });
+      expect(await a.acceptObjectiveCandidate(run, row.id, "Edited after deletion", "Deleted meanwhile")).toMatchObject({ ok: false, conflict: true, currentText: null });
       expect(await candidates(run)).toEqual([]);
       expect(await stated(run)).toBeNull();
     });
@@ -324,7 +324,8 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       const { saveStatedObjectiveEdit } = await import("../runContextActions");
       expect(await saveStatedObjectiveEdit(run, "Set and Review", "Changed on Setup", await setupTarget(db.pool, run, "Set and Review"))).toEqual({ ok: true });
       const setupOpenedBeforeReviewEdit = await setupTarget(db.pool, run, "Changed on Setup");
-      expect(await a.acceptObjectiveCandidate(run, row.id, "Changed on Review", "Set and Review")).toMatchObject({ ok: false, conflict: true });
+      // The refusal reports the stored wording, so the editor can show it before any refresh (GT1000-F03).
+      expect(await a.acceptObjectiveCandidate(run, row.id, "Changed on Review", "Set and Review")).toMatchObject({ ok: false, conflict: true, currentText: "Changed on Setup" });
       expect((await candidates(run))[0]).toMatchObject({ id: row.id, candidate_text: "Changed on Setup" });
       expect(await a.acceptObjectiveCandidate(run, row.id, "Changed on Review", "Changed on Setup")).toEqual({ ok: true });
       expect(await stated(run)).toBe("Changed on Review");

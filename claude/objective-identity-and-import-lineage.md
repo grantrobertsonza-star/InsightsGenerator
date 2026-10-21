@@ -71,7 +71,14 @@ with `expectedText`) locks the run row and the candidate, and refuses when the c
 differs or the candidate is gone. Both lock the run row first, so Setup and Review edits of one
 objective are serialized and the second sees the first. Edits to different objectives both land.
 The editors keep the draft open with the message (`attemptResult` in `actionFailure.ts` treats a
-returned `{ ok: false }` like a thrown failure). Adding stays a separate action.
+returned `{ ok: false }` like a thrown failure). Review's expected wording is the one captured when
+its editor opened (`useObjectiveRowActions`, both the table row and the detail pane, GT1000-F03): a
+refresh of the rows while the editor is open (another objective unaccepted, a revalidated page)
+never moves it, so the old draft is still a conflict. After a conflict the draft stays and the
+researcher chooses: Use the current wording (draft and expected wording become the current text,
+nothing saved) or Replace it with mine (the current text they now see becomes the expected wording
+and the save runs again; it is refused again if the objective changed once more). Cancel then Edit
+starts from the current wording. Adding stays a separate action.
 
 **Manual Add (GT500-P01).** `addOwnObjectiveCandidate` locks the run row and refuses an objective
 whose key matches a pending or accepted objective of any source, naming it and nothing is added; a

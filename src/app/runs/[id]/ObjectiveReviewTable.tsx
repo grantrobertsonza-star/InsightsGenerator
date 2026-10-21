@@ -12,6 +12,7 @@ import { scoreObjectivesAction } from "@/lib/qualityActions";
 import { TrashIcon } from "@/components/icons";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useObjectiveRowActions } from "./useObjectiveRowActions";
+import ObjectiveEditConflict from "./ObjectiveEditConflict";
 
 export type ObjectiveScores = {
   specific: number;
@@ -190,6 +191,9 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
           <p role="alert" className="mt-1 max-w-xs text-[11px] text-red-700">
             {a.error}
           </p>
+        )}
+        {a.editing && a.conflict && (
+          <ObjectiveEditConflict currentText={a.currentText} pending={a.isPending} onUseCurrent={a.useCurrentWording} onReplace={a.replaceCurrentWording} buttonClass={miniBtn} />
         )}
       </td>
     </tr>

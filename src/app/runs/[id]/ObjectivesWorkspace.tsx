@@ -13,6 +13,7 @@ import {
 } from "./ObjectiveReviewTable";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useObjectiveRowActions } from "./useObjectiveRowActions";
+import ObjectiveEditConflict from "./ObjectiveEditConflict";
 
 type Verdict = { item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean };
 
@@ -147,6 +148,9 @@ function Detail({ runId, row, index }: { runId: string; row: ObjectiveRow; index
           {a.error}
         </p>
       )}
+        {a.editing && a.conflict && (
+          <ObjectiveEditConflict currentText={a.currentText} pending={a.isPending} onUseCurrent={a.useCurrentWording} onReplace={a.replaceCurrentWording} buttonClass={miniBtn} />
+        )}
 
       {row.scores ? (
         <div className="space-y-2">

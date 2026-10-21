@@ -11,6 +11,11 @@
 //        the new record is unchanged.
 //   R500-01: after a failed fill, an ordinary save (no document chosen) keeps the failure and its
 //        retry on the page, as a reload does; the retry then fills and clears it.
+//   R500-R01: the same when the failure itself could not be recorded, through ordinary saves.
+//   GT1000-F03: a Review editor is open with a draft; another page edits the objective in Setup;
+//        an unrelated action in Review (Unaccept another objective) refreshes the rows. Saving the
+//        old draft is a conflict, in the table and in the detail pane; the newer wording stays
+//        until the researcher chooses Replace it with mine, and Use the current wording loads it.
 // Real browser against the disposable local stack; the model replay is scripted through the
 // stack's model-fixture.json. Synthetic data only.
 import { expect, test } from "@playwright/test";
@@ -322,3 +327,88 @@ test("R500-R01: a failed fill that could not be recorded stays shown through ord
     await client.end();
   }
 });
+
+for (const where of ["table", "detail"]) {
+  test(`GT1000-F03 (${where}): a refresh while a Review editor is open does not move its baseline; the old draft is a conflict`, async ({ page, context }, testInfo) => {
+    const run = await setUp(page, testInfo, `gt1000-f03-${where}`, "Unused proposal text.");
+    const client = db();
+    await client.connect();
+    try {
+      await openSection(page, "Set Objectives");
+      const form = objectiveForm(page);
+      await form.locator('textarea[name="researchObjective"]').fill("Alpha rural demand\nBravo urban demand");
+      await form.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(async () => (await client.query("select count(*) from objective_candidates where run_id=$1 and status='accepted'", [run.id])).rows[0].count, { timeout: 60_000 }).toBe("2");
+      const alphaId = (await client.query("select id from objective_candidates where run_id=$1 and candidate_text='Alpha rural demand'", [run.id])).rows[0].id;
+
+      await openSection(page, "Review Objectives");
+      const rowOf = (text) => page.locator("tbody[data-objective-row]", { hasText: text }).first();
+      await expect(rowOf("Alpha rural demand")).toBeVisible({ timeout: 60_000 });
+      // The editor on Alpha, in the table row or in the detail pane.
+      let editor;
+      if (where === "table") {
+        await rowOf("Alpha rural demand").getByRole("button", { name: "Edit", exact: true }).click();
+        editor = page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first();
+      } else {
+        await rowOf("Alpha rural demand").locator("td").nth(1).click();
+        const detail = page.locator("div").filter({ has: page.getByRole("heading", { name: "Objective detail" }) }).last();
+        await detail.getByRole("button", { name: "Edit", exact: true }).click();
+        editor = detail;
+      }
+      await editor.locator("textarea").fill("Researcher draft from the older objective");
+
+      // Another page edits Alpha in Setup and saves: the newer wording.
+      const second = await context.newPage();
+      second.on("dialog", (d) => d.accept());
+      await second.goto(run.url, { waitUntil: "networkidle" });
+      await openSection(second, "Set Objectives");
+      await second.locator("li").filter({ has: second.getByText("Alpha rural demand", { exact: true }) }).last().getByRole("button", { name: "Edit", exact: true }).click();
+      const setupEditor = second.locator("li").filter({ has: second.locator("textarea:not([name])") }).last();
+      await setupEditor.locator("textarea").fill("Measure rural demand by income");
+      await setupEditor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(async () => (await client.query("select candidate_text from objective_candidates where id=$1", [alphaId])).rows[0]?.candidate_text).toBe("Measure rural demand by income");
+      await second.close();
+
+      // Back in Review. Table: Unaccept Bravo, which refreshes the rows while Alpha's draft is still
+      // open (Codex's refreshed-props path). The detail pane shows no other row to act on, so there
+      // the save follows the Setup edit directly; both views use the same hook
+      // (useObjectiveRowActions), which holds the baseline captured when editing started.
+      if (where === "table") {
+        const bravo = rowOf("Bravo urban demand");
+        await bravo.getByRole("button", { name: "Unaccept", exact: true }).click();
+        await expect(bravo.getByRole("button", { name: "Accept", exact: true })).toBeVisible({ timeout: 60_000 });
+      }
+      await expect(editor.locator("textarea")).toHaveValue("Researcher draft from the older objective");
+
+      // Save: a conflict, the draft kept, the newer wording unchanged.
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(editor.getByRole("alert")).toContainText("changed or removed after you opened it", { timeout: 60_000 });
+      await expect(editor.locator("textarea")).toHaveValue("Researcher draft from the older objective");
+      await expect(editor.getByTestId("objective-edit-conflict-current")).toHaveText("Measure rural demand by income");
+      expect((await client.query("select candidate_text from objective_candidates where id=$1", [alphaId])).rows[0].candidate_text).toBe("Measure rural demand by income");
+
+      if (where === "table") {
+        // Use the current wording: the draft becomes the newer wording; nothing is saved.
+        await editor.getByTestId("objective-edit-use-current").click();
+        await expect(editor.locator("textarea")).toHaveValue("Measure rural demand by income");
+        await expect(editor.getByTestId("objective-edit-conflict")).toHaveCount(0);
+        expect((await client.query("select candidate_text from objective_candidates where id=$1", [alphaId])).rows[0].candidate_text).toBe("Measure rural demand by income");
+        await page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first().getByRole("button", { name: "Cancel", exact: true }).click();
+      } else {
+        // Replace it with mine: the explicit choice saves the draft over the newer wording, same id.
+        await editor.getByTestId("objective-edit-replace").click();
+        await expect.poll(async () => (await client.query("select candidate_text from objective_candidates where id=$1", [alphaId])).rows[0]?.candidate_text, { timeout: 30_000 }).toBe("Researcher draft from the older objective");
+      }
+      expect(Number((await client.query("select count(*) from objective_candidates where run_id=$1", [run.id])).rows[0].count)).toBe(2);
+
+      // Cancel then Edit again starts from the current wording.
+      await page.reload({ waitUntil: "networkidle" });
+      await openSection(page, "Review Objectives");
+      const current = (await client.query("select candidate_text from objective_candidates where id=$1", [alphaId])).rows[0].candidate_text;
+      await rowOf(current).getByRole("button", { name: "Edit", exact: true }).click();
+      await expect(page.locator("tbody[data-objective-row]", { has: page.locator("textarea") }).first().locator("textarea")).toHaveValue(current);
+    } finally {
+      await client.end();
+    }
+  });
+}
