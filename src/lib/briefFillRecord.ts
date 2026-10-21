@@ -4,10 +4,11 @@ import { objectiveIdentityKey } from "./objectiveLines";
 /**
  * Which brief or proposal last filled Set objectives, and which objectives came from one (Grant,
  * 2026-10-21). The choice in Set objectives is a one-off instruction for one save (so an ordinary
- * save never calls the model) and its selects reset afterwards; saveRunContext records each
+ * save makes no extraction call) and its selects reset afterwards; saveRunContext records each
  * successful fill as a 'brief_intake_used' trace row and gives the objectives it added a rationale
- * starting "Added from". A failed read returns { error }, never null: not knowing must not look
- * like "never filled".
+ * starting "Added from". A requested fill that failed is recorded as 'brief_intake_error'
+ * (GT500-F02); loadFailedBriefFill reports it while no later fill has succeeded. A failed read
+ * returns { error }, never null: not knowing must not look like "never filled".
  */
 
 export type BriefFillDocument = { id: string; filename: string; stillImported: boolean };
@@ -17,6 +18,18 @@ export type BriefFill = {
   proposal: BriefFillDocument | null;
   objectivesAdded: number;
   filledBusinessProblem: boolean;
+  /** Objectives an earlier fill had already imported, so this one did not add them again (GT500-F01). */
+  importedBefore: number;
+};
+
+/** A requested fill that did not happen, newer than any fill that did. */
+export type FailedBriefFill = {
+  at: string;
+  /** "the proposal X.docx", or "the chosen document" when its name was not known. */
+  documents: string;
+  reason: string;
+  briefDocumentId: string | null;
+  proposalDocumentId: string | null;
 };
 
 type Detail = {
@@ -26,6 +39,7 @@ type Detail = {
   proposalFilename?: string | null;
   objectivesAdded?: number;
   filledBusinessProblem?: boolean;
+  importedBefore?: number;
 };
 
 export async function loadLastBriefFill(tenantId: string, runId: string): Promise<BriefFill | null | { error: string }> {
@@ -49,6 +63,42 @@ export async function loadLastBriefFill(tenantId: string, runId: string): Promis
         proposal: doc(detail.proposalDocumentId, detail.proposalFilename),
         objectivesAdded: typeof detail.objectivesAdded === "number" ? detail.objectivesAdded : 0,
         filledBusinessProblem: detail.filledBusinessProblem === true,
+        importedBefore: typeof detail.importedBefore === "number" ? detail.importedBefore : 0,
+      };
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * The latest failed fill, when it is newer than the latest successful one (trace ids order the
+ * two events), so a reload still shows that the requested fill did not happen. Failures recorded
+ * before document ids were kept name "the chosen document".
+ */
+export async function loadFailedBriefFill(tenantId: string, runId: string): Promise<FailedBriefFill | null | { error: string }> {
+  try {
+    return await withTenantRead(tenantId, async (client) => {
+      const r = await client.query<{ occurred_at: Date | string; detail: Detail & { message?: string } }>(
+        `select e.occurred_at, e.detail from trace e
+          where e.run_id = $1 and e.event = 'brief_intake_error'
+            and not exists (select 1 from trace u where u.run_id = $1 and u.event = 'brief_intake_used' and u.id > e.id)
+          order by e.id desc limit 1`,
+        [runId],
+      );
+      if (r.rowCount === 0) return null;
+      const { occurred_at, detail } = r.rows[0];
+      const one = (kind: string, id: string | null | undefined, filename: string | null | undefined) =>
+        id ? (filename ? `the ${kind} ${filename}` : "the chosen document") : null;
+      return {
+        at: new Date(occurred_at).toISOString(),
+        documents:
+          [one("brief", detail.briefDocumentId, detail.briefFilename), one("proposal", detail.proposalDocumentId, detail.proposalFilename)]
+            .filter(Boolean)
+            .join(" and ") || "the chosen document",
+        reason: typeof detail.message === "string" && detail.message ? detail.message : "No reason was recorded.",
+        briefDocumentId: detail.briefDocumentId ?? null,
+        proposalDocumentId: detail.proposalDocumentId ?? null,
       };
     });
   } catch (error) {

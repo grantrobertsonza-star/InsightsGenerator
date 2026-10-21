@@ -44,3 +44,21 @@ export async function attempt(run: () => Promise<unknown>): Promise<string | nul
     return actionFailureMessage(error);
   }
 }
+
+/**
+ * Like attempt, for an action that can also refuse by returning `{ ok: false, error }` (an edit
+ * conflict, a duplicate objective): that refusal is a failure too, so the control keeps the draft
+ * and shows it. Never throws.
+ */
+export async function attemptResult(run: () => Promise<unknown>): Promise<string | null> {
+  try {
+    const result = await run();
+    if (result && typeof result === "object" && "ok" in result && (result as { ok: unknown }).ok === false) {
+      const error = (result as { error?: unknown }).error;
+      return typeof error === "string" && error ? error : "The server refused this. Try again.";
+    }
+    return null;
+  } catch (error) {
+    return actionFailureMessage(error);
+  }
+}

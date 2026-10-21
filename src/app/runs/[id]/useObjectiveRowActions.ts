@@ -9,7 +9,7 @@ import {
   deleteObjectiveCandidate,
 } from "@/lib/objectiveCandidateActions";
 import type { ObjectiveRow } from "./ObjectiveReviewTable";
-import { attempt } from "./actionFailure";
+import { attemptResult } from "./actionFailure";
 
 /**
  * OBJ-REV-M02: the status-transition logic behind one objective's row
@@ -25,7 +25,8 @@ import { attempt } from "./actionFailure";
  *
  * Every action reports its own failure in `error` (shown by both presentations) instead of
  * throwing out of the transition, which replaced the page and lost an open edit. A failed save
- * keeps the editor open with the researcher's draft.
+ * keeps the editor open with the researcher's draft. A save sends the wording the editor opened
+ * with, so an objective changed or removed meanwhile is refused as a conflict (GT500-F03).
  */
 export function useObjectiveRowActions(runId: string, row: ObjectiveRow, onDeleted?: () => void) {
   const [isPending, start] = useTransition();
@@ -35,7 +36,7 @@ export function useObjectiveRowActions(runId: string, row: ObjectiveRow, onDelet
   const run = (action: () => Promise<unknown>, after?: () => void) =>
     start(async () => {
       setError(null);
-      const failure = await attempt(action);
+      const failure = await attemptResult(action);
       if (failure) setError(failure);
       else after?.();
     });
@@ -48,7 +49,7 @@ export function useObjectiveRowActions(runId: string, row: ObjectiveRow, onDelet
     setError(null);
     setEditing(false);
   };
-  const save = () => run(() => acceptObjectiveCandidate(runId, row.id, draft.trim()), () => setEditing(false));
+  const save = () => run(() => acceptObjectiveCandidate(runId, row.id, draft.trim(), row.text), () => setEditing(false));
   const accept = () => run(() => acceptObjectiveCandidate(runId, row.id));
   const unaccept = () => run(() => unacceptObjectiveCandidate(runId, row.id));
   const reject = () => run(() => rejectObjectiveCandidate(runId, row.id));

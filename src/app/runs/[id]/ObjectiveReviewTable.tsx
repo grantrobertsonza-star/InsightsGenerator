@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { attempt } from "./actionFailure";
+import { attemptResult } from "./actionFailure";
 import {
   addOwnObjectiveCandidate,
   regenerateObjectiveCandidates,
@@ -216,8 +216,9 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
 
 /**
  * One table for every objective: stated, inferred and suggested, each with
- * its quality score and row actions. Scoring lives here, not at set-up,
- * because "Answerable" is judged against the data that has been uploaded.
+ * its quality score and row actions. Scores are shown here; they are worked out automatically
+ * whenever objectives are saved, on Set objectives or here (objectiveQualityScorer.ts), and
+ * "Answerable" is judged against the data uploaded at that time, so Rescore refreshes it.
  */
 export default function ObjectiveReviewTable({
   runId,
@@ -258,7 +259,7 @@ export default function ObjectiveReviewTable({
   function runAction(action: () => Promise<unknown>, after?: () => void) {
     setError(null);
     start(async () => {
-      const failure = await attempt(action);
+      const failure = await attemptResult(action);
       if (failure) setError(failure);
       else after?.();
     });

@@ -127,7 +127,18 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
       intake.objective = "Reach rural users\nTest the bundle offer";
       await save(r, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: proposal });
       expect(await usedRows(r)).toEqual([
-        { briefDocumentId: null, briefFilename: null, proposalDocumentId: proposal, proposalFilename: "ConnectMobile_Proposal.docx", filledBusinessProblem: true, objectivesAdded: 2 },
+        {
+          briefDocumentId: null,
+          briefFilename: null,
+          proposalDocumentId: proposal,
+          proposalFilename: "ConnectMobile_Proposal.docx",
+          filledBusinessProblem: true,
+          objectivesAdded: 2,
+          // Import lineage (GT500-F01): every key read from the document, and what it became.
+          importedBefore: 0,
+          extractedKeys: ["reach rural users", "test the bundle offer"],
+          addedCandidateIds: expect.any(Array),
+        },
       ]);
       const rationales = (await db.pool.query("select candidate_text, rationale from objective_candidates where run_id=$1 order by candidate_text", [r])).rows;
       expect(rationales).toEqual([
