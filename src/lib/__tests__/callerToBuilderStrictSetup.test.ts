@@ -23,6 +23,9 @@ vi.mock("../anthropic", () => ({ anthropic: {}, CLAUDE_MODEL: "test-model" }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../crosstabAsk", () => ({ planCrosstabFromText: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
+// GT100-F01: the confirmed-questionnaire lookup is a boundary here (these checks are about the
+// set-up and sheet lookups). With the database mocked it used to fail silently; it now refuses.
+vi.mock("../instruments", () => ({ getLabelOverlay: vi.fn(async () => null) }));
 vi.mock("../findingArchive", () => ({ archiveAndReplaceFindings: vi.fn() }));
 vi.mock("../variableOverrides", () => ({
   loadVariableOverrides: vi.fn(),

@@ -137,14 +137,19 @@ export async function resolveAuthoritativeSheet(
   });
 }
 
-/** Confirmed questionnaire wording for a data file. Loaded lazily: instruments.ts imports this module. */
+/**
+ * Confirmed questionnaire wording for a data file, or null when it has none (including a database
+ * without the questionnaire tables, which getConfirmedItemsForData treats as no links). Loaded
+ * lazily: instruments.ts imports this module.
+ *
+ * GT100-F01: a failed read is not caught here. It used to become null, the same as "no confirmed
+ * links", so the dictionary, categories, cross tabs, scatter plots and driver analysis computed
+ * with the file's own labels and missing codes. InstrumentMeaningUnavailableError now propagates
+ * and each of those refuses before the engine is called.
+ */
 export async function overlayFor(tenantId: string, runId: string, documentId: string) {
-  try {
-    const { getLabelOverlay } = await import("./instruments");
-    return await getLabelOverlay(tenantId, runId, documentId);
-  } catch {
-    return null; // instrument tables not migrated yet: the file's own labels stand
-  }
+  const { getLabelOverlay } = await import("./instruments");
+  return getLabelOverlay(tenantId, runId, documentId);
 }
 
 /** The variable list for a data file, read once and kept on the document. */

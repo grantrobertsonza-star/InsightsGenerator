@@ -10,6 +10,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
+// GT100-F01: the confirmed-questionnaire lookup is a boundary here (these checks are about the
+// set-up and sheet lookups). With the database mocked it used to fail silently; it now refuses.
+vi.mock("../instruments", () => ({ getLabelOverlay: vi.fn(async () => null) }));
 vi.mock("../findingArchive", () => ({ archiveAndReplaceFindings: vi.fn() }));
 vi.mock("../dataSetup", () => ({ loadDataSetupWithStatus: vi.fn() }));
 vi.mock("../variableOverrides", () => ({

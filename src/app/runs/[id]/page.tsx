@@ -114,7 +114,7 @@ import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
 import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources";
 import { getDocumentRoles } from "@/lib/researchQualityRepository";
-import { getInstrumentSummaries, getConfirmedItemsForData } from "@/lib/instruments";
+import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
 import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
 import { loadVariableDictionary, resolveCurrentDesignSnapshotStatus, designFreshnessStatus, type DesignFreshness, type CurrentDesignSnapshotStatus } from "@/lib/crosstabs";
@@ -3303,6 +3303,10 @@ export default async function RunPage({
   // Skip logic from a confirmed questionnaire, per raw data file. Best
   // effort: without a questionnaire the detected routing is used.
   const statedRoutingByDoc = new Map<string, StatedRouting[]>();
+  // GT100-F01: a file whose confirmed questionnaire could not be read. Its quality check still runs
+  // on the routing detected in the data, but says so, rather than reading as if no questionnaire
+  // had been confirmed.
+  const statedRoutingUnread = new Set<string>();
   await Promise.all(
     documents
       .filter((d) => d.kind === "table" && d.ingestion_type === "raw")
@@ -3313,16 +3317,36 @@ export default async function RunPage({
           if (!items.some((i) => i.routing)) return;
           const dict = await loadVariableDictionary(TENANT_ID, id, d.id);
           statedRoutingByDoc.set(d.id, buildStatedRouting(items, dict.variables));
-        } catch {
-          // fall back to detected routing
+        } catch (e) {
+          // Fall back to detected routing; a failed questionnaire read is said on the check below.
+          if (e instanceof InstrumentMeaningUnavailableError) statedRoutingUnread.add(d.id);
         }
       }),
   );
   const importQualityBase = documentTablePreviews.filter((t) => t.headers.length > 0 && t.table_index < 100);
-  const rawQualities = await Promise.all(
-    importQualityBase.map((t) =>
-      t.ingestion_type === "raw" ? getRawQuality(t, statedRoutingByDoc.get(t.document_id) ?? []) : Promise.resolve(null),
-    ),
+  const rawQualities = (
+    await Promise.all(
+      importQualityBase.map((t) =>
+        t.ingestion_type === "raw" ? getRawQuality(t, statedRoutingByDoc.get(t.document_id) ?? []) : Promise.resolve(null),
+      ),
+    )
+  ).map((q, i): TableQuality | null =>
+    // A new object: getRawQuality's results are cached and shared between requests.
+    q && statedRoutingUnread.has(importQualityBase[i].document_id)
+      ? {
+          ...q,
+          status: q.status === "fail" ? "fail" : "warn",
+          checks: [
+            ...q.checks,
+            {
+              id: "stated_routing",
+              label: "Questionnaire routing",
+              status: "warn",
+              detail: "The confirmed questionnaire could not be read, so empty answers are judged by the routing detected in the data. Reload the page to try again.",
+            },
+          ],
+        }
+      : q,
   );
 
   // A file too wide to store whole only has the capped quality above, which

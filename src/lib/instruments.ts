@@ -659,9 +659,32 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
       );
       return r.rows.map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed" }));
     });
-  } catch {
-    return [];
+  } catch (e) {
+    // Migration 0060 (instrument tables) or a later column not applied: this database has no
+    // questionnaire links at all, which is a supported state, so the file's own labels stand.
+    if (isMissingInstrumentSchema(e)) return [];
+    // GT100-F01: anything else (a permission, connection or query failure) means the confirmed
+    // meaning exists but could not be read. Returning [] here used to look exactly like "no
+    // confirmed links", so a table was computed with the file's own labels and missing codes: a
+    // confirmed "Don't know" became a valid answer and changed bases and percentages.
+    throw new InstrumentMeaningUnavailableError(INSTRUMENT_MEANING_UNAVAILABLE, { cause: e });
   }
+}
+
+/**
+ * GT100-F01: the one failure for "the confirmed questionnaire links of this data file could not be
+ * read". Confirmed links define answer labels, which codes mean Don't know, and stated routing, so
+ * every calculation that would use them refuses instead of proceeding without them. Nothing is
+ * written and no confirmed link is changed; trying again reads them afresh.
+ */
+export class InstrumentMeaningUnavailableError extends Error {}
+export const INSTRUMENT_MEANING_UNAVAILABLE =
+  "The confirmed questionnaire labels could not be read, so this was not calculated: answer meanings and Don't know codes would be wrong. Try again.";
+
+/** undefined_table (42P01) or undefined_column (42703): the questionnaire schema is not migrated here. */
+function isMissingInstrumentSchema(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  return code === "42P01" || code === "42703";
 }
 
 /** Question wording and answer labels from the confirmed links of a data file, or null when there are none. */

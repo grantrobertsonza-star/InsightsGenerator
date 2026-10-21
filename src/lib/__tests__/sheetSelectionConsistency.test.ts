@@ -23,6 +23,9 @@ import * as XLSX from "xlsx";
 
 vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
+// GT100-F01: the confirmed-questionnaire lookup is a boundary here (these checks are about the
+// set-up and sheet lookups). With the database mocked it used to fail silently; it now refuses.
+vi.mock("../instruments", () => ({ getLabelOverlay: vi.fn(async () => null) }));
 // Round 4's caller-level tests dynamically import ../documentTables and ../crosstabs, which
 // pull in these modules at their own top level. None of their real behaviour is exercised by
 // these tests (the CSV/XLSX extraction branch never reaches extractDocumentText/
