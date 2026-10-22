@@ -2,14 +2,18 @@
 // orchestration evidence only, never judgement quality). Grant 2026-10-19: one brief or one proposal
 // at a time, a separate proposal-against-brief comparison, view only; laid out from 2026-10-20 as his
 // prototype, then with the document and review chosen at the top of the review pane, its actions and
-// Overview, Criteria, Improvements and Details tabs, and the clicked bar's or criterion's detail on the right.
+// Overview, Improvements and Details tabs (the Criteria tab folded into the Overview's Show filter,
+// 2026-10-22), and the clicked bar's, criterion's or improvement's detail on the right.
 //   1. Opening the section makes no model call; documents uploaded as a brief and a proposal are
 //      listed with their role; the selected one offers Review brief, Review proposal and Compare.
 //   2. A start needs a confirmation; cancelling calls nothing.
 //   3. A brief review completes: ten bars, the overall recomputed here from the scores and weights on
-//      screen; clicking a bar opens the Criteria tab on that criterion, with quotes that are verbatim
-//      spans of the stored document text; the status filter narrows the criteria list.
-//   4. A proposal review shows six weighted categories; a category's detail lists its criteria.
+//      screen; clicking a bar opens that criterion on the right, with quotes that are verbatim spans
+//      of the stored document text; the Overview's Show filter shows exactly the criteria of a
+//      status, the overall unchanged.
+//   4. A proposal review shows six weighted categories; a category's detail lists its criteria;
+//      filtered, a category keeps its heading beside its items of that status; the Improvements tab
+//      lists rows in the dashboard's style and a row opens its improvement on the right.
 //   5. The comparison is its own review with seven equal-weight comparisons, listed in the
 //      historical reviews of both of its documents.
 //   6. The Word export of the brief review carries the dashboard and the criteria.
@@ -108,19 +112,27 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     const details = section.getByTestId("rq-details");
     await expect(details).toHaveAttribute("data-dimension", "RQ-BRIEF-DECISION");
     await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(1);
-    // The criteria list: all ten, then narrowed by the status filter to those with that status.
-    await section.getByRole("tab", { name: "Criteria" }).click();
-    await section.getByLabel("Dimension", { exact: true }).selectOption("all");
-    const list = section.getByRole("list", { name: "Criteria" });
-    await expect(list.locator("li[data-criterion-row]")).toHaveCount(10);
-    const firstStatus = (await section.getByLabel("Assessment status", { exact: true }).locator("option").allInnerTexts())[1];
-    await section.getByLabel("Assessment status", { exact: true }).selectOption({ label: firstStatus });
-    const narrowed = await list.locator("li[data-criterion-row]").count();
-    expect(narrowed).toBeGreaterThan(0);
-    expect(narrowed).toBeLessThanOrEqual(10);
-    for (const t of await list.locator("li[data-criterion-row]").allInnerTexts()) expect(t.toUpperCase()).toContain(firstStatus.toUpperCase());
-    await section.getByLabel("Assessment status", { exact: true }).selectOption("all");
-    await list.locator('li[data-criterion-row="RQ-BRIEF-DECISION"] button').click();
+    // The Overview's Show filter (the Criteria tab folded in, Grant 2026-10-22): All shows the ten;
+    // a status shows exactly the criteria with it, each counted from the rows' own statuses first.
+    const filter = section.getByTestId("rq-status-filter");
+    const statusOf = async () => brief.locator("li[data-criterion]").evaluateAll((els) => els.map((e) => e.getAttribute("data-status")));
+    const before = await statusOf();
+    const wholePct = await expectedPct(brief);
+    const choices = (await filter.getByRole("button").allInnerTexts()).slice(1);
+    expect(choices.length).toBeGreaterThan(0);
+    expect([...new Set(before)].sort()).toEqual([...choices].sort());
+    const firstStatus = choices[0];
+    await filter.getByRole("button", { name: firstStatus, exact: true }).click();
+    await expect(filter.getByRole("button", { name: firstStatus, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(brief.locator("li[data-criterion]")).toHaveCount(before.filter((x) => x === firstStatus).length);
+    for (const st of await statusOf()) expect(st).toBe(firstStatus);
+    // The header still describes the whole dashboard: the same figure as before filtering (worked
+    // out from all ten rows above), not one from the rows the filter leaves.
+    await expect(brief).toHaveAttribute("data-pct", wholePct);
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-filter.png") });
+    await filter.getByRole("button", { name: "All", exact: true }).click();
+    await expect(brief.locator("li[data-criterion]")).toHaveCount(10);
+    await brief.locator('[data-criterion="RQ-BRIEF-DECISION"] button').click();
     await expect(details.getByRole("heading", { name: "Decisions to inform" })).toBeVisible();
     // Every quote shown anywhere is a verbatim span of the stored document text.
     const review = (await db.query(`select id, manifest from research_quality_reviews where run_id=$1 order by sequence desc limit 1`, [run.id])).rows[0];
@@ -177,6 +189,16 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     await method.locator('li[data-sub-criterion="RQ-PROP-DESIGN"] button').click();
     await expect(details).toHaveAttribute("data-dimension", "RQ-PROP-DESIGN");
     await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(1);
+    // Filtered, a category keeps its heading beside only its items of that status.
+    const itemStatuses = await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-status")));
+    const methodScore = await method.getAttribute("data-score");
+    const itemStatus = itemStatuses[0];
+    await section.getByTestId("rq-status-filter").getByRole("button", { name: itemStatus, exact: true }).click();
+    await expect(method.locator("li[data-sub-criterion]")).toHaveCount(itemStatuses.filter((x) => x === itemStatus).length);
+    for (const st of await method.locator("li[data-sub-criterion]").evaluateAll((els) => els.map((e) => e.getAttribute("data-status")))) expect(st).toBe(itemStatus);
+    await expect(method).toHaveAttribute("data-score", methodScore); // the category's own score, unchanged
+    await section.getByTestId("rq-status-filter").getByRole("button", { name: "All", exact: true }).click();
+    await expect(method.locator("li[data-sub-criterion]")).toHaveCount(6);
     // Each document lists its own reviews.
     expect((await reviewsListed()).filter((t) => t.startsWith("Proposal review"))).toHaveLength(1);
     await choose("client-brief.docx");
@@ -201,9 +223,20 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     // Codex V-01: a plain unroute can run while a slowed request is still inside its handler, whose
     // route.continue() then throws "Route is already handled!". Wait for pending handlers to finish.
     await page.unrouteAll({ behavior: "wait" });
-    // The Improvements tab lists what to improve, or says there is none.
+    // The Improvements tab lists what to improve in the dashboard's style; a row opens it on the right.
     await section.getByRole("tab", { name: "Improvements" }).click();
-    await expect(section.getByRole("tabpanel", { name: "Improvements" })).toContainText(/\S{10,}/);
+    const improvementsPanel = section.getByRole("tabpanel", { name: "Improvements" });
+    await expect(improvementsPanel).toContainText(/\S{10,}/);
+    const improvementRows = improvementsPanel.locator("li[data-improvement]");
+    if ((await improvementRows.count()) > 0) {
+      const firstRow = improvementRows.first();
+      const criterionId = await firstRow.getAttribute("data-improvement");
+      await firstRow.locator("button").click();
+      await expect(firstRow.locator("button")).toHaveAttribute("aria-pressed", "true");
+      await expect(details).toHaveAttribute("data-dimension", criterionId);
+      await expect(details.getByTestId("rq-improvement-detail")).toBeVisible();
+      if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-improvements.png") });
+    }
     // The review's metadata is its own tab, next to Improvements, not a fold above the tabs.
     await section.getByRole("tab", { name: "Details" }).click();
     await expect(section.getByRole("tabpanel", { name: "Details" }).getByTestId("rq-metadata")).toContainText("Criteria release");

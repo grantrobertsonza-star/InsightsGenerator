@@ -6,9 +6,11 @@
 //   middle: the document and its review, chosen at the top (the review list is the document's
 //           history: its own reviews and the comparisons it is part of); the review's kind, state and
 //           date; the actions (review as a brief or a proposal, compare with a brief, download, more);
-//           its metadata folded; its failures and retry; then three tabs: Overview (the dashboard),
-//           Criteria (filtered by dimension and status) and Improvements;
-//   right:  the detail of the bar or criterion clicked: a dimension's criteria, or one criterion.
+//           its metadata folded; its failures and retry; then three tabs: Overview (the dashboard,
+//           with a "Show" filter by status), Improvements (in the dashboard's style) and Details;
+//   right:  the detail of the bar, criterion or improvement clicked: a dimension's criteria, or one
+//           criterion with what to improve. (The Criteria tab, a flat filtered list of the same
+//           criteria, was folded into the Overview on Grant's request, 2026-10-22.)
 // Presentation and orchestration only: every read and write goes through researchQualityActions,
 // which resolve the tenant and researcher on the server. Opening the section makes no model call;
 // only a confirmed start, "Retry failed steps" and "Continue review" do. A response that arrives
@@ -28,10 +30,14 @@ import { RQ_PRESELECT_EVENT } from "./ReviewResearchQualityLink";
 import { REVIEW_KIND_LABEL, type ReviewKind } from "@/lib/researchQualityTypes";
 import {
   checklistScoreText,
+  criterionRating,
   criterionRows,
   criterionShortLabel,
-  filterCriterionRows,
+  criterionStatus,
+  filterDimensionsByStatus,
   improvementsByTiming,
+  statusChoices,
+  TIMING_LABEL,
   reviewStepLabel,
   scorecard,
   shownFailedSteps,
@@ -55,7 +61,7 @@ const key = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? cry
 const reviewLabel = (x: ResearchQualityView["reviews"][number]) => (x.kind ? REVIEW_KIND_LABEL[x.kind] : "Review (older format)");
 
 type Doc = ResearchQualityView["documents"][number];
-type Tab = "overview" | "criteria" | "improvements" | "details";
+type Tab = "overview" | "improvements" | "details";
 
 // A pending start: the kind and documents, shown with its cost estimate until confirmed.
 type Pending = { kind: ReviewKind; documentIds: string[]; estimate: number | null };
@@ -80,7 +86,8 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
   // The document chosen on the left; null until chosen, when the shown review's own document is used.
   const [docId, setDocId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
-  // Criteria tab: its two filters and the criterion opened (null: the dimension's criteria, all of them).
+  // The bar chosen (its criteria on the right), the Overview's "Show" filter, and the criterion
+  // opened from a bar, an item or an improvement (null: the chosen bar's criteria, all of them).
   const [dimension, setDimension] = useState("all");
   const [status, setStatus] = useState("all");
   const [criterion, setCriterion] = useState<string | null>(null);
@@ -197,7 +204,7 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
         right={
           <Pane side="plain" title="Criterion details">
             {review ? (
-              <CriterionPanel view={view} dimension={dimension} criterion={criterion} />
+              <CriterionPanel view={view} dimension={dimension} criterion={criterion} improvementFirst={tab === "improvements"} />
             ) : (
               <p className="text-xs text-muted">Choose a bar or a criterion of a review to see its question, the reasons for its rating, the document&apos;s own words and what to improve.</p>
             )}
@@ -459,7 +466,6 @@ function ReviewDetail({
             {(
               [
                 ["overview", "Overview"],
-                ["criteria", "Criteria"],
                 ["improvements", "Improvements"],
                 ["details", "Details"],
               ] as const
@@ -479,22 +485,30 @@ function ReviewDetail({
           </div>
           <div className="p-5">
             <div role="tabpanel" aria-labelledby="rq-tab-overview" className={tab === "overview" ? "flex flex-col gap-3" : "hidden"}>
+              <StatusFilter
+                view={view}
+                status={status}
+                onChange={(s) => {
+                  setStatus(s);
+                  setDimension("all");
+                  setCriterion(null);
+                }}
+              />
               {review.kind ? (
                 <>
                   {review.dashboards.map((d) => (
                     <Dashboard
                       key={d.dashboardId}
                       d={d}
+                      status={status}
                       selected={dimension === "all" ? null : dimension}
                       selectedCriterion={criterion}
                       onSelect={(id) => {
                         setDimension(id);
-                        setStatus("all");
                         setCriterion(null);
                       }}
                       onSelectCriterion={(dimensionId, criterionId) => {
                         setDimension(dimensionId);
-                        setStatus("all");
                         setCriterion(criterionId);
                       }}
                     />
@@ -504,16 +518,21 @@ function ReviewDetail({
               ) : (
                 <LegacyReview
                   view={view}
+                  status={status}
                   selected={criterion}
                   onSelect={(id) => setCriterion(id)}
                 />
               )}
             </div>
-            <div role="tabpanel" aria-labelledby="rq-tab-criteria" className={tab === "criteria" ? "" : "hidden"}>
-              <CriteriaTab view={view} dimension={dimension} setDimension={setDimension} status={status} setStatus={setStatus} criterion={criterion} setCriterion={setCriterion} />
-            </div>
             <div role="tabpanel" aria-labelledby="rq-tab-improvements" className={tab === "improvements" ? "" : "hidden"}>
-              <Improvements view={view} />
+              <Improvements
+                view={view}
+                selected={criterion}
+                onSelect={(criterionId) => {
+                  setDimension("all");
+                  setCriterion(criterionId);
+                }}
+              />
             </div>
             <div role="tabpanel" aria-labelledby="rq-tab-details" className={tab === "details" ? "" : "hidden"}>
               <ReviewMetadata review={review} />
@@ -618,99 +637,31 @@ function ReviewState({ runId, review, reload }: { runId: string; review: NonNull
   );
 }
 
-/** The Criteria tab: filter by dimension and status and choose a criterion; its detail is on the right. */
-function CriteriaTab({
-  view,
-  dimension,
-  setDimension,
-  status,
-  setStatus,
-  criterion,
-  setCriterion,
-}: {
-  view: ResearchQualityView;
-  dimension: string;
-  setDimension: (d: string) => void;
-  status: string;
-  setStatus: (s: string) => void;
-  criterion: string | null;
-  setCriterion: (c: string | null) => void;
-}) {
+/**
+ * The Overview's "Show" filter (Grant, 2026-10-22, replacing the Criteria tab's status filter): All
+ * or one status the review actually has, as the dashboard shows it (criterionStatus). The choices
+ * come from the dashboards, or for an older-format review from its scorecard, which the Overview
+ * filters the same way.
+ */
+function StatusFilter({ view, status, onChange }: { view: ResearchQualityView; status: string; onChange: (s: string) => void }) {
   const r = view.review!;
-  const all = r.kind
-    ? criterionRows(r.dashboards)
-    : // An older-format review: its criteria from its observations, in scorecard order.
-      scorecard(r.observations).flatMap((g) =>
-        g.rows.map((row) => ({ criterionId: row.observation.criterionId, dimensionId: g.group, dimensionLabel: g.label, score: row.score, status: row.label })),
-      );
-  const dimensions = [...new Map(all.map((x) => [x.dimensionId, x.dimensionLabel])).entries()];
-  const statuses = [...new Set(all.map((x) => x.status))];
-  const rows = filterCriterionRows(all, dimension, status);
+  const present = r.kind ? criterionRows(r.dashboards).map((x) => x.status) : [...criterionRows(r.dashboards).map((x) => x.status), ...scorecard(r.observations).flatMap((g) => g.rows.map((row) => row.label))];
+  const choices = statusChoices(present);
+  if (choices.length === 0) return null; // nothing rated or listed yet
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-3">
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Dimension
-          <select
-            aria-label="Dimension"
-            value={dimension}
-            onChange={(e) => {
-              setDimension(e.target.value);
-              setCriterion(null);
-            }}
-            className="min-w-[12rem] rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-foreground"
-          >
-            <option value="all">All dimensions</option>
-            {dimensions.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Assessment status
-          <select
-            aria-label="Assessment status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setCriterion(null);
-            }}
-            className="min-w-[12rem] rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-foreground"
-          >
-            <option value="all">All statuses</option>
-            {statuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <details className="border-t border-border pt-3 text-xs" open>
-        <summary className="cursor-pointer select-none text-sm font-medium text-foreground">{`Choose a criterion (${rows.length})`}</summary>
-        <ul className="mt-2 flex flex-col gap-0.5" aria-label="Criteria">
-          {rows.map((x) => (
-            <li key={x.criterionId} data-criterion-row={x.criterionId}>
-              <button
-                type="button"
-                onClick={() => setCriterion(x.criterionId)}
-                aria-pressed={criterion === x.criterionId}
-                className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left ${criterion === x.criterionId ? "bg-primary-light font-medium text-primary" : "hover:bg-slate-50"}`}
-              >
-                <span className="min-w-0 truncate">
-                  {criterionShortLabel(x.criterionId)}
-                  {dimension === "all" && x.dimensionLabel !== criterionShortLabel(x.criterionId) && <span className="ml-1.5 text-[11px] font-normal text-muted">{x.dimensionLabel}</span>}
-                </span>
-                <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${x.score === null ? "text-muted" : scoreText(x.score)}`}>{x.score === null ? x.status : `${x.score} ${x.status}`}</span>
-              </button>
-            </li>
-          ))}
-          {rows.length === 0 && <li className="text-muted">No criterion has that dimension and status.</li>}
-        </ul>
-      </details>
-      <p className="text-[11px] text-muted">Choose a criterion for its detail on the right.</p>
+    <div role="group" aria-label="Show criteria" className="flex flex-wrap items-center gap-1 text-xs" data-testid="rq-status-filter">
+      <span className="mr-1 text-muted">Show</span>
+      {["all", ...choices].map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={status === s}
+          onClick={() => onChange(s)}
+          className={`rounded-full border px-2.5 py-0.5 ${status === s ? "border-primary bg-primary-light font-medium text-primary" : "border-border bg-white text-muted hover:text-foreground"}`}
+        >
+          {s === "all" ? "All" : s}
+        </button>
+      ))}
     </div>
   );
 }
@@ -719,12 +670,16 @@ function CriteriaTab({
  * The right-hand pane: the chosen criterion's detail; with a dimension chosen and no single criterion,
  * all of that dimension's criteria (a category's with its weight and average); otherwise a prompt.
  */
-function CriterionPanel({ view, dimension, criterion }: { view: ResearchQualityView; dimension: string; criterion: string | null }) {
+function CriterionPanel({ view, dimension, criterion, improvementFirst = false }: { view: ResearchQualityView; dimension: string; criterion: string | null; improvementFirst?: boolean }) {
   const r = view.review!;
   const dim = r.dashboards.flatMap((d) => d.dimensions).find((x) => x.dimensionId === dimension);
   const shown = criterion ? [criterion] : dim ? dim.criteria.map((c) => c.criterionId) : [];
   if (shown.length === 0) {
-    return <p className="text-xs text-muted">Click a bar or a criterion to see its question, the reasons for its rating, the document&apos;s own words and what to improve.</p>;
+    return improvementFirst ? (
+      <p className="text-xs text-muted">Choose an improvement to see it here, with its criterion&apos;s question, the reasons for its rating and the document&apos;s own words.</p>
+    ) : (
+      <p className="text-xs text-muted">Click a bar or a criterion to see its question, the reasons for its rating, the document&apos;s own words and what to improve.</p>
+    );
   }
   return (
     <div className="flex flex-col gap-3" data-testid="rq-details" data-dimension={criterion ?? dimension}>
@@ -735,32 +690,55 @@ function CriterionPanel({ view, dimension, criterion }: { view: ResearchQualityV
         </div>
       )}
       {shown.map((cid) => (
-        <CriterionDetail key={cid} view={view} criterionId={cid} />
+        <CriterionDetail key={cid} view={view} criterionId={cid} improvementFirst={improvementFirst} />
       ))}
     </div>
   );
 }
 
-/** The Improvements tab: each criterion's improvement, by when it can be made. */
-function Improvements({ view }: { view: ResearchQualityView }) {
-  const groups = improvementsByTiming(view.review!.observations).filter((g) => g.items.length > 0);
+/**
+ * The Improvements tab in the dashboard's style (Grant, 2026-10-22): by when each can be made, one
+ * row per improvement with its criterion's bar, score and band, as on the Overview. Choosing a row
+ * shows the improvement in the right-hand pane, first, with its criterion's question, reasons and the
+ * document's own words.
+ */
+function Improvements({ view, selected, onSelect }: { view: ResearchQualityView; selected: string | null; onSelect: (criterionId: string) => void }) {
+  const r = view.review!;
+  const groups = improvementsByTiming(r.observations).filter((g) => g.items.length > 0);
   if (groups.length === 0) return <p className="text-xs text-muted">No improvements were suggested in this review.</p>;
   return (
-    <div className="flex flex-col gap-4 text-xs" data-testid="rq-improvements">
+    <div className="flex flex-col gap-3" data-testid="rq-improvements">
       {groups.map((g) => (
-        <section key={g.timing}>
+        <section key={g.timing} className="rounded-xl border border-border bg-white p-3">
           <h4 className="mb-1.5 text-sm font-semibold text-foreground">{g.label}</h4>
-          <ul className="flex flex-col gap-2">
-            {g.items.map((o) => (
-              <li key={o.versionId} className="rounded-lg border border-border p-3">
-                <p className="font-medium text-foreground">{criterionShortLabel(o.criterionId)}</p>
-                <p className="mt-0.5">{[o.payload.improvement!.currentAction, o.payload.improvement!.futureAction].filter(Boolean).join(" ")}</p>
-                {o.payload.improvement!.rationale && <p className="mt-1 text-muted">{o.payload.improvement!.rationale}</p>}
-              </li>
-            ))}
+          <ul className="flex flex-col gap-1" aria-label={g.label}>
+            {g.items.map((o) => {
+              const { score, label } = criterionRating(r.dashboards, r.observations, o.criterionId);
+              const shown = score === null ? null : score.toFixed(1);
+              const name = criterionShortLabel(o.criterionId);
+              return (
+                <li key={o.versionId} data-improvement={o.criterionId}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(o.criterionId)}
+                    aria-pressed={selected === o.criterionId}
+                    className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs ${selected === o.criterionId ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
+                  >
+                    <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground">{name}</span>
+                    <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                      <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${name}: ${shown === null ? label : `${shown} of 5, ${label}`}`}>
+                        {score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(score)}`} style={{ width: `${Math.max(score, 0.15) * 20}%` }} />}
+                      </span>
+                      <ScoreAndBand shown={shown} label={label} empty={label} cls={score === null ? "text-muted" : scoreText(score)} weight="font-bold" />
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ))}
+      <p className="text-[11px] text-muted">Click an improvement for what to do and why, with its criterion&apos;s reasons, on the right.</p>
     </div>
   );
 }
@@ -781,12 +759,15 @@ const BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workab
  */
 function Dashboard({
   d,
+  status = "all",
   selected,
   onSelect,
   selectedCriterion = null,
   onSelectCriterion,
 }: {
   d: DashboardView;
+  /** The Overview's "Show" filter: only criteria of this status, under their dimension ("all": every one). */
+  status?: string;
   selected: string | null;
   onSelect: (id: string) => void;
   selectedCriterion?: string | null;
@@ -794,6 +775,9 @@ function Dashboard({
   onSelectCriterion?: (dimensionId: string, criterionId: string) => void;
 }) {
   const current = selected;
+  // The header (ring, overall score, dimension count) always describes the whole dashboard; the
+  // filter only narrows the rows below it.
+  const shownDims = filterDimensionsByStatus(d, status);
   return (
     <section className="rounded-xl border border-border bg-white p-3" aria-label={`${d.label} dashboard`} data-testid="rq-dashboard" data-dashboard={d.dashboardId} data-pct={d.pct ?? "none"}>
       <div className="flex flex-wrap items-center gap-3">
@@ -811,13 +795,14 @@ function Dashboard({
         </div>
       </div>
       <ul className="mt-3 flex flex-col gap-1">
-        {d.dimensions.map((x) => {
+        {shownDims.length === 0 && <li className="px-1.5 py-1 text-xs text-muted">{`No criterion here is ${status}.`}</li>}
+        {shownDims.map(({ dimension: x, criteria: matching }) => {
           const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
           // One decimal for every score, so the decimal points line up down the column.
           const shown = x.score === null ? null : x.score.toFixed(1);
           const active = current === x.dimensionId;
           return (
-            <li key={x.dimensionId} data-criterion={x.dimensionId} data-state={x.state} data-score={x.score ?? "none"} data-weight={x.weight}>
+            <li key={x.dimensionId} data-criterion={x.dimensionId} data-state={x.state} data-score={x.score ?? "none"} data-weight={x.weight} data-status={x.criteria.length === 1 ? criterionStatus(x.criteria[0]) : undefined}>
               <button
                 type="button"
                 onClick={() => onSelect(x.dimensionId)}
@@ -846,10 +831,10 @@ function Dashboard({
                 // methodology items on the dashboard, the reasons staying in the detail pane).
                 // The bar above is the category's total: the average of these rated items.
                 <ul className="mb-1 ml-3 flex flex-col border-l border-slate-200 pl-2" aria-label={`${name} items`}>
-                  {x.criteria.map((c) => {
+                  {matching.map((c) => {
                     const cShown = c.score === null ? null : c.score.toFixed(1);
                     return (
-                      <li key={c.criterionId} data-sub-criterion={c.criterionId} data-score={c.score ?? "none"}>
+                      <li key={c.criterionId} data-sub-criterion={c.criterionId} data-score={c.score ?? "none"} data-status={criterionStatus(c)}>
                         <button
                           type="button"
                           onClick={() => (onSelectCriterion ? onSelectCriterion(x.dimensionId, c.criterionId) : onSelect(x.dimensionId))}
@@ -887,11 +872,11 @@ function Dashboard({
  * status so aligned"): the number right-aligned in tabular figures, the band left-aligned after it,
  * so numbers line up under each other and so do the words, for categories and their criteria.
  */
-function ScoreAndBand({ shown, label, failed, cls, weight }: { shown: string | null; label: string; failed: boolean; cls: string; weight: string }) {
+function ScoreAndBand({ shown, label, failed = false, empty, cls, weight }: { shown: string | null; label: string; failed?: boolean; empty?: string; cls: string; weight: string }) {
   return (
     <span className={`flex shrink-0 items-baseline gap-2 text-[10px] uppercase tracking-wide ${weight} ${cls}`}>
       <span className="w-7 text-right tabular-nums">{shown === null ? "" : shown}</span>
-      <span className="w-[4.5rem] whitespace-nowrap text-left">{shown === null ? (failed ? "failed" : "-") : label}</span>
+      <span className="w-[4.5rem] whitespace-nowrap text-left">{shown === null ? (empty ?? (failed ? "failed" : "-")) : label}</span>
     </span>
   );
 }
@@ -913,14 +898,17 @@ function ScoreRing({ pct, band }: { pct: number | null; band: string | null }) {
 }
 
 /** A review made before review kinds: its dashboard if it had one, its checklist scores and criteria, read-only. */
-function LegacyReview({ view, selected, onSelect }: { view: ResearchQualityView; selected: string | null; onSelect: (id: string) => void }) {
+function LegacyReview({ view, status = "all", selected, onSelect }: { view: ResearchQualityView; status?: string; selected: string | null; onSelect: (id: string) => void }) {
   const r = view.review!;
-  const groups = scorecard(r.observations);
+  // The Overview's "Show" filter applies here too: a row of the scorecard by its own label.
+  const groups = scorecard(r.observations)
+    .map((g) => ({ ...g, rows: g.rows.filter((row) => status === "all" || row.label === status) }))
+    .filter((g) => g.rows.length > 0);
   return (
     <div className="flex flex-col gap-3" data-testid="rq-legacy">
       <p className="rounded-md bg-slate-50 p-2 text-xs text-muted">An earlier review in the older format, shown as it was and read-only. Review a document as a brief or a proposal for the dashboard.</p>
       {r.dashboards.map((d) => (
-        <Dashboard key={d.dashboardId} d={d} selected={selected} onSelect={onSelect} />
+        <Dashboard key={d.dashboardId} d={d} status={status} selected={selected} onSelect={onSelect} />
       ))}
       {r.checklists.length > 0 && (
         <ul className="flex flex-col gap-1 text-xs" aria-label="Element checklists">
@@ -941,7 +929,7 @@ function LegacyReview({ view, selected, onSelect }: { view: ResearchQualityView;
                   className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left ${selected === row.observation.criterionId ? "bg-primary-light" : "hover:bg-slate-50"}`}
                 >
                   <span className="font-medium text-foreground">{criterionShortLabel(row.observation.criterionId)}</span>
-                  <span className={`text-[10px] font-bold uppercase ${row.score === null ? "text-muted" : scoreText(row.score)}`}>{row.score === null ? row.label : `${row.score} ${row.label}`}</span>
+                  <ScoreAndBand shown={row.score === null ? null : row.score.toFixed(1)} label={row.label} empty={row.label} cls={row.score === null ? "text-muted" : scoreText(row.score)} weight="font-bold" />
                 </button>
               </li>
             ))}
@@ -979,24 +967,39 @@ function PrecisionChecks({ checks }: { checks: NonNullable<ResearchQualityView["
   );
 }
 
-function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; criterionId: string }) {
+/**
+ * One criterion in the right-hand pane. Opened from the Improvements tab (improvementFirst), what to
+ * improve comes first, with its timing and reason, then the rating; otherwise it closes the card.
+ */
+function CriterionDetail({ view, criterionId, improvementFirst = false }: { view: ResearchQualityView; criterionId: string; improvementFirst?: boolean }) {
   const r = view.review!;
   const obs: ObservationView[] = r.observations.filter((o) => o.criterionId === criterionId && o.status !== "dismissed");
   const rating = r.dashboards.flatMap((d) => d.dimensions.flatMap((x) => x.criteria)).find((c) => c.criterionId === criterionId);
   const first = obs[0];
   const sourceName = (v: string) => r.manifest.sources.find((s) => s.sourceVersionId === v)?.filename ?? "document";
-  const score = rating?.score ?? first?.payload.rating?.score ?? null;
-  const label = rating?.label ?? first?.payload.rating?.label ?? "Not rated";
+  const { score, label } = criterionRating(r.dashboards, r.observations, criterionId);
   const improvement = first?.payload.improvement;
+  const toImprove =
+    improvement && (improvement.currentAction || improvement.futureAction) ? (
+      <div className={`${improvementFirst ? "mt-1.5 border border-primary/30" : "mt-2"} rounded-md bg-slate-50 p-2`} data-testid="rq-improvement-detail">
+        <p className="font-medium">
+          To improve
+          {improvement.timing && <span className="ml-1.5 font-normal text-muted">{TIMING_LABEL[improvement.timing] ?? ""}</span>}
+        </p>
+        <p>{[improvement.currentAction, improvement.futureAction].filter(Boolean).join(" ")}</p>
+        {improvement.rationale && <p className="mt-1 text-muted">{improvement.rationale}</p>}
+      </div>
+    ) : null;
   const statementCount = obs.reduce((n, o) => n + o.payload.statements.length, 0);
   return (
     <article className="rounded-lg border border-border bg-white p-3 text-xs" data-testid="rq-criterion-detail" data-criterion={criterionId}>
       <div className="flex items-start justify-between gap-2">
         <h5 className="text-sm font-semibold text-foreground">{criterionShortLabel(criterionId)}</h5>
         <span className={`shrink-0 whitespace-nowrap rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${score === null ? "text-muted" : scoreText(score)}`}>
-          {score === null ? label : `${score} ${label}`}
+          {score === null ? label : `${score.toFixed(1)} ${label}`}
         </span>
       </div>
+      {improvementFirst && toImprove}
       {first && <p className="mt-0.5 text-muted">{first.question}</p>}
       {!first && (
         <p className="mt-1 text-muted">
@@ -1032,12 +1035,7 @@ function CriterionDetail({ view, criterionId }: { view: ResearchQualityView; cri
       {first?.payload.basis === "absence_in_assessed_scope" && (
         <p className="mt-1 text-muted">{first.payload.absenceScope === "complete" ? "Not found anywhere in the document, read in full." : "Not found in the parts that were read."}</p>
       )}
-      {improvement && (improvement.currentAction || improvement.futureAction) && (
-        <div className="mt-2 rounded-md bg-slate-50 p-2">
-          <p className="font-medium">To improve</p>
-          <p>{[improvement.currentAction, improvement.futureAction].filter(Boolean).join(" ")}</p>
-        </div>
-      )}
+      {!improvementFirst && toImprove}
       {first && first.payload.uncertainty.length > 0 && <p className="mt-1 text-muted">{`Uncertain: ${first.payload.uncertainty.join("; ")}`}</p>}
     </article>
   );

@@ -4,7 +4,7 @@ import checklistRelease from "../research-quality/checklists/RQK-2.json";
 import criteriaRelease from "../research-quality/criteria/RQC-6.json";
 import type { DocumentedFact, ObservationPayload, ReviewManifest } from "./researchQualityTypes";
 import type { ObservationView } from "./researchQualityView";
-import type { DashboardView } from "./researchQualityDashboard";
+import type { CriterionRating, DashboardView } from "./researchQualityDashboard";
 
 export const DOC_LABEL: Record<string, string> = {
   documented: "Documented",
@@ -208,17 +208,19 @@ export function shownFailedSteps<T extends StepRow>(r: { state: string; progress
   return running ? [] : (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
 }
 
-// ---------------------------------------------------------------- criteria tab
+// ---------------------------------------------------------------- the Overview's status filter
 
-
-/** One criterion in the Criteria tab's list, with the dimension (or category) it sits in. */
+/** One criterion of a review, with the dimension (or category) it sits in and its status. */
 export type CriterionRow = { criterionId: string; dimensionId: string; dimensionLabel: string; score: number | null; status: string };
 
+/** A criterion's status as the dashboard shows it: the rating's own label once rated, otherwise Not rated, Pending or Failed. */
+export const criterionStatus = (c: Pick<CriterionRating, "state" | "label">) => (c.state === "rated" ? c.label : CRITERION_STATE_LABEL[c.state] ?? c.state);
+const CRITERION_STATE_LABEL: Record<string, string> = { not_rated: "Not rated", pending: "Pending", failed: "Failed" };
+
 /**
- * The Criteria tab's list (Grant, 2026-10-20, from his Research quality prototype): every criterion
- * of a review's dashboards, in dashboard order, each with its status as shown on the dashboard: the
- * rating's own label (Strong, Workable, Weak, Absent) once rated, otherwise Not rated, Pending or
- * Failed. A criterion on two dashboards is listed once, under the first.
+ * Every criterion of a review's dashboards, in dashboard order, each with its status (criterionStatus).
+ * A criterion on two dashboards is listed once, under the first. It gives the Overview filter its
+ * choices (since 2026-10-22 the filter lives on the Overview; the Criteria tab was removed).
  */
 export function criterionRows(dashboards: DashboardView[]): CriterionRow[] {
   const seen = new Set<string>();
@@ -233,14 +235,36 @@ export function criterionRows(dashboards: DashboardView[]): CriterionRow[] {
           dimensionId: x.dimensionId,
           dimensionLabel: x.categoryLabel ?? criterionShortLabel(x.dimensionId),
           score: c.score,
-          status: c.state === "rated" ? c.label : CRITERION_STATE_LABEL[c.state] ?? c.state,
+          status: criterionStatus(c),
         });
       }
   return rows;
 }
-const CRITERION_STATE_LABEL: Record<string, string> = { not_rated: "Not rated", pending: "Pending", failed: "Failed" };
 
-/** Rows kept by the Criteria tab's two filters; "all" keeps everything. */
-export function filterCriterionRows(rows: CriterionRow[], dimensionId: string, status: string): CriterionRow[] {
-  return rows.filter((r) => (dimensionId === "all" || r.dimensionId === dimensionId) && (status === "all" || r.status === status));
+// The filter's order: the rating bands from best to worst, then the states without a rating.
+const STATUS_ORDER = ["Strong", "Workable", "Weak", "Absent", "Not rated", "Pending", "Failed"];
+
+/** The statuses present, in STATUS_ORDER (an unknown one last), for the Overview's "Show" filter. */
+export function statusChoices(statuses: string[]): string[] {
+  const rank = (s: string) => (STATUS_ORDER.indexOf(s) === -1 ? STATUS_ORDER.length : STATUS_ORDER.indexOf(s));
+  return [...new Set(statuses)].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * The Overview's dimensions with the "Show" filter applied (Grant, 2026-10-22): each dimension with
+ * the criteria of that status, a dimension none of whose criteria has it left out. The dimension
+ * itself (a category's heading, bar and score) is kept unchanged beside its matching criteria, so
+ * the researcher sees where each sits; "all" keeps everything.
+ */
+export function filterDimensionsByStatus(d: DashboardView, status: string): { dimension: DashboardView["dimensions"][number]; criteria: CriterionRating[] }[] {
+  return d.dimensions
+    .map((x) => ({ dimension: x, criteria: status === "all" ? x.criteria : x.criteria.filter((c) => criterionStatus(c) === status) }))
+    .filter((v) => status === "all" || v.criteria.length > 0);
+}
+
+/** A criterion's rating as the screen shows it: from the dashboard once rated there, else its observation's own. */
+export function criterionRating(dashboards: DashboardView[], observations: ObservationView[], criterionId: string): { score: number | null; label: string } {
+  const rated = dashboards.flatMap((d) => d.dimensions.flatMap((x) => x.criteria)).find((c) => c.criterionId === criterionId);
+  const first = observations.find((o) => o.criterionId === criterionId && o.status !== "dismissed");
+  return { score: rated?.score ?? first?.payload.rating?.score ?? null, label: rated?.label ?? first?.payload.rating?.label ?? "Not rated" };
 }

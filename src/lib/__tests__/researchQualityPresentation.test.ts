@@ -2,7 +2,7 @@
 // the stable id (not wording), and an unknown id falls back to the id itself rather than to blank.
 import { describe, expect, it } from "vitest";
 import criteria from "../../research-quality/criteria/RQC-6.json";
-import { CRITERION_SHORT_LABEL, criterionRows, criterionShortLabel, filterCriterionRows, reviewStepLabel, shownFailedSteps } from "../researchQualityPresentation";
+import { CRITERION_SHORT_LABEL, criterionRating, criterionRows, criterionShortLabel, filterDimensionsByStatus, reviewStepLabel, shownFailedSteps, statusChoices } from "../researchQualityPresentation";
 import type { ReviewManifest } from "../researchQualityTypes";
 
 describe("criterion short names", () => {
@@ -95,11 +95,27 @@ describe("the Criteria tab's list and filters", () => {
       ["RQ-PROP-PRICE", "price", "Price", "Not rated"],
     ]);
   });
-  it("filters by dimension and by status, together or alone", () => {
-    const rows = criterionRows(dashboards);
-    expect(filterCriterionRows(rows, "method", "all").map((r) => r.criterionId)).toEqual(["RQ-PROP-METHOD", "RQ-PROP-DESIGN"]);
-    expect(filterCriterionRows(rows, "all", "Not rated").map((r) => r.criterionId)).toEqual(["RQ-PROP-PRICE"]);
-    expect(filterCriterionRows(rows, "method", "Not rated")).toEqual([]);
-    expect(filterCriterionRows(rows, "all", "all")).toHaveLength(3);
+  it("the Overview's Show filter keeps each dimension with its matching criteria, and leaves out the rest", () => {
+    const d = dashboards[0];
+    expect(filterDimensionsByStatus(d, "all").map((v) => [v.dimension.dimensionId, v.criteria.map((c) => c.criterionId)])).toEqual([
+      ["method", ["RQ-PROP-METHOD", "RQ-PROP-DESIGN"]],
+      ["price", ["RQ-PROP-PRICE"]],
+    ]);
+    // A category keeps its heading (its own score and label unchanged) beside the matching item only.
+    const workable = filterDimensionsByStatus(d, "Workable");
+    expect(workable.map((v) => [v.dimension.dimensionId, v.dimension.score, v.criteria.map((c) => c.criterionId)])).toEqual([["method", 3, ["RQ-PROP-METHOD"]]]);
+    expect(filterDimensionsByStatus(d, "Not rated").map((v) => v.dimension.dimensionId)).toEqual(["price"]);
+    expect(filterDimensionsByStatus(d, "Failed").map((v) => v.criteria.map((c) => c.criterionId))).toEqual([["RQ-PROP-DESIGN"]]);
+    expect(filterDimensionsByStatus(d, "Strong")).toEqual([]);
+  });
+  it("offers the statuses present, best band first, states without a rating after, an unknown one last", () => {
+    expect(statusChoices(["Weak", "Not rated", "Strong", "Weak", "Odd", "Failed", "Workable"])).toEqual(["Strong", "Workable", "Weak", "Not rated", "Failed", "Odd"]);
+    expect(statusChoices(criterionRows(dashboards).map((r) => r.status))).toEqual(["Workable", "Not rated", "Failed"]);
+  });
+  it("a criterion's rating comes from the dashboard, else from its observation, else Not rated", () => {
+    expect(criterionRating(dashboards, [], "RQ-PROP-METHOD")).toEqual({ score: 3, label: "Workable" });
+    const obs = [{ criterionId: "RQ-X", status: "active", payload: { rating: { score: 1, label: "Weak" } } }] as unknown as Parameters<typeof criterionRating>[1];
+    expect(criterionRating(dashboards, obs, "RQ-X")).toEqual({ score: 1, label: "Weak" });
+    expect(criterionRating(dashboards, [], "RQ-NONE")).toEqual({ score: null, label: "Not rated" });
   });
 });
