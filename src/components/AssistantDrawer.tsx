@@ -21,10 +21,26 @@ import { loadAssistantMessages, sendAssistantMessage, sendGeneralAssistantMessag
  * returns after the researcher has moved to another project is not shown in that project's chat
  * (the project's reply is saved, so it is there when they come back); a load older than the latest
  * one is ignored. A failed load or send is shown, never an empty or silently dropped chat.
+ *
+ * Each conversation keeps its own draft, waiting state and failed question (Codex B5-F05): a failed
+ * send is shown only in the conversation it was sent from, whenever it arrives, with the question
+ * kept and offered again; reading the saved history back does not drop it (the server stores a
+ * question only with its reply, so the failed one is not in that history and is not duplicated by
+ * sending it again). This state lasts while the app is open in the tab, not across a reload.
  */
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
-type Conversation = { status: "idle" | "loading" | "ready" | "failed"; messages: Message[]; error: string | null };
+type Conversation = {
+  status: "idle" | "loading" | "ready" | "failed";
+  messages: Message[];
+  /** A failed load of the saved history. */
+  error: string | null;
+  draft: string;
+  pending: boolean;
+  /** The last question that could not be answered, and why. */
+  failed: { question: string; error: string } | null;
+};
+const EMPTY: Conversation = { status: "ready", messages: [], error: null, draft: "", pending: false, failed: null };
 
 const RUN_PATH = /^\/runs\/([0-9a-f-]{36})(?:\/|$)/i;
 const HIDDEN_ON = /^\/(login|no-organisation)(\/|$)/;
@@ -38,9 +54,6 @@ export default function AssistantDrawer() {
 
   const [open, setOpen] = useState(false);
   const [conversations, setConversations] = useState<Record<string, Conversation>>({});
-  const [draft, setDraft] = useState("");
-  const [pending, setPending] = useState<string | null>(null); // the key a send is waiting on
-  const [sendError, setSendError] = useState<string | null>(null);
   const keyRef = useRef(key);
   useEffect(() => {
     keyRef.current = key;
@@ -50,12 +63,13 @@ export default function AssistantDrawer() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const conversation: Conversation = conversations[key] ?? { status: runId ? "idle" : "ready", messages: [], error: null };
+  const conversation: Conversation = conversations[key] ?? { ...EMPTY, status: runId ? "idle" : "ready" };
   const update = useCallback(
-    (k: string, change: (c: Conversation) => Conversation) =>
-      setConversations((all) => ({ ...all, [k]: change(all[k] ?? { status: "ready", messages: [], error: null }) })),
+    (k: string, change: (c: Conversation) => Conversation) => setConversations((all) => ({ ...all, [k]: change(all[k] ?? EMPTY) })),
     [],
   );
+  const draft = conversation.draft;
+  const setDraft = (text: string) => update(key, (c) => ({ ...c, draft: text }));
 
   // A project's conversation is read each time the drawer opens on it, so a message sent from the
   // Research assistant section in the meantime is there.
@@ -67,7 +81,8 @@ export default function AssistantDrawer() {
     // A dropped connection rejects the action itself; that is a failed load too, not a load in progress.
     const result = await loadAssistantMessages(k).catch((error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) }));
     if (seq !== loadSeq.current || keyRef.current !== k) return;
-    if (result.ok) update(k, () => ({ status: "ready", messages: result.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })), error: null }));
+    // The saved history replaces the shown messages; the draft, a waiting send and a failed question stay.
+    if (result.ok) update(k, (c) => ({ ...c, status: "ready", messages: result.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })), error: null }));
     else update(k, (c) => ({ ...c, status: "failed", error: result.error }));
   }, [runId, update]);
 
@@ -97,39 +112,49 @@ export default function AssistantDrawer() {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [conversation.messages.length, pending, open]);
+  }, [conversation.messages.length, conversation.pending, conversation.failed, open]);
 
   // On the Research assistant section the same conversation is already on the page.
   const onAssistantSection = section?.id === "assistant";
   if (HIDDEN_ON.test(pathname) || onAssistantSection) return null;
 
-  const canSend = draft.trim() !== "" && pending === null && conversation.status !== "loading" && conversation.status !== "failed";
+  const ready = !conversation.pending && conversation.status !== "loading" && conversation.status !== "failed";
+  const canSend = draft.trim() !== "" && ready;
 
-  function send() {
-    const text = draft.trim();
-    if (!text || !canSend) return;
+  /** Sends `question` (the draft, or a failed question sent again) in the current conversation. */
+  function send(question: string, fromDraft: boolean) {
+    const text = question.trim();
+    if (!text || !ready) return;
     const k = key;
+    const sendRunId = runId;
     const page = { path: pathname, section: section?.label ?? null };
     const history = conversation.messages.map((m) => ({ role: m.role, content: m.content }));
-    setSendError(null);
-    setDraft("");
-    setPending(k);
-    update(k, (c) => ({ ...c, messages: [...c.messages, { id: `pending-${Date.now()}`, role: "user", content: text }] }));
-    const request = runId ? sendAssistantMessage(runId, text, page) : sendGeneralAssistantMessage(text, history, page);
+    const optimisticId = `pending-${Date.now()}`;
+    update(k, (c) => ({
+      ...c,
+      draft: fromDraft || c.draft.trim() === text ? "" : c.draft,
+      pending: true,
+      failed: null,
+      messages: [...c.messages, { id: optimisticId, role: "user", content: text }],
+    }));
+    const fail = (error: string) =>
+      update(k, (c) => ({
+        ...c,
+        pending: false,
+        // The question was not stored; it leaves the list and is kept with the error to send again.
+        messages: c.messages.filter((m) => m.id !== optimisticId),
+        failed: { question: text, error },
+        draft: c.draft || text,
+      }));
+    const request = sendRunId ? sendAssistantMessage(sendRunId, text, page) : sendGeneralAssistantMessage(text, history, page);
     request
       .then((result) => {
-        if (result.ok) {
-          update(k, (c) => ({ ...c, messages: [...c.messages, { id: `reply-${Date.now()}`, role: "assistant", content: result.reply }] }));
-          // A project's conversation is then read back, so the saved copy (not the optimistic one) shows.
-          if (runId && keyRef.current === k) void load();
-        } else if (keyRef.current === k) {
-          setSendError(result.error);
-        }
+        if (!result.ok) return fail(result.error);
+        update(k, (c) => ({ ...c, pending: false, messages: [...c.messages, { id: `reply-${Date.now()}`, role: "assistant", content: result.reply }] }));
+        // A project's conversation is then read back, so the saved copy (not the optimistic one) shows.
+        if (sendRunId && keyRef.current === k) void load();
       })
-      .catch((error: unknown) => {
-        if (keyRef.current === k) setSendError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => setPending((p) => (p === k ? null : p)));
+      .catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
   }
 
   const scope = runId
@@ -208,11 +233,25 @@ export default function AssistantDrawer() {
                 </div>
               </div>
             ))}
-            {pending === key && <p className="text-xs text-muted">Thinking...</p>}
+            {conversation.pending && <p className="text-xs text-muted">Thinking...</p>}
+            {conversation.failed && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900" data-testid="assistant-drawer-failed">
+                <p>
+                  Not answered: &ldquo;{conversation.failed.question}&rdquo;. {conversation.failed.error}
+                </p>
+                <div className="mt-1.5 flex gap-3">
+                  <button type="button" className="font-medium underline disabled:opacity-60" disabled={!ready} onClick={() => send(conversation.failed!.question, false)}>
+                    Send again
+                  </button>
+                  <button type="button" className="underline" onClick={() => update(key, (c) => ({ ...c, failed: null }))}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
             <div ref={endRef} />
           </div>
 
-          {sendError && <div className="mx-4 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{sendError}</div>}
           <div className="flex items-end gap-2 border-t border-border px-4 py-3">
             <textarea
               ref={inputRef}
@@ -221,7 +260,7 @@ export default function AssistantDrawer() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  send();
+                  send(draft, true);
                 }
               }}
               rows={2}
@@ -231,7 +270,7 @@ export default function AssistantDrawer() {
             />
             <button
               type="button"
-              onClick={send}
+              onClick={() => send(draft, true)}
               disabled={!canSend}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >

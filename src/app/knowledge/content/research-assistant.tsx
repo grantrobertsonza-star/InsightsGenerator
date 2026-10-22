@@ -69,6 +69,13 @@ export default function ResearchAssistantGuide() {
         </li>
       </UL>
 
+      <P>
+        A question that cannot be answered (a lost connection, an error) stays in the panel of the project you asked it
+        in, with the reason and a Send again button, also after you move to another page and back (not after a reload). It is saved with the
+        project only once it has an answer, so sending it again leaves no unanswered copy. An answer that was cut off for
+        length is not shown: the assistant says so and asks you to ask again.
+      </P>
+
       <H2 id="reads">What it reads</H2>
       <P>
         Each message is answered from the project&apos;s business problem, objective, decision statement and audience,
@@ -114,29 +121,43 @@ export default function ResearchAssistantGuide() {
       <P>
         Questions such as &quot;what sample do I need for a 5% margin of error?&quot; or &quot;what is the margin of
         error on 400 interviews?&quot; are worked out by a calculator in the app, and the reply shows its working and
-        assumptions. The method is the standard one for a proportion (Cochran, 1977):
+        assumptions. The method is the standard one for a proportion (Cochran, 1977), with one model used in both
+        directions, so the sample size for a margin gives that margin back:
       </P>
       <UL>
-        <li>Sample for a margin e: n = z² × p × (1 − p) ÷ e², with p = 50% unless you give an expected share.</li>
-        <li>With a known population N, the finite population correction n ÷ (1 + (n − 1) ÷ N).</li>
+        <li>The margin for n interviews: e = z × √(deff × p × (1 − p) ÷ n), with p = 50% unless you give an expected share.</li>
         <li>
-          Times a design effect for clustered or weighted samples (Kish, 1965), then divided by a response rate to give
-          the number of people to approach.
+          The design effect (deff) for clustered or weighted samples (Kish, 1965) sits inside the variance; it is 1 for a
+          simple random sample.
         </li>
-        <li>The reverse, the margin for n interviews: e = z × √(deff × p × (1 − p) ÷ n).</li>
+        <li>With a known population N, the margin is multiplied by √((N − n) ÷ (N − 1)).</li>
+        <li>
+          The sample for a margin is that formula solved for n: n0 = z² × deff × p × (1 − p) ÷ e², then n0 ÷ (1 + (n0 − 1)
+          ÷ N) when N is known, rounded up. That is the smallest sample whose margin is at most e, and it is never more
+          than the population.
+        </li>
+        <li>
+          Divided by a response rate, it gives the number of people to approach; when that is more people than the
+          population holds, the calculator says so instead of giving a number.
+        </li>
       </UL>
       <Table
-        caption="Reference values the calculator is tested against (95% confidence, p = 50%, design effect 1)"
+        caption="Reference values the calculator is tested against (95% confidence, p = 50%)"
         rows={[
           ["Question", "Answer"],
           ["Interviews for a 5% margin", "385"],
           ["Interviews for a 3% margin", "1,068"],
           ["Interviews for a 5% margin, population 1,000", "278"],
           ["Interviews for a 5% margin, design effect 1.5", "577"],
+          ["Interviews for a 5% margin, design effect 2, population 1,000", "435"],
           ["Margin on 1,000 interviews", "±3.1 points"],
           ["Margin on 400 interviews", "±4.9 points"],
         ]}
       />
+      <P>
+        A value the calculator cannot use, such as a confidence level other than 90, 95 or 99 percent, or a figure sent
+        as words, is refused with the reason rather than replaced by a default.
+      </P>
       <P>
         Confidence can be 90, 95 or 99 percent. The margin applies to the whole sample: a subgroup you plan to report on
         its own, such as one province, needs its own sample size, and the assistant is told to say so.
@@ -183,7 +204,9 @@ export default function ResearchAssistantGuide() {
         counts only that project&apos;s calls.
       </Limit>
       <Limit title="Drafts accumulate">
-        Each data question can add up to four draft tables. They stay until you commit or delete them.
+        Each data question can add up to four draft tables. They stay until you commit or delete them. A table saved
+        whose figures could not be read back is still listed under the reply, marked as such, and counts towards the
+        four.
       </Limit>
       <DoesDoesNot
         does={[

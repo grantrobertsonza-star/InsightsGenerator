@@ -32,7 +32,14 @@ conversation as the Research assistant section inside a project; a side drawer.
 - Request ordering: conversations are keyed (run id or "general"); a load older than the latest,
   or for a project the researcher has left, is ignored; a reply is added to the conversation it
   was sent from. A failed or dropped load shows "could not be loaded" with Try again, and Send is
-  disabled; a failed send shows its error.
+  disabled.
+- Per-conversation state (Codex B5-F05): each key keeps its own draft, waiting flag and failed
+  question. A failed or dropped send, whenever it arrives, is recorded on the conversation it was
+  sent from: the optimistic question leaves the list, the failure box ("Not answered: ...", the
+  reason, Send again, Dismiss) shows only there, and the question goes back in that conversation's
+  draft. Reading the saved history back replaces only the messages, so the failure stays. The
+  state lasts while the app is open in the tab, not across a reload. The Research assistant card
+  does the same on its own failures (question back in the box, error names it).
 
 ## Knowledge base and Manual as tools
 
@@ -59,6 +66,16 @@ conversation as the Research assistant section inside a project; a side drawer.
 - Tool loop, at most `MAX_TOOL_ROUNDS = 8` model calls per message. `revise_narrative` is
   terminal. Running out of rounds gives "I stopped after 8 steps without a final answer..." plus
   the tables built so far; it is never shown as a complete answer.
+- Unfinished responses (Codex B5-F03): a response whose `stop_reason` is not `end_turn`,
+  `tool_use` or `stop_sequence` ends the loop; its text is dropped and none of its tool calls
+  runs (a cut `revise_narrative` would write a half field). `max_tokens` gives `CUT_OFF_REPLY`
+  ("My answer was cut off before it finished, so it is not shown. Ask again, or ask something
+  narrower."); other stops name the reason. An empty finished answer gives `EMPTY_REPLY`. Tables
+  built in earlier rounds stay listed. `LoopResult.incomplete` records all three cases.
+- Storage: the question and its reply are inserted together in one transaction after the reply
+  exists, checked against the run and tenant in the same statement (user row then assistant row,
+  1 ms apart for order). A failed call stores neither, so sending the question again stores it
+  once. Earlier the question was stored first and a failure left it unanswered.
 - A code-appended line lists every table built for the reply:
   `Tables built for this answer (drafts under Cross tabs, All tables): "label" from file.`
   It comes from the tool results, not the model's text.
@@ -70,7 +87,7 @@ conversation as the Research assistant section inside a project; a side drawer.
 | `list_data_files` | This run's `documents` of kind `table` that are stats files or raw case tables | none: "no data files" text |
 | `find_variables` | `searchVariables(dict, query)` from crosstabAsk.ts (shared with SemanticTabs) | dictionary read failure is an error result |
 | `build_table` | `checkTablePlan` (the SemanticTabs validator), then `buildCrosstab(... source: "assistant")` | validation errors returned for the model to fix; set-up read failure stops the table |
-| `sample_size` | `sampleSizeForMargin` / `marginForSample` | invalid input throws, returned as an error result |
+| `sample_size` | `sampleSizeForMargin` / `marginForSample` | options checked before defaults (below); invalid input is an error result |
 
 - Ownership: `data_file_id` must be one of this run's data files (tenant-scoped read); anything
   else is refused before any read.
@@ -79,6 +96,14 @@ conversation as the Research assistant section inside a project; a side drawer.
   set-up read returns an error; it is not treated as "no design".
 - `MAX_TABLES_PER_MESSAGE = 4`; the fifth `build_table` returns an error asking the model to
   answer from the tables built.
+- Read-back after a build (Codex B5-F04): once `buildCrosstab` returns, the draft exists. A failed
+  `loadCrosstab` (thrown or no result) returns an error result that still carries the table
+  (`readBack: false`, label `Table <id>`): it counts towards the cap, the model is told not to
+  build it again, and the reply's table line marks it "(saved, but its figures could not be read
+  back)".
+- `sample_size` options (Codex B5-F02): `mode` must be one of the two; each option given must be
+  a finite number, or it is refused with its name ("confidence_pct must be a number, not \"99\"");
+  only an absent or null option takes its default; the mode's required value must be present.
 - The result text the model sees is `insightTableText(result)` (bases, significance marks) plus
   notes: label and id, weighted or not, design used or not, plan `unclear` lines, skipped
   variables, and a truncation note.
@@ -92,10 +117,14 @@ conversation as the Research assistant section inside a project; a side drawer.
 
 ## Sample size method (`src/lib/sampleSize.ts`)
 
-Cochran (1977, ch. 4) for a proportion: n0 = z^2 p(1-p) / e^2 (p = 0.5 by default); finite
-population correction n0 / (1 + (n0 - 1)/N); times design effect (Kish, 1965); rounded up;
-divided by response rate for the number to approach. Reverse: e = z sqrt(deff p(1-p)/n), times
-sqrt((N-n)/(N-1)) with N. z for 90/95/99 only. Invalid inputs (margin outside (0, 50), p outside
+One model in both directions (Codex B5-F01). Margin: e = z sqrt(deff p(1-p)/n), times
+sqrt((N-n)/(N-1)) with N (`marginFraction`, unrounded; `marginForSample` rounds to 2 dp). Sample:
+that formula solved for n, n0 = z^2 deff p(1-p) / e^2 (Cochran 1977 ch. 4, design effect inside
+the variance after Kish 1965), then n0 / (1 + (n0 - 1)/N) = n0 N / (N + n0 - 1) with N, rounded
+up: the smallest whole n whose margin is at most e, never more than N. Approach = completes /
+response rate, refused when more than N. Earlier the design effect multiplied after the finite
+population correction (556 instead of 435 at e 5, N 1000, deff 2; 160 for N = 100). z for
+90/95/99 only. Invalid inputs (margin outside (0, 50), p outside
 (0, 100), deff outside [1, 10], N not an integer >= 2, n > N) throw.
 
 Limits stated in code and in the knowledge base: probability-sample proportion only; for quota or
@@ -104,7 +133,9 @@ not estimated from data; the margin is whole-sample, subgroups need their own.
 
 ## Tests
 
-- `src/lib/__tests__/sampleSize.test.ts` (6): reference values 385, 1068, 278, 577, 664 (99%),
+- `src/lib/__tests__/sampleSize.test.ts` (8; B5-F01 adds the combined references 435 and 89, an
+  independent enumeration oracle over 576 combinations of confidence, margin, design effect,
+  population and share, and the response-rate refusal with a feasible recovery). Earlier (6): reference values 385, 1068, 278, 577, 664 (99%),
   246 (p = 20%), margins 3.1 (n = 1000), 4.9 (n = 400), 3.8 (n = 500 of N = 2000), and every
   invalid input.
 - `src/lib/__tests__/researchAssistantTools.db.test.ts` (6, real disposable PostgreSQL for the

@@ -417,21 +417,14 @@ export async function askResearchAssistant(
     throw new Error("Message is empty.");
   }
 
-  await withTenant(tenantId, async (client) => {
-    await client.query(
-      `insert into assistant_messages (tenant_id, run_id, role, content) values ($1, $2, 'user', $3)`,
-      [tenantId, runId, trimmed]
-    );
-  });
-
   const context = await loadContext(tenantId, runId);
   if (!context.run) {
     throw new Error("Run not found");
   }
 
   const contextBlock = buildContextBlock(context);
+  // The question is not stored yet (it is stored with its reply, below), so the history is all earlier turns.
   const historyBlock = context.history
-    .slice(0, -1)
     .map((m) => `${m.role === "user" ? "Researcher" : "Assistant"}: ${m.content}`)
     .join("\n");
 
@@ -489,13 +482,22 @@ export async function askResearchAssistant(
     },
     logUsage: (usage) => logApiUsage(tenantId, runId, "research_assistant", usage),
   });
-  const replyText = (loop.replyText || "I didn't have anything to add to that.") + sourceLines(loop.tables, loop.help);
+  const replyText = loop.replyText + sourceLines(loop.tables, loop.help);
 
+  // The question and its reply are stored together, in one transaction, once there is a reply: a
+  // failed call stores neither, so the drawer or card can offer the question again without leaving
+  // an unanswered copy behind, and a retry does not duplicate it (Codex B5-F05). The run is checked
+  // in the same statement, so a run id of another organisation stores nothing.
   await withTenant(tenantId, async (client) => {
-    await client.query(
-      `insert into assistant_messages (tenant_id, run_id, role, content) values ($1, $2, 'assistant', $3)`,
-      [tenantId, runId, replyText]
+    const stored = await client.query(
+      `insert into assistant_messages (tenant_id, run_id, role, content, created_at)
+       select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond'
+       from runs r, (values ('user', $3::text, 0), ('assistant', $4::text, 1)) as m(role, content, offset_ms)
+       where r.id = $2 and r.tenant_id = $1
+       returning id`,
+      [tenantId, runId, trimmed, replyText]
     );
+    if (stored.rowCount !== 2) throw new Error("Run not found");
   });
 
   return { reply: replyText, revisedFields };

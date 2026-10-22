@@ -68,7 +68,8 @@ export default function ResearchAssistantCard({
     setDraft("");
 
     startSending(async () => {
-      const result = await sendAssistantMessage(runId, text);
+      // A dropped connection rejects the action itself; it is a failed send like any other.
+      const result = await sendAssistantMessage(runId, text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
       if (result.ok) {
         setMessages((prev) => [
           ...prev,
@@ -80,7 +81,11 @@ export default function ResearchAssistantCard({
           },
         ]);
       } else {
-        setError(result.error);
+        // The question was not stored (it is stored only with its reply): it leaves the list and goes
+        // back in the box, so sending it again does not leave a duplicate.
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id));
+        setDraft((d) => d || text);
+        setError(`Not answered: "${text}". ${result.error} It is back in the box to send again.`);
       }
     });
   }

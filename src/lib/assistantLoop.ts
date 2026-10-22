@@ -9,6 +9,11 @@ import type { BuiltTable, HelpUsed } from "./researchAssistantTools";
  * Each round the model may call tools; their results go back to it before it answers. A terminal
  * tool (revise_narrative) ends the turn with whatever its handler returns. The loop is bounded: when
  * the rounds run out the reply says so plainly rather than passing off a partial answer.
+ *
+ * A response that did not finish (stopped for length, or any stop other than a finished answer or a
+ * tool call) is not an answer (Codex B5-F03): its text is dropped, none of its tool calls runs (a cut
+ * revise_narrative would write a half-finished field), and the reply says it was cut off and to ask
+ * again. An empty finished answer says so too. Tables already built stay listed under the reply.
  */
 
 /** At most this many model rounds (each may call tools) for one message. */
@@ -16,7 +21,11 @@ export const MAX_TOOL_ROUNDS = 8;
 
 export type ToolOutcome = { content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed };
 
-export type LoopResult = { replyText: string; tables: BuiltTable[]; help: HelpUsed[] };
+export type LoopResult = { replyText: string; tables: BuiltTable[]; help: HelpUsed[]; incomplete: boolean };
+
+export const CUT_OFF_REPLY = "My answer was cut off before it finished, so it is not shown. Ask again, or ask something narrower.";
+export const EMPTY_REPLY = "No answer came back. Ask again.";
+const FINISHED = new Set(["end_turn", "tool_use", "stop_sequence"]);
 
 export async function runAssistantLoop(options: {
   system: Anthropic.TextBlockParam[];
@@ -34,6 +43,7 @@ export async function runAssistantLoop(options: {
   const help: HelpUsed[] = [];
   let replyText = "";
   let finished = false;
+  let incomplete = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS && !finished; round++) {
     const response = await anthropic.messages.create({
@@ -45,6 +55,12 @@ export async function runAssistantLoop(options: {
       messages,
     });
     await options.logUsage(response.usage);
+    if (!FINISHED.has(String(response.stop_reason))) {
+      replyText = response.stop_reason === "max_tokens" ? CUT_OFF_REPLY : `My answer did not finish (${String(response.stop_reason)}), so it is not shown. Ask again.`;
+      incomplete = true;
+      finished = true;
+      break;
+    }
     const text = response.content
       .filter((block) => block.type === "text")
       .map((block) => (block.type === "text" ? block.text : ""))
@@ -74,8 +90,13 @@ export async function runAssistantLoop(options: {
   }
   if (!finished) {
     replyText = `${replyText ? `${replyText}\n\n` : ""}I stopped after ${MAX_TOOL_ROUNDS} steps without a final answer. Ask again more narrowly, or open the tables listed below.`;
+    incomplete = true;
   }
-  return { replyText, tables, help };
+  if (!replyText) {
+    replyText = EMPTY_REPLY;
+    incomplete = true;
+  }
+  return { replyText, tables, help, incomplete };
 }
 
 /**
@@ -85,7 +106,11 @@ export async function runAssistantLoop(options: {
 export function sourceLines(tables: BuiltTable[], help: HelpUsed[]): string {
   const lines: string[] = [];
   if (tables.length > 0) {
-    lines.push(`Tables built for this answer (drafts under Cross tabs, All tables): ${tables.map((t) => `"${t.label}" from ${t.dataFile}`).join("; ")}.`);
+    lines.push(
+      `Tables built for this answer (drafts under Cross tabs, All tables): ${tables
+        .map((t) => `"${t.label}" from ${t.dataFile}${t.readBack ? "" : " (saved, but its figures could not be read back)"}`)
+        .join("; ")}.`,
+    );
   }
   if (help.length > 0) {
     lines.push(`Guides read for this answer: ${help.map((h) => `${h.title} (${h.href})`).join("; ")}.`);

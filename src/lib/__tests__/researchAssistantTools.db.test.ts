@@ -21,9 +21,10 @@ import type { CrosstabResult } from "../parseStatsFile";
 
 type Block = { type: string; text?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: string; is_error?: boolean };
 const state = vi.hoisted(() => ({
-  script: [] as ((req: { messages: { role: string; content: unknown }[] }) => unknown[])[],
+  script: [] as ((req: { messages: { role: string; content: unknown }[] }) => unknown)[],
   requests: [] as { system: unknown; messages: { role: string; content: unknown }[] }[],
   builds: [] as Record<string, unknown>[],
+  failNext: false,
 }));
 
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
@@ -35,8 +36,13 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (req: { system: unknown; messages: { role: string; content: unknown }[] }) => {
         state.requests.push(JSON.parse(JSON.stringify(req)));
         const step = state.script.shift() ?? (() => [{ type: "text", text: "Done." }]);
-        const content = step(req) as Block[];
-        return { content, stop_reason: content.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn", usage: { input_tokens: 1, output_tokens: 1 } };
+        const out = step(req) as Block[] | { stop: string; content: Block[] };
+        if (!Array.isArray(out)) return { content: out.content, stop_reason: out.stop, usage: { input_tokens: 1, output_tokens: 1 } };
+        if (state.failNext) {
+          state.failNext = false;
+          throw new Error("provider unavailable");
+        }
+        return { content: out, stop_reason: out.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn", usage: { input_tokens: 1, output_tokens: 1 } };
       }),
     },
   },
@@ -223,6 +229,61 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     expect(read.is_error).toBe(true);
     expect(read.content).toContain("is not a Knowledge base or Manual ref");
     expect(r.reply).not.toContain("Guides read");
+  });
+
+  it("a reply cut off for length is not published as an answer, and none of its tool calls runs; a healthy reply follows (B5-F03)", async () => {
+    const { CUT_OFF_REPLY } = await import("../assistantLoop");
+    state.script = [() => ({ stop: "max_tokens", content: [{ type: "text", text: "The recommended sample size is" }, call("revise_narrative", { executive_summary: "Half a" })] })];
+    const cut = await ask("What sample size do I need?");
+    expect(cut.reply).toBe(CUT_OFF_REPLY);
+    expect(cut.revisedFields).toEqual([]);
+    expect(state.requests).toHaveLength(1);
+    state.script = [() => ({ stop: "max_tokens", content: [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })] })];
+    await ask("Satisfaction by segment");
+    expect(state.builds).toHaveLength(0);
+    state.script = [() => [{ type: "text", text: "You need 385." }]];
+    expect((await ask("What sample size do I need?")).reply).toBe("You need 385.");
+  });
+
+  it("a table built whose figures cannot be read back still counts towards the cap and is listed (B5-F04)", async () => {
+    const crosstabs = await import("../crosstabs");
+    vi.mocked(crosstabs.loadCrosstab).mockRejectedValue(new Error("read timed out"));
+    try {
+      state.script = [
+        () => [1, 2, 3, 4, 5, 6].map((i) => call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] }, `r${i}`)),
+        () => [{ type: "text", text: "The tables were saved but I could not read them." }],
+      ];
+      const r = await ask("Build six tables");
+      expect(state.builds).toHaveLength(4);
+      const results = lastResults(state.requests[1]);
+      expect(results.slice(0, 4).every((x) => x.is_error && String(x.content).includes("saved as a draft") && String(x.content).includes("read timed out") && String(x.content).includes("Do not build it again"))).toBe(true);
+      expect(results.slice(4).every((x) => x.is_error && /At most 4 tables/.test(String(x.content)))).toBe(true);
+      expect(r.reply.match(/\(saved, but its figures could not be read back\)/g)).toHaveLength(4);
+    } finally {
+      vi.mocked(crosstabs.loadCrosstab).mockReset();
+      vi.mocked(crosstabs.loadCrosstab).mockImplementation(async () => ({ label: "Overall satisfaction by Segment (weighted)", result: TABLE }) as never);
+    }
+    // Healthy recovery: a build that reads back is listed without the note.
+    state.builds = [];
+    state.script = [() => [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })], () => [{ type: "text", text: "Done." }]];
+    const ok = await ask("Satisfaction by segment");
+    expect(state.builds).toHaveLength(1);
+    expect(ok.reply).toContain('"Overall satisfaction by Segment (weighted)" from tracker.sav.');
+    expect(ok.reply).not.toContain("could not be read back");
+  });
+
+  it("a failed call stores neither the question nor a reply; asking again stores the pair once (B5-F05)", async () => {
+    const count = async () => Number((await db.pool.query("select count(*) from assistant_messages where run_id=$1", [run])).rows[0].count);
+    const before = await count();
+    state.failNext = true;
+    state.script = [() => [{ type: "text", text: "never sent" }]];
+    await expect(ask("Will this fail?")).rejects.toThrow("provider unavailable");
+    expect(await count()).toBe(before);
+    state.script = [() => [{ type: "text", text: "It works now." }]];
+    await ask("Will this fail?");
+    const rows = (await db.pool.query("select role, content from assistant_messages where run_id=$1 order by created_at", [run])).rows;
+    expect(rows.length).toBe(before + 2);
+    expect(rows.slice(-2)).toEqual([{ role: "user", content: "Will this fail?" }, { role: "assistant", content: "It works now." }]);
   });
 
   it("gives sample sizes from the calculator", async () => {

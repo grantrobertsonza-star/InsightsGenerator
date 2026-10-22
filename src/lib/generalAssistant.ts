@@ -84,5 +84,5 @@ export async function askGeneralAssistant(
       );
     },
   });
-  return { reply: (loop.replyText || "I didn't have anything to add to that.") + sourceLines(loop.tables, loop.help) };
+  return { reply: loop.replyText + sourceLines(loop.tables, loop.help) };
 }

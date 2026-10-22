@@ -11,6 +11,9 @@
 //      load of the conversation is shown with Try again (never an empty chat), and Try again loads
 //      it; the message and reply are saved with the project and shown in the Research assistant
 //      section, where the floating button is hidden.
+//   3. A failed question stays with the project it was asked in (Codex B5-F05), whether the failure
+//      arrives while that project is open or after moving to another: it is not shown in the other
+//      project, it is there on return with the question kept, and Send again answers it, stored once.
 import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -116,6 +119,92 @@ test("the floating Research assistant answers from the Knowledge base anywhere, 
     await expect(fab).toBeHidden();
     await openSection(page, "Findings");
     await expect(fab).toBeVisible();
+  } finally {
+    await db.end();
+  }
+});
+
+test("a failed question stays with the project it was asked in, and Send again answers it once", async ({ page }, testInfo) => {
+  test.setTimeout(6 * 60_000);
+  page.setDefaultTimeout(30_000);
+  const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
+  await db.connect();
+  try {
+    const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+    const ui = await bind({ page, target, testInfo });
+    const a = await ui.createRun({ name: `drawer-a-${Date.now()}` });
+    const b = await ui.createRun({ name: `drawer-b-${Date.now()}` });
+    const early = `EARLY-${Date.now()}`;
+    const late = `LATE-${Date.now()}`;
+    writeFileSync(fixtureFile, JSON.stringify({ untargeted: [{ match: early, text: "Answered on the second try." }, { match: late, text: "The late one is answered." }] }));
+
+    // Sends whose text carries a marker fail: the early one at once, the late one when released.
+    let failEarly = true;
+    let failLate = true;
+    let heldLate = null;
+    await page.route("**/*", async (route) => {
+      const req = route.request();
+      const body = req.method() === "POST" && req.headers()["next-action"] ? (req.postData() ?? "") : "";
+      if (failEarly && body.includes(early)) {
+        failEarly = false;
+        return route.abort("failed");
+      }
+      if (failLate && body.includes(late)) {
+        failLate = false;
+        heldLate = route;
+        return;
+      }
+      return route.continue();
+    });
+
+    const drawer = page.getByTestId("assistant-drawer");
+    const failedBox = drawer.getByTestId("assistant-drawer-failed");
+    const box = drawer.getByRole("textbox", { name: "Your question" });
+    const switchTo = async (run) => {
+      await page.getByLabel("Current project").selectOption(run.id);
+      await expect(page).toHaveURL(new RegExp(`/runs/${run.id}`));
+      await expect(drawer.getByText(/Loading the conversation/)).toHaveCount(0);
+    };
+
+    await page.goto(a.url, { waitUntil: "networkidle" });
+    await openSection(page, "Findings");
+    await page.getByTestId("assistant-fab").click();
+
+    // The failure arrives while A is open.
+    await box.fill(`${early} first question`);
+    await box.press("Enter");
+    await expect(failedBox).toContainText(`Not answered: \u201c${early} first question\u201d.`);
+    await expect(box).toHaveValue(`${early} first question`);
+    await switchTo(b);
+    await expect(failedBox).toHaveCount(0);
+    await expect(box).toHaveValue("");
+    await switchTo(a);
+    await expect(failedBox).toContainText(`${early} first question`);
+    const s1 = shot("failed");
+    if (s1) await page.screenshot({ path: s1 });
+    await failedBox.getByRole("button", { name: "Send again" }).click();
+    await expect(drawer.getByText("Answered on the second try.")).toBeVisible({ timeout: 60_000 });
+    await expect(failedBox).toHaveCount(0);
+    await expect(box).toHaveValue("");
+
+    // The failure arrives after moving to B.
+    await box.fill(`${late} second question`);
+    await box.press("Enter");
+    await expect.poll(() => heldLate !== null).toBe(true);
+    await switchTo(b);
+    await heldLate.abort("failed");
+    await expect(drawer.getByText("Thinking...")).toHaveCount(0);
+    await expect(failedBox).toHaveCount(0);
+    await switchTo(a);
+    await expect(failedBox).toContainText(`${late} second question`);
+    await failedBox.getByRole("button", { name: "Send again" }).click();
+    await expect(drawer.getByText("The late one is answered.")).toBeVisible({ timeout: 60_000 });
+
+    // Stored once each: no copy of a failed question was left behind.
+    const rows = (await db.query("select role, content from assistant_messages where run_id=$1 order by created_at", [a.id])).rows;
+    expect(rows.map((r) => r.content)).toEqual([`${early} first question`, "Answered on the second try.", `${late} second question`, "The late one is answered."]);
+    expect((await db.query("select count(*)::int as n from assistant_messages where run_id=$1", [b.id])).rows[0].n).toBe(0);
+    await page.unroute("**/*");
   } finally {
     await db.end();
   }

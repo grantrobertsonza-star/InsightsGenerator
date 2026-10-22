@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Block = { type: string; text?: string; id?: string; name?: string; input?: unknown; content?: string; is_error?: boolean };
 const state = vi.hoisted(() => ({
-  script: [] as ((req: { messages: { role: string; content: unknown }[] }) => unknown[])[],
+  script: [] as ((req: { messages: { role: string; content: unknown }[] }) => unknown)[],
   requests: [] as { system: { text: string; cache_control?: unknown }[]; tools: { name: string }[]; messages: { role: string; content: unknown }[] }[],
 }));
 vi.mock("../anthropic", () => ({
@@ -17,8 +17,10 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { messages: { role: string; content: unknown }[] }) => {
         state.requests.push(JSON.parse(JSON.stringify(req)));
-        const content = (state.script.shift() ?? (() => [{ type: "text", text: "Done." }]))(req) as Block[];
-        return { content, usage: { input_tokens: 3, output_tokens: 2, cache_read_input_tokens: 1 } };
+        const out = (state.script.shift() ?? (() => [{ type: "text", text: "Done." }]))(req) as Block[] | { stop: string; content: Block[] };
+        const content = Array.isArray(out) ? out : out.content;
+        const stop_reason = Array.isArray(out) ? (out.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn") : out.stop;
+        return { content, stop_reason, usage: { input_tokens: 3, output_tokens: 2, cache_read_input_tokens: 1 } };
       }),
     },
   },
@@ -89,6 +91,44 @@ describe("Research assistant outside a project", () => {
     expect(logged).toHaveLength(2);
     expect(logged[0]).toMatchObject({ event: "api_usage", agent: "general_assistant", tenant_id: "tenant-1", input_tokens: 3, cache_read_input_tokens: 1 });
     info.mockRestore();
+  });
+
+  it("refuses malformed calculator options instead of defaulting them, and a corrected call works (B5-F02)", async () => {
+    const { runSampleSizeTool } = await import("../researchAssistantTools");
+    const bad = [
+      [{ mode: "sample_for_margin", margin_pct: 5, confidence_pct: "99" }, 'confidence_pct must be a number, not "99"'],
+      [{ mode: "sample_for_margin", margin_pct: 5, design_effect: "2" }, 'design_effect must be a number, not "2"'],
+      [{ mode: "sample_for_margin", margin_pct: "5" }, 'margin_pct must be a number'],
+      [{ mode: "sample_for_margin", margin_pct: 5, population: Number.NaN }, "population must be a number"],
+      [{ mode: "not_a_mode", margin_pct: 5 }, 'mode must be "sample_for_margin" or "margin_for_sample", not "not_a_mode"'],
+      [{ margin_pct: 5 }, "mode must be"],
+      [{ mode: "margin_for_sample" }, "sample_size is needed for margin_for_sample"],
+    ] as const;
+    for (const [input, message] of bad) {
+      const r = runSampleSizeTool(input as Record<string, unknown>);
+      expect(r.isError).toBe(true);
+      expect(r.content).toContain(message);
+    }
+    // Absent or null options take their defaults; numbers given are used as given.
+    expect(runSampleSizeTool({ mode: "sample_for_margin", margin_pct: 5, design_effect: null }).content).toContain("Completed interviews needed: 385.");
+    expect(runSampleSizeTool({ mode: "sample_for_margin", margin_pct: 5, confidence_pct: 99 }).content).toContain("Completed interviews needed: 664.");
+    expect(runSampleSizeTool({ mode: "sample_for_margin", margin_pct: 5, design_effect: 2, population: 1000 }).content).toContain("Completed interviews needed: 435.");
+  });
+
+  it("a cut-off or empty answer is said to be one, not shown as an answer; a healthy answer follows (B5-F03)", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const { askGeneralAssistant } = await import("../generalAssistant");
+    const { CUT_OFF_REPLY, EMPTY_REPLY } = await import("../assistantLoop");
+    state.script = [() => ({ stop: "max_tokens", content: [{ type: "text", text: "The recommended sample size is" }] })];
+    expect((await askGeneralAssistant("t", "Sample for 5 points?", [], null)).reply).toBe(CUT_OFF_REPLY);
+    state.script = [() => ({ stop: "max_tokens", content: [call("sample_size", { mode: "sample_for_margin", margin_pct: 5 })] })];
+    expect((await askGeneralAssistant("t", "Sample for 5 points?", [], null)).reply).toBe(CUT_OFF_REPLY);
+    state.script = [() => ({ stop: "refusal", content: [] })];
+    expect((await askGeneralAssistant("t", "Sample for 5 points?", [], null)).reply).toBe("My answer did not finish (refusal), so it is not shown. Ask again.");
+    state.script = [() => [{ type: "text", text: "  " }]];
+    expect((await askGeneralAssistant("t", "Sample for 5 points?", [], null)).reply).toBe(EMPTY_REPLY);
+    state.script = [() => [{ type: "text", text: "385 interviews." }]];
+    expect((await askGeneralAssistant("t", "Sample for 5 points?", [], null)).reply).toBe("385 interviews.");
   });
 
   it("a calculator input it cannot use is an error result; an empty message is refused before any call", async () => {

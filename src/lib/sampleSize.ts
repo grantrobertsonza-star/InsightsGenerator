@@ -3,14 +3,18 @@
  * answer "what sample do I need for a 5% margin of error?" with a calculation, not a remembered
  * figure). Pure arithmetic, so the assistant quotes numbers the code worked out.
  *
- * Method (Cochran, 1977, ch. 4; the standard survey textbook formula):
- *   n0 = z^2 * p * (1 - p) / e^2, the simple random sample for margin e at confidence z, worst case
- *     p = 0.5 unless an expected share is given;
- *   with a known population N, the finite population correction n = n0 / (1 + (n0 - 1) / N);
- *   times the design effect (1 for a simple random sample; clustering or unequal weights raise it);
- *   rounded up; divided by the expected response rate for the number to approach.
- * And the reverse, the margin for a given n: e = z * sqrt(deff * p * (1 - p) / n), times
- *   sqrt((N - n) / (N - 1)) when N is known.
+ * Method (Cochran, 1977, ch. 4; Kish, 1965, for the design effect). One model for both directions,
+ * so the sample size for a margin gives that margin back (Codex B5-F01):
+ *   the margin of a share from n interviews: e = z * sqrt(deff * p * (1 - p) / n), times the finite
+ *     population factor sqrt((N - n) / (N - 1)) when the population N is known;
+ *   the sample size is that formula solved for n: with n0 = z^2 * deff * p * (1 - p) / e^2 (the
+ *     design effect inside the variance, p = 0.5 unless an expected share is given),
+ *     n = n0 / (1 + (n0 - 1) / N), which is exactly n0 * N / (N + n0 - 1), and never more than N;
+ *   rounded up, which is the smallest whole sample whose margin is at most e;
+ *   divided by the expected response rate for the number to approach, refused when that is more
+ *     people than the population holds.
+ * Earlier the design effect was applied after the finite population correction, which overstated
+ * the sample and could exceed the population.
  * Limits: a proportion from a probability sample. A quota or opt-in panel has no sampling margin in
  * the strict sense; the figure then describes the precision a random sample of that size would have.
  */
@@ -59,30 +63,39 @@ function check(input: { confidencePct?: number; expectedSharePct?: number; popul
 export function sampleSizeForMargin(input: SampleSizeInput): SampleSizeResult {
   const { confidence, z, p, deff, N, rr } = check(input);
   const e = input.marginPct / 100;
-  if (!(e > 0 && e < 0.5)) throw new Error("The margin of error must be above 0 and below 50 percentage points.");
-  const n0 = (z * z * p * (1 - p)) / (e * e);
-  const steps = [`Simple random sample: ${z.toFixed(3)}² × ${p} × ${(1 - p).toFixed(2)} ÷ ${e}² = ${n0.toFixed(1)}`];
+  if (!(Number.isFinite(e) && e > 0 && e < 0.5)) throw new Error("The margin of error must be above 0 and below 50 percentage points.");
+  const srs = (z * z * p * (1 - p)) / (e * e);
+  const n0 = srs * deff;
+  const steps = [
+    deff === 1
+      ? `Simple random sample: ${z.toFixed(3)}² × ${p} × ${(1 - p).toFixed(2)} ÷ ${e}² = ${n0.toFixed(1)}`
+      : `With design effect ${deff}: ${z.toFixed(3)}² × ${deff} × ${p} × ${(1 - p).toFixed(2)} ÷ ${e}² = ${n0.toFixed(1)}`,
+  ];
   let n = n0;
   if (N !== null) {
-    n = n0 / (1 + (n0 - 1) / N);
+    n = (n0 * N) / (N + n0 - 1);
     steps.push(`Population of ${N.toLocaleString("en-US")}: ${n0.toFixed(1)} ÷ (1 + (${n0.toFixed(1)} − 1) ÷ ${N}) = ${n.toFixed(1)}`);
   }
-  if (deff !== 1) {
-    steps.push(`Design effect ${deff}: ${n.toFixed(1)} × ${deff} = ${(n * deff).toFixed(1)}`);
-    n *= deff;
-  }
-  const completes = Math.ceil(n - 1e-9);
+  const completes = Math.min(Math.ceil(n - 1e-9), N ?? Infinity);
   steps.push(`Rounded up: ${completes} completed interviews`);
-  const approach = rr !== null ? Math.ceil(completes / (rr / 100) - 1e-9) : null;
-  if (approach !== null && rr !== null) steps.push(`At a ${rr}% response rate: ${completes} ÷ ${rr / 100} = ${approach} people to approach`);
+  let approach: number | null = null;
+  if (rr !== null) {
+    approach = Math.ceil(completes / (rr / 100) - 1e-9);
+    if (N !== null && approach > N) {
+      throw new Error(
+        `At a ${rr}% response rate, ${completes} completed interviews would need ${approach} people approached, more than the population of ${N.toLocaleString("en-US")}. Even a census would not reach this margin at that response rate; accept a wider margin or plan for a higher response rate.`,
+      );
+    }
+    steps.push(`At a ${rr}% response rate: ${completes} ÷ ${rr / 100} = ${approach} people to approach`);
+  }
   return {
     completes,
     approach,
-    simpleRandom: Math.ceil(n0 - 1e-9),
+    simpleRandom: Math.ceil(srs - 1e-9),
     steps,
     assumptions: [
       `${confidence}% confidence, a proportion with an expected share of ${(p * 100).toFixed(0)}%${input.expectedSharePct === undefined ? " (the most conservative choice)" : ""}`,
-      deff === 1 ? "a simple random sample (design effect 1)" : `a design effect of ${deff}`,
+      deff === 1 ? "a simple random sample (design effect 1)" : `a design effect of ${deff}, applied to the variance before the population correction`,
       N === null ? "a large population (no finite population correction)" : `a population of ${N.toLocaleString("en-US")}`,
       "the margin applies to the whole sample; each subgroup reported separately needs its own size",
     ],
@@ -91,19 +104,24 @@ export function sampleSizeForMargin(input: SampleSizeInput): SampleSizeResult {
 
 export type MarginInput = Omit<SampleSizeInput, "marginPct" | "responseRatePct"> & { sampleSize: number };
 
-/** The margin of error, in percentage points, of a share from a sample of the given size. */
-export function marginForSample(input: MarginInput): { marginPct: number; steps: string[]; assumptions: string[] } {
-  const { confidence, z, p, deff, N } = check(input);
+/** The margin of error as a fraction (unrounded): the model sampleSizeForMargin solves. */
+export function marginFraction(input: MarginInput): number {
+  const { z, p, deff, N } = check(input);
   const n = input.sampleSize;
   if (!(Number.isInteger(n) && n >= 2)) throw new Error("The sample size must be a whole number of at least 2.");
   if (N !== null && n > N) throw new Error("The sample cannot be larger than the population.");
-  let e = z * Math.sqrt((deff * p * (1 - p)) / n);
-  const steps = [`${z.toFixed(3)} × √(${deff} × ${p} × ${(1 - p).toFixed(2)} ÷ ${n}) = ${(e * 100).toFixed(2)} points`];
-  if (N !== null) {
-    const fpc = Math.sqrt((N - n) / (N - 1));
-    steps.push(`Population of ${N.toLocaleString("en-US")}: × √((${N} − ${n}) ÷ (${N} − 1)) = ${(e * fpc * 100).toFixed(2)} points`);
-    e *= fpc;
-  }
+  const e = z * Math.sqrt((deff * p * (1 - p)) / n);
+  return N !== null ? e * Math.sqrt((N - n) / (N - 1)) : e;
+}
+
+/** The margin of error, in percentage points, of a share from a sample of the given size. */
+export function marginForSample(input: MarginInput): { marginPct: number; steps: string[]; assumptions: string[] } {
+  const { confidence, z, p, deff, N } = check(input);
+  const e = marginFraction(input);
+  const n = input.sampleSize;
+  const simple = z * Math.sqrt((deff * p * (1 - p)) / n);
+  const steps = [`${z.toFixed(3)} × √(${deff} × ${p} × ${(1 - p).toFixed(2)} ÷ ${n}) = ${(simple * 100).toFixed(2)} points`];
+  if (N !== null) steps.push(`Population of ${N.toLocaleString("en-US")}: × √((${N} − ${n}) ÷ (${N} − 1)) = ${(e * 100).toFixed(2)} points`);
   return {
     marginPct: Math.round(e * 10000) / 100,
     steps,

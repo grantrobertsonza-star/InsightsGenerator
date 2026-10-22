@@ -143,7 +143,8 @@ export function runSampleSizeTool(input: Record<string, unknown>): { content: st
   }
 }
 
-export type BuiltTable = { tableId: string; label: string; dataFile: string };
+/** A table the assistant built; `readBack` is false when the draft was saved but its figures could not be read. */
+export type BuiltTable = { tableId: string; label: string; dataFile: string; readBack: boolean };
 
 type DataFile = { id: string; name: string };
 
@@ -158,8 +159,6 @@ async function dataFiles(tenantId: string, runId: string): Promise<DataFile[]> {
       .map((d) => ({ id: d.id, name: d.source_filename }));
   });
 }
-
-const num = (x: unknown): number | undefined => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
 
 /**
  * Runs one tool call. Returns the text for the model, whether it failed, and any table it built.
@@ -208,8 +207,22 @@ export async function runAssistantTool(
       source: "assistant",
       design: design.design ?? undefined,
     });
-    const { label, result } = await loadCrosstab(tenantId, runId, built.tableId);
-    if (!result) return { content: "The table was built but could not be read back.", isError: true };
+    // The draft exists from here on (buildCrosstab saved it), so every return below carries it: it
+    // counts towards the cap and is listed under the reply even when its figures cannot be read back
+    // (Codex B5-F04).
+    const unread = (reason: string) => ({
+      content: `The table was built and saved as a draft (id ${built.tableId}, under Cross tabs, All tables), but its figures could not be read back: ${reason}. Do not build it again; tell the researcher to open it there.`,
+      isError: true,
+      table: { tableId: built.tableId, label: `Table ${built.tableId}`, dataFile: file.name, readBack: false },
+    });
+    let label: string;
+    let result: Awaited<ReturnType<typeof loadCrosstab>>["result"];
+    try {
+      ({ label, result } = await loadCrosstab(tenantId, runId, built.tableId));
+    } catch (error) {
+      return unread(error instanceof Error ? error.message : String(error));
+    }
+    if (!result) return unread("it has no saved result");
     const text = insightTableText(result);
     const notes = [
       `Table "${label}" (id ${built.tableId}) from ${file.name}, saved as a draft under Cross tabs, All tables.`,
@@ -219,30 +232,59 @@ export async function runAssistantTool(
       ...(built.skipped ?? []).map((s) => `Left out: ${s.variable} (${s.reason}).`),
       text.questionsShown < text.questionsTotal ? `Only the first ${text.questionsShown} of ${text.questionsTotal} questions are shown below.` : "",
     ].filter(Boolean);
-    return { content: `${notes.join("\n")}\n\n${text.text}`, isError: false, table: { tableId: built.tableId, label, dataFile: file.name } };
+    return { content: `${notes.join("\n")}\n\n${text.text}`, isError: false, table: { tableId: built.tableId, label, dataFile: file.name, readBack: true } };
   } catch (error) {
     return { content: `This could not be done: ${error instanceof Error ? error.message : String(error)}`, isError: true };
   }
 }
 
+/**
+ * The calculator's options, checked before any default applies (Codex B5-F02): an option that was
+ * given must be a finite number, so "99" as text or a non-number design effect is refused rather
+ * than quietly replaced by the default (95%, design effect 1). Only an absent option (or null, which
+ * a model sends for "not given") takes its default. The ranges are checked by sampleSize.ts.
+ */
+const SAMPLE_OPTIONS = ["margin_pct", "sample_size", "confidence_pct", "expected_share_pct", "population", "design_effect", "response_rate_pct"] as const;
+
+function sampleSizeOptions(input: Record<string, unknown>): Record<(typeof SAMPLE_OPTIONS)[number], number | undefined> {
+  const mode = input.mode;
+  if (mode !== "sample_for_margin" && mode !== "margin_for_sample") {
+    throw new Error(`mode must be "sample_for_margin" or "margin_for_sample", not ${JSON.stringify(mode ?? null)}.`);
+  }
+  const out = {} as Record<(typeof SAMPLE_OPTIONS)[number], number | undefined>;
+  for (const key of SAMPLE_OPTIONS) {
+    const v = input[key];
+    if (v === undefined || v === null) {
+      out[key] = undefined;
+      continue;
+    }
+    if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${key} must be a number, not ${JSON.stringify(v)}. Send it as a number, or leave it out for the default.`);
+    out[key] = v;
+  }
+  const required = mode === "margin_for_sample" ? "sample_size" : "margin_pct";
+  if (out[required] === undefined) throw new Error(`${required} is needed for ${mode}.`);
+  return out;
+}
+
 function sampleSizeText(input: Record<string, unknown>): string {
+  const o = sampleSizeOptions(input);
   const common = {
-    confidencePct: num(input.confidence_pct),
-    expectedSharePct: num(input.expected_share_pct),
-    population: num(input.population) ?? null,
-    designEffect: num(input.design_effect),
+    confidencePct: o.confidence_pct,
+    expectedSharePct: o.expected_share_pct,
+    population: o.population ?? null,
+    designEffect: o.design_effect,
   };
   if (input.mode === "margin_for_sample") {
-    const r = marginForSample({ ...common, sampleSize: num(input.sample_size) ?? NaN });
+    const r = marginForSample({ ...common, sampleSize: o.sample_size! });
     return [`Margin of error: plus or minus ${r.marginPct} percentage points.`, "Working:", ...r.steps, "Assumes:", ...r.assumptions].join("\n");
   }
-  const r = sampleSizeForMargin({ ...common, marginPct: num(input.margin_pct) ?? NaN, responseRatePct: num(input.response_rate_pct) ?? null });
+  const r = sampleSizeForMargin({ ...common, marginPct: o.margin_pct!, responseRatePct: o.response_rate_pct ?? null });
   return [
     `Completed interviews needed: ${r.completes}.${r.approach !== null ? ` People to approach: ${r.approach}.` : ""}`,
     "Working:",
     ...r.steps,
     "Assumes:",
     ...r.assumptions,
-    "Method: Cochran (1977), Sampling Techniques, 3rd ed., chapter 4.",
+    "Method: Cochran (1977), Sampling Techniques, 3rd ed., chapter 4; design effect (Kish, 1965) applied to the variance before the population correction.",
   ].join("\n");
 }
