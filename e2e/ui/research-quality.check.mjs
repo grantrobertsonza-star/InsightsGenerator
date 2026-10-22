@@ -177,6 +177,18 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     expect(itemScores.length).toBeGreaterThan(0);
     expect(Number(await method.getAttribute("data-score"))).toBeCloseTo(itemScores.reduce((a, b) => a + b, 0) / itemScores.length, 6);
     await expect(proposal.locator('[data-criterion="price"] li[data-sub-criterion]')).toHaveCount(0); // one item: no list
+    // Every bar's track, a category's and its indented items', has one length and one right end, so
+    // equal scores on the one 5 point scale line up (Grant, 2026-10-22), also in a larger font.
+    const tracks = (scope) => scope.locator('li[data-criterion] [role="img"]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { w: r.width, right: r.right }; }));
+    for (const zoom of ["100%", "130%"]) {
+      await page.evaluate((z) => { document.documentElement.style.fontSize = z; }, zoom);
+      const t = await tracks(proposal);
+      expect(t.length, `tracks at ${zoom}`).toBeGreaterThan(6);
+      expect(Math.max(...t.map((x) => x.w)) - Math.min(...t.map((x) => x.w)), `track lengths at ${zoom}`).toBeLessThanOrEqual(1.5);
+      expect(Math.max(...t.map((x) => x.right)) - Math.min(...t.map((x) => x.right)), `track ends at ${zoom}`).toBeLessThanOrEqual(1.5);
+    }
+    await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
+    if (process.env.SHOT) await proposal.screenshot({ path: process.env.SHOT.replace(".png", "-bars.png") });
     await method.locator("button").first().click();
     await expect(details.getByRole("heading", { name: "Methodological rigour" })).toBeVisible();
     await expect(details.getByTestId("rq-criterion-detail")).toHaveCount(6);

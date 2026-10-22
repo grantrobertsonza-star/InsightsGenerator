@@ -5,7 +5,7 @@
 //   3. Objectives is one entry with Set and Review tabs; it stays highlighted on either tab.
 //   4. Cross tabs shows a data file's Crosstabs tile only; Analytics shows the analyses without it.
 //   5. Each group rolls up from its heading (mouse and keyboard), stays rolled up after a reload,
-//      and a rolled-up group still shows the open section.
+//      and hides all its entries; the heading of a rolled-up group holding the open section is marked.
 //   6. The switcher opens another project.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -61,9 +61,11 @@ test("the sidebar's stages, Objectives tabs, split Cross tabs and Analytics, and
   await expect(toggle("Develop findings")).toHaveAttribute("aria-expanded", "false");
   await expect(menu.getByRole("button", { name: /^Findings/ })).toHaveCount(0);
   await expect(menu.getByRole("button", { name: /^Insights\s*\d*$/ })).toHaveCount(0);
-  // Analytics is open, so rolling up Analyse keeps it and hides the others.
+  // Analytics is open: rolling up Analyse hides it too, and the heading is marked as holding it.
   await toggle("Analyse").click();
-  await expect(menu.getByRole("group", { name: "Analyse" }).locator("[data-nav-label]")).toHaveText(["Analytics"]);
+  await expect(menu.getByRole("group", { name: "Analyse" }).locator("[data-nav-label]")).toHaveCount(0);
+  await expect(toggle("Analyse")).toHaveAttribute("data-holds-open", "true");
+  await expect(toggle("Develop findings")).not.toHaveAttribute("data-holds-open", "true");
   await page.reload({ waitUntil: "networkidle" });
   await expect(toggle("Develop findings")).toHaveAttribute("aria-expanded", "false");
   await expect(menu.getByRole("button", { name: /^Findings/ })).toHaveCount(0);

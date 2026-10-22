@@ -246,8 +246,11 @@ export function RunNav({
       {groups.map((group) => {
         const isFolded = folded.includes(group.name);
         const listId = `run-nav-group-${group.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-        // A folded group still shows the open section, so the researcher never loses where they are.
-        const shownItems = isFolded ? group.items.filter((s) => s.id === selected || (s.activeFor ?? []).includes(selected)) : group.items;
+        // A folded group hides all its entries, the open one too (Grant, 2026-10-22: Research quality
+        // stayed under a rolled-up Prepare); its heading is coloured instead, so the open section's
+        // group is still visible.
+        const holdsOpen = group.items.some((s) => s.id === selected || (s.activeFor ?? []).includes(selected));
+        const shownItems = isFolded ? [] : group.items;
         return (
         <div key={group.name} role="group" aria-label={group.name} className={`mt-1 border-t border-slate-200 px-3 pt-3 ${isFolded && shownItems.length === 0 ? "pb-2" : "pb-3"}`}>
           <button
@@ -255,9 +258,10 @@ export function RunNav({
             onClick={() => toggleGroup(group.name)}
             aria-expanded={!isFolded}
             aria-controls={listId}
-            title={isFolded ? `Show ${group.name}` : `Roll up ${group.name}`}
+            title={isFolded ? `Show ${group.name}${holdsOpen ? " (the open section is here)" : ""}` : `Roll up ${group.name}`}
             data-testid="run-nav-group-toggle"
-            className="mb-1.5 flex w-full items-center gap-2 rounded px-3 py-0.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-700 hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+            data-holds-open={isFolded && holdsOpen ? "true" : undefined}
+            className={`mb-1.5 flex w-full items-center gap-2 rounded px-3 py-0.5 text-left text-[11px] font-bold uppercase tracking-wider hover:text-primary focus-visible:outline-2 focus-visible:outline-primary ${isFolded && holdsOpen ? "text-primary" : "text-slate-700"}`}
           >
             <span aria-hidden="true" className="h-3 w-1 rounded-full bg-primary/60" />
             <span className="flex-1">{group.name}</span>

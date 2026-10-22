@@ -707,7 +707,7 @@ function Improvements({ view, selected, onSelect }: { view: ResearchQualityView;
   const groups = improvementsByTiming(r.observations).filter((g) => g.items.length > 0);
   if (groups.length === 0) return <p className="text-xs text-muted">No improvements were suggested in this review.</p>;
   return (
-    <div className="flex flex-col gap-3" data-testid="rq-improvements">
+    <div className="@container flex flex-col gap-3" data-testid="rq-improvements">
       {groups.map((g) => (
         <section key={g.timing} className="rounded-xl border border-border bg-white p-3">
           <h4 className="mb-1.5 text-sm font-semibold text-foreground">{g.label}</h4>
@@ -725,7 +725,7 @@ function Improvements({ view, selected, onSelect }: { view: ResearchQualityView;
                     className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs ${selected === o.criterionId ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
                   >
                     <span className="min-w-[9rem] flex-1 truncate font-medium text-foreground">{name}</span>
-                    <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                    <span className="flex w-[58cqw] min-w-[8rem] shrink-0 items-center gap-2">
                       <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${name}: ${shown === null ? label : `${shown} of 5, ${label}`}`}>
                         {score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(score)}`} style={{ width: `${Math.max(score, 0.15) * 20}%` }} />}
                       </span>
@@ -794,7 +794,10 @@ function Dashboard({
           </p>
         </div>
       </div>
-      <ul className="mt-3 flex flex-col gap-1">
+      {/* @container: every bar section is the same share of this list's width (58cqw), whether it is
+          a category's bar or one of its indented criteria, so tracks on one 5 point scale have one
+          length and equal scores line up (Grant, 2026-10-22). */}
+      <ul className="@container mt-3 flex flex-col gap-1">
         {shownDims.length === 0 && <li className="px-1.5 py-1 text-xs text-muted">{`No criterion here is ${status}.`}</li>}
         {shownDims.map(({ dimension: x, criteria: matching }) => {
           const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
@@ -819,7 +822,7 @@ function Dashboard({
                     )
                   )}
                 </span>
-                <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                <span className="flex w-[58cqw] min-w-[8rem] shrink-0 items-center gap-2">
                   <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${name}: ${shown === null ? x.label : `${shown} of 5, ${x.label}`}`}>
                     {x.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(x.score)}`} style={{ width: `${Math.max(x.score, 0.15) * 20}%` }} />}
                   </span>
@@ -839,10 +842,10 @@ function Dashboard({
                           type="button"
                           onClick={() => (onSelectCriterion ? onSelectCriterion(x.dimensionId, c.criterionId) : onSelect(x.dimensionId))}
                           aria-pressed={selectedCriterion === c.criterionId}
-                          className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-[11px] ${selectedCriterion === c.criterionId ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
+                          className={`flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left text-[11px] ${selectedCriterion === c.criterionId ? "bg-primary-light ring-1 ring-primary/30" : "hover:bg-slate-50"}`}
                         >
                           <span className="min-w-[8rem] flex-1 truncate text-slate-700">{criterionShortLabel(c.criterionId)}</span>
-                          <span className="flex min-w-[8rem] flex-[2] items-center gap-2">
+                          <span className="flex w-[58cqw] min-w-[8rem] shrink-0 items-center gap-2">
                             <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${criterionShortLabel(c.criterionId)}: ${cShown === null ? c.label : `${cShown} of 5, ${c.label}`}`}>
                               {c.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(c.score)}`} style={{ width: `${Math.max(c.score, 0.15) * 20}%` }} />}
                             </span>
@@ -874,9 +877,13 @@ function Dashboard({
  */
 function ScoreAndBand({ shown, label, failed = false, empty, cls, weight }: { shown: string | null; label: string; failed?: boolean; empty?: string; cls: string; weight: string }) {
   return (
-    <span className={`flex shrink-0 items-baseline gap-2 text-[10px] uppercase tracking-wide ${weight} ${cls}`}>
-      <span className="w-7 text-right tabular-nums">{shown === null ? "" : shown}</span>
-      <span className="w-[4.5rem] whitespace-nowrap text-left">{shown === null ? (empty ?? (failed ? "failed" : "-")) : label}</span>
+    // Fixed widths in em (Grant, 2026-10-22: bars on one 5 point scale ended at different points):
+    // the columns must not grow with their text ("Workable" is wider than "Weak", and wider still
+    // with a larger font or zoom), or each bar's track, which takes the space left, gets a
+    // different length and equal scores no longer line up. 9.5em fits "Not rated" in caps.
+    <span className={`flex w-[9.5em] shrink-0 items-baseline gap-2 text-[10px] uppercase tracking-wide ${weight} ${cls}`}>
+      <span className="w-[2.2em] shrink-0 text-right tabular-nums">{shown === null ? "" : shown}</span>
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">{shown === null ? (empty ?? (failed ? "failed" : "-")) : label}</span>
     </span>
   );
 }
