@@ -116,6 +116,11 @@ function kindOf(v: VariableInfo): string {
 }
 
 /** Keyword search over variable names and labels, plus multiple-response sets. */
+/** Variables and sets matching words in their name or label, as the planner's search tool lists them. */
+export function searchVariables(dict: VariableDictionary, query: string): string {
+  return search(dict, query);
+}
+
 function search(dict: VariableDictionary, query: string): string {
   const toks = tokens(query);
   if (toks.length === 0) return "Give at least one meaningful word to search for.";
@@ -436,3 +441,20 @@ export async function planCrosstabFromText(tenantId: string, runId: string, docu
   }
   throw new Error("Could not settle on a table from that request. Try naming the variables more directly.");
 }
+
+/**
+ * Checks a table setup given by name (rows, columns, filters, statistics, in submit_plan's shape)
+ * against a data file, with the same rules as a SemanticTabs plan (validate): every variable must be
+ * in the file, every answer label exact, a mean only where it can be worked out. Used by the
+ * Research assistant's build_table tool, so its tables are held to the same checks.
+ */
+export async function checkTablePlan(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  dict: VariableDictionary,
+  raw: Record<string, unknown>,
+): Promise<{ plan: AskPlan } | { errors: string[] }> {
+  return validate(tenantId, runId, documentId, dict, raw, []);
+}
+

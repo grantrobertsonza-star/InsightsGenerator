@@ -42,7 +42,7 @@ export type CrosstabListItem = {
   status: "draft" | "committed";
   findings: number;
   legacy: boolean;
-  source: "workspace" | "ask" | "window" | "starter";
+  source: "workspace" | "ask" | "window" | "starter" | "assistant";
   /** Set on every table of a layered set: one subtable per category of a layer variable, SPSS-style.
    * Shared across the set so the UI can group them; layerCategory/layerLabel describe this one panel. */
   layerGroup?: string | null;
@@ -938,7 +938,7 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
     status: row.crosstab_status ?? "committed",
     findings: Number(row.findings),
     legacy: row.version !== 2,
-    source: (["workspace", "ask", "window", "starter"] as const).find((x) => x === row.source) ?? (String(row.label ?? "").startsWith("Starter:") ? "starter" : "workspace"),
+    source: (["workspace", "ask", "window", "starter", "assistant"] as const).find((x) => x === row.source) ?? (String(row.label ?? "").startsWith("Starter:") ? "starter" : "workspace"),
     layerGroup: row.layer_group,
     layerCategory: row.layer_category,
     layerLabel: row.layer_label,

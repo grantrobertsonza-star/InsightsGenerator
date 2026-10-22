@@ -452,7 +452,7 @@ export type CrosstabRequest = {
   /** Per column variable: categories combined into one column. */
   columnGroups?: Record<string, CrosstabGroup[]>;
   /** Which way of making tables produced this one. Used to group the table set by mode. */
-  source?: "workspace" | "ask" | "window" | "starter";
+  source?: "workspace" | "ask" | "window" | "starter" | "assistant";
   /** Built from the suggested starter set: findings from it are controlled for false discoveries. */
   starter?: boolean;
   /** How the many column tests in a table are corrected. Defaults to false discovery rate. */

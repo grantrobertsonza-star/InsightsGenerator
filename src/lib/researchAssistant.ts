@@ -1,4 +1,7 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { cachedSystemThen } from "./promptCache";
+import { DATA_TOOLS, runAssistantTool, type BuiltTable } from "./researchAssistantTools";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
@@ -366,6 +369,45 @@ async function applyNarrativeRevision(
  * plain text answer, not a tool call manufactured to satisfy a forced
  * choice.
  */
+/** At most this many model rounds (each may call tools) for one message. */
+const MAX_TOOL_ROUNDS = 8;
+
+const REVISE_NARRATIVE_TOOL: Anthropic.Tool = {
+  name: "revise_narrative",
+  description:
+    "Revises one or more fields of this run's generated Insights Report narrative, only when the " +
+    "researcher explicitly asked for a change to the report. Omit any field not being changed.",
+  input_schema: {
+    type: "object",
+    properties: {
+      executive_summary: { type: "string", description: "New executive summary paragraph." },
+      situation: { type: "string", description: "New situation paragraph." },
+      complication: { type: "string", description: "New complication paragraph." },
+      question: { type: "string", description: "New question sentence." },
+      governing_thought: { type: "string", description: "New governing thought (the apex claim)." },
+      recommendations_intro: { type: "string", description: "New one-line intro to the recommendations section." },
+      caveats: {
+        type: "array",
+        items: { type: "string" },
+        description: "The full replacement list of caveats, if the researcher asked to change the caveats.",
+      },
+      pillar_updates: {
+        type: "array",
+        description: "Edits to specific pillars, referenced by their 0-based index as listed above.",
+        items: {
+          type: "object",
+          properties: {
+            index: { type: "number", description: "0-based pillar index, matching the list above." },
+            headline: { type: "string", description: "New pillar headline, if changed." },
+            so_what: { type: "string", description: "New pillar so-what line, if changed." },
+          },
+          required: ["index"],
+        },
+      },
+    },
+  },
+};
+
 export async function askResearchAssistant(
   tenantId: string,
   runId: string,
@@ -394,89 +436,99 @@ export async function askResearchAssistant(
     .map((m) => `${m.role === "user" ? "Researcher" : "Assistant"}: ${m.content}`)
     .join("\n");
 
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 2048,
-    system:
-      "You are the research assistant embedded in a single project inside Insights Elevator, a market-research " +
-      "insight-generation tool. You can see this project's accepted evidence, its generated Insights Report " +
-      "narrative (if one exists), and the recent chat history, all given below. A researcher is asking you " +
-      "something directly. Two things you can do:\n\n" +
-      "1. Answer a question about the project's data, evidence, or report using only what's given below. If the " +
-      "answer isn't covered by the material you've been given, say so plainly rather than guessing or inventing " +
-      "a number.\n" +
-      "2. If the researcher asks you to refine, tighten, shorten, rewrite, or otherwise change part of the " +
-      "generated Insights Report (the executive summary, situation, complication, question, governing thought, " +
-      "a specific pillar's headline or so-what line, the recommendations intro, or the caveats list), call the " +
-      "revise_narrative tool with the new text for exactly the field(s) asked about. Never rewrite a field the " +
-      "researcher didn't ask about. Write the new text in the same voice and length discipline as what's already " +
-      "there.\n\n" +
-      "Whatever you do, always include a short, plain-language reply to the researcher, even when you also call " +
-      "the tool, so they see what you did or what you found. Keep replies concise, this is a chat, not a report.\n\n" +
-      `=== This project's evidence and report ===\n${contextBlock}` +
-      (historyBlock ? `\n\n=== Recent conversation ===\n${historyBlock}` : ""),
-    tool_choice: { type: "auto" },
-    tools: [
-      {
-        name: "revise_narrative",
-        description:
-          "Revises one or more fields of this run's generated Insights Report narrative, only when the " +
-          "researcher explicitly asked for a change to the report. Omit any field not being changed.",
-        input_schema: {
-          type: "object",
-          properties: {
-            executive_summary: { type: "string", description: "New executive summary paragraph." },
-            situation: { type: "string", description: "New situation paragraph." },
-            complication: { type: "string", description: "New complication paragraph." },
-            question: { type: "string", description: "New question sentence." },
-            governing_thought: { type: "string", description: "New governing thought (the apex claim)." },
-            recommendations_intro: { type: "string", description: "New one-line intro to the recommendations section." },
-            caveats: {
-              type: "array",
-              items: { type: "string" },
-              description: "The full replacement list of caveats, if the researcher asked to change the caveats.",
-            },
-            pillar_updates: {
-              type: "array",
-              description: "Edits to specific pillars, referenced by their 0-based index as listed above.",
-              items: {
-                type: "object",
-                properties: {
-                  index: { type: "number", description: "0-based pillar index, matching the list above." },
-                  headline: { type: "string", description: "New pillar headline, if changed." },
-                  so_what: { type: "string", description: "New pillar so-what line, if changed." },
-                },
-                required: ["index"],
-              },
-            },
-          },
-        },
-      },
-    ],
-    messages: [{ role: "user", content: trimmed }],
-  });
-
-  await logApiUsage(tenantId, runId, "research_assistant", response.usage);
-
-  let replyText = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => (block.type === "text" ? block.text : ""))
-    .join("\n")
-    .trim();
-
-  const toolUse = response.content.find((block) => block.type === "tool_use" && block.name === "revise_narrative");
+  const instructions =
+    "You are the research assistant embedded in a single project inside Insights Elevator, a market-research " +
+    "insight-generation tool, and the project's research expert. You can see this project's accepted evidence, its " +
+    "generated Insights Report narrative (if one exists), and the recent chat history, all given below. A researcher " +
+    "is asking you something directly. What you can do:\n\n" +
+    "1. Answer a question about the project's evidence or report from what is given below. If it is not covered, say " +
+    "so plainly rather than guessing or inventing a number.\n" +
+    "2. Answer a question about the project's data by building a table: list_data_files, find_variables, then " +
+    "build_table. Every figure you give about the data must come from a build_table result: quote it as shown, name " +
+    "the table, and give its base and whether it was weighted. Call a difference significant only when it is marked " +
+    "(higher) or (lower). If a tool returns an error, fix the request or tell the researcher what could not be done. " +
+    "Build only the tables the question needs.\n" +
+    "3. Give general research advice as an experienced market research methodologist: sample sizes, margins of error, " +
+    "questionnaire design, sampling, weighting, significance testing, qualitative methods. For any sample size or " +
+    "margin of error, call sample_size and quote its result and assumptions; never work one out yourself. Say when " +
+    "advice is general practice rather than something drawn from this project, and name the assumptions it rests on " +
+    "(a probability sample, a proportion, the confidence level). Point out when a subgroup the researcher wants to " +
+    "report needs its own sample size.\n" +
+    "4. If the researcher asks you to refine, tighten, shorten, rewrite, or otherwise change part of the generated " +
+    "Insights Report (the executive summary, situation, complication, question, governing thought, a specific " +
+    "pillar's headline or so-what line, the recommendations intro, or the caveats list), call the revise_narrative " +
+    "tool with the new text for exactly the field(s) asked about. Never rewrite a field the researcher didn't ask " +
+    "about. Write the new text in the same voice and length discipline as what's already there.\n\n" +
+    "Whatever you do, always end with a short, plain-language reply to the researcher, so they see what you did or " +
+    "what you found. Keep replies concise, this is a chat, not a report. No em dashes.";
+  // The instructions and the project's evidence are the same for every message until the evidence
+  // changes, so they are cached (promptCache.ts); the conversation, which grows, follows uncached.
+  const system = cachedSystemThen(
+    `${instructions}\n\n=== This project's evidence and report ===\n${contextBlock}`,
+    historyBlock ? `=== Recent conversation ===\n${historyBlock}` : "",
+  );
+  const tools: Anthropic.Tool[] = [
+    REVISE_NARRATIVE_TOOL,
+    ...DATA_TOOLS,
+  ];
+  const messages: Anthropic.MessageParam[] = [{ role: "user", content: trimmed }];
+  const tables: BuiltTable[] = [];
   let revisedFields: string[] = [];
+  let replyText = "";
+  let finished = false;
 
-  if (toolUse && toolUse.type === "tool_use") {
-    try {
-      revisedFields = await applyNarrativeRevision(tenantId, runId, toolUse.input as NarrativeRevision);
-      if (revisedFields.length > 0 && !replyText) {
-        replyText = `Updated ${revisedFields.join(", ")} in the Insights Report.`;
+  // A tool loop: data and sample-size tools return results the model reads before it answers;
+  // revise_narrative ends the turn, as before. Bounded, so a request can never loop on.
+  for (let round = 0; round < MAX_TOOL_ROUNDS && !finished; round++) {
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2048,
+      system,
+      tool_choice: { type: "auto" },
+      tools,
+      messages,
+    });
+    await logApiUsage(tenantId, runId, "research_assistant", response.usage);
+    const text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n")
+      .trim();
+    if (text) replyText = text;
+    const calls = response.content.filter((block): block is Anthropic.ToolUseBlock => block.type === "tool_use");
+    const revise = calls.find((c) => c.name === "revise_narrative");
+    const dataCalls = calls.filter((c) => c.name !== "revise_narrative");
+
+    if (revise) {
+      try {
+        revisedFields = await applyNarrativeRevision(tenantId, runId, revise.input as NarrativeRevision);
+        if (revisedFields.length > 0 && !text) replyText = `Updated ${revisedFields.join(", ")} in the Insights Report.`;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        replyText = text ? `${text}\n\n(${message})` : message;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      replyText = replyText ? `${replyText}\n\n(${message})` : message;
+      finished = true;
+      break;
     }
+    if (dataCalls.length === 0) {
+      finished = true;
+      break;
+    }
+    messages.push({ role: "assistant", content: response.content });
+    const results: Anthropic.ToolResultBlockParam[] = [];
+    for (const call of dataCalls) {
+      const r = await runAssistantTool(tenantId, runId, call.name, (call.input ?? {}) as Record<string, unknown>, tables.length);
+      if (r.table) tables.push(r.table);
+      results.push({ type: "tool_result", tool_use_id: call.id, content: r.content, ...(r.isError ? { is_error: true } : {}) });
+    }
+    messages.push({ role: "user", content: results });
+  }
+  if (!finished) {
+    replyText = `${replyText ? `${replyText}\n\n` : ""}I stopped after ${MAX_TOOL_ROUNDS} steps without a final answer. Ask again more narrowly, or open the tables listed below.`;
+  }
+  // Written by code, not the model: which tables this answer built, so every figure can be traced.
+  if (tables.length > 0) {
+    replyText += `\n\nTables built for this answer (drafts under Cross tabs, All tables): ${tables.map((t) => `"${t.label}" from ${t.dataFile}`).join("; ")}.`;
   }
 
   if (!replyText) {

@@ -102,8 +102,11 @@ export default function ResearchAssistantCard({
       left={
         <Pane side="left" title="About this assistant">
       <p className="text-xs text-muted">
-        Ask about this project&apos;s evidence or generated report, or ask for a specific change to it (&ldquo;shorten
-        the executive summary&rdquo;, &ldquo;tighten pillar 2&apos;s headline&rdquo;). You can also drop in a slide
+        Ask about this project&apos;s evidence, its data or its generated report, ask for a specific change to the
+        report (&ldquo;shorten the executive summary&rdquo;), or ask for research advice (&ldquo;what sample do I need
+        for a 5% margin of error?&rdquo;). Figures about the data come from tables it builds, saved as drafts under
+        Cross tabs, All tables, so you can open and check each one; sample sizes and margins of error are worked out by
+        a calculator, not estimated. You can also drop in a slide
         deck or other document here, it&apos;s processed the same way as anything uploaded above and folded into this
         project&apos;s evidence.
         {!hasReport && " No Insights Report has been generated yet, so there's nothing to revise until you generate one."}
@@ -192,6 +195,9 @@ export default function ResearchAssistantCard({
           <ul className="space-y-2 text-sm text-muted">
             <li>Which findings contradict the report&apos;s main claim?</li>
             <li>What is the weakest evidence behind the top insight?</li>
+            <li>Is satisfaction higher in Segment 2 than Segment 1, weighted?</li>
+            <li>What sample do I need for a 3% margin of error nationally?</li>
+            <li>How should I word a question about income?</li>
             <li>Shorten the executive summary.</li>
             <li>Tighten pillar 2&apos;s headline.</li>
           </ul>

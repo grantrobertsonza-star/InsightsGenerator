@@ -1913,6 +1913,13 @@ function TableCard({
           {layerBadge && (
             <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">{layerBadge}</span>
           )}
+          {item.source === "assistant" && (
+            // Built by the Research assistant to answer a question; listed with every other table so
+            // each figure it quoted can be opened, committed or deleted like any draft.
+            <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800" data-testid="crosstab-assistant-badge">
+              Research assistant
+            </span>
+          )}
           <span
             className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${item.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
           >
