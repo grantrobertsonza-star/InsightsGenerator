@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): B4-F01, B3-01 and M-B4-01 (`docs/independent-batch4-review-main-2026-10-22.md`) and, at Grant's request, prompt caching, the Research assistant as the project's expert and the floating assistant on every page; see `docs/batch5-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): B5-F01 to B5-F05 (`docs/independent-batch5-review-main-2026-10-22.md`); see `docs/batch6-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: B5-F01 to B5-F05, main copy (2026-10-22)
+
+Implemented, ready for review: `af9fed4` and this docs commit. Checks and limits in `docs/batch6-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022i/`.
+
 
 ## Claude: B4-F01, B3-01, M-B4-01, prompt caching and the Research assistant, main copy (2026-10-22)
 
