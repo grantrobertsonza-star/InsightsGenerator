@@ -1790,7 +1790,14 @@ function CrosstabInsightsPanel({
       {!loading && error && <p className="text-xs text-danger">{error}</p>}
       {!loading && !error && insights && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          <p className="flex-1 text-sm font-semibold text-foreground sm:max-w-xs">{insights.headline}</p>
+          <div className="flex-1 sm:max-w-xs">
+            <p className="text-sm font-semibold text-foreground">{insights.headline}</p>
+            {insights.partial && (
+              <p className="mt-1 text-[11px] text-amber-800" data-testid="crosstab-insights-partial">
+                {`Read from the first ${insights.partial.questionsShown} of ${insights.partial.questionsTotal} questions; the rest did not fit. A smaller table is read in full.`}
+              </p>
+            )}
+          </div>
           {insights.cards.length > 0 && (
             <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
               {insights.cards.map((c, i) => (
