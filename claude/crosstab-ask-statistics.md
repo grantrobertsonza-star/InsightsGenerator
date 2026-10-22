@@ -51,7 +51,9 @@ ignored).
 
 **Unlabelled codes (2026-10-22).** With no value labels, the engine reads a numeric column's own
 whole-number codes as the list: 10 or more distinct values are a numbered scale (an unqualified
-mean, and the default mean and spread), fewer are not (`engineNumberedScaleMean.test.ts`).
+mean, and the default mean and spread), fewer are not (`engineNumberedScaleMean.test.ts`). The rule
+is broad: the codes are not checked to be consecutive, and an unlabelled count with 10 or more
+distinct whole-number values is treated as a scale too; non-integer codes are not.
 
 **Limits.** A bare-number 1 to 5 (or up to 9 point) list is not an ordered scale under the engine's
 rule, so its mean row is qualified although many such lists are ratings; in an SPSS file,

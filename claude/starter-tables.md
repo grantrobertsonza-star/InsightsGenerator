@@ -19,11 +19,17 @@ words had no banners and few questions. Free text stays out.
 **Rating scales.** A question with numeric answers and 10 or 11 distinct values (a 1 to 10 or 0 to 10
 rating, `isTenPointScale` in `meanRow.ts`) gets a mean row above its answers (`meanGroupFor`, the
 same row SemanticTabs builds), the distribution kept (Grant, 2026-10-22: the starter set gave only
-counts for 10 point scales). The panel says how many planned questions have it. The engine still
-qualifies the mean's label when the codes are not an ordered scale; an unlabelled column of whole
-numbers with 10 or more distinct values is read as a numbered scale (`_is_ordered_scale` in the
-engine, which now looks at the codes when there are no value labels), so a spreadsheet's 0 to 10
-rating gets an unqualified mean.
+counts for 10 point scales). The panel says how many planned questions have it.
+
+This is a broad heuristic, by count of distinct values only. The engine qualifies the mean row's
+label ("mean of the answer codes, which may not be in order") only when its ordered-scale rule
+(`_is_ordered_scale`) says the codes are not a scale: a column declared nominal, labelled codes that
+are not a scale, or codes that are not whole numbers. An unlabelled column of whole numbers with 10
+or more distinct values is read as a numbered scale (the engine looks at the codes when there are
+no value labels), so a spreadsheet's 0 to 10 rating gets an unqualified mean, and so does an
+unlabelled count or code list with 10 or 11 distinct whole numbers: the codes are not checked to be
+consecutive or a rating. Controls kept by the tests: nominal, labelled non-scale, fractional, fewer
+than 10 distinct values, and ordinary 0 to 10 and 1 to 10 ratings.
 
 **Chosen banners.** The panel lists every candidate (recognised first) under "Columns to split by";
 it opens by itself when nothing is recognised. A choice replaces the recognised banners (at most 4,

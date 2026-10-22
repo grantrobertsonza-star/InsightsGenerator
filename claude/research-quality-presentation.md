@@ -4,8 +4,9 @@ The Research quality section (`src/app/runs/[id]/ResearchQualityReview.tsx`) sho
 of a brief, a proposal, or a proposal against its brief. It only presents: every score, band, weight
 and overall percentage is computed on the server (`researchQualityDashboard.ts`) and read as stored.
 The shared presentation rules live in `src/lib/researchQualityPresentation.ts`; the component
-consumes them and computes no score of its own. Scoring itself is in `objective-quality-scoring.md`
-and the review's own modules, unchanged by this brief.
+consumes them and computes no score of its own. Scoring itself is in the review's own modules
+(`researchQualityDashboard.ts` for the figures, `researchQualityRules.ts` for the criteria
+release, `researchQualityChecklist.ts` for the element checklists), unchanged by this brief.
 
 Since Grant's review of 22 October 2026 the review pane has three tabs, Overview, Improvements and
 Details, with the chosen item's detail in the right-hand pane. The Criteria tab was removed: its

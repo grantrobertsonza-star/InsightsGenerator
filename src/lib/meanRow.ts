@@ -13,11 +13,17 @@ export function meanGroupFor(label: string): CrosstabGroup {
 }
 
 /**
- * A 10 or 11 point rating scale (1 to 10, 0 to 10): numeric answers with 10 or 11 distinct values.
- * Such a row is read by its mean (Grant, 2026-10-22: StarterTabs gave only counts for 0 to 10
- * scales), so the starter set adds a mean row above its answers. The rule looks at the count of
- * values only; the engine still qualifies the mean's label when the codes are not an ordered scale,
- * so a count variable that happens to have 10 values is not presented as a score unqualified.
+ * Treated as a 10 or 11 point rating scale (1 to 10, 0 to 10): numeric answers with 10 or 11
+ * distinct values. Such a row is read by its mean (Grant, 2026-10-22: StarterTabs gave only counts
+ * for 0 to 10 scales), so the starter set adds a mean row above its answers.
+ *
+ * A broad heuristic: it looks at the count of distinct values only, not whether they run on
+ * consecutively or the question is a rating. The engine does not catch the difference either:
+ * for unlabelled whole-number codes its ordered-scale rule (_is_ordered_scale) accepts any 10 or
+ * more distinct values, so a count variable with 10 distinct values gets an unqualified mean row
+ * like a rating. The mean row's label is qualified only for codes the engine judges unordered:
+ * a column the file declares nominal, labelled codes that are not a scale, or codes that are not
+ * whole numbers. See claude/starter-tables.md.
  */
 export function isTenPointScale(v: Pick<VariableInfo, "numeric" | "nDistinct">): boolean {
   return v.numeric && v.nDistinct >= 10 && v.nDistinct <= 11;

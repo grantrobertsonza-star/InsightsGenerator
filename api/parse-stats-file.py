@@ -2249,7 +2249,10 @@ def _is_ordered_scale(var, labels, measures, raw=None):
     A numeric column with no value labels at all (a spreadsheet's 0 to 10 rating, Grant 2026-10-22)
     is judged by its own codes when `raw` is given: whole-number codes with 10 or more distinct
     values are a numbered scale, by the same _is_numbered_scale rule a labelled "0".."10" list
-    meets. Fewer distinct codes stay not ordered, as an unlabelled 1 to 5 list always was."""
+    meets. Fewer distinct codes stay not ordered, as an unlabelled 1 to 5 list always was. This is
+    broad: the codes are not checked to be consecutive, and nothing tells a rating from a count,
+    so an unlabelled count with 10 or more distinct whole-number values is treated as a scale too
+    (a mean and spread, and an unqualified requested mean). Non-integer codes are not."""
     m = str((measures or {}).get(var) or "").lower()
     if m == "nominal":
         return False
