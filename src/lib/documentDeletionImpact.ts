@@ -1,11 +1,13 @@
 // Counts behind the GT-010 delete confirmation (documentDeletionMessage.ts), per document, for one
 // run: the findings deleteDocument (documentActions.ts) removes, which are those with
-// source_document_id = the document or source_table_id on one of its tables, and the researcher
+// source_document_id = the document or source_table_id on one of its tables (plus legacy driver
+// findings reached through their saved analysis, driverFindingSource.ts), and the researcher
 // work and insights that go with them. One read. A failed read is reported as unavailable, so every
 // confirmation falls back to the general wording rather than claiming zero; when the read worked,
 // a document absent from the map has no findings.
 import { withTenantRead } from "./db";
 import type { DocumentDeletionImpact } from "./documentDeletionMessage";
+import { driverAnalysesPresent, legacyDriverFindingOf } from "./driverFindingSource";
 
 export type DeletionImpactResult = { available: boolean; byDocument: Map<string, DocumentDeletionImpact> };
 
@@ -19,13 +21,15 @@ export function impactFor(result: DeletionImpactResult, documentId: string): Doc
 export async function loadDocumentDeletionImpact(tenantId: string, runId: string): Promise<DeletionImpactResult> {
   try {
     return await withTenantRead(tenantId, async (client) => {
+      // GT1000-F01: the legacy driver findings deleteDocument also removes.
+      const legacyDrivers = (await driverAnalysesPresent(client)) ? ` or ${legacyDriverFindingOf("f", "d.id")}` : "";
       const r = await client.query<{ document_id: string; findings: number; reviewed: number; notes: number; insights: number }>(
         `with doc_findings as (
            select d.id as document_id, f.id as finding_id, f.human_reviewed_at, f.researcher_note
              from documents d
              join findings f on f.run_id = d.run_id
                 and (f.source_document_id = d.id
-                     or f.source_table_id in (select dt.id from document_tables dt where dt.document_id = d.id))
+                     or f.source_table_id in (select dt.id from document_tables dt where dt.document_id = d.id)${legacyDrivers})
             where d.run_id = $1
          )
          select df.document_id,

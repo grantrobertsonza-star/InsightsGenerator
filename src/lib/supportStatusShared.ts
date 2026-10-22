@@ -90,6 +90,15 @@ export type SupportLinkRow = {
   /** Variables the calculated table used (tableVariablesFromSavedRequest), so only corrections to
    * THOSE variables mark it changed. Null/absent: not recorded, compared file-wide (cautious). */
   tableVariables?: string[] | null;
+  /**
+   * GT1000-F01: set for a finding posted from a saved driver analysis; absent or null otherwise.
+   * Its data file is the finding's source_document_id or, for a finding posted before that was
+   * recorded, its saved analysis's file; `analysisPresent` is whether the saved analysis still
+   * exists (null when saved analyses could not be checked); the corrections are those the result
+   * was calculated with (null when not recorded); `variables` are the ones the analysis read.
+   * Survey design (clusters, strata) does not enter a driver analysis, so only corrections apply.
+   */
+  driver?: { documentId: string | null; analysisPresent: boolean | null; overridesSnapshot: unknown; variables: string[] | null } | null;
 };
 
 /**
@@ -267,6 +276,36 @@ export function classifyInsightSupport(
       if ((link.recorded.calculation ?? null) !== (link.current.calculation ?? null)) {
         reasons.push({ kind: "calculation", ...base });
       }
+    }
+    if (link.driver) {
+      const d = link.driver;
+      if (d.analysisPresent === false) {
+        reasons.push({ kind: "source_missing", ...base, detail: `the saved driver analysis behind ${quoteFinding(link.findingText)} no longer exists` });
+        continue;
+      }
+      if (!d.documentId) {
+        reasons.push({ kind: "source_missing", ...base, detail: `the data file behind ${quoteFinding(link.findingText)} is no longer in the project` });
+        continue;
+      }
+      if (d.analysisPresent === null) reasons.push({ kind: "check_failed", ...base, detail: "saved driver analyses could not be checked" });
+      const check = settingsByDocument.get(d.documentId);
+      if (!check) {
+        reasons.push({ kind: "check_failed", ...base, detail: "current variable corrections were not resolved" });
+        continue;
+      }
+      const corrections = check.corrections(d.overridesSnapshot, d.variables);
+      if (corrections === "stale") reasons.push({ kind: "corrections_changed", ...base });
+      if (corrections === "unknown") {
+        reasons.push({
+          kind: "check_failed",
+          ...base,
+          detail:
+            d.overridesSnapshot === null || d.overridesSnapshot === undefined
+              ? "the variable corrections this driver analysis was calculated with were not recorded"
+              : check.error ?? "the data file's current variable corrections could not be read",
+        });
+      }
+      continue;
     }
     if (link.calculatedTableDocumentId) {
       const check = settingsByDocument.get(link.calculatedTableDocumentId);

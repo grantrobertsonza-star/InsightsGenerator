@@ -21,6 +21,12 @@
 // two loaders (synthesized insights, pre-insights) are separate snapshots: an export that calls
 // several loaders is not one atomic read.
 //
+// Driver findings (GT1000-F01): a finding posted from a saved driver analysis is tied to its data
+// file (source_document_id, or for one posted before that was recorded its saved analysis's file)
+// and to its saved analysis. A missing analysis or file is no longer valid; the variable
+// corrections the result was calculated with are compared with the file's current ones, as a
+// calculated table's are (survey design does not enter a driver analysis); not recorded is unknown.
+//
 // Missing migration: detected with a catalog pre-check (no failing statement, so the read
 // transaction is never left aborted). Without 0096 every link is "not recorded" (unknown);
 // rejection and deletion are still detected because they need no snapshot.
@@ -34,6 +40,7 @@ import { withTenantRepeatableRead } from "./db";
 import { designFreshnessStatus, resolveCurrentDesignSnapshotStatus } from "./crosstabs";
 import { loadVariableOverrides } from "./variableOverrides";
 import { quoteGroundingChecker } from "./quoteMatch";
+import { driverAnalysesPresent } from "./driverFindingSource";
 import {
   classifyInsightSupport,
   correctionsFor,
@@ -62,7 +69,35 @@ type RawRow = {
   quote_document_id: string | null;
   source_quote: string | null;
   quote_grounding?: SupportLinkRow["quoteGrounding"];
+  /** GT1000-F01 (DRIVER_COLUMNS): whether the finding came from a saved driver analysis, and its lineage. */
+  is_driver: boolean | null;
+  driver_document_id: string | null;
+  driver_analysis_present: boolean | null;
+  driver_provenance: { overridesSnapshot?: unknown; variables?: unknown } | null;
 };
+
+/**
+ * GT1000-F01: the driver-analysis lineage of each finding, and the join that supplies it. A driver
+ * finding's data file is its source_document_id or, posted before that was recorded, its saved
+ * analysis's file. When driver_analyses does not exist (0072 not applied) presence is unknown.
+ */
+function driverLineage(present: boolean): { columns: string; join: string } {
+  return present
+    ? {
+        columns: `f.pattern_type = 'driver' as is_driver,
+              case when f.pattern_type = 'driver' then coalesce(f.source_document_id, da.document_id) end as driver_document_id,
+              case when f.pattern_type = 'driver' then da.id is not null end as driver_analysis_present,
+              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance`,
+        join: `left join driver_analyses da on f.pattern_type = 'driver' and da.id::text = f.stated_stats->>'analysisId'`,
+      }
+    : {
+        columns: `f.pattern_type = 'driver' as is_driver,
+              case when f.pattern_type = 'driver' then f.source_document_id end as driver_document_id,
+              null::boolean as driver_analysis_present,
+              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance`,
+        join: "",
+      };
+}
 
 /**
  * GT100-F02: whether each quoted report finding's quote still appears in its report's CURRENT
@@ -182,6 +217,7 @@ export async function loadInsightSupport(
       ? "s.support_snapshot, case when f.id is null then null else finding_support_parts(f.id) end as current_parts"
       : "null::jsonb as support_snapshot, null::jsonb as current_parts";
     const filter = insightIds ? "and si.id = any($2::uuid[])" : "";
+    const driver = driverLineage(await driverAnalysesPresent(client));
     const result = await client.query<RawRow>(
       `select si.id as insight_id, si.triangulation_count,
               s.pre_insight_id as link_id,
@@ -189,12 +225,14 @@ export async function loadInsightSupport(
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
               dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
-              ${QUOTE_COLUMNS}
+              ${QUOTE_COLUMNS},
+              ${driver.columns}
        from synthesized_insights si
        left join synthesized_insight_sources s on s.synthesized_insight_id = si.id
        left join insights i on i.id = s.pre_insight_id
        left join findings f on f.id = i.finding_id
        left join document_tables dt on dt.id = f.source_table_id
+       ${driver.join}
        where si.run_id = $1 ${filter}
        order by si.id, s.pre_insight_id`,
       insightIds ? [runId, insightIds] : [runId],
@@ -223,6 +261,14 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
       designSnapshot: r.design_snapshot ?? null,
       overridesSnapshot: r.overrides_snapshot ?? null,
       tableVariables: tableVariablesFromSavedRequest(r.saved_request),
+      driver: r.is_driver
+        ? {
+            documentId: r.driver_document_id,
+            analysisPresent: r.driver_analysis_present,
+            overridesSnapshot: r.driver_provenance?.overridesSnapshot ?? null,
+            variables: Array.isArray(r.driver_provenance?.variables) ? (r.driver_provenance?.variables as string[]) : null,
+          }
+        : null,
     };
     const list = byInsight.get(row.insightId);
     if (list) list.push(row);
@@ -230,7 +276,11 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
   }
 
   const documentIds = Array.from(
-    new Set(rows.map((r) => r.calculated_table_document_id).filter((id): id is string => id !== null)),
+    new Set(
+      rows
+        .flatMap((r) => [r.calculated_table_document_id, r.is_driver ? r.driver_document_id : null])
+        .filter((id): id is string => id !== null),
+    ),
   );
   const settings = new Map<string, DocumentSettingsCheck>();
   await Promise.all(
@@ -301,16 +351,19 @@ export async function loadPreInsightSupport(tenantId: string, runId: string, ins
       ? "i.support_snapshot, finding_support_parts(f.id) as current_parts"
       : "null::jsonb as support_snapshot, null::jsonb as current_parts";
     const filter = insightIds ? "and i.id = any($2::uuid[])" : "";
+    const driver = driverLineage(await driverAnalysesPresent(client));
     const result = await client.query<RawRow>(
       `select i.id as insight_id, 1 as triangulation_count, i.id as link_id,
               f.id as finding_id, f.status as finding_status, f.finding_text,
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
               dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
-              ${QUOTE_COLUMNS}
+              ${QUOTE_COLUMNS},
+              ${driver.columns}
        from insights i
        join findings f on f.id = i.finding_id
        left join document_tables dt on dt.id = f.source_table_id
+       ${driver.join}
        where i.run_id = $1 ${filter}
        order by i.id`,
       insightIds ? [runId, insightIds] : [runId],

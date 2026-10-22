@@ -4,6 +4,8 @@ import { loadDataSetupWithStatus } from "./dataSetup";
 import { runStatsTool } from "./parseStatsFile";
 import { loadDocumentFile, overlayFor } from "./crosstabs";
 import { driverAnalysis, type DriverResult } from "./driverAnalysis";
+import { driverRequestVariables, parseDriverRequest } from "./driverRequest";
+import { loadVariableOverrides } from "./variableOverrides";
 
 export type DriverRequest = {
   outcome: string;
@@ -55,7 +57,15 @@ export type DriverReport = {
   /** Same analysis run again within each category of groupVariable, when one was chosen. Stated importance is not re-split by segment. */
   segments?: DriverSegment[] | null;
   createdAt?: string;
+  /**
+   * GT1000-F01: the data file and the variable corrections (loadVariableOverrides) this result was
+   * calculated with, and the variables it read. Absent on results calculated before 21 October
+   * 2026, whose findings' corrections cannot be compared ("not checked", never current).
+   */
+  provenance?: DriverProvenance;
 };
+
+export type DriverProvenance = { documentId: string; overridesSnapshot: unknown; variables: string[] };
 
 type Columns = {
   outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string> };
@@ -87,14 +97,17 @@ export async function runDriverAnalysisFor(
   tenantId: string,
   runId: string,
   documentId: string,
-  request: DriverRequest,
+  untrustedRequest: DriverRequest,
 ): Promise<DriverReport> {
-  if (request.predictors.length < 2) throw new Error("Choose at least two predictors.");
-  if (request.predictors.includes(request.outcome)) throw new Error("The outcome cannot also be a predictor.");
-  const [doc, overlay, setupStatus] = await Promise.all([
+  // GT1000-F02: refused here, before any read or calculation, whoever the caller is.
+  const checked = parseDriverRequest(untrustedRequest);
+  if (!checked.ok) throw new Error(checked.error);
+  const request = checked.request;
+  const [doc, overlay, setupStatus, overrides] = await Promise.all([
     loadDocumentFile(tenantId, runId, documentId),
     overlayFor(tenantId, runId, documentId),
     loadDataSetupWithStatus(tenantId, documentId),
+    loadVariableOverrides(tenantId, runId, documentId),
   ]);
   if (!setupStatus.ok) throw new Error(`Could not read the saved data layout for driver analysis: ${setupStatus.error}`);
   const setup = setupStatus.setup;
@@ -268,6 +281,9 @@ export async function runDriverAnalysisFor(
 
   return {
     request,
+    // GT1000-F01: what this result was calculated from, recorded server-side with the result so a
+    // finding posted from it can later be checked against the file's current corrections.
+    provenance: { documentId, overridesSnapshot: overrides, variables: driverRequestVariables(request) },
     stated,
     outcomeLabel: cols.outcome.label,
     outcomeNote,
@@ -313,6 +329,13 @@ export async function saveDriverAnalysis(
   title: string,
   report: DriverReport,
 ): Promise<string> {
+  // GT1000-F02: a result whose request this contract refuses is not saved, so it can never be
+  // posted. The result itself is the one the screen received from runDriverAnalysisFor (not
+  // recalculated here); its recorded provenance must name this data file.
+  if (!report || typeof report !== "object" || !report.result || typeof report.result !== "object") throw new Error("There is no driver analysis result to save.");
+  const checked = parseDriverRequest(report.request);
+  if (!checked.ok) throw new Error(checked.error);
+  if (report.provenance && report.provenance.documentId !== documentId) throw new Error("This result was calculated from a different data file.");
   return withTenant(tenantId, async (client) => {
     await lockOwnedRun(client, tenantId, runId);
     const doc = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3", [documentId, runId, tenantId]);
@@ -363,6 +386,22 @@ export async function deleteDriverAnalysis(tenantId: string, runId: string, id: 
 }
 
 /**
+ * The provenance a posted driver finding records (GT1000-F01): the saved analysis's data file, and
+ * the corrections and variables its result was calculated with when the result recorded them. A
+ * result from before provenance was recorded gives null corrections, which support reports as not
+ * checked. A recorded data file that is not the saved analysis's own is not trusted: null too.
+ */
+function savedProvenance(report: DriverReport, documentId: string): DriverProvenance {
+  const p = report.provenance;
+  const variables = (() => {
+    const checked = parseDriverRequest(report.request);
+    return checked.ok ? driverRequestVariables(checked.request) : [];
+  })();
+  if (!p || p.documentId !== documentId) return { documentId, overridesSnapshot: null, variables };
+  return { documentId, overridesSnapshot: p.overridesSnapshot ?? null, variables: Array.isArray(p.variables) ? p.variables : variables };
+}
+
+/**
  * Adds a saved analysis to the project's findings, once (IR-03). The analysis row is locked FOR
  * UPDATE first (which also confirms it is this organisation's and this project's), so two posts of
  * the same analysis go one at a time and the second sees the first one's findings. Findings already
@@ -377,11 +416,17 @@ export async function addDriverFindings(
 ): Promise<{ added: number; alreadyPosted: number }> {
   const { driverFindings } = await import("./driverFindings");
   return withTenant(tenantId, async (client) => {
-    const saved = await client.query<{ report: DriverReport }>(
-      "select report from driver_analyses where id = $1 and run_id = $2 and tenant_id = $3 for update",
+    const saved = await client.query<{ report: DriverReport; document_id: string }>(
+      "select report, document_id from driver_analyses where id = $1 and run_id = $2 and tenant_id = $3 for update",
       [analysisId, runId, tenantId],
     );
     if (!saved.rows[0]) throw new Error("That analysis was not found.");
+    // GT1000-F01: the findings name the data file they were calculated from (source_document_id,
+    // as every other calculated finding does), so deleting the file removes them with the file's
+    // other findings and support sees the deletion; and they carry the corrections the result was
+    // calculated with, so a later correction shows up as changed support.
+    const documentId = saved.rows[0].document_id;
+    const provenance = savedProvenance(saved.rows[0].report, documentId);
     const existing = await client.query<{ n: number }>(
       "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status <> 'rejected'",
       [runId, analysisId],
@@ -389,18 +434,19 @@ export async function addDriverFindings(
     const alreadyPosted = existing.rows[0]?.n ?? 0;
     if (alreadyPosted > 0) return { added: 0, alreadyPosted };
     const revived = await client.query<{ id: string }>(
-      "update findings set status = 'accepted' where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status = 'rejected' returning id",
-      [runId, analysisId],
+      // Findings posted before GT1000-F01 have no source_document_id; restoring one names it then.
+      "update findings set status = 'accepted', source_document_id = coalesce(source_document_id, $3) where run_id = $1 and pattern_type = 'driver' and stated_stats->>'analysisId' = $2 and status = 'rejected' returning id",
+      [runId, analysisId, documentId],
     );
     await recordHumanReview(client, revived.rows.map((row) => row.id), "tool_add");
     if ((revived.rowCount ?? 0) > 0) return { added: revived.rowCount ?? 0, alreadyPosted: 0 };
     const drafts = driverFindings(saved.rows[0].report, analysisId);
     for (const f of drafts) {
       const touched = await client.query<{ id: string }>(
-        `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, data_type, status)
-         values ($1, $2, 'generated', $3, $4, 'driver', $5, 'quantitative', 'accepted')
+        `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, data_type, status, source_document_id)
+         values ($1, $2, 'generated', $3, $4, 'driver', $5, 'quantitative', 'accepted', $6)
          returning id`,
-        [tenantId, runId, f.text, f.theme, JSON.stringify(f.stats)],
+        [tenantId, runId, f.text, f.theme, JSON.stringify({ ...f.stats, provenance }), documentId],
       );
       await recordHumanReview(client, touched.rows.map((row) => row.id), "tool_add");
     }

@@ -467,6 +467,8 @@ function percentile(sorted: number[], q: number): number {
 export function driverAnalysis(input: DriverInput): DriverResult | { error: string } {
   const warnings: string[] = [];
   const { outcome } = input;
+  // GT1000-F02: an unsupported outcome type used to fall through to the logistic branch.
+  if (outcome !== "continuous" && outcome !== "binary") return { error: `Unsupported outcome type ${JSON.stringify(outcome)}: use continuous or binary.` };
   // Complete cases only. The caller reports how many were lost; here the count is kept in the result.
   const keep: number[] = [];
   for (let i = 0; i < input.y.length; i++) {
@@ -568,8 +570,17 @@ export function driverAnalysis(input: DriverInput): DriverResult | { error: stri
   if (base.method === "standardised_coefficients") warnings.push(`With ${p} predictors a full split of the fit is too slow, so the weights are the size of each standardised coefficient. They are less reliable when predictors overlap.`);
   if (base.method === "relative_weights") warnings.push(`With ${p} predictors the weights use Johnson's relative-weights method instead of enumerating every subset.`);
 
-  // Bootstrap.
-  const B = Math.max(0, Math.min(input.bootstrap ?? 200, outcome === "binary" && base.method === "shapley" ? 60 : 300));
+  // Bootstrap (GT1000-F02): the request contract (driverRequest.ts) admits only a whole number,
+  // 0 or 20 to 300; this engine refuses anything else too, so a bad value can never quietly skip
+  // the intervals. The number actually drawn, when it differs from the request, is said in the
+  // report's warnings, so the method described is the method that ran.
+  const requested = input.bootstrap ?? 200;
+  if (!Number.isInteger(requested) || requested < 0) return { error: "The number of bootstrap resamples must be a whole number from 0." };
+  const cap = outcome === "binary" && base.method === "shapley" ? 60 : 300;
+  const B = Math.min(requested, cap);
+  if (B === 0) warnings.push("No bootstrap ranges were drawn (resamples set to 0), so the shares and ranks have no intervals.");
+  else if (B < 20) warnings.push(`Only ${B} bootstrap resamples were asked for; at least 20 are needed for a range, so the shares and ranks have no intervals.`);
+  else if (B < requested) warnings.push(`The bootstrap ranges use ${B} resamples, the most an exact split of a binary model allows here.`);
   let lows: (number | null)[] = Array(p).fill(null);
   let highs: (number | null)[] = Array(p).fill(null);
   let rankLows: (number | null)[] = Array(p).fill(null);

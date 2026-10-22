@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { finishDocumentStorageCleanup, queueDocumentStorageCleanup } from "./documentStorageCleanup";
 import { requireTenantId } from "./requestContext";
+import { driverAnalysesPresent, legacyDriverFindingOf } from "./driverFindingSource";
 
 /**
  * Deletes a single uploaded document from a run (e.g. a duplicate re-import,
@@ -28,10 +29,13 @@ export async function deleteDocument(runId: string, documentId: string) {
     // never matches post-0023 and silently left those findings behind to
     // throw a foreign-key violation on the delete below once their
     // document_tables row went with the document.
+    // GT1000-F01: driver findings posted before they recorded source_document_id are reached
+    // through their saved analysis, before the analysis itself goes with the document (cascade).
+    const legacyDrivers = (await driverAnalysesPresent(client)) ? ` or ${legacyDriverFindingOf("findings", "$1")}` : "";
     await client.query(
       `delete from findings
        where source_document_id = $1
-          or source_table_id in (select id from document_tables where document_id = $1)`,
+          or source_table_id in (select id from document_tables where document_id = $1)${legacyDrivers}`,
       [documentId]
     );
     // Scoped by run_id too, the same ownership check already done above when

@@ -10,6 +10,8 @@
 // A value that is missing, from another version or malformed is read as "nothing remembered";
 // a blocked storage is reported as unavailable so the screen can say results will not be kept.
 import type { DriverRequest } from "@/lib/drivers";
+// Relative, so the unit tests (which have no "@/" alias) load it too.
+import { parseDriverRequest } from "../../../lib/driverRequest";
 
 /** Bumped when the stored shape changes; a value from another version is ignored, not migrated. */
 export const ANALYTICS_MEMORY_VERSION = 1;
@@ -98,29 +100,18 @@ function parseNps(v: unknown): RememberedNps | null {
   return { variable: v.variable, weightVar, groupVar };
 }
 
-function parseDriverRequest(v: unknown): DriverRequest | null {
-  if (!isObj(v) || !isStr(v.outcome)) return null;
-  if (v.outcomeType !== "continuous" && v.outcomeType !== "binary") return null;
-  if (!Array.isArray(v.predictors) || v.predictors.length > 500 || !v.predictors.every(isStr)) return null;
-  const topBoxMin = v.topBoxMin === null || v.topBoxMin === undefined ? null : typeof v.topBoxMin === "number" && Number.isFinite(v.topBoxMin) ? v.topBoxMin : undefined;
-  const weightVar = optStr(v.weightVar);
-  const groupVar = optStr(v.groupVar);
-  if (topBoxMin === undefined || weightVar === undefined || groupVar === undefined) return null;
-  let statedImportance: Record<string, string> = {};
-  if (v.statedImportance !== undefined && v.statedImportance !== null) {
-    if (!isObj(v.statedImportance) || !Object.values(v.statedImportance).every(isStr)) return null;
-    statedImportance = v.statedImportance as Record<string, string>;
-  }
-  const req: DriverRequest = { outcome: v.outcome, outcomeType: v.outcomeType, topBoxMin, predictors: v.predictors as string[], weightVar, statedImportance, groupVar };
-  if (typeof v.bootstrap === "number" && Number.isInteger(v.bootstrap) && v.bootstrap > 0) req.bootstrap = v.bootstrap;
-  return req;
+// A remembered driver request is held to the server's own contract (driverRequest.ts, GT1000-F02),
+// so the browser never keeps a request the server would refuse.
+function rememberedDriverRequest(v: unknown): DriverRequest | null {
+  const checked = parseDriverRequest(v);
+  return checked.ok ? checked.request : null;
 }
 
 function parseDriver(v: unknown): RememberedDriver | null {
   if (!isObj(v)) return null;
   if (v.kind === "saved") return isStr(v.savedId) ? { kind: "saved", savedId: v.savedId } : null;
   if (v.kind === "request") {
-    const request = parseDriverRequest(v.request);
+    const request = rememberedDriverRequest(v.request);
     return request ? { kind: "request", request } : null;
   }
   return null;

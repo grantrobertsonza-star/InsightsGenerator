@@ -23,6 +23,8 @@ vi.mock("../db", () => {
       if (db.fail) throw db.fail;
       if (/to_regprocedure\('finding_support_parts/.test(sql)) return { rows: [{ available: db.available }] };
       if (/from synthesized_insights si/.test(sql)) return { rows: db.rows };
+      // GT1000-F01: the saved driver analyses probe; these fixtures have no driver findings.
+      if (/to_regclass\('public\.driver_analyses'\)/.test(sql)) return { rows: [{ present: true }] };
       throw new Error(`unexpected query: ${sql}`);
     },
   };
