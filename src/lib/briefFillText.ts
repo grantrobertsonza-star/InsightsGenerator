@@ -32,7 +32,7 @@ export const FAILED_FILL_NOT_RECORDED = "This failure could not be recorded, so 
 export const FAILED_FILL_UNKNOWN = "Could not check whether the last fill from a document succeeded.";
 
 /**
- * Objectives a deliberate re-read of an already used document adds are suggestions waiting on Review
+ * Objectives a deliberate re-read of an already used document adds are suggestions waiting for review
  * (Grant, 2026-10-22), never accepted. Their rationale starts with this prefix, which is how Review
  * recognises them; ordinary fills keep "Added from" (briefFillRecord.sourceLabelFromRationale).
  */
@@ -50,7 +50,7 @@ export function isRereadSuggestion(rationale: string | null | undefined): boolea
 /** What Set objectives says when the chosen document already filled this project (Grant, 2026-10-22). */
 export function alreadyFilledText(already: { documents: string; at: string; objectivesFromIt: number }): string {
   const n = already.objectivesFromIt;
-  return `Already filled from ${already.documents} on ${displayDay(already.at)}; ${n} ${n === 1 ? "objective" : "objectives"} came from it, so it was not read again and nothing was added. What you typed was saved. To check it for anything new, use Read it again: new lines come in as suggestions on Review objectives.`;
+  return `Already filled from ${already.documents} on ${displayDay(already.at)}; ${n} ${n === 1 ? "objective" : "objectives"} came from it, so it was not read again and nothing was added. What you typed was saved. To check it for anything new, use Read it again: new lines come in as suggestions waiting for review in the objectives list.`;
 }
 
 /**
@@ -63,7 +63,7 @@ export function rereadResultText(fill: { suggestionsAdded: number; unusedFromDoc
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const parts: string[] = [];
   if (fill.suggestionsAdded > 0) {
-    parts.push(`${plural(fill.suggestionsAdded, "new line is", "new lines are")} waiting on Review objectives as ${fill.suggestionsAdded === 1 ? "a suggestion" : "suggestions"}.`);
+    parts.push(`${plural(fill.suggestionsAdded, "new line is", "new lines are")} waiting for review in the objectives list as ${fill.suggestionsAdded === 1 ? "a suggestion" : "suggestions"}.`);
   }
   if (fill.unusedFromDocument > 0) {
     parts.push(

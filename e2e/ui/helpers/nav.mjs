@@ -1,17 +1,16 @@
 // Opening a project section from the sidebar, for every browser check (Grant's sidebar, 2026-10-19).
-// "Set Objectives" and "Review Objectives" are now tabs of one Objectives entry, so either name opens
-// Objectives and then its tab; any other name (a string, matched exactly, or a RegExp) is a sidebar
-// entry clicked as before. One place to change if the sidebar moves again.
+// "Set Objectives" and "Review Objectives" were tabs of one Objectives entry; on the one-page
+// Objectives prototype (2026-10-22) they are one page, so either name opens Objectives and waits for
+// its heading. Any other name (a string, matched exactly, or a RegExp) is a sidebar entry clicked as
+// before. One place to change if the sidebar moves again.
 import { expect } from "@playwright/test";
 
-const OBJECTIVE_TABS = { "Set Objectives": "Set objectives", "Review Objectives": "Review objectives" };
+const OBJECTIVE_NAMES = new Set(["Set Objectives", "Review Objectives"]);
 
 export async function openSection(page, name) {
-  if (typeof name === "string" && OBJECTIVE_TABS[name]) {
-    const tab = page.getByRole("tab", { name: OBJECTIVE_TABS[name], exact: true });
-    if (!(await tab.first().isVisible())) await page.getByRole("button", { name: /^Objectives$/ }).first().click();
-    await tab.first().click();
-    await expect(tab.first()).toHaveAttribute("aria-selected", "true");
+  if (typeof name === "string" && OBJECTIVE_NAMES.has(name)) {
+    await page.getByRole("button", { name: /^Objectives$/ }).first().click();
+    await expect(page.getByRole("heading", { name: "Objectives", exact: true, level: 2 }).filter({ visible: true }).first()).toBeVisible();
     return;
   }
   await page.getByRole("button", typeof name === "string" ? { name, exact: true } : { name }).first().click();

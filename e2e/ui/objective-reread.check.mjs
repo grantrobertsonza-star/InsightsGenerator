@@ -5,7 +5,7 @@
 //   2. Fill from it again: the form says it already filled the project, nothing is added, and the
 //      model is not asked (the fixture now answers differently and would show if it were).
 //   3. Read it again with a re-worded answer: the re-worded lines and one new line come in as
-//      pending suggestions on Review objectives, each shown beside the objective it likely restates
+//      pending suggestions waiting for review in the objectives list, each shown beside the objective it likely restates
 //      (the new one beside none); the stated list and the accepted objectives are unchanged.
 import { expect, test } from "@playwright/test";
 import { openSection } from "./helpers/nav.mjs";
@@ -81,7 +81,7 @@ test("the same proposal is not read twice; Read it again only suggests, beside t
 
     // 3. Read it again: suggestions only.
     await submit(() => page.getByTestId("brief-fill-reread").click());
-    await expect(page.getByTestId("brief-fill-reread-result")).toContainText("3 new lines are waiting on Review objectives as suggestions", { timeout: 60_000 });
+    await expect(page.getByTestId("brief-fill-reread-result")).toContainText("3 new lines are waiting for review in the objectives list as suggestions", { timeout: 60_000 });
     expect(await rows()).toEqual([
       { candidate_text: "Measure demand for affordable mobile bundles in rural areas", status: "pending" },
       { candidate_text: "Measure rural demand for affordable mobile bundles", status: "accepted" },

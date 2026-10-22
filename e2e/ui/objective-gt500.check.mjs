@@ -146,7 +146,7 @@ test("F02: a failed extraction is shown after the response settles and after a r
     await expect(page.getByTestId("brief-fill-failed")).toHaveCount(0, { timeout: 60_000 });
     await expect(page.getByTestId("brief-last-fill")).toContainText("Last filled from the proposal Independent500_Proposal.txt");
     // The retry re-read: its new line waits on Review as a suggestion, once.
-    await expect(page.getByTestId("brief-fill-reread-result")).toContainText("1 new line is waiting on Review objectives");
+    await expect(page.getByTestId("brief-fill-reread-result")).toContainText("1 new line is waiting for review in the objectives list");
     const rows = (await client.query("select candidate_text, status from objective_candidates where run_id=$1 order by candidate_text", [run.id])).rows;
     expect(rows).toEqual([{ candidate_text: "Objective from the first fill", status: "accepted" }, { candidate_text: "Objective from the retry", status: "pending" }]);
     expect((await client.query("select business_problem from runs where id=$1", [run.id])).rows[0].business_problem).toBe("Manually typed business problem");

@@ -1,7 +1,10 @@
 # Objective identity, import lineage, edits and partial fills
 
-Objectives are stated on Set objectives (`runContextActions.ts`: `saveRunContext`,
-`editStatedObjective`) and reviewed on Review objectives (`objectiveCandidateActions.ts`). The
+Objectives are stated (`runContextActions.ts`: `saveRunContext`, `editStatedObjective`) and
+reviewed (`objectiveCandidateActions.ts`) on one Objectives page since 22 October 2026: the context
+form across the top, the stated list and suggestions on the left, the selected objective and its
+coverage in the middle, the coverage check and evidence on the right (`page.tsx`, section
+`objective`). "Setup" and "Review" below name those two roles, now panes of one page. The
 Setup list is `runs.stated_objectives_text`; each objective also has an `objective_candidates` row,
 and `runs.research_objective` is recomputed from accepted candidates (`runSync.ts`).
 

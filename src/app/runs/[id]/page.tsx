@@ -68,10 +68,10 @@ import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
 import { loadObjectiveQualityStatus, objectiveQualityLookup, unscoredReasonFor, unscoredReasonText } from "@/lib/objectiveQualityStatus";
-import ObjectiveCoverage from "./ObjectiveCoverage";
+import ObjectiveCoverage, { SelectedObjectiveCoverage } from "./ObjectiveCoverage";
 import ObjectiveEvidence from "./ObjectiveEvidence";
 import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
-import { ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
+import { ObjectiveBadges, ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
 import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
 import RecommendationsWorkspace from "./RecommendationsWorkspace";
@@ -87,7 +87,6 @@ import {
   RunSectionProvider,
   RunNav,
   SectionPanel,
-  SectionTabs,
   type RunNavSection,
   GoToSection,
 } from "./RunShell";
@@ -5037,7 +5036,7 @@ export default async function RunPage({
     // data files, each showing its own part of a file's launcher.
     { id: "upload", group: "Prepare", label: "Import data" },
     { id: "research-quality", group: "Prepare", label: "Research quality" },
-    { id: "objective", group: "Prepare", label: "Objectives", activeFor: ["objectives"] },
+    { id: "objective", group: "Prepare", label: "Objectives" },
     // Decisions can always be added by hand here. Suggestions are offered once there are findings; in
     // generate mode generateDecisionCandidates reads insights, and says so when none exist yet.
     { id: "decisions", group: "Prepare", label: "Business decisions" },
@@ -5532,72 +5531,80 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="objective">
-            <SectionTabs tabs={[{ id: "objective", label: "Set objectives" }, { id: "objectives", label: "Review objectives" }]} />
-            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Set up objectives</h2>
+            {/* One page for objectives (Grant, 2026-10-22, prototype for 3001): the context form as a
+                foldable band across the top; below it the objectives list (the stated objectives with
+                Setup's Edit and Delete, then suggestions waiting for review), the selected objective's
+                detail and review, and the evidence check. It replaces the Set and Review tabs; every
+                action and rule they had is the same component as before. */}
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Objectives</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
               Add the business problem and your own objectives, or fill them in from a brief or proposal added under Import data.
-              They are scored and checked against the evidence on the Objectives page.
-            </p>
-            <ThreePane
-              leftMaxShare={0.5}
-              left={
-                <Pane side="plain" title="Objective and context">
-                  <RunContextForm
-                    runId={id}
-                    businessProblem={run.business_problem}
-                    objective={run.stated_objectives_text}
-                    audience={run.audience}
-                    documents={documents
-                      // Briefs and proposals only: imported as context, or given that role by a review.
-                      .filter((d) => (d.kind === "evidence" || documentReviewRoles.has(d.id)) && /\.(pdf|docx|pptx|txt)$/i.test(d.source_filename))
-                      .map((d) => ({ id: d.id, filename: d.source_filename, role: documentReviewRoles.get(d.id) ?? null }))}
-                    lastFill={lastBriefFill}
-                    failedFill={failedBriefFill}
-                  />
-                </Pane>
-              }
-              middle={
-                <Pane side="plain" title="Your objectives">
-                  <StatedObjectivesList
-                    runId={id}
-                    lines={parseObjectiveLines(run.stated_objectives_text)}
-                    candidateIds={setupLineCandidateIds(parseObjectiveLines(run.stated_objectives_text), objectiveCandidates)}
-                    sources={objectiveSourceLabels(parseObjectiveLines(run.stated_objectives_text))}
-                  />
-                  <p className="text-xs text-muted">
-                    Quality scores, the evidence check and suggested objectives are on the{" "}
-                    <GoToSection id="objectives">Review page</GoToSection>.
-                  </p>
-                </Pane>
-              }
-            />
-          </SectionPanel>
-
-          <SectionPanel id="objectives">
-            <SectionTabs tabs={[{ id: "objective", label: "Set objectives" }, { id: "objectives", label: "Review objectives" }]} />
-            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Review objectives</h2>
-            <p className="mb-2 max-w-3xl text-sm text-muted">
-              Pick an objective to see its quality score and what the evidence says about it. With none picked,
-              the middle shows every objective scored side by side.
+              Pick an objective to see its quality score and what the evidence says about it; with none picked, the middle shows
+              every objective scored side by side.
             </p>
             <ObjectiveSelectionProvider>
               <ThreePane
+                storageKey="objectives-one-page"
                 leftMaxShare={0.5}
+                band={
+                  <Pane side="left" title="Objective and context">
+                    <RunContextForm
+                      layout="band"
+                      runId={id}
+                      businessProblem={run.business_problem}
+                      objective={run.stated_objectives_text}
+                      audience={run.audience}
+                      documents={documents
+                        // Briefs and proposals only: imported as context, or given that role by a review.
+                        .filter((d) => (d.kind === "evidence" || documentReviewRoles.has(d.id)) && /\.(pdf|docx|pptx|txt)$/i.test(d.source_filename))
+                        .map((d) => ({ id: d.id, filename: d.source_filename, role: documentReviewRoles.get(d.id) ?? null }))}
+                      lastFill={lastBriefFill}
+                      failedFill={failedBriefFill}
+                    />
+                  </Pane>
+                }
                 left={
                   <Pane side="plain" title="Objectives">
-                    <ObjectiveList
-                      rows={objectiveRows}
-                      verdicts={objectiveValidations.map((v) => ({
-                        item_text: v.item_text,
-                        status: v.status,
-                        inferred: v.inferred,
-                      }))}
-                    />
+                    {(() => {
+                      const statedLines = parseObjectiveLines(run.stated_objectives_text);
+                      const statedIds = setupLineCandidateIds(statedLines, objectiveCandidates);
+                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred }));
+                      const statedIdSet = new Set(statedIds.filter((x): x is string => !!x));
+                      const others = objectiveRows.filter((r) => !statedIdSet.has(r.id));
+                      return (
+                        <>
+                          <StatedObjectivesList
+                            runId={id}
+                            lines={statedLines}
+                            candidateIds={statedIds}
+                            sources={objectiveSourceLabels(statedLines)}
+                            badges={statedIds.map((cid, i) => {
+                              const row = cid ? objectiveRows.find((r) => r.id === cid) : undefined;
+                              // Keyed: React checks keys on elements made in an array, even when each is rendered on its own.
+                              return row ? <ObjectiveBadges key={`${cid}:${i}`} row={row} verdicts={verdicts} /> : null;
+                            })}
+                          />
+                          {others.some((r) => r.status !== "rejected") && statedLines.length > 0 && (
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Suggested and waiting for review</p>
+                          )}
+                          <ObjectiveList
+                            rows={others}
+                            verdicts={verdicts}
+                            startAt={statedLines.length}
+                            empty={statedLines.length > 0 ? null : "No objectives yet. Add them under Objective and context above."}
+                          />
+                        </>
+                      );
+                    })()}
                   </Pane>
                 }
                 middle={
                   <Pane side="plain" title="Objective detail">
                     <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
+                    <SelectedObjectiveCoverage
+                      validations={objectiveValidations}
+                      insights={synthesizedInsights.map((i) => ({ id: i.id, headline: i.headline, review_status: i.review_status }))}
+                    />
                   </Pane>
                 }
                 right={

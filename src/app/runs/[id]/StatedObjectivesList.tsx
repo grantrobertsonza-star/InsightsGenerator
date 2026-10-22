@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { saveStatedObjectiveEdit } from "@/lib/runContextActions";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 
@@ -23,7 +23,7 @@ function splitLabel(text: string): { label: string | null; body: string } {
   return { label: null, body: text };
 }
 
-function Item({ runId, text, index, source, candidateId }: { runId: string; text: string; index: number; source: string | null; candidateId: string | null }) {
+function Item({ runId, text, index, source, candidateId, badges }: { runId: string; text: string; index: number; source: string | null; candidateId: string | null; badges: ReactNode }) {
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -38,10 +38,7 @@ function Item({ runId, text, index, source, candidateId }: { runId: string; text
 
   return (
     <li
-      onClick={() => {
-        if (!editing && !isHeading) select({ id: null, text });
-      }}
-      className={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-l-4 border-border px-3 py-2.5 shadow-sm ${isHeading ? "" : "cursor-pointer"} ${isSel ? "ring-2 ring-primary/60" : ""} ${accent.tint} ${accent.border}`}
+      className={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-l-4 border-border px-3 py-2.5 shadow-sm ${isSel ? "ring-2 ring-primary/60" : ""} ${accent.tint} ${accent.border}`}
     >
       {editing ? (
         <textarea
@@ -52,19 +49,29 @@ function Item({ runId, text, index, source, candidateId }: { runId: string; text
           className="min-w-0 flex-1 resize-none rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       ) : (
-        <div className="min-w-0 flex-1">
+        // The objective's text is the button that opens it in the detail pane, so it can be chosen
+        // from the keyboard as well as with a click; a heading line is not an objective.
+        <button
+          type="button"
+          disabled={isHeading}
+          aria-pressed={isSel}
+          onClick={() => select({ id: null, text })}
+          className="min-w-0 flex-1 text-left disabled:cursor-default"
+        >
           {label && (
             <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${accent.chip}`}>
               {label}
             </span>
           )}
-          <p className="text-sm text-foreground">{body}</p>
+          {/* Spans, not paragraphs: a button may hold only phrasing content. */}
+          <span className="block text-sm text-foreground">{body}</span>
           {source && (
-            <p className="mt-0.5 text-[11px] text-slate-500" data-testid="objective-source">
+            <span className="mt-0.5 block text-[11px] text-slate-500" data-testid="objective-source">
               {`From ${source}`}
-            </p>
+            </span>
           )}
-        </div>
+          {badges}
+        </button>
       )}
       <div className="flex shrink-0 gap-1.5">
         {editing ? (
@@ -130,6 +137,7 @@ export default function StatedObjectivesList({
   lines,
   candidateIds,
   sources,
+  badges,
 }: {
   runId: string;
   lines: string[];
@@ -141,13 +149,15 @@ export default function StatedObjectivesList({
   candidateIds: (string | null)[];
   /** Per line, the brief or proposal it was added from ("the proposal X.docx"), or null (briefFillRecord). */
   sources?: (string | null)[];
+  /** Per line, its review badges (tier, score, evidence verdict) on the one-page Objectives prototype. */
+  badges?: ReactNode[];
 }) {
   if (lines.length === 0) return null;
   return (
     <div>
-      <ul className="space-y-2">
+      <ul className="space-y-2" data-testid="stated-objectives">
         {lines.map((l, i) => (
-          <Item key={`${candidateIds[i] ?? "line"}:${l}`} runId={runId} text={l} index={i} source={sources?.[i] ?? null} candidateId={candidateIds[i] ?? null} />
+          <Item key={`${candidateIds[i] ?? "line"}:${l}`} runId={runId} text={l} index={i} source={sources?.[i] ?? null} candidateId={candidateIds[i] ?? null} badges={badges?.[i] ?? null} />
         ))}
       </ul>
     </div>

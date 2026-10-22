@@ -138,7 +138,7 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   it("a re-read says how many new lines wait on Review and that nothing was added to the objectives", () => {
     const html = render(saved({ fill: { status: "filled", objectivesAdded: 0, filledBusinessProblem: false, reread: true, suggestionsAdded: 2, unusedFromDocument: 0, typedAdded: 0 } }));
     expect(html).toContain('data-testid="brief-fill-reread-result"');
-    expect(html).toContain("2 new lines are waiting on Review objectives as suggestions");
+    expect(html).toContain("2 new lines are waiting for review in the objectives list as suggestions");
   });
   // IR-03 (Codex, 2026-10-22): a re-read whose new lines were not used because the objectives box
   // was not empty must not say "nothing new was found".

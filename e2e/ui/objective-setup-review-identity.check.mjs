@@ -52,8 +52,10 @@ test("Setup A to B, Review B to C, delete in Review: one candidate id throughout
     await page.getByRole("button").filter({ hasText: "Native objective B" }).first().click();
     const detail = page.locator("div").filter({ has: page.getByRole("button", { name: "All objectives", exact: true }) }).filter({ has: page.getByRole("button", { name: "Edit", exact: true }) }).last();
     await detail.getByRole("button", { name: "Edit", exact: true }).click();
-    await page.locator("textarea:visible").first().fill("Native objective C");
-    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    // The editor inside the detail pane: on the one-page layout the context band above has its own
+    // text boxes and Save.
+    await detail.locator("textarea:visible").first().fill("Native objective C");
+    await detail.getByRole("button", { name: "Save", exact: true }).first().click();
     await expect.poll(async () => (await db.query("select candidate_text from objective_candidates where id=$1", [id])).rows[0]?.candidate_text).toBe("Native objective C");
 
     // Setup (after reload) shows C, not A or B; still one row with the same id.

@@ -87,60 +87,17 @@ export default function ObjectiveCoverage({
         )}
       </div>
 
-      {selected && (
-        <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          Showing the selected objective only.
+      {/* One-page Objectives (Grant, 2026-10-22): the selected objective's coverage is shown under
+          its detail in the middle pane (SelectedObjectiveCoverage), not repeated here. */}
+      {selected ? (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-muted" data-testid="coverage-selected-note">
+          The selected objective&apos;s coverage is shown under its detail.
           <button className="underline" onClick={() => select(selected)}>Show all</button>
         </p>
-      )}
-      {validations.length > 0 ? (
+      ) : validations.length > 0 ? (
         <ul className="space-y-3">
-          {ordered.filter((v) => !selected || sameObjective(selected, { text: v.item_text })).map((v) => (
-            <li key={`${v.item_kind}-${v.item_order}`} className="rounded-lg border border-border p-3">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                    v.inferred ? "bg-slate-100 text-slate-600 ring-slate-200" : statusStyle[v.status]
-                  }`}
-                >
-                  {v.inferred ? "Inferred" : statusLabel[v.status]}
-                </span>
-                {v.evidence_digest_degraded && (
-                  <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-inset ring-orange-200">
-                    Evidence check degraded
-                  </span>
-                )}
-                <span className="text-xs uppercase tracking-wide text-muted">{v.item_kind}</span>
-              </div>
-              <p className="mt-1.5 text-sm font-medium text-foreground">{v.item_text}</p>
-              {v.inferred && (
-                <p className="mt-1 text-xs text-muted">
-                  Generated from this project&apos;s own evidence, so it is not an independent test and gets
-                  no verdict. Add your own objective if you want a real check.
-                </p>
-              )}
-              <p className="mt-1 text-sm text-muted">{v.conclusion}</p>
-              {/* Same qualification the report section and both story exports carry. Shown as text,
-                  not only a tooltip, so it is readable on touch screens; the conclusion and status
-                  above are unchanged. "Check again" re-runs the check and clears it once retrieval
-                  works. */}
-              {v.evidence_digest_degraded && (
-                <p data-testid="coverage-evidence-degraded" className="mt-1 text-xs text-orange-800">
-                  Generated while data-evidence retrieval was failing, so it may be missing evidence a working
-                  check would have cited. Check again once the data evidence loads.
-                </p>
-              )}
-              {v.synthesized_insight_ids.length > 0 && (
-                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-muted">
-                  {v.synthesized_insight_ids
-                    .map((id) => byId.get(id))
-                    .filter((h): h is string => Boolean(h))
-                    .map((h) => (
-                      <li key={h}>{h}</li>
-                    ))}
-                </ul>
-              )}
-            </li>
+          {ordered.map((v) => (
+            <CoverageCard key={`${v.item_kind}-${v.item_order}`} v={v} byId={byId} />
           ))}
         </ul>
       ) : (
@@ -191,5 +148,87 @@ export default function ObjectiveCoverage({
       )}
       {error && <p className="text-sm text-red-700">{error}</p>}
     </div>
+  );
+}
+
+/** One objective's or decision's coverage verdict, with the insights it rests on. */
+function CoverageCard({ v, byId }: { v: Validation; byId: Map<string, string> }) {
+  return (
+    <li className="rounded-lg border border-border bg-white p-3" data-testid="coverage-item">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+            v.inferred ? "bg-slate-100 text-slate-600 ring-slate-200" : statusStyle[v.status]
+          }`}
+        >
+          {v.inferred ? "Inferred" : statusLabel[v.status]}
+        </span>
+        {v.evidence_digest_degraded && (
+          <span className="whitespace-nowrap rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-inset ring-orange-200">
+            Evidence check degraded
+          </span>
+        )}
+        <span className="text-xs uppercase tracking-wide text-muted">{v.item_kind}</span>
+      </div>
+      <p className="mt-1.5 text-sm font-medium text-foreground">{v.item_text}</p>
+      {v.inferred && (
+        <p className="mt-1 text-xs text-muted">
+          Generated from this project&apos;s own evidence, so it is not an independent test and gets
+          no verdict. Add your own objective if you want a real check.
+        </p>
+      )}
+      <p className="mt-1 text-sm text-muted">{v.conclusion}</p>
+      {/* Same qualification the report section and both story exports carry. Shown as text,
+          not only a tooltip, so it is readable on touch screens; the conclusion and status
+          above are unchanged. "Check again" re-runs the check and clears it once retrieval
+          works. */}
+      {v.evidence_digest_degraded && (
+        <p data-testid="coverage-evidence-degraded" className="mt-1 text-xs text-orange-800">
+          Generated while data-evidence retrieval was failing, so it may be missing evidence a working
+          check would have cited. Check again once the data evidence loads.
+        </p>
+      )}
+      {v.synthesized_insight_ids.length > 0 && (
+        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-muted">
+          {v.synthesized_insight_ids
+            .map((id) => byId.get(id))
+            .filter((h): h is string => Boolean(h))
+            .map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The selected objective's coverage, shown under its detail on the one-page Objectives prototype
+ * (Grant, 2026-10-22), so the middle pane's free space is used and the right pane holds the check
+ * itself and the evidence. Matched by the same objective identity as the rest of the page
+ * (sameObjective). With nothing selected it renders nothing: the right pane lists every verdict.
+ */
+export function SelectedObjectiveCoverage({ validations, insights }: { validations: Validation[]; insights: InsightLite[] }) {
+  const { selected } = useObjectiveSelection();
+  if (!selected) return null;
+  const byId = new Map(insights.map((i) => [i.id, i.headline]));
+  const matching = validations.filter((v) => sameObjective(selected, { text: v.item_text }));
+  return (
+    <section className="mt-4" data-testid="selected-objective-coverage">
+      <h3 className="mb-2 text-sm font-semibold text-foreground">Coverage</h3>
+      {matching.length > 0 ? (
+        <ul className="space-y-3">
+          {matching.map((v) => (
+            <CoverageCard key={`${v.item_kind}-${v.item_order}`} v={v} byId={byId} />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted">
+          {validations.length > 0
+            ? "This objective was not in the last coverage check. Use Check again under Objective review."
+            : "Not checked against the insights yet. Coverage is checked under Objective review."}
+        </p>
+      )}
+    </section>
   );
 }

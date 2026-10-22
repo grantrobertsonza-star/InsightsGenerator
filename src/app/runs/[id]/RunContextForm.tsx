@@ -2,6 +2,7 @@
 
 import { useActionState, useRef } from "react";
 import SubmitButton from "@/components/SubmitButton";
+import { useBandColumns } from "./BandColumns";
 import { saveRunContextFromForm } from "@/lib/runContextActions";
 import { INITIAL_BRIEF_FILL_FORM_STATE, nextBriefFillFormState, type BriefFillFormState } from "./briefFillCarry";
 import type { BriefFill, FailedBriefFill } from "@/lib/briefFillRecord";
@@ -18,6 +19,7 @@ export default function RunContextForm({
   documents,
   lastFill,
   failedFill,
+  layout = "column",
 }: {
   runId: string;
   businessProblem: string | null;
@@ -29,6 +31,12 @@ export default function RunContextForm({
   lastFill?: BriefFill | null | { error: string };
   /** A requested fill that did not happen and has not been followed by one that did (loadFailedBriefFill). */
   failedFill?: FailedBriefFill | null | { error: string };
+  /**
+   * "band": laid out across the top of the one-page Objectives prototype (Grant, 2026-10-22), in
+   * three columns (fill from a document, business problem, objectives and audience), with the saved
+   * objectives in the list below rather than on the right. Same fields, names, actions and messages.
+   */
+  layout?: "column" | "band";
 }) {
   // The result of this page's last save (GT500-F02): a fill that did not happen is said here, from
   // the response itself, even when recording it failed too; one that could not be recorded is
@@ -42,6 +50,8 @@ export default function RunContextForm({
     INITIAL_BRIEF_FILL_FORM_STATE,
   );
   const formRef = useRef<HTMLFormElement>(null);
+  // The band's columns: filling from a document (only when there is one), business problem, objectives.
+  const bandColumns = useBandColumns("objectives-band-columns", documents.length > 0 ? 3 : 2, formRef);
   const briefRef = useRef<HTMLSelectElement>(null);
   const proposalRef = useRef<HTMLSelectElement>(null);
   const rereadRef = useRef<HTMLInputElement>(null);
@@ -76,7 +86,9 @@ export default function RunContextForm({
     <form
       ref={formRef}
       action={formAction}
-      className="flex flex-col gap-4"
+      className={layout === "band" ? "grid items-start gap-4 [grid-column:1/-1] lg:gap-x-0 lg:[grid-template-columns:var(--band-cols)]" : "flex flex-col gap-4"}
+      style={layout === "band" ? bandColumns.style : undefined}
+      data-testid={layout === "band" ? "objectives-band" : undefined}
     >
       {documents.length > 0 && (
         <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
@@ -143,6 +155,7 @@ export default function RunContextForm({
           </div>
         </div>
       )}
+      {layout === "band" && documents.length > 0 && bandColumns.handle(0, "Resize the fill from a document column")}
       <label className="block">
         <span className="text-sm font-medium text-foreground">Business problem</span>
         <span className="ml-1.5 text-xs font-normal text-muted">(optional)</span>
@@ -151,12 +164,15 @@ export default function RunContextForm({
           rows={10}
           defaultValue={businessProblem ?? ""}
           placeholder="e.g. Renewal among lapsed members has dropped 12% year on year and we don't know why."
-          className={`${field} min-h-48 resize-y`}
+          className={`${field} ${layout === "band" ? "min-h-28" : "min-h-48"} resize-y`}
         />
       </label>
+      {layout === "band" && bandColumns.handle(documents.length > 0 ? 1 : 0, "Resize the business problem column")}
+      {/* In the band, objectives, audience and Save share the last column; in a column it is invisible. */}
+      <div className={layout === "band" ? "flex flex-col gap-4" : "contents"}>
       <label className="block">
         <span className="text-sm font-medium text-foreground">Add research objectives or hypotheses</span>
-        <span className="ml-1.5 text-xs font-normal text-muted">(optional, one per line. Saved ones appear on the right)</span>
+        <span className="ml-1.5 text-xs font-normal text-muted">{`(optional, one per line. Saved ones appear ${layout === "band" ? "in the list below" : "on the right"})`}</span>
         <textarea
           name="researchObjective"
           rows={3}
@@ -180,6 +196,7 @@ export default function RunContextForm({
       >
         Save
       </SubmitButton>
+      </div>
     </form>
   );
 }

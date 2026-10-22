@@ -34,6 +34,11 @@ import {
  * sections that open on an overview and whose list and detail need the width: its blocks flow into
  * columns, it can be folded to its header (kept mounted), and the middle and right panes keep their
  * resizable split below it.
+ *
+ * `band` (Grant, 2026-10-22, the one-page Objectives prototype) is the same foldable band above a
+ * full three-pane layout: the band holds content that is not one of the three panes (the objectives'
+ * context form), and left, middle and right stay columns below it. Its fold is remembered under
+ * `three-pane-top:<storageKey>`, the columns under `<storageKey>:below-band`, as for `leftOnTop`.
  */
 
 const DEFAULT_LEFT_PX = 352; // 22rem, the original fixed width
@@ -118,19 +123,23 @@ type ThreePaneProps = {
   leftMaxShare?: number;
   /** Put the left pane above the other two as a foldable full-width band. */
   leftOnTop?: boolean;
+  /** A foldable full-width band above all three panes (its own content, not one of the panes). */
+  band?: ReactNode;
 };
 
 /** How a left pane is placed, so Pane can lay its blocks out across a top band and add the fold control. */
 const TopBandContext = createContext<{ folded: boolean; setFolded: (folded: boolean) => void } | null>(null);
 
 export function ThreePane(props: ThreePaneProps) {
-  const { left, leftOnTop, ...rest } = props;
+  const { left, leftOnTop, band, ...rest } = props;
+  if (band !== undefined && band !== null && band !== false) return <TopBandLayout top={band} {...rest} left={left} />;
   const hasLeft = left !== undefined && left !== null && left !== false;
-  if (!leftOnTop || !hasLeft) return <ThreePaneColumns {...props} />;
-  return <TopBandLayout left={left} {...rest} />;
+  if (!leftOnTop || !hasLeft) return <ThreePaneColumns {...rest} left={left} />;
+  return <TopBandLayout top={left} {...rest} />;
 }
 
-function TopBandLayout({ left, storageKey, ...rest }: Omit<ThreePaneProps, "leftOnTop">) {
+/** `top` is the band; the panes in `rest` (with or without a left pane) are the columns below it. */
+function TopBandLayout({ top, storageKey, ...rest }: Omit<ThreePaneProps, "leftOnTop" | "band"> & { top: ReactNode }) {
   const key = `three-pane-top:${storageKey ?? "band"}`;
   const raw = useSyncExternalStore(subscribe, () => readStored(key), () => null);
   const folded = parseLayout(raw).leftCollapsed;
@@ -139,7 +148,7 @@ function TopBandLayout({ left, storageKey, ...rest }: Omit<ThreePaneProps, "left
   return (
     <div className="flex flex-col gap-4" data-testid="three-pane-top-layout">
       <div className="min-w-0" data-testid="three-pane-left" data-left-placement="top" data-left-collapsed={folded ? "true" : "false"}>
-        <TopBandContext.Provider value={band}>{left}</TopBandContext.Provider>
+        <TopBandContext.Provider value={band}>{top}</TopBandContext.Provider>
       </div>
       <ThreePaneColumns {...rest} storageKey={storageKey ? `${storageKey}:below-band` : "below-band"} />
     </div>
@@ -154,7 +163,7 @@ function ThreePaneColumns({
   storageKey,
   leftDefaultPx = DEFAULT_LEFT_PX,
   leftMaxShare = 0.35,
-}: Omit<ThreePaneProps, "leftOnTop">) {
+}: Omit<ThreePaneProps, "leftOnTop" | "band">) {
   const hasRight = right !== undefined && right !== null && right !== false;
   const hasLeft = left !== undefined && left !== null && left !== false;
   const key = `three-pane:${storageKey ?? (!hasLeft ? "list-detail" : hasRight ? (wideRight ? "wide" : "three") : "two")}`;

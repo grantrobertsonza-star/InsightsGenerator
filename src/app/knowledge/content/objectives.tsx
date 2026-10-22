@@ -8,7 +8,7 @@ const toc = [
   { id: "scoring", title: "Quality scoring: four dimensions" },
   { id: "coverage", title: "Coverage against the insights" },
   { id: "workflow", title: "The review workflow" },
-  { id: "pages", title: "The two objective pages" },
+  { id: "pages", title: "The Objectives page" },
   { id: "evidence", title: "Evidence from the data" },
   { id: "limits", title: "Where it stops" },
   { id: "practice", title: "A sensible way to work with it" },
@@ -97,7 +97,7 @@ export default function ObjectiveGuide() {
       <P>
         To look for anything new in a document already used, press <em>Read it again for anything new</em>. Lines new
         to the project are added as suggestions waiting for review, never accepted and never in your stated list, each
-        marked &quot;Suggested on re-reading the proposal ...&quot;. On Review, a suggestion that looks like an objective
+        marked &quot;Suggested on re-reading the proposal ...&quot;. In the objectives list, a suggestion that looks like an objective
         you already have is shown beside it, as a hint only; nothing is merged or hidden. If the objective box is not
         empty, the lines you typed are added and the document&apos;s new lines are not used, and the result names them,
         so you can clear the box and read again.
@@ -272,20 +272,22 @@ export default function ObjectiveGuide() {
         check is run again.
       </P>
 
-      <H2 id="pages">The two objective pages</H2>
+      <H2 id="pages">The Objectives page</H2>
       <P>
-        Objectives have two places in the sidebar, under one <em>Objectives</em> group. <em>Set up</em> holds the form
-        (brief and proposal import, business problem, objectives, audience) and your stated objectives, which you can
-        edit or delete there. <em>Review</em> is where they are scored and checked.
+        Objectives are set up, scored and checked on one page. Across the top, <em>Objective and context</em> holds the
+        form in three columns: fill in from a brief or proposal, the business problem, and your objectives and audience
+        with Save. Drag the line between two columns to resize them, or use the arrow keys on it; double-click or
+        press Enter on it to make them equal again. Your widths are kept in this browser. The band can be hidden to
+        give the panes below more room.
       </P>
       <P>
-        Review has three panes. The left lists every objective as a numbered, colour-coded card with its tag, its
-        quality tier and score, and whether the evidence answers it. Selecting one shows that objective in the middle
-        (its text, the actions in the table above, four score tiles, the scorer&apos;s reasoning and how to sharpen it)
-        in the same colour, and narrows the right pane to its coverage verdict, its linked insights and its evidence
-        questions. With nothing selected, the middle shows every objective in one scored table and the right shows the
-        whole coverage check. Selecting a row in that table also selects the objective. Objectives are matched to their
-        results by their wording, not by position, so a re-ordered list does not mismatch a verdict.
+        Below it are three panes. The left lists your stated objectives first, which you can edit or delete there, then
+        any suggestions waiting for review, each with its tag, quality tier and score, and whether the evidence answers
+        it. Selecting one shows it in the middle (its text, Edit, Accept or Unaccept and Delete, four score tiles, the
+        scorer&apos;s reasoning and how to sharpen it) with its coverage verdict and linked insights underneath. The
+        right pane holds the coverage check itself and the evidence from the data. With nothing selected, the middle
+        shows every objective in one scored table and the right shows the whole coverage check. Objectives are matched
+        to their results by their wording, not by position, so a re-ordered list does not mismatch a verdict.
       </P>
 
       <H2 id="evidence">Evidence from the data</H2>

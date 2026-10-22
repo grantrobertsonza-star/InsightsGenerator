@@ -40,16 +40,50 @@ function ordered(rows: ObjectiveRow[]) {
   return rows.filter((r) => r.status !== "rejected").sort((a, b) => order(a) - order(b));
 }
 
-/** Left pane: every objective, with its quality tier and whether the evidence answers it. */
-export function ObjectiveList({ rows, verdicts }: { rows: ObjectiveRow[]; verdicts: Verdict[] }) {
+/** An objective's review chips: its label, quality tier and score, and whether the evidence answers it. */
+export function ObjectiveBadges({ row, verdicts, withTag = true }: { row: ObjectiveRow; verdicts: Verdict[]; withTag?: boolean }) {
+  const tag = tagFor(row);
+  const v =
+    verdicts.find((x) => !x.inferred && sameObjective({ id: row.id, text: row.text }, { text: x.item_text })) ??
+    verdicts.find((x) => sameObjective({ id: row.id, text: row.text }, { text: x.item_text }));
+  return (
+    <span className="mt-1.5 flex flex-wrap items-center gap-1" data-testid="objective-badges">
+      {withTag && <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${tag.cls}`}>{tag.label}</span>}
+      {row.scores && (
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${tierClass[row.scores.tier]}`}>
+          {tierLabel[row.scores.tier]} {row.scores.total}/20
+        </span>
+      )}
+      {v && !v.inferred && <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${verdictStyle[v.status]}`}>{verdictLabel[v.status]}</span>}
+    </span>
+  );
+}
+
+/**
+ * Left pane: every objective, with its quality tier and whether the evidence answers it. `startAt`
+ * continues the numbering and colours after the stated objectives listed above it on the one-page
+ * Objectives prototype; `empty` is what to say when there is nothing to list (null: say nothing).
+ */
+export function ObjectiveList({
+  rows,
+  verdicts,
+  startAt = 0,
+  empty = "No objectives yet. Add them under Objective and context.",
+}: {
+  rows: ObjectiveRow[];
+  verdicts: Verdict[];
+  startAt?: number;
+  empty?: string | null;
+}) {
   const { selected, select } = useObjectiveSelection();
   const list = ordered(rows);
   if (list.length === 0) {
-    return <p className="text-xs text-muted">No objectives yet. Add them under Objective and context.</p>;
+    return empty ? <p className="text-xs text-muted">{empty}</p> : null;
   }
   return (
     <ul className="space-y-1.5">
-      {list.map((r, n) => {
+      {list.map((r, i) => {
+        const n = i + startAt;
         const tag = tagFor(r);
         const v =
           verdicts.find((x) => !x.inferred && sameObjective({ id: r.id, text: r.text }, { text: x.item_text })) ??

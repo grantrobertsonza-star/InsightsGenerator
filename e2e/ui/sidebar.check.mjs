@@ -37,12 +37,12 @@ test("the sidebar's stages, Objectives tabs, split Cross tabs and Analytics, and
 
   // 3. Objectives: one entry, two tabs, highlighted on both.
   const objectives = menu.getByRole("button", { name: /^Objectives$/ });
+  // One Objectives page (2026-10-22): the context form and the review on the same page.
   await openSection(page, "Set Objectives");
   await expect(objectives).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { name: "Set up objectives" })).toBeVisible();
-  await openSection(page, "Review Objectives");
-  await expect(objectives).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { name: "Review objectives", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Objectives", exact: true, level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Objective and context" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Objective detail" })).toBeVisible();
 
   // 4. Cross tabs opens its workspace directly; Analytics has its own tiles.
   await openSection(page, /^Cross tabs/);

@@ -76,6 +76,18 @@ test("a degraded coverage conclusion is qualified in Review Objectives, survives
     await expect(coverage().getByText("Evidence check degraded", { exact: true })).toBeVisible();
     await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
     await expect(coverage().getByText("Answered", { exact: true })).toBeVisible();
+    // One-page Objectives (3001): selecting the objective moves its card under the detail in the
+    // middle pane, qualification included; the coverage pane says so instead of repeating it.
+    await page.getByTestId("stated-objectives").getByRole("button", { name: new RegExp(OBJECTIVE) }).click();
+    const middle = page.getByTestId("selected-objective-coverage");
+    await expect(middle.getByText("Evidence check degraded", { exact: true })).toBeVisible();
+    await expect(middle.getByText(CONCLUSION, { exact: true })).toBeVisible();
+    await expect(coverage().getByTestId("coverage-selected-note")).toBeVisible();
+    await expect(coverage().getByText(CONCLUSION, { exact: true })).toHaveCount(0);
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-coverage-selected.png"), fullPage: true });
+    await coverage().getByRole("button", { name: "Show all" }).click();
+    await expect(middle).toHaveCount(0);
+    await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
 
     // 3. A reassessment with retrieval working clears it, after reload too; the conclusion stays.
     await coverage().getByRole("button", { name: "Check again" }).click();
