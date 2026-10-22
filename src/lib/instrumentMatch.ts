@@ -15,6 +15,15 @@ export type MatchCandidate = {
 
 export const WORDING_MIN = 0.55;
 export const STEM_CAP = 60;
+/**
+ * A multiple-response family (Grant, 2026-10-22: the FinScope stem EN20 showed No match although
+ * the data has EN20_1 to EN20_n): two or more variables named the item's code, an explicit
+ * separator (_ . or -) and a suffix. The codes are explicit, so the family sits at the confidence
+ * "Confirm same-code matches" confirms (AUTO_CONFIRM_MIN, 0.9) and above the two weaker routes that
+ * used to take members away from the stem: a wording match from another question (at most 0.89) and
+ * a label that starts with another question's code (0.9). An exact code still wins (1).
+ */
+export const FAMILY_CONFIDENCE = 0.92;
 
 const STOP = new Set(
   "the and for that this with from your you are was were have has had been will would could should what which when where who how why about into over than then them they their there these those also any all can not but our out its just more most some such only very per each both other another one two three four five ask read prompt interviewer please select none dont know refused code codes".split(" "),
@@ -34,13 +43,55 @@ export const tokenSet = tokens;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/**
+ * The item code as matching uses it: NFKC, without spaces or invisible characters (a PDF read can
+ * carry a non-breaking or zero-width space), and without trailing punctuation ("EN20." or "Q5a)").
+ * Empty when nothing code-like is left.
+ */
+export function matchableCode(code: string | null | undefined): string {
+  return (code ?? "")
+    .normalize("NFKC")
+    .replace(/[\s\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[.):,;]+$/, "");
+}
+
+/**
+ * The variables whose name is the item code: compared without case, spaces or invisible characters,
+ * and with _ . and - treated as one separator (EN20.1 is EN20_1). Where that finds none, the looser
+ * comparison that ignores separators altogether (Q1a and Q1_a) is used, but never across a separator
+ * between two digits: removing it changes the number, so EN201 is not EN20_1 and EN20_1 is not EN201.
+ * The one exact-code rule, for the matcher and for codeFamily.
+ */
+export function exactCodeVariables(code: string | null | undefined, variableNames: string[]): string[] {
+  const c = matchableCode(code);
+  if (!c) return [];
+  const strict = (s: string) => matchableCode(s).toLowerCase().replace(/[_.\-]/g, "_");
+  const exact = variableNames.filter((n) => strict(n) === strict(c));
+  if (exact.length > 0) return exact;
+  const splitsNumber = (s: string) => /\d[_.\-]+\d/.test(s);
+  if (splitsNumber(c)) return [];
+  return variableNames.filter((n) => norm(n) === norm(c) && !splitsNumber(n));
+}
+
+/**
+ * The variables of a multiple-response family for an item code: names that are the code, then _ .
+ * or -, then a suffix, compared case-insensitively. The separator is what puts the boundary at the
+ * end of the code, so EN2 never takes EN20_1 and EN20 never takes EN201. Empty when a variable has
+ * the code itself (that variable is the question) or fewer than two names qualify. In file order,
+ * at most STEM_CAP. The one rule for the matcher and for "Link all" in the manual picker.
+ */
+export function codeFamily(code: string | null | undefined, variableNames: string[]): string[] {
+  const c = matchableCode(code);
+  if (!c) return [];
+  if (exactCodeVariables(c, variableNames).length > 0) return [];
+  const re = new RegExp(`^${esc(c)}[_.\\-][A-Za-z0-9_.\\-]+$`, "i");
+  const members = variableNames.filter((n) => re.test(n));
+  return members.length >= 2 ? members.slice(0, STEM_CAP) : [];
+}
+
 export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchCandidate[] {
   const out: MatchCandidate[] = [];
-  const byNorm = new Map<string, string[]>();
-  for (const v of variables) {
-    const k = norm(v.name);
-    byNorm.set(k, [...(byNorm.get(k) ?? []), v.name]);
-  }
+  const names = variables.map((v) => v.name);
 
   // Inverted index over variable label tokens, for the wording pass.
   const labelTokens = variables.map((v) => tokens(v.label));
@@ -58,17 +109,21 @@ export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchC
 
   for (const item of items) {
     let matched = false;
-    const code = item.code?.trim();
+    const code = matchableCode(item.code);
     if (code) {
-      const exact = byNorm.get(norm(code));
-      if (exact) {
+      const exact = exactCodeVariables(code, names);
+      if (exact.length > 0) {
         for (const name of exact) offer({ itemId: item.id, variable: name, method: "code", confidence: 1 });
         matched = true;
       } else {
+        const family = new Set(codeFamily(code, names));
+        for (const name of family) offer({ itemId: item.id, variable: name, method: "stem", confidence: FAMILY_CONFIDENCE });
+        // Other stems (a letter suffix such as EN20a or EN20r1, or a single suffixed variable) may be
+        // separate questions, so they stay below the confirm-all level for the researcher to check.
         const re = new RegExp(`^${esc(code)}(?:[_.\\-][A-Za-z0-9_.\\-]*|[A-Za-z](?:[_.\\-]?[A-Za-z0-9_.\\-]*)?)$`, "i");
-        const stem = variables.filter((v) => re.test(v.name)).slice(0, STEM_CAP);
+        const stem = variables.filter((v) => !family.has(v.name) && re.test(v.name)).slice(0, STEM_CAP);
         for (const v of stem) offer({ itemId: item.id, variable: v.name, method: "stem", confidence: stem.length === 1 ? 0.8 : 0.85 });
-        if (stem.length > 0) matched = true;
+        if (family.size > 0 || stem.length > 0) matched = true;
       }
       // A variable label that starts with the item's code is nearly as good as a name match.
       if (!matched) {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   chooseInstrumentLinkAction,
+  chooseInstrumentLinkFamilyAction,
   confirmLinksAction,
   guideCoverageAction,
   loadInstrumentReviewAction,
@@ -14,8 +15,12 @@ import {
 import type { InstrumentItem, InstrumentLink, InstrumentSummary } from "@/lib/instruments";
 import type { GuideReport } from "@/lib/guides";
 import { useInstrumentAutoStart } from "./useInstrumentAutoStart";
+import { codeFamily, matchableCode } from "@/lib/instrumentMatch";
 
 type DataDoc = { id: string; name: string };
+
+/** Variable names in reading order, numbers by value: EN20_2 before EN20_10. */
+const byCode = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" });
 
 const methodLabel: Record<InstrumentLink["method"], string> = {
   code: "Same code",
@@ -82,6 +87,9 @@ export default function InstrumentCard({
   const [choosing, setChoosing] = useState<string | null>(null);
   const [variables, setVariables] = useState<{ forTarget: string; list: { name: string; label: string }[] } | null>(null);
   const [variablesError, setVariablesError] = useState<string | null>(null);
+  // Questions whose every link is shown: a multiple-response family can have dozens, and only the
+  // first six are listed until the researcher asks for the rest.
+  const [allLinksFor, setAllLinksFor] = useState<Set<string>>(new Set());
 
   async function openPicker(itemId: string) {
     setChoosing(itemId);
@@ -225,7 +233,12 @@ export default function InstrumentCard({
             </>
           )}
           {summary.links.suggested > 0 && (
-            <button className={btn} disabled={pending} onClick={() => run(() => confirmLinksAction(runId, documentId), (r) => confirmedMessage(r))}>
+            <button
+              className={btn}
+              disabled={pending}
+              title="Confirms suggestions found by code: the same code, and multiple-response families named after a question's code (EN20 to EN20_1, EN20_2 ...). Wording matches stay for you to check."
+              onClick={() => run(() => confirmLinksAction(runId, documentId), (r) => confirmedMessage(r))}
+            >
               Confirm same-code matches
             </button>
           )}
@@ -322,7 +335,19 @@ export default function InstrumentCard({
                       {(linksByItem.get(i.id) ?? []).length === 0 ? (
                         <span className="text-muted">No match</span>
                       ) : (
-                        (linksByItem.get(i.id) ?? []).slice(0, 6).map((l) => (
+                        <>
+                        {(() => {
+                          // A question linked to several variables named after its code is a
+                          // multiple-response family (codeFamily, the matcher's rule): say so once.
+                          const linked = (linksByItem.get(i.id) ?? []).map((l) => l.variable);
+                          const family = codeFamily(i.code, linked).sort(byCode);
+                          return family.length >= 2 ? (
+                            <p className="mb-1 text-[10px] text-muted" data-testid="item-family">
+                              {`Multiple-response family: ${family[0]} to ${family[family.length - 1]} (${family.length} variables)`}
+                            </p>
+                          ) : null;
+                        })()}
+                        {(linksByItem.get(i.id) ?? []).slice(0, allLinksFor.has(i.id) ? undefined : 6).map((l) => (
                           <div key={l.id} className="mb-1 flex items-center gap-2">
                             <div className="min-w-0 flex-1">
                               <span className={`block truncate ${l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}`} title={l.variable}>
@@ -343,7 +368,25 @@ export default function InstrumentCard({
                               )}
                             </div>
                           </div>
-                        ))
+                        ))}
+                        {(linksByItem.get(i.id) ?? []).length > 6 && (
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-primary hover:underline"
+                            data-testid="item-links-more"
+                            onClick={() =>
+                              setAllLinksFor((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i.id)) next.delete(i.id);
+                                else next.add(i.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {allLinksFor.has(i.id) ? "Show the first 6" : `Show all ${(linksByItem.get(i.id) ?? []).length} links`}
+                          </button>
+                        )}
+                        </>
                       )}
                       {!isGuide && target && choosing !== i.id && (
                         <button className="mt-0.5 text-[11px] font-medium text-primary hover:underline disabled:opacity-50" disabled={pending} onClick={() => void openPicker(i.id)}>
@@ -356,8 +399,22 @@ export default function InstrumentCard({
                           error={variablesError}
                           taken={takenBy}
                           itemId={i.id}
+                          itemCode={i.code}
                           disabled={pending}
                           onCancel={() => setChoosing(null)}
+                          onChooseFamily={(name, count) =>
+                            run(
+                              async () => {
+                                const r = await chooseInstrumentLinkFamilyAction(runId, documentId, i.id, target, name);
+                                if (r.ok) setChoosing(null);
+                                return r;
+                              },
+                              (r) => {
+                                const refused = (r.refused as { variable: string }[] | undefined) ?? [];
+                                return `Linked ${i.code ?? "the question"} to ${Number(r.linked)} of ${count} variables, confirmed as chosen by you.${refused.length > 0 ? ` Not linked, as another question already has them: ${refused.map((x) => x.variable).join(", ")}.` : ""}`;
+                              },
+                            )
+                          }
                           onChoose={(name) =>
                             run(
                               async () => {
@@ -389,19 +446,26 @@ function VariablePicker({
   error,
   taken,
   itemId,
+  itemCode,
   disabled,
   onChoose,
+  onChooseFamily,
   onCancel,
 }: {
   variables: { name: string; label: string }[] | null;
   error: string | null;
   taken: Map<string, { itemId: string; code: string }>;
   itemId: string;
+  itemCode: string | null;
   disabled: boolean;
   onChoose: (name: string) => void;
+  /** Links every variable of the question's multiple-response family; `name` is one of them. */
+  onChooseFamily: (name: string, count: number) => void;
   onCancel: () => void;
 }) {
   const [q, setQ] = useState("");
+  // The question's code names a set of variables (EN20 and EN20_1, EN20_2, ...): offer them together.
+  const family = variables ? codeFamily(itemCode, variables.map((v) => v.name)).sort(byCode) : [];
   const needle = q.trim().toLowerCase();
   const matches = (variables ?? []).filter((v) => needle === "" || v.name.toLowerCase().includes(needle) || v.label.toLowerCase().includes(needle));
   return (
@@ -421,6 +485,18 @@ function VariablePicker({
       </div>
       {error && <p className="text-danger">{error}</p>}
       {!error && !variables && <p className="text-muted">Loading the data file&apos;s variables...</p>}
+      {family.length >= 2 && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChooseFamily(family[0], family.length)}
+          className="w-full rounded border border-primary/40 bg-white px-1.5 py-1 text-left text-[11px] font-medium text-primary hover:bg-primary-light disabled:opacity-60"
+          data-testid="variable-picker-link-all"
+        >
+          {/* The prefix as the file writes it: the code and its separator, such as "EN20_". */}
+          {`Link all ${family.length} in ${family[0].slice(0, matchableCode(itemCode).length + 1)}* (${family[0]} to ${family[family.length - 1]})`}
+        </button>
+      )}
       {variables && (
         <ul className="max-h-48 space-y-0.5 overflow-auto">
           {matches.slice(0, 12).map((v) => {

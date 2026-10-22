@@ -5,7 +5,7 @@ import { withTenant, withTenantRead } from "./db";
 import type { PoolClient } from "pg";
 import { extractDocumentText } from "./extractFindings";
 import { loadVariableDictionary } from "./crosstabs";
-import { matchItems } from "./instrumentMatch";
+import { codeFamily, matchItems } from "./instrumentMatch";
 import { parseRouting, type Routing } from "./routingParse";
 import { deriveGotoRouting } from "./gotoRouting";
 import { buildLabelOverlay, type LabelOverlay } from "./labelOverlay";
@@ -858,6 +858,64 @@ export async function chooseInstrumentLink(
       [tenantId, runId, itemId, dataDocumentId, variable],
     );
     return { linkId: r.rows[0].id };
+  });
+}
+
+/**
+ * "Link all" in the manual picker: links a question to every variable of its multiple-response
+ * family (codeFamily, the matcher's own rule: the question's code, a separator, a suffix), each
+ * confirmed as chosen by the researcher, in one transaction under the data file's lock. A member
+ * already confirmed for another question is left alone and returned in `refused` with that
+ * question named, as bulk Confirm does; a member the researcher rejected for this question stays
+ * rejected (choosing all is not a decision about one they turned down). `variable` is the member
+ * the researcher picked: it must belong to the family, so a stale or crafted request cannot link a
+ * different set. Repeating it confirms nothing new.
+ */
+export async function chooseInstrumentLinkFamily(
+  tenantId: string,
+  runId: string,
+  instrumentId: string,
+  itemId: string,
+  dataDocumentId: string,
+  variable: string,
+): Promise<{ linked: number; refused: { variable: string; reason: string }[]; family: string[] }> {
+  const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
+  const names = dictionary.variables.map((v) => v.name);
+  return withTenant(tenantId, async (client) => {
+    const doc = await client.query("select id from documents where id = $1 and run_id = $2 and kind = 'table' and ingestion_type = 'raw'", [dataDocumentId, runId]);
+    if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
+    await lockDataDocuments(client, runId, [dataDocumentId]);
+    const item = await client.query<{ code: string | null }>("select code from instrument_items where id = $1 and document_id = $2 and run_id = $3", [itemId, instrumentId, runId]);
+    if (item.rowCount !== 1) throw new Error("That question is not in this questionnaire.");
+    const family = codeFamily(item.rows[0].code, names);
+    if (!family.includes(variable)) throw new Error(`${variable} is not one of a set of variables named after this question's code.`);
+    const rejected = new Set(
+      (
+        await client.query<{ variable: string }>(
+          "select variable from instrument_links where item_id = $1 and data_document_id = $2 and status = 'rejected'",
+          [itemId, dataDocumentId],
+        )
+      ).rows.map((r) => r.variable),
+    );
+    let linked = 0;
+    const refused: { variable: string; reason: string }[] = [];
+    for (const name of family) {
+      if (rejected.has(name)) continue;
+      const taken = await variableTakenBy(client, dataDocumentId, name, itemId);
+      if (taken) {
+        refused.push({ variable: name, reason: taken });
+        continue;
+      }
+      const r = await client.query(
+        `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status)
+         values ($1, $2, $3, $4, $5, 'manual', 1, 'confirmed')
+         on conflict (item_id, data_document_id, variable) do update set method = 'manual', confidence = 1, status = 'confirmed'
+           where instrument_links.status <> 'confirmed'`,
+        [tenantId, runId, itemId, dataDocumentId, name],
+      );
+      linked += r.rowCount ?? 0;
+    }
+    return { linked, refused, family };
   });
 }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { loadVariableDictionary } from "./crosstabs";
 import {
   chooseInstrumentLink,
+  chooseInstrumentLinkFamily,
   recordInstrumentReadFailure,
   getInstrumentItems,
   InstrumentLinkTakenError as LinkTaken,
@@ -156,6 +157,26 @@ export async function listLinkableVariablesAction(
   try {
     const d = await loadVariableDictionary(TENANT_ID, runId, dataDocumentId);
     return { ok: true, variables: d.variables.map((v) => ({ name: v.name, label: v.label })) };
+  } catch (e) {
+    return { ok: false, error: explain(e) };
+  }
+}
+
+/** "Link all N in EN20_*": the question to every variable of its multiple-response family (chooseInstrumentLinkFamily). */
+export async function chooseInstrumentLinkFamilyAction(
+  runId: string,
+  instrumentId: string,
+  itemId: string,
+  dataDocumentId: string,
+  variable: string,
+): Promise<Ok<{ linked: number; refused: { variable: string; reason: string }[]; family: string[] }> | Fail> {
+  if (![runId, instrumentId, itemId, dataDocumentId].every((x) => UUID.test(x))) return { ok: false, error: "Unknown question or data file." };
+  if (typeof variable !== "string" || variable.trim() === "") return { ok: false, error: "Choose a variable." };
+  const TENANT_ID = await requireTenantId();
+  try {
+    const r = await chooseInstrumentLinkFamily(TENANT_ID, runId, instrumentId, itemId, dataDocumentId, variable);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
   } catch (e) {
     return { ok: false, error: explain(e) };
   }
