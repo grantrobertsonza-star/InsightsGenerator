@@ -877,6 +877,37 @@ export function designFreshnessStatus(
   return canonicalJson(designSnapshot.design) === currentDesignSnapshot.snapshot ? "current" : "stale";
 }
 
+/** A table built from this file, with the exact request that built it (`crosstab.savedRequest`). */
+export type RecentTableDefinition = { id: string; label: string; status: string; request: CrosstabRequest };
+
+/**
+ * The newest tables built from this data file, newest first, with their saved requests, so a
+ * plain-English request can refer to one ("the table just produced", Grant 2026-10-22). Evidence
+ * tables (built by Objectives) and tables saved before requests were kept are left out. A failed
+ * read throws: the caller says the earlier tables could not be read rather than treating it as none.
+ */
+export async function loadRecentTableDefinitions(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  limit = 5,
+): Promise<RecentTableDefinition[]> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query<{ id: string; label: string | null; status: string | null; request: CrosstabRequest }>(
+      `select id, label, crosstab_status as status, crosstab->'savedRequest' as request
+       from document_tables
+       where run_id = $1 and document_id = $2 and table_index >= $3 and crosstab is not null
+         and (crosstab->>'version')::int = 2
+         and coalesce(crosstab_status, 'committed') <> 'evidence'
+         and crosstab ? 'savedRequest'
+       order by table_index desc
+       limit $4`,
+      [runId, documentId, FIRST_CROSSTAB_INDEX, limit],
+    );
+    return r.rows.map((row) => ({ id: row.id, label: row.label ?? "Crosstab", status: row.status ?? "committed", request: row.request }));
+  });
+}
+
 export async function listCrosstabs(tenantId: string, runId: string, documentId: string): Promise<CrosstabListItem[]> {
   // IMP-005: not `.catch(() => ({}))` - see loadVariableDictionary above. `currentOverrides`
   // feeds the `stale` flag below by comparison against each table's saved snapshot; silently

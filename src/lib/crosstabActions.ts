@@ -18,6 +18,7 @@ import {
 } from "./crosstabs";
 import { planStarterTables } from "./starterTables";
 import { planCrosstabFromText, type AskPlan } from "./crosstabAsk";
+import { ASK_MEMORY_REQUESTS } from "./crosstabAskShared";
 import type { CategoryList, CrosstabRequest, CrosstabResult, VariableDictionary } from "./parseStatsFile";
 import { summarizeCrosstabTable, type CrosstabInsights } from "./crosstabInsights";
 import { requireTenantId } from "./requestContext";
@@ -221,10 +222,22 @@ export async function setCrosstabTextAction(runId: string, tableId: string, titl
 }
 
 /** Turns a plain-English request into a table setup for the researcher to review. Nothing is built here. */
-export async function askCrosstabAction(runId: string, documentId: string, text: string): Promise<{ ok: true; plan: AskPlan } | Fail> {
+export async function askCrosstabAction(
+  runId: string,
+  documentId: string,
+  text: string,
+  earlier: unknown = [],
+): Promise<{ ok: true; plan: AskPlan } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    return { ok: true, plan: await planCrosstabFromText(TENANT_ID, runId, documentId, text) };
+    // The panel's earlier requests come from the client: kept to the last few, as plain capped
+    // strings, and only ever shown to the model as context.
+    const list = (Array.isArray(earlier) ? earlier : [])
+      .filter((e): e is { request: unknown; summary: unknown } => !!e && typeof e === "object")
+      .map((e) => ({ request: String(e.request ?? "").slice(0, 600), summary: String(e.summary ?? "").slice(0, 400) }))
+      .filter((e) => e.request.trim().length > 0)
+      .slice(-ASK_MEMORY_REQUESTS);
+    return { ok: true, plan: await planCrosstabFromText(TENANT_ID, runId, documentId, text, { earlier: list }) };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }

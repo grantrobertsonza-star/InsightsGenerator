@@ -22,7 +22,7 @@ import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import type { CrosstabInsights } from "@/lib/crosstabInsights";
 import { QuickChart, Histogram, buildRCode } from "./CrosstabExtras";
 import FilterBuilder from "./CrosstabFilters";
-import CrosstabAsk from "./CrosstabAsk";
+import CrosstabAsk, { type AskHistory } from "./CrosstabAsk";
 import { planStarterTables } from "@/lib/starterTables";
 import { varTypeOf, type VarType } from "@/lib/crosstabVariableTypes";
 import { listEvidenceTablesAction, promoteEvidenceTableAction, type EvidenceTableListing } from "@/lib/objectiveEvidenceActions";
@@ -314,6 +314,8 @@ export default function CrosstabWorkspace({
   // Don't know, refused and not applicable stay out of percentage bases unless the researcher asks for them.
   const [excludeDk, setExcludeDk] = useState(true);
   const [filters, setFilters] = useState<CrosstabFilter[]>([]);
+  // SemanticTabs' earlier requests (CrosstabAsk), kept here so they outlive the panel.
+  const [askHistory, setAskHistory] = useState<AskHistory>({ documentId, items: [] });
   // Survey design for Taylor series variance. Suggested from the variable names, via the same
   // heuristic (./lib/surveyDesign) every automatic caller (NPS, Objectives, brand health, CSM,
   // wave tracking) now resolves through too - previously this workspace kept its own inline copy
@@ -1321,7 +1323,7 @@ export default function CrosstabWorkspace({
                 )}
               </div>
             )}
-            {entry === "ask" && dict && <CrosstabAsk runId={runId} documentId={documentId} dict={dict} busy={isPending} onUse={useAsked} />}
+            {entry === "ask" && dict && <CrosstabAsk runId={runId} documentId={documentId} dict={dict} busy={isPending} onUse={useAsked} history={askHistory} onHistory={setAskHistory} />}
             {entry === "starter" && starterPlan && starterPlan.banners.length > 0 && starterPlan.items.length > 0 && !hasStarter && (
               <div
                 className={`rounded-lg border p-3 text-xs ${starterPlan.small ? "border-primary/40 bg-primary-light" : "border-border bg-slate-50"}`}

@@ -53,3 +53,30 @@ ignored).
 rule, so its mean row is qualified although many such lists are ratings; in an SPSS file,
 an ordinal measurement level removes it. Tables built before this change keep their labels until
 rebuilt. Only the mean is offered; median, NET and net score requests are refused and sent back.
+
+## Memory between requests (Grant, 2026-10-22)
+
+"Switch the rows and columns of the table just produced" was read on its own and got a placeholder
+plan. `askCrosstabAction` now passes `planCrosstabFromText` an `AskMemory`:
+
+- **Tables.** `loadRecentTableDefinitions` (`crosstabs.ts`) reads the five newest tables of this data
+  file (`table_index >= 100`, version 2, not Objectives evidence tables, with a `savedRequest`),
+  newest first. Each is listed to the model by id, label, rows, columns and filters by variable name
+  (`describeTable`); nets are named as not carried over. Read on the server from what was built, so
+  it survives a reload and a deleted table is forgotten.
+- **Requests.** The panel's last `ASK_MEMORY_REQUESTS` (3) requests on this file, with the code-written
+  summary each produced. Held by `CrosstabWorkspace` (so they survive leaving the SemanticTabs panel),
+  kept per data file, cleared by "Forget my earlier requests", gone after a reload. They come from the
+  client: the action keeps at most three, as capped strings, and they are context for the model only.
+- **Starting from a table.** `submit_plan` takes `based_on_table`; validation accepts only an id that
+  was listed, otherwise sends it back. The plan carries `basedOn` (shown as "Starts from") and a Check
+  item saying only variables and filters are taken; nets, combined columns, weight, tests and
+  corrections are set as usual. Every plan is still checked against the file and confirmed.
+- **Failure.** A failed table read is not "no tables": the model is told they could not be read, no
+  plan can be based on one, and the plan's Check list says so.
+- Objectives' evidence questions call `planCrosstabFromText` without memory, unchanged.
+
+Tests: `crosstabAskMemory.db.test.ts` (real PostgreSQL; model and dictionary mocked: listing order and
+exclusions, transpose, unlisted id refused then corrected, last three requests, no memory, no tables,
+failed read); browser `e2e/ui/crosstab-ask-memory.check.mjs` (transpose of the table just produced,
+Forget, after a reload). Limit: the panel's requests are not kept across a reload.

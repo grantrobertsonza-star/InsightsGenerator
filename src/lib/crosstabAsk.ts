@@ -1,10 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
-import { loadCategories, loadVariableDictionary } from "./crosstabs";
+import { loadCategories, loadRecentTableDefinitions, loadVariableDictionary, type RecentTableDefinition } from "./crosstabs";
 import type { CrosstabFilter, CrosstabGroup, CrosstabRowItem, VariableDictionary, VariableInfo } from "./parseStatsFile";
 import { loadVariableOverrides, type VariableOverrides } from "./variableOverrides";
 import { isLookupEligible, isStringCategory } from "./variableKinds";
+import { ASK_MEMORY_REQUESTS } from "./crosstabAskShared";
 
 /** What a plain-English request turns into. Nothing runs from this: the researcher reads it and decides. */
 export type AskPlan = {
@@ -23,7 +24,27 @@ export type AskPlan = {
   means: string[];
   /** Row keys asked for a mean that the engine already shows as an average only, with no distribution. */
   averageOnly: string[];
+  /**
+   * The earlier table of this file the request referred to and the plan starts from ("switch the
+   * rows and columns of the table just produced"), checked against the tables listed to the model;
+   * null when the request stands on its own.
+   */
+  basedOn: { id: string; label: string } | null;
 };
+
+/**
+ * What SemanticTabs remembers between requests (Grant, 2026-10-22: it had no memory of the
+ * previous request). The tables are read on the server from what was actually built from this
+ * file; the earlier requests come from the open panel and are context for the model only: every
+ * plan is still checked against the data file, and the researcher still confirms it.
+ */
+export type AskMemory = {
+  /** This panel's earlier requests on this file, oldest first, with the summary each produced. */
+  earlier: { request: string; summary: string }[];
+};
+
+/** How many of this file's newest tables the model is shown. */
+const ASK_MEMORY_TABLES = 5;
 
 /** The statistics a plain-English request can ask for on a row, besides its answers. */
 export const PLAN_STATISTICS = ["mean"] as const;
@@ -133,6 +154,29 @@ function search(dict: VariableDictionary, query: string): string {
   ].join("\n");
 }
 
+/** One earlier table, as the model sees it: its id, label, rows, columns and filters by variable name. */
+function describeTable(t: RecentTableDefinition, dict: VariableDictionary, newest: boolean): string {
+  const byName = new Map(dict.variables.map((v) => [v.name, v]));
+  const name = (n: string) => {
+    const key = n.startsWith("set:") ? n.slice(4) : n;
+    const label = byName.get(key)?.label ?? (dict.sets ?? []).find((st) => st.key === key)?.label;
+    return label && label !== key ? `${key} (${label})` : key;
+  };
+  const req = t.request ?? ({} as RecentTableDefinition["request"]);
+  const rows = (req.rowItems ?? []).filter((r) => r.kind !== "nets").map((r) => name(r.key));
+  const hasNets = (req.rowItems ?? []).some((r) => r.kind === "nets");
+  const columns = (req.columnVars ?? []).map(name);
+  const filters = (req.filters ?? []).map((f) =>
+    f.op === "between" ? `${f.variable} between ${f.min ?? "any"} and ${f.max ?? "any"}` : `${f.variable} ${f.op} ${(f.values ?? []).map((v) => `"${v}"`).join(", ")}`,
+  );
+  return [
+    `table ${t.id}${newest ? " (the newest, the one just produced)" : ""}: "${t.label}"`,
+    `  rows: ${rows.join("; ") || "none"}${hasNets ? " (plus nets, not carried over)" : ""}`,
+    `  columns: ${columns.join("; ") || "none (everyone)"}`,
+    `  filters: ${filters.join("; ") || "none"}`,
+  ].join("\n");
+}
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "search_variables",
@@ -180,6 +224,7 @@ const TOOLS: Anthropic.Tool[] = [
           },
         },
         unclear: { type: "array", items: { type: "string" }, description: "Anything you were unsure about, assumed, or could not do." },
+        based_on_table: { type: "string", description: "Only when the request refers to an earlier table listed in the first message: that table's id." },
       },
       required: ["summary", "rows", "columns", "filters", "unclear"],
     },
@@ -196,6 +241,7 @@ const SYSTEM =
   "- Use search_variables to find variables. Never invent a variable name or an answer label. If you cannot find something, leave it out and say so in 'unclear'.\n" +
   "- Do not choose a weight, a test or a correction; the researcher sets those.\n" +
   "- If the request asks for a mean, an average or a mean score, list that row under 'statistics' with statistic 'mean'. Never describe a statistic in the summary that you did not list there.\n" +
+  "- The first message may list tables already built from this data file, newest first, and the researcher's earlier requests in this panel. When the request refers to one of those tables ('the table just produced', 'that table', 'the last one', 'same again but women only'), start from that table's rows, columns and filters, apply the change asked for, and give its id as based_on_table. 'Switch' or 'swap' rows and columns (transpose) means its rows become the columns and its columns the rows, filters unchanged. If it is not clear which table is meant, use the newest and say so in 'unclear'. When the request does not refer to an earlier table, ignore the list and leave based_on_table out.\n" +
   "- If the request is vague, give your best setup and list the assumptions in 'unclear'. Finish by calling submit_plan.";
 
 /** Checks a submitted plan against the data file. Returns the plan, or a list of problems for the model to fix. */
@@ -205,6 +251,7 @@ async function validate(
   documentId: string,
   dict: VariableDictionary,
   raw: Record<string, unknown>,
+  listed: RecentTableDefinition[],
 ): Promise<{ plan: AskPlan } | { errors: string[] }> {
   const errors: string[] = [];
   const byName = new Map(dict.variables.map((v) => [v.name, v]));
@@ -300,6 +347,19 @@ async function validate(
       errors.push(`Filter "${name}": unknown op "${op}".`);
     }
   }
+  // The earlier table the plan starts from must be one the model was shown.
+  let basedOn: AskPlan["basedOn"] = null;
+  const basedOnId = typeof raw.based_on_table === "string" ? raw.based_on_table.trim() : "";
+  if (basedOnId) {
+    const t = listed.find((x) => x.id === basedOnId);
+    if (!t) errors.push(`based_on_table "${basedOnId}" is not one of the listed tables. Use a listed id, or leave it out.`);
+    else {
+      basedOn = { id: t.id, label: t.label };
+      notes.push(
+        `Starts from the earlier table "${t.label}": its variables and filters only. Nets, combined columns and any weight, test or correction are set below as usual.`,
+      );
+    }
+  }
   if (errors.length) return { errors };
   const plan = { columns, rows, filters, means, averageOnly };
   return {
@@ -307,15 +367,41 @@ async function validate(
       ...plan,
       summary: describePlan(plan),
       unclear: [...arr(raw.unclear).map(String).filter(Boolean), ...notes],
+      basedOn,
     },
   };
 }
 
-export async function planCrosstabFromText(tenantId: string, runId: string, documentId: string, text: string): Promise<AskPlan> {
+/**
+ * `memory` is given by SemanticTabs only (askCrosstabAction): the newest tables of this file and the
+ * panel's earlier requests are put before the request. Without it (Objectives' evidence questions)
+ * each request is read on its own, as before.
+ */
+export async function planCrosstabFromText(tenantId: string, runId: string, documentId: string, text: string, memory?: AskMemory): Promise<AskPlan> {
   const request = text.trim().slice(0, 600);
   if (request.length < 5) throw new Error("Describe the table you want, for example: income by gender for people aged 24 to 36.");
   const dict = await loadVariableDictionary(tenantId, runId, documentId);
-  const messages: Anthropic.MessageParam[] = [{ role: "user", content: `Request: ${request}` }];
+  let listed: RecentTableDefinition[] = [];
+  let tablesUnreadable = false;
+  const context: string[] = [];
+  if (memory) {
+    try {
+      listed = await loadRecentTableDefinitions(tenantId, runId, documentId, ASK_MEMORY_TABLES);
+    } catch {
+      // Not "no earlier tables": the request is read on its own and the plan says so.
+      tablesUnreadable = true;
+    }
+    if (listed.length) context.push(`Tables already built from this data file, newest first:\n${listed.map((t, i) => describeTable(t, dict, i === 0)).join("\n")}`);
+    else if (tablesUnreadable) context.push("The tables already built from this data file could not be read just now.");
+    else context.push("No tables have been built from this data file yet.");
+    const earlier = memory.earlier.slice(-ASK_MEMORY_REQUESTS);
+    if (earlier.length) context.push(`Earlier requests in this panel, oldest first:\n${earlier.map((e) => `- "${e.request}" -> ${e.summary}`).join("\n")}`);
+  }
+  const messages: Anthropic.MessageParam[] = [{ role: "user", content: [...context, `Request: ${request}`].join("\n\n") }];
+  const withMemoryNote = (plan: AskPlan): AskPlan =>
+    tablesUnreadable
+      ? { ...plan, unclear: [...plan.unclear, "The earlier tables of this file could not be read just now, so a reference to one (such as \"the table just produced\") could not be followed. Check the setup, or ask again."] }
+      : plan;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await anthropic.messages.create({
@@ -346,8 +432,8 @@ export async function planCrosstabFromText(tenantId: string, runId: string, docu
           results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: e instanceof Error ? e.message : "Could not read the categories." });
         }
       } else if (call.name === "submit_plan") {
-        const checked = await validate(tenantId, runId, documentId, dict, input);
-        if ("plan" in checked) return checked.plan;
+        const checked = await validate(tenantId, runId, documentId, dict, input, listed);
+        if ("plan" in checked) return withMemoryNote(checked.plan);
         results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: `Fix these and submit again:\n${checked.errors.join("\n")}` });
       } else {
         results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: "Unknown tool." });
