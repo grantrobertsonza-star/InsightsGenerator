@@ -143,7 +143,8 @@ import TranscriptQualityPanel from "./TranscriptQualityPanel";
 import CodebookPanel, { type CodebookView } from "./CodebookPanel";
 import CodingExtras from "./CodingExtras";
 import CodingAnalysisPanel from "./CodingAnalysisPanel";
-import TranscriptSetupTable, {
+import {
+  SourcesPane,
   CodeGate,
   ImportDetailProvider,
   SelectedFileDetail,
@@ -5399,15 +5400,7 @@ export default async function RunPage({
                 storageKey="import"
                 // The left list may take up to half the width, as Research quality's panes can (Grant, 2026-10-21).
                 leftMaxShare={0.5}
-                left={
-                  <Pane
-                    side="plain"
-                    title="Sources"
-                    badge={<span className="text-xs font-medium text-muted">{`(${importRows.length})`}</span>}
-                  >
-                    <TranscriptSetupTable />
-                  </Pane>
-                }
+                left={<SourcesPane count={importRows.length} />}
                 middle={
                   <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected source">
                     <SelectedFileDetail />

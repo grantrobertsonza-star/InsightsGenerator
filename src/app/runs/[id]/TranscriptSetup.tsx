@@ -27,7 +27,6 @@ import {
   TYPE_GROUP_FILTERS,
   type SourceGroup,
   type SourceSort,
-  needsAttention,
   processingState,
   type AcceptanceState,
   type ProcessingState,
@@ -41,6 +40,7 @@ import type {
   TranscriptSetup,
 } from "@/lib/transcriptSetup";
 import OpenFileButton from "./OpenFileButton";
+import { Pane } from "./ThreePane";
 
 export const SESSION_LABEL = {
   individual: "One person at a time (individual interviews)",
@@ -939,32 +939,17 @@ function TranscriptSetupForm({ runId, row }: { runId: string; row: Row }) {
  * and acceptance states, its wave and links, and a menu with View original and Delete. Selecting a row
  * shows it on the right. The filters are a view only: a hidden source keeps its setup and its state.
  */
-export default function TranscriptSetupTable() {
+export default function TranscriptSetupTable({ rolledUp = false }: { rolledUp?: boolean }) {
   const { selectedId, select, rows } = useContext(FileDetailContext);
   const [needle, setNeedle] = useState("");
   const [role, setRole] = useState("all");
   const [state, setState] = useState<SourceStateFilter>("all");
   const [sort, setSort] = useState<SourceSort>("newest");
-  // Rolled up, only this bar shows; the filters and the selection are kept (Grant, 2026-10-22).
-  const [rolledUp, setRolledUp] = useState(false);
   const roles = useMemo(() => [...new Set(rows.map((r) => r.kindLabel))], [rows]);
   const ordered = useMemo(() => sortSources(rows, sort), [rows, sort]);
   if (rows.length === 0) return null;
   return (
     <div className="flex min-h-0 flex-col gap-3" data-testid="source-list">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">{`${rows.length} ${rows.length === 1 ? "source" : "sources"}`}</span>
-        <button
-          type="button"
-          aria-expanded={!rolledUp}
-          aria-controls="source-list-body"
-          onClick={() => setRolledUp((v) => !v)}
-          className="rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-slate-400"
-          data-testid="source-list-toggle"
-        >
-          {rolledUp ? "Show sources" : "Roll up"}
-        </button>
-      </div>
       <div id="source-list-body" className={rolledUp ? "hidden" : "flex min-h-0 flex-col gap-3"}>
       <input
         type="search"
@@ -1019,12 +1004,44 @@ export default function TranscriptSetupTable() {
   );
 }
 
+/**
+ * The Sources pane: its header carries the count and the Roll up control (Grant, 2026-10-22: the
+ * control moved up into the header and the second "7 sources" line removed). Rolled up, only the
+ * header shows; the search, filters, sort and selection are kept, and are not remembered after a
+ * reload.
+ */
+export function SourcesPane({ count }: { count: number }) {
+  const [rolledUp, setRolledUp] = useState(false);
+  return (
+    <Pane
+      side="plain"
+      title="Sources"
+      badge={<span className="text-xs font-medium text-muted">{`(${count})`}</span>}
+      actions={
+        count > 0 ? (
+          <button
+            type="button"
+            aria-expanded={!rolledUp}
+            aria-controls="source-list-body"
+            onClick={() => setRolledUp((v) => !v)}
+            className="rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-slate-400"
+            data-testid="source-list-toggle"
+          >
+            {rolledUp ? "Show sources" : "Roll up"}
+          </button>
+        ) : null
+      }
+    >
+      <TranscriptSetupTable rolledUp={rolledUp} />
+    </Pane>
+  );
+}
+
 // Each row decides for itself whether the filters keep it, because its acceptance comes from its live
 // setup form (useSourceState); the note below counts the same way.
 function SourceListItem({ row, selected, onSelect, needle, role, state }: { row: Row; selected: boolean; onSelect: () => void; needle: string; role: string; state: SourceStateFilter }) {
   const s = useSourceState(row);
   const shown = keptByFilters(row, s, needle, role, state);
-  const attention = needsAttention(s.processing, s.previewUnverified);
   // Links always name the file (Grant, 2026-10-22: some rows said "1 linked document", others named
   // it): a data file or transcript names the questionnaire or guide linked to it, with a count of any
   // more; a questionnaire or guide names what it is linked to.
@@ -1064,7 +1081,10 @@ function SourceListItem({ row, selected, onSelect, needle, role, state }: { row:
           <span className="flex flex-wrap gap-1">
             <Chip tone={processingTone(s.processing)}>{PROCESSING_LABEL[s.processing]}</Chip>
             <Chip tone={acceptanceTone(s.acceptance)} testId="source-row-acceptance">{ACCEPTANCE_LABEL[s.acceptance]}</Chip>
-            {attention && <Chip tone="amber">Needs attention</Chip>}
+            {/* Grant, 2026-10-22: "Needs attention" beside "Partly read" said the same thing twice. The
+                read chip already says a failed or partial read; the only other cause of attention, an
+                unverified preview, gets its own words. The list's Needs attention filter is unchanged. */}
+            {s.previewUnverified && <Chip tone="amber">Preview not verified</Chip>}
           </span>
         </span>
       </button>

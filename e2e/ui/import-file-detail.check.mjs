@@ -52,6 +52,19 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(page.getByTestId("source-row")).toHaveCount(3);
   const questionnaireRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select questionnaire.docx", exact: true }) });
   await expect(questionnaireRow.getByTestId("linked-instrument")).toContainText("Linked to golden-survey-documented.xlsx");
+  // The Sources pane's own header holds the count and Roll up (Grant, 2026-10-22); no second count
+  // line. Rolled up, the list goes and its header stays; shown again, the rows come back.
+  const sourcesPane = page.locator("section", { has: page.getByRole("heading", { name: "Sources", exact: true, level: 3 }) }).filter({ has: page.getByTestId("source-list-toggle") }).first();
+  await expect(sourcesPane.getByRole("heading", { name: "Sources", exact: true, level: 3 })).toBeVisible();
+  await expect(sourcesPane.getByText("(3)", { exact: true })).toBeVisible();
+  await expect(sourcesPane.getByText(/^\d+ sources?$/i)).toHaveCount(0);
+  const rollUp = sourcesPane.getByTestId("source-list-toggle");
+  await expect(rollUp).toHaveText("Roll up");
+  await rollUp.click();
+  await expect(rollUp).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("source-row").filter({ visible: true })).toHaveCount(0);
+  await rollUp.click();
+  await expect(page.getByTestId("source-row").filter({ visible: true })).toHaveCount(3);
 
   // 9. The project title and the section heading share one left edge (1600 px wide viewport).
   const titleBox = await page.locator("h1").first().boundingBox();
