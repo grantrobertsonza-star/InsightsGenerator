@@ -2207,6 +2207,11 @@ def _association(T):
     return out
 
 
+# The qualification on a requested mean of codes that may not be a scale. The same words are
+# UNORDERED_MEAN_NOTE in src/lib/crosstabAsk.ts, which the plan's Check item quotes.
+UNORDERED_MEAN_NOTE = "mean of the answer codes, which may not be in order"
+
+
 _ORDER_RE = re.compile(
     r"agree|disagree|satisf|likel|often|never|always|sometimes|good|poor|excellent|important|"
     r"confident|trust|easy|difficult|strongly|very |not at all|a lot|a little|extent|worse|better|"
@@ -3208,6 +3213,15 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     row.pop("desc", None)
                     row.pop("eta", None)
                     row["label"] = f"Mean score: {g['label']}"
+                    # A mean asked for in plain English (crosstabAsk.ts meanGroupFor sets
+                    # qualifyCodes) can land on codes that are not a scale (regions, brands). The
+                    # same ordered-scale rule that decides the default mean below
+                    # (_is_ordered_scale) decides whether the row says so, in its own label, so the
+                    # qualification reaches the screen and every export that prints row labels.
+                    # The figure is unchanged. Groups without the flag keep their label as before.
+                    if g.get("qualifyCodes") and not _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None)):
+                        row["label"] += f" ({UNORDERED_MEAN_NOTE})"
+                        row["codesMayBeUnordered"] = True
                     row["isNet"] = True
                     row["isScore"] = True
                     row["isMean"] = True

@@ -77,17 +77,21 @@ export default function CrosstabAsk({
       {error && <p className="text-danger">{error}</p>}
       {plan && (
         <div className="space-y-2 rounded border border-border bg-white p-2">
-          <p className="text-foreground">{plan.summary}</p>
+          <p className="text-foreground" data-testid="crosstab-ask-summary">{plan.summary}</p>
           <dl className="grid grid-cols-[5rem_1fr] gap-y-1">
             <dt className="text-muted">Rows</dt>
-            <dd>{plan.rows.length ? plan.rows.map((r) => r.label).join("; ") : "none (describing the columns on their own)"}</dd>
+            <dd data-testid="crosstab-ask-rows">
+              {plan.rows.length
+                ? plan.rows.map((r) => (plan.averageOnly.includes(r.key) ? `${r.label} (average)` : plan.means.includes(r.key) ? `${r.label} (mean, then answers)` : r.label)).join("; ")
+                : "none (describing the columns on their own)"}
+            </dd>
             <dt className="text-muted">Columns</dt>
             <dd>{plan.columns.length ? plan.columns.map((c) => c.label).join("; ") : "everyone (no split)"}</dd>
             <dt className="text-muted">Filters</dt>
             <dd>{plan.filters.length ? plan.filters.map((f) => filterText(f, dict)).join("; ") : "none"}</dd>
           </dl>
           {plan.unclear.length > 0 && (
-            <ul className="list-disc space-y-0.5 pl-5 text-amber-700">
+            <ul className="list-disc space-y-0.5 pl-5 text-amber-700" data-testid="crosstab-ask-check">
               {plan.unclear.map((u, i) => (
                 <li key={i}>{u}</li>
               ))}

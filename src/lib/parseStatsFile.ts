@@ -437,6 +437,13 @@ export type CrosstabGroup = {
   minus?: string[];
   /** Where the row sits: after the answers (default), or above or below the answers it summarises. */
   place?: "end" | "above" | "below";
+  /**
+   * Mean only: when the engine does not judge the answers an ordered scale (its _is_ordered_scale:
+   * the file's measurement level, a numbered scale, or scale wording in the labels), the row's label
+   * gains "(mean of the answer codes, which may not be in order)" and the row carries
+   * codesMayBeUnordered. Set by plain-English mean requests (crosstabAsk.ts).
+   */
+  qualifyCodes?: boolean;
 };
 export type CrosstabRequest = {
   columnVars: string[];
@@ -532,6 +539,8 @@ export type CrosstabRow = {
   /** A net score or mean score row: shown as points or an average, not a percentage. */
   isScore?: boolean;
   isMean?: boolean;
+  /** A requested mean whose codes the engine does not judge an ordered scale (CrosstabGroup.qualifyCodes); its label says so. */
+  codesMayBeUnordered?: boolean;
   /** Descriptive statistics of an average or grid row. */
   desc?: CrosstabDesc | null;
   /** Eta of an average against each banner variable. */

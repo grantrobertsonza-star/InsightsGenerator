@@ -2,19 +2,79 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { loadCategories, loadVariableDictionary } from "./crosstabs";
-import type { CrosstabFilter, CrosstabRowItem, VariableDictionary, VariableInfo } from "./parseStatsFile";
+import type { CrosstabFilter, CrosstabGroup, CrosstabRowItem, VariableDictionary, VariableInfo } from "./parseStatsFile";
+import { loadVariableOverrides, type VariableOverrides } from "./variableOverrides";
 import { isLookupEligible, isStringCategory } from "./variableKinds";
 
 /** What a plain-English request turns into. Nothing runs from this: the researcher reads it and decides. */
 export type AskPlan = {
-  /** One plain sentence saying what was understood. */
+  /**
+   * One plain sentence saying what will be built, written by code from the checked rows, columns,
+   * filters and statistics (describePlan), never the model's own words, so it cannot promise a
+   * statistic the table does not show (Grant, 2026-10-22: "Mean of..." over a frequency table).
+   */
   summary: string;
   columns: { name: string; label: string }[];
   rows: CrosstabRowItem[];
   filters: CrosstabFilter[];
-  /** Things the model was not sure about, or could not do, for the researcher to settle. */
+  /** Things the model was not sure about, or could not do, and how each requested mean is worked out, for the researcher to settle. */
   unclear: string[];
+  /** Row keys that get a mean row (a CrosstabGroup of kind "mean" above the answers). */
+  means: string[];
+  /** Row keys asked for a mean that the engine already shows as an average only, with no distribution. */
+  averageOnly: string[];
 };
+
+/** The statistics a plain-English request can ask for on a row, besides its answers. */
+export const PLAN_STATISTICS = ["mean"] as const;
+
+// The engine's NUMERIC_AS_CATEGORIES_MAX (api/parse-stats-file.py): an unlabelled numeric variable
+// with more distinct values than this is tabulated as an average, not as a frequency table.
+const ENGINE_NUMERIC_AS_CATEGORIES_MAX = 25;
+
+/**
+ * Whether the engine tabulates this row as an average only (its numeric branch, which ignores
+ * groups): a numeric variable set as discrete or continuous, or (not set as categorical) an
+ * unlabelled numeric one with many distinct values. Mirrors the branch condition in the engine's
+ * crosstab; crosstabAskMeanEngine.test.ts checks both sides agree.
+ */
+export function tabulatedAsAverage(v: Pick<VariableInfo, "numeric" | "labelled" | "nDistinct">, override: VariableOverrides[string] | undefined): boolean {
+  if (!v.numeric) return false;
+  if (override?.type === "categorical") return false;
+  if (override?.type === "discrete" || override?.type === "continuous") return true;
+  return !v.labelled && v.nDistinct > ENGINE_NUMERIC_AS_CATEGORIES_MAX;
+}
+
+/**
+ * The qualification a requested mean row carries in its own label when the engine does not judge
+ * the answers an ordered scale. The engine adds it (UNORDERED_MEAN_NOTE in api/parse-stats-file.py,
+ * same words); this copy is what the plan's Check item quotes.
+ */
+export const UNORDERED_MEAN_NOTE = "mean of the answer codes, which may not be in order";
+
+/**
+ * The mean row the engine computes for a row (kind "mean": the weighted mean of the numeric answer
+ * codes over the table's valid cases, leaving out declared missing values and don't know, refused
+ * and not applicable answers). Placed above the answers, so the distribution stays below it.
+ * qualifyCodes asks the engine to say so in the label when the codes may not be a scale; whether
+ * they are is the engine's one ordered-scale rule (_is_ordered_scale), not decided here.
+ */
+export function meanGroupFor(label: string): CrosstabGroup {
+  return { label, cats: [], kind: "mean", place: "above", qualifyCodes: true };
+}
+
+/** The plain sentence a plan shows, from what will actually be built. */
+export function describePlan(plan: Pick<AskPlan, "rows" | "columns" | "filters" | "means" | "averageOnly">, filterCount = plan.filters.length): string {
+  const named = (r: CrosstabRowItem) => (r.label && r.label !== r.key ? `${r.label} (${r.key})` : r.key);
+  const rows = plan.rows.map((r) =>
+    plan.averageOnly.includes(r.key) ? `the average of ${named(r)}` : plan.means.includes(r.key) ? `the mean and answers of ${named(r)}` : `the answers of ${named(r)}`,
+  );
+  const what = rows.length ? rows.join("; ") : "the columns on their own";
+  const by = plan.columns.length ? `by ${plan.columns.map((c) => c.label || c.name).join(" and ")}` : "for everyone, no column split";
+  const who = filterCount === 0 ? "" : filterCount === 1 ? ", for the people who meet 1 filter" : `, for the people who meet all ${filterCount} filters`;
+  const sentence = `A table of ${what}, ${by}${who}.`;
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
 
 const MAX_TURNS = 10;
 const STOP = new Set(["a", "an", "the", "of", "for", "and", "or", "by", "vs", "versus", "with", "in", "on", "to", "from", "who", "are", "is", "that", "people", "aged", "age", "years", "year", "want", "like", "i", "table", "crosstab", "cross", "tabulation", "show", "me", "between", "than", "at", "least", "most"]);
@@ -107,6 +167,18 @@ const TOOLS: Anthropic.Tool[] = [
             required: ["variable", "op"],
           },
         },
+        statistics: {
+          type: "array",
+          description: "Only when the request asks for a mean, an average or a mean score of a row: one entry per such row. The answers are always shown too.",
+          items: {
+            type: "object",
+            properties: {
+              row: { type: "string", description: "A variable name from rows." },
+              statistic: { type: "string", enum: [...PLAN_STATISTICS] },
+            },
+            required: ["row", "statistic"],
+          },
+        },
         unclear: { type: "array", items: { type: "string" }, description: "Anything you were unsure about, assumed, or could not do." },
       },
       required: ["summary", "rows", "columns", "filters", "unclear"],
@@ -123,6 +195,7 @@ const SYSTEM =
   "- For a labelled variable use 'in' or 'notIn' with the exact labels from get_categories.\n" +
   "- Use search_variables to find variables. Never invent a variable name or an answer label. If you cannot find something, leave it out and say so in 'unclear'.\n" +
   "- Do not choose a weight, a test or a correction; the researcher sets those.\n" +
+  "- If the request asks for a mean, an average or a mean score, list that row under 'statistics' with statistic 'mean'. Never describe a statistic in the summary that you did not list there.\n" +
   "- If the request is vague, give your best setup and list the assumptions in 'unclear'. Finish by calling submit_plan.";
 
 /** Checks a submitted plan against the data file. Returns the plan, or a list of problems for the model to fix. */
@@ -154,6 +227,50 @@ async function validate(
   }
   if (rows.length === 0 && columns.length === 0) errors.push("The plan has no rows and no columns.");
 
+  // Statistics (Grant, 2026-10-22): a mean row above a row's answers. Checked here, at the server
+  // boundary: a supported statistic, on a row of this plan. A row that cannot have a mean of codes
+  // (text answers, or a set of questions) keeps its answers and the plan says why; a row the engine
+  // shows as an average only gets no group.
+  const means: string[] = [];
+  const averageOnly: string[] = [];
+  const notes: string[] = [];
+  let overrides: VariableOverrides | null = null;
+  for (const st of arr(raw.statistics) as Record<string, unknown>[]) {
+    const rowKey = String(st?.row ?? "");
+    const statistic = String(st?.statistic ?? "");
+    if (!(PLAN_STATISTICS as readonly string[]).includes(statistic)) {
+      errors.push(`Statistic "${statistic}" for "${rowKey}" is not supported. Use "mean", or leave it out.`);
+      continue;
+    }
+    const item = rows.find((r) => r.key === rowKey);
+    if (!item) {
+      errors.push(`Statistic row "${rowKey}" is not one of the plan's rows.`);
+      continue;
+    }
+    if (means.includes(item.key) || averageOnly.includes(item.key)) continue;
+    const v = item.vars.length === 1 && !item.kind ? byName.get(item.vars[0]) : undefined;
+    if (!v) {
+      notes.push(`No mean for ${item.label}: it is a set of questions (multiple-response, grid or battery), so it has no single answer code to average. The table shows its answers.`);
+      continue;
+    }
+    if (!v.numeric) {
+      notes.push(`No mean for ${v.label || v.name}: its answers are text, so there are no answer codes to average. The table shows its answers.`);
+      continue;
+    }
+    overrides ??= await loadVariableOverrides(tenantId, runId, documentId);
+    if (tabulatedAsAverage(v, overrides[v.name])) {
+      averageOnly.push(item.key);
+      notes.push(`${v.label || v.name} is shown as an average (it is set as a number, or has many numeric values), so the table gives its average over the people who answered, with the table's weight, and no list of answers.`);
+      continue;
+    }
+    item.groups = [...(item.groups ?? []), meanGroupFor(item.label || item.key)];
+    means.push(item.key);
+    notes.push(
+      `The mean of ${v.label || v.name} is the mean of its numeric answer codes over the people who answered, with the table's weight; declared missing values and don't know, refused and not applicable answers are left out.` +
+        ` If its answers are not an ordered scale (such as regions or brands), the mean row is labelled "${UNORDERED_MEAN_NOTE}", and it is only a score if the codes run from low to high.`,
+    );
+  }
+
   const filters: CrosstabFilter[] = [];
   for (const f of arr(raw.filters) as Record<string, unknown>[]) {
     const name = String(f.variable ?? "");
@@ -184,13 +301,12 @@ async function validate(
     }
   }
   if (errors.length) return { errors };
+  const plan = { columns, rows, filters, means, averageOnly };
   return {
     plan: {
-      summary: String(raw.summary ?? ""),
-      columns,
-      rows,
-      filters,
-      unclear: arr(raw.unclear).map(String).filter(Boolean),
+      ...plan,
+      summary: describePlan(plan),
+      unclear: [...arr(raw.unclear).map(String).filter(Boolean), ...notes],
     },
   };
 }
