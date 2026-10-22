@@ -73,7 +73,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
        from findings c
        ${findingSourceSql("c").join}
        where c.run_id = $1${onlyAccepted ? " and c.status = 'accepted'" : ""}
-       order by c.theme nulls last, c.created_at`,
+       order by c.theme nulls last, c.created_at, c.id`,
       [runId]
     );
     return [runResult.rows[0], findingsResult.rows] as const;

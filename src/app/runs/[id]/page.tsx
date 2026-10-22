@@ -915,6 +915,8 @@ async function getWordingEdits(runId: string): Promise<WordingEdits> {
   }
 }
 
+// V-R1000-01: findings saved in one statement share a created_at; the id breaks the tie so the list
+// keeps one order across reloads (the exports use the same key after their theme grouping).
 async function getFindings(runId: string): Promise<Finding[]> {
   const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
@@ -935,7 +937,7 @@ async function getFindings(runId: string): Promise<Finding[]> {
          left join document_tables dt2 on dt2.id = c.source_table_id
          left join documents d2 on d2.id = dt2.document_id
          where c.run_id = $1
-         order by c.created_at`,
+         order by c.created_at, c.id`,
         [runId],
       );
       return result.rows;
@@ -969,7 +971,7 @@ async function getFindings(runId: string): Promise<Finding[]> {
          left join document_tables dt2 on dt2.id = c.source_table_id
          left join documents d2 on d2.id = dt2.document_id
          where c.run_id = $1
-         order by c.created_at`,
+         order by c.created_at, c.id`,
         [runId],
       );
       // `source_table_document_id` is now a real selected column (present whenever the finding
