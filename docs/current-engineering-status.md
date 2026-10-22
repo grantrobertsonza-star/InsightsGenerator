@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): M-BATCH-01 (`docs/independent-design-batch-review-main-2026-10-22.md`) and, at Grant's request, sidebar groups that roll up and 10 point scales (StarterTabs mean rows; unlabelled whole-number codes read as a numbered scale in the engine); see `docs/batch2-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): M-B2-01 and M-B2-02 (`docs/independent-batch2-review-main-2026-10-22.md`), comments and documentation only, and the knowledge base and manual update `41cdc49`; see `docs/batch3-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: M-B2-01, M-B2-02 and the knowledge base, main copy (2026-10-22)
+
+Implemented, ready for review: `41cdc49` (knowledge base and manual), `8ff226d` (M-B2-01, M-B2-02) and this docs commit. Checks and limits in `docs/batch3-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022f/`.
+
 
 ## Claude: M-BATCH-01, sidebar roll-up and 10 point scales, main copy (2026-10-22)
 
