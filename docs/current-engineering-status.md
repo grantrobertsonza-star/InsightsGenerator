@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): M-B2-01 and M-B2-02 (`docs/independent-batch2-review-main-2026-10-22.md`), comments and documentation only, and the knowledge base and manual update `41cdc49`; see `docs/batch3-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): B3-01 and B3-02 (`docs/independent-batch3-review-main-2026-10-22.md`) and, at Grant's request, the one-page Objectives, AI Insights reading the whole table, and design changes; see `docs/batch4-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: B3-01, B3-02, one-page Objectives and Grant's evening changes, main copy (2026-10-22)
+
+Implemented, ready for review: `458a829`, `587636a`, `8f256ef`, `66fe59d`, `c9390ac`, `49d8026`, `9b5c123` and this docs commit. Checks and limits in `docs/batch4-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022g/`.
+
 
 ## Claude: M-B2-01, M-B2-02 and the knowledge base, main copy (2026-10-22)
 
