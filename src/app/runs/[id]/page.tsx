@@ -5299,10 +5299,8 @@ export default async function RunPage({
                 <span className="text-border">&middot;</span>
               </>
             )}
-            <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
-              {run.status.replace(/_/g, " ")}
-            </span>
-            <span className="text-border">&middot;</span>
+            {/* No run status chip (Grant, 2026-10-22): runs.status is set to "draft" when a project is
+                created and nothing in the app moves it on, so the chip said "draft" on every page. */}
             <span>Starting point: {startingPointLabel}</span>
           </div>
           </div>

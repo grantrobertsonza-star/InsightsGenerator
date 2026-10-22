@@ -360,6 +360,10 @@ function ReviewDetail({
     onStarted(res.reviewId);
   }
   const isBrief = (doc.source?.roles ?? []).includes("brief") && !(doc.source?.roles ?? []).includes("proposal");
+  // The highlighted action is the one in play (Grant, 2026-10-22: choosing Review brief left Review
+  // proposal blue): the choice waiting for confirmation, else the shown review's kind, else what the
+  // document's recorded role suggests.
+  const chosen: ReviewKind = pending?.kind ?? review?.kind ?? (isBrief ? "brief" : "proposal");
   return (
     <div className="flex flex-col">
       {picker}
@@ -367,25 +371,28 @@ function ReviewDetail({
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected review</p>
           <h3 className="text-xl font-semibold text-foreground">{review ? (review.kind === "proposal_vs_brief" ? "Proposal against brief" : reviewLabel(review)) : "No review yet"}</h3>
-          <p className="mt-0.5 break-words text-sm text-foreground">{review ? review.manifest.sources.map((s) => s.filename).join(" against ") : doc.filename}</p>
-          {review && (
-            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATE_TONE[review.state] ?? "bg-slate-100 text-slate-600"}`} data-testid="rq-state-chip">
-                {review.progress.interrupted ? "interrupted" : (STATE_LABEL[review.state] ?? review.state)}
-              </span>
-              <span>{`No. ${review.sequence} · ${review.createdAt.slice(0, 10)}${review.createdBy ? ` · ${review.createdBy}` : ""}`}</span>
-            </p>
-          )}
+          {/* The file name, the review's state and its number on one line (Grant, 2026-10-22). */}
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="break-words text-sm text-foreground">{review ? review.manifest.sources.map((s) => s.filename).join(" against ") : doc.filename}</span>
+            {review && (
+              <>
+                <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATE_TONE[review.state] ?? "bg-slate-100 text-slate-600"}`} data-testid="rq-state-chip">
+                  {review.progress.interrupted ? "interrupted" : (STATE_LABEL[review.state] ?? review.state)}
+                </span>
+                <span className="text-xs text-muted">{`No. ${review.sequence} · ${review.createdAt.slice(0, 10)}${review.createdBy ? ` · ${review.createdBy}` : ""}`}</span>
+              </>
+            )}
+          </p>
           {!review && <p className="mt-1 text-xs text-muted">Review it as a brief or a proposal: a score for each part of good practice, an overall score and, for each part, what to improve.</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Review actions">
-          <button className={isBrief ? primary : btn} disabled={busy} onClick={() => void ask("brief", [doc.id])}>
+          <button className={chosen === "brief" ? primary : btn} aria-pressed={chosen === "brief"} disabled={busy} onClick={() => void ask("brief", [doc.id])}>
             Review brief
           </button>
-          <button className={isBrief ? btn : primary} disabled={busy} onClick={() => void ask("proposal", [doc.id])}>
+          <button className={chosen === "proposal" ? primary : btn} aria-pressed={chosen === "proposal"} disabled={busy} onClick={() => void ask("proposal", [doc.id])}>
             Review proposal
           </button>
-          <button className={btn} disabled={busy || briefs.length === 0} title={briefs.length === 0 ? "Add a brief to compare this proposal with" : undefined} onClick={() => void ask("proposal_vs_brief", [doc.id, chosenBrief])}>
+          <button className={chosen === "proposal_vs_brief" ? primary : btn} aria-pressed={chosen === "proposal_vs_brief"} disabled={busy || briefs.length === 0} title={briefs.length === 0 ? "Add a brief to compare this proposal with" : undefined} onClick={() => void ask("proposal_vs_brief", [doc.id, chosenBrief])}>
             Compare with brief
           </button>
           {review && (

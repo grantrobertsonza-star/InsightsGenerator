@@ -87,6 +87,15 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     await expect(section.getByTestId("rq-confirm")).toContainText("Brief review of client-brief.docx");
     await section.getByTestId("rq-confirm").getByRole("button", { name: "Cancel" }).click();
     await expect(section.getByTestId("rq-confirm")).toHaveCount(0);
+    // The highlighted action follows the choice (Grant, 2026-10-22): on the brief, choosing Review
+    // proposal highlights it and not Review brief; Cancel goes back to the brief's own suggestion.
+    const pressed = () => actions.locator("button[aria-pressed=true]").allInnerTexts();
+    expect(await pressed()).toEqual(["Review brief"]);
+    await actions.getByRole("button", { name: "Review proposal" }).click();
+    await expect(section.getByTestId("rq-confirm")).toBeVisible();
+    expect(await pressed()).toEqual(["Review proposal"]);
+    await section.getByTestId("rq-confirm").getByRole("button", { name: "Cancel" }).click();
+    expect(await pressed()).toEqual(["Review brief"]);
     expect(await usage()).toBe(0);
 
     // 3. the brief review
