@@ -49,7 +49,7 @@ import {
 import { generateMethodologySummary } from "@/lib/methodologyExtractor";
 import { refreshSynthesizedInsights } from "@/lib/insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "@/lib/synthesizedInsightQualityScorer";
-import { estimateCostUsd } from "@/lib/apiUsage";
+import { costOfUsage } from "@/lib/apiUsage";
 import {
   summarizeSynthesizedProvenance,
   type DiscoveryType,
@@ -1876,6 +1876,9 @@ type ApiUsageRow = {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  /** Prompt caching (promptCache.ts): tokens written to and read from the cache, priced by costOfUsage. */
+  cache_write_tokens: number;
+  cache_read_tokens: number;
 };
 
 /**
@@ -1895,12 +1898,16 @@ async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
       calls: string;
       input_tokens: string;
       output_tokens: string;
+      cache_write_tokens: string;
+      cache_read_tokens: string;
     }>(
       `select
          detail->>'agent' as agent,
          count(*) as calls,
          coalesce(sum((detail->>'input_tokens')::bigint), 0) as input_tokens,
-         coalesce(sum((detail->>'output_tokens')::bigint), 0) as output_tokens
+         coalesce(sum((detail->>'output_tokens')::bigint), 0) as output_tokens,
+         coalesce(sum((detail->>'cache_creation_input_tokens')::bigint), 0) as cache_write_tokens,
+         coalesce(sum((detail->>'cache_read_input_tokens')::bigint), 0) as cache_read_tokens
        from trace
        where run_id = $1 and event = 'api_usage'
        group by detail->>'agent'
@@ -1912,6 +1919,8 @@ async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
       calls: Number(row.calls),
       input_tokens: Number(row.input_tokens),
       output_tokens: Number(row.output_tokens),
+      cache_write_tokens: Number(row.cache_write_tokens),
+      cache_read_tokens: Number(row.cache_read_tokens),
     }));
   });
 }
@@ -1978,6 +1987,9 @@ export type ApiUsageBatchRow = {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  /** Prompt caching (promptCache.ts): tokens written to and read from the cache, priced by costOfUsage. */
+  cache_write_tokens: number;
+  cache_read_tokens: number;
 };
 
 /**
@@ -2003,6 +2015,8 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
         calls: string;
         input_tokens: string;
         output_tokens: string;
+        cache_write_tokens: string;
+        cache_read_tokens: string;
       }>(
         `with batches as (
            select
@@ -2019,7 +2033,9 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
            b.started_at,
            count(t.id) as calls,
            coalesce(sum((t.detail->>'input_tokens')::bigint), 0) as input_tokens,
-           coalesce(sum((t.detail->>'output_tokens')::bigint), 0) as output_tokens
+           coalesce(sum((t.detail->>'output_tokens')::bigint), 0) as output_tokens,
+           coalesce(sum((t.detail->>'cache_creation_input_tokens')::bigint), 0) as cache_write_tokens,
+           coalesce(sum((t.detail->>'cache_read_input_tokens')::bigint), 0) as cache_read_tokens
          from batches b
          left join trace t
            on t.run_id = $1
@@ -2037,6 +2053,8 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
         calls: Number(row.calls),
         input_tokens: Number(row.input_tokens),
         output_tokens: Number(row.output_tokens),
+        cache_write_tokens: Number(row.cache_write_tokens),
+        cache_read_tokens: Number(row.cache_read_tokens),
       }));
     });
   } catch {
@@ -5912,17 +5930,15 @@ export default async function RunPage({
                                 {batch.calls.toLocaleString()}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
-                                {batch.input_tokens.toLocaleString()}
+                                {(batch.input_tokens + batch.cache_write_tokens + batch.cache_read_tokens).toLocaleString()}
+                                {batch.cache_read_tokens > 0 && <span className="ml-1 text-xs text-muted">{`(${batch.cache_read_tokens.toLocaleString()} from cache)`}</span>}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
                                 {batch.output_tokens.toLocaleString()}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
                                 $
-                                {estimateCostUsd(
-                                  batch.input_tokens,
-                                  batch.output_tokens,
-                                ).toFixed(3)}
+                                {costOfUsage({ input: batch.input_tokens, output: batch.output_tokens, cacheWrite: batch.cache_write_tokens, cacheRead: batch.cache_read_tokens }).toFixed(3)}
                               </td>
                             </tr>
                           ))}
@@ -5959,17 +5975,15 @@ export default async function RunPage({
                             {row.calls.toLocaleString()}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
-                            {row.input_tokens.toLocaleString()}
+                            {(row.input_tokens + row.cache_write_tokens + row.cache_read_tokens).toLocaleString()}
+                            {row.cache_read_tokens > 0 && <span className="ml-1 text-xs text-muted">{`(${row.cache_read_tokens.toLocaleString()} from cache)`}</span>}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
                             {row.output_tokens.toLocaleString()}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
                             $
-                            {estimateCostUsd(
-                              row.input_tokens,
-                              row.output_tokens,
-                            ).toFixed(3)}
+                            {costOfUsage({ input: row.input_tokens, output: row.output_tokens, cacheWrite: row.cache_write_tokens, cacheRead: row.cache_read_tokens }).toFixed(3)}
                           </td>
                         </tr>
                       ))}
@@ -5982,7 +5996,7 @@ export default async function RunPage({
                         </td>
                         <td className="py-1.5 pr-4">
                           {apiUsage
-                            .reduce((sum, row) => sum + row.input_tokens, 0)
+                            .reduce((sum, row) => sum + row.input_tokens + row.cache_write_tokens + row.cache_read_tokens, 0)
                             .toLocaleString()}
                         </td>
                         <td className="py-1.5 pr-4">
@@ -5992,16 +6006,7 @@ export default async function RunPage({
                         </td>
                         <td className="py-1.5 pr-4">
                           $
-                          {estimateCostUsd(
-                            apiUsage.reduce(
-                              (sum, row) => sum + row.input_tokens,
-                              0,
-                            ),
-                            apiUsage.reduce(
-                              (sum, row) => sum + row.output_tokens,
-                              0,
-                            ),
-                          ).toFixed(3)}
+                          {apiUsage.reduce((sum, row) => sum + costOfUsage({ input: row.input_tokens, output: row.output_tokens, cacheWrite: row.cache_write_tokens, cacheRead: row.cache_read_tokens }), 0).toFixed(3)}
                         </td>
                       </tr>
                     </tbody>

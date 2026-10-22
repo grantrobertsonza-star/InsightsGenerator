@@ -16,7 +16,7 @@ const ROLE = "ie_test_rq_app";
 let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
 const objects = new Map<string, Buffer>();
 const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail" };
+const model = { calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail" };
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
@@ -33,6 +33,8 @@ vi.mock("../supabaseAdmin", () => ({
     },
   },
 }));
+/** The JSON of a request: one line, or a cached shared part and the rest, merged (promptCache.ts). */
+const jsonParts = (content: string) => Object.assign({}, ...content.split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l)));
 vi.mock("../apiUsage", async () => ({ ...(await vi.importActual<object>("../apiUsage")), logApiUsage: async () => {} }));
 // Deterministic model stand-in: extraction quotes each sentence of the passage it was sent;
 // assessment answers one observation per criterion, citing facts whose topic fits.
@@ -40,9 +42,13 @@ vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "stand-in-model",
   anthropic: {
     messages: {
-      create: async (req: { tool_choice: { name: string }; messages: { content: string }[] }) => {
+      create: async (req: { tool_choice: { name: string }; messages: { content: string | { type: string; text: string; cache_control?: unknown }[] }[] }) => {
         const tool = req.tool_choice.name;
-        const content = req.messages[0].content;
+        const raw = req.messages[0].content;
+        // A cached shared part and the rest arrive as two text blocks (promptCache.ts); recorded so
+        // the test can see which calls marked a cache breakpoint.
+        if (Array.isArray(raw)) model.cached.push(tool);
+        const content = typeof raw === "string" ? raw : raw.map((b) => b.text).join("\n");
         model.calls.push(tool);
         const usage = { input_tokens: 1000, output_tokens: 500 };
         if (tool === "record_documented_facts") {
@@ -63,7 +69,7 @@ vi.mock("../anthropic", () => ({
         if (tool === "record_checklist_statuses") {
           // Checklist stand-in: an element is present when a fact of its matching topic exists, and
           // absent otherwise. "overclaim" says present everywhere without citing anything.
-          const cp = JSON.parse(content) as { elements: { element_id: string }[]; facts: { id: string; topic: string }[] };
+          const cp = jsonParts(content) as { elements: { element_id: string }[]; facts: { id: string; topic: string }[] };
           if (model.checklist === "fail") throw new Error("synthetic checklist outage");
           const topicFor = (id: string) => (/DECISION/.test(id) ? "decision" : /POPULATION/.test(id) ? "population" : /SAMPLING|FRAME/.test(id) ? "recruitment" : null);
           const elements = cp.elements.map((e) => {
@@ -74,7 +80,7 @@ vi.mock("../anthropic", () => ({
           });
           return { usage, content: [{ type: "tool_use", input: { elements } }] };
         }
-        const payload = JSON.parse(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
+        const payload = jsonParts(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
         const group = payload.criteria[0].id;
         if (model.hold && payload.criteria.some((c) => c.id === model.hold!.task)) await model.hold.release;
         if (model.failTask && payload.criteria.some((c) => c.id === model.failTask)) throw new Error("synthetic model outage");
@@ -214,6 +220,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
 
   it("RQ01: opening the module makes no model call; a brief alone gives a scoped review where later documents are 'not yet available'", async () => {
     model.calls = [];
+    model.cached = [];
     const empty = await viewOf(null);
     expect(empty.review).toBeNull();
     expect(empty.documents.map((d) => d.filename).sort()).toEqual(["brief.txt", "proposal.txt", "scan.txt"]);
@@ -222,6 +229,11 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     const v = await viewOf(id);
     expect(v.review!.state).toBe("complete");
     expect(model.calls.filter((c) => c === "record_documented_facts")).toHaveLength(1);
+    // Prompt caching (promptCache.ts): every assessment and checklist call sends its shared input as
+    // a cached first block; extraction sends one passage and has none to share.
+    expect(model.cached.length).toBeGreaterThan(0);
+    expect(model.cached.filter((t) => t === "record_documented_facts")).toEqual([]);
+    expect(model.cached.length).toBe(model.calls.filter((c) => c !== "record_documented_facts").length);
     const sample = v.review!.manifest.criteria.find((c) => c.criterionId === "RQ-SAMPLE-RECRUIT")!;
     expect(sample.status).toBe("excluded");
     expect(sample.reason).toMatch(/no plan or methodology document yet/);

@@ -64,7 +64,7 @@ const handlers = {
   },
   // Research Quality Review assessment: one observation per criterion sent, citing up to two facts.
   record_quality_observations: (content) => {
-    const p = JSON.parse(content);
+    const p = jsonParts(content);
     return {
       observations: p.criteria.map((c, i) => {
         const cited = p.facts.slice(i % Math.max(1, p.facts.length), (i % Math.max(1, p.facts.length)) + 1).map((f) => f.id);
@@ -90,7 +90,7 @@ const handlers = {
   // Research Quality Review checklist: an element is present when a fact of a matching topic was
   // sent (decision, population, sampling or recruitment), absent otherwise. Judges nothing.
   record_checklist_statuses: (content) => {
-    const p = JSON.parse(content);
+    const p = jsonParts(content);
     const topicFor = (id) => (/DECISION/.test(id) ? "decision" : /POPULATION/.test(id) ? "population" : /SAMPLING|FRAME|SIZE/.test(id) ? "recruitment" : null);
     return {
       elements: p.elements.map((e) => {
@@ -167,6 +167,14 @@ const handlers = {
   },
 };
 
+/**
+ * The JSON payload of a structured request: a single JSON line, or the JSON lines of a cached shared
+ * part and the rest (Research Quality's assessment and checklist calls), merged into one object.
+ */
+function jsonParts(content) {
+  return Object.assign({}, ...content.split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l)));
+}
+
 export function createModelReplay(fixturePath) {
   const log = [];
   const server = http.createServer(async (req, res) => {
@@ -174,8 +182,10 @@ export function createModelReplay(fixturePath) {
     for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
     const name = body.tool_choice?.name;
-    const content = (body.messages ?? []).map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).join("\n");
-    const system = typeof body.system === "string" ? body.system : JSON.stringify(body.system ?? "");
+    // Text blocks (a cached prefix and the rest, promptCache.ts) are read as the text they carry.
+    const textOf = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.map((b) => (b?.type === "text" ? b.text : JSON.stringify(b))).join("\n") : JSON.stringify(c));
+    const content = (body.messages ?? []).map((m) => textOf(m.content)).join("\n");
+    const system = textOf(body.system ?? "");
     const fixture = fixturePath && existsSync(fixturePath) ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
     const override = fixture?.tools?.[name]?.find(rule => content.includes(rule.match));
     if (override?.status) {
@@ -192,10 +202,14 @@ export function createModelReplay(fixturePath) {
       // A tool loop with no forced tool (the crosstab planner, for example) gets plain text unless
       // the run's fixture scripts a tool call for it: {"untargeted":[{"match","tool","input"}]},
       // matched against the request messages like the per-tool rules above.
+      // A rule with `text` answers in words instead (the last step of a tool loop such as the
+      // Research assistant's; rules are tried in order, so put the later steps' rules first).
       const call = fixture?.untargeted?.find((rule) => content.includes(rule.match));
-      blocks = call
-        ? [{ type: "tool_use", id: `toolu_replay_${log.length}`, name: call.tool, input: call.input }]
-        : [{ type: "text", text: "Replay: no change made." }];
+      blocks = call?.text
+        ? [{ type: "text", text: call.text }]
+        : call
+          ? [{ type: "tool_use", id: `toolu_replay_${log.length}`, name: call.tool, input: call.input }]
+          : [{ type: "text", text: "Replay: no change made." }];
     }
     log.push({ at: new Date().toISOString(), tool: name ?? (blocks[0].type === "tool_use" ? blocks[0].name : null), promptChars: content.length + system.length, scripted: Boolean(name && handlers[name]), ...(override || (!name && blocks[0].type === "tool_use") ? { fromFixture: true } : {}), answer: blocks[0] });
     res.writeHead(200, { "content-type": "application/json", "request-id": `replay-${log.length}` });

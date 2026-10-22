@@ -7,6 +7,7 @@ import { buildCrosstab, loadCrosstab, loadVariableDictionary, loadVariableDictio
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { planCrosstabFromText } from "./crosstabAsk";
+import { cachedSystem } from "./promptCache";
 import { isLookupEligible } from "./variableKinds";
 import { defaultWeight } from "./starterTables";
 import { capWords, parseNumberedItems } from "./text";
@@ -569,7 +570,9 @@ async function decompose(tenantId: string, runId: string, item: RawItem, vars: s
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 2000,
-    system:
+    // The instructions and the project's variable list are the same for every objective of a run, so
+    // they are cached (promptCache.ts); the objective itself is the user message.
+    system: cachedSystem(
       "You turn a research objective or decision into a few evidence questions that a survey data file can answer.\n" +
       `- Write at most ${MAX_QUESTIONS_PER_ITEM} questions. Fewer is better than padding. Each must be answerable from the variables listed.\n` +
       "- Evidence does not need a significance test. A level, a share, an average, or a comparison of two groups all count.\n" +
@@ -578,6 +581,7 @@ async function decompose(tenantId: string, runId: string, item: RawItem, vars: s
       "- Use only variables that appear in the list. If the files cannot speak to the objective, return no questions.\n" +
       "- The same question will be put to every data file in the project. A file that lacks the variable will simply answer that it is silent, so write each question about the topic and not about one file.\n\n" +
       `Variables across the project's data files:\n${vars}`,
+    ),
     tools: [DECOMPOSE_TOOL],
     tool_choice: { type: "tool", name: "submit_questions" },
     messages: [{ role: "user", content: `${item.kind === "objective" ? "Research objective" : "Decision"}: ${item.text}` }],

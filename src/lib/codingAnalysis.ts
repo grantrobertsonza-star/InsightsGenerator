@@ -2,6 +2,7 @@ import { computeDataQuality, type DataQuality } from "./qualQuality";
 import { clearCodingLabel, relabelCodingWork } from "./codingProgress";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
+import { cachedSystem, cachedUserThen } from "./promptCache";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant, withTenantRead } from "./db";
 import {
@@ -2442,14 +2443,19 @@ export async function searchNegativeCases(
               item.text,
           )
           .join("\n");
-        const user = `Codebook:\n${block}\n\nTurns:\n${turns}`;
+        // Every batch sends the same codebook: it comes first and is cached (promptCache.ts), with
+        // the instructions, so later batches read it at a tenth of the price. Same text as before,
+        // so the recorded input hash is unchanged.
+        const codebookPart = `Codebook:\n${block}`;
+        const turnsPart = `\n\nTurns:\n${turns}`;
+        const user = codebookPart + turnsPart;
         const response = await anthropic.messages.create({
           model: CLAUDE_MODEL,
           max_tokens: 4000,
-          system: NEGATIVE_SYSTEM,
+          system: cachedSystem(NEGATIVE_SYSTEM),
           tool_choice: { type: "tool", name: "record_negative_cases" },
           tools: NEGATIVE_TOOLS,
-          messages: [{ role: "user", content: user }],
+          messages: [cachedUserThen(codebookPart, turnsPart)],
         });
         await logApiUsage(
           tenantId,

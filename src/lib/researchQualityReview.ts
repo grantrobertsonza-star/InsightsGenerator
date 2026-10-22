@@ -18,7 +18,8 @@
 // monetary cap; the estimate is shown before the explicit start and actual cost is recorded.
 import { findPrecisionChecks } from "./marginOfError";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
-import { estimateCostUsd, logApiUsage } from "./apiUsage";
+import { costOfUsage, logApiUsage } from "./apiUsage";
+import { cachedSystem, cachedUserThen } from "./promptCache";
 import {
   CRITERIA,
   assessmentGroups,
@@ -280,18 +281,28 @@ export async function prepareReview(tenantId: string, runId: string, input: Star
 
 type ModelAnswer = { input: unknown; usage: { input: number; output: number; cost: number } };
 
-async function callTool(tenantId: string, runId: string, agent: string, system: string, user: string, tool: { name: string; description: string; input_schema: Record<string, unknown> }, maxTokens: number): Promise<ModelAnswer> {
+/**
+ * One structured model call. `user` is a string, or `{ shared, rest }` when the opening part is
+ * repeated by the other calls of the same review step (the assessment groups share the facts; a
+ * document's checklists share its facts): the system prompt and that shared part are cached
+ * (promptCache.ts), so the second and later calls read them at a tenth of the price. The model sees
+ * the same text either way. The task's recorded cost includes cache writes and reads (costOfUsage).
+ */
+async function callTool(tenantId: string, runId: string, agent: string, system: string, user: string | { shared: string; rest: string }, tool: { name: string; description: string; input_schema: Record<string, unknown> }, maxTokens: number): Promise<ModelAnswer> {
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: maxTokens,
-    system,
+    system: cachedSystem(system),
     tool_choice: { type: "tool", name: tool.name },
     tools: [tool as never],
-    messages: [{ role: "user", content: user }],
+    messages: [typeof user === "string" ? { role: "user", content: user } : cachedUserThen(user.shared, user.rest)],
   });
-  const u = response.usage as { input_tokens: number; output_tokens: number };
+  const u = response.usage as { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null };
   await logApiUsage(tenantId, runId, agent, response.usage);
-  const usage = { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cost: estimateCostUsd(u.input_tokens ?? 0, u.output_tokens ?? 0) };
+  const cacheWrite = u.cache_creation_input_tokens ?? 0;
+  const cacheRead = u.cache_read_input_tokens ?? 0;
+  // `input` stays the total input the model read, as before caching, so recorded token counts compare.
+  const usage = { input: (u.input_tokens ?? 0) + cacheWrite + cacheRead, output: u.output_tokens ?? 0, cost: costOfUsage({ input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheWrite, cacheRead }) };
   // An answer cut off at the length limit is incomplete even when it parses; it is refused with
   // that reason rather than validated as if it were whole.
   if (response.stop_reason === "max_tokens") throw Object.assign(new Error(`the answer was cut off at the ${maxTokens}-token limit`), { usage });
@@ -500,16 +511,20 @@ async function runChecklist(tenantId: string, runId: string, manifest: ReviewMan
   let usage = { input: 0, output: 0, cost: 0 };
   try {
     if (!checklist || !src) throw new Error("the checklist or its document is not in this review");
-    const payload = {
+    // The document and its facts are the same for each of its checklists, so they come first and
+    // are cached; the checklist and its elements follow.
+    const shared = {
       document: { name: src.filename, roles: src.roles, read: sourceRead[sourceIndex] },
+      facts: ownFacts.map((f) => ({ id: f.factId, topic: f.topic, phase: f.phase, quote: f.exactQuote })),
+      brief_facts: briefFacts.map((f) => ({ id: f.factId, topic: f.topic, quote: f.exactQuote })),
+    };
+    const rest = {
       checklist: { id: checklist.checklistId, label: checklist.label },
       elements: checklist.sections.flatMap((sec) =>
         sec.elements.map((e) => ({ element_id: e.elementId, section: sec.label, element: e.label, present_when: e.present, partial_when: e.partial, ...(e.compare === "brief_if_present" ? { compare_with_brief: true } : {}) })),
       ),
-      facts: ownFacts.map((f) => ({ id: f.factId, topic: f.topic, phase: f.phase, quote: f.exactQuote })),
-      brief_facts: briefFacts.map((f) => ({ id: f.factId, topic: f.topic, quote: f.exactQuote })),
     };
-    const answer = await callTool(tenantId, runId, "research_quality_checklist", CHECKLIST_SYSTEM, JSON.stringify(payload), CHECKLIST_TOOL, CHECKLIST_MAX_TOKENS);
+    const answer = await callTool(tenantId, runId, "research_quality_checklist", CHECKLIST_SYSTEM, { shared: `Shared input (the document and its facts):\n${JSON.stringify(shared)}`, rest: `This checklist:\n${JSON.stringify(rest)}` }, CHECKLIST_TOOL, CHECKLIST_MAX_TOKENS);
     usage = answer.usage;
     const elements = validateChecklistAnswer(normaliseToolAnswer(answer.input, "elements"), checklist, { ownFacts, briefFacts, fullyRead: sourceRead[sourceIndex] === "fully" });
     await publishChecklist(tenantId, task.id, lease, { checklistId, elements }, usage);
@@ -532,7 +547,9 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
   if (!lease) return;
   let usage = { input: 0, output: 0, cost: 0 };
   try {
-    const payload = {
+    // The context, sources, facts and clarifications are the same for every criteria group of this
+    // review, so they come first and are cached; the group's criteria and passages follow.
+    const shared = {
       context: {
         mode: manifest.mode,
         study_type: manifest.studyType,
@@ -544,6 +561,8 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
       sources: manifest.sources.map((s, i) => ({ source: s.filename, roles: s.roles, read: sourceRead[i] })),
       facts: facts.map((f) => ({ id: f.factId, source: manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)?.filename, topic: f.topic, phase: f.phase, selection: f.selection, quote: f.exactQuote })),
       researcher_clarifications: manifest.clarifications.map((c) => ({ id: c.entryId, text: c.text })),
+    };
+    const rest = {
       criteria: criteria.map((c) => ({
         id: c.criterionId,
         question: c.assessmentQuestion,
@@ -554,7 +573,7 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
       })),
       reference_passages: passages.map((p) => ({ reference_id: p.referenceId, passage_id: p.passageId, text: p.text })),
     };
-    const answer = await callTool(tenantId, runId, "research_quality_assess", ASSESS_SYSTEM, JSON.stringify(payload), ASSESS_TOOL, ASSESS_MAX_TOKENS);
+    const answer = await callTool(tenantId, runId, "research_quality_assess", ASSESS_SYSTEM, { shared: `Shared input (the review's context, sources, facts and clarifications):\n${JSON.stringify(shared)}`, rest: `This criteria group:\n${JSON.stringify(rest)}` }, ASSESS_TOOL, ASSESS_MAX_TOKENS);
     usage = answer.usage;
     const answerObj = normaliseToolAnswer(answer.input, "observations");
     const raw = (answerObj as { observations?: unknown } | null)?.observations;
