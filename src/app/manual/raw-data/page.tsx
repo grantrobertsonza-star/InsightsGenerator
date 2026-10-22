@@ -64,11 +64,11 @@ export default function RawDataPage() {
       </P>
 
       <WhyBox>
-        The honest option, when a genuinely rigorous answer (a true stratified survey design, with
-        design weights) isn&apos;t built yet, is to say so plainly rather than quietly approximate it
-        and let a caveat tag do the disclosing on its own. That is exactly the situation here: a
-        stratified-design statistical path is scoped for later, not built yet, see{" "}
-        <em>What this doesn&apos;t do yet</em> for what that specifically means for your results today.
+        The banner plan does not model a survey design: its tests treat the sample as random, and
+        each result says so with a caveat rather than quietly approximating a design. Cross tabs and the
+        Net Promoter Score do model one, with Taylor series variance, when you name the PSU (cluster) and
+        strata variables for the data file, so use those for a stratified or clustered sample. See{" "}
+        <em>What this doesn&apos;t do yet</em> for what that means for your results today.
       </WhyBox>
 
       <DoesDoesNot

@@ -158,9 +158,12 @@ export default function FindingsGuide() {
           ["Tag", "What it is telling you"],
           ["Base size small / borderline / unknown", "The group behind the figure is small, near the threshold, or the base was not stated"],
           ["Standard deviation unknown", "A mean or difference was reported without a spread, so its reliability cannot be judged"],
-          ["Uncorrected multiple comparisons", "Many cells were tested at once and none was adjusted, so a few will look significant by chance"],
+          ["Uncorrected multiple comparisons", "Many cells were tested at once and none was adjusted (no correction chosen, or a check that does not correct, such as a banner plan), so a few will look significant by chance"],
+          ["False discovery controlled (row)", "The finding survived a Benjamini-Hochberg correction across the columns of its banner variable, the cross tab default"],
+          ["Bonferroni corrected (row)", "The finding survived the stricter Bonferroni correction, when that was chosen"],
           ["False discovery rate controlled within table", "The finding survived a Benjamini-Hochberg correction across every cell tested in its table"],
-          ["Sampling assumed random", "The test treats the sample as random, which may not hold for the survey design"],
+          ["Survey design modelled", "The test used the PSU and strata named for the data file (Taylor series variance)"],
+          ["Sampling assumed random", "No survey design was modelled, so the test treats the sample as random, which may not hold for the survey design"],
           ["Insufficient n for a test", "There were too few cases for a significance test to mean anything"],
         ]}
       />
@@ -214,8 +217,10 @@ export default function FindingsGuide() {
         worth adding in a note.
       </Limit>
       <Limit title="Table findings inherit table limits">
-        They use an uncorrected test, an assumption of random sampling, and a complement comparison (a column against
-        everyone else in the same banner variable). Treat them as leads to examine, not as confirmed differences.
+        They use a complement comparison (a column against everyone else in the same banner variable), corrected only
+        within the row (or the table) under the setting chosen, and a survey design only when one was named; their
+        caveats say which. The correction does not cover the many tables of a project. Treat them as leads to examine,
+        not as confirmed differences.
       </Limit>
       <DoesDoesNot
         does={[

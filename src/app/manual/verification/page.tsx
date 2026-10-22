@@ -51,7 +51,8 @@ export default function VerificationPage() {
           <div className="text-sm font-semibold text-foreground">uncorrected_multiple_comparisons</div>
           <div className="text-sm text-muted">
             This finding is one of several comparisons tested at once, and no statistical correction for
-            that has been applied. The more comparisons you run, the more likely one looks
+            that has been applied (no correction was chosen, or it came from a check that does not correct,
+            such as the scan of an aggregated table or a banner plan). The more comparisons you run, the more likely one looks
             &quot;significant&quot; purely by chance. See the uploading page for a worked example of why
             this matters.
           </div>
@@ -82,7 +83,7 @@ export default function VerificationPage() {
         ]}
         doesNot={[
           "Promise that a 'robust' verdict means the underlying research design itself was sound: it means the evidence actually supplied backs up the claim",
-          "Apply a statistical correction for running many comparisons at once: that risk is disclosed via the caveat, not adjusted away",
+          "Apply a statistical correction for many comparisons in the scan of an aggregated table or a banner plan: that risk is disclosed via the caveat (cross tabs built in the app do correct, with a false discovery rate correction by default)",
           "Show these caveat badges on the raw pending-findings list before review, or on synthesized insights: those use their own separate checks",
         ]}
       />

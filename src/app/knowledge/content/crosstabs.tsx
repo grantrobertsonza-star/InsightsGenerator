@@ -209,9 +209,11 @@ export default function CrosstabGuide() {
         </li>
         <li>
           <strong>Many tests mean some false alarms.</strong> At the 95% level, about 1 comparison in 20 is marked
-          even when there is no real difference. A big table has hundreds of cells. The app does not correct for this
-          yet (see limitations), so treat an isolated arrow in a large table with caution, and weigh a repeated
-          pattern more heavily.
+          even when there is no real difference. A big table has hundreds of cells. By default the app applies a false
+          discovery rate correction across the columns of each banner variable for each row (Bonferroni, or no
+          correction, can be chosen under Table settings), which removes some of those marks. It does not cover the
+          many rows and banners of a workbook (see limitations), so still treat an isolated arrow in a large table with
+          caution, and weigh a repeated pattern more heavily.
         </li>
         <li>
           <strong>Built-in links can mislead.</strong> When the columns and rows are related by construction, the
@@ -286,8 +288,11 @@ export default function CrosstabGuide() {
         When the set is right, press <strong>Commit</strong>. The app then writes findings from the committed
         tables: for each question it takes up to three of the largest marked differences (ranked by the gap between
         a column and the overall figure), up to 40 findings per table. Each finding states the figures, the base, the
-        effective base, the weight used and the test, and carries three caveats: comparisons were not corrected for
-        testing many things, the test used the weighted effective base, and the sample was assumed random. Deleting a
+        effective base, the weight used and the test, and carries caveats that follow the table: how the many
+        comparisons were handled (false discovery rate controlled within the row, and within the table when that
+        check ran; Bonferroni corrected; or uncorrected when no correction was chosen), that the test used the weighted
+        effective base, and whether a survey design was modelled (with a named PSU or strata) or the sample was
+        assumed random. Deleting a
         table archives the findings that came from it; nothing is destroyed.
       </P>
 

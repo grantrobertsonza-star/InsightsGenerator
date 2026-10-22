@@ -23,8 +23,9 @@ is a `role="group"` labelled by its name; the order and membership are set in `p
   so a fold made in one tab applies in the others; a change in the same tab is announced with the
   `run-nav-folded` window event.
 - **Storage unavailable.** Reads and writes are guarded. A blocked write keeps the fold for the page
-  view in a module-level copy; a blocked read, or a value that is not a JSON array of strings, reads as
-  nothing rolled up, so the menu opens in full rather than failing. Nothing else in the app depends on
+  view in a module-level copy. A blocked read, malformed JSON, or a value that is not an array reads as
+  nothing rolled up, so the menu opens in full rather than failing; in an array, members that are not
+  strings are ignored and the string names still fold their groups. Nothing else in the app depends on
   this value.
 - **Not covered.** The collapsed main menu (the icon rail that `RunNav` renders into `#run-nav-rail`) shows every section as an icon
   and does not fold.

@@ -200,9 +200,9 @@ export default function ObjectiveGuide() {
       <P>
         Scores are tied to the objective&apos;s text. An unchanged list is not rescored, an edited one is, and
         <em> Rescore objectives</em> forces a fresh pass. Scoring also runs after you accept, restore or add an
-        objective. Because the inventory is read at the moment of scoring, rescore after adding data. Up to 20
-        objectives are scored in a single pass. A failure in the automatic run is logged and does not interrupt what
-        you were doing.
+        objective. Because the inventory is read at the moment of scoring, rescore after adding data. Objectives are
+        sent to the scorer 20 at a time, up to 200 in one run; any beyond that are left unscored, and Rescore
+        objectives says so. A failure in the automatic run is logged and does not interrupt what you were doing.
       </P>
 
       <H2 id="coverage">Coverage against the insights</H2>
@@ -221,8 +221,10 @@ export default function ObjectiveGuide() {
       />
       <P>
         Every item gets a short conclusion (capped at 35 words) and a list of the insights that bear on it. The
-        mapping is many to many. If the model returns nothing usable for an item, that item defaults to Gap with a note
-        that it has not been assessed, which is why a Gap on a fresh run is worth rechecking before you act on it.
+        mapping is many to many. A Gap is a verdict the check actually returned. When the check cannot assess every
+        item (the model returned nothing usable, gave two answers for one item, or covered only some of them), nothing
+        is recorded as a Gap: the check fails with a message saying so, the previous results stay as they were, and
+        <em> Check again</em> runs it afresh.
       </P>
       <H3>Inferred objectives get no verdict</H3>
       <P>
