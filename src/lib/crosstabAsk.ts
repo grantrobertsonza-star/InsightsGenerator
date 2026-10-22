@@ -6,6 +6,7 @@ import type { CrosstabFilter, CrosstabGroup, CrosstabRowItem, VariableDictionary
 import { loadVariableOverrides, type VariableOverrides } from "./variableOverrides";
 import { isLookupEligible, isStringCategory } from "./variableKinds";
 import { ASK_MEMORY_REQUESTS } from "./crosstabAskShared";
+import { meanGroupFor } from "./meanRow";
 
 /** What a plain-English request turns into. Nothing runs from this: the researcher reads it and decides. */
 export type AskPlan = {
@@ -73,16 +74,8 @@ export function tabulatedAsAverage(v: Pick<VariableInfo, "numeric" | "labelled" 
  */
 export const UNORDERED_MEAN_NOTE = "mean of the answer codes, which may not be in order";
 
-/**
- * The mean row the engine computes for a row (kind "mean": the weighted mean of the numeric answer
- * codes over the table's valid cases, leaving out declared missing values and don't know, refused
- * and not applicable answers). Placed above the answers, so the distribution stays below it.
- * qualifyCodes asks the engine to say so in the label when the codes may not be a scale; whether
- * they are is the engine's one ordered-scale rule (_is_ordered_scale), not decided here.
- */
-export function meanGroupFor(label: string): CrosstabGroup {
-  return { label, cats: [], kind: "mean", place: "above", qualifyCodes: true };
-}
+// The mean row itself is defined in meanRow.ts (shared with StarterTabs); re-exported for callers.
+export { meanGroupFor };
 
 /** The plain sentence a plan shows, from what will actually be built. */
 export function describePlan(plan: Pick<AskPlan, "rows" | "columns" | "filters" | "means" | "averageOnly">, filterCount = plan.filters.length): string {

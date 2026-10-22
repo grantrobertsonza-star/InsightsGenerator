@@ -49,6 +49,10 @@ group unchanged, and `tabulatedAsAverage` against the engine at 25 and 26 distin
 `e2e/ui/crosstab-ask-mean.check.mjs` (plan text, table placement, text-answer refusal, model summary
 ignored).
 
+**Unlabelled codes (2026-10-22).** With no value labels, the engine reads a numeric column's own
+whole-number codes as the list: 10 or more distinct values are a numbered scale (an unqualified
+mean, and the default mean and spread), fewer are not (`engineNumberedScaleMean.test.ts`).
+
 **Limits.** A bare-number 1 to 5 (or up to 9 point) list is not an ordered scale under the engine's
 rule, so its mean row is qualified although many such lists are ratings; in an SPSS file,
 an ordinal measurement level removes it. Tables built before this change keep their labels until

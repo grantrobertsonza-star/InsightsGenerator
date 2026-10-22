@@ -1,5 +1,6 @@
 import type { CrosstabRowItem, VariableDictionary, VariableInfo } from "./parseStatsFile";
 import { isStringCategory } from "./variableKinds";
+import { isTenPointScale, meanGroupFor } from "./meanRow";
 
 // A small, opt-in starting set of tables: the usual demographic splits (gender,
 // age, province and so on, and customer groupings such as segment), or columns the researcher
@@ -45,6 +46,8 @@ export type StarterPlan = {
   items: CrosstabRowItem[];
   /** Questions that qualified, before the cap. */
   eligibleQuestions: number;
+  /** How many of the planned questions are 10 or 11 point scales shown with their mean. */
+  meanScales: number;
 };
 
 export function defaultWeight(dict: VariableDictionary): string | null {
@@ -125,7 +128,8 @@ export function planStarterTables(dict: VariableDictionary, chosenBanners?: stri
   }
   for (const v of dict.variables) {
     if (bannerNames.has(v.name) || !isCategorical(v) || v.pctValid < 30) continue;
-    items.push({ key: v.name, label: v.label, vars: [v.name] });
+    // A 10 or 11 point scale gets its mean above the answers (isTenPointScale), the distribution kept.
+    items.push({ key: v.name, label: v.label, vars: [v.name], ...(isTenPointScale(v) ? { groups: [meanGroupFor(v.label || v.name)] } : {}) });
   }
 
   return {
@@ -140,5 +144,6 @@ export function planStarterTables(dict: VariableDictionary, chosenBanners?: stri
     maxBanners: limit.banners,
     items: items.slice(0, limit.questions),
     eligibleQuestions: items.length,
+    meanScales: items.slice(0, limit.questions).filter((i) => i.groups?.some((g) => g.kind === "mean")).length,
   };
 }

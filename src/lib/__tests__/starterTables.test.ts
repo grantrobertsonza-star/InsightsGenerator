@@ -107,4 +107,18 @@ describe("planStarterTables", () => {
     expect(chosenBannersProblem(tracker, ["Wave"])).toMatch(/Not a column to split by/);
     expect(chosenBannersProblem(tracker, ["NoSuchColumn"])).toMatch(/NoSuchColumn/);
   });
+
+  it("adds a mean row above the answers of a 10 or 11 point scale only", () => {
+    const plan = planStarterTables(tracker);
+    const groups = Object.fromEntries(plan.items.map((i) => [i.key, (i.groups ?? []).map((g) => g.kind)]));
+    expect(groups.AgentAssurance_Attitude_0to10).toEqual(["mean"]);
+    expect(groups.Transferred).toEqual([]);
+    expect(groups.ActualWaitTimeBand).toEqual([]);
+    expect(plan.meanScales).toBe(1);
+    const scale = (n: number) => planStarterTables({ nCases: 10, variables: [v("Gender", "Gender", { nDistinct: 2 }), v("X", "X", { nDistinct: n })] }).items[0];
+    expect(scale(9).groups).toBeUndefined();
+    expect(scale(10).groups?.[0]).toMatchObject({ kind: "mean", place: "above", qualifyCodes: true });
+    expect(scale(11).groups?.[0]).toMatchObject({ kind: "mean" });
+    expect(scale(12).groups).toBeUndefined();
+  });
 });

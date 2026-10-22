@@ -2240,16 +2240,26 @@ def _is_numbered_scale(subst):
     return anchored <= 2 and bare + anchored == len(subst)
 
 
-def _is_ordered_scale(var, labels, measures):
+def _is_ordered_scale(var, labels, measures, raw=None):
     """True when the coded answers of a single question form an ordered scale, so the mean and
     spread of the codes are meaningful. Uses the measurement level stored in the file when it says
     nominal or ordinal; otherwise a numbered scale of 10 or more points (see _is_numbered_scale),
-    and otherwise the wording of the answer labels."""
+    and otherwise the wording of the answer labels.
+
+    A numeric column with no value labels at all (a spreadsheet's 0 to 10 rating, Grant 2026-10-22)
+    is judged by its own codes when `raw` is given: whole-number codes with 10 or more distinct
+    values are a numbered scale, by the same _is_numbered_scale rule a labelled "0".."10" list
+    meets. Fewer distinct codes stay not ordered, as an unlabelled 1 to 5 list always was."""
     m = str((measures or {}).get(var) or "").lower()
     if m == "nominal":
         return False
     if m == "ordinal":
         return True
+    if not labels and raw is not None and getattr(raw, "dtype", None) is not None and raw.dtype.kind in "fiu":
+        vals = [float(v) for v in raw.dropna().unique() if math.isfinite(float(v))]
+        if vals and all(v.is_integer() for v in vals):
+            return _is_numbered_scale([str(int(v)) for v in sorted(vals)])
+        return False
     # "scale" is SPSS's default for any numeric column, so it proves nothing about labelled codes.
     subst = [str(v) for v in (labels or {}).values() if not _DK_RE.match(str(v).strip())]
     if len(subst) < 3:
@@ -3219,7 +3229,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     # (_is_ordered_scale) decides whether the row says so, in its own label, so the
                     # qualification reaches the screen and every export that prints row labels.
                     # The figure is unchanged. Groups without the flag keep their label as before.
-                    if g.get("qualifyCodes") and not _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None)):
+                    if g.get("qualifyCodes") and not _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None), raw):
                         row["label"] += f" ({UNORDERED_MEAN_NOTE})"
                         row["codesMayBeUnordered"] = True
                     row["isNet"] = True
@@ -3288,7 +3298,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     else:
                         contrast_cols.append(None)
                 q_single["npsContrastSe"] = {"total": contrast_total, "columns": contrast_cols}
-            if raw.dtype.kind in "fiu" and _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None)):
+            if raw.dtype.kind in "fiu" and _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None), raw):
                 # A coded scale (for example 1 to 5): mean, spread and range of the codes, don't know excluded.
                 # Not for nominal categories such as gender or province, where a mean of the codes means nothing.
                 xq = raw.astype(float).to_numpy()

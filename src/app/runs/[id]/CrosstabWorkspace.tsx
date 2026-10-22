@@ -1354,6 +1354,7 @@ export default function CrosstabWorkspace({
                         ? ` of ${starterPlan.eligibleQuestions}`
                         : ""}{" "}
                       questions
+                      {starterPlan.meanScales > 0 ? ` (${starterPlan.meanScales} rated 0 to 10 or 1 to 10, shown with their mean above the answers)` : ""}
                       {weightVar ? `, weighted by ${weightVar}` : ", unweighted"}. Built as drafts: nothing becomes a
                       finding until you commit, and only differences that survive a false discovery rate correction are kept.
                     </p>
