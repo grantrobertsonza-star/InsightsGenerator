@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main only): two changes Grant asked for, `2ad3ece` (Import screen; design, plus View original as a download) and `650735c` (the same proposal is not read twice; Read it again only suggests); see `docs/import-and-reread-handover-2026-10-22.md`. No migration. R1000 repairs remain ACCEPTED at `780b4b8`. Full native suite not run on the exact tree (stated in the handover). Not go-live approval. 3001 out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): repairs for IR-01, IR-02, IR-03 and M-IMPORT-01 (`docs/independent-import-reread-review-main-2026-10-22.md`) and, at Grant's request, Research quality without the Criteria tab, multiple-response heading links, the SemanticTabs mean and memory, and StarterTabs groupings and chosen columns; see `docs/design-batch-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: IR repairs and design batch, main copy (2026-10-22)
+
+Implemented, ready for review: `2e0ba53` (Research quality), `d10d28b` (multiple-response links), `5628913` (IR-01, IR-02, IR-03, M-IMPORT-01), `b78ceae` (SemanticTabs mean), `9af17ed` (SemanticTabs memory), `90e2753` (StarterTabs) and this docs commit. Checks and limits in `docs/design-batch-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022d/`.
+
 
 ## Claude: Import screen and proposal re-read rule, main copy (2026-10-22)
 
