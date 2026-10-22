@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): repairs for IR-01, IR-02, IR-03 and M-IMPORT-01 (`docs/independent-import-reread-review-main-2026-10-22.md`) and, at Grant's request, Research quality without the Criteria tab, multiple-response heading links, the SemanticTabs mean and memory, and StarterTabs groupings and chosen columns; see `docs/design-batch-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main copy only): M-BATCH-01 (`docs/independent-design-batch-review-main-2026-10-22.md`) and, at Grant's request, sidebar groups that roll up and 10 point scales (StarterTabs mean rows; unlabelled whole-number codes read as a numbered scale in the engine); see `docs/batch2-handover-2026-10-22.md`. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: M-BATCH-01, sidebar roll-up and 10 point scales, main copy (2026-10-22)
+
+Implemented, ready for review: `f8f0420` (M-BATCH-01), `1f220a6` (sidebar), `9a03ad7` (10 point scales) and this docs commit. Checks and limits in `docs/batch2-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022e/`.
+
 
 ## Claude: IR repairs and design batch, main copy (2026-10-22)
 
