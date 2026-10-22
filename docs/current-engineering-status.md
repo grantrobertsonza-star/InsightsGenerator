@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main only): repairs for GT1000-F01, F02, F03, UI-GT1000-01 and M-GT1000-01 (`docs/golden-thread-1000-independent-review-2026-10-21.md`, frozen `011ac23`) in `63d50af` (F03), `522df47` (UI-GT1000-01, M-GT1000-01; design and documentation) and `190ae7f` (F01, F02); see `docs/gt1000-repair-handover-2026-10-22.md`. No migration. The full native browser suite was not rerun on the final tree in the cloud workspace (stated in the handover). Not go-live approval; target-environment, deployed security and real-model gates remain separate. 3001 out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main only): repairs for R1000-01, M-R1000-01, UI-R1000-01 and V-R1000-01, plus the objectiveDecisionClosure test isolation (`docs/independent-gt1000-repair-review-main-2026-10-22.md`, frozen `91f0216`) in `20e49ab` (R1000-01, M-R1000-01), `88f092a` (UI-R1000-01, design) and `7d9fd96` (V-R1000-01, tests); see `docs/r1000-repair-handover-2026-10-22.md`. No migration. Grant's Import screen changes are not in this set. Not go-live approval; target-environment, deployed security and real-model gates remain separate. 3001 out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: repairs for Codex's GT1000 repair review, main copy (2026-10-22)
+
+Implemented, ready for review: `20e49ab`, `88f092a`, `7d9fd96`. Checks and limits in `docs/r1000-repair-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022b/`.
+
 
 ## Claude: repairs for Codex's GT1000 review, main copy (2026-10-22)
 
