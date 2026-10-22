@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -19,6 +20,50 @@ export type RunNavSection = {
   /** Other sections this entry stands for: it is shown active while any of them is open. */
   activeFor?: string[];
 };
+
+// Folded sidebar groups (Grant, 2026-10-22: "a roll up button on each side navigation section"),
+// remembered per browser. Storage can be blocked (private windows, previews), so every read and
+// write is guarded and a fold still applies for the page view.
+const FOLDED_KEY = "run-nav-folded:v1";
+const FOLDED_EVENT = "run-nav-folded";
+let foldedInPage: string | null = null;
+function readFolded(): string {
+  if (foldedInPage !== null) return foldedInPage;
+  try {
+    return window.localStorage.getItem(FOLDED_KEY) ?? "[]";
+  } catch {
+    return "[]";
+  }
+}
+function subscribeFolded(onChange: () => void) {
+  const storageChanged = (e: StorageEvent) => {
+    if (e.key === null || e.key === FOLDED_KEY) foldedInPage = null;
+    onChange();
+  };
+  window.addEventListener("storage", storageChanged);
+  window.addEventListener(FOLDED_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", storageChanged);
+    window.removeEventListener(FOLDED_EVENT, onChange);
+  };
+}
+function parseFolded(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function writeFolded(groups: string[]) {
+  foldedInPage = JSON.stringify(groups);
+  try {
+    window.localStorage.setItem(FOLDED_KEY, foldedInPage);
+  } catch {
+    // Not remembered; the fold still applies for this page view.
+  }
+  window.dispatchEvent(new Event(FOLDED_EVENT));
+}
 
 const RunSectionContext = createContext<{
   selected: string;
@@ -165,6 +210,10 @@ export function RunNav({
     setRailEl(document.getElementById("run-nav-rail"));
   }, []);
 
+  // The server and the first client render show every group open; a remembered fold applies after.
+  const folded = parseFolded(useSyncExternalStore(subscribeFolded, readFolded, () => "[]"));
+  const toggleGroup = (name: string) => writeFolded(folded.includes(name) ? folded.filter((g) => g !== name) : [...folded, name]);
+
   const groups: { name: string; items: RunNavSection[] }[] = [];
   for (const section of sections) {
     const existing = groups.find((g) => g.name === section.group);
@@ -194,14 +243,30 @@ export function RunNav({
           ))}
         </select>
       </div>
-      {groups.map((group) => (
-        <div key={group.name} role="group" aria-label={group.name} className="mt-1 border-t border-slate-200 px-3 pb-3 pt-3">
-          <div className="mb-1.5 flex items-center gap-2 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-700">
+      {groups.map((group) => {
+        const isFolded = folded.includes(group.name);
+        const listId = `run-nav-group-${group.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+        // A folded group still shows the open section, so the researcher never loses where they are.
+        const shownItems = isFolded ? group.items.filter((s) => s.id === selected || (s.activeFor ?? []).includes(selected)) : group.items;
+        return (
+        <div key={group.name} role="group" aria-label={group.name} className={`mt-1 border-t border-slate-200 px-3 pt-3 ${isFolded && shownItems.length === 0 ? "pb-2" : "pb-3"}`}>
+          <button
+            type="button"
+            onClick={() => toggleGroup(group.name)}
+            aria-expanded={!isFolded}
+            aria-controls={listId}
+            title={isFolded ? `Show ${group.name}` : `Roll up ${group.name}`}
+            data-testid="run-nav-group-toggle"
+            className="mb-1.5 flex w-full items-center gap-2 rounded px-3 py-0.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-700 hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+          >
             <span aria-hidden="true" className="h-3 w-1 rounded-full bg-primary/60" />
-            {group.name}
-          </div>
-          <div className="flex flex-col gap-0.5">
-            {group.items.map((section) => {
+            <span className="flex-1">{group.name}</span>
+            <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${isFolded ? "-rotate-90" : ""}`}>
+              <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div id={listId} className="flex flex-col gap-0.5">
+            {shownItems.map((section) => {
               const active = section.id === selected || (section.activeFor ?? []).includes(selected);
               return (
                 <button
@@ -224,7 +289,8 @@ export function RunNav({
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 
