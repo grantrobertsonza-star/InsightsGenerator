@@ -16,7 +16,7 @@ import {
   setCrosstabText,
   type CrosstabListItem,
 } from "./crosstabs";
-import { planStarterTables } from "./starterTables";
+import { chosenBannersProblem, planStarterTables } from "./starterTables";
 import { planCrosstabFromText, type AskPlan } from "./crosstabAsk";
 import { ASK_MEMORY_REQUESTS } from "./crosstabAskShared";
 import type { CategoryList, CrosstabRequest, CrosstabResult, VariableDictionary } from "./parseStatsFile";
@@ -168,11 +168,20 @@ export async function buildStarterTablesAction(
   runId: string,
   documentId: string,
   settings?: Pick<CrosstabRequest, "weightVar" | "correction" | "excludeDk" | "design">,
+  /** The researcher's columns to split by; omitted for the recognised ones. Checked against the file here. */
+  banners?: unknown,
 ): Promise<{ ok: true; tables: number; questions: number; banners: string[] } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const dictionary = await loadVariableDictionary(TENANT_ID, runId, documentId);
-    const plan = planStarterTables(dictionary);
+    let chosen: string[] | undefined;
+    if (banners !== undefined && banners !== null) {
+      if (!Array.isArray(banners) || !banners.every((b) => typeof b === "string")) return { ok: false, error: "The columns to split by were not understood. Choose them again." };
+      const problem = chosenBannersProblem(dictionary, banners);
+      if (problem) return { ok: false, error: problem };
+      chosen = banners;
+    }
+    const plan = planStarterTables(dictionary, chosen);
     if (plan.banners.length === 0)
       return { ok: false, error: "No demographic variables (gender, age, province and so on) were found to split by. Choose columns in the workspace instead." };
     if (plan.items.length === 0) return { ok: false, error: "No questions suited a starter table. Choose rows in the workspace instead." };

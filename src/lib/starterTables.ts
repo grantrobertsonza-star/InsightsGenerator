@@ -1,7 +1,9 @@
 import type { CrosstabRowItem, VariableDictionary, VariableInfo } from "./parseStatsFile";
+import { isStringCategory } from "./variableKinds";
 
 // A small, opt-in starting set of tables: the usual demographic splits (gender,
-// age, province and so on) against the questions in the file. It only plans;
+// age, province and so on, and customer groupings such as segment), or columns the researcher
+// chooses, against the questions in the file. It only plans;
 // building and committing are separate steps, so nothing reaches Findings
 // until a person commits. Kept pure so it can be tested without a database.
 
@@ -16,6 +18,9 @@ const DEMOGRAPHICS: RegExp[] = [
   /population group|\brace\b|ethnic/i,
   /education|highest (level|grade)/i,
   /employment|work status/i,
+  // Customer and sample groupings (Grant, 2026-10-22: a call-centre tracker split only by Segment
+  // got no starter set). Ranked after the demographics, so a file with both splits by those first.
+  /segment|cohort|\btier\b|customer (type|group|class)|member type|\bchannel\b|\bbranch\b|\bstore\b|\bsite\b/i,
 ];
 
 const LIMITS = {
@@ -27,6 +32,16 @@ export type StarterPlan = {
   small: boolean;
   weightVar: string | null;
   banners: { name: string; label: string }[];
+  /** True when the banners are the researcher's choice rather than the recognised ones. */
+  chosen: boolean;
+  /**
+   * Every variable that can be a banner (categorical, 2 to 10 answers, at least 90% answering),
+   * recognised ones first, for the researcher to choose from when none is recognised or the
+   * recognised ones are not the right split.
+   */
+  candidates: { name: string; label: string; recognised: boolean }[];
+  /** The most banners one starter set builds. */
+  maxBanners: number;
   items: CrosstabRowItem[];
   /** Questions that qualified, before the cap. */
   eligibleQuestions: number;
@@ -37,27 +52,70 @@ export function defaultWeight(dict: VariableDictionary): string | null {
   return (weights.find((w) => /bench|person/i.test(`${w.name} ${w.label}`)) ?? weights[0])?.name ?? null;
 }
 
+// A text column whose answers repeat within a short list ("Segment1", "Yes"/"No") is a category
+// too (isStringCategory, the shared rule); a spreadsheet such as csm_Wave1_Baseline.xlsx stores
+// every answer that way, and leaving them out left its starter set empty.
 function isCategorical(v: VariableInfo): boolean {
-  return !v.weightLike && !v.text && !v.inSet && !v.isFlag && v.nDistinct >= 2 && v.nDistinct <= 15;
+  return !v.weightLike && (!v.text || isStringCategory(v)) && !v.inSet && !v.isFlag && v.nDistinct >= 2 && v.nDistinct <= 15;
 }
 
-export function planStarterTables(dict: VariableDictionary): StarterPlan {
+/** A name as words, so "CustomerTier" or "age_group" is read like a label ("Customer Tier", "age group"). */
+function nameAsWords(name: string): string {
+  return name.replace(/[_.-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function isBannerCandidate(v: VariableInfo): boolean {
+  return isCategorical(v) && v.nDistinct <= 10 && v.pctValid >= 90;
+}
+
+/**
+ * Checks the researcher's chosen banners against the file: each must be a banner candidate, none
+ * repeated, at most the set's limit. Returns the problem in words, or null when they are fine.
+ */
+export function chosenBannersProblem(dict: VariableDictionary, names: string[]): string | null {
+  const limit = (dict.variables.length <= STARTER_SMALL_FILE_VARIABLES ? LIMITS.small : LIMITS.large).banners;
+  if (names.length === 0) return "Choose at least one column to split by.";
+  if (names.length > limit) return `Choose at most ${limit} columns to split by.`;
+  if (new Set(names).size !== names.length) return "A column to split by was chosen twice.";
+  const byName = new Map(dict.variables.map((v) => [v.name, v]));
+  const bad = names.filter((n) => {
+    const v = byName.get(n);
+    return !v || !isBannerCandidate(v);
+  });
+  if (bad.length) return `Not a column to split by in this file (it needs 2 to 10 answers and at least 90% answering): ${bad.join(", ")}.`;
+  return null;
+}
+
+/**
+ * Plans the starter set. `chosenBanners`, when given, replaces the recognised banners; it must
+ * pass chosenBannersProblem (the server action checks before building).
+ */
+export function planStarterTables(dict: VariableDictionary, chosenBanners?: string[]): StarterPlan {
   const small = dict.variables.length <= STARTER_SMALL_FILE_VARIABLES;
   const limit = small ? LIMITS.small : LIMITS.large;
 
   const banners: { name: string; label: string; rank: number }[] = [];
+  const candidates: { name: string; label: string; rank: number }[] = [];
   for (const v of dict.variables) {
-    if (!isCategorical(v) || v.nDistinct > 10 || v.pctValid < 90) continue;
-    const text = `${v.name} ${v.label}`;
+    if (!isBannerCandidate(v)) continue;
+    const text = `${nameAsWords(v.name)} ${v.label}`;
     const rank = DEMOGRAPHICS.findIndex((re) => re.test(text));
+    candidates.push({ name: v.name, label: v.label, rank });
     if (rank >= 0) banners.push({ name: v.name, label: v.label, rank });
   }
   banners.sort((a, b) => a.rank - b.rank);
   // One banner per kind of demographic, so two gender-like variables do not both take a slot.
   const seenRank = new Set<number>();
-  const chosen = banners
+  const recognised = banners
     .filter((b) => (seenRank.has(b.rank) ? false : (seenRank.add(b.rank), true)))
     .slice(0, limit.banners);
+  const byName = new Map(dict.variables.map((v) => [v.name, v]));
+  const chosen = chosenBanners
+    ? chosenBanners.flatMap((n) => {
+        const v = byName.get(n);
+        return v ? [{ name: v.name, label: v.label }] : [];
+      })
+    : recognised;
   const bannerNames = new Set(chosen.map((b) => b.name));
 
   const items: CrosstabRowItem[] = [];
@@ -74,6 +132,12 @@ export function planStarterTables(dict: VariableDictionary): StarterPlan {
     small,
     weightVar: defaultWeight(dict),
     banners: chosen.map(({ name, label }) => ({ name, label })),
+    chosen: Boolean(chosenBanners),
+    // Recognised first (in their order), then the rest in file order.
+    candidates: [...candidates]
+      .sort((a, b) => (a.rank < 0 ? 1 : 0) - (b.rank < 0 ? 1 : 0) || (a.rank >= 0 && b.rank >= 0 ? a.rank - b.rank : 0))
+      .map(({ name, label, rank }) => ({ name, label, recognised: rank >= 0 })),
+    maxBanners: limit.banners,
     items: items.slice(0, limit.questions),
     eligibleQuestions: items.length,
   };

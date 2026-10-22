@@ -738,12 +738,17 @@ export default function CrosstabWorkspace({
     setError(null);
     setMessage(null);
     startTransition(async () => {
-      const r = await buildStarterTablesAction(runId, documentId, {
-        weightVar: weightVar || null,
-        correction,
-        excludeDk,
-        ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
-      });
+      const r = await buildStarterTablesAction(
+        runId,
+        documentId,
+        {
+          weightVar: weightVar || null,
+          correction,
+          excludeDk,
+          ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
+        },
+        starterBanners ?? undefined,
+      );
       if (!r.ok) return setError(r.error);
       setMessage(`Added ${r.tables} starter table(s) as drafts, ${r.questions} question(s) each. Review them, delete what you do not need, then commit.`);
       refreshList();
@@ -795,7 +800,16 @@ export default function CrosstabWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry, runId, documentId]);
   const modeName = { build: "CrossTabs", ask: "SemanticTabs", starter: "StarterTabs", objectives: "ObjectiveTabs", all: "All tables" }[entry];
-  const starterPlan = useMemo(() => (dict ? planStarterTables(dict) : null), [dict]);
+  // The starter set's columns to split by: null for the recognised ones (demographics and customer
+  // groupings), or the researcher's choice from the file's candidates. Kept with its file, so a
+  // choice made on one file is not applied to another.
+  const [starterChoice, setStarterChoice] = useState<{ documentId: string; names: string[] } | null>(null);
+  const starterBanners = starterChoice && starterChoice.documentId === documentId ? starterChoice.names : null;
+  const setStarterBanners = (names: string[] | null) => setStarterChoice(names ? { documentId, names } : null);
+  // The column chooser opens by itself when nothing is recognised; once the researcher opens,
+  // closes or uses it, it stays as they left it (choosing a first column must not fold it away).
+  const [starterChooserOpen, setStarterChooserOpen] = useState<boolean | null>(null);
+  const starterPlan = useMemo(() => (dict ? planStarterTables(dict, starterBanners ?? undefined) : null), [dict, starterBanners]);
   const hasStarter = items.some((i) => i.label.startsWith("Starter:"));
   const arrow = (k: SortKey) => (sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : "");
   const btn = (on: boolean) =>
@@ -979,7 +993,7 @@ export default function CrosstabWorkspace({
               [
                 ["build", "CrossTabs", "Build a table: pick columns and rows, add nets and groups"],
                 ["ask", "SemanticTabs", "Ask in plain English and check the setup"],
-                ["starter", "StarterTabs", "Suggested demographic tables"],
+                ["starter", "StarterTabs", "Suggested tables split by demographics or customer groups, or columns you choose"],
                 ["objectives", "ObjectiveTabs", "Tables built from your research objectives"],
                 ["all", `All tables (${items.length})`, "Every table from every mode, and the findings"],
               ] as const
@@ -1002,7 +1016,7 @@ export default function CrosstabWorkspace({
               {
                 build: "CrossTabs: build a table yourself by choosing columns and rows, with nets and groups.",
                 ask: "SemanticTabs: describe the table in plain English, then check the setup it proposes before adding it.",
-                starter: "StarterTabs: a suggested set of demographic tables, built as drafts.",
+                starter: "StarterTabs: a suggested set of tables split by demographics or customer groups (or columns you choose), built as drafts.",
                 objectives: "ObjectiveTabs: tables the evidence check built from your research objectives.",
                 all: "All tables: every table from every way of making them, and the commit into findings.",
               }[entry]
@@ -1356,8 +1370,68 @@ export default function CrosstabWorkspace({
               </div>
             )}
             {entry === "starter" && hasStarter && <p className="text-xs text-muted">A starter set is already in the table set below. Delete the drafts to build it again.</p>}
-            {entry === "starter" && !hasStarter && (!starterPlan || starterPlan.banners.length === 0 || starterPlan.items.length === 0) && (
-              <p className="text-xs text-muted">No demographic variables (gender, age, province and so on) or suitable questions were found for a starter set. Use one of the other ways to build a table.</p>
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.candidates.length === 0 && (
+              <p className="text-xs text-muted">
+                No column in this file can split a starter set (one needs 2 to 10 answers, with at least 90% of people answering). Use one of the other ways to build a table.
+              </p>
+            )}
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.candidates.length > 0 && starterPlan.banners.length === 0 && (
+              <p className="text-xs text-muted" data-testid="starter-none-recognised">
+                {starterPlan.chosen
+                  ? "Choose at least one column to split by."
+                  : "No demographic (gender, age, province and so on) or customer grouping (such as segment) was recognised. Choose the columns to split by below."}
+              </p>
+            )}
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.banners.length > 0 && starterPlan.items.length === 0 && (
+              <p className="text-xs text-muted">No questions suited a starter table besides the columns to split by. Use one of the other ways to build a table.</p>
+            )}
+            {entry === "starter" && !hasStarter && starterPlan && starterPlan.candidates.length > 0 && (
+              <details
+                className="rounded-lg border border-border bg-white p-3 text-xs"
+                open={starterChooserOpen ?? starterPlan.banners.length === 0}
+                onToggle={(e) => setStarterChooserOpen(e.currentTarget.open)}
+                data-testid="starter-banner-chooser"
+              >
+                <summary className="cursor-pointer font-medium text-foreground">
+                  {`Columns to split by (${starterPlan.banners.length} chosen, at most ${starterPlan.maxBanners})`}
+                  {starterPlan.chosen && <span className="ml-1.5 font-normal text-muted">your choice</span>}
+                </summary>
+                <p className="mt-1.5 text-muted">
+                  Each column you choose becomes one starter table, with the other questions down the side. Recognised splits are listed first.
+                  {starterPlan.chosen && (
+                    <button type="button" className="ml-1.5 underline" onClick={() => setStarterBanners(null)}>
+                      Use the recognised ones
+                    </button>
+                  )}
+                </p>
+                <ul className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {starterPlan.candidates.map((c) => {
+                    const on = starterPlan.banners.some((b) => b.name === c.name);
+                    const full = !on && starterPlan.banners.length >= starterPlan.maxBanners;
+                    return (
+                      <li key={c.name}>
+                        <label className={`flex items-start gap-1.5 ${full ? "text-muted" : "text-foreground"}`}>
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={on}
+                            disabled={full}
+                            onChange={() => {
+                              setStarterChooserOpen(true);
+                              const current = starterPlan.banners.map((b) => b.name);
+                              setStarterBanners(on ? current.filter((n) => n !== c.name) : [...current, c.name]);
+                            }}
+                          />
+                          <span>
+                            {c.label && c.label !== c.name ? `${c.label} (${c.name})` : c.name}
+                            {c.recognised && <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">recognised</span>}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
             )}
             {entry === "build" && (
               <>
