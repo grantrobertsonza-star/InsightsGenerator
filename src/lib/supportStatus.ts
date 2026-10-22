@@ -41,6 +41,20 @@ import { designFreshnessStatus, resolveCurrentDesignSnapshotStatus } from "./cro
 import { loadVariableOverrides } from "./variableOverrides";
 import { quoteGroundingChecker } from "./quoteMatch";
 import { driverAnalysesPresent } from "./driverFindingSource";
+import { driverRequestVariables, parseDriverRequest } from "./driverRequest";
+
+/**
+ * R1000-01: the variables a driver finding's support depends on come from its saved analysis's
+ * checked request (driverRequestVariables), never from a list recorded with the finding, which a
+ * caller could have shortened. When the request cannot be read (the analysis table is absent, or the
+ * request no longer parses) the answer is null, which compares every correction of the data file:
+ * any change then reads as changed, never as current.
+ */
+function driverDependencyVariables(request: unknown): string[] | null {
+  if (request === null || request === undefined) return null;
+  const checked = parseDriverRequest(request);
+  return checked.ok ? driverRequestVariables(checked.request) : null;
+}
 import {
   classifyInsightSupport,
   correctionsFor,
@@ -74,6 +88,8 @@ type RawRow = {
   driver_document_id: string | null;
   driver_analysis_present: boolean | null;
   driver_provenance: { overridesSnapshot?: unknown; variables?: unknown } | null;
+  /** R1000-01: the saved analysis's own request, the authority for which variables it used. */
+  driver_request?: unknown;
 };
 
 /**
@@ -87,14 +103,16 @@ function driverLineage(present: boolean): { columns: string; join: string } {
         columns: `f.pattern_type = 'driver' as is_driver,
               case when f.pattern_type = 'driver' then coalesce(f.source_document_id, da.document_id) end as driver_document_id,
               case when f.pattern_type = 'driver' then da.id is not null end as driver_analysis_present,
-              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance`,
+              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance,
+              case when f.pattern_type = 'driver' then da.request end as driver_request`,
         join: `left join driver_analyses da on f.pattern_type = 'driver' and da.id::text = f.stated_stats->>'analysisId'`,
       }
     : {
         columns: `f.pattern_type = 'driver' as is_driver,
               case when f.pattern_type = 'driver' then f.source_document_id end as driver_document_id,
               null::boolean as driver_analysis_present,
-              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance`,
+              case when f.pattern_type = 'driver' then f.stated_stats->'provenance' end as driver_provenance,
+              null::jsonb as driver_request`,
         join: "",
       };
 }
@@ -266,7 +284,7 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
             documentId: r.driver_document_id,
             analysisPresent: r.driver_analysis_present,
             overridesSnapshot: r.driver_provenance?.overridesSnapshot ?? null,
-            variables: Array.isArray(r.driver_provenance?.variables) ? (r.driver_provenance?.variables as string[]) : null,
+            variables: driverDependencyVariables(r.driver_request),
           }
         : null,
     };

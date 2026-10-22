@@ -29,6 +29,22 @@ and any accepted insight on them, reading "Support current" in Excel and the Acc
 - Legacy findings: resolved through their saved analysis while it exists (not checked: no recorded
   corrections); unresolvable ones are no longer valid. No backfill; no migration.
 
+**Dependencies come from the request (R1000-01, Codex 2026-10-22).** A result travels through the
+browser before it is saved, so nothing in its `provenance` is trusted as a dependency list:
+
+- `saveDriverAnalysis` replaces `provenance.variables` with `driverRequestVariables` of the checked
+  request (outcome, predictors, weight, group, stated-importance variables), whatever list came
+  back: omitted, empty, shortened, foreign or wrongly typed. Replaced rather than refused, because the
+  list is derived from the request and carries no choice of the researcher's. A corrections snapshot
+  that is not a plain object is stored as null (not checked). The data-file check is unchanged.
+- `addDriverFindings` (`savedProvenance`) records the same canonical list on each finding, from the
+  saved request, never the saved report's list.
+- Support reads the variables from the saved analysis's own request (`driver_analyses.request`,
+  joined in both loaders), not from the finding's recorded list, so a list shortened afterwards
+  changes nothing. When the request cannot be read (the table is absent, or the request no longer
+  parses) the variables are unknown and every correction of the file is compared: any change reads
+  as changed, never as current. A missing snapshot stays not checked.
+
 Limits: the saved result is the one the screen received from the run (not recalculated on save);
 its provenance must name the same data file or the save is refused. A data-layout change is not
 compared (as for calculated tables). Deleting a saved analysis keeps its findings, which then read
@@ -43,10 +59,15 @@ only for a binary outcome and finite; weight and group distinct from the outcome
 each other; stated importance only for listed predictors. Bootstrap: omitted means 200; otherwise an
 integer, 0 (no ranges, said in the report) or 20 to 300; 1 to 19, negatives, fractions and
 non-numbers are refused. A binary outcome split exactly (Shapley) draws at most 60 resamples, and the
-report says so. Whether a variable exists in the file is decided by the engine's read of exactly
+report says so. The engine, called directly, refuses only a value that is not a whole number from 0:
+1 to 19 run with no ranges and say so, above the cap are drawn at the cap and say so; the cap (300,
+or 60 for a binary exact split) is a run-time bound, because every resample refits the split
+(M-R1000-01). Whether a variable exists in the file is decided by the engine's read of exactly
 those columns, which refuses an unknown column. The engine itself refuses an unsupported outcome
 type and a non-integer bootstrap, so no caller can skip the intervals silently. Figures are unchanged.
 
 **Tests.** `driverProvenance.db.test.ts` (real PostgreSQL, actual actions, deleteDocument, loaders
-and export routes); `driverRequestContract.test.ts` (contract, engine, actions with the file
+and export routes); `driverDependency.db.test.ts` (R1000-01: tampered lists, each role, an unrelated
+control, a shortened recorded list, clear and rebuild, a non-object snapshot, refusal and retry,
+both loaders, Excel all and accepted); `driverRequestContract.test.ts` (contract, engine, actions with the file
 boundary shown unreached); existing `driverReopen.db`, `driverAnalysis`, `supportStatus`.

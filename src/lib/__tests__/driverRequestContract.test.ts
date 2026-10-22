@@ -99,6 +99,21 @@ describe("driverAnalysis: the method described is the method that ran (GT1000-F0
     expect(r.method).toBe("shapley");
     expect(DEFAULT_BOOTSTRAP).toBeGreaterThan(60);
     expect(r.warnings.join(" ")).toMatch(/use 60 resamples/);
+    expect(r.warnings.join(" ")).toMatch(/binary outcome split exactly/);
+  });
+
+  // M-R1000-01: called directly, the engine accepts what the server policy refuses (1 to 19, above
+  // 300) and says what it drew; a continuous cap is not explained as a binary one.
+  it("called directly, 19 resamples run with no ranges and 301 are drawn at 300, each said truthfully", () => {
+    const s = sample();
+    const few = driverAnalysis({ ...s, outcome: "continuous", bootstrap: 19, seed: 1 });
+    const many = driverAnalysis({ ...s, outcome: "continuous", bootstrap: 301, seed: 1 });
+    if ("error" in few || "error" in many) throw new Error("unexpected engine refusal");
+    expect(few.rows.every((r) => r.shareLow === null)).toBe(true);
+    expect(few.warnings.join(" ")).toMatch(/Only 19 bootstrap resamples/);
+    expect(many.rows.every((r) => r.shareLow !== null)).toBe(true);
+    expect(many.warnings.join(" ")).toMatch(/use 300 resamples, the most drawn here/);
+    expect(many.warnings.join(" ")).not.toMatch(/binary/);
   });
 });
 

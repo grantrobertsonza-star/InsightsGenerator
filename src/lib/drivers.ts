@@ -336,6 +336,22 @@ export async function saveDriverAnalysis(
   const checked = parseDriverRequest(report.request);
   if (!checked.ok) throw new Error(checked.error);
   if (report.provenance && report.provenance.documentId !== documentId) throw new Error("This result was calculated from a different data file.");
+  // R1000-01: the variables an analysis depends on are its checked request's (driverRequestVariables);
+  // a list returned with the result is replaced by them, never trusted, so an empty or shortened list
+  // cannot hide a later correction. Replaced rather than refused: the list is derived from the
+  // request, so there is no researcher choice in it to lose. A corrections snapshot that is not a
+  // plain object is recorded as not known (null), which support reports as not checked.
+  if (report.provenance) {
+    const snapshot = report.provenance.overridesSnapshot;
+    report = {
+      ...report,
+      provenance: {
+        documentId,
+        overridesSnapshot: snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? snapshot : null,
+        variables: driverRequestVariables(checked.request),
+      },
+    };
+  }
   return withTenant(tenantId, async (client) => {
     await lockOwnedRun(client, tenantId, runId);
     const doc = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3", [documentId, runId, tenantId]);
@@ -393,12 +409,16 @@ export async function deleteDriverAnalysis(tenantId: string, runId: string, id: 
  */
 function savedProvenance(report: DriverReport, documentId: string): DriverProvenance {
   const p = report.provenance;
-  const variables = (() => {
-    const checked = parseDriverRequest(report.request);
-    return checked.ok ? driverRequestVariables(checked.request) : [];
-  })();
-  if (!p || p.documentId !== documentId) return { documentId, overridesSnapshot: null, variables };
-  return { documentId, overridesSnapshot: p.overridesSnapshot ?? null, variables: Array.isArray(p.variables) ? p.variables : variables };
+  // R1000-01: the dependency list is always the checked request's, whatever the saved report says.
+  // A request that no longer parses gives no list and no snapshot: support then reads not checked.
+  const checked = parseDriverRequest(report.request);
+  if (!checked.ok) return { documentId, overridesSnapshot: null, variables: [] };
+  const variables = driverRequestVariables(checked.request);
+  const snapshot = p?.overridesSnapshot;
+  if (!p || p.documentId !== documentId || !snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return { documentId, overridesSnapshot: null, variables };
+  }
+  return { documentId, overridesSnapshot: snapshot, variables };
 }
 
 /**
