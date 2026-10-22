@@ -79,8 +79,28 @@ export default function ObjectiveGuide() {
         supplied, a model reads it and returns two things: the business problem, and the research objectives, numbered
         if there is more than one. If both a brief and a proposal are given, the proposal is treated as the more
         considered statement where it is sharper, and the two are reconciled into one set. Anything you typed takes
-        priority over what was extracted. If the document cannot be read, what you typed is still saved and the failure
-        is logged quietly.
+        priority over what was extracted: objectives are only taken from the document when the objective box is
+        empty. Each objective added this way shows where it came from (&quot;Added from the proposal ...&quot;).
+      </P>
+      <P>
+        If the document cannot be read, what you typed is still saved, and the form says the fill did not happen, with
+        the reason and a <em>Try the fill again</em> button that chooses the same documents again without overwriting
+        what you typed. A reload still shows the failure until a fill succeeds.
+      </P>
+      <P>
+        A document is read once. Choosing a brief or proposal that an earlier fill of this project already used (or a
+        copy of it with the same content) makes no new reading and adds nothing; the form says when it was used and how
+        many objectives came from it. This matters because a fresh reading words the same objectives differently, and
+        those would otherwise come back as new ones. An objective read from a document before is not added again even
+        if you have since edited, rejected or deleted it: those are your decisions.
+      </P>
+      <P>
+        To look for anything new in a document already used, press <em>Read it again for anything new</em>. Lines new
+        to the project are added as suggestions waiting for review, never accepted and never in your stated list, each
+        marked &quot;Suggested on re-reading the proposal ...&quot;. On Review, a suggestion that looks like an objective
+        you already have is shown beside it, as a hint only; nothing is merged or hidden. If the objective box is not
+        empty, the lines you typed are added and the document&apos;s new lines are not used, and the result names them,
+        so you can clear the box and read again.
       </P>
       <P>
         The reader is told to write one complete objective per line and never to output a section heading, such as
@@ -229,7 +249,7 @@ export default function ObjectiveGuide() {
         rows={[
           ["Action", "What it does"],
           ["Accept / Unaccept", "Puts an objective in or out of play. Only accepted objectives are scored and checked"],
-          ["Edit", "Saves your wording and accepts it. A changed text is marked Edited, which protects it from being cleared when suggestions are regenerated"],
+          ["Edit", "Saves your wording and accepts it. A changed text is marked Edited, which protects it from being cleared when suggestions are regenerated. If the objective was changed elsewhere since you opened the editor, nothing is saved: your draft stays and you choose Use the current wording or Replace it with mine"],
           ["Reject / Restore", "Sets an objective aside without deleting it. Restoring returns it to accepted"],
           ["Delete", "Removes it permanently, after a confirmation"],
           ["Accept all suggested", "Accepts every pending suggestion as it stands"],
@@ -239,6 +259,12 @@ export default function ObjectiveGuide() {
           ["Check now / Check again", "Runs the coverage check"],
         ]}
       />
+      <P>
+        Adding by hand refuses an objective that is already pending or accepted, and names it; one you rejected can be
+        typed in again as a deliberate re-add. Two objectives are the same when their wording matches after ignoring
+        numbering, case, spacing, curly quotes and trailing punctuation; there is no matching by meaning, so a reworded
+        objective is a different one.
+      </P>
       <P>
         Accepting, restoring, adding and regenerating also trigger scoring and a coverage refresh in the background.
         Rejecting and deleting do not, so after either one the coverage panel may still reflect the earlier list until
@@ -300,6 +326,11 @@ export default function ObjectiveGuide() {
         They describe what the evidence looks arranged to address. They are useful for spotting what a report implicitly
         asked, and they are not a substitute for the question you commissioned. The app does not test them, for the
         circularity reason given above.
+      </Limit>
+      <Limit title="Re-read suggestions are matched by words, not meaning">
+        A suggestion is placed beside an existing objective when the two share enough content words. That is a hint for
+        your review: a restatement in different words is not flagged, and nothing is merged. A document deleted since
+        its fill cannot be recognised by its content, so importing it again fills normally.
       </Limit>
       <Limit title="Coverage is only as good as the accepted insights">
         A Gap may mean the project did not answer the question, or that the relevant insight was rejected, never

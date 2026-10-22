@@ -121,6 +121,20 @@ export default function ImportGuide() {
         longer mean what they did. Wide files, with thousands of columns, keep only the usable variables, and the panel
         says how many were kept; the cross tab tool still reads every variable it needs.
       </P>
+      <H3>The file list and the selected file</H3>
+      <P>
+        The list of sources rolls up with its own button, which only hides it: the search, filters and sort keep
+        their state. Each file names its links on its type and date line (&quot;Linked: questionnaire.docx&quot;, and
+        &quot;and N more&quot;), so you can see what is linked without opening it. The selected file shows its name on
+        one line and its type, upload date, wave and purpose on the next. Raw data offers Open Crosstabs and Open
+        Analytics; a summarised table offers Open Crosstabs only, because Analytics needs case-level data.
+      </P>
+      <P>
+        <em>View original</em> downloads the file exactly as it was uploaded, under its own name, without opening a
+        window. Viewing opens a readable copy in a browser tab where there is one (a PDF). Both use a short-lived link,
+        checked on the server to belong to this project; it stops working after ten minutes. If a download fails, the
+        reason shows under the button and pressing it again tries again. The original file is never changed.
+      </P>
       <WhyBox>
         Accepting by default saves a step nearly everyone would take anyway. Asking again after a change keeps the one
         safeguard that matters: a table should never silently rest on a different structure than the one you
@@ -128,7 +142,11 @@ export default function ImportGuide() {
       </WhyBox>
 
       <H2 id="quality">What the quality panels check</H2>
-      <P>Each card has a rolled-up quality panel. It reports figures, not scores, so you can see why it says what it says.</P>
+      <P>
+        Each card has a rolled-up quality panel. It reports figures, not scores, so you can see why it says what it
+        says. The table of checks is rolled up by default; its summary line gives the number of checks, how many
+        passed, how many to check and how many have a problem, with the worst status beside it.
+      </P>
       <H3>Case-level data</H3>
       <UL>
         <li>
@@ -139,7 +157,18 @@ export default function ImportGuide() {
         </li>
         <li>
           <strong>Weights.</strong> Whether a weight variable is present, how many cases lack a weight, and how
-          variable the weights are. Very unequal weights reduce the effective sample size.
+          variable the weights are. Very unequal weights reduce the effective sample size. This has its own Weights
+          tab.
+        </li>
+        <li>
+          <strong>Missing-value codes.</strong> Codes for don&apos;t know, refused and not applicable, in a fold under
+          Variables. The fold reads the file when you open it. The detection rules are the same as before; only the
+          place changed.
+        </li>
+        <li>
+          <strong>Value labels.</strong> A row in the checks table gives the exact number of variables in the label
+          sheets that are not in the data (their labels are not applied), with every name in a fold, and the number
+          with conflicting labels. It is a note: it does not change the table&apos;s status.
         </li>
         <li>
           <strong>Structure.</strong> Duplicated respondents, constant columns, label look-alikes, and codes that look
@@ -193,6 +222,20 @@ export default function ImportGuide() {
         </li>
         <li>They can later give wording for the labels in a statistical output set (see below).</li>
       </UL>
+      <P>
+        Codes the questionnaire marks as don&apos;t know are treated as missing once a link is confirmed, so bases and
+        percentages can change. A note on the data file&apos;s links tab and on the questionnaire says so. Nothing
+        applies until a link is confirmed, and the data file itself is never changed. The card counts these as
+        &quot;Question and variable links confirmed&quot;.
+      </P>
+      <P>
+        A multiple-response heading question (such as EN20, with the data in EN20_1 to EN20_12) has no single variable
+        of its own. When no variable has the code itself, the variables named the code plus a separator and a suffix
+        are suggested together as its family, and &quot;Confirm same-code matches&quot; can confirm them. By hand,
+        &quot;Choose variable&quot; offers &quot;Link all N&quot; for the family. The separator is the boundary: EN2
+        never takes EN20_1, and EN20 never takes EN201. Linked to a family, the question only adds its wording as a
+        tooltip; the members keep their own answer labels.
+      </P>
       <H3>Guide</H3>
       <P>
         Moderator questions in each transcript are split out and compared with the guide items by wording overlap. A

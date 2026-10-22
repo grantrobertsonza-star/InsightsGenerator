@@ -8,6 +8,7 @@ import PreparingFiles from "./content/preparing-files";
 import Objectives from "./content/objectives";
 import Decisions from "./content/decisions";
 import Reports from "./content/reports";
+import ResearchQuality from "./content/research-quality";
 
 /** Maps each slug in articles.ts to the component that renders it. */
 export const articleComponents: Record<string, ComponentType> = {
@@ -20,4 +21,5 @@ export const articleComponents: Record<string, ComponentType> = {
   objectives: Objectives,
   decisions: Decisions,
   reports: Reports,
+  "research-quality": ResearchQuality,
 };

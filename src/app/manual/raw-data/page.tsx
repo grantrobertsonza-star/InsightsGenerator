@@ -80,8 +80,8 @@ export default function RawDataPage() {
         ]}
         doesNot={[
           "Scan a raw table automatically the way it does an aggregated one: that is a deliberate choice, not a missing feature",
-          "Apply a statistical correction (like a Bonferroni adjustment) for the multiple comparisons it runs: the risk is disclosed, not adjusted away, for now",
-          "Account for a genuine stratified or weighted survey design yet: today's checks assume a simple random or quota sample",
+          "Apply a statistical correction (like a Bonferroni adjustment) for the multiple comparisons a banner plan runs: the risk is disclosed, not adjusted away (cross tabs built in the app do correct, with a false discovery rate correction by default)",
+          "Account for a survey design in a banner plan: it assumes a simple random or quota sample (cross tabs and NPS use the PSU and strata you name)",
         ]}
       />
 

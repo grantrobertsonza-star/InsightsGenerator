@@ -9,6 +9,7 @@ const toc = [
   { id: "types", title: "Kinds of questions and how each is tabulated" },
   { id: "nets", title: "Nets and grouped categories" },
   { id: "sig", title: "Significance: what the arrows mean" },
+  { id: "ways", title: "Ways of making tables" },
   { id: "findings", title: "From tables to findings" },
   { id: "limits", title: "Limitations" },
   { id: "practice", title: "A sensible way to work with it" },
@@ -153,6 +154,7 @@ export default function CrosstabGuide() {
           ["Kind", "How it appears in the data", "How the table treats it"],
           ["Single choice", "One column, one answer per person", "One row per answer. Column percentages add to 100%. Up to 30 answers; a numeric variable with 25 or fewer distinct values is also treated as categories."],
           ["Multiple response", "Several yes/no columns, one per option", "One row per option. Each option is a percentage of the people who answered that option. A row at the top, \"Base: answered this question\", shows the people who answered at least one option. Percentages are of people, so they can add to more than 100%."],
+          ["Rating scale", "One numeric column of 10 or more points (0 to 10, 1 to 10), labelled \"0\" to \"10\" or with no value labels", "One row per answer, with the mean and spread of the codes as well. Don't know and other declared missing codes are left out of the mean. A column the file declares nominal gets no mean."],
           ["Rating grid", "Several numeric columns without value labels (a 1 to 10 battery)", "One row per item showing the average. Codes labelled don't know, refused or not applicable are left out of the average."],
           ["Battery", "Several labelled, non yes/no columns that share a stem", "Each item becomes its own question with its own answers and its own base."],
           ["Numeric", "One numeric column with many values (age, income)", "A single row with the average. Group it into bands first if you want shares."],
@@ -218,13 +220,57 @@ export default function CrosstabGuide() {
         </li>
       </UL>
 
+      <H2 id="ways">Ways of making tables</H2>
+      <P>
+        The workspace has five tabs over the same table set: <em>CrossTabs</em> (pick rows and columns, add nets and
+        groups), <em>SemanticTabs</em> (ask in plain English), <em>StarterTabs</em> (a suggested set), <em>ObjectiveTabs</em>
+        (tables built from your research objectives) and <em>All tables</em>. Every table, however it was made, is listed
+        under All tables and goes through the same commit.
+      </P>
+      <H3>SemanticTabs: asking in plain English</H3>
+      <P>
+        You describe a table (&quot;satisfaction by region, women only&quot;) and get a setup to check: the rows, the
+        columns, the filters and anything the reader was unsure of. Nothing runs until you press <em>Add table now</em>
+        or <em>Put this in the workspace</em>. The sentence describing the table is written from the checked setup, not
+        by the model, so it cannot promise something the table does not show.
+      </P>
+      <P>
+        Asking for a mean or an average of a row adds a mean row above its answers, with the answers kept below. The mean
+        is of the numeric answer codes, weighted with the table&apos;s weight, leaving out don&apos;t know, refused and
+        not applicable. If the codes may not be an ordered scale (regions, brands), the row says &quot;mean of the answer
+        codes, which may not be in order&quot;. A question with text answers, or a set of questions, gets no mean, and
+        the setup says why. Only the mean is offered; other statistics are refused.
+      </P>
+      <P>
+        SemanticTabs remembers the five newest tables built from the file, and your last three requests in the panel, so
+        you can say &quot;switch the rows and columns of the table just produced&quot; or &quot;the same, but women
+        only&quot;. The setup then names the table it starts from. Only that table&apos;s variables and filters are
+        taken; nets, combined columns, weight, tests and corrections are set as usual. The tables are remembered after a
+        reload; your requests are not, and <em>Forget my earlier requests</em> clears them.
+      </P>
+      <H3>StarterTabs: a suggested set</H3>
+      <P>
+        StarterTabs proposes columns to split by and builds one draft table for each, with the file&apos;s other suitable
+        questions down the side. It recognises demographics first (gender, age, province or region, urban or rural,
+        population group, education, employment), then customer and sample groupings (segment, cohort, tier, customer
+        type, channel, branch and similar), by the words in each variable&apos;s name and label. A column needs 2 to 10
+        answers and at least 90% of people answering. Text answers in a short list (&quot;Segment1&quot;,
+        &quot;Yes&quot;/&quot;No&quot;) count as categories; free text does not.
+      </P>
+      <P>
+        Under <em>Columns to split by</em> you can choose the columns yourself, up to four (three in a file of more than
+        100 variables). The list opens by itself when nothing is recognised. A question rated 0 to 10 or 1 to 10 (10 or 11
+        distinct numeric values) gets a mean row above its answers. Your choice applies to the open workspace and is not
+        remembered after a reload.
+      </P>
+
       <H2 id="findings">From tables to findings</H2>
       <P>
         <strong>Nothing is tabulated automatically when you upload a file.</strong> A large survey crossed against even
         a few groups means thousands of tests, and a few will look significant by chance alone, so which comparisons
         to run is left to you. To get going quickly, the workspace offers an optional <strong>starter set</strong>:
-        the usual demographic splits (gender, age, province and similar) against the questions in the file, built as
-        drafts. Under about 100 variables it is offered up front and covers up to 40 questions. In larger files it is
+        the usual demographic or customer splits (gender, age, province, segment and similar) against the questions in
+        the file, built as drafts (see StarterTabs above). Under about 100 variables it is offered up front and covers up to 40 questions. In larger files it is
         a smaller, capped suggestion (20 questions). Because a starter set tests so many cells, only differences that
         survive a false discovery rate correction (Benjamini &amp; Hochberg, 1995) at 5% become findings from it, and
         those findings say so. &quot;Delete all drafts&quot; clears the set in one click.
@@ -246,6 +292,13 @@ export default function CrosstabGuide() {
       </P>
 
       <H2 id="limits">Limitations</H2>
+      <Limit title="a rating scale is recognised by its values">
+        A column with no value labels counts as a 0 to 10 or 1 to 10 scale when it has 10 or more distinct whole-number
+        codes. A scale on which fewer than 10 values were actually given is read as categories, with no mean; set the
+        variable as continuous to get its average. A count variable with 10 or more values gets a mean too, which is
+        still the mean of the counts. StarterTabs and the grouping words are matched by wording, not meaning: a split
+        named otherwise needs choosing by hand.
+      </Limit>
       <Limit title="the sample design is only as good as what you tell the app">
         If you name a PSU (cluster) variable, and ideally a strata variable, the app uses Taylor series linearised
         standard errors, the method behind the R survey package. On the FinScope 2024 file, with the strata rebuilt
@@ -292,7 +345,8 @@ export default function CrosstabGuide() {
           "Weights each cell, states the base, and shows unweighted, weighted and effective bases.",
           "Keeps every option of a multiple-response question, each on the correct base.",
           "Builds nets and grouped categories from respondent-level data, never by adding percentages.",
-          "Offers an optional starter set of demographic tables, with false discovery rate control on the findings it yields.",
+          "Offers an optional starter set split by demographics, customer groupings or columns you choose, with false discovery rate control on the findings it yields.",
+          "Turns a plain-English request into a setup you check first, including a requested mean, and follows a reference to a table you built earlier.",
           "Tests each column against the rest of its banner variable (Taylor series variance when a design is given), shows column-pair letters, a whole-table test, a correction setting and an Excel export, marks bases under 30 as indicative only, and hides figures under 10.",
           "Keeps tables as drafts until you commit, and archives findings if a table is deleted.",
         ]}

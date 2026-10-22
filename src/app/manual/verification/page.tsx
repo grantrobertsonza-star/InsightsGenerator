@@ -24,9 +24,10 @@ export default function VerificationPage() {
         <div className="rounded-lg border border-border p-3">
           <div className="text-sm font-semibold text-foreground">sampling_assumed_random</div>
           <div className="text-sm text-muted">
-            The statistical test behind this finding assumes a simple random or quota sample. If your
-            data actually came from a more complex survey design (stratified sampling with design
-            weights), that detail isn&apos;t accounted for yet, see <em>What this doesn&apos;t do yet</em>.
+            The statistical test behind this finding assumes a simple random or quota sample: no survey
+            design (PSU or strata) was named for its data file, or it came from a check that does not use
+            one. Naming the design in Cross tabs makes its tables and NPS results design-based, see{" "}
+            <em>What this doesn&apos;t do yet</em>.
           </div>
         </div>
         <div className="rounded-lg border border-border p-3">
