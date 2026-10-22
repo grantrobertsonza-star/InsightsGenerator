@@ -34,7 +34,13 @@ driver analysis stays in Saved analyses.
 **Posted state** (UI-GT1000-01). Whether a result is in findings is read from the server for every
 card, new or restored. A failed read is not known, never "not posted": chart and NPS cards
 (`postedState.ts`) show the error with Retry and offer neither Post nor Remove until a read succeeds;
-driver results do the same (`DriverPostStatus`). Scatter cards keep `statusFailed` and say the state
+driver results do the same (`DriverPostStatus`). A read that has not answered yet is also not
+known (UI-R1000-01): `postedControl` gives one of checking, unknown (Retry), post or remove, and only
+the last two offer an action. A new NPS result shows its figures at once with "Checking whether this
+is already in findings" in place of Post and Remove until its read answers; Retry shows checking
+again while it runs; a Clear or a newer NPS calculation makes an older read's answer ignored (the NPS
+sequence number). Chart cards are published only after both their figures and their posted state
+are read, and keep the error until a Retry answers, so they have no checking gap. Scatter cards keep `statusFailed` and say the state
 could not be checked; posting a scatter again does not add a second finding. Scatter card state
 follows `scatterCardState.ts`: the newest read for a request wins; a post, take-back or wording
 decision makes reads already in flight out of date and reads the state back itself; a rebuild that
@@ -44,7 +50,8 @@ replaces a card keeps that card's newer state; updates go to whichever card stan
 blocked storage, separate files, card cap), `scatterCardState.test.ts` (read and write ordering),
 `postedState.test.ts`; browser `e2e/ui/analytics-kept.check.mjs` (one grid, kept across leaving,
 reload and file switch, Clear, Clear all, blocked storage), `analytics-posted-unknown.check.mjs`
-(posted-state read refused for the application role, then recovery), `scatter-wording-review`,
+(posted-state read refused for the application role, then recovery), `nps-pending-status.check.mjs`
+(posted-state read held for an unposted and a posted result, and across a Clear), `scatter-wording-review`,
 `driver-posted-state`, `driver-reopen`.
 
 **Limits.** Memory is per browser; another device or a cleared browser starts empty. Remembered

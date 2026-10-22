@@ -61,7 +61,7 @@ import {
   type WorkspaceMemory,
 } from "./analyticsWorkspaceMemory";
 import { placeScatterCard, rebuiltCardNeedsRead, ScatterStatusClock, scatterRequestKey } from "./scatterCardState";
-import { canPostOrRemove, postedStateFrom, type PostedState } from "./postedState";
+import { PENDING_POSTED_STATE, canPostOrRemove, postedStateFrom, type PostedState } from "./postedState";
 import { KANO_LABELS, kanoPlace, type KanoQuadrantName } from "@/lib/driverQuadrant";
 
 const IMPORTANCE_LIKE = /importan|(^|[^a-z])imp([^a-z]|$)/i;
@@ -479,6 +479,8 @@ function AnalyticsWorkspace({
   const [npsCommitted, setNpsCommitted] = useState(false);
   // Set when the NPS posted-state read failed: Post and Remove are withheld until a read succeeds (postedState.ts).
   const [npsStatusError, setNpsStatusError] = useState<string | null>(null);
+  // UI-R1000-01: set while the NPS result's posted-state read has not answered; Post and Remove wait.
+  const [npsStatusPending, setNpsStatusPending] = useState(false);
   const [npsCommitBusy, setNpsCommitBusy] = useState(false);
   const [npsGroupVar, setNpsGroupVar] = useState("");
   const [npsSeg, setNpsSeg] = useState<string | null>(null);
@@ -703,6 +705,8 @@ function AnalyticsWorkspace({
     setNpsBusy(false);
     if (seq !== npsSeq.current) return;
     if (r.ok) {
+      // The figures are shown at once; whether they are posted is "checking" until the read answers.
+      applyNpsPostedState(PENDING_POSTED_STATE);
       setNpsResult(r.result);
       setNpsRequest(req);
       const status = await npsFindingStatusAction(runId, documentId, r.result.variable).catch(failedRequest);
@@ -732,12 +736,14 @@ function AnalyticsWorkspace({
   function applyNpsPostedState(p: PostedState) {
     setNpsCommitted(p.committed);
     setNpsStatusError(p.statusError);
+    setNpsStatusPending(!!p.pending);
   }
 
-  /** Reads the NPS result's posted state again after it failed; a newer NPS action wins. */
+  /** Reads the NPS result's posted state again after it failed; a newer NPS action or a Clear wins. */
   async function retryNpsPostedState() {
     if (!npsResult) return;
     const seq = npsSeq.current;
+    applyNpsPostedState(PENDING_POSTED_STATE);
     const status = await npsFindingStatusAction(runId, documentId, npsResult.variable).catch(failedRequest);
     if (seq === npsSeq.current) applyNpsPostedState(postedStateFrom(status));
   }
@@ -750,12 +756,13 @@ function AnalyticsWorkspace({
     setNpsRequest(null);
     setNpsCommitted(false);
     setNpsStatusError(null);
+    setNpsStatusPending(false);
     setNpsSeg(null);
     setNpsError(null);
   }
 
   async function toggleNpsFinding() {
-    if (!npsResult || npsStatusError !== null) return;
+    if (!npsResult || !canPostOrRemove({ committed: npsCommitted, statusError: npsStatusError, pending: npsStatusPending })) return;
     setNpsCommitBusy(true);
     if (npsCommitted) {
       const r = await removeNpsFindingAction(runId, documentId, npsResult.variable);
@@ -1929,7 +1936,9 @@ function AnalyticsWorkspace({
                       <SegmentTabs options={npsResult.segments.map((s) => s.name)} value={npsSeg} onChange={setNpsSeg} />
                     )}
                     <NpsVisual result={npsResultForSegment(npsResult, npsSeg)} />
-                    {npsStatusError !== null ? (
+                    {npsStatusPending ? (
+                      <PostedStateChecking testId="nps-post-checking" />
+                    ) : npsStatusError !== null ? (
                       <PostedStateUnknown error={npsStatusError} onRetry={() => void retryNpsPostedState()} testId="nps-post-unknown" />
                     ) : (
                     <button
@@ -2037,7 +2046,9 @@ function AnalyticsWorkspace({
                     <SegmentTabs options={npsResult.segments.map((s) => s.name)} value={npsSeg} onChange={setNpsSeg} />
                   )}
                   <NpsVisual result={npsResultForSegment(npsResult, npsSeg)} />
-                  {npsStatusError !== null ? (
+                  {npsStatusPending ? (
+                    <PostedStateChecking testId="nps-post-checking" />
+                  ) : npsStatusError !== null ? (
                     <PostedStateUnknown error={npsStatusError} onRetry={() => void retryNpsPostedState()} testId="nps-post-unknown" />
                   ) : (
                   <button
@@ -2348,6 +2359,15 @@ export type DriverPostState =
 
 /** Stands in for Post / Remove while whether the analysis is posted is not known. */
 /** A chart or NPS card whose posted state could not be read: the error, Retry, and no Post or Remove. */
+/** UI-R1000-01: shown in place of Post and Remove while the posted-state read has not answered. */
+function PostedStateChecking({ testId }: { testId: string }) {
+  return (
+    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] text-muted" data-testid={testId} aria-live="polite">
+      Checking whether this is already in findings...
+    </p>
+  );
+}
+
 function PostedStateUnknown({ error, onRetry, testId }: { error: string; onRetry: () => void; testId: string }) {
   return (
     <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-800" data-testid={testId}>
