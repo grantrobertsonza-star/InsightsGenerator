@@ -39,7 +39,16 @@ since cannot be matched by content), makes no model call for it, adds nothing fr
 fill record, and returns `already` (documents, first fill time, objectives that came from it). The
 typed fields still save. With a used and a new document chosen together, only the new one is read.
 The check is repeated under the run lock, so of two fills of a new document at once one fills and
-the other returns `already` whatever its read said.
+the other returns `already` whatever its read said. "Objectives that came from it" counts each
+earlier fill event once (by its trace row), so a joint brief and proposal fill chosen again reports
+its own count, not the sum over both documents (IR-02). A fill of a new and a used-meanwhile
+document together (IR-01: a brief B and a proposal A chosen together, while a fill of A alone, or
+of a same-content copy of A, finished during the read) cannot be split, because one extraction read
+both. It is not published: the save returns `already` for A and a failed fill for B alone (status
+"failed", `recorded: true`, reason "another fill from ... finished while this one was reading"),
+recorded as a `brief_intake_error` row in the same transaction, so a reload shows it and Try the
+fill again chooses B alone. When both documents were used meanwhile, there is only `already` and
+no failure is recorded. The typed fields still save in both cases.
 
 **Read it again.** The form's "Read it again for anything new" resubmits with `rereadDocuments=1`:
 the document is read, and lines new by identity key and lineage are added as `researcher_authored`,
@@ -47,7 +56,13 @@ the document is read, and lines new by identity key and lineage are added as `re
 "<file>"` (`briefFillText.rereadRationale`), never accepted and never in the stated list; the
 researcher accepts, edits or rejects each on Review. The fill record carries `reread: true` and
 `suggestionsAdded`; a re-read adds no "objectives came from it". A failed re-read is recorded with
-`reread: true`, so Try the fill again re-reads too. Review shows each re-read suggestion beside
+`reread: true`, so Try the fill again re-reads too. Typed text keeps its priority in a re-read
+(IR-03): when the objective box is not empty, the typed lines are added and the document's lines
+are not used. The result says so rather than "nothing new was found": the filled result carries
+`unusedFromDocument` (document lines new to the project by key and lineage, and not one of the
+lines typed now, that were not used) and `typedAdded` (typed lines added), and
+`briefFillText.rereadResultText` names each; "nothing new was found" only when the read gave no new
+line. Leaving the box empty and reading again adds those lines as suggestions. Review shows each re-read suggestion beside
 the existing (not rejected, not itself a re-read suggestion) objective it most likely restates
 (`objectiveSimilarity.likelyRestates`: token-set Jaccard over content words of the identity key,
 function words removed, a trailing plural s dropped, similar at 0.5 or more, best score wins, ties
@@ -113,7 +128,7 @@ rejected one (Restore brings the original back instead). Migration 0083's index 
 researcher-authored, not rejected) can never be violated by this action, since the key check is
 stricter.
 
-**Tests.** `objectiveRereadSuggestions.db.test.ts` (the same document again, same content, Read it again, retry, mixed documents, preservation, concurrency, failed re-read), `objectiveSimilarity.test.ts`, browser `objective-reread`; `objectiveImportLineage.db.test.ts` (real PostgreSQL; extraction and scoring mocked),
+**Tests.** `objectiveRereadSuggestions.db.test.ts` (the same document again, same content, Read it again, retry, mixed documents, preservation, concurrency, failed re-read; IR-01 mixed fill overtaken by the same document or a same-content copy, then the brief's retry, and by both documents; IR-02 joint fill counted once; IR-03 typed re-read with an unused new line, then a blank re-read, and a typed line that is the only new one), `objectiveSimilarity.test.ts`, browser `objective-reread`; `objectiveImportLineage.db.test.ts` (real PostgreSQL; extraction and scoring mocked),
 `briefFillFromImport.db.test.ts`, `candidateLifecycle.db.test.ts`, `objectiveDecisionClosure.db.test.ts`,
 `actionFailure.test.ts`, `runContextFormFailure.test.tsx` (the form's shown failure for each save
 result); browser `e2e/ui/objective-gt500.check.mjs` (edit then refill, 503 then reload then retry,

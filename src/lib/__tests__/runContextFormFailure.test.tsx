@@ -68,7 +68,7 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   });
 
   it("after a successful fill the failure is gone, even if the page's earlier read still had it", () => {
-    const html = render(saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: false, suggestionsAdded: 0 }, unresolvedFailure: null }), stored);
+    const html = render(saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: false, suggestionsAdded: 0, unusedFromDocument: 0, typedAdded: 0 }, unresolvedFailure: null }), stored);
     expect(html).not.toContain('data-testid="brief-fill-failed"');
     expect(html).not.toContain('data-testid="brief-fill-retry"');
   });
@@ -106,7 +106,7 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   });
 
   it("a successful fill clears an unrecorded failure", () => {
-    const html = render(after(unrecorded, ordinary, saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: false, suggestionsAdded: 0 }, unresolvedFailure: null }), ordinary));
+    const html = render(after(unrecorded, ordinary, saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: false, suggestionsAdded: 0, unusedFromDocument: 0, typedAdded: 0 }, unresolvedFailure: null }), ordinary));
     expect(html).not.toContain('data-testid="brief-fill-failed"');
   });
 
@@ -136,8 +136,35 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   });
 
   it("a re-read says how many new lines wait on Review and that nothing was added to the objectives", () => {
-    const html = render(saved({ fill: { status: "filled", objectivesAdded: 0, filledBusinessProblem: false, reread: true, suggestionsAdded: 2 } }));
+    const html = render(saved({ fill: { status: "filled", objectivesAdded: 0, filledBusinessProblem: false, reread: true, suggestionsAdded: 2, unusedFromDocument: 0, typedAdded: 0 } }));
     expect(html).toContain('data-testid="brief-fill-reread-result"');
     expect(html).toContain("2 new lines are waiting on Review objectives as suggestions");
+  });
+  // IR-03 (Codex, 2026-10-22): a re-read whose new lines were not used because the objectives box
+  // was not empty must not say "nothing new was found".
+  it("a typed re-read with new document lines says they were found but not added, and that the typed objective was added", () => {
+    const html = render(saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: true, suggestionsAdded: 0, unusedFromDocument: 1, typedAdded: 1 } }));
+    expect(html).toContain("Read again: 1 new line was found but not added, because what you typed in the objectives box takes priority over the document.");
+    expect(html).toContain("1 objective you typed was added.");
+    expect(html).not.toContain("nothing new was found");
+    expect(html).not.toContain("Nothing was added to your objectives");
+  });
+
+  it("a re-read with nothing new and nothing typed still says nothing new was found", () => {
+    const html = render(saved({ fill: { status: "filled", objectivesAdded: 0, filledBusinessProblem: false, reread: true, suggestionsAdded: 0, unusedFromDocument: 0, typedAdded: 0 } }));
+    expect(html).toContain("Read again: nothing new was found. Nothing was added to your objectives.");
+  });
+
+  // IR-01 (Codex, 2026-10-22): a mixed fill that lost to a fill of one of its documents shows the
+  // still-new document as not filled, with its retry, beside the already message for the other.
+  it("a mixed fill overtaken by another fill shows the still-new document as failed with a retry, and the used one as already filled", () => {
+    const html = render(saved({
+      already: { documents: "the proposal Independent_boundary_proposal.txt", at: "2026-10-22T08:00:00.000Z", objectivesFromIt: 2, briefDocumentId: null, proposalDocumentId: DOC },
+      fill: { status: "failed", documents: "the brief Brief.docx", reason: "another fill from the proposal Independent_boundary_proposal.txt finished while this one was reading, so this fill was not saved", recorded: true, briefDocumentId: "22222222-2222-4222-8222-222222222222", proposalDocumentId: null, reread: false },
+    }));
+    expect(html).toContain('data-testid="brief-fill-already"');
+    expect(html).toContain('data-testid="brief-fill-failed"');
+    expect(html).toContain("the brief Brief.docx");
+    expect(html).toContain("finished while this one was reading");
   });
 });

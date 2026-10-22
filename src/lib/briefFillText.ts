@@ -52,3 +52,25 @@ export function alreadyFilledText(already: { documents: string; at: string; obje
   const n = already.objectivesFromIt;
   return `Already filled from ${already.documents} on ${displayDay(already.at)}; ${n} ${n === 1 ? "objective" : "objectives"} came from it, so it was not read again and nothing was added. What you typed was saved. To check it for anything new, use Read it again: new lines come in as suggestions on Review objectives.`;
 }
+
+/**
+ * What a deliberate re-read (Read it again) did, for Set objectives (IR-03). It keeps apart: new
+ * lines added as suggestions, new lines the document gave that were not used because the objective
+ * box was not empty (typed text has priority over a document), lines typed in the same save, and a
+ * re-read that found nothing new. It never says "nothing new" when the document did give new lines.
+ */
+export function rereadResultText(fill: { suggestionsAdded: number; unusedFromDocument: number; typedAdded: number }): string {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const parts: string[] = [];
+  if (fill.suggestionsAdded > 0) {
+    parts.push(`${plural(fill.suggestionsAdded, "new line is", "new lines are")} waiting on Review objectives as ${fill.suggestionsAdded === 1 ? "a suggestion" : "suggestions"}.`);
+  }
+  if (fill.unusedFromDocument > 0) {
+    parts.push(
+      `${plural(fill.unusedFromDocument, "new line was", "new lines were")} found but not added, because what you typed in the objectives box takes priority over the document. Leave the box empty and read it again to add ${fill.unusedFromDocument === 1 ? "it as a suggestion" : "them as suggestions"}.`,
+    );
+  }
+  if (fill.suggestionsAdded === 0 && fill.unusedFromDocument === 0) parts.push("nothing new was found.");
+  parts.push(fill.typedAdded > 0 ? `${plural(fill.typedAdded, "objective you typed was", "objectives you typed were")} added.` : "Nothing was added to your objectives.");
+  return `Read again: ${parts.join(" ")}`;
+}

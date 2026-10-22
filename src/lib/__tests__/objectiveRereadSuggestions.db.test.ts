@@ -234,4 +234,101 @@ describe.skipIf(!TEST_DATABASE_URL)("Filling again from a proposal that already 
     expect(retried.fill).toMatchObject({ status: "filled", reread: true, suggestionsAdded: 3 });
     expect(await loadFailedBriefFill(tenant, run)).toBeNull();
   });
+  // IR-01 (Codex, 2026-10-22): a fill of a new brief together with a proposal, overtaken while
+  // reading by a fill of that proposal (or a copy with the same content), must not drop the brief.
+  for (const copy of [false, true]) {
+    it(`a mixed fill overtaken by a fill of its ${copy ? "proposal's same-content copy" : "proposal"} reports the brief as not filled, records it, and the brief's retry fills it`, async () => {
+      const run = await newRun();
+      const sha = copy ? `sha-${randomUUID()}` : null;
+      const proposal = await newDoc(run, "Proposal.docx", sha);
+      const other = copy ? await newDoc(run, "Proposal copy.docx", sha, "report") : proposal;
+      const brief = await newDoc(run, "Brief.docx");
+      const WESTERN = "Size the opportunity in the Western Cape";
+      intake.answers = [`${FIRST}\n${WESTERN}`, FIRST, WESTERN];
+      let open!: () => void;
+      intake.gate = new Promise<void>((resolve) => (open = resolve));
+      const mixed = save(run, { proposalDocumentId: proposal, briefDocumentId: brief });
+      // The mixed fill is held inside its read; the proposal-only fill then runs to the end.
+      for (let i = 0; i < 100 && intake.calls === 0; i++) await new Promise((r) => setTimeout(r, 20));
+      expect(intake.calls).toBe(1);
+      intake.gate = null;
+      const won = await save(run, { proposalDocumentId: other });
+      expect(won.fill).toMatchObject({ status: "filled", objectivesAdded: 2 });
+      open();
+      const lost = await mixed;
+      expect(lost.fill).toMatchObject({ status: "failed", recorded: true, briefDocumentId: brief, proposalDocumentId: null, reread: false, documents: "the brief Brief.docx" });
+      expect(lost.already).toMatchObject({ proposalDocumentId: proposal, briefDocumentId: null, objectivesFromIt: 2 });
+      expect((await candidates(run)).map((c) => c.candidate_text)).not.toContain(WESTERN);
+      expect(await candidates(run)).toHaveLength(2);
+      expect(Number((await db.pool.query("select count(*) from trace where run_id=$1 and event='brief_intake_used'", [run])).rows[0].count)).toBe(1);
+      const { loadFailedBriefFill } = await import("../briefFillRecord");
+      expect(await loadFailedBriefFill(tenant, run)).toMatchObject({ briefDocumentId: brief, proposalDocumentId: null });
+      expect(lost.unresolvedFailure).toMatchObject({ briefDocumentId: brief });
+      // Try the fill again chooses the brief alone.
+      const retried = await save(run, { briefDocumentId: brief });
+      expect(retried.fill).toMatchObject({ status: "filled", objectivesAdded: 1 });
+      expect((await candidates(run)).map((c) => c.candidate_text)).toContain(WESTERN);
+      expect(await loadFailedBriefFill(tenant, run)).toBeNull();
+    });
+  }
+
+  it("a mixed fill overtaken by a fill of both its documents reports them as already filled and records no failure", async () => {
+    const run = await newRun();
+    const proposal = await newDoc(run, "Proposal.docx");
+    const brief = await newDoc(run, "Brief.docx");
+    intake.answers = [REWORDED, FIRST];
+    let open!: () => void;
+    intake.gate = new Promise<void>((resolve) => (open = resolve));
+    const mixed = save(run, { proposalDocumentId: proposal, briefDocumentId: brief });
+    for (let i = 0; i < 100 && intake.calls === 0; i++) await new Promise((r) => setTimeout(r, 20));
+    intake.gate = null;
+    await save(run, { proposalDocumentId: proposal, briefDocumentId: brief });
+    open();
+    const lost = await mixed;
+    expect(lost.fill).toBeNull();
+    expect(lost.already).toMatchObject({ proposalDocumentId: proposal, briefDocumentId: brief, objectivesFromIt: 2 });
+    expect(Number((await db.pool.query("select count(*) from trace where run_id=$1 and event='brief_intake_error'", [run])).rows[0].count)).toBe(0);
+  });
+
+  // IR-02 (Codex, 2026-10-22): one joint fill of a brief and a proposal counts once.
+  it("a joint fill counts once in the objectives that came from it", async () => {
+    const run = await newRun();
+    const proposal = await newDoc(run, "Proposal.docx");
+    const brief = await newDoc(run, "Brief.docx");
+    intake.answers = [FIRST];
+    const first = await save(run, { proposalDocumentId: proposal, briefDocumentId: brief });
+    expect(first.fill).toMatchObject({ status: "filled", objectivesAdded: 2 });
+    const both = await save(run, { proposalDocumentId: proposal, briefDocumentId: brief });
+    expect(both.already).toMatchObject({ objectivesFromIt: 2, documents: "the brief Brief.docx and the proposal Proposal.docx" });
+    const one = await save(run, { proposalDocumentId: proposal });
+    expect(one.already).toMatchObject({ objectivesFromIt: 2 });
+    expect(intake.calls).toBe(1);
+  });
+
+  // IR-03 (Codex, 2026-10-22): a re-read with typed objectives reports the new document lines it
+  // did not use, rather than "nothing new".
+  it("a re-read with a typed objective counts the new document lines it did not use, and a blank re-read suggests them", async () => {
+    const run = await newRun();
+    const doc = await newDoc(run);
+    const FAMILY = "Test the family bundle offer";
+    intake.answers = [FIRST, `${FIRST}\n${FAMILY}`, `${FIRST}\n${FAMILY}`];
+    await save(run, { proposalDocumentId: doc });
+    const typed = await save(run, { proposalDocumentId: doc, rereadDocuments: "1", researchObjective: "Track awareness of the new brand" });
+    expect(typed.fill).toMatchObject({ status: "filled", reread: true, suggestionsAdded: 0, unusedFromDocument: 1, typedAdded: 1 });
+    expect((await candidates(run)).filter((c) => c.status === "pending")).toHaveLength(0);
+    expect((await candidates(run)).map((c) => c.candidate_text)).not.toContain(FAMILY);
+    const blank = await save(run, { proposalDocumentId: doc, rereadDocuments: "1" });
+    expect(blank.fill).toMatchObject({ status: "filled", reread: true, suggestionsAdded: 1, unusedFromDocument: 0 });
+    expect((await candidates(run)).filter((c) => c.status === "pending").map((c) => c.candidate_text)).toEqual([FAMILY]);
+  });
+
+  it("a typed re-read whose only new document line is the typed one counts nothing unused", async () => {
+    const run = await newRun();
+    const doc = await newDoc(run);
+    const FAMILY = "Test the family bundle offer";
+    intake.answers = [FIRST, `${FIRST}\n${FAMILY}`];
+    await save(run, { proposalDocumentId: doc });
+    const typed = await save(run, { proposalDocumentId: doc, rereadDocuments: "1", researchObjective: FAMILY });
+    expect(typed.fill).toMatchObject({ status: "filled", reread: true, suggestionsAdded: 0, unusedFromDocument: 0, typedAdded: 1 });
+  });
 });

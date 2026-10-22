@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { saveRunContextFromForm } from "@/lib/runContextActions";
 import { INITIAL_BRIEF_FILL_FORM_STATE, nextBriefFillFormState, type BriefFillFormState } from "./briefFillCarry";
 import type { BriefFill, FailedBriefFill } from "@/lib/briefFillRecord";
-import { FAILED_FILL_NOT_RECORDED, FAILED_FILL_UNKNOWN, LAST_FILL_UNKNOWN, alreadyFilledText, failedFillText, lastFillText } from "@/lib/briefFillText";
+import { FAILED_FILL_NOT_RECORDED, FAILED_FILL_UNKNOWN, LAST_FILL_UNKNOWN, alreadyFilledText, failedFillText, lastFillText, rereadResultText } from "@/lib/briefFillText";
 
 const field =
   "mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -109,9 +109,7 @@ export default function RunContextForm({
           )}
           {rereadFill && (
             <p role="status" className="mt-1.5 text-xs font-medium text-slate-700" data-testid="brief-fill-reread-result">
-              {rereadFill.suggestionsAdded > 0
-                ? `Read again: ${rereadFill.suggestionsAdded} new ${rereadFill.suggestionsAdded === 1 ? "line is" : "lines are"} waiting on Review objectives as ${rereadFill.suggestionsAdded === 1 ? "a suggestion" : "suggestions"}. Nothing was added to your objectives.`
-                : "Read again: nothing new was found. Nothing was added."}
+              {rereadResultText(rereadFill)}
             </p>
           )}
           {failureUnknown && (

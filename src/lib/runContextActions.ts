@@ -58,6 +58,13 @@ export type RunContextSaveResult = {
         /** A deliberate re-read (Read it again): its new lines were added as pending suggestions. */
         reread: boolean;
         suggestionsAdded: number;
+        /**
+         * IR-03: objective lines read from the document that are new to the project but were not
+         * used, because the objective box was not empty and typed text has priority over a document.
+         */
+        unusedFromDocument: number;
+        /** Lines typed in this save that were added as objectives (so a result never says "nothing was added" over them). */
+        typedAdded: number;
       }
 
     | {
@@ -104,7 +111,20 @@ function documentsLabel(brief: { filename: string | null } | null, proposal: { f
   return [one("brief", brief), one("proposal", proposal)].filter(Boolean).join(" and ") || "the chosen document";
 }
 
-type PriorFill = { at: string; objectivesAdded: number };
+/** One successful earlier fill; `traceId` identifies it, so a joint fill of a brief and a proposal counts once (IR-02). */
+type PriorFill = { traceId: string; at: string; objectivesAdded: number };
+
+/**
+ * What earlier fills of the chosen documents add up to (IR-02): each successful fill event counts
+ * once, however many of the chosen documents it used (a joint brief and proposal fill appears in
+ * both documents' lists), so "N objectives came from it" is not counted twice.
+ */
+function priorFillSummary(lists: PriorFill[][]): { at: string; objectivesFromIt: number } {
+  const unique = new Map<string, PriorFill>();
+  for (const list of lists) for (const f of list) unique.set(f.traceId, f);
+  const fills = [...unique.values()];
+  return { at: fills.map((f) => f.at).sort()[0], objectivesFromIt: fills.reduce((n, f) => n + f.objectivesAdded, 0) };
+}
 
 /**
  * Successful earlier fills of this project that used each of `documentIds` (Grant, 2026-10-22). A
@@ -119,7 +139,7 @@ async function priorFillsOf(client: PoolClient, runId: string, documentIds: stri
   const byId = `t.detail->>'briefDocumentId' = c.id::text or t.detail->>'proposalDocumentId' = c.id::text`;
   const sql = (withContent: boolean) => `
     with c as (select id${withContent ? ", content_sha256" : ""} from documents where run_id = $1 and id = any($2::uuid[]))
-    select c.id::text as chosen, t.occurred_at, t.detail
+    select c.id::text as chosen, t.id::text as trace_id, t.occurred_at, t.detail
       from c join trace t on t.run_id = $1 and t.event = 'brief_intake_used'
        and (${byId}${withContent ? `
             or (c.content_sha256 is not null and exists (
@@ -127,7 +147,7 @@ async function priorFillsOf(client: PoolClient, runId: string, documentIds: stri
                      and (d.id::text = t.detail->>'briefDocumentId' or d.id::text = t.detail->>'proposalDocumentId')))` : ""})
      order by t.occurred_at, t.id`;
   await client.query("savepoint prior_fills");
-  let rows: { chosen: string; occurred_at: Date | string; detail: { objectivesAdded?: unknown; reread?: unknown } }[];
+  let rows: { chosen: string; trace_id: string; occurred_at: Date | string; detail: { objectivesAdded?: unknown; reread?: unknown } }[];
   try {
     rows = (await client.query(sql(true), [runId, documentIds])).rows;
     await client.query("release savepoint prior_fills");
@@ -140,6 +160,7 @@ async function priorFillsOf(client: PoolClient, runId: string, documentIds: stri
   for (const r of rows) {
     const list = out.get(r.chosen) ?? [];
     list.push({
+      traceId: r.trace_id,
       at: new Date(r.occurred_at).toISOString(),
       // A re-read adds suggestions, not objectives, so it does not count towards "came from it".
       objectivesAdded: r.detail?.reread === true ? 0 : typeof r.detail?.objectivesAdded === "number" ? r.detail.objectivesAdded : 0,
@@ -187,14 +208,14 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     if (usedBrief) briefId = null;
     if (usedProposal) proposalId = null;
     if (usedBrief || usedProposal) {
-      const used = [...(usedBrief ?? []), ...(usedProposal ?? [])];
+      const used = priorFillSummary([usedBrief ?? [], usedProposal ?? []]);
       alreadyFill = {
         documents: documentsLabel(
           usedBrief && chosenBriefId ? { filename: prior.names.get(chosenBriefId) ?? null } : null,
           usedProposal && chosenProposalId ? { filename: prior.names.get(chosenProposalId) ?? null } : null,
         ),
-        at: used.map((u) => u.at).sort()[0],
-        objectivesFromIt: used.reduce((n, u) => n + u.objectivesAdded, 0),
+        at: used.at,
+        objectivesFromIt: used.objectivesFromIt,
         briefDocumentId: usedBrief ? chosenBriefId : null,
         proposalDocumentId: usedProposal ? chosenProposalId : null,
       };
@@ -209,6 +230,8 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     objectivesFromDocument: boolean;
   } | null = null;
   let failedFill: Extract<RunContextSaveResult["fill"], { status: "failed" }> | null = null;
+  // IR-03: objectives the document gave that typed text took priority over; counted, not used.
+  let extractedButTyped: string | null = null;
 
   if (briefId || proposalId) {
     // Names learned so far, so a failure message can name the document even when a later step failed.
@@ -238,6 +261,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
         filledBusinessProblem: businessProblem === null && !!extracted.businessProblem,
         objectivesFromDocument: objective === null && !!extracted.researchObjective,
       };
+      if (objective !== null && extracted.researchObjective) extractedButTyped = extracted.researchObjective;
       businessProblem = businessProblem ?? extracted.businessProblem;
       objective = objective ?? extracted.researchObjective;
     } catch (error) {
@@ -310,27 +334,63 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     const known = new Set([...prevLines, ...candidateRows.rows.map((r) => r.candidate_text)].map(objectiveIdentityKey));
     // A fill of the same document that finished while this one was reading it (two saves at once)
     // has filled the project already: this one adds nothing from it, as if it had been chosen after.
+    // IR-01: the extraction read both chosen documents together, so when only one of them was used
+    // meanwhile, its result cannot be split. The fill is not published, and the still-new document
+    // is reported as a fill that did not happen, with a retry for it alone, never dropped silently.
     let concurrentAlready: AlreadyFilled | null = null;
+    let concurrentNotRead: Extract<RunContextSaveResult["fill"], { status: "failed" }> | null = null;
     if (fill && !reread) {
       const readIds = [fill.brief?.id, fill.proposal?.id].filter((v): v is string => !!v);
       const prior = await priorFillsOf(client, runId, readIds);
       if (readIds.some((id) => prior.has(id))) {
-        const used = readIds.flatMap((id) => prior.get(id) ?? []);
+        const used = priorFillSummary(readIds.map((id) => prior.get(id) ?? []));
+        const usedBrief = fill.brief && prior.has(fill.brief.id) ? fill.brief : null;
+        const usedProposal = fill.proposal && prior.has(fill.proposal.id) ? fill.proposal : null;
         concurrentAlready = {
-          documents: documentsLabel(fill.brief && prior.has(fill.brief.id) ? fill.brief : null, fill.proposal && prior.has(fill.proposal.id) ? fill.proposal : null),
-          at: used.map((u) => u.at).sort()[0],
-          objectivesFromIt: used.reduce((n, u) => n + u.objectivesAdded, 0),
-          briefDocumentId: fill.brief && prior.has(fill.brief.id) ? fill.brief.id : null,
-          proposalDocumentId: fill.proposal && prior.has(fill.proposal.id) ? fill.proposal.id : null,
+          documents: documentsLabel(usedBrief, usedProposal),
+          at: used.at,
+          objectivesFromIt: used.objectivesFromIt,
+          briefDocumentId: usedBrief?.id ?? null,
+          proposalDocumentId: usedProposal?.id ?? null,
         };
+        const stillNewBrief = fill.brief && !usedBrief ? fill.brief : null;
+        const stillNewProposal = fill.proposal && !usedProposal ? fill.proposal : null;
+        if (stillNewBrief || stillNewProposal) {
+          const reason = `another fill from ${concurrentAlready.documents} finished while this one was reading, so this fill was not saved`;
+          const detail = {
+            message: reason,
+            briefDocumentId: stillNewBrief?.id ?? null,
+            briefFilename: stillNewBrief?.filename ?? null,
+            proposalDocumentId: stillNewProposal?.id ?? null,
+            proposalFilename: stillNewProposal?.filename ?? null,
+            reread: false,
+          };
+          // Recorded in this transaction, after the fill that won, so a reload shows it until the
+          // still-new document fills.
+          await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_error', $3)`, [
+            TENANT_ID,
+            runId,
+            JSON.stringify(detail),
+          ]);
+          concurrentNotRead = {
+            status: "failed",
+            documents: documentsLabel(stillNewBrief, stillNewProposal),
+            reason,
+            recorded: true,
+            briefDocumentId: stillNewBrief?.id ?? null,
+            proposalDocumentId: stillNewProposal?.id ?? null,
+            reread: false,
+          };
+        }
         fill = null;
+        extractedButTyped = null;
         businessProblem = typedBusinessProblem;
         objective = typedObjective;
       }
     }
     const fromDocument = fill?.objectivesFromDocument === true;
     const importedKeys = new Set<string>();
-    if (fromDocument) {
+    if (fromDocument || extractedButTyped) {
       const lineage = await client.query<{ key: string }>(
         `select jsonb_array_elements_text(detail->'extractedKeys') as key from trace
           where run_id = $1 and event = 'brief_intake_used' and jsonb_typeof(detail->'extractedKeys') = 'array'`,
@@ -356,6 +416,17 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
       }
       known.add(key);
       newLines.push(line);
+    }
+    // IR-03: document lines that typed text took priority over, and that are new to the project
+    // (not known, not imported before, not one of the lines typed now): counted for the message only.
+    let unusedFromDocument = 0;
+    if (extractedButTyped) {
+      for (const line of parseObjectiveLines(extractedButTyped)) {
+        const key = objectiveIdentityKey(line);
+        if (key.length === 0 || known.has(key) || importedKeys.has(key)) continue;
+        known.add(key);
+        unusedFromDocument++;
+      }
     }
     // A deliberate re-read (Read it again) puts its new document lines on Review as pending
     // suggestions, not in the stated list: the researcher accepts, edits or rejects each one.
@@ -441,7 +512,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
       ]);
     }
     await syncResearchObjective(client, runId);
-    return { alreadyInProject, importedBefore, added: newLines.length, suggested: suggestionLines.length, concurrentAlready };
+    return { alreadyInProject, importedBefore, added: newLines.length, suggested: suggestionLines.length, unusedFromDocument, concurrentAlready, concurrentNotRead };
   });
 
   // Objectives are scored straight away (Grant, 2026-10-21: automate where possible), so this save
@@ -458,6 +529,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     already: alreadyFill ?? counts.concurrentAlready,
     fill:
       failedFill ??
+      counts.concurrentNotRead ??
       (fill
         ? {
             status: "filled",
@@ -465,6 +537,8 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
             filledBusinessProblem: fill.filledBusinessProblem,
             reread,
             suggestionsAdded: counts.suggested,
+            unusedFromDocument: counts.unusedFromDocument,
+            typedAdded: fill.objectivesFromDocument ? 0 : counts.added,
           }
         : null),
   };
