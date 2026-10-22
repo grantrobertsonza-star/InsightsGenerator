@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-22. State: **READY_FOR_CODEX** (main only): repairs for R1000-01, M-R1000-01, UI-R1000-01 and V-R1000-01, plus the objectiveDecisionClosure test isolation (`docs/independent-gt1000-repair-review-main-2026-10-22.md`, frozen `91f0216`) in `20e49ab` (R1000-01, M-R1000-01), `88f092a` (UI-R1000-01, design) and `7d9fd96` (V-R1000-01, tests); see `docs/r1000-repair-handover-2026-10-22.md`. No migration. Grant's Import screen changes are not in this set. Not go-live approval; target-environment, deployed security and real-model gates remain separate. 3001 out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-22. State: **READY_FOR_CODEX** (main only): two changes Grant asked for, `2ad3ece` (Import screen; design, plus View original as a download) and `650735c` (the same proposal is not read twice; Read it again only suggests); see `docs/import-and-reread-handover-2026-10-22.md`. No migration. R1000 repairs remain ACCEPTED at `780b4b8`. Full native suite not run on the exact tree (stated in the handover). Not go-live approval. 3001 out of scope. Last accepted release scope `1e0f2a3` and baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: Import screen and proposal re-read rule, main copy (2026-10-22)
+
+Implemented, ready for review: `2ad3ece`, `650735c`. Checks and limits in `docs/import-and-reread-handover-2026-10-22.md`. Codex's previous status line is kept in `.fnd001/backup-status-1022c/`.
+
 
 ## Claude: repairs for Codex's GT1000 repair review, main copy (2026-10-22)
 
