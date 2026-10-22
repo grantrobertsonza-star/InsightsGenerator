@@ -2,7 +2,9 @@ import { Article, H2, P, UL, OL, Table, Limit, WhyBox, ExampleBox, DoesDoesNot, 
 
 const toc = [
   { id: "what", title: "What the assistant is for" },
+  { id: "anywhere", title: "Asking from any page" },
   { id: "reads", title: "What it reads" },
+  { id: "guides", title: "Questions about how the app works" },
   { id: "data", title: "Questions about the data" },
   { id: "sample", title: "Sample sizes and margins of error" },
   { id: "advice", title: "General research advice" },
@@ -37,15 +39,35 @@ export default function ResearchAssistantGuide() {
     >
       <H2 id="what">What the assistant is for</H2>
       <P>
-        The Research assistant, under Tools, is a chat for one project. It does four things: it answers questions about
-        the project&apos;s accepted evidence and report, it answers questions about the project&apos;s data by building
-        cross tables, it gives general research advice, and it rewrites a part of the Insights Report when you ask.
+        The Research assistant is a chat for one project, under Tools, and from the Ask the assistant button on every
+        page. It answers questions about the project&apos;s accepted evidence and report, answers questions about the
+        project&apos;s data by building cross tables, explains how the app works from this Knowledge base and the
+        Manual, gives general research advice, and rewrites a part of the Insights Report when you ask.
       </P>
       <WhyBox>
         A model is good at planning and explaining and unreliable at arithmetic. So the assistant plans the table and
         the app builds it; it chooses the inputs for a sample size and the app works it out. Any figure it quotes about
         your data or your sample should trace back to a table or a calculation you can see.
       </WhyBox>
+
+      <H2 id="anywhere">Asking from any page</H2>
+      <P>
+        The Ask the assistant button sits in the bottom-right corner of every page. It opens the assistant in a panel on
+        the right, so the page you are working on stays in view. Esc or the close button puts it away.
+      </P>
+      <UL>
+        <li>
+          <strong>Inside a project</strong> it is the same conversation as the Research assistant section, saved with the
+          project, and it is told which section you asked from, so &quot;what does this mean?&quot; on Findings is read as
+          a question about Findings. The button is hidden on the Research assistant section itself, where the
+          conversation is already on the page.
+        </li>
+        <li>
+          <strong>Outside a project</strong> (the dashboard, Programs, this Knowledge base, the Manual) it answers questions
+          about how the app works and about research method. It has no project data there, and the chat is not saved:
+          it lasts until the browser tab is closed or reloaded.
+        </li>
+      </UL>
 
       <H2 id="reads">What it reads</H2>
       <P>
@@ -54,6 +76,14 @@ export default function ResearchAssistantGuide() {
         statuses, and accepted findings rated robust or use with caution. Larger projects are cut to the first 80
         findings, 60 insights and 40 recommendations. The last 20 messages of the conversation go with it, so a follow-up
         such as &quot;and by region?&quot; is read in context.
+      </P>
+
+      <H2 id="guides">Questions about how the app works</H2>
+      <P>
+        For a question about a screen, a method or a limit, the assistant searches the Knowledge base and the Manual and
+        reads the sections that fit, then answers from them. The reply ends with a line naming the guides it read, with
+        links, so you can read the source yourself. When the guides do not cover something, it is told to say so rather
+        than describe behaviour it has not read.
       </P>
 
       <H2 id="data">Questions about the data</H2>
@@ -144,6 +174,14 @@ export default function ResearchAssistantGuide() {
         Only the capped numbers of findings, insights and recommendations are read, so a question about a late theme on
         a large project may get &quot;not covered&quot;.
       </Limit>
+      <Limit title="Guide search matches words">
+        The guides are searched by the words in the question, not their meaning, so a question worded very differently
+        from the guide may not find it. Asking again with the term the app uses usually does.
+      </Limit>
+      <Limit title="Outside a project nothing is kept">
+        The chat outside a project is not saved, and its cost is not shown on a project&apos;s API usage page, which
+        counts only that project&apos;s calls.
+      </Limit>
       <Limit title="Drafts accumulate">
         Each data question can add up to four draft tables. They stay until you commit or delete them.
       </Limit>
@@ -153,6 +191,7 @@ export default function ResearchAssistantGuide() {
           "Uses the file's weight and saved survey design, and stops when either cannot be read.",
           "Works out sample sizes and margins of error with a tested calculator and shows the working.",
           "Rewrites only the report fields you name.",
+          "Answers how-the-app questions from the Knowledge base and Manual, and links the guides it read.",
         ]}
         doesNot={[
           "Compute a figure itself, or guarantee its sentence matches the table it built.",

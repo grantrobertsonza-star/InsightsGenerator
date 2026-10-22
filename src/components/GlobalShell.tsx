@@ -1,6 +1,7 @@
 import CollapsibleRail from "./CollapsibleRail";
 import GlobalNav, { GlobalNavRail } from "./GlobalNav";
 import AccountPanel from "./AccountPanel";
+import AssistantDrawer from "./AssistantDrawer";
 
 /**
  * The app's persistent left rail: brand identity plus the three top-level
@@ -41,6 +42,8 @@ export default function GlobalShell({
         <AccountPanel />
       </CollapsibleRail>
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      {/* The floating Research assistant, on every signed-in page (AssistantDrawer.tsx). */}
+      <AssistantDrawer />
     </div>
   );
 }

@@ -5,6 +5,50 @@ its data, findings, insights etc, but also give general advice, like ... what sh
 sample size be if I want to generalise my finding nationally, or if I want a 5% MOE". Tables the
 assistant builds are "saved as drafts" (Grant's choice).
 
+## Floating drawer (every page)
+
+Grant, 2026-10-22: "a floating Research assistant on every page that the user can click on and ask
+questions ... It must have access to our knowledge base". Grant's choices: every page; the same
+conversation as the Research assistant section inside a project; a side drawer.
+
+- `src/components/AssistantDrawer.tsx`, mounted in `GlobalShell`. Button bottom-right
+  (`assistant-fab`), drawer from the right (`assistant-drawer`, role dialog, not modal). Esc or
+  close; focus goes to the input on open and back to the button on close. Hidden on /login,
+  /no-organisation, and on the Research assistant section (`openSection.id === "assistant"`).
+- Inside a project (`/runs/<uuid>`): `loadAssistantMessages(runId)` on each open (tenant and run
+  scoped, `loadAssistantConversation` in researchAssistant.ts, also used by page.tsx), then
+  `sendAssistantMessage(runId, text, page)`; after a reply the conversation is read back so the
+  saved copy shows. The Research assistant card takes a newer saved history from the page refresh
+  (prop sync, skipped while its own send is pending).
+- Outside a project: `sendGeneralAssistantMessage(text, history, page)` -> `askGeneralAssistant`
+  (generalAssistant.ts): help tools and the calculator only; the chat lives in the drawer's state
+  for the browser session and is not stored. History is checked at the server boundary
+  (`checkedHistory`: user/assistant roles, non-empty, 4,000 chars each, last 20) and sent as
+  alternating turns.
+- Page context: `{path, section}` from the drawer, checked by `checkedPageContext` (an in-app path
+  only; the section name stripped to letters, digits and simple punctuation, 80 chars); the line
+  goes in the uncached part of the system text. RunNav publishes the open section
+  (`components/openSection.ts`).
+- Request ordering: conversations are keyed (run id or "general"); a load older than the latest,
+  or for a project the researcher has left, is ignored; a reply is added to the conversation it
+  was sent from. A failed or dropped load shows "could not be loaded" with Try again, and Send is
+  disabled; a failed send shows its error.
+
+## Knowledge base and Manual as tools
+
+- `scripts/build-help-index.mjs` renders every Knowledge base article and Manual page
+  (esbuild + react-dom/server + linkedom) into `src/lib/helpIndex.generated.json`, split at each
+  h2, navigation removed. `--check` exits 1 when the file is stale; `helpIndex.test.ts` runs it,
+  so `npm run validate` fails until the index is rebuilt after a guide changes.
+- `src/lib/helpIndex.ts`: `searchHelp` (word and six-letter-stem matching, headings and titles
+  weighted), `readHelp(ref)` (a section or page, capped at 12,000 chars with a note),
+  `helpContents()` (the page and section list, in the cached system text).
+- Tools `search_help` and `read_help` (researchAssistantTools.ts) in both assistants. Each read is
+  recorded; code appends `Guides read for this answer: Title (/knowledge/...)` and the drawer and
+  card render those paths as links (`AssistantMessageText`).
+- The shared loop (`assistantLoop.ts`: `runAssistantLoop`, `sourceLines`, page checks) is used by
+  both assistants; `MAX_TOOL_ROUNDS` moved there.
+
 ## Behaviour
 
 - One chat per project (Tools, Research assistant). Context per message: project fields, report
@@ -74,7 +118,28 @@ not estimated from data; the margin is whole-sample, subgroups need their own.
   'assistant'`), the reply lists it, the sample size reply quotes 385, and All tables shows the
   badge.
 
+Added with the drawer:
+- `src/lib/__tests__/helpIndex.test.ts` (4, no mocks): the index is current; every article and
+  manual page is present with links; search ranks the sample size section first for a sample size
+  question, stems, stop words; read of a page, a section, unknown refs, truncation.
+- `src/lib/__tests__/generalAssistant.test.ts` (3, model mocked, no database): history and page
+  checks; only help and calculator tools offered; turns alternate; guide line; usage to the log;
+  calculator error result; empty message refused.
+- researchAssistantTools.db.test.ts (+2): a how-the-app question reads a guide and links it, the
+  page line is in the uncached system part; an unknown guide ref is an error.
+- `e2e/ui/assistant-drawer.check.mjs` (native browser, replay model): dashboard question answered
+  from a guide with a working link; chat kept on the guide page; Esc and focus; inside a project
+  the scope names Findings; a dropped load shows Try again and recovers; the exchange is saved and
+  shown in the Research assistant section, where the button is hidden.
+
 ## Not covered
+
+- Usage of the assistant outside a project is in the server log only: `trace.run_id` is
+  required, so it is not on any API usage page. Showing it needs a tenant-level usage record (a
+  migration), not done.
+- Late-reply ordering in the drawer (a reply arriving after moving to another project) is by
+  design and reviewed, not exercised by a browser check (the replay answers instantly).
+- The guide search is lexical; a question phrased far from the guide's words may miss it.
 
 - A live-model run: the browser check uses a scripted replay, so the model's tool choices and
   wording on real questions are unverified.

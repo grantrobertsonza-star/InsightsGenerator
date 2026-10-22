@@ -187,6 +187,44 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     expect(lastResults(state.requests[1])[0].content).toContain("Unweighted.");
   });
 
+  it("answers how-the-app questions from the Knowledge base, links the guide it read, and is told the page it was asked from", async () => {
+    state.script = [
+      () => [call("search_help", { query: "verdict tiers use with caution" })],
+      (req) => {
+        const hits = String(lastResults(req)[0].content);
+        const ref = hits.split(" | ")[0];
+        return [call("read_help", { ref })];
+      },
+      () => [{ type: "text", text: "Use with caution means the claim is supported with a caveat." }],
+    ];
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const r = await askResearchAssistant(tenant, run, "What does use with caution mean?", { path: `/runs/${run}`, section: "Findings" });
+    const search = lastResults(state.requests[1])[0];
+    expect(search.is_error).toBeUndefined();
+    expect(String(search.content)).toMatch(/^(knowledge|manual)\//);
+    const read = lastResults(state.requests[2])[0];
+    expect(read.is_error).toBeUndefined();
+    expect(r.reply).toMatch(/\n\nGuides read for this answer: .+ \(\/(knowledge|manual)\/[^)]+\)\.$/);
+    // The page line is in the uncached part of the system text; the contents are in the cached part.
+    const system = state.requests[0].system as { text: string; cache_control?: unknown }[];
+    expect(system[0].text).toContain("=== Knowledge base and Manual contents (read with read_help) ===");
+    expect(system[0].text).toContain("knowledge/research-assistant:");
+    expect(system[1].cache_control).toBeUndefined();
+    expect(system[1].text).toContain(`The researcher sent this message from the Findings section (/runs/${run}).`);
+  });
+
+  it("an unknown guide ref is an error result, and no guide is listed", async () => {
+    state.script = [
+      () => [call("read_help", { ref: "knowledge/not-a-guide" })],
+      () => [{ type: "text", text: "The guides do not cover that." }],
+    ];
+    const r = await ask("How does the frobnicator work?");
+    const read = lastResults(state.requests[1])[0];
+    expect(read.is_error).toBe(true);
+    expect(read.content).toContain("is not a Knowledge base or Manual ref");
+    expect(r.reply).not.toContain("Guides read");
+  });
+
   it("gives sample sizes from the calculator", async () => {
     state.script = [
       () => [call("sample_size", { mode: "sample_for_margin", margin_pct: 5 }), call("sample_size", { mode: "margin_for_sample", sample_size: 1000 })],

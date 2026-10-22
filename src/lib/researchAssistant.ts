@@ -1,9 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { cachedSystemThen } from "./promptCache";
-import { DATA_TOOLS, runAssistantTool, type BuiltTable } from "./researchAssistantTools";
+import { DATA_TOOLS, HELP_TOOLS, SAMPLE_SIZE_TOOL, runAssistantTool } from "./researchAssistantTools";
+import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./assistantLoop";
+import { helpContents } from "./helpIndex";
 import { logApiUsage } from "./apiUsage";
-import { withTenant } from "./db";
+import { withTenant, withTenantRead } from "./db";
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
 import { loadNarrativeEvidence, narrativeFigureCheck } from "./storyNarrative";
 import { figureCheckAvailable } from "./figureChecks";
@@ -369,9 +370,6 @@ async function applyNarrativeRevision(
  * plain text answer, not a tool call manufactured to satisfy a forced
  * choice.
  */
-/** At most this many model rounds (each may call tools) for one message. */
-const MAX_TOOL_ROUNDS = 8;
-
 const REVISE_NARRATIVE_TOOL: Anthropic.Tool = {
   name: "revise_narrative",
   description:
@@ -411,7 +409,8 @@ const REVISE_NARRATIVE_TOOL: Anthropic.Tool = {
 export async function askResearchAssistant(
   tenantId: string,
   runId: string,
-  userMessage: string
+  userMessage: string,
+  page: PageContext | null = null,
 ): Promise<{ reply: string; revisedFields: string[] }> {
   const trimmed = userMessage.trim();
   if (!trimmed) {
@@ -458,82 +457,39 @@ export async function askResearchAssistant(
     "Insights Report (the executive summary, situation, complication, question, governing thought, a specific " +
     "pillar's headline or so-what line, the recommendations intro, or the caveats list), call the revise_narrative " +
     "tool with the new text for exactly the field(s) asked about. Never rewrite a field the researcher didn't ask " +
-    "about. Write the new text in the same voice and length discipline as what's already there.\n\n" +
+    "about. Write the new text in the same voice and length discipline as what's already there.\n" +
+    "5. Answer a question about how Insights Elevator works (a screen, a method, a statistic, a stated limit) from the " +
+    "Knowledge base and Manual: search_help, then read_help, and answer from what they say. If the guides do not cover " +
+    "it, say so rather than describing behaviour you have not read.\n\n" +
     "Whatever you do, always end with a short, plain-language reply to the researcher, so they see what you did or " +
     "what you found. Keep replies concise, this is a chat, not a report. No em dashes.";
   // The instructions and the project's evidence are the same for every message until the evidence
   // changes, so they are cached (promptCache.ts); the conversation, which grows, follows uncached.
   const system = cachedSystemThen(
-    `${instructions}\n\n=== This project's evidence and report ===\n${contextBlock}`,
-    historyBlock ? `=== Recent conversation ===\n${historyBlock}` : "",
+    `${instructions}\n\n=== Knowledge base and Manual contents (read with read_help) ===\n${helpContents()}\n\n=== This project's evidence and report ===\n${contextBlock}`,
+    [historyBlock ? `=== Recent conversation ===\n${historyBlock}` : "", pageLine(page)].filter(Boolean).join("\n\n"),
   );
-  const tools: Anthropic.Tool[] = [
-    REVISE_NARRATIVE_TOOL,
-    ...DATA_TOOLS,
-  ];
-  const messages: Anthropic.MessageParam[] = [{ role: "user", content: trimmed }];
-  const tables: BuiltTable[] = [];
+  const tools: Anthropic.Tool[] = [REVISE_NARRATIVE_TOOL, ...DATA_TOOLS, SAMPLE_SIZE_TOOL, ...HELP_TOOLS];
   let revisedFields: string[] = [];
-  let replyText = "";
-  let finished = false;
-
-  // A tool loop: data and sample-size tools return results the model reads before it answers;
-  // revise_narrative ends the turn, as before. Bounded, so a request can never loop on.
-  for (let round = 0; round < MAX_TOOL_ROUNDS && !finished; round++) {
-    const response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 2048,
-      system,
-      tool_choice: { type: "auto" },
-      tools,
-      messages,
-    });
-    await logApiUsage(tenantId, runId, "research_assistant", response.usage);
-    const text = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("\n")
-      .trim();
-    if (text) replyText = text;
-    const calls = response.content.filter((block): block is Anthropic.ToolUseBlock => block.type === "tool_use");
-    const revise = calls.find((c) => c.name === "revise_narrative");
-    const dataCalls = calls.filter((c) => c.name !== "revise_narrative");
-
-    if (revise) {
-      try {
-        revisedFields = await applyNarrativeRevision(tenantId, runId, revise.input as NarrativeRevision);
-        if (revisedFields.length > 0 && !text) replyText = `Updated ${revisedFields.join(", ")} in the Insights Report.`;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        replyText = text ? `${text}\n\n(${message})` : message;
-      }
-      finished = true;
-      break;
-    }
-    if (dataCalls.length === 0) {
-      finished = true;
-      break;
-    }
-    messages.push({ role: "assistant", content: response.content });
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const call of dataCalls) {
-      const r = await runAssistantTool(tenantId, runId, call.name, (call.input ?? {}) as Record<string, unknown>, tables.length);
-      if (r.table) tables.push(r.table);
-      results.push({ type: "tool_result", tool_use_id: call.id, content: r.content, ...(r.isError ? { is_error: true } : {}) });
-    }
-    messages.push({ role: "user", content: results });
-  }
-  if (!finished) {
-    replyText = `${replyText ? `${replyText}\n\n` : ""}I stopped after ${MAX_TOOL_ROUNDS} steps without a final answer. Ask again more narrowly, or open the tables listed below.`;
-  }
-  // Written by code, not the model: which tables this answer built, so every figure can be traced.
-  if (tables.length > 0) {
-    replyText += `\n\nTables built for this answer (drafts under Cross tabs, All tables): ${tables.map((t) => `"${t.label}" from ${t.dataFile}`).join("; ")}.`;
-  }
-
-  if (!replyText) {
-    replyText = "I didn't have anything to add to that.";
-  }
+  const loop = await runAssistantLoop({
+    system,
+    tools,
+    userMessage: trimmed,
+    runTool: (name, input, tablesSoFar) => runAssistantTool(tenantId, runId, name, input, tablesSoFar),
+    terminal: {
+      revise_narrative: async (input, text) => {
+        try {
+          revisedFields = await applyNarrativeRevision(tenantId, runId, input as NarrativeRevision);
+          return revisedFields.length > 0 && !text ? `Updated ${revisedFields.join(", ")} in the Insights Report.` : text;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return text ? `${text}\n\n(${message})` : message;
+        }
+      },
+    },
+    logUsage: (usage) => logApiUsage(tenantId, runId, "research_assistant", usage),
+  });
+  const replyText = (loop.replyText || "I didn't have anything to add to that.") + sourceLines(loop.tables, loop.help);
 
   await withTenant(tenantId, async (client) => {
     await client.query(
@@ -543,4 +499,22 @@ export async function askResearchAssistant(
   });
 
   return { reply: replyText, revisedFields };
+}
+
+/**
+ * A project's whole Research assistant conversation, oldest first: the Research assistant page and
+ * the floating drawer show the same one. Scoped by tenant as well as run, so a run id from another
+ * organisation reads nothing.
+ */
+export async function loadAssistantConversation(tenantId: string, runId: string): Promise<AssistantMessage[]> {
+  return withTenantRead(tenantId, async (client) => {
+    const result = await client.query<AssistantMessage>(
+      `select id, role, content, created_at::text
+       from assistant_messages
+       where run_id = $1 and tenant_id = $2
+       order by created_at asc`,
+      [runId, tenantId],
+    );
+    return result.rows;
+  });
 }

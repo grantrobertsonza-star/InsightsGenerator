@@ -97,10 +97,10 @@ export const articles: ArticleMeta[] = [
   {
     slug: "research-assistant",
     title: "How the Research assistant works",
-    blurb: "What it reads, answering data questions with draft tables you can open, sample sizes and margins of error from a tested calculator, method advice, report edits, and where it stops",
+    blurb: "Asking from any page, what it reads, how-the-app questions from the guides, answering data questions with draft tables you can open, sample sizes and margins of error from a tested calculator, method advice, report edits, and where it stops",
     category: "Method guides",
     updated: "2026-10-22",
-    minutes: 7,
+    minutes: 9,
   },
 ];
 

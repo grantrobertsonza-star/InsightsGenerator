@@ -8,6 +8,7 @@ import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import { defaultWeight } from "./starterTables";
 import { isCaseTableFileName, isStatsFileName } from "./statsFileName";
 import { marginForSample, sampleSizeForMargin } from "./sampleSize";
+import { readHelp, searchHelp } from "./helpIndex";
 
 /**
  * The Research assistant's tools (Grant, 2026-10-22: the assistant as the project's expert). Every
@@ -74,26 +75,73 @@ export const DATA_TOOLS: Anthropic.Tool[] = [
       required: ["data_file_id", "rows", "columns"],
     },
   },
+];
+
+/** The calculator, for every sample size or margin of error (inside a project and outside one). */
+export const SAMPLE_SIZE_TOOL: Anthropic.Tool = {
+  name: "sample_size",
+  description:
+    "Work out the sample size needed for a margin of error, or the margin of error of a sample size, for a proportion. Use this for every such number; never estimate one.",
+  input_schema: {
+    type: "object",
+    properties: {
+      mode: { type: "string", enum: ["sample_for_margin", "margin_for_sample"] },
+      margin_pct: { type: "number", description: "Margin of error wanted, in percentage points (sample_for_margin)." },
+      sample_size: { type: "number", description: "Number of completed interviews (margin_for_sample)." },
+      confidence_pct: { type: "number", enum: [90, 95, 99], description: "Default 95." },
+      expected_share_pct: { type: "number", description: "Expected share in percent; leave out for the conservative 50." },
+      population: { type: "number", description: "Population size, only when known and not very large." },
+      design_effect: { type: "number", description: "1 for a simple random sample (default); higher for clustered or weighted samples." },
+      response_rate_pct: { type: "number", description: "Expected response rate, to give the number to approach (sample_for_margin)." },
+    },
+    required: ["mode"],
+  },
+};
+
+/** The Knowledge base and Manual (helpIndex.ts), for questions about how the app works. */
+export const HELP_TOOLS: Anthropic.Tool[] = [
   {
-    name: "sample_size",
+    name: "search_help",
     description:
-      "Work out the sample size needed for a margin of error, or the margin of error of a sample size, for a proportion. Use this for every such number; never estimate one.",
+      "Search the app's Knowledge base and Manual for how Insights Elevator works: what a screen does, how a method or statistic is applied, and its stated limits. Returns matching sections with a ref to read.",
     input_schema: {
       type: "object",
-      properties: {
-        mode: { type: "string", enum: ["sample_for_margin", "margin_for_sample"] },
-        margin_pct: { type: "number", description: "Margin of error wanted, in percentage points (sample_for_margin)." },
-        sample_size: { type: "number", description: "Number of completed interviews (margin_for_sample)." },
-        confidence_pct: { type: "number", enum: [90, 95, 99], description: "Default 95." },
-        expected_share_pct: { type: "number", description: "Expected share in percent; leave out for the conservative 50." },
-        population: { type: "number", description: "Population size, only when known and not very large." },
-        design_effect: { type: "number", description: "1 for a simple random sample (default); higher for clustered or weighted samples." },
-        response_rate_pct: { type: "number", description: "Expected response rate, to give the number to approach (sample_for_margin)." },
-      },
-      required: ["mode"],
+      properties: { query: { type: "string", description: "Words to look for, e.g. 'design effect weighting' or 'verdict tiers'." } },
+      required: ["query"],
     },
   },
+  {
+    name: "read_help",
+    description: "Read one Knowledge base or Manual section or page by its ref, as search_help or the contents list gives it (e.g. 'knowledge/crosstabs#significance' or 'manual/limits').",
+    input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
+  },
 ];
+
+export type HelpUsed = { title: string; href: string };
+
+/** search_help and read_help. A read records the page, so the reply can link what it was based on. */
+export function runHelpTool(name: string, input: Record<string, unknown>): { content: string; isError: boolean; help?: HelpUsed } {
+  if (name === "search_help") {
+    const hits = searchHelp(String(input.query ?? ""));
+    if (hits.length === 0) return { content: "Nothing in the Knowledge base or Manual matches those words. Try other words, or say the guides do not cover it.", isError: false };
+    return { content: hits.map((h) => `${h.ref} | ${h.title}: ${h.heading}\n${h.snippet}`).join("\n\n"), isError: false };
+  }
+  if (name === "read_help") {
+    const page = readHelp(String(input.ref ?? ""));
+    if (!page) return { content: `"${String(input.ref ?? "")}" is not a Knowledge base or Manual ref. Use search_help to find one.`, isError: true };
+    return { content: `${page.title} (${page.href})\n\n${page.text}`, isError: false, help: { title: page.title, href: page.href } };
+  }
+  return { content: `Unknown tool "${name}".`, isError: true };
+}
+
+/** The sample_size tool, shared by the project assistant and the one outside a project. */
+export function runSampleSizeTool(input: Record<string, unknown>): { content: string; isError: boolean } {
+  try {
+    return { content: sampleSizeText(input), isError: false };
+  } catch (error) {
+    return { content: `This could not be worked out: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+  }
+}
 
 export type BuiltTable = { tableId: string; label: string; dataFile: string };
 
@@ -123,9 +171,10 @@ export async function runAssistantTool(
   name: string,
   input: Record<string, unknown>,
   tablesSoFar: number,
-): Promise<{ content: string; isError: boolean; table?: BuiltTable }> {
+): Promise<{ content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed }> {
   try {
-    if (name === "sample_size") return { content: sampleSizeText(input), isError: false };
+    if (name === "sample_size") return runSampleSizeTool(input);
+    if (name === "search_help" || name === "read_help") return runHelpTool(name, input);
     const files = await dataFiles(tenantId, runId);
     if (name === "list_data_files") {
       return { content: files.length ? files.map((f) => `${f.id}: ${f.name}`).join("\n") : "This project has no data files that tables can be built from.", isError: false };

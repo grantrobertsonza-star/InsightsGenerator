@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { SectionIcon } from "@/components/sectionIcons";
+import { publishOpenSection } from "@/components/openSection";
 
 export type RunNavSection = {
   id: string;
@@ -209,6 +210,13 @@ export function RunNav({
     setPortalEl(document.getElementById("run-nav-slot"));
     setRailEl(document.getElementById("run-nav-rail"));
   }, []);
+
+  // The floating Research assistant reads the open section from here (components/openSection.ts).
+  const openLabel = sections.find((s) => s.id === selected || (s.activeFor ?? []).includes(selected))?.label ?? selected;
+  useEffect(() => {
+    publishOpenSection({ runId: currentProjectId, id: selected, label: openLabel });
+  }, [currentProjectId, selected, openLabel]);
+  useEffect(() => () => publishOpenSection(null), []);
 
   // The server and the first client render show every group open; a remembered fold applies after.
   const folded = parseFolded(useSyncExternalStore(subscribeFolded, readFolded, () => "[]"));

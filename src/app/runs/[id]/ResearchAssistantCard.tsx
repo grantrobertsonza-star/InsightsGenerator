@@ -4,6 +4,7 @@ import { Pane, ThreePane } from "./ThreePane";
 import { useRef, useState, useTransition } from "react";
 import { sendAssistantMessage, uploadAssistantDocument } from "@/lib/researchAssistantActions";
 import { SendIcon, UploadIcon } from "@/components/icons";
+import { AssistantMessageText } from "@/components/AssistantMessageText";
 
 export type AssistantChatMessage = {
   id: string;
@@ -44,6 +45,13 @@ export default function ResearchAssistantCard({
   const [isSending, startSending] = useTransition();
   const [isUploading, startUploading] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The floating drawer writes to the same conversation; when the page refreshes with a newer saved
+  // history, show it (unless a send of this card's is still waiting, whose optimistic message it keeps).
+  const [shownInitial, setShownInitial] = useState(initialMessages);
+  if (initialMessages !== shownInitial && !isSending) {
+    setShownInitial(initialMessages);
+    setMessages(initialMessages);
+  }
 
   function handleSend() {
     const text = draft.trim();
@@ -154,7 +162,7 @@ export default function ResearchAssistantCard({
                   m.role === "user" ? "bg-primary text-white" : "border border-border bg-white text-foreground"
                 }`}
               >
-                {m.content}
+                {m.role === "assistant" ? <AssistantMessageText text={m.content} /> : m.content}
               </div>
             </div>
           ))
@@ -200,6 +208,7 @@ export default function ResearchAssistantCard({
             <li>How should I word a question about income?</li>
             <li>Shorten the executive summary.</li>
             <li>Tighten pillar 2&apos;s headline.</li>
+            <li>How does StarterTabs choose means for rating scales?</li>
           </ul>
           <p className="text-xs text-muted">
             {hasReport

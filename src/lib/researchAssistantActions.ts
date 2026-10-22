@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { askResearchAssistant } from "./researchAssistant";
+import { askResearchAssistant, loadAssistantConversation, type AssistantMessage } from "./researchAssistant";
+import { askGeneralAssistant, checkedHistory } from "./generalAssistant";
+import { checkedPageContext } from "./assistantLoop";
 import { storeUploadedDocument } from "./documentUpload";
 import { extractFindingsFromDocument } from "./extractFindings";
 import { detectDuplicateFindings } from "./dedupe";
@@ -25,11 +27,12 @@ import { requireTenantId } from "./requestContext";
  */
 export async function sendAssistantMessage(
   runId: string,
-  message: string
+  message: string,
+  page?: unknown,
 ): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
   try {
-    const { reply } = await askResearchAssistant(TENANT_ID, runId, message);
+    const { reply } = await askResearchAssistant(TENANT_ID, runId, message, checkedPageContext(page));
     revalidatePath(`/runs/${runId}`);
     return { ok: true, reply };
   } catch (error) {
@@ -41,6 +44,40 @@ export async function sendAssistantMessage(
       );
     }).catch(() => {});
     return { ok: false, error: messageText };
+  }
+}
+
+/**
+ * The floating drawer's copy of a project's conversation, read when it opens. A failed read is an
+ * error the drawer shows; it is never shown as an empty conversation.
+ */
+export async function loadAssistantMessages(
+  runId: string,
+): Promise<{ ok: true; messages: AssistantMessage[] } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  if (!/^[0-9a-f-]{36}$/i.test(runId)) return { ok: false, error: "Not a project." };
+  try {
+    return { ok: true, messages: await loadAssistantConversation(TENANT_ID, runId) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * The drawer outside a project (dashboard, Programs, Knowledge base, Manual): how-the-app and method
+ * questions, not stored. The earlier turns come from the drawer and are checked (generalAssistant.ts).
+ */
+export async function sendGeneralAssistantMessage(
+  message: string,
+  history: unknown,
+  page?: unknown,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const { reply } = await askGeneralAssistant(TENANT_ID, String(message ?? ""), checkedHistory(history), checkedPageContext(page));
+    return { ok: true, reply };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 

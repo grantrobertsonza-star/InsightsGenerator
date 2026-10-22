@@ -1,3 +1,4 @@
+import { loadAssistantConversation } from "@/lib/researchAssistant";
 import Link from "next/link";
 import { Fragment } from "react";
 import { randomUUID } from "node:crypto";
@@ -1804,26 +1805,9 @@ async function getStoryNarrative(
   });
 }
 
-/**
- * The Research assistant card's chat history for this run (see
- * src/lib/researchAssistant.ts). Oldest first, matching reading order in
- * the chat panel; the card itself caps how many of these it keeps visible,
- * this just hands back everything that's been said so far on this run.
- */
-async function getAssistantMessages(
-  runId: string,
-): Promise<AssistantChatMessage[]> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<AssistantChatMessage>(
-      `select id, role, content, created_at::text
-       from assistant_messages
-       where run_id = $1
-       order by created_at asc`,
-      [runId],
-    );
-    return result.rows;
-  });
+/** The Research assistant card's chat history for this run, oldest first (shared with the floating drawer). */
+async function getAssistantMessages(runId: string): Promise<AssistantChatMessage[]> {
+  return loadAssistantConversation(await requireTenantId(), runId);
 }
 
 /**
