@@ -145,32 +145,6 @@ export function GoToSection({ id, children, secondary = false }: { id: string; c
   );
 }
 
-/**
- * Tabs across sections that share one sidebar entry (Objectives: Set and Review, Grant 2026-10-19).
- * Each tab switches the run to its section, as the sidebar does.
- */
-export function SectionTabs({ tabs }: { tabs: { id: string; label: string }[] }) {
-  const { selected, setSelected } = useRunSection();
-  return (
-    <div role="tablist" className="mb-3 flex gap-5 border-b border-border">
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          role="tab"
-          aria-selected={selected === t.id}
-          onClick={() => setSelected(t.id)}
-          className={`-mb-px border-b-2 px-0.5 pb-2 text-sm font-medium ${
-            selected === t.id ? "border-primary text-primary" : "border-transparent text-muted hover:text-foreground"
-          }`}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function SectionPanel({
   id,
   children,

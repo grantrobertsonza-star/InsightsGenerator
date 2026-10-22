@@ -138,9 +138,12 @@ export async function summarizeCrosstabTable(
   const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   const input = (tu?.input ?? {}) as { headline?: string; cards?: { title?: string; stat?: string; body?: string }[] };
   // An empty or cut-off answer is a failed reading, never "no pattern" (that used to be the fallback
-  // here, so a failure looked like a finding about the table).
+  // here, so a failure looked like a finding about the table). A cut-off answer is refused even when
+  // it has a headline: the model stopped for length, so the cards it meant to write may be missing
+  // (Codex B4-F01).
+  if (response.stop_reason === "max_tokens") throw new Error("The AI reading was cut off before it finished. Try again.");
   const headline = typeof input.headline === "string" ? input.headline.trim() : "";
-  if (!headline) throw new Error(response.stop_reason === "max_tokens" ? "The AI reading was cut off before it finished. Try again." : "The AI reading came back empty. Try again.");
+  if (!headline) throw new Error("The AI reading came back empty. Try again.");
   const cards: CrosstabInsightCard[] = Array.isArray(input.cards)
     ? input.cards
         .filter((c) => c && c.title && c.body)

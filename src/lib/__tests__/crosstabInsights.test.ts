@@ -69,5 +69,13 @@ describe("summarizeCrosstabTable", () => {
     await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("came back empty");
     state.response = tool({ headline: "  " }, "max_tokens");
     await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("cut off");
+    // B4-F01: a cut-off answer that already has a headline and a card is still refused.
+    state.response = tool({ headline: "A reports more", cards: [{ title: "Gap", body: "60% against 40%." }] }, "max_tokens");
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("The AI reading was cut off before it finished. Try again.");
+    // A healthy read after a refusal succeeds.
+    state.response = tool({ headline: "A reports more", cards: [{ title: "Gap", body: "60% against 40%." }] });
+    const again = await summarizeCrosstabTable("t", "r", table(1));
+    expect(again).toMatchObject({ headline: "A reports more", partial: null });
+    expect(again.cards).toHaveLength(1);
   });
 });

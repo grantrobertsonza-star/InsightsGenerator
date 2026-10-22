@@ -170,9 +170,12 @@ export default function FindingsGuide() {
       <P>
         The multiple comparisons tag deserves particular attention in cross tab work. Test enough cells and a few
         will cross the 95% line by luck alone. An adjustment such as the false discovery rate procedure
-        (Benjamini &amp; Hochberg, 1995) is a recognised remedy. It is applied to findings from the starter set, which
-        then carry a different tag, but not yet to tables you build by hand. For those, treat a lone significant cell
-        inside a very large table with suspicion, and prefer patterns that show up across several related cells.
+        (Benjamini &amp; Hochberg, 1995) is a recognised remedy. Every cross table applies one by default, whether it
+        came from StarterTabs or was built by hand: the false discovery rate across the columns of each banner
+        variable, row by row. Bonferroni, or no correction, can be chosen instead, and the finding&apos;s tag says which
+        ran. Findings from the starter set are also controlled across every cell of their table. A table built with no
+        correction carries the uncorrected tag. Even with a correction, treat a lone significant cell inside a very
+        large table with some suspicion, and prefer patterns that show up across several related cells.
       </P>
 
       <H2 id="corroboration">Corroboration and contradiction</H2>
@@ -233,7 +236,7 @@ export default function FindingsGuide() {
         doesNot={[
           "Prove that a claim is true in the real world.",
           "Decide whether two similar findings come from independent research.",
-          "Correct for multiple comparisons in hand-built tables (only the starter set is corrected).",
+          "Correct for multiple comparisons across the many tables of a project (each table is corrected on its own).",
           "Judge whether a finding is interesting or useful. That is the next stage.",
         ]}
       />
