@@ -188,7 +188,7 @@ export default function InstrumentCard({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat value={summary.items} label={isGuide ? "Questions and probes" : "Items read"} />
           {!isGuide && <Stat value={`${summary.withRouting} of ${summary.statedRoutingText}`} label={summary.fromJumps > 0 ? `Skip instructions understood (+${summary.fromJumps} from GO TO jumps)` : "Skip instructions understood"} />}
-          {!isGuide && <Stat value={summary.links.confirmed} label="Links confirmed" />}
+          {!isGuide && <Stat value={summary.links.confirmed} label="Question and variable links confirmed" />}
           {!isGuide && (
             <Stat
               value={summary.itemsToCheck}

@@ -92,6 +92,8 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
       await expect(preview.getByText("Table 1: 5,000 rows, 301 columns")).toBeVisible({ timeout: 60_000 });
       await expect(preview.getByText(/Showing the first \d+ of 5,000 rows and \d+ of 301 columns/)).toBeVisible();
       const quality = await openSourceTab(page, "Data quality");
+      // The checks table is rolled up by default; open it to read the case count.
+      await quality.getByTestId("quality-checks-fold").first().locator("summary").click();
       await expect(quality.getByText("5000 cases.").first()).toBeVisible();
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(2_000);

@@ -813,7 +813,8 @@ function Dashboard({
       <ul className="mt-3 flex flex-col gap-1">
         {d.dimensions.map((x) => {
           const name = x.categoryLabel ?? criterionShortLabel(x.dimensionId);
-          const shown = x.score === null ? null : Number.isInteger(x.score) ? String(x.score) : x.score.toFixed(1);
+          // One decimal for every score, so the decimal points line up down the column.
+          const shown = x.score === null ? null : x.score.toFixed(1);
           const active = current === x.dimensionId;
           return (
             <li key={x.dimensionId} data-criterion={x.dimensionId} data-state={x.state} data-score={x.score ?? "none"} data-weight={x.weight}>
@@ -837,9 +838,7 @@ function Dashboard({
                   <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${name}: ${shown === null ? x.label : `${shown} of 5, ${x.label}`}`}>
                     {x.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(x.score)}`} style={{ width: `${Math.max(x.score, 0.15) * 20}%` }} />}
                   </span>
-                  <span className={`w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-bold uppercase tracking-wide ${x.score === null ? "text-muted" : scoreText(x.score)}`}>
-                    {shown === null ? (x.state === "failed" ? "failed" : "-") : `${shown} ${x.label}`}
-                  </span>
+                  <ScoreAndBand shown={shown} label={x.label} failed={x.state === "failed"} cls={x.score === null ? "text-muted" : scoreText(x.score)} weight="font-bold" />
                 </span>
               </button>
               {x.categoryLabel && x.criteria.length > 1 && (
@@ -848,7 +847,7 @@ function Dashboard({
                 // The bar above is the category's total: the average of these rated items.
                 <ul className="mb-1 ml-3 flex flex-col border-l border-slate-200 pl-2" aria-label={`${name} items`}>
                   {x.criteria.map((c) => {
-                    const cShown = c.score === null ? null : String(c.score);
+                    const cShown = c.score === null ? null : c.score.toFixed(1);
                     return (
                       <li key={c.criterionId} data-sub-criterion={c.criterionId} data-score={c.score ?? "none"}>
                         <button
@@ -862,9 +861,7 @@ function Dashboard({
                             <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`${criterionShortLabel(c.criterionId)}: ${cShown === null ? c.label : `${cShown} of 5, ${c.label}`}`}>
                               {c.score !== null && <span className={`absolute inset-y-0 left-0 rounded-full ${scoreBar(c.score)}`} style={{ width: `${Math.max(c.score, 0.15) * 20}%` }} />}
                             </span>
-                            <span className={`w-[5.5rem] shrink-0 whitespace-nowrap text-right text-[10px] font-semibold uppercase tracking-wide ${c.score === null ? "text-muted" : scoreText(c.score)}`}>
-                              {cShown === null ? (c.state === "failed" ? "failed" : "-") : `${cShown} ${c.label}`}
-                            </span>
+                            <ScoreAndBand shown={cShown} label={c.label} failed={c.state === "failed"} cls={c.score === null ? "text-muted" : scoreText(c.score)} weight="font-semibold" />
                           </span>
                         </button>
                       </li>
@@ -882,6 +879,20 @@ function Dashboard({
           : "Click a bar for its criterion, with the reasons on the right."}
       </p>
     </section>
+  );
+}
+
+/**
+ * The score and its band in two fixed columns (Grant, 2026-10-22: "put the score separate from the
+ * status so aligned"): the number right-aligned in tabular figures, the band left-aligned after it,
+ * so numbers line up under each other and so do the words, for categories and their criteria.
+ */
+function ScoreAndBand({ shown, label, failed, cls, weight }: { shown: string | null; label: string; failed: boolean; cls: string; weight: string }) {
+  return (
+    <span className={`flex shrink-0 items-baseline gap-2 text-[10px] uppercase tracking-wide ${weight} ${cls}`}>
+      <span className="w-7 text-right tabular-nums">{shown === null ? "" : shown}</span>
+      <span className="w-[4.5rem] whitespace-nowrap text-left">{shown === null ? (failed ? "failed" : "-") : label}</span>
+    </span>
   );
 }
 

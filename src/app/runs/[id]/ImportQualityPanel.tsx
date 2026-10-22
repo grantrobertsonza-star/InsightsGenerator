@@ -7,6 +7,7 @@ import {
   type QualityStatus,
 } from "@/lib/dataQuality";
 import type { QuestionType, VariableOverrides } from "@/lib/variableOverrides";
+import { ChecksFold } from "./ImportQualityChecks";
 
 export type ImportQualityTable = {
   /** Cached workbook preview could not be reconciled with its authoritative sheet. */
@@ -350,7 +351,8 @@ export default function ImportQualityPanel({
               </p>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <ChecksFold statuses={q.checks.map((check) => check.status)}>
+            <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] text-left text-xs">
                 <thead>
                   <tr className="border-b border-border bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -380,6 +382,7 @@ export default function ImportQualityPanel({
                 </tbody>
               </table>
             </div>
+            </ChecksFold>
 
           </div>
         );
