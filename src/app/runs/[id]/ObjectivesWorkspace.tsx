@@ -14,6 +14,7 @@ import {
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useObjectiveRowActions } from "./useObjectiveRowActions";
 import ObjectiveEditConflict from "./ObjectiveEditConflict";
+import { isRereadSuggestion } from "@/lib/briefFillText";
 
 type Verdict = { item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean };
 
@@ -114,7 +115,12 @@ function Detail({ runId, row, index }: { runId: string; row: ObjectiveRow; index
       ) : (
         <p className="text-sm font-medium text-foreground">{row.text}</p>
       )}
-      {row.source === "ai_suggested" && row.rationale && !a.editing && <p className="text-xs text-muted">{row.rationale}</p>}
+      {(row.source === "ai_suggested" || isRereadSuggestion(row.rationale)) && row.rationale && !a.editing && <p className="text-xs text-muted">{row.rationale}</p>}
+      {row.similarTo && !a.editing && (
+        <p className="text-xs text-amber-800" data-testid="objective-similar-to">
+          Looks like an objective you already have: <span className="font-medium">{row.similarTo}</span>. Accept this one, or reject it to keep yours.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-1.5">
         {a.editing ? (

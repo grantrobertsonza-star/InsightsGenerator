@@ -13,6 +13,7 @@ import { TrashIcon } from "@/components/icons";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useObjectiveRowActions } from "./useObjectiveRowActions";
 import ObjectiveEditConflict from "./ObjectiveEditConflict";
+import { isRereadSuggestion } from "@/lib/briefFillText";
 
 export type ObjectiveScores = {
   specific: number;
@@ -35,6 +36,11 @@ export type ObjectiveRow = {
   scores: ObjectiveScores | null;
   /** Why an objective has no score (objectiveQualityStatus.unscoredReasonText); absent where not loaded. */
   unscoredReason?: string | null;
+  /**
+   * For a suggestion from re-reading a document (Grant, 2026-10-22): the existing objective it most
+   * likely restates (objectiveSimilarity.likelyRestates), shown beside it. Never merged.
+   */
+  similarTo?: string | null;
 };
 
 export const scoreCellClass: Record<number, string> = {
@@ -64,6 +70,9 @@ export const textareaClass =
   "w-full resize-none rounded-lg border border-border px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 
 export function tagFor(row: ObjectiveRow) {
+  // A researcher-authored objective that is pending (a re-read suggestion, or one unaccepted) is
+  // not part of the agenda yet, so it is labelled as waiting rather than as stated.
+  if (row.source === "researcher_authored" && row.status === "pending") return { label: "Waiting for review", cls: "bg-amber-50 text-amber-800" };
   if (row.source === "researcher_authored") return { label: "Stated", cls: "bg-slate-100 text-slate-600" };
   if (row.status === "accepted") return { label: "Inferred", cls: "bg-primary-light text-primary" };
   return { label: "Suggested", cls: "bg-amber-50 text-amber-700" };
@@ -111,6 +120,17 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
         {row.edited && (
           <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             Edited
+          </span>
+        )}
+        {row.similarTo && (
+          // Shown while rolled up too, so a likely repeat is seen without opening each suggestion;
+          // rolling down names the objective it looks like.
+          <span
+            className="ml-1.5 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+            title={`Looks like: ${row.similarTo}`}
+            data-testid="objective-similar-chip"
+          >
+            Looks like one you have
           </span>
         )}
       </td>
@@ -209,8 +229,13 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             <span className="font-medium">To sharpen it:</span> {row.scores.suggestion}
           </div>
         )}
-        {row.source === "ai_suggested" && row.rationale && !a.editing && (
+        {(row.source === "ai_suggested" || isRereadSuggestion(row.rationale)) && row.rationale && !a.editing && (
           <div className="mt-1 text-[11px] text-muted">{row.rationale}</div>
+        )}
+        {row.similarTo && !a.editing && (
+          <div className="mt-1 text-[11px] text-amber-800" data-testid="objective-similar-to">
+            Looks like an objective you already have: <span className="font-medium">{row.similarTo}</span>. Accept this one, or reject it to keep yours.
+          </div>
         )}
       </td>
     </tr>

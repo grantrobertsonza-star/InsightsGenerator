@@ -1,9 +1,10 @@
 // GT500 repairs (Codex, 2026-10-21), the native repros from the independent review, retained:
-//   F01: fill from a proposal, edit the imported objective, fill from the same proposal again:
-//        the edited objective keeps its id and wording and the original does not come back.
-//   F02: the extraction answers HTTP 503: the typed text is saved, the form says the fill did not
+//   F01: fill from a proposal, edit the imported objective, fill from the same proposal again (it is
+//        not read again, 22 Oct) and Read it again: the edited objective keeps its id and wording
+//        and the original does not come back.
+//   F02: Read it again answers HTTP 503: the typed text is saved, the form says the fill did not
 //        happen once the response has settled, and still says so after a reload; the earlier fill
-//        is labelled as the previous one; Try the fill again then fills once.
+//        is labelled as the previous one; Try the fill again then re-reads once (a suggestion).
 //   F03: two editors opened on the same objective: the second save is refused, its draft stays in
 //        the editor, and no second objective appears.
 //   R500-02: a Setup editor is open on an objective; in another tab Review deletes it and adds the
@@ -86,7 +87,15 @@ test("F01: refilling from the same proposal does not bring back an objective edi
 
     await page.reload({ waitUntil: "networkidle" });
     await openSection(page, "Set Objectives");
+    // The same proposal again is not read (Grant, 2026-10-22); Read it again re-reads it, and the
+    // reworded original is still not brought back (F01 lineage).
     await fillFromProposal(page, client, run.id);
+    await expect(page.getByTestId("brief-fill-already")).toContainText("Already filled from the proposal Independent500_Proposal.txt");
+    const reread = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/runs/${run.id}`));
+    await page.getByTestId("brief-fill-reread").click();
+    expect((await reread).ok()).toBe(true);
+    await expect(objectiveForm(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
+    await expect(page.getByTestId("brief-fill-reread-result")).toContainText("nothing new was found", { timeout: 60_000 });
     await expect(page.getByTestId("brief-last-fill")).toContainText("no new objectives, 1 imported earlier not added again");
     await page.reload({ waitUntil: "networkidle" });
     await openSection(page, "Set Objectives");
@@ -111,7 +120,13 @@ test("F02: a failed extraction is shown after the response settles and after a r
 
     writeFileSync(fixtureFile, JSON.stringify({ tools: { record_brief_fields: [{ match: marker, status: 503 }] } }));
     await objectiveForm(page).locator('textarea[name="businessProblem"]').fill("Manually typed business problem");
+    // The same proposal is not read again unless asked (Grant, 2026-10-22): the outage hits Read it again.
     await fillFromProposal(page, client, run.id);
+    await expect(page.getByTestId("brief-fill-already")).toBeVisible({ timeout: 60_000 });
+    const rereading = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/runs/${run.id}`));
+    await page.getByTestId("brief-fill-reread").click();
+    expect((await rereading).ok()).toBe(true);
+    await expect(objectiveForm(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
     const failed = page.getByTestId("brief-fill-failed");
     await expect(failed).toContainText("The fill from the proposal Independent500_Proposal.txt did not happen");
     await expect(failed).toContainText("What you typed was saved");
@@ -130,9 +145,10 @@ test("F02: a failed extraction is shown after the response settles and after a r
     await expect(objectiveForm(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 60_000 });
     await expect(page.getByTestId("brief-fill-failed")).toHaveCount(0, { timeout: 60_000 });
     await expect(page.getByTestId("brief-last-fill")).toContainText("Last filled from the proposal Independent500_Proposal.txt");
-    await expect(page.getByText("Objective from the retry", { exact: true }).first()).toBeVisible();
-    const texts = (await client.query("select candidate_text from objective_candidates where run_id=$1 ", [run.id])).rows.map((r) => r.candidate_text).sort();
-    expect(texts).toEqual(["Objective from the first fill", "Objective from the retry"]);
+    // The retry re-read: its new line waits on Review as a suggestion, once.
+    await expect(page.getByTestId("brief-fill-reread-result")).toContainText("1 new line is waiting on Review objectives");
+    const rows = (await client.query("select candidate_text, status from objective_candidates where run_id=$1 order by candidate_text", [run.id])).rows;
+    expect(rows).toEqual([{ candidate_text: "Objective from the first fill", status: "accepted" }, { candidate_text: "Objective from the retry", status: "pending" }]);
     expect((await client.query("select business_problem from runs where id=$1", [run.id])).rows[0].business_problem).toBe("Manually typed business problem");
   } finally {
     await client.end();

@@ -118,6 +118,8 @@ import DataAuditPanel from "./DataAuditPanel";
 import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
 import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
+import { isRereadSuggestion } from "@/lib/briefFillText";
+import { likelyRestates } from "@/lib/objectiveSimilarity";
 import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources";
 import { getDocumentRoles } from "@/lib/researchQualityRepository";
 import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
@@ -4284,6 +4286,15 @@ export default async function RunPage({
   // accepted objective carries the reason it is unscored (objectiveQualityStatus.ts).
   const objectiveQualityStatus = await loadObjectiveQualityStatus(TENANT_ID, id);
   const qualityFor = objectiveQualityLookup(objectiveQuality.rows);
+  // A suggestion from re-reading a document is shown beside the existing objective it most likely
+  // restates (Grant, 2026-10-22; objectiveSimilarity.ts), so the researcher keeps one or the other.
+  const similarToOf = (c: (typeof objectiveCandidates)[number]): string | null =>
+    c.status === "pending" && isRereadSuggestion(c.rationale)
+      ? likelyRestates(
+          c.candidate_text,
+          objectiveCandidates.filter((o) => o.id !== c.id && o.status !== "rejected" && !isRereadSuggestion(o.rationale)).map((o) => ({ text: o.candidate_text })),
+        )?.text ?? null
+      : null;
   const objectiveRows: ObjectiveRow[] = objectiveCandidates.map((c): ObjectiveRow => {
         const q = qualityFor(c.candidate_text);
         const accepted = c.status === "accepted";
@@ -4300,6 +4311,7 @@ export default async function RunPage({
           source: c.source,
           status: c.status,
           edited: c.edited,
+          similarTo: similarToOf(c),
           scores:
             q && c.status === "accepted"
               ? {

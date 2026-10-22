@@ -43,7 +43,7 @@ describe("actionFailure", () => {
 
 // GT500-F02: a failed fill is said, and the record shown beside it is labelled as the previous one.
 describe("fill messages", () => {
-  const fill = { at: "2026-10-21T12:20:00.000Z", brief: null, proposal: { id: "p", filename: "P.docx", stillImported: true }, objectivesAdded: 1, filledBusinessProblem: false, importedBefore: 2 };
+  const fill = { at: "2026-10-21T12:20:00.000Z", brief: null, proposal: { id: "p", filename: "P.docx", stillImported: true }, objectivesAdded: 1, filledBusinessProblem: false, importedBefore: 2, suggestionsAdded: 0 };
   it("names the documents, the reason and the retry; labels the previous fill", () => {
     expect(failedFillText({ documents: "the proposal P.docx", reason: "Synthetic outage." })).toBe(
       "The fill from the proposal P.docx did not happen: Synthetic outage. What you typed was saved. Use Try the fill again, or choose the document again and save.",

@@ -75,8 +75,9 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       const [original] = await candidates(run);
       const { editStatedObjective } = await import("../runContextActions");
       await editStatedObjective(run, original.candidate_text, "Measure rural mobile bundle demand by household income", await setupTarget(db.pool, run, original.candidate_text));
-      const reread = await fill(run, doc);
-      expect(reread).toMatchObject({ importedBefore: 1, fill: { status: "filled", objectivesAdded: 0 } });
+      // Read it again: the reworded original is not brought back (lineage), nothing is suggested.
+      const reread = await fill(run, doc, { rereadDocuments: "1" });
+      expect(reread).toMatchObject({ importedBefore: 1, fill: { status: "filled", objectivesAdded: 0, reread: true, suggestionsAdded: 0 } });
       const after = await candidates(run);
       expect(after).toHaveLength(1);
       expect(after[0]).toMatchObject({ id: original.id, candidate_text: "Measure rural mobile bundle demand by household income", status: "accepted" });
@@ -94,12 +95,13 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       await a.rejectObjectiveCandidate(run, rows.find((r) => r.candidate_text === "Objective rejected")!.id);
       await a.deleteObjectiveCandidate(run, rows.find((r) => r.candidate_text === "Objective deleted")!.id);
       intake.objective = "Objective kept\nObjective rejected\nObjective deleted\nObjective new in the revised proposal";
-      const reread = await fill(run, doc);
-      expect(reread).toMatchObject({ fill: { status: "filled", objectivesAdded: 1 } });
+      // Read it again: only the genuinely new line comes in, as a suggestion waiting on Review.
+      const reread = await fill(run, doc, { rereadDocuments: "1" });
+      expect(reread).toMatchObject({ fill: { status: "filled", objectivesAdded: 0, reread: true, suggestionsAdded: 1 } });
       const after = await candidates(run);
       expect(after.map((r) => [r.candidate_text, r.status])).toEqual([
         ["Objective kept", "accepted"],
-        ["Objective new in the revised proposal", "accepted"],
+        ["Objective new in the revised proposal", "pending"],
         ["Objective rejected", "rejected"],
       ]);
     });
@@ -166,7 +168,8 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
       intake.objective = "Objective from the first fill";
       await fill(run, doc);
       intake.fail = "Synthetic model chunk outage (HTTP 503)";
-      const result = await fill(run, doc, { businessProblem: "Manually typed problem" });
+      // The outage hits a deliberate re-read of the document that already filled the project.
+      const result = await fill(run, doc, { businessProblem: "Manually typed problem", rereadDocuments: "1" });
       expect(result.fill).toEqual({
         status: "failed",
         documents: "the proposal Independent500_Proposal.txt",
@@ -174,17 +177,19 @@ describe.skipIf(!TEST_DATABASE_URL)("GT500 objective lineage, partial fills and 
         recorded: true,
         briefDocumentId: null,
         proposalDocumentId: doc,
+        reread: true,
       });
       expect((await db.pool.query("select business_problem from runs where id=$1", [run])).rows[0].business_problem).toBe("Manually typed problem");
       const { loadFailedBriefFill, loadLastBriefFill } = await import("../briefFillRecord");
-      expect(await loadFailedBriefFill(tenant, run)).toMatchObject({ documents: "the proposal Independent500_Proposal.txt", reason: "Synthetic model chunk outage (HTTP 503)", proposalDocumentId: doc });
+      expect(await loadFailedBriefFill(tenant, run)).toMatchObject({ documents: "the proposal Independent500_Proposal.txt", reason: "Synthetic model chunk outage (HTTP 503)", proposalDocumentId: doc, reread: true });
       expect(await loadLastBriefFill(tenant, run)).toMatchObject({ objectivesAdded: 1 });
       intake.fail = null;
       intake.objective = "Objective from the first fill\nObjective from the retry";
-      expect(await fill(run, doc)).toMatchObject({ fill: { status: "filled", objectivesAdded: 1 }, importedBefore: 0, alreadyInProject: 1 });
+      // The retry reads again (the failure was a re-read): the new line is suggested once.
+      expect(await fill(run, doc, { rereadDocuments: "1" })).toMatchObject({ fill: { status: "filled", reread: true, suggestionsAdded: 1 }, importedBefore: 0, alreadyInProject: 1 });
       expect(await loadFailedBriefFill(tenant, run)).toBeNull();
-      expect(await fill(run, doc)).toMatchObject({ fill: { status: "filled", objectivesAdded: 0 } });
-      expect((await candidates(run)).map((r) => r.candidate_text)).toEqual(["Objective from the first fill", "Objective from the retry"]);
+      expect(await fill(run, doc, { rereadDocuments: "1" })).toMatchObject({ fill: { status: "filled", suggestionsAdded: 0 } });
+      expect((await candidates(run)).map((r) => [r.candidate_text, r.status])).toEqual([["Objective from the first fill", "accepted"], ["Objective from the retry", "pending"]]);
     });
 
     it("R500-01: an ordinary save reports the still unresolved failure; another failure replaces it; only a successful fill resolves it", async () => {

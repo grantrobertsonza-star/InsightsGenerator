@@ -74,7 +74,9 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
   });
 
   // Grant, 2026-10-21: filling from the same proposal again added every objective a second time.
-  it("filling from the same document again adds no objective that is already there, in any spelling", async () => {
+  // Another document repeating objectives the project already has (the same document is not read
+  // again at all, Grant 2026-10-22; see objectiveRereadSuggestions.db.test.ts).
+  it("filling from another document adds no objective that is already there, in any spelling", async () => {
     const fresh = (await db.pool.query("insert into runs(tenant_id,project_name) values($1,'Dup') returning id", [tenant])).rows[0].id as string;
     const proposal = (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'evidence','proposal.docx',$3,'Proposal text') returning id", [tenant, fresh, `${tenant}/${fresh}/proposal.docx`])).rows[0].id as string;
     const candidates = async () => (await db.pool.query("select candidate_text, status from objective_candidates where run_id=$1 order by candidate_text", [fresh])).rows;
@@ -84,18 +86,19 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
     expect(await candidates()).toHaveLength(2);
     // The same proposal read again, with a full stop, other capitals, curly quotes and spacing.
     intake.objective = "- understand why customers  switch provider.\n- Size the opportunity in rural areas;\n- Test the \u201cbundle\u201d offer";
-    const second = await save(fresh, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: proposal });
+    const another = async () => (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'evidence','proposal-v2.docx',$3,'Proposal text') returning id", [tenant, fresh, `${tenant}/${fresh}/${Math.random()}.docx`])).rows[0].id as string;
+    const second = await save(fresh, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: await another() });
     expect(second.stated_objectives_text.split("\n")).toEqual(["Understand why customers switch provider", "Size the opportunity in rural areas", "Test the \u201cbundle\u201d offer"]);
     expect((await candidates()).map((r) => r.candidate_text)).toEqual(["Size the opportunity in rural areas", "Test the \u201cbundle\u201d offer", "Understand why customers switch provider"]);
     // An objective Review holds (suggested, then rejected by the researcher) is not brought back.
     await db.pool.query("insert into objective_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Measure loyalty by segment','Suggested','ai_suggested','rejected')", [tenant, fresh]);
     intake.objective = "Measure loyalty by segment.";
-    const third = await save(fresh, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: proposal });
+    const third = await save(fresh, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: await another() });
     expect(third.stated_objectives_text).not.toMatch(/loyalty/i);
     expect((await candidates()).filter((r) => /loyalty/i.test(r.candidate_text))).toEqual([{ candidate_text: "Measure loyalty by segment", status: "rejected" }]);
     // Two lines of one read that are the same objective are added once.
     intake.objective = "Track churn monthly\ntrack churn monthly.";
-    await save(fresh, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: proposal });
+    await save(fresh, { businessProblem: "", researchObjective: "", audience: "", proposalDocumentId: await another() });
     expect((await candidates()).filter((r) => /churn/i.test(r.candidate_text))).toHaveLength(1);
   });
 
@@ -134,6 +137,8 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
           proposalFilename: "ConnectMobile_Proposal.docx",
           filledBusinessProblem: true,
           objectivesAdded: 2,
+          reread: false,
+          suggestionsAdded: 0,
           // Import lineage (GT500-F01): every key read from the document, and what it became.
           importedBefore: 0,
           extractedKeys: ["reach rural users", "test the bundle offer"],
@@ -146,12 +151,13 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
         { candidate_text: "Test the bundle offer", rationale: 'Added from the proposal "ConnectMobile_Proposal.docx"' },
       ]);
       // Typed text wins and keeps its own rationale; the document then filled only the problem.
+      // The proposal already filled this project, so only the new brief is read (Grant, 2026-10-22).
       await save(r, { businessProblem: "", researchObjective: "My own objective", audience: "", briefDocumentId: brief, proposalDocumentId: proposal });
       expect((await db.pool.query("select rationale from objective_candidates where run_id=$1 and candidate_text='My own objective'", [r])).rows[0].rationale).toBe("Written or imported at project set-up.");
       const last = await loadLastBriefFill(tenant, r);
       expect(last).toMatchObject({
         brief: { id: brief, filename: "Client_Brief.pdf", stillImported: true },
-        proposal: { id: proposal, filename: "ConnectMobile_Proposal.docx", stillImported: true },
+        proposal: null,
         objectivesAdded: 0,
       });
       const sources = await loadObjectiveSources(tenant, r);
@@ -159,7 +165,7 @@ describe.skipIf(!TEST_DATABASE_URL)("Set Objectives fills blank fields from an i
       expect(sources instanceof Map && sources.has(objectiveIdentityKey("My own objective"))).toBe(false);
       // A deleted document is named, as no longer imported.
       await db.pool.query("delete from documents where id=$1", [brief]);
-      expect(await loadLastBriefFill(tenant, r)).toMatchObject({ brief: { filename: "Client_Brief.pdf", stillImported: false }, proposal: { stillImported: true } });
+      expect(await loadLastBriefFill(tenant, r)).toMatchObject({ brief: { filename: "Client_Brief.pdf", stillImported: false }, proposal: null });
     });
 
     it("records nothing for a refused document or a failed read", async () => {

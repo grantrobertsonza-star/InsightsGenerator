@@ -9,6 +9,8 @@ import { parseObjectiveLines, normalizeObjectiveLine, objectiveIdentityKey } fro
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { requireTenantId } from "./requestContext";
 import { loadFailedBriefFill, type FailedBriefFill } from "./briefFillRecord";
+import { rereadRationale } from "./briefFillText";
+import type { PoolClient } from "pg";
 
 
 /**
@@ -49,7 +51,15 @@ export type RunContextSaveResult = {
   importedBefore: number;
   fill:
     | null
-    | { status: "filled"; objectivesAdded: number; filledBusinessProblem: boolean }
+    | {
+        status: "filled";
+        objectivesAdded: number;
+        filledBusinessProblem: boolean;
+        /** A deliberate re-read (Read it again): its new lines were added as pending suggestions. */
+        reread: boolean;
+        suggestionsAdded: number;
+      }
+
     | {
         status: "failed";
         /** "the proposal X.docx", or "the chosen document" when even its name could not be read. */
@@ -59,6 +69,8 @@ export type RunContextSaveResult = {
         recorded: boolean;
         briefDocumentId: string | null;
         proposalDocumentId: string | null;
+        /** The failed attempt was Read it again, so its retry reads again too. */
+        reread: boolean;
       };
   /**
    * The project's unresolved failed fill as stored after this save (loadFailedBriefFill), read
@@ -67,12 +79,74 @@ export type RunContextSaveResult = {
    * it. `{ error }` when it could not be read, never null.
    */
   unresolvedFailure: FailedBriefFill | null | { error: string };
+  /**
+   * Chosen document(s) that already filled this project (Grant, 2026-10-22): not read again and
+   * nothing added from them, because a fresh read re-words the same objectives and the exact
+   * identity check cannot tell. Read it again re-reads them on request and only suggests. Beside
+   * `fill` when another chosen document was new and read.
+   */
+  already: AlreadyFilled | null;
+};
+
+export type AlreadyFilled = {
+  documents: string;
+  /** When it first filled this project. */
+  at: string;
+  /** Objectives the earlier fill(s) from it added. */
+  objectivesFromIt: number;
+  briefDocumentId: string | null;
+  proposalDocumentId: string | null;
 };
 
 /** "the brief A.docx and the proposal B.docx" for a message; ids whose name is unknown are "the chosen document". */
 function documentsLabel(brief: { filename: string | null } | null, proposal: { filename: string | null } | null): string {
   const one = (kind: string, d: { filename: string | null } | null) => (d ? (d.filename ? `the ${kind} ${d.filename}` : "the chosen document") : null);
   return [one("brief", brief), one("proposal", proposal)].filter(Boolean).join(" and ") || "the chosen document";
+}
+
+type PriorFill = { at: string; objectivesAdded: number };
+
+/**
+ * Successful earlier fills of this project that used each of `documentIds` (Grant, 2026-10-22). A
+ * document counts as used when a 'brief_intake_used' row names it, or names another document of
+ * this project with the same content (documents.content_sha256, where that column exists and was
+ * recorded). A row for a document deleted since cannot be matched by content, so re-importing a
+ * deleted proposal fills normally (the identity and lineage checks still apply).
+ */
+async function priorFillsOf(client: PoolClient, runId: string, documentIds: string[]): Promise<Map<string, PriorFill[]>> {
+  const out = new Map<string, PriorFill[]>();
+  if (documentIds.length === 0) return out;
+  const byId = `t.detail->>'briefDocumentId' = c.id::text or t.detail->>'proposalDocumentId' = c.id::text`;
+  const sql = (withContent: boolean) => `
+    with c as (select id${withContent ? ", content_sha256" : ""} from documents where run_id = $1 and id = any($2::uuid[]))
+    select c.id::text as chosen, t.occurred_at, t.detail
+      from c join trace t on t.run_id = $1 and t.event = 'brief_intake_used'
+       and (${byId}${withContent ? `
+            or (c.content_sha256 is not null and exists (
+                  select 1 from documents d where d.run_id = $1 and d.content_sha256 = c.content_sha256
+                     and (d.id::text = t.detail->>'briefDocumentId' or d.id::text = t.detail->>'proposalDocumentId')))` : ""})
+     order by t.occurred_at, t.id`;
+  await client.query("savepoint prior_fills");
+  let rows: { chosen: string; occurred_at: Date | string; detail: { objectivesAdded?: unknown; reread?: unknown } }[];
+  try {
+    rows = (await client.query(sql(true), [runId, documentIds])).rows;
+    await client.query("release savepoint prior_fills");
+  } catch (error) {
+    // Before the migration that added content_sha256: match by document id only.
+    if ((error as { code?: string }).code !== "42703") throw error;
+    await client.query("rollback to savepoint prior_fills");
+    rows = (await client.query(sql(false), [runId, documentIds])).rows;
+  }
+  for (const r of rows) {
+    const list = out.get(r.chosen) ?? [];
+    list.push({
+      at: new Date(r.occurred_at).toISOString(),
+      // A re-read adds suggestions, not objectives, so it does not count towards "came from it".
+      objectivesAdded: r.detail?.reread === true ? 0 : typeof r.detail?.objectivesAdded === "number" ? r.detail.objectivesAdded : 0,
+    });
+    out.set(r.chosen, list);
+  }
+  return out;
 }
 
 export async function saveRunContext(runId: string, formData: FormData): Promise<RunContextSaveResult> {
@@ -88,8 +162,44 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
   // chooses which imported one(s) to fill the blank fields from. Nothing is chosen by default, so an
   // ordinary save makes no extraction call. (Automatic objective scoring, below, can still call the
   // model when the save adds or changes objectives.)
-  const briefId = clean("briefDocumentId");
-  const proposalId = clean("proposalDocumentId");
+  const chosenBriefId = clean("briefDocumentId");
+  const chosenProposalId = clean("proposalDocumentId");
+  // Read it again (Grant, 2026-10-22): re-read documents that already filled this project, adding
+  // only new lines, as pending suggestions. Without it a used document is not read again.
+  const reread = formData.get("rereadDocuments") === "1";
+  const typedBusinessProblem = businessProblem;
+  const typedObjective = objective;
+  let alreadyFill: AlreadyFilled | null = null;
+  let briefId = chosenBriefId;
+  let proposalId = chosenProposalId;
+  if (!reread && (chosenBriefId || chosenProposalId)) {
+    const chosen = [chosenBriefId, chosenProposalId].filter((v): v is string => !!v);
+    const prior = await withTenant(TENANT_ID, async (client) => {
+      const names = await client.query<{ id: string; source_filename: string }>(
+        "select id::text, source_filename from documents where run_id = $1 and tenant_id = $2 and id = any($3::uuid[])",
+        [runId, TENANT_ID, chosen],
+      );
+      return { fills: await priorFillsOf(client, runId, chosen), names: new Map(names.rows.map((n) => [n.id, n.source_filename])) };
+    });
+    const usedBrief = chosenBriefId ? prior.fills.get(chosenBriefId) ?? null : null;
+    const usedProposal = chosenProposalId ? prior.fills.get(chosenProposalId) ?? null : null;
+    // A used document is dropped from this fill; one not used yet is still read.
+    if (usedBrief) briefId = null;
+    if (usedProposal) proposalId = null;
+    if (usedBrief || usedProposal) {
+      const used = [...(usedBrief ?? []), ...(usedProposal ?? [])];
+      alreadyFill = {
+        documents: documentsLabel(
+          usedBrief && chosenBriefId ? { filename: prior.names.get(chosenBriefId) ?? null } : null,
+          usedProposal && chosenProposalId ? { filename: prior.names.get(chosenProposalId) ?? null } : null,
+        ),
+        at: used.map((u) => u.at).sort()[0],
+        objectivesFromIt: used.reduce((n, u) => n + u.objectivesAdded, 0),
+        briefDocumentId: usedBrief ? chosenBriefId : null,
+        proposalDocumentId: usedProposal ? chosenProposalId : null,
+      };
+    }
+  }
   // Which document filled what (Grant, 2026-10-21: the screen did not say which brief or proposal
   // was used). Set only after a successful read; recorded with the save below.
   let fill: {
@@ -141,6 +251,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
         briefFilename: briefId ? names[briefId] ?? null : null,
         proposalDocumentId: proposalId,
         proposalFilename: proposalId ? names[proposalId] ?? null : null,
+        reread,
       };
       const recorded = await withTenant(TENANT_ID, async (client) => {
         await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_error', $3)`, [
@@ -157,6 +268,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
         recorded,
         briefDocumentId: briefId,
         proposalDocumentId: proposalId,
+        reread,
       };
     }
   }
@@ -176,8 +288,10 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     //
     // A line already in the project is not added again (Grant, 2026-10-21): it is compared, through
     // objectiveIdentityKey, with the saved list and with every objective candidate of this project
-    // whatever its source or status, so filling from the same proposal twice, or from a brief whose
-    // objectives Review already holds or the researcher rejected, adds nothing.
+    // whatever its source or status, so a brief whose objectives Review already holds or the
+    // researcher rejected adds nothing. The key is exact after normalisation, so it cannot catch a
+    // re-worded repeat; that is why a document that already filled the project is not read again
+    // (priorFillsOf, above) and Read it again only suggests (below).
     //
     // Import lineage (GT500-F01): comparing with current wording alone let a reread bring back an
     // imported objective the researcher had since reworded or deleted. Every successful fill records
@@ -186,13 +300,34 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     // already read is not added again, whatever has happened to the objective since: edited,
     // rejected or deleted, those are the researcher's decisions. Lines the researcher types are not
     // checked against this lineage; typing a line in again is a deliberate add. Fills recorded
-    // before extractedKeys existed have no lineage, so only the current-wording check covers them.
+    // before extractedKeys existed have no lineage, so only the current-wording check covers them
+    // (and the already-used document rule, which reads the same fill records).
     const prevLines = parseObjectiveLines(prevObjective);
     const candidateRows = await client.query<{ candidate_text: string }>(
       "select candidate_text from objective_candidates where run_id = $1",
       [runId],
     );
     const known = new Set([...prevLines, ...candidateRows.rows.map((r) => r.candidate_text)].map(objectiveIdentityKey));
+    // A fill of the same document that finished while this one was reading it (two saves at once)
+    // has filled the project already: this one adds nothing from it, as if it had been chosen after.
+    let concurrentAlready: AlreadyFilled | null = null;
+    if (fill && !reread) {
+      const readIds = [fill.brief?.id, fill.proposal?.id].filter((v): v is string => !!v);
+      const prior = await priorFillsOf(client, runId, readIds);
+      if (readIds.some((id) => prior.has(id))) {
+        const used = readIds.flatMap((id) => prior.get(id) ?? []);
+        concurrentAlready = {
+          documents: documentsLabel(fill.brief && prior.has(fill.brief.id) ? fill.brief : null, fill.proposal && prior.has(fill.proposal.id) ? fill.proposal : null),
+          at: used.map((u) => u.at).sort()[0],
+          objectivesFromIt: used.reduce((n, u) => n + u.objectivesAdded, 0),
+          briefDocumentId: fill.brief && prior.has(fill.brief.id) ? fill.brief.id : null,
+          proposalDocumentId: fill.proposal && prior.has(fill.proposal.id) ? fill.proposal.id : null,
+        };
+        fill = null;
+        businessProblem = typedBusinessProblem;
+        objective = typedObjective;
+      }
+    }
     const fromDocument = fill?.objectivesFromDocument === true;
     const importedKeys = new Set<string>();
     if (fromDocument) {
@@ -222,6 +357,9 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
       known.add(key);
       newLines.push(line);
     }
+    // A deliberate re-read (Read it again) puts its new document lines on Review as pending
+    // suggestions, not in the stated list: the researcher accepts, edits or rejects each one.
+    const suggestionLines = fromDocument && reread ? newLines.splice(0) : [];
     const merged = [...prevLines, ...newLines].join("\n") || null;
 
     // OBJ-SET-003: this is "Setup's own first save" the objectiveFramer.ts carry-over comment
@@ -270,6 +408,17 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
       );
       addedIds.push(inserted.rows[0].id);
     }
+    const suggestionRationale = rereadRationale(fill?.brief?.filename ?? null, fill?.proposal?.filename ?? null);
+    for (const line of suggestionLines) {
+      // New to the project by objectiveIdentityKey and lineage (above); likely restatements of an
+      // existing objective are shown beside it on Review (objectiveSimilarity.ts), never merged.
+      const inserted = await client.query<{ id: string }>(
+        `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+         values ($1, $2, $3, $4, 'researcher_authored', 'pending') returning id`,
+        [TENANT_ID, runId, line, suggestionRationale],
+      );
+      addedIds.push(inserted.rows[0].id);
+    }
     if (fill) {
       // The record Set objectives shows as "Last filled from ..." (briefFillRecord.loadLastBriefFill),
       // and the import lineage above, written with the save they describe.
@@ -283,6 +432,8 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
           proposalFilename: fill.proposal?.filename ?? null,
           filledBusinessProblem: fill.filledBusinessProblem,
           objectivesAdded: fromDocument ? newLines.length : 0,
+          reread,
+          suggestionsAdded: suggestionLines.length,
           importedBefore,
           extractedKeys,
           addedCandidateIds: fromDocument ? addedIds : [],
@@ -290,7 +441,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
       ]);
     }
     await syncResearchObjective(client, runId);
-    return { alreadyInProject, importedBefore, added: newLines.length };
+    return { alreadyInProject, importedBefore, added: newLines.length, suggested: suggestionLines.length, concurrentAlready };
   });
 
   // Objectives are scored straight away (Grant, 2026-10-21: automate where possible), so this save
@@ -304,7 +455,18 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     unresolvedFailure,
     alreadyInProject: counts.alreadyInProject,
     importedBefore: counts.importedBefore,
-    fill: failedFill ?? (fill ? { status: "filled", objectivesAdded: fill.objectivesFromDocument ? counts.added : 0, filledBusinessProblem: fill.filledBusinessProblem } : null),
+    already: alreadyFill ?? counts.concurrentAlready,
+    fill:
+      failedFill ??
+      (fill
+        ? {
+            status: "filled",
+            objectivesAdded: fill.objectivesFromDocument ? counts.added : 0,
+            filledBusinessProblem: fill.filledBusinessProblem,
+            reread,
+            suggestionsAdded: counts.suggested,
+          }
+        : null),
   };
 }
 

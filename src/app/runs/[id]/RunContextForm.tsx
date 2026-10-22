@@ -5,7 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { saveRunContextFromForm } from "@/lib/runContextActions";
 import { INITIAL_BRIEF_FILL_FORM_STATE, nextBriefFillFormState, type BriefFillFormState } from "./briefFillCarry";
 import type { BriefFill, FailedBriefFill } from "@/lib/briefFillRecord";
-import { FAILED_FILL_NOT_RECORDED, FAILED_FILL_UNKNOWN, LAST_FILL_UNKNOWN, failedFillText, lastFillText } from "@/lib/briefFillText";
+import { FAILED_FILL_NOT_RECORDED, FAILED_FILL_UNKNOWN, LAST_FILL_UNKNOWN, alreadyFilledText, failedFillText, lastFillText } from "@/lib/briefFillText";
 
 const field =
   "mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -44,6 +44,7 @@ export default function RunContextForm({
   const formRef = useRef<HTMLFormElement>(null);
   const briefRef = useRef<HTMLSelectElement>(null);
   const proposalRef = useRef<HTMLSelectElement>(null);
+  const rereadRef = useRef<HTMLInputElement>(null);
   const documentIds = new Set(documents.map((d) => d.id));
   const responseFailure = (result?.fill?.status === "failed" ? result.fill : null) ?? unrecordedFailure;
   const stored = result ? result.unresolvedFailure : failedFill;
@@ -57,6 +58,15 @@ export default function RunContextForm({
     if (proposalRef.current) proposalRef.current.value = target.proposalDocumentId && documentIds.has(target.proposalDocumentId) ? target.proposalDocumentId : "";
     formRef.current?.requestSubmit();
   }
+  // Read it again (Grant, 2026-10-22): the same documents, re-read on request; their new lines come
+  // in as suggestions on Review. The flag applies to this one submit only.
+  const already = result?.already ?? null;
+  function rereadDocuments(target: { briefDocumentId: string | null; proposalDocumentId: string | null }) {
+    if (rereadRef.current) rereadRef.current.value = "1";
+    retryFill(target);
+    if (rereadRef.current) rereadRef.current.value = "";
+  }
+  const rereadFill = result?.fill?.status === "filled" && result.fill.reread ? result.fill : null;
   const canRetry = !!failure && [failure.briefDocumentId, failure.proposalDocumentId].some((id) => !!id && documentIds.has(id));
   const skipped = result ? [
     ...(result.alreadyInProject > 0 ? [`${result.alreadyInProject} already in this project`] : []),
@@ -81,11 +91,28 @@ export default function RunContextForm({
               <p>{failedFillText(failure)}</p>
               {responseFailure && !responseFailure.recorded && <p className="mt-0.5">{FAILED_FILL_NOT_RECORDED}</p>}
               {canRetry && (
-                <button type="button" onClick={() => retryFill(failure)} className="mt-1 rounded-md border border-red-300 bg-white px-2 py-0.5 text-[11px] font-medium text-red-800 hover:bg-red-100" data-testid="brief-fill-retry">
+                <button type="button" onClick={() => (failure.reread ? rereadDocuments(failure) : retryFill(failure))} className="mt-1 rounded-md border border-red-300 bg-white px-2 py-0.5 text-[11px] font-medium text-red-800 hover:bg-red-100" data-testid="brief-fill-retry">
                   Try the fill again
                 </button>
               )}
             </div>
+          )}
+          {already && (
+            <div role="status" className="mt-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs text-sky-900" data-testid="brief-fill-already">
+              <p>{alreadyFilledText(already)}</p>
+              {[already.briefDocumentId, already.proposalDocumentId].some((id) => !!id && documentIds.has(id)) && (
+                <button type="button" onClick={() => rereadDocuments(already)} className="mt-1 rounded-md border border-sky-300 bg-white px-2 py-0.5 text-[11px] font-medium text-sky-900 hover:bg-sky-100" data-testid="brief-fill-reread">
+                  Read it again for anything new
+                </button>
+              )}
+            </div>
+          )}
+          {rereadFill && (
+            <p role="status" className="mt-1.5 text-xs font-medium text-slate-700" data-testid="brief-fill-reread-result">
+              {rereadFill.suggestionsAdded > 0
+                ? `Read again: ${rereadFill.suggestionsAdded} new ${rereadFill.suggestionsAdded === 1 ? "line is" : "lines are"} waiting on Review objectives as ${rereadFill.suggestionsAdded === 1 ? "a suggestion" : "suggestions"}. Nothing was added to your objectives.`
+                : "Read again: nothing new was found. Nothing was added."}
+            </p>
           )}
           {failureUnknown && (
             <p className="mt-1.5 text-xs font-medium text-amber-800" data-testid="brief-fill-unknown">{FAILED_FILL_UNKNOWN}</p>
@@ -95,6 +122,7 @@ export default function RunContextForm({
               {"error" in lastFill ? LAST_FILL_UNKNOWN : lastFillText(lastFill, { previous: !!failure })}
             </p>
           )}
+          <input type="hidden" name="rereadDocuments" ref={rereadRef} defaultValue="" />
           <div className="mt-2 grid grid-cols-1 gap-2">
             {(
               [

@@ -29,6 +29,31 @@ none and the retry adds them. Fills recorded before lineage existed (21 October 
 only) are covered by the current-wording check alone. The save returns `alreadyInProject` and
 `importedBefore` counts, and the form says what was not added again.
 
+**The same document again (Grant, 2026-10-22).** Each fill re-runs the model extraction, and a
+fresh read re-words the same objectives, so neither the identity key nor the lineage keys (which
+are keys of the wording read) can tell a re-worded repeat from a new objective. So a document that
+a successful earlier fill of this project already used is not read again: `saveRunContext` checks
+`priorFillsOf` (the `brief_intake_used` rows naming it, or naming another document of this project
+with the same `content_sha256`; by id only before migration 0098, and a row for a document deleted
+since cannot be matched by content), makes no model call for it, adds nothing from it, writes no
+fill record, and returns `already` (documents, first fill time, objectives that came from it). The
+typed fields still save. With a used and a new document chosen together, only the new one is read.
+The check is repeated under the run lock, so of two fills of a new document at once one fills and
+the other returns `already` whatever its read said.
+
+**Read it again.** The form's "Read it again for anything new" resubmits with `rereadDocuments=1`:
+the document is read, and lines new by identity key and lineage are added as `researcher_authored`,
+`status 'pending'` objective candidates with the rationale `Suggested on re-reading the proposal
+"<file>"` (`briefFillText.rereadRationale`), never accepted and never in the stated list; the
+researcher accepts, edits or rejects each on Review. The fill record carries `reread: true` and
+`suggestionsAdded`; a re-read adds no "objectives came from it". A failed re-read is recorded with
+`reread: true`, so Try the fill again re-reads too. Review shows each re-read suggestion beside
+the existing (not rejected, not itself a re-read suggestion) objective it most likely restates
+(`objectiveSimilarity.likelyRestates`: token-set Jaccard over content words of the identity key,
+function words removed, a trailing plural s dropped, similar at 0.5 or more, best score wins, ties
+to the earlier candidate), as a chip while rolled up and by name rolled down. That placement never
+merges, hides or drops anything.
+
 **Source visibility.** Objectives added by a fill carry the rationale `Added from the proposal
 "<file>"` (or brief, or both), kept through edits. `briefFillRecord.ts`: `loadLastBriefFill`
 (the latest successful fill, with whether its documents are still imported) and
@@ -88,7 +113,7 @@ rejected one (Restore brings the original back instead). Migration 0083's index 
 researcher-authored, not rejected) can never be violated by this action, since the key check is
 stricter.
 
-**Tests.** `objectiveImportLineage.db.test.ts` (real PostgreSQL; extraction and scoring mocked),
+**Tests.** `objectiveRereadSuggestions.db.test.ts` (the same document again, same content, Read it again, retry, mixed documents, preservation, concurrency, failed re-read), `objectiveSimilarity.test.ts`, browser `objective-reread`; `objectiveImportLineage.db.test.ts` (real PostgreSQL; extraction and scoring mocked),
 `briefFillFromImport.db.test.ts`, `candidateLifecycle.db.test.ts`, `objectiveDecisionClosure.db.test.ts`,
 `actionFailure.test.ts`, `runContextFormFailure.test.tsx` (the form's shown failure for each save
 result); browser `e2e/ui/objective-gt500.check.mjs` (edit then refill, 503 then reload then retry,

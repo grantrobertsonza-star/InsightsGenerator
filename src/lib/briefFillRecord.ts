@@ -20,6 +20,8 @@ export type BriefFill = {
   filledBusinessProblem: boolean;
   /** Objectives an earlier fill had already imported, so this one did not add them again (GT500-F01). */
   importedBefore: number;
+  /** New lines a deliberate re-read added as pending suggestions for review (0 for an ordinary fill). */
+  suggestionsAdded: number;
 };
 
 /** A requested fill that did not happen, newer than any fill that did. */
@@ -30,6 +32,8 @@ export type FailedBriefFill = {
   reason: string;
   briefDocumentId: string | null;
   proposalDocumentId: string | null;
+  /** The failed attempt was Read it again (Grant, 2026-10-22), so its retry reads again too. */
+  reread?: boolean;
 };
 
 type Detail = {
@@ -40,6 +44,7 @@ type Detail = {
   objectivesAdded?: number;
   filledBusinessProblem?: boolean;
   importedBefore?: number;
+  suggestionsAdded?: number;
 };
 
 export async function loadLastBriefFill(tenantId: string, runId: string): Promise<BriefFill | null | { error: string }> {
@@ -64,6 +69,7 @@ export async function loadLastBriefFill(tenantId: string, runId: string): Promis
         objectivesAdded: typeof detail.objectivesAdded === "number" ? detail.objectivesAdded : 0,
         filledBusinessProblem: detail.filledBusinessProblem === true,
         importedBefore: typeof detail.importedBefore === "number" ? detail.importedBefore : 0,
+        suggestionsAdded: typeof detail.suggestionsAdded === "number" ? detail.suggestionsAdded : 0,
       };
     });
   } catch (error) {
@@ -99,6 +105,7 @@ export async function loadFailedBriefFill(tenantId: string, runId: string): Prom
         reason: typeof detail.message === "string" && detail.message ? detail.message : "No reason was recorded.",
         briefDocumentId: detail.briefDocumentId ?? null,
         proposalDocumentId: detail.proposalDocumentId ?? null,
+        ...((detail as { reread?: unknown }).reread === true ? { reread: true } : {}),
       };
     });
   } catch (error) {

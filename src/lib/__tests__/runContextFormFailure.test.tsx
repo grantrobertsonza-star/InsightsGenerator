@@ -32,6 +32,7 @@ const saved = (over: Partial<RunContextSaveResult>): RunContextSaveResult => ({
   importedBefore: 0,
   fill: null,
   unresolvedFailure: null,
+  already: null,
   ...over,
 });
 // The form's state after a sequence of saves, built with the form's own reducer (briefFillCarry).
@@ -67,7 +68,7 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   });
 
   it("after a successful fill the failure is gone, even if the page's earlier read still had it", () => {
-    const html = render(saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false }, unresolvedFailure: null }), stored);
+    const html = render(saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: false, suggestionsAdded: 0 }, unresolvedFailure: null }), stored);
     expect(html).not.toContain('data-testid="brief-fill-failed"');
     expect(html).not.toContain('data-testid="brief-fill-retry"');
   });
@@ -75,7 +76,7 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   it("another failed attempt replaces the shown failure", () => {
     const html = render(
       saved({
-        fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Second synthetic timeout", recorded: true, briefDocumentId: null, proposalDocumentId: DOC },
+        fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Second synthetic timeout", recorded: true, briefDocumentId: null, proposalDocumentId: DOC, reread: false },
         unresolvedFailure: { ...stored, reason: "Second synthetic timeout" },
       }),
       stored,
@@ -92,7 +93,7 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
 
   // R500-R01: a failure that could not be recorded exists only in the response; the open form keeps it.
   const unrecorded = saved({
-    fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Synthetic outage, not recorded", recorded: false, briefDocumentId: null, proposalDocumentId: DOC },
+    fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Synthetic outage, not recorded", recorded: false, briefDocumentId: null, proposalDocumentId: DOC, reread: false },
     unresolvedFailure: null,
   });
   const ordinary = saved({ fill: null, unresolvedFailure: null });
@@ -105,13 +106,13 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
   });
 
   it("a successful fill clears an unrecorded failure", () => {
-    const html = render(after(unrecorded, ordinary, saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false }, unresolvedFailure: null }), ordinary));
+    const html = render(after(unrecorded, ordinary, saved({ fill: { status: "filled", objectivesAdded: 1, filledBusinessProblem: false, reread: false, suggestionsAdded: 0 }, unresolvedFailure: null }), ordinary));
     expect(html).not.toContain('data-testid="brief-fill-failed"');
   });
 
   it("a newer recorded failure replaces an unrecorded one", () => {
     const newer = saved({
-      fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Second synthetic timeout", recorded: true, briefDocumentId: null, proposalDocumentId: DOC },
+      fill: { status: "failed", documents: "the proposal Independent_boundary_proposal.txt", reason: "Second synthetic timeout", recorded: true, briefDocumentId: null, proposalDocumentId: DOC, reread: false },
       unresolvedFailure: { ...stored, reason: "Second synthetic timeout" },
     });
     const html = render(after(unrecorded, newer, saved({ fill: null, unresolvedFailure: { ...stored, reason: "Second synthetic timeout" } })));
@@ -123,5 +124,20 @@ describe("RunContextForm keeps an unresolved failed fill through ordinary saves 
     const html = render(after(unrecorded, saved({ fill: null, unresolvedFailure: { error: "synthetic read failure" } })));
     expect(html).toContain("Synthetic outage, not recorded");
     expect(html).not.toContain('data-testid="brief-fill-unknown"');
+  });
+
+  // Grant, 2026-10-22: a document that already filled the project is not read again.
+  it("an already used document says so and offers Read it again; nothing is shown as failed", () => {
+    const html = render(saved({ already: { documents: "the proposal Independent_boundary_proposal.txt", at: "2026-10-21T12:00:00.000Z", objectivesFromIt: 2, briefDocumentId: null, proposalDocumentId: DOC } }));
+    expect(html).toContain('data-testid="brief-fill-already"');
+    expect(html).toContain("Already filled from the proposal Independent_boundary_proposal.txt on 21 Oct 2026; 2 objectives came from it");
+    expect(html).toContain('data-testid="brief-fill-reread"');
+    expect(html).not.toContain('data-testid="brief-fill-failed"');
+  });
+
+  it("a re-read says how many new lines wait on Review and that nothing was added to the objectives", () => {
+    const html = render(saved({ fill: { status: "filled", objectivesAdded: 0, filledBusinessProblem: false, reread: true, suggestionsAdded: 2 } }));
+    expect(html).toContain('data-testid="brief-fill-reread-result"');
+    expect(html).toContain("2 new lines are waiting on Review objectives as suggestions");
   });
 });
