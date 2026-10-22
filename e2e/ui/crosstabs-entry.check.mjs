@@ -51,6 +51,14 @@ test("Cross tabs: direct entry, file chooser, kept state, contextual cell pane",
     await expect(ws.getByTestId("crosstab-file-meta")).toContainText(/\d[\d,]* cases · \d[\d,]* variables in the file/);
     await expect(ws.getByTestId("crosstab-list-count")).toContainText(/rows in the list/);
     await expect(ws.getByTestId("crosstab-settings-summary")).toContainText("Comparisons: false discovery rate correction");
+    // Table settings is rolled up by default and says what is set (Grant, 2026-10-22); Change settings opens it.
+    const settings = ws.getByTestId("crosstab-table-settings");
+    await expect(settings).not.toHaveAttribute("open", "");
+    await expect(ws.getByTestId("crosstab-table-settings-summary")).toHaveText(/^unweighted · false discovery rate · no survey design · non-answers excluded$/);
+    await ws.getByRole("button", { name: "Change settings" }).click();
+    await expect(settings).toHaveAttribute("open", "");
+    await settings.locator("summary").click();
+    await expect(settings).not.toHaveAttribute("open", "");
     expect(Number((await db.query("select count(*) from document_tables where run_id=$1 and table_index >= 100", [run.id])).rows[0].count), "opening built a table").toBe(0);
 
     // 3. An unfinished table on wave-b survives a switch to wave-a and back.

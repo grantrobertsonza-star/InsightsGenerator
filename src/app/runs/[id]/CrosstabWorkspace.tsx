@@ -857,7 +857,9 @@ export default function CrosstabWorkspace({
       </button>
     </p>
   );
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  // Rolled up by default, like Filters and Display (Grant, 2026-10-22); the summary line says what is
+  // set, and it opens by itself while the survey design needs a choice (designUnresolved).
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDetailsElement>(null);
   const tableSettings = (
     <details
@@ -869,7 +871,14 @@ export default function CrosstabWorkspace({
     >
       <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
         {asPage && entry === "build" ? "3. Table settings" : "Table settings"}
-        <span className="ml-2 text-[11px] font-normal text-slate-600">weight, comparisons, survey design and non-answers</span>
+        <span className="ml-2 text-[11px] font-normal text-slate-600" data-testid="crosstab-table-settings-summary">
+          {[
+            weightVar ? `weighted by ${weights.find((w) => w.name === weightVar)?.label ?? weightVar}` : "unweighted",
+            correction === "fdr" ? "false discovery rate" : correction === "bonferroni" ? "Bonferroni" : "uncorrected",
+            designOk && (psuVar || strataVar) ? "survey design set" : "no survey design",
+            excludeDk ? "non-answers excluded" : "non-answers included",
+          ].join(" · ")}
+        </span>
       </summary>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 px-3 py-2">
               <label className="flex min-w-0 items-center gap-2 text-xs">
