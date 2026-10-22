@@ -61,6 +61,7 @@ import {
   type WorkspaceMemory,
 } from "./analyticsWorkspaceMemory";
 import { placeScatterCard, rebuiltCardNeedsRead, ScatterStatusClock, scatterRequestKey } from "./scatterCardState";
+import { canPostOrRemove, postedStateFrom, type PostedState } from "./postedState";
 import { KANO_LABELS, kanoPlace, type KanoQuadrantName } from "@/lib/driverQuadrant";
 
 const IMPORTANCE_LIKE = /importan|(^|[^a-z])imp([^a-z]|$)/i;
@@ -302,6 +303,8 @@ type ChartCard = {
   result: ChartResult;
   groupVar: string | null;
   committed: boolean;
+  /** Set when the posted-state read failed: committed is then not known, and Post and Remove are withheld (postedState.ts). */
+  statusError: string | null;
   commitBusy: boolean;
   title: string;
   colors: string[];
@@ -474,6 +477,8 @@ function AnalyticsWorkspace({
   const [npsError, setNpsError] = useState<string | null>(null);
   const [npsResult, setNpsResult] = useState<NpsResult | null>(null);
   const [npsCommitted, setNpsCommitted] = useState(false);
+  // Set when the NPS posted-state read failed: Post and Remove are withheld until a read succeeds (postedState.ts).
+  const [npsStatusError, setNpsStatusError] = useState<string | null>(null);
   const [npsCommitBusy, setNpsCommitBusy] = useState(false);
   const [npsGroupVar, setNpsGroupVar] = useState("");
   const [npsSeg, setNpsSeg] = useState<string | null>(null);
@@ -692,6 +697,7 @@ function AnalyticsWorkspace({
     setNpsResult(null);
     setNpsRequest(null);
     setNpsCommitted(false);
+    setNpsStatusError(null);
     setNpsSeg(null);
     const r = await runNpsAction(runId, documentId, req.variable, req.weightVar, req.groupVar).catch(failedRequest);
     setNpsBusy(false);
@@ -700,7 +706,7 @@ function AnalyticsWorkspace({
       setNpsResult(r.result);
       setNpsRequest(req);
       const status = await npsFindingStatusAction(runId, documentId, r.result.variable).catch(failedRequest);
-      if (seq === npsSeq.current && status.ok) setNpsCommitted(status.committed);
+      if (seq === npsSeq.current) applyNpsPostedState(postedStateFrom(status));
     } else setNpsError(r.error);
   }
 
@@ -720,7 +726,20 @@ function AnalyticsWorkspace({
     setNpsResult(r.result);
     setNpsRequest(req);
     setNpsSeg(null);
-    setNpsCommitted(status.ok ? status.committed : false);
+    applyNpsPostedState(postedStateFrom(status));
+  }
+
+  function applyNpsPostedState(p: PostedState) {
+    setNpsCommitted(p.committed);
+    setNpsStatusError(p.statusError);
+  }
+
+  /** Reads the NPS result's posted state again after it failed; a newer NPS action wins. */
+  async function retryNpsPostedState() {
+    if (!npsResult) return;
+    const seq = npsSeq.current;
+    const status = await npsFindingStatusAction(runId, documentId, npsResult.variable).catch(failedRequest);
+    if (seq === npsSeq.current) applyNpsPostedState(postedStateFrom(status));
   }
 
   /** Clear: takes the NPS result off the workspace and out of the memory; findings are untouched. */
@@ -730,12 +749,13 @@ function AnalyticsWorkspace({
     setNpsResult(null);
     setNpsRequest(null);
     setNpsCommitted(false);
+    setNpsStatusError(null);
     setNpsSeg(null);
     setNpsError(null);
   }
 
   async function toggleNpsFinding() {
-    if (!npsResult) return;
+    if (!npsResult || npsStatusError !== null) return;
     setNpsCommitBusy(true);
     if (npsCommitted) {
       const r = await removeNpsFindingAction(runId, documentId, npsResult.variable);
@@ -784,7 +804,7 @@ function AnalyticsWorkspace({
         weightVar: wv,
         result: r.result,
         groupVar: gv,
-        committed: status.ok ? status.committed : false,
+        ...postedStateFrom(status),
         commitBusy: false,
         title: look?.title || r.result.label,
         // Remembered colours fit only while the file gives the same number of series.
@@ -1034,10 +1054,18 @@ function AnalyticsWorkspace({
     setCharts((prev) => prev.map((c) => (c.id === cardId ? { ...c, ...patch } : c)));
   }
 
+  /** Reads one chart card's posted state again after it failed. */
+  async function retryChartPostedState(cardId: string) {
+    const card = charts.find((c) => c.id === cardId);
+    if (!card) return;
+    const status = await chartFindingStatusAction(runId, documentId, card.result.variable, card.groupVar).catch(failedRequest);
+    setCharts((prev) => prev.map((c) => (c.id === cardId && c.statusError !== null ? { ...c, ...postedStateFrom(status) } : c)));
+  }
+
   /** The commit action for one chart card: posts or takes back its finding, same shape as the driver/NPS tools. */
   async function toggleChartCommit(cardId: string) {
     const card = charts.find((c) => c.id === cardId);
-    if (!card) return;
+    if (!card || !canPostOrRemove(card)) return;
     setCharts((prev) => prev.map((c) => (c.id === cardId ? { ...c, commitBusy: true } : c)));
     if (card.committed) {
       const r = await removeChartFindingAction(runId, documentId, card.result.variable, card.groupVar);
@@ -1901,6 +1929,9 @@ function AnalyticsWorkspace({
                       <SegmentTabs options={npsResult.segments.map((s) => s.name)} value={npsSeg} onChange={setNpsSeg} />
                     )}
                     <NpsVisual result={npsResultForSegment(npsResult, npsSeg)} />
+                    {npsStatusError !== null ? (
+                      <PostedStateUnknown error={npsStatusError} onRetry={() => void retryNpsPostedState()} testId="nps-post-unknown" />
+                    ) : (
                     <button
                       type="button"
                       onClick={toggleNpsFinding}
@@ -1913,6 +1944,7 @@ function AnalyticsWorkspace({
                     >
                       {npsCommitBusy ? "Working..." : npsCommitted ? "Remove from findings" : "Post to findings"}
                     </button>
+                    )}
                   </div>
                 )}
                 <div className="space-y-3">
@@ -2005,6 +2037,9 @@ function AnalyticsWorkspace({
                     <SegmentTabs options={npsResult.segments.map((s) => s.name)} value={npsSeg} onChange={setNpsSeg} />
                   )}
                   <NpsVisual result={npsResultForSegment(npsResult, npsSeg)} />
+                  {npsStatusError !== null ? (
+                    <PostedStateUnknown error={npsStatusError} onRetry={() => void retryNpsPostedState()} testId="nps-post-unknown" />
+                  ) : (
                   <button
                     type="button"
                     onClick={toggleNpsFinding}
@@ -2017,6 +2052,7 @@ function AnalyticsWorkspace({
                   >
                     {npsCommitBusy ? "Working..." : npsCommitted ? "Remove from findings" : "Post to findings"}
                   </button>
+                  )}
                   <div className="rounded-xl border border-border bg-slate-50 p-3">
                     <button
                       type="button"
@@ -2234,6 +2270,9 @@ function AnalyticsWorkspace({
                             histogramNote(card.histSource) && <p className="text-[11px] text-slate-600" data-testid="histogram-source">{histogramNote(card.histSource)}</p>
                           )}
                           <ChartVisual result={card.result} title={card.title} colors={card.colors} legendPos={card.legendPos} variant={card.variant} />
+                          {card.statusError !== null ? (
+                            <PostedStateUnknown error={card.statusError} onRetry={() => void retryChartPostedState(card.id)} testId="chart-post-unknown" />
+                          ) : (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -2249,6 +2288,7 @@ function AnalyticsWorkspace({
                           >
                             {card.commitBusy ? "Working..." : card.committed ? "Remove from findings" : "Post to findings"}
                           </button>
+                          )}
                         </div>
                       );
                     })}
@@ -2307,6 +2347,18 @@ export type DriverPostState =
   | { state: "failed"; error: string };
 
 /** Stands in for Post / Remove while whether the analysis is posted is not known. */
+/** A chart or NPS card whose posted state could not be read: the error, Retry, and no Post or Remove. */
+function PostedStateUnknown({ error, onRetry, testId }: { error: string; onRetry: () => void; testId: string }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-800" data-testid={testId}>
+      <span>Could not check whether this is already in findings, so Post and Remove are not offered: {error}</span>
+      <button type="button" onClick={onRetry} className="font-semibold underline">
+        Retry
+      </button>
+    </div>
+  );
+}
+
 function DriverPostStatus({
   state,
   onRetry,

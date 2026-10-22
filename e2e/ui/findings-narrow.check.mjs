@@ -31,7 +31,8 @@ test("the Findings review fits 320, 375 and 768 px with many long themes", async
   const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
   await db.connect();
   try {
-    // 43 copies with long, distinct themes, so there are 44 findings and 43 or 44 themes.
+    // 43 copies with long, distinct themes: the findings the helper posted plus 43 (47 on the
+    // current fixture), with 43 or 44 themes. Not Codex's exact 44-finding fixture.
     for (let i = 1; i <= 43; i++) {
       await db.query(
         `insert into findings

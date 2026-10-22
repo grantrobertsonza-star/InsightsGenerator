@@ -2,9 +2,10 @@
 // or NPS or other analysis and go out and come back in it is gone").
 //
 // The memory holds requests and saved-analysis ids only, never figures. On reopening, charts,
-// scatter plots, NPS and unsaved driver results are worked out again from the current file, and a
-// saved driver analysis is read again from the server by its id, so nothing shown after a return
-// can be older than the file it describes. It is a per-viewer convenience in this browser
+// scatter plots, NPS and unsaved driver results are worked out again from the current file. A
+// saved driver analysis is different: it is reopened by its id from Saved analyses as it was saved
+// (its historical report, not a recalculation), so it can describe an earlier version of the file.
+// See claude/analytics-workspace-memory.md. It is a per-viewer convenience in this browser
 // (localStorage), keyed by run and data file: it is not shared, not durable, and can be absent.
 // A value that is missing, from another version or malformed is read as "nothing remembered";
 // a blocked storage is reported as unavailable so the screen can say results will not be kept.
