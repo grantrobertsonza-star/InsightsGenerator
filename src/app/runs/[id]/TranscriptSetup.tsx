@@ -63,7 +63,8 @@ export const MODE_LABEL: Record<SegmentMode, string> = {
   none: "No structure: unlabelled paragraphs",
 };
 
-const select = "w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-foreground disabled:opacity-60";
+// The section's body size (text-xs), so a choice never reads larger than its heading (Grant, 2026-10-22).
+const select = "w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs text-foreground disabled:opacity-60";
 const FIELDS = "grid grid-cols-1 gap-4 @2xl:grid-cols-2";
 
 type FilePreview =
@@ -114,7 +115,7 @@ export type SourceRow = {
   linkedTo?: string | null;
   /** One line on what the app does with this file, under its name in the header. */
   purposeText?: string;
-  /** The file's next step (Open Analysis, Open Coding, ...), beside View original. */
+  /** The file's next step (Open Crosstabs and Open Analytics, Open Coding, ...), beside View original. */
   nextStep?: ReactNode;
   /** The file's colour bar (a border-l class), matching its card under Analysis, as the earlier cards had. */
   accent?: string;
@@ -332,12 +333,17 @@ function SourceHeader({ row }: { row: Row }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 px-5 pb-4 pt-5" data-testid="selected-source">
       <div className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected source</p>
-        <h3 className="break-words text-lg font-semibold text-foreground">{row.filename}</h3>
-        <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
-          <span>{row.kindLabel}</span>
+        {/* Label, name, then type, date, wave and what the file is for, each on one line (Grant,
+            2026-10-22: five lines were taking the space of three). */}
+        <h3 className="flex flex-wrap items-baseline gap-x-2 break-words text-lg font-semibold text-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected source</span>
+          <span className="min-w-0 break-words">{row.filename}</span>
+        </h3>
+        <p className="mt-0.5 flex max-w-3xl flex-wrap gap-x-3 text-xs text-muted">
+          <span className="font-medium text-foreground">{row.kindLabel}</span>
           {row.uploadedAt && <span title={displayUtcMinute(row.uploadedAt)}>{`Uploaded ${displayDay(row.uploadedAt)}`}</span>}
           {s.wave && <span>{`Wave: ${s.wave}`}</span>}
+          {row.purposeText && <span data-testid="file-purpose-text">{row.purposeText}</span>}
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <Chip tone={processingTone(s.processing)} testId="source-processing">{`Processing: ${PROCESSING_LABEL[s.processing]}`}</Chip>
@@ -346,7 +352,6 @@ function SourceHeader({ row }: { row: Row }) {
           </Chip>
           {s.previewUnverified && <Chip tone="amber">Preview not verified</Chip>}
         </div>
-        {row.purposeText && <p className="mt-2 max-w-2xl text-xs text-muted" data-testid="file-purpose-text">{row.purposeText}</p>}
         {s.readError && (
           <p role="alert" className="mt-2 max-w-2xl rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">
             {`Could not read this file: ${s.readError}`}
@@ -360,6 +365,7 @@ function SourceHeader({ row }: { row: Row }) {
             documentId={row.documentId}
             filename={row.filename}
             label="View original"
+            mode="download"
             className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:border-slate-400 disabled:opacity-50"
           />
         )}
@@ -373,7 +379,7 @@ function PreviewPanel({ preview, docKind }: { preview: FilePreview; docKind?: st
   if (preview.kind === "text") {
     return (
       <div className="flex flex-col gap-2 text-xs">
-        <h4 className="text-sm font-semibold text-foreground">Preview what was read</h4>
+        <h4 className="text-sm font-semibold text-foreground">Preview imported file</h4>
         {preview.length === 0 ? (
           docKind === "evidence" ? (
             <p className="text-muted">The text of this context file has not been read yet. It is read when you process the project.</p>
@@ -403,7 +409,7 @@ function PreviewPanel({ preview, docKind }: { preview: FilePreview; docKind?: st
   const first = preview.tables[0];
   return (
     <div className="flex flex-col gap-3 text-xs">
-      <h4 className="text-sm font-semibold text-foreground">Preview what was read</h4>
+      <h4 className="text-sm font-semibold text-foreground">Preview imported file</h4>
       <div className="grid grid-cols-2 gap-3 @2xl:grid-cols-4">
         {[
           [first.totalRows.toLocaleString(), preview.tables.length > 1 ? "Rows in the first table" : "Rows"],
@@ -647,8 +653,8 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         <p className="max-w-md text-xs text-muted">
           {choice.accepted
             ? autoAccepted
-              ? "Accepted on import. Open Analysis, Cross tabs to start building tables. If you change the structure above, you will be asked to accept again."
-              : "Accepted. Open Analysis, Cross tabs to start building tables."
+              ? "Accepted on import. Open Crosstabs to start building tables. If you change the structure above, you will be asked to accept again."
+              : "Accepted. Open Crosstabs to start building tables."
             : "The set-up changed. Check the structure, the preview and the data quality, then accept the data again."}
         </p>
         <button
@@ -939,11 +945,27 @@ export default function TranscriptSetupTable() {
   const [role, setRole] = useState("all");
   const [state, setState] = useState<SourceStateFilter>("all");
   const [sort, setSort] = useState<SourceSort>("newest");
+  // Rolled up, only this bar shows; the filters and the selection are kept (Grant, 2026-10-22).
+  const [rolledUp, setRolledUp] = useState(false);
   const roles = useMemo(() => [...new Set(rows.map((r) => r.kindLabel))], [rows]);
   const ordered = useMemo(() => sortSources(rows, sort), [rows, sort]);
   if (rows.length === 0) return null;
   return (
     <div className="flex min-h-0 flex-col gap-3" data-testid="source-list">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">{`${rows.length} ${rows.length === 1 ? "source" : "sources"}`}</span>
+        <button
+          type="button"
+          aria-expanded={!rolledUp}
+          aria-controls="source-list-body"
+          onClick={() => setRolledUp((v) => !v)}
+          className="rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-slate-400"
+          data-testid="source-list-toggle"
+        >
+          {rolledUp ? "Show sources" : "Roll up"}
+        </button>
+      </div>
+      <div id="source-list-body" className={rolledUp ? "hidden" : "flex min-h-0 flex-col gap-3"}>
       <input
         type="search"
         aria-label="Search sources"
@@ -952,8 +974,9 @@ export default function TranscriptSetupTable() {
         onChange={(e) => setNeedle(e.target.value)}
         className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground"
       />
-      <div className="grid grid-cols-2 gap-2">
-        <select aria-label="Filter by type" value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
+      {/* Type, state and sort on one line (Grant, 2026-10-22). */}
+      <div className="grid grid-cols-3 gap-2">
+        <select aria-label="Filter by type" value={role} onChange={(e) => setRole(e.target.value)} className="min-w-0 rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
           <option value="all">All types</option>
           {/* Grant, 2026-10-20: every quantitative or every qualitative file at once. */}
           {TYPE_GROUP_FILTERS.map((g) => (
@@ -969,31 +992,29 @@ export default function TranscriptSetupTable() {
             ))}
           </optgroup>
         </select>
-        <select aria-label="Filter by state" value={state} onChange={(e) => setState(e.target.value as SourceStateFilter)} className="rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
+        <select aria-label="Filter by state" value={state} onChange={(e) => setState(e.target.value as SourceStateFilter)} className="min-w-0 rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
           {SOURCE_STATE_FILTERS.map((f) => (
             <option key={f.id} value={f.id}>
               {f.label}
             </option>
           ))}
         </select>
-      </div>
-      <label className="-mt-1 flex items-center justify-end gap-2 text-[11px] text-muted">
-        Sort by
-        <select aria-label="Sort sources" value={sort} onChange={(e) => setSort(e.target.value as SourceSort)} className="rounded-md border border-border bg-white px-1.5 py-0.5 text-[11px] text-foreground">
+        <select aria-label="Sort sources" title="Sort sources" value={sort} onChange={(e) => setSort(e.target.value as SourceSort)} className="min-w-0 rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-foreground">
           {SOURCE_SORTS.map((o) => (
             <option key={o.id} value={o.id}>
-              {o.label}
+              {`Sort: ${o.label}`}
             </option>
           ))}
         </select>
-      </label>
+      </div>
       <ul className="-mx-4 flex flex-col border-y border-border" aria-label="Sources">
         {ordered.map((r) => (
           <SourceListItem key={r.documentId} row={r} selected={selectedId === r.documentId} onSelect={() => select(r.documentId)} needle={needle} role={role} state={state} />
         ))}
       </ul>
       <EmptyFilterNote rows={rows} needle={needle} role={role} state={state} onClear={() => { setNeedle(""); setRole("all"); setState("all"); }} />
-      <p className="text-[11px] text-muted">{`${rows.length} ${rows.length === 1 ? "source" : "sources"}. Processing (was it read) and acceptance (is its setup accepted) are separate states.`}</p>
+      <p className="text-[11px] text-muted">Processing (was it read) and acceptance (is its setup accepted) are separate states.</p>
+      </div>
     </div>
   );
 }
@@ -1004,7 +1025,14 @@ function SourceListItem({ row, selected, onSelect, needle, role, state }: { row:
   const s = useSourceState(row);
   const shown = keptByFilters(row, s, needle, role, state);
   const attention = needsAttention(s.processing, s.previewUnverified);
-  const note = [s.wave, row.linked && row.linked.length > 0 ? `${row.linked.length} linked ${row.linked.length === 1 ? "document" : "documents"}` : null, row.linkedTo ? `Linked to ${row.linkedTo}` : null].filter(Boolean).join(" · ");
+  // Links always name the file (Grant, 2026-10-22: some rows said "1 linked document", others named
+  // it): a data file or transcript names the questionnaire or guide linked to it, with a count of any
+  // more; a questionnaire or guide names what it is linked to.
+  const linked = row.linked ?? [];
+  const links = [
+    linked.length > 0 ? `Linked: ${linked[0].filename}${linked.length > 1 ? ` and ${linked.length - 1} more` : ""}` : null,
+    row.linkedTo ? `Linked to ${row.linkedTo}` : null,
+  ].filter(Boolean).join(" · ");
   return (
     <li
       // Each file keeps its colour bar (the same as its card under Analysis); the selected one is
@@ -1022,20 +1050,22 @@ function SourceListItem({ row, selected, onSelect, needle, role, state }: { row:
           <span className={`break-words text-xs font-semibold ${selected ? "text-primary" : "text-foreground"}`} title={row.filename}>
             {row.filename}
           </span>
+          {/* Type, date, wave and links on one line, then the state chips: two lines, not three. */}
           <span className="text-[11px] text-muted">
             {row.kindLabel}
             {row.uploadedAt ? ` · ${displayDay(row.uploadedAt)}` : ""}
+            {s.wave ? ` · ${s.wave}` : ""}
+            {links && (
+              <span className="text-slate-600" data-testid="linked-instrument" title={linked.map((l) => l.filename).join(", ") || undefined}>
+                {` · ${links}`}
+              </span>
+            )}
           </span>
           <span className="flex flex-wrap gap-1">
             <Chip tone={processingTone(s.processing)}>{PROCESSING_LABEL[s.processing]}</Chip>
             <Chip tone={acceptanceTone(s.acceptance)} testId="source-row-acceptance">{ACCEPTANCE_LABEL[s.acceptance]}</Chip>
             {attention && <Chip tone="amber">Needs attention</Chip>}
           </span>
-          {note && (
-            <span className="text-[11px] text-slate-600" data-testid="linked-instrument">
-              {note}
-            </span>
-          )}
         </span>
       </button>
       <details className="relative shrink-0">
@@ -1049,6 +1079,7 @@ function SourceListItem({ row, selected, onSelect, needle, role, state }: { row:
               documentId={row.documentId}
               filename={row.filename}
               label="View original"
+              mode="download"
               className="w-full rounded-md px-2 py-1 text-left text-xs text-foreground hover:bg-slate-50"
             />
           )}

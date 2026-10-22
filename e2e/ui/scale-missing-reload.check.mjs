@@ -93,8 +93,13 @@ test("zero categories, missing-value exclusions and scale means read the same fr
   // The import's data audit still reports both user-missing declarations after a reload.
   await page.goto(run.url, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /^Import data/ }).first().click();
-  // The audit is the data file's own "Weights and missing codes" tab (Grant, 2026-10-20), read when shown.
+  // The missing-value check is a fold under the data file's Variables tab (Grant, 2026-10-22), read
+  // when opened; the weights have their own Weights tab.
   await page.getByRole("button", { name: /^Select .*\.sav$/ }).first().click();
-  const weights = await openSourceTab(page, "Weights and missing codes");
-  await expect(weights.getByText(/2 variable\(s\) declare user-missing values/).first()).toBeVisible({ timeout: 60_000 });
+  const variables = await openSourceTab(page, "Variables");
+  const missing = variables.getByTestId("data-audit-missing");
+  await missing.locator("summary").click();
+  await expect(missing.getByText(/2 variable\(s\) declare user-missing values/).first()).toBeVisible({ timeout: 60_000 });
+  const weights = await openSourceTab(page, "Weights");
+  await expect(weights.getByTestId("data-audit")).toBeVisible();
 });

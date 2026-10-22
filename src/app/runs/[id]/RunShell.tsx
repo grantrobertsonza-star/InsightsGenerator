@@ -82,13 +82,17 @@ export function useGoToSection(): (id: string) => void {
 }
 
 /** A button that switches the run to another section of the sidebar. */
-export function GoToSection({ id, children }: { id: string; children: ReactNode }) {
+export function GoToSection({ id, children, secondary = false }: { id: string; children: ReactNode; secondary?: boolean }) {
   const { setSelected } = useRunSection();
   return (
     <button
       type="button"
       onClick={() => setSelected(id)}
-      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90"
+      className={
+        secondary
+          ? "rounded-lg border border-primary bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary-light"
+          : "rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90"
+      }
     >
       {children}
     </button>

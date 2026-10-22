@@ -40,7 +40,7 @@ describe.skipIf(!TEST_DATABASE_URL)("open an imported file (real database)", () 
     storage.calls.length = 0;
     storage.fail = false;
   });
-  const open = async (runId: string, documentId: string) => (await import("../documentOpenActions")).openDocumentAction(runId, documentId);
+  const open = async (runId: string, documentId: string, want?: "view" | "download") => (await import("../documentOpenActions")).openDocumentAction(runId, documentId, want);
 
   it("a Word file with a PDF copy opens the copy in the browser; an original PDF opens as itself", async () => {
     const word = await doc(run, "brief.docx", "copies/brief.docx.preview.pdf");
@@ -66,5 +66,20 @@ describe.skipIf(!TEST_DATABASE_URL)("open an imported file (real database)", () 
     storage.fail = true;
     const mine = await doc(run, "mine.docx", null);
     expect(await open(run, mine)).toMatchObject({ ok: false, error: expect.stringMatching(/could not be opened: storage unavailable/) });
+  });
+
+  it("View original (download) always signs the original as an attachment, PDFs and copies included; other projects still get nothing", async () => {
+    const word = await doc(run, "brief2.docx", "copies/brief2.docx.preview.pdf");
+    const pdf = await doc(run, "report2.pdf", null);
+    expect(await open(run, word, "download")).toMatchObject({ ok: true, opens: "download" });
+    expect(await open(run, pdf, "download")).toMatchObject({ ok: true, opens: "download" });
+    expect(storage.calls.map((c) => [c.path.split("/").at(-1), c.options])).toEqual([
+      ["brief2.docx", { download: "brief2.docx" }],
+      ["report2.pdf", { download: "report2.pdf" }],
+    ]);
+    const elsewhere = await doc(other, "other2.docx", null);
+    expect(await open(run, elsewhere, "download")).toEqual({ ok: false, error: "That file is not in this project." });
+    expect(await open(run, pdf, "print" as never)).toMatchObject({ ok: false });
+    expect(storage.calls).toHaveLength(2);
   });
 });

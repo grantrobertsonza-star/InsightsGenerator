@@ -128,7 +128,7 @@ import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverride
 import type { VariableDictionary } from "@/lib/parseStatsFile";
 import InstrumentCard from "./InstrumentCard";
 import InstrumentAutoRead from "./InstrumentAutoRead";
-import AttachedInstruments from "./AttachedInstruments";
+import AttachedInstruments, { QuestionnaireLinkingNote } from "./AttachedInstruments";
 import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
 import AcceptDataButton from "./AcceptDataButton";
 import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
@@ -3638,7 +3638,19 @@ export default async function RunPage({
       case "table":
         return {
           text: d.ingestion_type === "raw" ? "Case-level data. Build tables in Cross tabs and run analyses in Analytics once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`,
-          nextStep: <GoToSection key="next-step" id="crosstabs">Open Analysis</GoToSection>,
+          // The button says where it goes: tables are built in Cross tabs; case-level data can also be
+          // analysed in Analytics (Grant, 2026-10-22).
+          nextStep:
+            d.ingestion_type === "raw" ? (
+              <span key="next-step" className="flex flex-wrap gap-2">
+                <GoToSection id="crosstabs">Open Crosstabs</GoToSection>
+                <GoToSection id="analytics" secondary>
+                  Open Analytics
+                </GoToSection>
+              </span>
+            ) : (
+              <GoToSection key="next-step" id="crosstabs">Open Crosstabs</GoToSection>
+            ),
         };
       case "transcript":
         return { text: "Transcript. Code it under Coding once its setup is accepted.", nextStep: <GoToSection key="next-step" id="coding">Open Coding</GoToSection> };
@@ -5072,7 +5084,18 @@ export default async function RunPage({
         if (previewError) panels.push({ id: "preview", label: "Preview", node: <ImportPreviewRecovery key="panel" error={previewError} /> });
         if (d.kind === "table" && !previewError) {
           if (isRaw && ownTables.length > 0) {
-            panels.push({ id: "variables", label: "Variables", node: <ImportVariablesPanel key="panel" runId={id} tables={ownTables} withinSource /> });
+            // The missing-value check sits with the variables it describes, as its own fold; weights have
+            // their own tab (Grant, 2026-10-22: the two did not belong together).
+            panels.push({
+              id: "variables",
+              label: "Variables",
+              node: (
+                <div key="panel" className="flex flex-col gap-3">
+                  <ImportVariablesPanel runId={id} tables={ownTables} withinSource />
+                  <DataAuditPanel runId={id} documentId={d.id} part="missing" />
+                </div>
+              ),
+            });
             panels.push({
               id: "quality",
               label: "Data quality",
@@ -5082,7 +5105,7 @@ export default async function RunPage({
               ),
             });
             // Its own tab (Grant, 2026-10-20), read from the whole file when the tab is first shown.
-            panels.push({ id: "weights", label: "Weights and missing codes", node: <DataAuditPanel key="panel" runId={id} documentId={d.id} asTab /> });
+            panels.push({ id: "weights", label: "Weights", node: <DataAuditPanel key="panel" runId={id} documentId={d.id} asTab part="weights" /> });
           } else if (!isRaw && (documentTablesByDocument.get(d.id) ?? []).length > 0) {
             const aggregated = computeAggregatedQuality(
               (documentTablesByDocument.get(d.id) ?? [])
@@ -5102,17 +5125,36 @@ export default async function RunPage({
             id: "links",
             label: d.kind === "transcript" ? "Guide" : "Questionnaire links",
             badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.itemsToCheck ?? 0), 0)),
-            node: attached,
+            node:
+              d.kind === "transcript" ? (
+                attached
+              ) : (
+                <div key="panel" className="flex flex-col gap-3">
+                  <QuestionnaireLinkingNote />
+                  {attached}
+                </div>
+              ),
           });
-        else if (isRaw) panels.push({ id: "links", label: "Questionnaire links", node: <p key="panel" className="text-xs text-muted">No questionnaire is linked to this file. Add one with Add files, as a questionnaire or guide; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p> });
+        else if (isRaw)
+          panels.push({
+            id: "links",
+            label: "Questionnaire links",
+            node: (
+              <div key="panel" className="flex flex-col gap-3">
+                <QuestionnaireLinkingNote />
+                <p className="text-xs text-muted">No questionnaire is linked to this file. Add one with Add files, as a questionnaire or guide; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p>
+              </div>
+            ),
+          });
         if (instrument) {
           panels.push({
             id: "links",
             label: isGuide ? "Guide" : "Questionnaire links",
             badge: linksBadge(instrument.itemsToCheck),
             node: (
+              <div key="panel" className="flex flex-col gap-3">
+              {!isGuide && <QuestionnaireLinkingNote />}
               <InstrumentCard
-                key="panel"
                 runId={id}
                 documentId={d.id}
                 summary={instrument}
@@ -5123,6 +5165,7 @@ export default async function RunPage({
                     : []
                 }
               />
+              </div>
             ),
           });
         }

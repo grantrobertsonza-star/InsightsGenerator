@@ -27,6 +27,23 @@ function headline(s: InstrumentSummary, isGuide: boolean): string {
  * the questionnaire's own pane (Grant, 2026-10-19). The first read and match still start from
  * here, by the same rule as the full card (useInstrumentAutoStart), and a failure shows on the line.
  */
+/**
+ * What linking a questionnaire does, at the top of a Questionnaire links tab (Grant, 2026-10-22: "else
+ * it's just a link"). Kept to what the code does: confirmed links supply question wording and answer
+ * labels (getLabelOverlay), and codes the questionnaire marks as don't know are left out of bases
+ * (instruments.ts, claude/questionnaire-meaning-failure.md), which can move percentages.
+ */
+export function QuestionnaireLinkingNote() {
+  return (
+    <p className="max-w-3xl text-xs text-muted" data-testid="questionnaire-linking-note">
+      Linking matches each question in the questionnaire to a variable in the data file. Once you confirm a link, tables and
+      charts built from that variable show the question&apos;s wording and answer labels, and answer codes the questionnaire marks as
+      don&apos;t know are treated as missing, so bases and percentages can change. Nothing applies until you confirm, and
+      the data file itself is never changed.
+    </p>
+  );
+}
+
 export default function AttachedInstruments({
   runId,
   instruments,

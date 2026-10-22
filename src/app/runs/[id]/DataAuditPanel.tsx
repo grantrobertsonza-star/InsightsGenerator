@@ -26,8 +26,23 @@ function weightNotes(w: WeightAudit): string[] {
  * in the Import screen (`asTab`, Grant 2026-10-20), when the tab first comes into view. The tab is
  * mounted, hidden, as soon as its file is selected, so "shown" is watched rather than "mounted":
  * selecting a file must not read the whole file for a tab nobody opened.
+ *
+ * `part` (Grant, 2026-10-22: weights and missing codes are different questions): the Import screen
+ * shows the weights as the Weights tab and the don't know and refused codes as a fold under
+ * Variables, each from this one panel and the same read (cached after the first). Elsewhere both
+ * parts are shown together.
  */
-export default function DataAuditPanel({ runId, documentId, asTab = false }: { runId: string; documentId: string; asTab?: boolean }) {
+export default function DataAuditPanel({
+  runId,
+  documentId,
+  asTab = false,
+  part = "both",
+}: {
+  runId: string;
+  documentId: string;
+  asTab?: boolean;
+  part?: "both" | "weights" | "missing";
+}) {
   const [audit, setAudit] = useState<DataAudit | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -66,6 +81,7 @@ export default function DataAuditPanel({ runId, documentId, asTab = false }: { r
         {!error && audit === null && <p className="text-muted">Reading the file…</p>}
         {audit && (
           <>
+            {part !== "missing" && (
             <div>
               <p className="font-semibold">Weights</p>
               {audit.weights.length === 0 ? (
@@ -94,7 +110,9 @@ export default function DataAuditPanel({ runId, documentId, asTab = false }: { r
                 This describes the weights only. The sampling design (strata and clusters) is not modelled, so standard errors can be too small.
               </p>
             </div>
-            {audit.dk && (
+            )}
+            {part !== "weights" && !audit.dk && <p className="text-muted">No missing-value check is available for this file.</p>}
+            {part !== "weights" && audit.dk && (
               <div>
                 <p className="font-semibold">Don&apos;t know and refused codes</p>
                 <p className="text-muted">
@@ -129,11 +147,14 @@ export default function DataAuditPanel({ runId, documentId, asTab = false }: { r
   return (
     <details
       className="mt-3 rounded-lg border border-border bg-white p-3"
+      data-testid={part === "missing" ? "data-audit-missing" : undefined}
       onToggle={(e) => {
         if ((e.target as HTMLDetailsElement).open) load();
       }}
     >
-      <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">Weights and missing codes</summary>
+      <summary className="cursor-pointer select-none text-xs font-semibold text-foreground">
+        {part === "missing" ? "Missing value codes (don't know, refused, not applicable)" : part === "weights" ? "Weights" : "Weights and missing codes"}
+      </summary>
       {body}
     </details>
   );

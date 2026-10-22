@@ -119,7 +119,7 @@ test("one Add files dialog takes a mixed batch, a type per file, into the Source
   await expect(variables.getByText("golden-survey-documented.xlsx", { exact: true })).toHaveCount(0);
   await expect(selected).toContainText("golden-survey-documented.xlsx");
   await expect(selected.getByTestId("source-processing")).toHaveText(/^Processing: (Read|Reading)$/);
-  await expect(page.getByRole("tab")).toHaveText(["Preview", "Setup", "Variables", "Data quality", "Weights and missing codes", "Questionnaire links"], { timeout: 3 * 60_000 });
+  await expect(page.getByRole("tab")).toHaveText(["Preview", "Setup", "Variables", "Data quality", "Weights", "Questionnaire links"], { timeout: 3 * 60_000 });
   await expect(selected.getByTestId("source-acceptance")).toHaveText("Setup: Accepted", { timeout: 60_000 });
   await expect(source("golden-survey-documented.xlsx").getByTestId("source-row-acceptance")).toHaveText("Accepted");
   await openSourceTab(page, "Setup");
@@ -163,9 +163,9 @@ test("one Add files dialog takes a mixed batch, a type per file, into the Source
   await page.getByLabel("Filter by type").selectOption({ label: "All types" });
   // Sorting: by name, then back to newest first.
   const order = async () => (await sources.evaluateAll((els) => els.map((e) => e.querySelector("button")?.getAttribute("aria-label")?.replace(/^Select /, ""))));
-  await page.getByLabel("Sort sources").selectOption({ label: "Name" });
+  await page.getByLabel("Sort sources").selectOption({ label: "Sort: Name" });
   expect(await order()).toEqual(["client-brief.docx", "golden-survey-documented.xlsx", "report.docx"]);
-  await page.getByLabel("Sort sources").selectOption({ label: "Newest first" });
+  await page.getByLabel("Sort sources").selectOption({ label: "Sort: Newest first" });
   await page.getByLabel("Filter by state").selectOption({ label: "Needs review" });
   await expect(sources.filter({ visible: true })).toHaveCount(0);
   await expect(page.getByTestId("source-filter-note")).toContainText("No sources match");

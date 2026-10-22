@@ -14,7 +14,7 @@
 //      warning only in development, so it passes trivially against a production build.
 //   6. A data file's pane names its linked questionnaire on one line (Grant, 2026-10-19: the full
 //      questionnaire card there duplicated its own); the first read still starts from that line.
-//   7. What the file is for and its next step (Open Analysis, Open Coding) sit in the selected
+//   7. What the file is for and its next step (Open Crosstabs and Open Analytics, Open Coding) sit in the selected
 //      source's header, above its tabs (Grant's Sources layout, 2026-10-20).
 //   8. A brief shows its size: pages, words, and how much of it a quality review reads.
 //   9. The project title lines up with the section heading (Grant, 2026-10-19).
@@ -47,7 +47,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   // The questionnaire, added as a Questionnaire (one of three types since 2026-10-20).
   await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire");
   const dataRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select golden-survey-documented.xlsx", exact: true }) });
-  await expect(dataRow.getByTestId("linked-instrument")).toContainText("1 linked document", { timeout: 3 * 60_000 });
+  await expect(dataRow.getByTestId("linked-instrument")).toContainText("Linked: questionnaire.docx", { timeout: 3 * 60_000 });
   // Named on the data file's row, and with its own row too: three files imported, three listed.
   await expect(page.getByTestId("source-row")).toHaveCount(3);
   const questionnaireRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select questionnaire.docx", exact: true }) });
@@ -58,13 +58,20 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   const headingBox = await page.getByRole("heading", { name: "Sources", exact: true, level: 2 }).boundingBox();
   expect(Math.abs(titleBox.x - headingBox.x)).toBeLessThanOrEqual(1);
 
-  // Opening a file: the data file downloads under its own name, in a new tab, through a short-lived
-  // link the server signed after checking the file belongs to this project.
-  const [tab] = await Promise.all([page.waitForEvent("popup"), (await selectSource(page, "golden-survey-documented.xlsx"), page.getByTestId("selected-source").getByRole("button", { name: "Open golden-survey-documented.xlsx" }).click())]);
-  const download = await tab.waitForEvent("download", { timeout: 60_000 });
+  // View original: the data file downloads under its own name through a short-lived link the server
+  // signed after checking the file belongs to this project, and no window or tab opens (Grant,
+  // 2026-10-22: it used to open an empty browser window while downloading).
+  await selectSource(page, "golden-survey-documented.xlsx");
+  let popups = 0;
+  page.context().on("page", () => popups++);
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 60_000 }),
+    page.getByTestId("selected-source").getByRole("button", { name: "Download golden-survey-documented.xlsx" }).click(),
+  ]);
   expect(download.suggestedFilename()).toMatch(/golden-survey-documented\.xlsx|^[^/]+$/);
   expect(download.url()).toMatch(/\/object\/sign\//);
-  await tab.close().catch(() => {});
+  expect(popups).toBe(0);
+  await expect(page.getByTestId("selected-source")).toBeVisible();
   await expect(page.getByText(/could not be opened|not in this project/)).toHaveCount(0);
 
   // The questionnaire and the data file each describe themselves in the pane.
@@ -86,9 +93,10 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
     expect(read || reason).toBe(true);
   }).toPass({ timeout: 3 * 60_000 });
   await expect(links.getByRole("button", { name: /Match to variables|Match again/ })).toHaveCount(0);
-  // 7. What the file is for, with Open Analysis, sits in the header above the tabs.
+  // 7. What the file is for, with Open Crosstabs and Open Analytics, sits in the header above the tabs.
   const header = page.getByTestId("selected-source");
-  await expect(header.getByTestId("file-purpose").getByRole("button", { name: "Open Analysis" })).toBeVisible();
+  await expect(header.getByTestId("file-purpose").getByRole("button", { name: "Open Crosstabs" })).toBeVisible();
+  await expect(header.getByTestId("file-purpose").getByRole("button", { name: "Open Analytics" })).toBeVisible();
   expect((await header.boundingBox()).y).toBeLessThan((await page.getByRole("tablist", { name: "Parts of the selected source" }).boundingBox()).y);
   await line.getByRole("button", { name: "Show" }).click();
   await expect(page.getByTestId("file-purpose-text")).toContainText(/^Questionnaire\. /);

@@ -18,9 +18,13 @@ export type OpenDocumentResult = { ok: true; url: string; opens: "pdf" | "downlo
  *     browser;
  *   - an original PDF opens in the browser;
  *   - anything else (Word not yet read, spreadsheets, SPSS, Stata, CSV) downloads under its own name.
+ * With `want: "download"` (View original, Grant 2026-10-22: "just download, don't open an empty
+ * browser"), the original as uploaded is always signed as an attachment under its own name, PDFs
+ * included, so following the link downloads it and leaves the page where it is.
  * The original stays exactly as uploaded; nothing here changes or copies it.
  */
-export async function openDocumentAction(runId: string, documentId: string): Promise<OpenDocumentResult> {
+export async function openDocumentAction(runId: string, documentId: string, want: "view" | "download" = "view"): Promise<OpenDocumentResult> {
+  if (want !== "view" && want !== "download") return { ok: false, error: "That is not a way this file can be opened." };
   const tenantId = await requireTenantId();
   const doc = await withTenantRead(tenantId, async (client) =>
     (
@@ -31,7 +35,7 @@ export async function openDocumentAction(runId: string, documentId: string): Pro
     ).rows[0],
   );
   if (!doc) return { ok: false, error: "That file is not in this project." };
-  const pdf = doc.preview_storage_path ?? (/\.pdf$/i.test(doc.source_filename) ? doc.storage_path : null);
+  const pdf = want === "download" ? null : (doc.preview_storage_path ?? (/\.pdf$/i.test(doc.source_filename) ? doc.storage_path : null));
   const { data, error } = pdf
     ? await supabaseAdmin.storage.from(BUCKET).createSignedUrl(pdf, LINK_SECONDS)
     : await supabaseAdmin.storage.from(BUCKET).createSignedUrl(doc.storage_path, LINK_SECONDS, { download: doc.source_filename });

@@ -8,7 +8,7 @@
 //   3. The transcript names the guide and has a Guide tab; the guide is listed as linked to the
 //      transcripts, under its own type.
 //   4. Reloading Import does not read the guide again (a read was attempted; only Read again repeats).
-// The data file's "Weights and missing codes" tab is covered in scale-missing-reload.check.
+// The data file's Weights tab and its missing-value fold under Variables are covered in scale-missing-reload.check.
 import { expect, test } from "@playwright/test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,7 +63,7 @@ test("a focus group guide is its own type, is read by itself, and is linked to t
 
     // 3. Linked both ways, under its own type.
     const transcriptRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select focus-group-1.txt", exact: true }) });
-    await expect(transcriptRow.getByTestId("linked-instrument")).toContainText("1 linked document", { timeout: 60_000 });
+    await expect(transcriptRow.getByTestId("linked-instrument")).toContainText("Linked: questionnaire.docx", { timeout: 60_000 });
     await expect(page.getByRole("tab", { name: "Guide", exact: true })).toBeVisible();
     const guideRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select questionnaire.docx", exact: true }) });
     await expect(guideRow).toContainText("Focus group guide");

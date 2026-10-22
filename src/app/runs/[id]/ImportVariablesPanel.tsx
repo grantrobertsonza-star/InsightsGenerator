@@ -18,7 +18,8 @@ const QUESTION_TYPES: QuestionType[] = ["single", "multi", "grid", "battery"];
 const VARIABLE_TYPES: VariableType[] = ["categorical", "discrete", "continuous"];
 
 const selectClass =
-  "rounded-md border border-border bg-white px-1 py-0.5 text-[11px] text-foreground";
+  // The table's own text size (text-xs), so a type choice reads like the rest of its row (Grant, 2026-10-22).
+  "rounded-md border border-border bg-white px-1 py-0.5 text-xs text-foreground";
 
 type RowOverride = { type?: VariableType; questionType?: QuestionType };
 
@@ -301,7 +302,7 @@ export default function ImportVariablesPanel({
             {q.worstVariables.length > 0 && (
               <details className="text-xs">
                 <summary className="cursor-pointer select-none font-medium text-muted">
-                  Variables to look at ({q.worstVariables.length})
+                  Variables needing review ({q.worstVariables.length})
                 </summary>
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[420px] text-left">
