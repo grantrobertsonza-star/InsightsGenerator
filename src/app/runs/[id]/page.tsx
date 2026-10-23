@@ -48,6 +48,7 @@ import {
   type ObjectiveValidation,
 } from "@/lib/objectiveValidator";
 import { generateMethodologySummary } from "@/lib/methodologyExtractor";
+import { latestMethodologyFailure } from "@/lib/methodologyStatus";
 import { refreshSynthesizedInsights } from "@/lib/insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "@/lib/synthesizedInsightQualityScorer";
 import { costOfUsage } from "@/lib/apiUsage";
@@ -3255,6 +3256,7 @@ export default async function RunPage({
     storyReportError,
     objectiveValidationError,
     programWaves,
+    methodologyFailure,
   ] = await Promise.all([
     timing(
       "findingCodingCounts",
@@ -3276,6 +3278,7 @@ export default async function RunPage({
     run.program_id
       ? getProgramWaves(run.program_id, id)
       : Promise.resolve([]),
+    latestMethodologyFailure(TENANT_ID, id),
   ]);
   const failedVerdictSamples =
     verdictSummary &&
@@ -3999,6 +4002,15 @@ export default async function RunPage({
         {storyReportError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
             {storyReportError}
+          </div>
+        )}
+
+        {/* RR-F02: the methodology step failed on the last generation; the saved text was kept. */}
+        {methodologyFailure && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="methodology-failure">
+            {`${methodologyFailure.message.replace(/\.?\s*Try again\.?$/, "").replace(/\.$/, "")}. ${
+              methodologyFailure.savedEarlier ? "The report keeps the methodology read before." : "The Word report says the methodology could not be read, not that none was stated."
+            } Use Regenerate report content to try again.`}
           </div>
         )}
 

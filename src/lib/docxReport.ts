@@ -248,6 +248,8 @@ export type NarrativeReportInput = {
   researchObjective: string | null;
   entryPoint: "generate" | "validate" | null;
   methodology: string | null;
+  /** The latest methodology reading failed and none was saved before (methodologyStatus.latestMethodologyFailure). */
+  methodologyUnread?: boolean;
   executiveSummary: string;
   situation: string;
   complication: string;
@@ -608,6 +610,15 @@ export async function buildNarrativeReportDocx(
   children.push(heading("Methodology", HeadingLevel.HEADING_1));
   if (input.methodology) {
     children.push(body(input.methodology));
+  } else if (input.methodologyUnread) {
+    // RR-F02: the last reading failed and nothing was read before, so whether the documents state
+    // a methodology is unknown; saying none was stated would turn unknown into false.
+    children.push(
+      body(
+        "The research methodology could not be read from the uploaded brief, proposal, or report when this report " +
+          "was prepared. It may be stated in them; check the source documents for how the underlying evidence was gathered.",
+      ),
+    );
   } else {
     children.push(
       body(

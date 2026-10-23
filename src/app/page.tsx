@@ -4,6 +4,8 @@ import { withTenant, withTenantRead } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { deleteRun, renameRun } from "@/lib/runActions";
 import DeleteRunButton from "./DeleteRunButton";
+import ProjectCleanupNotice from "./ProjectCleanupNotice";
+import { loadPendingProjectCleanups } from "@/lib/projectStorageCleanup";
 import RenameRunButton from "./RenameRunButton";
 import {
   BoltIcon,
@@ -132,7 +134,7 @@ export default async function Home({
   // G6: resolve the session first, so a signed-out visit redirects before any loader runs.
   const tenantId = await requireTenantId();
   const { entry } = await searchParams;
-  const [runs, assistantUsage] = await Promise.all([getRuns(), loadTenantUsageOutsideProjects(tenantId, 30)]);
+  const [runs, assistantUsage, projectCleanups] = await Promise.all([getRuns(), loadTenantUsageOutsideProjects(tenantId, 30), loadPendingProjectCleanups(tenantId)]);
 
   const statusCounts = new Map<string, number>();
   let totalFindings = 0;
@@ -153,6 +155,7 @@ export default async function Home({
         report and data.
       </p>
 
+      <ProjectCleanupNotice state={projectCleanups.ok ? { ok: true, items: projectCleanups.items } : projectCleanups} />
       <ThreePane
         left={
           <Pane side="left" title="Start a project">
@@ -331,9 +334,7 @@ export default async function Home({
                   }
                   onRename={renameThisRun}
                 />
-                <form action={deleteThisRun}>
-                  <DeleteRunButton />
-                </form>
+                <DeleteRunButton action={deleteThisRun} />
               </div>
             </li>
           );

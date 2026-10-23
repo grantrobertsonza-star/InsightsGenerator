@@ -22,6 +22,7 @@ import { figureCheckLoadErrorNote, joinNotes, loadRunFigureChecksForExport } fro
 import { figureCheckNote } from "@/lib/numberTrace";
 import { latestVerdictLateral } from "@/lib/latestVerdict";
 import { routeRequestContext } from "@/lib/requestContext";
+import { latestMethodologyFailure } from "@/lib/methodologyStatus";
 
 type ConfidenceTier = "strong" | "moderate" | "exploratory" | null;
 type QualityTier = "finding" | "partial" | "qualified" | null;
@@ -425,6 +426,7 @@ export async function GET(
     researchObjective: run.research_objective,
     entryPoint: run.entry_point,
     methodology: run.methodology,
+    methodologyUnread: run.methodology === null && (await latestMethodologyFailure(TENANT_ID, runId)) !== null,
     executiveSummary: narrative.executive_summary,
     situation: narrative.situation,
     complication: narrative.complication,

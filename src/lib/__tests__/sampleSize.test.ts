@@ -89,3 +89,35 @@ describe("marginForSample", () => {
     expect(() => marginForSample({ sampleSize: 3000, population: 2000 })).toThrow(/larger than the population/);
   });
 });
+
+// Codex RR-F04 (2026-10-23): at 95%, an expected share of 1% and a 49-point margin the formula gives
+// ceil(1.959964^2 * 0.01 * 0.99 / 0.49^2) = ceil(0.158) = 1, which the reverse direction refused (it
+// needs two interviews for a margin). Both directions now share a minimum of two.
+describe("RR-F04: the smallest samples are accepted in both directions", () => {
+  it("raises a result below two to two, says so, and the margin of two still meets the target", () => {
+    const r = sampleSizeForMargin({ marginPct: 49, expectedSharePct: 1 });
+    expect(r.completes).toBe(2);
+    expect(r.steps.join(" ")).toMatch(/Rounded up: 1 completed interview .*Raised to 2/);
+    const back = marginForSample({ sampleSize: r.completes, expectedSharePct: 1 });
+    expect(back.marginPct).toBeLessThanOrEqual(49);
+    expect(back.marginPct).toBeCloseTo(oracleMargin(2, 95, 0.01, 1, null) * 100, 1);
+  });
+
+  it("every forward result over a small-share, wide-margin grid is accepted by the reverse and is the oracle's smallest sample", () => {
+    for (const conf of [90, 95, 99] as const)
+      for (const share of [0.5, 1, 2, 5])
+        for (const margin of [20, 30, 40, 49])
+          for (const deff of [1, 1.5])
+            for (const population of [null, 2, 3, 50]) {
+              const input = { marginPct: margin, confidencePct: conf, expectedSharePct: share, designEffect: deff, population };
+              const r = sampleSizeForMargin(input);
+              const back = marginForSample({ sampleSize: r.completes, confidencePct: conf, expectedSharePct: share, designEffect: deff, population });
+              expect(back.marginPct).toBeLessThanOrEqual(margin + 0.005);
+              expect(r.completes).toBe(oracleSize(margin / 100, conf, share / 100, deff, population));
+            }
+  });
+
+  it("still refuses a sample of one in the reverse direction, with the shared minimum in the message", () => {
+    expect(() => marginForSample({ sampleSize: 1 })).toThrow("at least 2");
+  });
+});

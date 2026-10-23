@@ -140,7 +140,8 @@ export default function ResearchAssistantGuide() {
         <li>
           The sample for a margin is that formula solved for n: n0 = z² × deff × p × (1 − p) ÷ e², then n0 ÷ (1 + (n0 − 1)
           ÷ N) when N is known, rounded up. That is the smallest sample whose margin is at most e, and it is never more
-          than the population.
+          than the population. It is never fewer than two interviews either, the smallest sample a margin can be worked
+          out from, so a very wide margin with a very small expected share gives two.
         </li>
         <li>
           Divided by a response rate, it gives the number of people to approach; when that is more people than the

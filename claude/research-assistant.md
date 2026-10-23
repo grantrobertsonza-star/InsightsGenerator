@@ -137,6 +137,10 @@ population correction (556 instead of 435 at e 5, N 1000, deff 2; 160 for N = 10
 90/95/99 only. Invalid inputs (margin outside (0, 50), p outside
 (0, 100), deff outside [1, 10], N not an integer >= 2, n > N) throw.
 
+Minimum sample (Codex RR-F04, 2026-10-23): both directions accept two interviews at least
+(`MIN_SAMPLE`); a forward result below two is raised to two with a step saying so, and the margin
+direction refuses fewer than two. Tested over a small-share, wide-margin grid against the oracle.
+
 Limits stated in code and in the knowledge base: probability-sample proportion only; for quota or
 opt-in samples the figure describes a random sample of that size; deff is the user's estimate,
 not estimated from data; the margin is whole-sample, subgroups need their own.

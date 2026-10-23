@@ -1,6 +1,7 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
+import { finishedToolInput, optionalTextField, UnfinishedModelResultError } from "./modelToolResult";
 
 // Generous but bounded: a proposal or full report's methodology section is
 // usually a page or two, not the whole document, so this is plenty of
@@ -89,20 +90,26 @@ export async function generateMethodologySummary(tenantId: string, runId: string
 
   await logApiUsage(tenantId, runId, "methodology_extractor", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    return null;
-  }
-
-  const input = toolUse.input as { found?: boolean; methodology_text?: string };
-  if (!input.found || !input.methodology_text || !input.methodology_text.trim()) {
-    return null;
-  }
-
-  const methodology = input.methodology_text.trim();
+  // RR-F02: only a finished call may replace the saved methodology. A cut-off one can carry half a
+  // sentence that would overwrite complete text and go into the Word report; it fails here before
+  // anything is written, the previous methodology stays, and the caller records the failure
+  // (methodology_extraction_error) for the Insights report section to show. A finished call that
+  // finds no methodology (found: false) also leaves the saved text alone, and is recorded as done.
+  const what = "The reading of the methodology";
+  const input = finishedToolInput(response, "record_methodology", what);
+  if (typeof input.found !== "boolean") throw new UnfinishedModelResultError("malformed", `${what} returned a result in the wrong shape (found), so nothing from it was used. Try again.`);
+  const text = optionalTextField(input, "methodology_text", what);
+  if (input.found && !text) throw new UnfinishedModelResultError("malformed", `${what} said a methodology was found but returned none, so nothing from it was used. Try again.`);
+  const methodology = input.found ? text : null;
 
   await withTenant(tenantId, async (client) => {
-    await client.query("update runs set methodology = $1 where id = $2", [methodology, runId]);
+    if (methodology) await client.query("update runs set methodology = $1 where id = $2 and tenant_id = $3", [methodology, runId, tenantId]);
+    // The latest of this and methodology_extraction_error says whether the last reading finished.
+    await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'methodology_extraction_done', $3)`, [
+      tenantId,
+      runId,
+      JSON.stringify({ found: methodology !== null }),
+    ]);
   });
 
   return methodology;

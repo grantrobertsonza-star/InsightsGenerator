@@ -10,7 +10,8 @@
  *   the sample size is that formula solved for n: with n0 = z^2 * deff * p * (1 - p) / e^2 (the
  *     design effect inside the variance, p = 0.5 unless an expected share is given),
  *     n = n0 / (1 + (n0 - 1) / N), which is exactly n0 * N / (N + n0 - 1), and never more than N;
- *   rounded up, which is the smallest whole sample whose margin is at most e;
+ *   rounded up, which is the smallest whole sample whose margin is at most e, and never below two
+ *     (MIN_SAMPLE), the smallest sample the margin direction accepts (Codex RR-F04);
  *   divided by the expected response rate for the number to approach, refused when that is more
  *     people than the population holds.
  * Earlier the design effect was applied after the finite population correction, which overstated
@@ -18,6 +19,9 @@
  * Limits: a proportion from a probability sample. A quota or opt-in panel has no sampling margin in
  * the strict sense; the figure then describes the precision a random sample of that size would have.
  */
+
+/** The smallest sample both directions accept (RR-F04). */
+export const MIN_SAMPLE = 2;
 
 /** Two-sided z values for the supported confidence levels. */
 const Z: Record<number, number> = { 90: 1.6448536269514722, 95: 1.959963984540054, 99: 2.5758293035489004 };
@@ -76,8 +80,14 @@ export function sampleSizeForMargin(input: SampleSizeInput): SampleSizeResult {
     n = (n0 * N) / (N + n0 - 1);
     steps.push(`Population of ${N.toLocaleString("en-US")}: ${n0.toFixed(1)} ÷ (1 + (${n0.toFixed(1)} − 1) ÷ ${N}) = ${n.toFixed(1)}`);
   }
-  const completes = Math.min(Math.ceil(n - 1e-9), N ?? Infinity);
-  steps.push(`Rounded up: ${completes} completed interviews`);
+  const rounded = Math.min(Math.ceil(n - 1e-9), N ?? Infinity);
+  // RR-F04: two interviews is the smallest sample either direction accepts (a margin needs a
+  // variance, which one interview does not give), so a very wide margin or a very small expected
+  // share that works out below two is raised to two. Two still meets the margin asked for, since a
+  // larger sample only narrows it, and the reverse calculation accepts every result given here.
+  const completes = Math.max(rounded, MIN_SAMPLE);
+  steps.push(`Rounded up: ${rounded} completed ${rounded === 1 ? "interview" : "interviews"}`);
+  if (completes > rounded) steps.push(`Raised to ${MIN_SAMPLE}, the smallest sample a margin of error can be worked out from`);
   let approach: number | null = null;
   if (rr !== null) {
     approach = Math.ceil(completes / (rr / 100) - 1e-9);
@@ -108,7 +118,7 @@ export type MarginInput = Omit<SampleSizeInput, "marginPct" | "responseRatePct">
 export function marginFraction(input: MarginInput): number {
   const { z, p, deff, N } = check(input);
   const n = input.sampleSize;
-  if (!(Number.isInteger(n) && n >= 2)) throw new Error("The sample size must be a whole number of at least 2.");
+  if (!(Number.isInteger(n) && n >= MIN_SAMPLE)) throw new Error(`The sample size must be a whole number of at least ${MIN_SAMPLE}.`);
   if (N !== null && n > N) throw new Error("The sample cannot be larger than the population.");
   const e = z * Math.sqrt((deff * p * (1 - p)) / n);
   return N !== null ? e * Math.sqrt((N - n) / (N - 1)) : e;

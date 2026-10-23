@@ -14,6 +14,7 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
+vi.mock("@/lib/methodologyStatus", async () => await import("../methodologyStatus"));
 
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/docxReport", async () => await import("../docxReport"));

@@ -1,5 +1,6 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
+import { finishedToolInput, optionalTextField } from "./modelToolResult";
 
 // Between them a brief and a proposal can run long once a literature review
 // or a detailed methodology section is attached; none of that is needed to
@@ -120,20 +121,14 @@ export async function extractBriefFields(
 
   await logApiUsage(tenantId, runId, "brief_intake", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    return { businessProblem: null, researchObjective: null };
-  }
-
-  const input = toolUse.input as { business_problem?: unknown; research_objective?: unknown };
-  const businessProblem =
-    typeof input.business_problem === "string" && input.business_problem.trim().length > 0
-      ? input.business_problem.trim()
-      : null;
-  const researchObjective =
-    typeof input.research_objective === "string" && input.research_objective.trim().length > 0
-      ? input.research_objective.trim()
-      : null;
+  // RR-F01: only a finished call is used. A cut-off one can carry a partial objective list that
+  // would be saved as accepted and mark the document as used; it fails here instead, so the save
+  // records a failed fill with its retry (runContextActions) and keeps what was typed. A finished
+  // call that finds neither field returns nulls, which is a fill that found nothing, not a failure.
+  const what = "The reading of the brief or proposal";
+  const input = finishedToolInput(response, "record_brief_fields", what);
+  const businessProblem = optionalTextField(input, "business_problem", what);
+  const researchObjective = optionalTextField(input, "research_objective", what);
 
   return { businessProblem, researchObjective };
 }
