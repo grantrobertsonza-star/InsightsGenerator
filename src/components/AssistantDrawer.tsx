@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ChatIcon, CrossIcon, SendIcon } from "./icons";
 import { AssistantMessageText } from "./AssistantMessageText";
 import { useOpenSection } from "./openSection";
+import { plainConnectionError } from "./connectionError";
 import { loadAssistantMessages, sendAssistantMessage, sendGeneralAssistantMessage } from "@/lib/researchAssistantActions";
 
 /**
@@ -86,7 +87,7 @@ export default function AssistantDrawer() {
     const k = runId;
     update(k, (c) => ({ ...c, status: c.messages.length ? c.status : "loading", error: null }));
     // A dropped connection rejects the action itself; that is a failed load too, not a load in progress.
-    const result = await loadAssistantMessages(k).catch((error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) }));
+    const result = await loadAssistantMessages(k).catch((error: unknown) => ({ ok: false as const, error: plainConnectionError(error instanceof Error ? error.message : String(error)) }));
     if (seq !== loadSeq.current || keyRef.current !== k) return;
     // The saved history replaces the shown messages; the draft and a waiting send stay. A failed
     // question whose request is in the history was answered after all: its failure is cleared.
@@ -180,7 +181,7 @@ export default function AssistantDrawer() {
         if (sendRunId && keyRef.current === k) void load();
       })
       // A dropped connection: the server may have stored the answer before it was lost.
-      .catch((error: unknown) => fail(error instanceof Error ? error.message : String(error), true));
+      .catch((error: unknown) => fail(plainConnectionError(error instanceof Error ? error.message : String(error)), true));
   }
 
   const scope = runId

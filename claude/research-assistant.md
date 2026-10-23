@@ -165,9 +165,11 @@ Added with the drawer:
 
 ## Not covered
 
-- Usage of the assistant outside a project is in the server log only: `trace.run_id` is
-  required, so it is not on any API usage page. Showing it needs a tenant-level usage record (a
-  migration), not done.
+- (Closed 2026-10-23.) Usage outside a project was in the server log only; it is now recorded in
+  `tenant_api_usage` (migration 0109, `logTenantApiUsage`) and shown on the dashboard Overview
+  for the last 30 days (`loadTenantUsageOutsideProjects`: calls, input with the cached part,
+  estimated cost via `costOfUsage`). A failed write is logged with its figures; a failed read is
+  shown as such, and a missing table says it needs 0109.
 - Late-reply ordering in the drawer (a reply arriving after moving to another project) is by
   design and reviewed, not exercised by a browser check (the replay answers instantly).
 - The guide search is lexical; a question phrased far from the guide's words may miss it.

@@ -3,6 +3,7 @@ import { cachedSystemThen } from "./promptCache";
 import { HELP_TOOLS, SAMPLE_SIZE_TOOL, runHelpTool, runSampleSizeTool } from "./researchAssistantTools";
 import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./assistantLoop";
 import { helpContents } from "./helpIndex";
+import { logTenantApiUsage } from "./apiUsage";
 
 /**
  * The Research assistant outside a project (Grant, 2026-10-22: the floating assistant on every
@@ -11,8 +12,8 @@ import { helpContents } from "./helpIndex";
  * size calculator. It has no project, so no data tools and no evidence.
  *
  * The conversation is not stored (there is no project to store it under): the drawer sends the
- * earlier turns with each message, checked here. Usage is not in the API usage page, which is per
- * project (trace.run_id is required); it is written to the server log instead, a stated limit.
+ * earlier turns with each message, checked here. Usage is recorded in tenant_api_usage (migration
+ * 0109) and shown on the dashboard; a project's API usage page counts only that project's calls.
  */
 
 export const MAX_GENERAL_HISTORY = 20;
@@ -70,19 +71,7 @@ export async function askGeneralAssistant(
     userMessage: trimmed,
     priorMessages: prior,
     runTool: async (name, input) => (name === "sample_size" ? runSampleSizeTool(input) : runHelpTool(name, input)),
-    logUsage: async (usage) => {
-      console.info(
-        JSON.stringify({
-          event: "api_usage",
-          agent: "general_assistant",
-          tenant_id: tenantId,
-          input_tokens: usage.input_tokens ?? 0,
-          output_tokens: usage.output_tokens ?? 0,
-          cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
-          cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
-        }),
-      );
-    },
+    logUsage: (usage) => logTenantApiUsage(tenantId, "general_assistant", usage),
   });
   return { reply: loop.replyText + sourceLines(loop.tables, loop.help) };
 }

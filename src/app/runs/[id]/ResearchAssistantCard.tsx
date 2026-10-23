@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { sendAssistantMessage, uploadAssistantDocument } from "@/lib/researchAssistantActions";
 import { SendIcon, UploadIcon } from "@/components/icons";
 import { AssistantMessageText } from "@/components/AssistantMessageText";
+import { plainConnectionError } from "@/components/connectionError";
 
 export type AssistantChatMessage = {
   id: string;
@@ -77,7 +78,7 @@ export default function ResearchAssistantCard({
       let lost = false;
       const result = await sendAssistantMessage(runId, text, undefined, requestId).catch((e: unknown) => {
         lost = true;
-        return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+        return { ok: false as const, error: plainConnectionError(e instanceof Error ? e.message : String(e)) };
       });
       if (result.ok) {
         setFailedRequest(null);
@@ -117,7 +118,11 @@ export default function ResearchAssistantCard({
     formData.append("file", file);
 
     startUploading(async () => {
-      const result = await uploadAssistantDocument(runId, formData);
+      // A dropped connection: the server may have stored and processed the file before it was lost.
+      const result = await uploadAssistantDocument(runId, formData).catch((e: unknown) => ({
+        ok: false as const,
+        error: `${plainConnectionError(e instanceof Error ? e.message : String(e))} The file may have been uploaded anyway: check Import data before uploading it again.`,
+      }));
       if (result.ok) {
         setUploadNotice(`"${file.name}" uploaded and processed. Its findings are now part of this project's evidence.`);
       } else {

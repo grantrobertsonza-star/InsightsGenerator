@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -243,6 +243,48 @@ async function callWorker<T>(srcPath: string, sourceFilename: string, action: st
   });
 }
 
+/** How long a downloaded data file is reused before it is fetched again. */
+const STATS_CACHE_FRESH_MS = 10 * 60 * 1000;
+/**
+ * A cached download older than this is deleted. Longer than the reuse window plus the worker's
+ * longest request (5 minutes), so a file handed to the worker just inside the window is never
+ * removed while the worker reads it.
+ */
+export const STATS_CACHE_KEEP_MS = 30 * 60 * 1000;
+const STATS_CACHE_PREFIX = "stats-src-";
+let lastSweep = 0;
+
+/**
+ * Removes cached data file downloads (and half-written `.part` files left by a crash) older than
+ * STATS_CACHE_KEEP_MS from `dir`. Before this, each data file read left its download in the
+ * temporary folder for good: respondent-level data kept on disk with no end, and the folder
+ * growing by one file per data file per session. Best effort: a file that cannot be removed now
+ * (in use on Windows, already gone) is left for the next sweep and never fails the read that ran
+ * the sweep. Returns the names removed.
+ */
+export async function sweepStatsCache(dir: string = tmpdir(), now: number = Date.now()): Promise<string[]> {
+  const removed: string[] = [];
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return removed;
+  }
+  for (const name of names) {
+    if (!name.startsWith(STATS_CACHE_PREFIX)) continue;
+    const file = path.join(dir, name);
+    try {
+      const info = await stat(file);
+      if (!info.isFile() || now - info.mtimeMs <= STATS_CACHE_KEEP_MS) continue;
+      await rm(file, { force: true });
+      removed.push(name);
+    } catch {
+      // Left for the next sweep.
+    }
+  }
+  return removed;
+}
+
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
@@ -252,11 +294,16 @@ async function runLocalStatsPython<T>(
   // The same data file is read many times in a session (every table built,
   // every variable list), so the download is kept on disk for a few minutes
   // instead of being fetched again each time.
-  const cached = path.join(tmpdir(), `stats-src-${createHash("sha1").update(storagePath).digest("hex")}`);
+  const cached = path.join(tmpdir(), `${STATS_CACHE_PREFIX}${createHash("sha1").update(storagePath).digest("hex")}`);
+  // At most once a minute per server process, old downloads are cleared (sweepStatsCache).
+  if (Date.now() - lastSweep > 60 * 1000) {
+    lastSweep = Date.now();
+    void sweepStatsCache();
+  }
   let bytes: Buffer | null = null;
   try {
     const info = await stat(cached);
-    if (Date.now() - info.mtimeMs < 10 * 60 * 1000) bytes = await readFile(cached);
+    if (Date.now() - info.mtimeMs < STATS_CACHE_FRESH_MS) bytes = await readFile(cached);
   } catch {
     // not cached yet
   }

@@ -13,6 +13,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { parseNumberedItems } from "@/lib/text";
 import { Pane, ThreePane } from "./runs/[id]/ThreePane";
 import { requireTenantId } from "@/lib/requestContext";
+import { loadTenantUsageOutsideProjects } from "@/lib/apiUsage";
 
 type Run = {
   id: string;
@@ -129,9 +130,9 @@ export default async function Home({
   searchParams: Promise<{ entry?: string }>;
 }) {
   // G6: resolve the session first, so a signed-out visit redirects before any loader runs.
-  await requireTenantId();
+  const tenantId = await requireTenantId();
   const { entry } = await searchParams;
-  const runs = await getRuns();
+  const [runs, assistantUsage] = await Promise.all([getRuns(), loadTenantUsageOutsideProjects(tenantId, 30)]);
 
   const statusCounts = new Map<string, number>();
   let totalFindings = 0;
@@ -376,6 +377,26 @@ export default async function Home({
                   </div>
                 </div>
               )}
+              <div data-testid="assistant-usage-outside-projects">
+                {/* The Research assistant outside a project (dashboard, Knowledge base, Manual): a
+                    project's own API usage page counts only that project's calls. */}
+                <div className="text-xs font-medium uppercase tracking-wide text-muted">
+                  Research assistant outside projects, last 30 days
+                </div>
+                {assistantUsage.ok ? (
+                  <div className="mt-1 text-foreground">
+                    {assistantUsage.summary.calls === 0
+                      ? "Not used"
+                      : `${assistantUsage.summary.calls} model calls, ${(
+                          assistantUsage.summary.inputTokens +
+                          assistantUsage.summary.cacheWriteTokens +
+                          assistantUsage.summary.cacheReadTokens
+                        ).toLocaleString("en-US")} input tokens (${assistantUsage.summary.cacheReadTokens.toLocaleString("en-US")} from cache), about $${assistantUsage.summary.costUsd.toFixed(2)}`}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-red-700">Could not be read: {assistantUsage.error}</div>
+                )}
+              </div>
               <p className="text-xs text-muted">
                 Open a project from the middle pane for its own run dashboard, imports and analysis.
               </p>

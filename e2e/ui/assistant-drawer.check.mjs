@@ -86,6 +86,10 @@ test("the floating Research assistant answers from the Knowledge base anywhere, 
     await expect(drawer).toBeHidden();
     await expect(fab).toBeFocused();
 
+    // That use is counted for the organisation and shown on the dashboard (migration 0109).
+    await page.goto(`${origin}/`, { waitUntil: "networkidle" });
+    await expect(page.getByTestId("assistant-usage-outside-projects")).toContainText(/\d+ model calls, [\d,]+ input tokens \([\d,]+ from cache\), about \$\d+\.\d\d/);
+
     // 2. Inside a project, on Findings. The first read of the conversation fails.
     await page.goto(run.url, { waitUntil: "networkidle" });
     await openSection(page, "Findings");
@@ -101,6 +105,9 @@ test("the floating Research assistant answers from the Knowledge base anywhere, 
     await fab.click();
     await expect(drawer.getByTestId("assistant-drawer-scope")).toHaveText("This project's conversation, asked from Findings. Saved with the project.");
     await expect(drawer.getByText(/The conversation could not be loaded/)).toBeVisible();
+    // Said plainly, not in the browser's own words ("Failed to fetch").
+    await expect(drawer.getByText(/The connection to the server was lost before an answer came back/)).toBeVisible();
+    await expect(drawer.getByText(/Failed to fetch/)).toHaveCount(0);
     await expect(drawer.getByRole("button", { name: "Send" })).toBeDisabled();
     await drawer.getByRole("button", { name: "Try again" }).click();
     await expect(drawer.getByText(/The conversation could not be loaded/)).toBeHidden();

@@ -1,9 +1,9 @@
 // The Research assistant outside a project (Grant, 2026-10-22: the floating assistant on every page).
 // Runs the actual askGeneralAssistant, the shared loop, the help tools on the real generated index and
-// the sample size calculator. Mocked: the model (scripted, every request recorded). No database: this
+// the sample size calculator. Mocked: the model (scripted, every request recorded) and the usage write (tenantUsage.db.test.ts covers it). No database: this
 // assistant has no project and stores nothing. Checks the boundary checks on what the drawer sends
 // (earlier turns, page), that only the help and calculator tools are offered, the guide line, and
-// that usage goes to the server log.
+// that usage is recorded for the organisation.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Block = { type: string; text?: string; id?: string; name?: string; input?: unknown; content?: string; is_error?: boolean };
@@ -28,6 +28,13 @@ vi.mock("../anthropic", () => ({
 // The tools module imports the database layer for the data tools, which this assistant never calls.
 vi.mock("../db", () => ({ withTenant: vi.fn(async () => { throw new Error("no database outside a project"); }), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
+const usage = vi.hoisted(() => ({ calls: [] as unknown[][] }));
+vi.mock("../apiUsage", async (orig) => ({
+  ...(await orig<object>()),
+  logTenantApiUsage: vi.fn(async (...args: unknown[]) => {
+    usage.calls.push(args);
+  }),
+}));
 
 const call = (name: string, input: unknown) => ({ type: "tool_use", id: `t-${Math.random()}`, name, input });
 const results = (req: { messages: { role: string; content: unknown }[] }) => req.messages[req.messages.length - 1].content as Block[];
@@ -36,6 +43,7 @@ describe("Research assistant outside a project", () => {
   beforeEach(() => {
     state.script = [];
     state.requests = [];
+    usage.calls = [];
   });
 
   it("checks the drawer's earlier turns and page before they reach the model", async () => {
@@ -87,9 +95,9 @@ describe("Research assistant outside a project", () => {
       "For plus or minus 3 points you need 1,068 interviews.\n\nGuides read for this answer: How the Research assistant works: Sample sizes and margins of error (/knowledge/research-assistant#sample).",
     );
     // Usage outside a project goes to the server log (the API usage page is per project).
-    const logged = info.mock.calls.map((c) => JSON.parse(String(c[0])));
-    expect(logged).toHaveLength(2);
-    expect(logged[0]).toMatchObject({ event: "api_usage", agent: "general_assistant", tenant_id: "tenant-1", input_tokens: 3, cache_read_input_tokens: 1 });
+    // Usage outside a project is recorded for the organisation (tenant_api_usage, migration 0109).
+    expect(usage.calls).toHaveLength(2);
+    expect(usage.calls[0]).toEqual(["tenant-1", "general_assistant", { input_tokens: 3, output_tokens: 2, cache_read_input_tokens: 1 }]);
     info.mockRestore();
   });
 

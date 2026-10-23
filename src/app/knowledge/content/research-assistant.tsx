@@ -202,8 +202,9 @@ export default function ResearchAssistantGuide() {
         from the guide may not find it. Asking again with the term the app uses usually does.
       </Limit>
       <Limit title="Outside a project nothing is kept">
-        The chat outside a project is not saved, and its cost is not shown on a project&apos;s API usage page, which
-        counts only that project&apos;s calls.
+        The chat outside a project is not saved. Its use is counted for your organisation and shown on the dashboard
+        (the last 30 days, with the part read from the cache and an estimated cost), not on a project&apos;s API usage
+        page, which counts only that project&apos;s calls.
       </Limit>
       <Limit title="Drafts accumulate">
         Each data question can add up to four draft tables. They stay until you commit or delete them. A table saved
