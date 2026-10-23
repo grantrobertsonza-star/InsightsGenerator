@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): B8-F01, B8-F02, M-B8-01, M-B8-02 (`docs/independent-batch8-review-main-2026-10-23.md`) and a movable, resizable assistant window; see `docs/batch9-handover-2026-10-23.md`. No migration. Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): release audit RR-F01, RR-F02, RR-F03 (migration 0110, additive) and RR-F04 implemented, ready for review in `1f19dfa` and the docs commit after it (`docs/batch10-handover-2026-10-23.md`). RR-F05 (dependencies) is open pending Grant. Audit Parts 2 to 4 remain. Full library 1,534 passed / 72 skipped; full native 92 passed / 1 skipped. No push, deployment or existing-database migration.
+
+## Claude: release audit RR-F01 to RR-F04, main copy (2026-10-23)
+
+Implemented, ready for review: `1f19dfa` (repairs, migration 0110) and this docs commit. Checks and limits in `docs/batch10-handover-2026-10-23.md`. Codex's previous status line is kept in `.fnd001/backup-status-1023m/`.
 
 ## Claude: B8-F01, B8-F02, M-B8-01, M-B8-02 and the movable window, main copy (2026-10-23)
 
