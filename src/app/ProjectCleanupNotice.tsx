@@ -12,7 +12,7 @@ import { actionFailureMessage } from "./runs/[id]/actionFailure";
  * and a retry; or a plain note when the list itself could not be read. Nothing shows when there is
  * nothing pending.
  */
-export default function ProjectCleanupNotice({ state }: { state: { ok: true; items: PendingProjectCleanup[] } | { ok: false; error: string } }) {
+export default function ProjectCleanupNotice({ state }: { state: { ok: true; items: PendingProjectCleanup[]; locations: number } | { ok: false; error: string } }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const router = useRouter();
@@ -25,8 +25,9 @@ export default function ProjectCleanupNotice({ state }: { state: { ok: true; ite
   if (state.items.length === 0) return null;
   // Locations, not files (Codex RR-M02): a deleted project's record lists every place its files
   // could be, such as a converted copy that may never have been made, and storage has not confirmed
-  // removing them. Whether a file is actually there is not known until the removal succeeds.
-  const locations = state.items.reduce((n, i) => n + i.locations, 0);
+  // removing them. Whether a file is actually there is not known until the removal succeeds. The
+  // total is of distinct locations, read with the list (records can name the same one).
+  const locations = state.locations;
   const where = (n: number) => (n === 1 ? "1 storage location" : `${n} storage locations`);
   return (
     <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="project-cleanup-pending">
@@ -50,7 +51,8 @@ export default function ProjectCleanupNotice({ state }: { state: { ok: true; ite
               setMessage(null);
               try {
                 const r = await retryProjectStorageCleanup();
-                setMessage(r.ok ? (r.remaining === 0 ? "All removed." : `${r.remaining} still pending; the error is shown above.`) : r.error);
+                // `remaining` counts cleanup records, which can overlap, so it is not shown as a count.
+                setMessage(r.ok ? (r.remaining === 0 ? "All removed." : "Not all removed; the error is shown above.") : r.error);
               } catch (e) {
                 setMessage(actionFailureMessage(e));
               }

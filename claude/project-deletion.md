@@ -33,8 +33,12 @@ record delete rolls back and the next retry repeats the (idempotent) removal.
 Delete button shows a refusal beside it. The dashboard (`ProjectCleanupNotice`) lists records whose
 removal storage has not confirmed, counted as storage locations, not files (Codex RR-M02): a
 deleted project's record lists every place its files could be, including a converted copy that may
-never have been made. Each item reads "Deleted project X: N storage locations" or "A converted copy
-of a data file in X", with the last error and "Remove them now"
+never have been made. The total is of distinct locations across every listed record (Codex batch13
+RR-M02): records can name the same location (two reads of one file whose removals failed; a
+deleted project's record that also names a copy's location), so it is not a sum of the items. Each
+item reads "Deleted project X: N storage locations" or "A converted copy of a data file in X"
+(several records for the same copy are one item; the records stay separate, each with its own
+producer and retry), with the latest error and "Remove them now"
 (`retryProjectStorageCleanup`), or says the list could not be read.
 
 ## Converted copies (Codex RR-F03, batch10 and batch12 reviews)

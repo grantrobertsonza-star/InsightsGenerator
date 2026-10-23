@@ -6,6 +6,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import JSZip from "jszip";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -14,6 +16,9 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../extractFindings", () => ({ readContextDocument: vi.fn() }));
 vi.mock("../objectiveQualityScorer", () => ({ refreshObjectiveQuality: vi.fn(async () => {}) }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn(async () => {}) }));
+// The dashboard notice (rendered below) imports the actions through the app alias and uses the router.
+vi.mock("@/lib/runActions", async () => await import("../runActions"));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
 
 type Reply = { stop_reason: string | null; content: { type: string; name?: string; input?: unknown; text?: string }[] };
 const model = vi.hoisted(() => ({ replies: [] as Reply[], calls: 0 }));
@@ -440,6 +445,78 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
           await db.pool.query("alter table project_storage_cleanup rename column in_flight_until_hidden to in_flight_until");
         }
         expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      // Codex batch13 RR-M02: the notice counts distinct locations, whatever the records overlap.
+      const notice = async () => {
+        const { loadPendingProjectCleanups } = await import("../projectStorageCleanup");
+        const { default: ProjectCleanupNotice } = await import("../../app/ProjectCleanupNotice");
+        const state = await loadPendingProjectCleanups(tenant);
+        if (!state.ok) throw new Error(state.error);
+        const html = renderToStaticMarkup(createElement(ProjectCleanupNotice, { state }));
+        return { state, text: html.replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/\s+/g, " ").trim(), items: (html.match(/<li/g) ?? []).length };
+      };
+      const readFailingRemoval = async (file: string) => {
+        const { parseStatsFile } = await import("../parseStatsFile");
+        const converted = `${file}.converted.json`;
+        fetchMock.mockImplementationOnce(async () => {
+          storage.objects.set(converted, JSON.stringify(table));
+          storage.fail = "Synthetic storage outage";
+          return reply(converted);
+        });
+        await parseStatsFile(file, "survey.sav");
+        storage.fail = null;
+      };
+
+      it("two reads of one file whose removals failed are one copy and one location in the notice; the retry clears both records", async () => {
+        const { retryProjectStorageCleanup } = await import("../runActions");
+        const run = await newRun("Read twice");
+        const file = await savFile(run);
+        await readFailingRemoval(file);
+        await readFailingRemoval(file);
+        expect((await copies(run)).length).toBe(2);
+        const shown = await notice();
+        expect(shown.state).toMatchObject({ locations: 1, items: [{ kind: "converted_copy", locations: 1, records: 2, attempts: 2, lastError: "Synthetic storage outage" }] });
+        expect(shown.text).toContain("removal is not yet confirmed for 1 storage location.");
+        expect(shown.text).toContain("A converted copy of a data file in Read twice. Last attempt failed: Synthetic storage outage.");
+        expect(shown.items).toBe(1);
+
+        storage.removed.length = 0;
+        expect(await retryProjectStorageCleanup()).toEqual({ ok: true, remaining: 0 });
+        expect(storage.removed).toEqual([[`${file}.converted.json`], [`${file}.converted.json`]]);
+        expect(await copies(run)).toEqual([]);
+        expect((await notice()).text).toBe("");
+      });
+
+      it("a deleted project's record and a copy's record naming the same location count it once", async () => {
+        const { deleteRun, retryProjectStorageCleanup } = await import("../runActions");
+        const run = await newRun("Overlap");
+        const file = await savFile(run);
+        await readFailingRemoval(file);
+        storage.fail = "Synthetic storage outage";
+        expect(await deleteRun(run)).toEqual({ ok: true, cleanupPending: true });
+        storage.fail = null;
+        const shown = await notice();
+        // The project's record names the file and its copy; the copy's record names the copy again.
+        expect(shown.state).toMatchObject({ locations: 2, items: [{ kind: "converted_copy", locations: 1 }, { kind: "deleted_project", locations: 2 }] });
+        expect(shown.text).toContain("removal is not yet confirmed for 2 storage locations.");
+        expect(shown.text).toContain("Deleted project Overlap: 2 storage locations.");
+        expect(shown.items).toBe(2);
+
+        expect(await retryProjectStorageCleanup()).toEqual({ ok: true, remaining: 0 });
+        expect(await pending()).toEqual([]);
+        expect((await notice()).text).toBe("");
+      });
+
+      it("copies of two different files stay two items and two locations", async () => {
+        const run = await newRun("Two files");
+        await readFailingRemoval(await savFile(run));
+        await readFailingRemoval(await savFile(run));
+        const shown = await notice();
+        expect(shown.state).toMatchObject({ locations: 2, items: [{ records: 1 }, { records: 1 }] });
+        expect(shown.text).toContain("removal is not yet confirmed for 2 storage locations.");
+        expect(shown.items).toBe(2);
+        await clearPending();
       });
 
       it("deleting the project removes a copy left beside its file", async () => {

@@ -155,7 +155,7 @@ export default async function Home({
         report and data.
       </p>
 
-      <ProjectCleanupNotice state={projectCleanups.ok ? { ok: true, items: projectCleanups.items } : projectCleanups} />
+      <ProjectCleanupNotice state={projectCleanups.ok ? { ok: true, items: projectCleanups.items, locations: projectCleanups.locations } : projectCleanups} />
       <ThreePane
         left={
           <Pane side="left" title="Start a project">

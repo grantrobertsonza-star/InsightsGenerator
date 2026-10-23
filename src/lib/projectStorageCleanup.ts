@@ -215,41 +215,72 @@ export async function finishProjectStorageCleanup(tenantId: string, onlyId?: str
 }
 
 /**
- * One record of storage locations whose removal storage has not confirmed (Codex RR-M02): the
- * count is of locations, not of files known to exist, since a deleted project's record lists every
+ * One listed cleanup (Codex RR-M02): a deleted project's record, or one converted copy. Counts are
+ * of storage locations, not of files known to exist, since a deleted project's record lists every
  * location its files could have (a converted copy that may never have been made among them).
+ * `records` is how many cleanup records the item stands for: each read of a data file records its
+ * converted copy separately, so reads of the same file whose removals failed give several records
+ * for one copy, shown as one item.
  */
-export type PendingProjectCleanup = { id: string; kind: "deleted_project" | "converted_copy"; projectName: string | null; locations: number; attempts: number; lastError: string | null; createdAt: string };
+export type PendingProjectCleanup = {
+  id: string;
+  kind: "deleted_project" | "converted_copy";
+  projectName: string | null;
+  locations: number;
+  records: number;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+};
+
+export type PendingProjectCleanups =
+  | { ok: true; available: boolean; items: PendingProjectCleanup[]; locations: number }
+  | { ok: false; error: string };
 
 /**
  * The tenant's storage locations still to be removed (deleted projects' files, and converted copies
  * whose removal failed or whose parser did not answer in time); an error when it cannot be read.
- * A converted copy still within its in-flight time is normal work and not listed.
+ * A converted copy still within its in-flight time is normal work and not listed. `locations` is
+ * the number of distinct locations across every listed record (Codex batch13 RR-M02): records
+ * overlap (two reads of one file; a deleted project's record that also names a copy's location),
+ * so it is not the sum of the items' counts. The records themselves are kept apart, since each has
+ * its own producer and retry; only the presentation merges them.
  */
-export async function loadPendingProjectCleanups(tenantId: string): Promise<{ ok: true; available: boolean; items: PendingProjectCleanup[] } | { ok: false; error: string }> {
+export async function loadPendingProjectCleanups(tenantId: string): Promise<PendingProjectCleanups> {
   try {
     return await withTenantRead(tenantId, async (client) => {
-      if (!(await projectCleanupAvailable(client))) return { ok: true as const, available: false, items: [] };
-      const r = await client.query<{ id: string; kind: "deleted_project" | "converted_copy"; project_name: string | null; locations: number; attempts: number; last_error: string | null; created_at: Date | string }>(
-        `select id::text, kind, project_name, cardinality(storage_paths) as locations, attempts, last_error, created_at
+      if (!(await projectCleanupAvailable(client))) return { ok: true as const, available: false, items: [], locations: 0 };
+      const r = await client.query<{ id: string; kind: "deleted_project" | "converted_copy"; project_name: string | null; storage_paths: string[]; attempts: number; last_error: string | null; created_at: Date | string }>(
+        `select id::text, kind, project_name, storage_paths, attempts, last_error, created_at
            from project_storage_cleanup
           where tenant_id = $1 and (in_flight_until is null or in_flight_until < now())
-          order by created_at`,
+          order by created_at, id`,
         [tenantId],
       );
-      return {
-        ok: true as const,
-        available: true,
-        items: r.rows.map((x) => ({
-          id: x.id,
-          kind: x.kind,
-          projectName: x.project_name,
-          locations: Number(x.locations),
-          attempts: Number(x.attempts),
-          lastError: x.last_error,
-          createdAt: new Date(x.created_at).toISOString(),
-        })),
-      };
+      const distinct = new Set<string>();
+      const items: PendingProjectCleanup[] = [];
+      const copyItems = new Map<string, PendingProjectCleanup>();
+      for (const x of r.rows) {
+        for (const p of x.storage_paths) distinct.add(p);
+        const createdAt = new Date(x.created_at).toISOString();
+        if (x.kind === "converted_copy") {
+          // One copy, however many records name it: the newest record's error is the latest attempt's.
+          const key = [...x.storage_paths].sort().join("\n");
+          const seen = copyItems.get(key);
+          if (seen) {
+            seen.records += 1;
+            seen.attempts += Number(x.attempts);
+            if (x.last_error !== null) seen.lastError = x.last_error;
+            continue;
+          }
+          const item: PendingProjectCleanup = { id: x.id, kind: x.kind, projectName: x.project_name, locations: new Set(x.storage_paths).size, records: 1, attempts: Number(x.attempts), lastError: x.last_error, createdAt };
+          copyItems.set(key, item);
+          items.push(item);
+        } else {
+          items.push({ id: x.id, kind: x.kind, projectName: x.project_name, locations: new Set(x.storage_paths).size, records: 1, attempts: Number(x.attempts), lastError: x.last_error, createdAt });
+        }
+      }
+      return { ok: true as const, available: true, items, locations: distinct.size };
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
