@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { createHash } from "node:crypto";
 import { withTenant } from "./db";
 import { buildCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { checkTablePlan, searchVariables } from "./crosstabAsk";
@@ -144,6 +145,20 @@ export function runSampleSizeTool(input: Record<string, unknown>): { content: st
 }
 
 /** A table the assistant built; `readBack` is false when the draft was saved but its figures could not be read. */
+/** The draft an earlier send of this request built with exactly this table request, if any. */
+async function draftBuiltForRequest(tenantId: string, runId: string, documentId: string, req: { id: string; key: string }): Promise<string | null> {
+  return withTenant(tenantId, async (client) => {
+    const r = await client.query<{ id: string }>(
+      `select id from document_tables
+       where run_id = $1 and document_id = $2 and tenant_id = $3
+         and crosstab->'assistantRequest'->>'id' = $4 and crosstab->'assistantRequest'->>'key' = $5
+       order by table_index limit 1`,
+      [runId, documentId, tenantId, req.id, req.key],
+    );
+    return r.rows[0]?.id ?? null;
+  });
+}
+
 export type BuiltTable = { tableId: string; label: string; dataFile: string; readBack: boolean };
 
 type DataFile = { id: string; name: string };
@@ -170,6 +185,8 @@ export async function runAssistantTool(
   name: string,
   input: Record<string, unknown>,
   tablesSoFar: number,
+  /** The researcher's question this call answers (migration 0108); tables built for it are reused if it is asked again. */
+  requestId: string | null = null,
 ): Promise<{ content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed }> {
   try {
     if (name === "sample_size") return runSampleSizeTool(input);
@@ -199,14 +216,22 @@ export async function runAssistantTool(
     if (!setupStatus.ok) return { content: `The survey design set-up of ${file.name} could not be read, so no table was built: ${setupStatus.error}`, isError: true };
     const design = resolveSurveyDesign(dict, effectiveDesignChoice(setupStatus.setup.design, undefined));
     const weightVar = input.weighted === false ? null : defaultWeight(dict);
-    const built = await buildCrosstab(tenantId, runId, file.id, {
+    const request = {
       columnVars: plan.columns.map((c) => c.name),
       rowItems: plan.rows,
       weightVar,
       filters: plan.filters,
-      source: "assistant",
+      source: "assistant" as const,
       design: design.design ?? undefined,
-    });
+    };
+    // A table already built for this question by an earlier send that failed before storing its
+    // answer (Codex B7-F01 follow-up) is reused rather than built a second time. The key is the
+    // exact request, so a different table for the same question is still built.
+    const assistantRequest = requestId ? { id: requestId, key: createHash("sha256").update(JSON.stringify({ file: file.id, ...request })).digest("hex") } : null;
+    const earlier = assistantRequest ? await draftBuiltForRequest(tenantId, runId, file.id, assistantRequest) : null;
+    const built = earlier
+      ? { tableId: earlier, questions: 0, skipped: [] as { variable: string; reason: string }[], reused: true }
+      : { ...(await buildCrosstab(tenantId, runId, file.id, request, assistantRequest ? { assistantRequest } : {})), reused: false };
     // The draft exists from here on (buildCrosstab saved it), so every return below carries it: it
     // counts towards the cap and is listed under the reply even when its figures cannot be read back
     // (Codex B5-F04).
@@ -225,7 +250,7 @@ export async function runAssistantTool(
     if (!result) return unread("it has no saved result");
     const text = insightTableText(result);
     const notes = [
-      `Table "${label}" (id ${built.tableId}) from ${file.name}, saved as a draft under Cross tabs, All tables.`,
+      `Table "${label}" (id ${built.tableId}) from ${file.name}, saved as a draft under Cross tabs, All tables.${built.reused ? " It was built for this question by an earlier attempt and is reused, not built again." : ""}`,
       weightVar ? `Weighted by ${weightVar}.` : "Unweighted.",
       design.design ? "A survey design was used for the tests." : "No survey design: tests assume a simple random sample.",
       ...plan.unclear,

@@ -503,7 +503,11 @@ export async function buildCrosstab(
   documentId: string,
   request: CrosstabRequest,
   /** "evidence": built only to answer an objective evidence question, kept out of the draft set so it cannot be committed into findings. */
-  options: { status?: "draft" | "evidence" } = {},
+  options: {
+    status?: "draft" | "evidence";
+    /** The Research assistant question this table was built for and the exact request's key, so a retry of that question reuses it. */
+    assistantRequest?: { id: string; key: string };
+  } = {},
 ): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
   if (request.rowItems.length === 0) throw new Error("Choose at least one row variable.");
@@ -659,6 +663,7 @@ export async function buildCrosstab(
     // The exact request that built this table, kept verbatim (not just the summarised provenance
     // above) so the same definition can be replayed on another wave's file later.
     savedRequest: request,
+    ...(options.assistantRequest ? { assistantRequest: options.assistantRequest } : {}),
   };
 
   const tableId = await withTenant(tenantId, async (client) => {

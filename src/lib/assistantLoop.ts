@@ -86,7 +86,8 @@ export async function runAssistantLoop(options: {
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const call of calls) {
       const r = await options.runTool(call.name, (call.input ?? {}) as Record<string, unknown>, tables.length);
-      if (r.table) tables.push(r.table);
+      // A table reused within the turn (the same request twice) is listed and counted once.
+      if (r.table && !tables.some((t) => t.tableId === r.table!.tableId)) tables.push(r.table);
       if (r.help && !help.some((h) => h.href === r.help!.href)) help.push(r.help);
       results.push({ type: "tool_result", tool_use_id: call.id, content: r.content, ...(r.isError ? { is_error: true } : {}) });
     }

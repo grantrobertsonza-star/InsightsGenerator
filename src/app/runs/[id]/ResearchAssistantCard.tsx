@@ -101,6 +101,8 @@ export default function ResearchAssistantCard({
           // read again (it shows above if it was); sending again does not repeat it either way.
           router.refresh();
           setError(`No answer arrived for "${text}": the connection was lost. If it was answered, the answer appears above once the page has refreshed. Sending it again asks it once; an answer already saved is shown, not repeated.`);
+        } else if ("stillRunning" in result && result.stillRunning) {
+          setError(`Still being answered: "${text}". ${result.error}`);
         } else {
           setError(`Not answered: "${text}". ${result.error} It is back in the box to send again.`);
         }

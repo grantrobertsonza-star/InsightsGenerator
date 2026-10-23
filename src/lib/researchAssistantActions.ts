@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { askResearchAssistant, loadAssistantConversation, type AssistantMessage } from "./researchAssistant";
+import { askResearchAssistant, loadAssistantConversation, RequestInProgressError, type AssistantMessage } from "./researchAssistant";
 import { askGeneralAssistant, checkedHistory } from "./generalAssistant";
 import { checkedPageContext } from "./assistantLoop";
 import { storeUploadedDocument } from "./documentUpload";
@@ -37,7 +37,7 @@ export async function sendAssistantMessage(
   message: string,
   page?: unknown,
   requestId?: unknown,
-): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; reply: string } | { ok: false; error: string; stillRunning?: boolean }> {
   const TENANT_ID = await requireTenantId();
   try {
     if (requestId !== undefined && requestId !== null && typeof requestId !== "string") throw new Error("The request id is not valid.");
@@ -45,6 +45,8 @@ export async function sendAssistantMessage(
     revalidatePath(`/runs/${runId}`);
     return { ok: true, reply };
   } catch (error) {
+    // Another send of this request is still answering it: nothing was run or stored by this one.
+    if (error instanceof RequestInProgressError) return { ok: false, error: error.message, stillRunning: true };
     const messageText = needsMigration0108(error instanceof Error ? error.message : String(error));
     await withTenant(TENANT_ID, async (client) => {
       await client.query(

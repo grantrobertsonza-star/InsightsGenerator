@@ -66,6 +66,11 @@ test("the floating Research assistant answers from the Knowledge base anywhere, 
     const drawer = page.getByTestId("assistant-drawer");
     await expect(drawer).toBeVisible();
     await expect(drawer.getByTestId("assistant-drawer-scope")).toHaveText("How the app works and research method. This chat is not saved.");
+    // A compact window in the corner (2026-10-23), so the page stays in view: at most 380 by 560.
+    const win = await drawer.boundingBox();
+    expect(win.width).toBeLessThanOrEqual(381);
+    expect(win.height).toBeLessThanOrEqual(561);
+    expect(win.x).toBeGreaterThan(1440 / 2);
     const box = drawer.getByRole("textbox", { name: "Your question" });
     await expect(box).toBeFocused();
     await box.fill(`${guideMarker} What does use with caution mean?`);
@@ -85,6 +90,18 @@ test("the floating Research assistant answers from the Knowledge base anywhere, 
     await page.keyboard.press("Escape");
     await expect(drawer).toBeHidden();
     await expect(fab).toBeFocused();
+
+    // On a phone it spans the width less a 16px gutter, with no sideways scroll.
+    await page.setViewportSize({ width: 390, height: 800 });
+    await fab.click();
+    const phone = await drawer.boundingBox();
+    expect(Math.round(phone.x)).toBe(16);
+    expect(Math.round(phone.x + phone.width)).toBe(390 - 16);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    const sPhone = shot("phone");
+    if (sPhone) await page.screenshot({ path: sPhone });
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1440, height: 900 });
 
     // That use is counted for the organisation and shown on the dashboard (migration 0109).
     await page.goto(`${origin}/`, { waitUntil: "networkidle" });
@@ -180,6 +197,9 @@ test("a failed question stays with the project it was asked in, and Send again a
     await page.goto(a.url, { waitUntil: "networkidle" });
     await openSection(page, "Findings");
     await page.getByTestId("assistant-fab").click();
+    // Send is not taken while the conversation is still loading; wait for it before typing.
+    await expect(page.getByTestId("assistant-drawer").getByText(/Loading the conversation/)).toHaveCount(0);
+    await expect(page.getByTestId("assistant-drawer").getByRole("button", { name: "Send" })).toBeVisible();
 
     // The failure arrives while A is open.
     await box.fill(`${early} first question`);
@@ -270,6 +290,9 @@ test("an answer saved but lost on the way back is shown, not reported as unanswe
     await page.goto(a.url, { waitUntil: "networkidle" });
     await openSection(page, "Findings");
     await page.getByTestId("assistant-fab").click();
+    // Send is not taken while the conversation is still loading; wait for it before typing.
+    await expect(page.getByTestId("assistant-drawer").getByText(/Loading the conversation/)).toHaveCount(0);
+    await expect(page.getByTestId("assistant-drawer").getByRole("button", { name: "Send" })).toBeVisible();
 
     // Lost while A is open: the read-back finds the stored answer.
     await box.fill(`${lostOpen} question`);

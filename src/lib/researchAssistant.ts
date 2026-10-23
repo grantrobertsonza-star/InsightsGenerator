@@ -4,7 +4,8 @@ import { DATA_TOOLS, HELP_TOOLS, SAMPLE_SIZE_TOOL, runAssistantTool } from "./re
 import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./assistantLoop";
 import { helpContents } from "./helpIndex";
 import { logApiUsage } from "./apiUsage";
-import { withTenant, withTenantRead } from "./db";
+import type { PoolClient } from "pg";
+import { pool, withTenant, withTenantRead } from "./db";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
@@ -251,26 +252,30 @@ type NarrativeRevision = {
  * flow: the researcher is asking for the edit themselves, in the same turn,
  * which is a different act from a background agent proposing new material
  * unprompted. The next deck or Word export reads straight from this row, so
- * the edit is live immediately.
+ * the edit is live immediately. It runs in the caller's transaction, the one
+ * that stores the question and its reply, so a revision is never applied
+ * without its stored answer (and a retry of a failed send cannot apply it twice).
  */
+/** A revision the report cannot take (no report yet, or figures the evidence does not support): nothing is written. */
+class RevisionRefused extends Error {}
+
 async function applyNarrativeRevision(
-  tenantId: string,
+  client: PoolClient,
   runId: string,
-  revision: NarrativeRevision
-): Promise<string[]> {
-  const changed: string[] = [];
+  revision: NarrativeRevision,
   // Numerical traceability: a revision is model-written too, so it is checked with the same rule
   // as generation (storyNarrative.narrativeFigureCheck) against the evidence as it stands now.
-  const evidence = await loadNarrativeEvidence(tenantId, runId);
-
-  await withTenant(tenantId, async (client) => {
+  evidence: Awaited<ReturnType<typeof loadNarrativeEvidence>>,
+): Promise<string[]> {
+  const changed: string[] = [];
+  {
     const current = await client.query<{ pillars: DeckPillar[] } & Pick<DeckNarrative, "executive_summary" | "situation" | "complication" | "question" | "governing_thought" | "recommendations_intro" | "caveats">>(
       `select pillars, executive_summary, situation, complication, question, governing_thought, recommendations_intro, caveats
          from deck_narratives where run_id = $1 for update`,
       [runId]
     );
     if (current.rows.length === 0) {
-      throw new Error("No Insights Report has been generated yet, there is nothing to revise.");
+      throw new RevisionRefused("No Insights Report has been generated yet, there is nothing to revise.");
     }
 
     const setClauses: string[] = [];
@@ -319,7 +324,7 @@ async function applyNarrativeRevision(
       paramIndex += 1;
     }
 
-    if (setClauses.length === 0) return;
+    if (setClauses.length === 0) return changed;
 
     // The narrative as it would read after this revision, checked as a whole. An unsupported figure
     // refuses the revision (nothing is written); figures needing review are stored with it.
@@ -343,7 +348,7 @@ async function applyNarrativeRevision(
     );
     const unsupported = check.figures.filter((f) => f.status === "unsupported");
     if (unsupported.length > 0) {
-      throw new Error(
+      throw new RevisionRefused(
         `The revision was not applied: it states figures the evidence does not support (${unsupported
           .map((f) => `${f.field}: ${f.text}, ${f.reason}`)
           .join("; ")}). The narrative is unchanged.`,
@@ -357,7 +362,7 @@ async function applyNarrativeRevision(
 
     values.push(runId);
     await client.query(`update deck_narratives set ${setClauses.join(", ")} where run_id = $${paramIndex}`, values);
-  });
+  }
 
   return changed;
 }
@@ -422,15 +427,89 @@ export async function askResearchAssistant(
     throw new Error("Message is empty.");
   }
   if (requestId !== null && !UUID.test(requestId)) throw new Error("The request id is not valid.");
+  if (!requestId) return answerQuestion(tenantId, runId, trimmed, page, null);
 
-  // A question sent again under the same request id (Send again after the connection dropped) that
-  // was already answered and stored gets that stored reply: the model is not asked again and
-  // nothing is stored twice (Codex B6-F02). A report revision it made is not made again.
-  if (requestId) {
+  // One execution per request (Codex B6-F02, B7-F01). The request is claimed before the model or any
+  // tool runs: a send of the same request that arrives while another is answering it (Send again
+  // after the connection dropped, or a second tab) waits for that one, then finds its stored answer
+  // and returns it, so tables are not built and the report is not revised a second time. A request
+  // already answered returns its stored answer without asking the model.
+  return withRequestClaim(runId, requestId, async () => {
     const earlier = await storedReply(tenantId, runId, requestId);
     if (earlier !== null) return { reply: earlier, revisedFields: [], alreadyAnswered: true };
-  }
+    return answerQuestion(tenantId, runId, trimmed, page, requestId);
+  });
+}
 
+/**
+ * How long a send waits for another send of the same request to finish before saying it is still
+ * running: 5 minutes, or ASSISTANT_REQUEST_WAIT_MS (milliseconds) when set, e.g. for a host whose
+ * server actions time out sooner.
+ */
+export function requestClaimWaitMs(): number {
+  const fromEnv = Number(process.env.ASSISTANT_REQUEST_WAIT_MS);
+  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 5 * 60 * 1000;
+}
+
+/** A send of a request another send is still answering, after requestClaimWaitMs(). Nothing was run or stored by it. */
+export class RequestInProgressError extends Error {
+  constructor() {
+    super("This question is still being answered from an earlier send. Its answer will appear in the conversation when it is ready; there is no need to send it again.");
+    this.name = "RequestInProgressError";
+  }
+}
+
+/**
+ * Runs `answer` while holding a Postgres session advisory lock for the request (on one pooled
+ * connection kept for the duration, outside any transaction, so no transaction stays open while
+ * the model works). A second send of the same request waits, trying again every 250 ms, up to
+ * requestClaimWaitMs(). The lock is released when `answer` finishes or fails, and by Postgres if
+ * the connection or server process dies. Guarantee: within one database, two sends of one request
+ * never run the model or tools at the same time, and a later send sees the earlier one's stored
+ * answer. A send that fails part way (or a server process that dies mid-answer) leaves no stored
+ * answer, so a later send of the request runs again; it does not repeat that send's work: a report
+ * revision is applied only in the transaction that stores the answer, and a table already built for
+ * the request with the same table request is reused (researchAssistantTools.ts). What such a send
+ * leaves behind is at most draft tables, which the retry reuses.
+ */
+async function withRequestClaim<T>(runId: string, requestId: string, answer: () => Promise<T>): Promise<T> {
+  const key = `assistant-request:${runId}:${requestId}`;
+  const deadline = Date.now() + requestClaimWaitMs();
+  // A waiting send borrows a connection only for each try, so waiting holds none of the pool.
+  let holder: PoolClient | null = null;
+  for (;;) {
+    const client = await pool.connect();
+    let ok = false;
+    try {
+      ok = Boolean((await client.query<{ ok: boolean }>("select pg_try_advisory_lock(hashtextextended($1, 0)) as ok", [key])).rows[0]?.ok);
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+    if (ok) {
+      holder = client;
+      break;
+    }
+    client.release();
+    if (Date.now() >= deadline) throw new RequestInProgressError();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  try {
+    return await answer();
+  } finally {
+    // If the unlock itself fails, the connection is destroyed rather than returned with the lock.
+    const unlocked = await holder.query("select pg_advisory_unlock(hashtextextended($1, 0))", [key]).then(() => true, () => false);
+    holder.release(!unlocked);
+  }
+}
+
+async function answerQuestion(
+  tenantId: string,
+  runId: string,
+  trimmed: string,
+  page: PageContext | null,
+  requestId: string | null,
+): Promise<{ reply: string; revisedFields: string[]; alreadyAnswered: boolean }> {
   const context = await loadContext(tenantId, runId);
   if (!context.run) {
     throw new Error("Run not found");
@@ -478,49 +557,67 @@ export async function askResearchAssistant(
   );
   const tools: Anthropic.Tool[] = [REVISE_NARRATIVE_TOOL, ...DATA_TOOLS, SAMPLE_SIZE_TOOL, ...HELP_TOOLS];
   let revisedFields: string[] = [];
+  let revision: { input: NarrativeRevision; text: string } | null = null;
   const loop = await runAssistantLoop({
     system,
     tools,
     userMessage: trimmed,
-    runTool: (name, input, tablesSoFar) => runAssistantTool(tenantId, runId, name, input, tablesSoFar),
+    runTool: (name, input, tablesSoFar) => runAssistantTool(tenantId, runId, name, input, tablesSoFar, requestId),
     terminal: {
+      // Applied below, in the transaction that stores the answer.
       revise_narrative: async (input, text) => {
-        try {
-          revisedFields = await applyNarrativeRevision(tenantId, runId, input as NarrativeRevision);
-          return revisedFields.length > 0 && !text ? `Updated ${revisedFields.join(", ")} in the Insights Report.` : text;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return text ? `${text}\n\n(${message})` : message;
-        }
+        revision = { input: input as NarrativeRevision, text };
+        return text || "Updating the Insights Report.";
       },
     },
     logUsage: (usage) => logApiUsage(tenantId, runId, "research_assistant", usage),
   });
-  const replyText = loop.replyText + sourceLines(loop.tables, loop.help);
+  const evidence = revision ? await loadNarrativeEvidence(tenantId, runId) : null;
 
   // The question and its reply are stored together, in one transaction, once there is a reply: a
-  // failed call stores neither (Codex B5-F05). Under a request id the pair is stored at most once
-  // (the unique index of migration 0108): when a send of the same request raced this one and stored
-  // first, this pair is not stored and that stored reply is returned. The run is checked in the
+  // failed call stores neither (Codex B5-F05). A report revision is applied in the same
+  // transaction, so it exists only with its stored answer. Under a request id the pair is stored at
+  // most once (the unique index of migration 0108); with the request claim above a second store
+  // should not happen, and if one does (a claim lost with its connection), this transaction is
+  // rolled back, revision included, and the reply stored first wins. The run is checked in the
   // same statement, so a run id of another organisation stores nothing.
-  const stored = await withTenant(tenantId, async (client) => {
-    const r = await client.query(
-      `insert into assistant_messages (tenant_id, run_id, role, content, created_at, request_id)
-       select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond', $5::uuid
-       from runs r, (values ('user', $3::text, 0), ('assistant', $4::text, 1)) as m(role, content, offset_ms)
-       where r.id = $2 and r.tenant_id = $1
-       on conflict (run_id, request_id, role) where request_id is not null do nothing
-       returning id`,
-      [tenantId, runId, trimmed, replyText, requestId]
-    );
-    return r.rowCount ?? 0;
-  });
-  if (stored === 2) return { reply: replyText, revisedFields, alreadyAnswered: false };
-  if (stored === 0 && requestId) {
-    const earlier = await storedReply(tenantId, runId, requestId);
-    if (earlier !== null) return { reply: earlier, revisedFields: [], alreadyAnswered: true };
+  const NOT_STORED = "assistant pair not stored";
+  let replyText = "";
+  try {
+    await withTenant(tenantId, async (client) => {
+      let answer = loop.replyText;
+      if (revision) {
+        try {
+          revisedFields = await applyNarrativeRevision(client, runId, revision.input, evidence!);
+          answer = revisedFields.length > 0 && !revision.text ? `Updated ${revisedFields.join(", ")} in the Insights Report.` : revision.text || loop.replyText;
+        } catch (error) {
+          // A refused revision (unsupported figures, no report yet) writes nothing; the reason is the reply.
+          if (!(error instanceof RevisionRefused)) throw error;
+          revisedFields = [];
+          answer = revision.text ? `${revision.text}\n\n(${error.message})` : error.message;
+        }
+      }
+      replyText = answer + sourceLines(loop.tables, loop.help);
+      const r = await client.query(
+        `insert into assistant_messages (tenant_id, run_id, role, content, created_at, request_id)
+         select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond', $5::uuid
+         from runs r, (values ('user', $3::text, 0), ('assistant', $4::text, 1)) as m(role, content, offset_ms)
+         where r.id = $2 and r.tenant_id = $1
+         on conflict (run_id, request_id, role) where request_id is not null do nothing
+         returning id`,
+        [tenantId, runId, trimmed, replyText, requestId]
+      );
+      if (r.rowCount !== 2) throw new Error(NOT_STORED);
+    });
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== NOT_STORED) throw error;
+    if (requestId) {
+      const earlier = await storedReply(tenantId, runId, requestId);
+      if (earlier !== null) return { reply: earlier, revisedFields: [], alreadyAnswered: true };
+    }
+    throw new Error("Run not found");
   }
-  throw new Error(stored === 0 ? "Run not found" : "The question and its reply could not be stored together.");
+  return { reply: replyText, revisedFields, alreadyAnswered: false };
 }
 
 /** The stored reply to one request, or null when that request has not been answered. */

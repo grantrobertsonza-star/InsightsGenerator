@@ -52,8 +52,9 @@ export default function ResearchAssistantGuide() {
 
       <H2 id="anywhere">Asking from any page</H2>
       <P>
-        The Ask the assistant button sits in the bottom-right corner of every page. It opens the assistant in a panel on
-        the right, so the page you are working on stays in view. Esc or the close button puts it away.
+        The Ask the assistant button sits in the bottom-right corner of every page. It opens the assistant in a small
+        window in that corner, so most of the page you are working on stays in view and usable. Esc or the close
+        button puts it away.
       </P>
       <UL>
         <li>

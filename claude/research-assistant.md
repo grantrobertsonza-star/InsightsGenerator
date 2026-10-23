@@ -12,7 +12,7 @@ questions ... It must have access to our knowledge base". Grant's choices: every
 conversation as the Research assistant section inside a project; a side drawer.
 
 - `src/components/AssistantDrawer.tsx`, mounted in `GlobalShell`. Button bottom-right
-  (`assistant-fab`), drawer from the right (`assistant-drawer`, role dialog, not modal). Esc or
+  (`assistant-fab`), a compact window in that corner, 380 px wide and up to 560 px tall, full width less a 16 px gutter on a phone (`assistant-drawer`, role dialog, not modal; made smaller 2026-10-23 so the page stays in view). Esc or
   close; focus goes to the input on open and back to the button on close. Hidden on /login,
   /no-organisation, and on the Research assistant section (`openSection.id === "assistant"`).
 - Inside a project (`/runs/<uuid>`): `loadAssistantMessages(runId)` on each open (tenant and run
@@ -210,3 +210,52 @@ Added with the drawer:
   reply lost while the project is open and after moving away, shown on read-back with no failure;
   a model error is "Not answered" and Send again answers it once; the database holds each pair
   once). The replay stand-in answers a fixture rule with `status` as a provider error.
+
+## One execution per request (Codex B7-F01, 2026-10-23)
+
+The unique pair insert (0108) kept one stored pair, but two overlapping sends of one request both
+ran the model and tools first (two draft tables, or two report revisions). Now
+`askResearchAssistant` with a request id claims the request before anything runs:
+
+- `withRequestClaim`: a Postgres session advisory lock (`pg_try_advisory_lock(hashtextextended(
+  'assistant-request:<run>:<request>', 0))`) on one pooled connection kept for the answer,
+  outside any transaction. A second send of the same request polls every 250 ms; when it gets the
+  claim it re-reads the stored answer and returns it (`alreadyAnswered: true`) without a model
+  call. The claim is released in `finally`, and by Postgres if the connection or process dies.
+- Waiting is bounded by `requestClaimWaitMs()` (5 minutes, or `ASSISTANT_REQUEST_WAIT_MS`); past
+  it the send fails with `RequestInProgressError`, having run and stored nothing. The action
+  returns `stillRunning: true`; the drawer shows "Still being answered" (kind `running`) and the
+  card "Still being answered: ...".
+- Distinct requests do not wait for each other. A send without a request id (none of the app's
+  callers) is not claimed.
+- Guarantee: within one database, two sends of one request never run the model or tools at the
+  same time, and a later send sees an earlier one's stored answer.
+- A send that fails part way does not have its work repeated by the retry (Grant: "shouldn't this
+  be fixed?", 2026-10-23):
+  - Report revisions: `revise_narrative` no longer writes when the model calls it. The revision
+    is applied in the same transaction that stores the question and its reply
+    (`applyNarrativeRevision(client, ...)`); a failed store rolls the revision back, so a revision
+    exists only with its stored answer and a retry applies it once. A refused revision
+    (`RevisionRefused`: no report, unsupported figures) writes nothing and its reason is the reply.
+  - Tables: `buildCrosstab(..., { assistantRequest: { id, key } })` stores the request id and a
+    SHA-256 key of the exact table request (file, columns, rows, weight, filters, design) on the
+    draft. Before building, `build_table` looks for a draft of this run and file with the same
+    request id and key and reuses it ("built for this question by an earlier attempt and is
+    reused, not built again"). A different table request for the same question is built; the same
+    table request for another question is built separately. Within one turn a repeated table is
+    listed and counted once.
+  - What a failed send can leave is draft tables (listed under All tables), which its retry reuses.
+- The holder keeps one pooled connection while the model works; a waiting send borrows a
+  connection only for each try. A failed unlock destroys that connection instead of returning it
+  to the pool still holding the lock.
+
+Tests (real database, model mocked; the build mock records each build and saves a draft row with
+its assistant request, as the real builder does): a send that builds a table and then fails leaves
+one draft, and the retry reuses it (no second build) while a different table is built, and another
+question builds its own; a revision whose answer cannot be stored (a check refusing the reply)
+leaves the report unchanged and stores nothing, the retry applies it once, and a replay does not
+revise again (a hand edit made after it stays). Overlap: overlapping sends with the first held at a gate:
+one model execution (2 calls), one build, the second returns the stored answer, a later replay
+makes no model call; a first send that fails lets the waiting send run once (one build, one
+pair) while an unrelated request is answered during the hold; a wait past a 500 ms limit is
+`RequestInProgressError` with no model call, and the first still answers.

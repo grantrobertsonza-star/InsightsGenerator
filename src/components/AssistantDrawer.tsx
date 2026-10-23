@@ -10,8 +10,8 @@ import { loadAssistantMessages, sendAssistantMessage, sendGeneralAssistantMessag
 
 /**
  * The floating Research assistant (Grant, 2026-10-22: "a floating Research assistant on every page
- * that the user can click on and ask questions"). A button in the bottom-right corner opens a drawer
- * from the right; the page stays visible behind it.
+ * that the user can click on and ask questions"). A button in the bottom-right corner opens a small
+ * window in that corner (2026-10-23: smaller, so the page stays in view); the page stays usable.
  *
  * Inside a project it continues the project's saved conversation (the same one as the Research
  * assistant section) with all its tools, and says which section the question came from. Elsewhere
@@ -46,8 +46,15 @@ type Conversation = {
   draft: string;
   pending: boolean;
   /** The last question whose answer did not arrive, why, and the request it was sent as. */
-  failed: { question: string; error: string; requestId: string; uncertain: boolean } | null;
+  failed: { question: string; error: string; requestId: string; kind: FailureKind } | null;
 };
+/**
+ * failed: the server answered with an error (nothing stored). lost: no reply arrived, so the outcome
+ * is unknown until the history is read. running: another send of the same request is still being
+ * answered (the server waited for it, then gave up waiting); nothing was run for this send.
+ */
+type FailureKind = "failed" | "lost" | "running";
+const FAILURE_TITLE: Record<FailureKind, string> = { failed: "Not answered", lost: "No answer arrived", running: "Still being answered" };
 const EMPTY: Conversation = { status: "ready", messages: [], error: null, draft: "", pending: false, failed: null };
 
 const RUN_PATH = /^\/runs\/([0-9a-f-]{36})(?:\/|$)/i;
@@ -159,14 +166,15 @@ export default function AssistantDrawer() {
       failed: null,
       messages: [...c.messages, { id: optimisticId, role: "user", content: text }],
     }));
-    const fail = (error: string, uncertain: boolean) => {
+    const fail = (error: string, kind: FailureKind) => {
       update(k, (c) => ({
         ...c,
         pending: false,
         // It leaves the list and is kept with the error to send again; the read-back below shows it
         // as answered instead if the server did store it.
         messages: c.messages.filter((m) => m.id !== optimisticId),
-        failed: { question: text, error, requestId, uncertain: uncertain && sendRunId !== null },
+        // Outside a project nothing is stored, so a lost reply there is simply not answered.
+        failed: { question: text, error, requestId, kind: sendRunId === null && kind === "lost" ? "failed" : kind },
         draft: c.draft || text,
       }));
       // Elsewhere, the history is read when the researcher comes back to this project.
@@ -175,13 +183,13 @@ export default function AssistantDrawer() {
     const request = sendRunId ? sendAssistantMessage(sendRunId, text, page, requestId) : sendGeneralAssistantMessage(text, history, page);
     request
       .then((result) => {
-        if (!result.ok) return fail(result.error, false);
+        if (!result.ok) return fail(result.error, "stillRunning" in result && result.stillRunning ? "running" : "failed");
         update(k, (c) => ({ ...c, pending: false, messages: [...c.messages, { id: `reply-${Date.now()}`, role: "assistant", content: result.reply }] }));
         // A project's conversation is then read back, so the saved copy (not the optimistic one) shows.
         if (sendRunId && keyRef.current === k) void load();
       })
       // A dropped connection: the server may have stored the answer before it was lost.
-      .catch((error: unknown) => fail(plainConnectionError(error instanceof Error ? error.message : String(error)), true));
+      .catch((error: unknown) => fail(plainConnectionError(error instanceof Error ? error.message : String(error)), "lost"));
   }
 
   const scope = runId
@@ -211,7 +219,10 @@ export default function AssistantDrawer() {
           aria-modal="false"
           aria-label="Research assistant"
           data-testid="assistant-drawer"
-          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-border bg-white shadow-2xl sm:w-[420px] print:hidden"
+          // A compact window in the bottom-right corner (Grant, 2026-10-23: "make the window smaller
+          // so we can still see the window we are in"), not a full-height panel: most of the page
+          // stays in view and usable. On a phone it spans the width, less a 16px gutter.
+          className="fixed bottom-4 left-4 right-4 z-50 flex h-[min(560px,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-2xl sm:left-auto sm:w-[380px] print:hidden"
         >
           <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
             <div className="min-w-0">
@@ -264,8 +275,8 @@ export default function AssistantDrawer() {
             {conversation.failed && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900" data-testid="assistant-drawer-failed">
                 <p>
-                  {conversation.failed.uncertain ? "No answer arrived" : "Not answered"}: &ldquo;{conversation.failed.question}&rdquo;.{" "}
-                  {conversation.failed.uncertain
+                  {FAILURE_TITLE[conversation.failed.kind]}: &ldquo;{conversation.failed.question}&rdquo;.{" "}
+                  {conversation.failed.kind === "lost"
                     ? "The connection was lost, and the history does not show it as answered. Send again asks it once; an answer already saved is shown, not repeated."
                     : conversation.failed.error}
                 </p>

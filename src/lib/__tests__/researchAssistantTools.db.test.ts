@@ -16,6 +16,9 @@
 //   - an empty final answer after a tool round is reported as empty (B6-F01);
 //   - a request id answered once returns its stored answer on a second send, and racing sends of
 //     one request store one pair (B6-F02, migration 0108 applied by the disposable database);
+//   - overlapping sends of one request run the model and tools once (the request claim, B7-F01);
+//     a failed first send lets the waiting one run it once; other requests do not wait; a wait
+//     past the limit is RequestInProgressError and runs nothing;
 //   - prompt caching: the instructions and evidence are one cached system block, the history after it.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -39,7 +42,7 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (req: { system: unknown; messages: { role: string; content: unknown }[] }) => {
         state.requests.push(JSON.parse(JSON.stringify(req)));
         const step = state.script.shift() ?? (() => [{ type: "text", text: "Done." }]);
-        const out = step(req) as Block[] | { stop: string; content: Block[] };
+        const out = (await step(req)) as Block[] | { stop: string; content: Block[] };
         if (!Array.isArray(out)) return { content: out.content, stop_reason: out.stop, usage: { input_tokens: 1, output_tokens: 1 } };
         if (state.failNext) {
           state.failNext = false;
@@ -73,9 +76,20 @@ vi.mock("../crosstabs", async (orig) => {
     loadVariableDictionaryWithStatus: vi.fn(async () => ({ ok: true, dictionary: DICT })),
     loadVariableDictionary: vi.fn(async () => DICT),
     loadCategories: vi.fn(async () => ({ variable: "segment", label: "Segment", categories: [] })),
-    buildCrosstab: vi.fn(async (_t: string, _r: string, documentId: string, request: Record<string, unknown>) => {
+    // Records each build (the side-effect counter) and saves a draft row, with the assistant
+    // request it was built for, as the real builder does.
+    buildCrosstab: vi.fn(async (t: string, r: string, documentId: string, request: Record<string, unknown>, options?: { assistantRequest?: unknown }) => {
       state.builds.push({ documentId, ...request });
-      return { tableId: randomUUID(), questions: 1, skipped: [] };
+      const { withTenant } = await import("../db");
+      const tableId = await withTenant(t, async (client) => {
+        const row = await client.query<{ id: string }>(
+          `insert into document_tables (tenant_id, run_id, document_id, table_index, label, ingestion_type, crosstab, crosstab_status)
+           values ($1, $2, $3, (select coalesce(max(table_index), 999) + 1 from document_tables where document_id = $3), 'Assistant draft', 'aggregated', $4, 'draft') returning id`,
+          [t, r, documentId, JSON.stringify({ source: "assistant", ...(options?.assistantRequest ? { assistantRequest: options.assistantRequest } : {}) })],
+        );
+        return row.rows[0].id;
+      });
+      return { tableId, questions: 1, skipped: [] };
     }),
     loadCrosstab: vi.fn(async () => ({ label: "Overall satisfaction by Segment (weighted)", result: TABLE })),
   };
@@ -345,6 +359,156 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     expect(a.reply).toBe(storedAnswer);
     expect(b.reply).toBe(storedAnswer);
     expect([a.alreadyAnswered, b.alreadyAnswered].filter(Boolean).length).toBeLessThanOrEqual(1);
+  });
+
+  it("two overlapping sends of one request run the model and tools once; the second returns the first's stored answer (B7-F01)", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const id = randomUUID();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    // The first send's first model round waits at the gate, so the second send arrives while the
+    // first is still answering.
+    state.script = [
+      async () => {
+        await gate;
+        return [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })];
+      },
+      () => [{ type: "text", text: "Built once." }],
+    ];
+    const first = askResearchAssistant(tenant, run, "Overlap?", null, id);
+    await new Promise((r) => setTimeout(r, 300));
+    const second = askResearchAssistant(tenant, run, "Overlap?", null, id);
+    await new Promise((r) => setTimeout(r, 600));
+    expect(state.requests).toHaveLength(1); // the second has not reached the model
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(state.builds).toHaveLength(1);
+    expect(state.requests).toHaveLength(2); // one execution: the build round and the answer
+    expect(a).toMatchObject({ alreadyAnswered: false });
+    expect(b).toMatchObject({ reply: a.reply, alreadyAnswered: true });
+    expect((await db.pool.query("select count(*)::int as n from assistant_messages where request_id=$1", [id])).rows[0].n).toBe(2);
+    // Sequential replay afterwards: the stored answer, no model call, no build.
+    state.requests = [];
+    expect((await askResearchAssistant(tenant, run, "Overlap?", null, id)).alreadyAnswered).toBe(true);
+    expect(state.requests).toHaveLength(0);
+    expect(state.builds).toHaveLength(1);
+  });
+
+  it("when the first send of a request fails, the waiting send runs it once and stores it; distinct requests do not wait for each other", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const id = randomUUID();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    // Model calls in order: the first send (held, then fails), the unrelated request (answered
+    // while the first is held), then the waiting second send's build round and answer.
+    state.script = [
+      async () => {
+        await gate;
+        throw new Error("provider unavailable");
+      },
+      () => [{ type: "text", text: "Unrelated answer." }],
+      () => [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })],
+      () => [{ type: "text", text: "Answered by the second send." }],
+    ];
+    const first = askResearchAssistant(tenant, run, "Recover?", null, id);
+    await new Promise((r) => setTimeout(r, 300));
+    const second = askResearchAssistant(tenant, run, "Recover?", null, id);
+    await new Promise((r) => setTimeout(r, 300));
+    // A different request is answered while this one is still claimed.
+    const unrelated = await askResearchAssistant(tenant, run, "Unrelated?", null, randomUUID());
+    expect(unrelated.reply).toBe("Unrelated answer.");
+    expect(state.builds).toHaveLength(0);
+    release();
+    await expect(first).rejects.toThrow("provider unavailable");
+    const b = await second;
+    expect(b).toMatchObject({ alreadyAnswered: false });
+    expect(b.reply).toContain("Answered by the second send.");
+    expect(state.builds).toHaveLength(1);
+    expect((await db.pool.query("select role from assistant_messages where request_id=$1 order by created_at", [id])).rows.map((r) => r.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("a send that waits past the limit says the question is still being answered, running nothing", async () => {
+    const { askResearchAssistant, RequestInProgressError } = await import("../researchAssistant");
+    const id = randomUUID();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    state.script = [
+      async () => {
+        await gate;
+        return [{ type: "text", text: "Slow answer." }];
+      },
+    ];
+    process.env.ASSISTANT_REQUEST_WAIT_MS = "500";
+    try {
+      const first = askResearchAssistant(tenant, run, "Slow?", null, id);
+      await new Promise((r) => setTimeout(r, 300));
+      await expect(askResearchAssistant(tenant, run, "Slow?", null, id)).rejects.toBeInstanceOf(RequestInProgressError);
+      expect(state.requests).toHaveLength(1);
+      release();
+      expect((await first).reply).toBe("Slow answer.");
+    } finally {
+      delete process.env.ASSISTANT_REQUEST_WAIT_MS;
+    }
+  });
+
+  it("a send that built a table and then failed leaves a draft that the retry of that question reuses, not builds again", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const id = randomUUID();
+    const drafts = async () => Number((await db.pool.query("select count(*) from document_tables where crosstab->'assistantRequest'->>'id' = $1", [id])).rows[0].count);
+    state.script = [
+      () => [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })],
+      async () => {
+        throw new Error("provider unavailable");
+      },
+    ];
+    await expect(askResearchAssistant(tenant, run, "Reuse?", null, id)).rejects.toThrow("provider unavailable");
+    expect(state.builds).toHaveLength(1);
+    expect(await drafts()).toBe(1);
+    // Send again: the same table request finds the draft; a different one is still built.
+    state.script = [
+      () => [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })],
+      (req) => {
+        expect(String(lastResults(req)[0].content)).toContain("built for this question by an earlier attempt and is reused");
+        return [call("build_table", { data_file_id: doc, rows: ["segment"], columns: [] })];
+      },
+      () => [{ type: "text", text: "Answered with the reused table." }],
+    ];
+    const r = await askResearchAssistant(tenant, run, "Reuse?", null, id);
+    expect(r.reply).toContain("Answered with the reused table.");
+    expect(state.builds).toHaveLength(2);
+    expect(await drafts()).toBe(2);
+    // Another question with the same table request builds its own.
+    state.script = [() => [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })], () => [{ type: "text", text: "Own table." }]];
+    await askResearchAssistant(tenant, run, "Another question", null, randomUUID());
+    expect(state.builds).toHaveLength(3);
+  });
+
+  it("a report revision is applied only with its stored answer: a failed store leaves the report unchanged, and the retry applies it once", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    await db.pool.query(
+      "insert into deck_narratives (tenant_id, run_id, situation, complication, question, governing_thought, executive_summary) values ($1,$2,'S','C','Q','G','Original summary') on conflict (run_id) do update set executive_summary = 'Original summary'",
+      [tenant, run],
+    );
+    const summary = async () => (await db.pool.query("select executive_summary from deck_narratives where run_id=$1", [run])).rows[0].executive_summary;
+    const id = randomUUID();
+    // The answer's store fails (a check that refuses this reply), after the revision was made.
+    await db.pool.query("alter table assistant_messages add constraint block_reply check (content <> 'Shortened.')");
+    try {
+      state.script = [() => [{ type: "text", text: "Shortened." }, call("revise_narrative", { executive_summary: "Revised summary" })]];
+      await expect(askResearchAssistant(tenant, run, "Shorten the summary", null, id)).rejects.toThrow(/block_reply/);
+      expect(await summary()).toBe("Original summary");
+      expect(Number((await db.pool.query("select count(*) from assistant_messages where request_id=$1", [id])).rows[0].count)).toBe(0);
+    } finally {
+      await db.pool.query("alter table assistant_messages drop constraint block_reply");
+    }
+    state.script = [() => [{ type: "text", text: "Shortened." }, call("revise_narrative", { executive_summary: "Revised summary" })]];
+    const ok = await askResearchAssistant(tenant, run, "Shorten the summary", null, id);
+    expect(ok).toMatchObject({ reply: "Shortened.", revisedFields: ["executive_summary"], alreadyAnswered: false });
+    expect(await summary()).toBe("Revised summary");
+    // A replay returns the stored answer and does not revise again.
+    await db.pool.query("update deck_narratives set executive_summary = 'Edited by hand' where run_id=$1", [run]);
+    expect((await askResearchAssistant(tenant, run, "Shorten the summary", null, id)).alreadyAnswered).toBe(true);
+    expect(await summary()).toBe("Edited by hand");
   });
 
   it("gives sample sizes from the calculator", async () => {
