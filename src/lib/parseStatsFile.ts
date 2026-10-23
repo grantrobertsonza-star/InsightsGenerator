@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { convertedCopyPath, queueOrphanStorageCleanup } from "./documentStorageCleanup";
 
 const execFileAsync = promisify(execFile);
 
@@ -100,20 +101,43 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
   }
 
   const { resultPath } = (await response.json()) as { resultPath: string };
-
-  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
-  if (error || !data) {
-    throw new Error(`Converted SPSS/Stata/SAS result could not be read back from storage: ${error?.message}`);
+  // The converted copy is respondent-level data (Codex batch10 RR-F03). It must be where the
+  // parser is known to write it, so a reply can never point this at another object; once read (or
+  // not), it is removed, and a removal that fails is recorded for retry rather than forgotten.
+  if (resultPath !== convertedCopyPath(storagePath)) {
+    throw new Error("The conversion service answered with an unexpected result location, so its result was not used.");
   }
-  const parsed = JSON.parse(await data.text()) as ParsedTable;
+  try {
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
+    if (error || !data) {
+      throw new Error(`Converted SPSS/Stata/SAS result could not be read back from storage: ${error?.message}`);
+    }
+    return JSON.parse(await data.text()) as ParsedTable;
+  } finally {
+    await removeConvertedCopy(resultPath);
+  }
+}
 
-  // Best-effort cleanup: this intermediate file has no further use once
-  // read, and leaving it around would otherwise just accumulate in the
-  // bucket indefinitely. A failure here is never worth surfacing to the
-  // caller - the actual table has already been read successfully.
-  await supabaseAdmin.storage.from(BUCKET).remove([resultPath]).catch(() => {});
-
-  return parsed;
+/**
+ * Removes the converted copy; when storage refuses or the call fails, records it as a pending
+ * cleanup on its project (Import's retry; project deletion lists it too). Never fails the read:
+ * the table, or the read's own error, is what the caller needs.
+ */
+async function removeConvertedCopy(resultPath: string): Promise<void> {
+  let failure: string | null = null;
+  try {
+    const { error } = await supabaseAdmin.storage.from(BUCKET).remove([resultPath]);
+    if (error) failure = error.message || "Storage did not confirm the removal.";
+  } catch (e) {
+    failure = e instanceof Error ? e.message : String(e);
+  }
+  if (failure !== null) {
+    await queueOrphanStorageCleanup(resultPath, failure).catch((e) => {
+      // Not recorded either: project deletion still removes it by its derived path
+      // (projectStorageCleanup.projectStoragePaths), and the failure is logged without contents.
+      console.error("Converted copy cleanup could not be recorded", { path: resultPath, error: e instanceof Error ? e.message : String(e) });
+    });
+  }
 }
 
 // --- Local worker -------------------------------------------------------

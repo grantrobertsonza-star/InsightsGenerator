@@ -52,7 +52,9 @@ test("a project deleted during a storage outage keeps its file listed for retry,
     await expect(card).toHaveCount(0, { timeout: 30_000 });
     const notice = page.getByTestId("project-cleanup-pending");
     await expect(notice).toBeVisible();
-    await expect(notice).toContainText(`${name}: 1 file. Last attempt failed: Synthetic storage removal outage.`);
+    // The data file and its converted copy (Codex batch10 RR-F03; removing a copy never made is not an error).
+    await expect(notice).toContainText("2 files from a deleted project are still in storage.");
+    await expect(notice).toContainText(`${name}: 2 files. Last attempt failed: Synthetic storage removal outage.`);
     if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-pending.png") });
     expect((await db.query("select 1 from runs where id=$1", [runId])).rowCount).toBe(0);
     expect((await storedKeys(runId)).length).toBeGreaterThan(0);

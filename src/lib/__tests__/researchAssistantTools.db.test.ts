@@ -574,6 +574,43 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     expect((await askResearchAssistant(tenant, run, "Busy?", null, id)).reply).toBe("Answered: Busy?");
   }, 60000);
 
+  it("sends without a request id, and the assistant outside a project, are held to the same capacity (RR-F08)", async () => {
+    const { askResearchAssistant, AssistantBusyError } = await import("../researchAssistant");
+    const { askGeneralAssistant } = await import("../generalAssistant");
+    const { claimPool } = await import("../db");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    state.responder = async (req) => {
+      if (String(req.messages.at(-1)?.content ?? "").startsWith("Unkeyed")) await gate;
+      return [{ type: "text", text: `Answered: ${String(req.messages.at(-1)?.content)}` }];
+    };
+    const callsBefore = state.requests.length;
+    const storedBefore = Number((await db.pool.query("select count(*) from assistant_messages where run_id=$1", [run])).rows[0].count);
+    // Ten sends with no id at once: no more than the claim pool's size reach the model while held.
+    const held = Array.from({ length: 10 }, (_, i) => askResearchAssistant(tenant, run, `Unkeyed ${i}`, null, null));
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(state.requests.length - callsBefore).toBe(claimPool.options.max);
+    process.env.ASSISTANT_REQUEST_WAIT_MS = "2500";
+    try {
+      // With every slot held, a further send without an id, and one outside a project, are refused as
+      // busy, asking the model and storing nothing.
+      const calls = state.requests.length;
+      await expect(askResearchAssistant(tenant, run, "Extra unkeyed", null, null)).rejects.toBeInstanceOf(AssistantBusyError);
+      await expect(askGeneralAssistant(tenant, "Extra general", [], null)).rejects.toBeInstanceOf(AssistantBusyError);
+      expect(state.requests.length).toBe(calls);
+    } finally {
+      delete process.env.ASSISTANT_REQUEST_WAIT_MS;
+    }
+    release();
+    const results = await Promise.all(held);
+    expect(results.map((r) => r.reply.split("\n")[0]).sort()).toEqual(Array.from({ length: 10 }, (_, i) => `Answered: Unkeyed ${i}`).sort());
+    expect(state.requests.length - callsBefore).toBe(10);
+    expect(Number((await db.pool.query("select count(*) from assistant_messages where run_id=$1", [run])).rows[0].count)).toBe(storedBefore + 20);
+    // Afterwards both answer again, and a keyed send is unchanged.
+    expect((await askGeneralAssistant(tenant, "General again", [], null)).reply.split("\n")[0]).toBe("Answered: General again");
+    expect((await askResearchAssistant(tenant, run, "Keyed again", null, randomUUID())).reply.split("\n")[0]).toBe("Answered: Keyed again");
+  }, 90000);
+
   it("gives sample sizes from the calculator", async () => {
     state.script = [
       () => [call("sample_size", { mode: "sample_for_margin", margin_pct: 5 }), call("sample_size", { mode: "margin_for_sample", sample_size: 1000 })],

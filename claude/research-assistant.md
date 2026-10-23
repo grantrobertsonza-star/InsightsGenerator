@@ -299,3 +299,13 @@ finish (ten builds, twenty model calls). With every claim held, a further questi
 wait is `AssistantBusyError`, makes no model call and stores nothing, and is answered when asked
 again after the holders finish. The earlier one-execution, failure-recovery and wait-limit tests
 still pass.
+
+## Capacity on every entry (Codex RR-F08, 2026-10-23)
+
+`src/lib/assistantCapacity.ts` holds the claim (`withRequestClaim`) and `withAnswerCapacity`. Every
+answer takes a slot from `claimPool` before the model or a tool runs: a keyed send under its request
+key (one execution per request, as before); a project send without a request id, and the assistant
+outside a project (`askGeneralAssistant`), under a key of their own, so they only wait for capacity
+and are refused as busy (`AssistantBusyError`, nothing run or stored) like any other send. Test:
+`researchAssistantTools.db.test.ts` (ten unkeyed sends held: no more than the pool's size reach the
+model; a further unkeyed and a general send are refused as busy; all finish after release).

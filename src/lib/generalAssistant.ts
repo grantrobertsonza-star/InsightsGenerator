@@ -4,6 +4,7 @@ import { HELP_TOOLS, SAMPLE_SIZE_TOOL, runHelpTool, runSampleSizeTool } from "./
 import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./assistantLoop";
 import { helpContents } from "./helpIndex";
 import { logTenantApiUsage } from "./apiUsage";
+import { withAnswerCapacity } from "./assistantCapacity";
 
 /**
  * The Research assistant outside a project (Grant, 2026-10-22: the floating assistant on every
@@ -52,6 +53,11 @@ export async function askGeneralAssistant(
 ): Promise<{ reply: string }> {
   const trimmed = userMessage.trim().slice(0, MAX_MESSAGE_CHARS);
   if (!trimmed) throw new Error("Message is empty.");
+  // Held to the same capacity as answers in a project (Codex RR-F08): nothing runs without a slot.
+  return withAnswerCapacity(`assistant-general:${tenantId}`, () => answerGeneral(tenantId, trimmed, history, page));
+}
+
+async function answerGeneral(tenantId: string, trimmed: string, history: GeneralTurn[], page: PageContext | null): Promise<{ reply: string }> {
   const system = cachedSystemThen(
     `${INSTRUCTIONS}\n\n=== Knowledge base and Manual contents (read with read_help) ===\n${helpContents()}`,
     pageLine(page),

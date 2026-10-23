@@ -179,7 +179,7 @@ vi.mock("../anthropic", () => ({
         state.requests.push({ system: req.system, user: req.messages[0].content });
         // Each call takes the next scripted draft; the last one repeats once the script runs out.
         const input = state.drafts.length > 1 ? state.drafts.shift() : state.drafts[0];
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_narrative", input }] };
       }),
     },
   },

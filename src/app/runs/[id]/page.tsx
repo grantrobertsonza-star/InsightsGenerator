@@ -35,7 +35,7 @@ import {
 } from "@/lib/processProgress";
 import { refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
-import { generateStoryNarrative, type DeckPillar } from "@/lib/storyNarrative";
+import { generateStoryNarrative, latestNarrativeFailure, type DeckPillar } from "@/lib/storyNarrative";
 import { loadInsightSupportOrUnchecked, loadPreInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
 import { summariseSupport } from "@/lib/supportStatusShared";
 import { NarrativeSupportBanner } from "./NarrativeSupportBanner";
@@ -3269,9 +3269,8 @@ export default async function RunPage({
           "verify_findings_error",
         ])
       : Promise.resolve(null),
-    !storyNarrative
-      ? getLatestTraceMessage(id, ["story_narrative_error"])
-      : Promise.resolve(null),
+    // RR-F06: a failed generation newer than the saved narrative, shown even when one exists.
+    latestNarrativeFailure(TENANT_ID, id),
     objectiveValidations.length === 0
       ? getLatestTraceMessage(id, ["objective_validation_error"])
       : Promise.resolve(null),
@@ -4000,8 +3999,10 @@ export default async function RunPage({
         </p>
 
         {storyReportError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-            {storyReportError}
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" data-testid="story-report-error">
+            {storyNarrative
+              ? `The last generation did not finish: ${storyReportError.replace(/\.?\s*Try again\.?$/, "").replace(/\.$/, "")}. The report below is the previous one, unchanged; use Regenerate report content to try again.`
+              : storyReportError}
           </div>
         )}
 

@@ -31,11 +31,12 @@ vi.mock("../anthropic", () => ({
   },
 }));
 
-const storage = vi.hoisted(() => ({ removed: [] as string[][], fail: null as string | null, throws: false }));
+const storage = vi.hoisted(() => ({ removed: [] as string[][], fail: null as string | null, throws: false, objects: new Map<string, string>() }));
 vi.mock("../supabaseAdmin", () => ({
   supabaseAdmin: {
     storage: {
       from: () => ({
+        download: vi.fn(async (p: string) => (storage.objects.has(p) ? { data: { text: async () => storage.objects.get(p)! }, error: null } : { data: null, error: { message: "not found" } })),
         remove: vi.fn(async (paths: string[]) => {
           storage.removed.push([...paths]);
           if (storage.throws) throw new Error("socket hang up");
@@ -122,6 +123,10 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
       ["another tool's result", tool("other_tool", { research_objective: "x" }), /returned no result/],
       ["a malformed field", tool("record_brief_fields", { business_problem: null, research_objective: 42 }), /wrong shape \(research_objective\)/],
       ["a non-object input", tool("record_brief_fields", "objectives"), /wrong shape/],
+      // Codex batch10: both fields are required, so a missing one is malformed, not "found nothing".
+      ["an empty result", tool("record_brief_fields", {}), /without business_problem/],
+      ["a missing business problem", tool("record_brief_fields", { research_objective: "1. Measure loyalty" }), /without business_problem/],
+      ["a missing objective", tool("record_brief_fields", { business_problem: null }), /without research_objective/],
     ] as [string, Reply, RegExp][])("%s is a failed fill, not an empty one", async (_label, reply, message) => {
       const run = await newRun();
       const brief = await newDoc(run, "evidence", "Brief text long enough to read for the objectives.");
@@ -247,7 +252,8 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
       // A single-document cleanup still pending (it would cascade away with the project).
       await db.pool.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'document_storage_cleanup_pending',$3)", [tenant, run, JSON.stringify({ documentId: "old", storagePaths: [`${tenant}/${run}/old.docx`] })]);
       expect(await deleteRun(run)).toEqual({ ok: true, cleanupPending: false });
-      expect(storage.removed.flat().sort()).toEqual([a.storage_path, `${tenant}/${run}/preview.pdf`, b.storage_path, `${tenant}/${run}/old.docx`].sort());
+      // Each file's converted copy goes too (Codex batch10 RR-F03), whether or not one was made.
+      expect(storage.removed.flat().sort()).toEqual([a.storage_path, `${a.storage_path}.converted.json`, `${tenant}/${run}/preview.pdf`, b.storage_path, `${b.storage_path}.converted.json`, `${tenant}/${run}/old.docx`].sort());
       expect((await db.pool.query("select 1 from runs where id=$1", [run])).rowCount).toBe(0);
       expect(await pending()).toEqual([]);
     });
@@ -261,9 +267,9 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
       storage.fail = "Synthetic storage outage";
       expect(await deleteRun(run)).toEqual({ ok: true, cleanupPending: true });
       expect((await db.pool.query("select 1 from runs where id=$1", [run])).rowCount).toBe(0);
-      expect(await pending()).toEqual([{ run_id: run, storage_paths: [a.storage_path, `${tenant}/${run}/p.pdf`], attempts: 1, last_error: "Synthetic storage outage" }]);
+      expect(await pending()).toEqual([{ run_id: run, storage_paths: [a.storage_path, `${tenant}/${run}/p.pdf`, `${a.storage_path}.converted.json`], attempts: 1, last_error: "Synthetic storage outage" }]);
       const shown = await loadPendingProjectCleanups(tenant);
-      expect(shown).toMatchObject({ ok: true, items: [{ projectName: "Outage", files: 2, attempts: 1, lastError: "Synthetic storage outage" }] });
+      expect(shown).toMatchObject({ ok: true, items: [{ projectName: "Outage", files: 3, attempts: 1, lastError: "Synthetic storage outage" }] });
 
       storage.fail = null;
       storage.throws = true;
@@ -273,7 +279,7 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
       storage.throws = false;
       expect(await retryProjectStorageCleanup()).toEqual({ ok: true, remaining: 0 });
       expect(await pending()).toEqual([]);
-      expect(storage.removed.at(-1)).toEqual([a.storage_path, `${tenant}/${run}/p.pdf`]);
+      expect(storage.removed.at(-1)).toEqual([a.storage_path, `${tenant}/${run}/p.pdf`, `${a.storage_path}.converted.json`]);
     });
 
     it("refuses an unknown or another organisation's project and deletes nothing", async () => {
@@ -297,8 +303,49 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
       await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path) values($1,$2,'report','a.docx',$3),($1,$4,'report','b.docx',$3)", [tenant, run, shared, keeper]);
       await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path) values($1,$2,'report','odd.docx','legacy/odd.docx')", [tenant, run]);
       expect(await deleteRun(run)).toEqual({ ok: true, cleanupPending: true });
+      // The shared file and its converted copy stay: another project's document still names it.
       expect(storage.removed.flat()).toEqual([]);
-      expect(await pending()).toEqual([{ run_id: run, storage_paths: ["legacy/odd.docx"], attempts: 1, last_error: expect.stringMatching(/outside this organisation's storage folder/) }]);
+      expect(await pending()).toEqual([{ run_id: run, storage_paths: ["legacy/odd.docx", "legacy/odd.docx.converted.json"], attempts: 1, last_error: expect.stringMatching(/outside this organisation's storage folder/) }]);
+    });
+
+    it("the remote parser's converted copy is removed after reading; a failed removal is recorded and goes with the project", async () => {
+      await clearPending();
+      const { parseStatsFile } = await import("../parseStatsFile");
+      const { deleteRun } = await import("../runActions");
+      const run = await newRun("Converted");
+      const sav = (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,ingestion_type) values($1,$2,'table','survey.sav',$3,'raw') returning storage_path", [tenant, run, `${tenant}/${run}/${randomUUID()}-survey.sav`])).rows[0] as { storage_path: string };
+      const converted = `${sav.storage_path}.converted.json`;
+      const table = { headers: ["Q1"], rows: [{ Q1: 1 }], rowCount: 1 };
+      const reply = (resultPath: string) => ({ ok: true, status: 200, json: async () => ({ resultPath }), text: async () => "" });
+      const fetchMock = vi.fn(async () => reply(converted));
+      vi.stubGlobal("fetch", fetchMock);
+      process.env.PARSE_STATS_FILE_URL = "http://parser.test";
+      process.env.PARSE_STATS_SHARED_SECRET = "test-secret";
+      try {
+        storage.objects.set(converted, JSON.stringify(table));
+        storage.fail = "Synthetic storage outage";
+        expect(await parseStatsFile(sav.storage_path, "survey.sav")).toEqual(table);
+        expect(storage.removed.at(-1)).toEqual([converted]);
+        const queued = (await db.pool.query("select detail from trace where run_id=$1 and event='document_storage_cleanup_pending'", [run])).rows.map((r) => r.detail.storagePaths);
+        expect(queued).toEqual([[converted]]);
+
+        // A reply naming any other object is not used and nothing is removed for it.
+        fetchMock.mockImplementationOnce(async () => reply(`${tenant}/${run}/someone-else.json`));
+        const removedBefore = storage.removed.length;
+        await expect(parseStatsFile(sav.storage_path, "survey.sav")).rejects.toThrow(/unexpected result location/);
+        expect(storage.removed.length).toBe(removedBefore);
+
+        // Deleting the project removes the copy with the file.
+        storage.fail = null;
+        expect(await deleteRun(run)).toEqual({ ok: true, cleanupPending: false });
+        expect(storage.removed.at(-1)).toEqual(expect.arrayContaining([sav.storage_path, converted]));
+        expect(await pending()).toEqual([]);
+      } finally {
+        vi.unstubAllGlobals();
+        delete process.env.PARSE_STATS_FILE_URL;
+        storage.objects.clear();
+        storage.fail = null;
+      }
     });
 
     it("without migration 0110 deletion is refused and nothing changes", async () => {

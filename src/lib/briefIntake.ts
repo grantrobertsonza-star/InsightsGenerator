@@ -1,6 +1,6 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
-import { finishedToolInput, optionalTextField } from "./modelToolResult";
+import { finishedToolInput, requiredTextOrNullField } from "./modelToolResult";
 
 // Between them a brief and a proposal can run long once a literature review
 // or a detailed methodology section is attached; none of that is needed to
@@ -124,11 +124,14 @@ export async function extractBriefFields(
   // RR-F01: only a finished call is used. A cut-off one can carry a partial objective list that
   // would be saved as accepted and mark the document as used; it fails here instead, so the save
   // records a failed fill with its retry (runContextActions) and keeps what was typed. A finished
-  // call that finds neither field returns nulls, which is a fill that found nothing, not a failure.
+  // call that returns both fields as null is a fill that found nothing, not a failure; a missing field
+  // is malformed.
   const what = "The reading of the brief or proposal";
   const input = finishedToolInput(response, "record_brief_fields", what);
-  const businessProblem = optionalTextField(input, "business_problem", what);
-  const researchObjective = optionalTextField(input, "research_objective", what);
+  // Both fields are required by the tool's schema: a missing one is a malformed result (Codex
+  // batch10), while a field present as null is a reading that found nothing for it.
+  const businessProblem = requiredTextOrNullField(input, "business_problem", what);
+  const researchObjective = requiredTextOrNullField(input, "research_objective", what);
 
   return { businessProblem, researchObjective };
 }

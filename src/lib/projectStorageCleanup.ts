@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { withTenant, withTenantRead } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { convertedCopyPath } from "./documentStorageCleanup";
 
 // Storage cleanup for a deleted project (Codex RR-F03, 2026-10-23; migration 0110). A project's
 // files (each document's source and its preview, and paths an earlier single-document cleanup or
@@ -19,8 +20,8 @@ export async function projectCleanupAvailable(client: PoolClient): Promise<boole
 }
 
 /**
- * Every storage path this project's rows name, de-duplicated: documents' source and preview paths
- * and the paths of pending single-document cleanups (which cascade with the project). Read under
+ * Every storage path this project's rows name, de-duplicated: documents' source and preview paths,
+ * each source's converted copy, and the paths of pending single-document cleanups (which cascade with the project). Read under
  * the caller's lock on the project row, which uploads also take between writing a file and
  * recording it, so no recorded file can be added after this read.
  */
@@ -34,7 +35,10 @@ export async function projectStoragePaths(client: PoolClient, tenantId: string, 
     [runId, tenantId],
   );
   const paths = new Set<string>();
-  for (const d of docs.rows) for (const p of [d.storage_path, d.preview_storage_path]) if (p) paths.add(p);
+  // Each data file's converted copy too (Codex batch10 RR-F03): the remote parser writes it next to
+  // the file and removes it after reading, but a failed removal must not outlive the project.
+  // Removing a copy that was never made is not an error.
+  for (const d of docs.rows) for (const p of [d.storage_path, d.preview_storage_path, d.storage_path ? convertedCopyPath(d.storage_path) : null]) if (p) paths.add(p);
   for (const t of pending.rows) {
     const listed = t.detail?.storagePaths;
     if (Array.isArray(listed)) for (const p of listed) if (typeof p === "string" && p) paths.add(p);
@@ -91,7 +95,9 @@ export async function finishProjectStorageCleanup(tenantId: string, onlyId?: str
         // Only objects in this organisation's own folder are removed; anything else is kept on the
         // record with an error, for a person to look at, rather than removed or forgotten.
         const outside = listed.filter((p) => !p.startsWith(`${tenantId}/`));
-        const orphans = listed.filter((p) => !stillNamed.has(p) && p.startsWith(`${tenantId}/`));
+        // A converted copy belongs to its source file: kept while that file is still named.
+        const named = (p: string) => stillNamed.has(p) || (p.endsWith(".converted.json") && stillNamed.has(p.slice(0, -".converted.json".length)));
+        const orphans = listed.filter((p) => !named(p) && p.startsWith(`${tenantId}/`));
         let error: string | null = null;
         if (orphans.length > 0) {
           try {

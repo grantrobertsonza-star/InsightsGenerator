@@ -46,3 +46,14 @@ export function optionalTextField(input: Record<string, unknown>, field: string,
   const t = v.trim();
   return t.length > 0 ? t : null;
 }
+
+/**
+ * A field the tool's schema requires, whose value may be a string or null (Codex batch10 RR-F01):
+ * a missing field is a malformed result, not "nothing found", so `{}` never passes for a finished
+ * reading that found neither field.
+ */
+export function requiredTextOrNullField(input: Record<string, unknown>, field: string, what: string): string | null {
+  if (!Object.prototype.hasOwnProperty.call(input, field))
+    throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing from it was used. Try again.`);
+  return optionalTextField(input, field, what);
+}

@@ -11,6 +11,9 @@ const state = vi.hoisted(() => ({
   script: [] as ((req: { messages: { role: string; content: unknown }[] }) => unknown)[],
   requests: [] as { system: { text: string; cache_control?: unknown }[]; tools: { name: string }[]; messages: { role: string; content: unknown }[] }[],
 }));
+// The capacity slot needs the database's claim pool; it is tested against a real database in
+// researchAssistantTools.db.test.ts (RR-F08). Here the answer runs straight away.
+vi.mock("../assistantCapacity", () => ({ withAnswerCapacity: (_scope: string, answer: () => Promise<unknown>) => answer() }));
 vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "test-model",
   anthropic: {

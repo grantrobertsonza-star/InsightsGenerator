@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
 import { routeRequestContext } from "@/lib/requestContext";
+import { csvField } from "@/lib/csvField";
 
 type ExportRow = {
   finding_text: string;
@@ -25,19 +26,6 @@ const statusLabel: Record<string, string> = {
   accepted: "Accepted",
   rejected: "Rejected",
 };
-
-/**
- * Escapes one CSV field per RFC 4180: wraps in quotes and doubles any
- * internal quote whenever the value contains a comma, quote, or newline,
- * so a finding's own text (which can contain any of those) can't break
- * the file's column structure for whoever opens it afterward.
- */
-function csvField(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
 
 /**
  * Hands back this run's finding_history audit trail as a CSV, the same

@@ -2,6 +2,36 @@ import type { PoolClient } from "pg";
 import { withTenant, withTenantRead } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
 
+/**
+ * The converted copy the remote statistics parser writes next to a data file
+ * (api/parse-stats-file.py: `<storage path>.converted.json`), respondent-level data. One rule for
+ * where it lives, used by the parser's own clean-up and by document and project deletion
+ * (Codex batch10 RR-F03), so a copy whose removal failed is still removed with its file.
+ */
+export function convertedCopyPath(storagePath: string): string {
+  return `${storagePath}.converted.json`;
+}
+
+/**
+ * Records a stored object to remove later, when removing it now failed: a pending cleanup on its
+ * project, which Import shows with its retry and project deletion includes. The project is read
+ * from the path (`<tenant>/<run>/...`); a path in no project's folder is refused.
+ */
+export async function queueOrphanStorageCleanup(storagePath: string, reason: string): Promise<void> {
+  const m = /^([0-9a-f-]{36})\/([0-9a-f-]{36})\//.exec(storagePath);
+  if (!m) throw new Error("That stored object is not in a project's folder.");
+  const [, tenantId, runId] = m;
+  await withTenant(tenantId, async (client) => {
+    const run = await client.query("select id from runs where id = $1 and tenant_id = $2", [runId, tenantId]);
+    if (!run.rowCount) throw new Error("Project not found for storage cleanup.");
+    await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'document_storage_cleanup_pending',$3)", [
+      tenantId,
+      runId,
+      JSON.stringify({ documentId: "converted-copy", storagePaths: [storagePath], reason }),
+    ]);
+  });
+}
+
 // Record intent before removing the last document reference: a later storage or trace outage
 // must leave either the evidence row or an independently retryable list of orphan paths.
 export async function queueDocumentStorageCleanup(client: PoolClient, tenantId: string, runId: string, documentId: string, storagePaths: string[]) {

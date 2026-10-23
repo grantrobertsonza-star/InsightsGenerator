@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
-import { finishDocumentStorageCleanup, queueDocumentStorageCleanup } from "./documentStorageCleanup";
+import { convertedCopyPath, finishDocumentStorageCleanup, queueDocumentStorageCleanup } from "./documentStorageCleanup";
 import { requireTenantId } from "./requestContext";
 import { driverAnalysesPresent, legacyDriverFindingOf } from "./driverFindingSource";
 
@@ -20,7 +20,9 @@ export async function deleteDocument(runId: string, documentId: string) {
     const owned = await client.query<{ storage_path: string; preview_storage_path: string | null }>("select storage_path,preview_storage_path from documents where id=$1 and run_id=$2 and tenant_id=$3 for update", [documentId, runId, TENANT_ID]);
     if (!owned.rowCount) return null;
     const document = owned.rows[0];
-    const storagePaths = [document.storage_path, document.preview_storage_path].filter((path): path is string => Boolean(path));
+    // With its converted copy (Codex batch10 RR-F03): normally already removed by the parser, but a
+    // failed removal must go with the file. Removing a copy that was never made is not an error.
+    const storagePaths = [document.storage_path, document.preview_storage_path, convertedCopyPath(document.storage_path)].filter((path): path is string => Boolean(path));
     const cleanupId = storagePaths.length ? await queueDocumentStorageCleanup(client, TENANT_ID, runId, documentId, storagePaths) : null;
     // source_table_id points at a document_tables row, not this document
     // directly (see 0023_document_tables.sql, which repointed it away from

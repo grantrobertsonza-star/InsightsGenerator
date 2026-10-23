@@ -3,6 +3,7 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { capWords } from "./text";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { NO_INVENTED_EXPLANATIONS_RULE, NO_DERIVED_FIGURES_RULE } from "./groundingRules";
 import { figureCheck, type FigureCheck } from "./numberTrace";
 import { figureCheckAvailable } from "./figureChecks";
@@ -359,7 +360,7 @@ export async function generateStoryNarrative(
   let lastUnsupported: FigureCheck["figures"] = [];
 
   const MAX_PILLAR_ATTEMPTS = 3;
-  let raw: {
+  type RawNarrative = {
     executive_summary?: unknown;
     situation?: unknown;
     complication?: unknown;
@@ -368,7 +369,8 @@ export async function generateStoryNarrative(
     pillars?: unknown;
     recommendations_intro?: unknown;
     caveats?: unknown;
-  } | null = null;
+  };
+  let raw: RawNarrative | null = null;
   let pillars: DeckPillar[] = [];
 
   const asText = (value: unknown, fallback: string) =>
@@ -492,24 +494,19 @@ export async function generateStoryNarrative(
 
     await logApiUsage(tenantId, runId, "story_narrative", response.usage);
 
-    const toolUse = response.content.find((block) => block.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      if (attempt === MAX_PILLAR_ATTEMPTS) {
-        throw new Error("Claude did not return a structured narrative");
-      }
-      continue;
+    // Codex RR-F06: only a finished generation may replace the saved narrative. A cut-off one can
+    // carry well-shaped but unfinished prose; it, a refusal, a missing result or a missing required
+    // field throws here, before anything is written, so the previous narrative stays and the caller
+    // records the failure (story_narrative_error) for the Insights report section to show.
+    const what = "The report generation";
+    const input = finishedToolInput(response, "record_narrative", what);
+    for (const field of ["executive_summary", "situation", "complication", "question", "governing_thought", "recommendations_intro"]) {
+      if (typeof input[field] !== "string") throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
     }
-
-    raw = toolUse.input as {
-      executive_summary?: unknown;
-      situation?: unknown;
-      complication?: unknown;
-      question?: unknown;
-      governing_thought?: unknown;
-      pillars?: unknown;
-      recommendations_intro?: unknown;
-      caveats?: unknown;
-    };
+    for (const field of ["pillars", "caveats"]) {
+      if (!Array.isArray(input[field])) throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
+    }
+    raw = input as RawNarrative;
 
     const rawPillars = Array.isArray(raw.pillars)
       ? (raw.pillars as RawPillar[])
@@ -682,4 +679,22 @@ export async function generateStoryNarrative(
   });
 
   return narrative;
+}
+
+/**
+ * The latest failed generation that is newer than the saved narrative (Codex RR-F06): shown in the
+ * Insights report section whether or not an earlier narrative exists, so a failed regeneration is
+ * never mistaken for the report it left in place. Null when the latest attempt is the saved one.
+ */
+export async function latestNarrativeFailure(tenantId: string, runId: string): Promise<string | null> {
+  return withTenant(tenantId, async (client) => {
+    const r = await client.query<{ message: string | null }>(
+      `select coalesce(detail->>'message', 'The report generation failed.') as message from trace
+        where run_id = $1 and event = 'story_narrative_error'
+          and occurred_at > coalesce((select generated_at from deck_narratives where run_id = $1), '-infinity'::timestamptz)
+        order by occurred_at desc, id desc limit 1`,
+      [runId],
+    );
+    return r.rows[0]?.message ?? null;
+  });
 }

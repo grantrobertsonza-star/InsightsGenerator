@@ -26,7 +26,7 @@ export default function ProjectCleanupNotice({ state }: { state: { ok: true; ite
   return (
     <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="project-cleanup-pending">
       <p className="font-medium">
-        {`${files === 1 ? "1 file" : `${files} files`} from ${state.items.length === 1 ? "a deleted project is" : `${state.items.length} deleted projects are`} still in storage.`}
+        {`${files === 1 ? "1 file" : `${files} files`} from ${state.items.length === 1 ? "a deleted project" : `${state.items.length} deleted projects`} ${files === 1 ? "is" : "are"} still in storage.`}
       </p>
       <ul className="mt-1 list-disc pl-5 text-xs">
         {state.items.map((i) => (

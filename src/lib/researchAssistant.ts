@@ -5,7 +5,8 @@ import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./ass
 import { helpContents } from "./helpIndex";
 import { logApiUsage } from "./apiUsage";
 import type { PoolClient } from "pg";
-import { claimPool, withTenant, withTenantRead } from "./db";
+import { withTenant, withTenantRead } from "./db";
+import { withAnswerCapacity, withRequestClaim } from "./assistantCapacity";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
@@ -427,7 +428,10 @@ export async function askResearchAssistant(
     throw new Error("Message is empty.");
   }
   if (requestId !== null && !UUID.test(requestId)) throw new Error("The request id is not valid.");
-  if (!requestId) return answerQuestion(tenantId, runId, trimmed, page, null);
+  // A send without a request id (an older client) is still held to the assistant's capacity (Codex
+  // RR-F08): it claims a slot under a key of its own, so it waits or is refused as busy like any
+  // other send, and nothing runs before it has a slot. It has no stored-answer replay.
+  if (!requestId) return withAnswerCapacity(`assistant-request:${runId}`, () => answerQuestion(tenantId, runId, trimmed, page, null));
 
   // One execution per request (Codex B6-F02, B7-F01). The request is claimed before the model or any
   // tool runs: a send of the same request that arrives while another is answering it (Send again
@@ -441,86 +445,7 @@ export async function askResearchAssistant(
   });
 }
 
-/**
- * How long a send waits for another send of the same request to finish before saying it is still
- * running: 5 minutes, or ASSISTANT_REQUEST_WAIT_MS (milliseconds) when set, e.g. for a host whose
- * server actions time out sooner.
- */
-export function requestClaimWaitMs(): number {
-  const fromEnv = Number(process.env.ASSISTANT_REQUEST_WAIT_MS);
-  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 5 * 60 * 1000;
-}
-
-/** A send of a request another send is still answering, after requestClaimWaitMs(). Nothing was run or stored by it. */
-export class RequestInProgressError extends Error {
-  constructor() {
-    super("This question is still being answered from an earlier send. Its answer will appear in the conversation when it is ready; there is no need to send it again.");
-    this.name = "RequestInProgressError";
-  }
-}
-
-/**
- * Runs `answer` while holding a Postgres session advisory lock for the request (on one connection
- * of the claim pool, db.ts claimPool, kept for the duration, outside any transaction, so no
- * transaction stays open while the model works). A second send of the same request waits, trying again every 250 ms, up to
- * requestClaimWaitMs(). The lock is released when `answer` finishes or fails, and by Postgres if
- * the connection or server process dies. Guarantee: within one database, two sends of one request
- * never run the model or tools at the same time, and a later send sees the earlier one's stored
- * answer. A send that fails part way (or a server process that dies mid-answer) leaves no stored
- * answer, so a later send of the request runs again; it does not repeat that send's work: a report
- * revision is applied only in the transaction that stores the answer, and a table already built for
- * the request with the same table request is reused (researchAssistantTools.ts). What such a send
- * leaves behind is at most draft tables, which the retry reuses.
- */
-/** No answer could start before the wait ran out: as many as allowed were running (db.ts claimPool). Nothing was run or stored. */
-export class AssistantBusyError extends Error {
-  constructor() {
-    super("The assistant is answering as many questions as it can at once. Nothing was sent to it; try again in a moment.");
-    this.name = "AssistantBusyError";
-  }
-}
-
-async function withRequestClaim<T>(runId: string, requestId: string, answer: () => Promise<T>): Promise<T> {
-  const key = `assistant-request:${runId}:${requestId}`;
-  const deadline = Date.now() + requestClaimWaitMs();
-  // Claims come from their own pool (db.ts claimPool), so a holder's work never waits on a
-  // connection another holder is keeping. A waiting send borrows a claim connection only per try.
-  let holder: PoolClient | null = null;
-  let busy = false;
-  for (;;) {
-    let client: PoolClient | null = null;
-    try {
-      client = await claimPool.connect();
-    } catch {
-      // No claim connection free within connectionTimeoutMillis: as many answers as allowed are running.
-      busy = true;
-    }
-    if (client) {
-      busy = false;
-      let ok = false;
-      try {
-        ok = Boolean((await client.query<{ ok: boolean }>("select pg_try_advisory_lock(hashtextextended($1, 0)) as ok", [key])).rows[0]?.ok);
-      } catch (error) {
-        client.release(true);
-        throw error;
-      }
-      if (ok) {
-        holder = client;
-        break;
-      }
-      client.release();
-    }
-    if (Date.now() >= deadline) throw busy ? new AssistantBusyError() : new RequestInProgressError();
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  try {
-    return await answer();
-  } finally {
-    // If the unlock itself fails, the connection is destroyed rather than returned with the lock.
-    const unlocked = await holder.query("select pg_advisory_unlock(hashtextextended($1, 0))", [key]).then(() => true, () => false);
-    holder.release(!unlocked);
-  }
-}
+export { AssistantBusyError, RequestInProgressError, requestClaimWaitMs } from "./assistantCapacity";
 
 async function answerQuestion(
   tenantId: string,

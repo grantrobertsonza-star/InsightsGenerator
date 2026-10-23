@@ -63,6 +63,13 @@ test("a chart card whose posted state cannot be read offers neither Post nor Rem
     await expect.poll(async () => (await posted()).length).toBe(1);
     const before = await posted();
     await ws.getByRole("button", { name: "← All analytics" }).click();
+    // Codex RR-M01: posting refreshes the whole project page, which reads findings too. The fault
+    // below is only meant for the card's posted-state read, so it waits until that refresh has
+    // finished (no request in flight) and the launcher is back; a page that then fails to render is
+    // a failure of this check, never an accepted outcome.
+    await page.waitForLoadState("networkidle");
+    await expect(section().getByRole("list", { name: "Analyses" })).toBeVisible({ timeout: 60_000 });
+    await page.waitForLoadState("networkidle");
 
     // 2. The posted-state read fails: not known, no Post, no Remove.
     await db.query(`revoke select on public.findings from "${role}"`);
@@ -70,6 +77,8 @@ test("a chart card whose posted state cannot be read offers neither Post nor Rem
     ws = await openCharts();
     await expect(card(ws)).toBeVisible({ timeout: 60_000 });
     await expect(card(ws).getByTestId("chart-post-unknown")).toBeVisible({ timeout: 60_000 });
+    // The fault reached only the posted-state read: the project page is still rendered.
+    await expect(page.getByText("This part of the project could not be shown")).toHaveCount(0);
     await expect(card(ws).getByRole("button", { name: "Post to findings" })).toHaveCount(0);
     await expect(card(ws).getByRole("button", { name: "Remove from findings" })).toHaveCount(0);
     expect(await posted()).toEqual(before);
