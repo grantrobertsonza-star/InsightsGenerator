@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): batch11 RR-F05 (Next 16.4.1, vendored SheetJS 0.20.3; `91fed93`) and batch12 RR-F01, RR-F03, RR-F06, RR-F07, RR-F08 and RR-M01 (`ce2be9e`) implemented, ready for review with the docs commit after them (`docs/batch11-handover-2026-10-23.md`, `docs/batch12-handover-2026-10-23.md`). No migration. Full library 1,545 passed / 72 skipped; full native 92 passed / 1 skipped. No push, deployment or existing-database migration.
+Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): batch13 RR-F03 (converted copies recorded before the parser runs, migration 0111), RR-F06 (blank report text refused), RR-M02 (notice counts locations) and RR-M03 (test pools closed) in `b4b5b85`, implemented, ready for review with the docs commit after it (`docs/batch13-handover-2026-10-23.md`). **Migration 0111 required.** Full library exit 0, 1,551 passed / 72 skipped, no Errors line; full native exit 0, 92 passed / 1 skipped. No push, deployment or existing-database migration.
+
+## Claude: batch13 (RR-F03, RR-F06, RR-M02, RR-M03), main copy (2026-10-23)
+
+Implemented, ready for review: `b4b5b85` (repairs, migration 0111) and this docs commit. Checks and limits in `docs/batch13-handover-2026-10-23.md`, which also corrects the batch11 and batch12 library reports (their filter hid the vitest Errors line and exit code). Codex's previous status line is kept in `.fnd001/backup-status-1023o/`.
 
 ## Claude: batch11 (RR-F05) and batch12 (RR-F01, RR-F03, RR-F06, RR-F07, RR-F08, RR-M01), main copy (2026-10-23)
 
