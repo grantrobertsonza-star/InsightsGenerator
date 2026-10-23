@@ -2,6 +2,7 @@
 
 import { Pane, ThreePane } from "./ThreePane";
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { sendAssistantMessage, uploadAssistantDocument } from "@/lib/researchAssistantActions";
 import { SendIcon, UploadIcon } from "@/components/icons";
 import { AssistantMessageText } from "@/components/AssistantMessageText";
@@ -45,6 +46,8 @@ export default function ResearchAssistantCard({
   const [isSending, startSending] = useTransition();
   const [isUploading, startUploading] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const [failedRequest, setFailedRequest] = useState<{ text: string; id: string } | null>(null);
   // The floating drawer writes to the same conversation; when the page refreshes with a newer saved
   // history, show it (unless a send of this card's is still waiting, whose optimistic message it keeps).
   const [shownInitial, setShownInitial] = useState(initialMessages);
@@ -57,6 +60,9 @@ export default function ResearchAssistantCard({
     const text = draft.trim();
     if (!text || isSending) return;
 
+    // The failed question sent again unchanged is the same request, so an answer the server already
+    // stored is returned rather than asked and stored twice (Codex B6-F02).
+    const requestId = failedRequest && failedRequest.text === text ? failedRequest.id : crypto.randomUUID();
     setError(null);
     const optimisticUser: AssistantChatMessage = {
       id: `pending-${Date.now()}`,
@@ -68,9 +74,13 @@ export default function ResearchAssistantCard({
     setDraft("");
 
     startSending(async () => {
-      // A dropped connection rejects the action itself; it is a failed send like any other.
-      const result = await sendAssistantMessage(runId, text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      let lost = false;
+      const result = await sendAssistantMessage(runId, text, undefined, requestId).catch((e: unknown) => {
+        lost = true;
+        return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+      });
       if (result.ok) {
+        setFailedRequest(null);
         setMessages((prev) => [
           ...prev,
           {
@@ -81,11 +91,18 @@ export default function ResearchAssistantCard({
           },
         ]);
       } else {
-        // The question was not stored (it is stored only with its reply): it leaves the list and goes
-        // back in the box, so sending it again does not leave a duplicate.
+        // It leaves the list and goes back in the box with its request id.
+        setFailedRequest({ text, id: requestId });
         setMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id));
         setDraft((d) => d || text);
-        setError(`Not answered: "${text}". ${result.error} It is back in the box to send again.`);
+        if (lost) {
+          // A dropped connection: the server may have stored the answer, so the saved history is
+          // read again (it shows above if it was); sending again does not repeat it either way.
+          router.refresh();
+          setError(`No answer arrived for "${text}": the connection was lost. If it was answered, the answer appears above once the page has refreshed. Sending it again asks it once; an answer already saved is shown, not repeated.`);
+        } else {
+          setError(`Not answered: "${text}". ${result.error} It is back in the box to send again.`);
+        }
       }
     });
   }

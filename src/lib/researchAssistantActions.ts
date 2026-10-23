@@ -17,6 +17,13 @@ import { refreshRecommendations } from "./recommendationAgent";
 import { withTenant } from "./db";
 import { requireTenantId } from "./requestContext";
 
+/** A database without migration 0108 (assistant_messages.request_id) says so, as the other migration checks do. */
+function needsMigration0108(message: string): string {
+  return /request_id/.test(message) && /(column|does not exist|constraint|ON CONFLICT)/i.test(message)
+    ? "This needs migration 0108 applied first (npx.cmd supabase migration up)."
+    : message;
+}
+
 /**
  * The chat-box server action behind the Research assistant card: sends one
  * researcher message to askResearchAssistant and refreshes the page so the
@@ -29,14 +36,16 @@ export async function sendAssistantMessage(
   runId: string,
   message: string,
   page?: unknown,
+  requestId?: unknown,
 ): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
   const TENANT_ID = await requireTenantId();
   try {
-    const { reply } = await askResearchAssistant(TENANT_ID, runId, message, checkedPageContext(page));
+    if (requestId !== undefined && requestId !== null && typeof requestId !== "string") throw new Error("The request id is not valid.");
+    const { reply } = await askResearchAssistant(TENANT_ID, runId, message, checkedPageContext(page), requestId ?? null);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, reply };
   } catch (error) {
-    const messageText = error instanceof Error ? error.message : String(error);
+    const messageText = needsMigration0108(error instanceof Error ? error.message : String(error));
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'research_assistant_error', $3)`,
@@ -57,9 +66,9 @@ export async function loadAssistantMessages(
   const TENANT_ID = await requireTenantId();
   if (!/^[0-9a-f-]{36}$/i.test(runId)) return { ok: false, error: "Not a project." };
   try {
-    return { ok: true, messages: await loadAssistantConversation(TENANT_ID, runId) };
+    return { ok: true, messages: await loadAssistantConversation(TENANT_ID, runId, true) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: needsMigration0108(error instanceof Error ? error.message : String(error)) };
   }
 }
 

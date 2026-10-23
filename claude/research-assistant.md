@@ -176,3 +176,35 @@ Added with the drawer:
   wording on real questions are unverified.
 - The model's sentence can still misstate a figure from a table it built; nothing compares the
   reply text with the table.
+
+## Request identity and lost replies (Codex B6-F01, B6-F02, 2026-10-23)
+
+- B6-F01: only the response that ends the turn is the answer. Text written beside tool calls in
+  earlier rounds is dropped; an empty final response gives `EMPTY_REPLY` (tables already built
+  stay listed). Running out of rounds gives only the stop message.
+- B6-F02, migration `0108_assistant_message_request_id.sql`: `assistant_messages.request_id uuid`
+  (nullable) and a unique index on (run_id, request_id, role) where request_id is not null.
+  - The drawer and the card make a request id (`crypto.randomUUID()`) for each question; Send
+    again, or the same text sent unchanged from the box, reuses the failed question's id.
+  - `askResearchAssistant(..., requestId)`: an id that is already answered returns the stored reply
+    (`alreadyAnswered: true`), no model call, nothing stored. Otherwise the pair is inserted with
+    `on conflict ... do nothing`; when a racing send stored first, this one returns that stored
+    reply. A revision of the report is not made again for an answered request. An invalid id is
+    refused.
+  - Drawer: after any failed send in a project the history is read back with request ids
+    (`loadAssistantMessages` -> `loadAssistantConversation(..., true)`); a failed question whose
+    request has a stored answer is cleared and the answer shown. A rejected action (connection
+    lost: the outcome is unknown) shows "No answer arrived" until the read-back settles it; a
+    server error (known: nothing stored) shows "Not answered". Outside a project nothing is
+    stored, so every failure is "Not answered" and has no request id on the server.
+  - Card: the same request id reuse; a lost connection refreshes the page data so a stored answer
+    appears, with a message saying so.
+  - The run page reads the conversation without the request id, so it does not depend on 0108;
+    sending in a project, and the drawer's read, say "This needs migration 0108 applied first"
+    when it is missing.
+- Tests: `researchAssistantTools.db.test.ts` (empty final answer after a tool round, with a table
+  and healthy; answered request returned without a model call or a second store; racing sends
+  store one pair; invalid id). `assistant-drawer.check.mjs` third test (an answer stored but its
+  reply lost while the project is open and after moving away, shown on read-back with no failure;
+  a model error is "Not answered" and Send again answers it once; the database holds each pair
+  once). The replay stand-in answers a fixture rule with `status` as a provider error.

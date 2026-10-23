@@ -71,9 +71,11 @@ export default function ResearchAssistantGuide() {
 
       <P>
         A question that cannot be answered (a lost connection, an error) stays in the panel of the project you asked it
-        in, with the reason and a Send again button, also after you move to another page and back (not after a reload). It is saved with the
-        project only once it has an answer, so sending it again leaves no unanswered copy. An answer that was cut off for
-        length is not shown: the assistant says so and asks you to ask again.
+        in, with the reason and a Send again button, also after you move to another page and back (not after a reload).
+        When the connection drops, the answer may already have been saved: the panel reads the project&apos;s
+        conversation again and shows the saved answer if it is there. Sending a question again never stores it twice;
+        an answer already saved is shown instead of being asked again. An answer that was cut off for length, or came
+        back empty, is not shown: the assistant says so and asks you to ask again.
       </P>
 
       <H2 id="reads">What it reads</H2>

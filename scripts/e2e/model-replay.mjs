@@ -205,6 +205,12 @@ export function createModelReplay(fixturePath) {
       // A rule with `text` answers in words instead (the last step of a tool loop such as the
       // Research assistant's; rules are tried in order, so put the later steps' rules first).
       const call = fixture?.untargeted?.find((rule) => content.includes(rule.match));
+      // A rule with `status` answers with that provider error instead (a failed model call).
+      if (call?.status) {
+        log.push({ at: new Date().toISOString(), tool: null, fromFixture: true, injectedStatus: call.status });
+        res.writeHead(call.status, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "Synthetic model failure" } }));
+      }
       blocks = call?.text
         ? [{ type: "text", text: call.text }]
         : call

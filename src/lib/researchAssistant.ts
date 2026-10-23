@@ -5,6 +5,8 @@ import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./ass
 import { helpContents } from "./helpIndex";
 import { logApiUsage } from "./apiUsage";
 import { withTenant, withTenantRead } from "./db";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
 import { loadNarrativeEvidence, narrativeFigureCheck } from "./storyNarrative";
 import { figureCheckAvailable } from "./figureChecks";
@@ -20,6 +22,8 @@ export type AssistantMessage = {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  /** The request it was stored under (migration 0108); null for rows from before it. */
+  request_id?: string | null;
 };
 
 type RunFraming = {
@@ -411,10 +415,20 @@ export async function askResearchAssistant(
   runId: string,
   userMessage: string,
   page: PageContext | null = null,
-): Promise<{ reply: string; revisedFields: string[] }> {
+  requestId: string | null = null,
+): Promise<{ reply: string; revisedFields: string[]; alreadyAnswered: boolean }> {
   const trimmed = userMessage.trim();
   if (!trimmed) {
     throw new Error("Message is empty.");
+  }
+  if (requestId !== null && !UUID.test(requestId)) throw new Error("The request id is not valid.");
+
+  // A question sent again under the same request id (Send again after the connection dropped) that
+  // was already answered and stored gets that stored reply: the model is not asked again and
+  // nothing is stored twice (Codex B6-F02). A report revision it made is not made again.
+  if (requestId) {
+    const earlier = await storedReply(tenantId, runId, requestId);
+    if (earlier !== null) return { reply: earlier, revisedFields: [], alreadyAnswered: true };
   }
 
   const context = await loadContext(tenantId, runId);
@@ -485,33 +499,53 @@ export async function askResearchAssistant(
   const replyText = loop.replyText + sourceLines(loop.tables, loop.help);
 
   // The question and its reply are stored together, in one transaction, once there is a reply: a
-  // failed call stores neither, so the drawer or card can offer the question again without leaving
-  // an unanswered copy behind, and a retry does not duplicate it (Codex B5-F05). The run is checked
-  // in the same statement, so a run id of another organisation stores nothing.
-  await withTenant(tenantId, async (client) => {
-    const stored = await client.query(
-      `insert into assistant_messages (tenant_id, run_id, role, content, created_at)
-       select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond'
+  // failed call stores neither (Codex B5-F05). Under a request id the pair is stored at most once
+  // (the unique index of migration 0108): when a send of the same request raced this one and stored
+  // first, this pair is not stored and that stored reply is returned. The run is checked in the
+  // same statement, so a run id of another organisation stores nothing.
+  const stored = await withTenant(tenantId, async (client) => {
+    const r = await client.query(
+      `insert into assistant_messages (tenant_id, run_id, role, content, created_at, request_id)
+       select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond', $5::uuid
        from runs r, (values ('user', $3::text, 0), ('assistant', $4::text, 1)) as m(role, content, offset_ms)
        where r.id = $2 and r.tenant_id = $1
+       on conflict (run_id, request_id, role) where request_id is not null do nothing
        returning id`,
-      [tenantId, runId, trimmed, replyText]
+      [tenantId, runId, trimmed, replyText, requestId]
     );
-    if (stored.rowCount !== 2) throw new Error("Run not found");
+    return r.rowCount ?? 0;
   });
+  if (stored === 2) return { reply: replyText, revisedFields, alreadyAnswered: false };
+  if (stored === 0 && requestId) {
+    const earlier = await storedReply(tenantId, runId, requestId);
+    if (earlier !== null) return { reply: earlier, revisedFields: [], alreadyAnswered: true };
+  }
+  throw new Error(stored === 0 ? "Run not found" : "The question and its reply could not be stored together.");
+}
 
-  return { reply: replyText, revisedFields };
+/** The stored reply to one request, or null when that request has not been answered. */
+async function storedReply(tenantId: string, runId: string, requestId: string): Promise<string | null> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query<{ content: string }>(
+      `select content from assistant_messages
+       where run_id = $1 and tenant_id = $2 and request_id = $3 and role = 'assistant'`,
+      [runId, tenantId, requestId],
+    );
+    return r.rows[0]?.content ?? null;
+  });
 }
 
 /**
  * A project's whole Research assistant conversation, oldest first: the Research assistant page and
  * the floating drawer show the same one. Scoped by tenant as well as run, so a run id from another
- * organisation reads nothing.
+ * organisation reads nothing. `withRequestIds` adds each row's request id (migration 0108), which
+ * the drawer needs to tell whether a question whose reply never arrived was answered; the page
+ * reads without it, so it does not depend on that migration.
  */
-export async function loadAssistantConversation(tenantId: string, runId: string): Promise<AssistantMessage[]> {
+export async function loadAssistantConversation(tenantId: string, runId: string, withRequestIds = false): Promise<AssistantMessage[]> {
   return withTenantRead(tenantId, async (client) => {
     const result = await client.query<AssistantMessage>(
-      `select id, role, content, created_at::text
+      `select id, role, content, created_at::text${withRequestIds ? ", request_id" : ""}
        from assistant_messages
        where run_id = $1 and tenant_id = $2
        order by created_at asc`,

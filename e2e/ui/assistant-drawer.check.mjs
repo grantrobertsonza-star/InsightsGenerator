@@ -14,6 +14,10 @@
 //   3. A failed question stays with the project it was asked in (Codex B5-F05), whether the failure
 //      arrives while that project is open or after moving to another: it is not shown in the other
 //      project, it is there on return with the question kept, and Send again answers it, stored once.
+//   4. An answer stored by the server whose reply is lost on the way back (Codex B6-F02), while the
+//      project is open and after moving to another: on reading the history back the answer is shown
+//      and no failure is; nothing is stored twice. A failed model call (the server answered with an
+//      error, nothing stored) is "Not answered", and Send again answers it once.
 import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -173,7 +177,8 @@ test("a failed question stays with the project it was asked in, and Send again a
     // The failure arrives while A is open.
     await box.fill(`${early} first question`);
     await box.press("Enter");
-    await expect(failedBox).toContainText(`Not answered: \u201c${early} first question\u201d.`);
+    // The send never reached the server, so the read-back finds nothing and the failure stays.
+    await expect(failedBox).toContainText(`No answer arrived: \u201c${early} first question\u201d.`);
     await expect(box).toHaveValue(`${early} first question`);
     await switchTo(b);
     await expect(failedBox).toHaveCount(0);
@@ -204,6 +209,95 @@ test("a failed question stays with the project it was asked in, and Send again a
     const rows = (await db.query("select role, content from assistant_messages where run_id=$1 order by created_at", [a.id])).rows;
     expect(rows.map((r) => r.content)).toEqual([`${early} first question`, "Answered on the second try.", `${late} second question`, "The late one is answered."]);
     expect((await db.query("select count(*)::int as n from assistant_messages where run_id=$1", [b.id])).rows[0].n).toBe(0);
+    await page.unroute("**/*");
+  } finally {
+    await db.end();
+  }
+});
+
+test("an answer saved but lost on the way back is shown, not reported as unanswered, and nothing is stored twice", async ({ page }, testInfo) => {
+  test.setTimeout(6 * 60_000);
+  page.setDefaultTimeout(30_000);
+  const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
+  await db.connect();
+  try {
+    const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+    const ui = await bind({ page, target, testInfo });
+    const a = await ui.createRun({ name: `drawer-lost-a-${Date.now()}` });
+    const b = await ui.createRun({ name: `drawer-lost-b-${Date.now()}` });
+    const lostOpen = `LOSTOPEN-${Date.now()}`;
+    const lostAway = `LOSTAWAY-${Date.now()}`;
+    const known = `KNOWN-${Date.now()}`;
+    const rules = (failKnown) => [
+      ...(failKnown ? [{ match: known, status: 400 }] : [{ match: known, text: "The model answered this time." }]),
+      { match: lostAway, text: "Saved while you were away." },
+      { match: lostOpen, text: "Saved, but the reply was lost." },
+    ];
+    writeFileSync(fixtureFile, JSON.stringify({ untargeted: rules(true) }));
+
+    // The server runs these sends and stores the answer; the browser then loses the reply.
+    let held = null;
+    await page.route("**/*", async (route) => {
+      const req = route.request();
+      const body = req.method() === "POST" && req.headers()["next-action"] ? (req.postData() ?? "") : "";
+      if (body.includes(lostOpen) || body.includes(lostAway)) {
+        await route.fetch();
+        if (body.includes(lostAway)) {
+          held = route;
+          return;
+        }
+        return route.abort("failed");
+      }
+      return route.continue();
+    });
+    const pairs = async (marker) => (await db.query("select role, content from assistant_messages where run_id=$1 and content like $2 order by created_at", [a.id, `%${marker}%`])).rows.length;
+
+    const drawer = page.getByTestId("assistant-drawer");
+    const failedBox = drawer.getByTestId("assistant-drawer-failed");
+    const box = drawer.getByRole("textbox", { name: "Your question" });
+    const switchTo = async (run) => {
+      await page.getByLabel("Current project").selectOption(run.id);
+      await expect(page).toHaveURL(new RegExp(`/runs/${run.id}`));
+      await expect(drawer.getByText(/Loading the conversation/)).toHaveCount(0);
+    };
+    await page.goto(a.url, { waitUntil: "networkidle" });
+    await openSection(page, "Findings");
+    await page.getByTestId("assistant-fab").click();
+
+    // Lost while A is open: the read-back finds the stored answer.
+    await box.fill(`${lostOpen} question`);
+    await box.press("Enter");
+    await expect(drawer.getByText("Saved, but the reply was lost.")).toBeVisible({ timeout: 60_000 });
+    await expect(failedBox).toHaveCount(0);
+    await expect(box).toHaveValue("");
+    expect(await pairs(lostOpen)).toBe(1);
+
+    // Lost after moving to B: nothing shows in B; back in A the stored answer shows, no failure.
+    await box.fill(`${lostAway} question`);
+    await box.press("Enter");
+    await expect.poll(() => held !== null, { timeout: 60_000 }).toBe(true);
+    await switchTo(b);
+    await held.abort("failed");
+    await expect(failedBox).toHaveCount(0);
+    await switchTo(a);
+    await expect(drawer.getByText("Saved while you were away.")).toBeVisible();
+    await expect(failedBox).toHaveCount(0);
+
+    // A failed model call: the server said so and stored nothing; Send again answers it once.
+    await box.fill(`${known} question`);
+    await box.press("Enter");
+    await expect(failedBox).toContainText(`Not answered: \u201c${known} question\u201d.`);
+    writeFileSync(fixtureFile, JSON.stringify({ untargeted: rules(false) }));
+    await failedBox.getByRole("button", { name: "Send again" }).click();
+    await expect(drawer.getByText("The model answered this time.")).toBeVisible({ timeout: 60_000 });
+    await expect(failedBox).toHaveCount(0);
+
+    const rows = (await db.query("select role, content from assistant_messages where run_id=$1 order by created_at", [a.id])).rows;
+    expect(rows.map((r) => r.content)).toEqual([
+      `${lostOpen} question`, "Saved, but the reply was lost.",
+      `${lostAway} question`, "Saved while you were away.",
+      `${known} question`, "The model answered this time.",
+    ]);
     await page.unroute("**/*");
   } finally {
     await db.end();

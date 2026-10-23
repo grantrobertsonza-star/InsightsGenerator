@@ -13,6 +13,9 @@
 //     there were no design); an unweighted request is built without the weight and says so;
 //   - a sample size comes from the calculator (385 for 5 points at 95%);
 //   - at most four tables per message; at most eight rounds, then a plain stop message;
+//   - an empty final answer after a tool round is reported as empty (B6-F01);
+//   - a request id answered once returns its stored answer on a second send, and racing sends of
+//     one request store one pair (B6-F02, migration 0108 applied by the disposable database);
 //   - prompt caching: the instructions and evidence are one cached system block, the history after it.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -284,6 +287,64 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     const rows = (await db.pool.query("select role, content from assistant_messages where run_id=$1 order by created_at", [run])).rows;
     expect(rows.length).toBe(before + 2);
     expect(rows.slice(-2)).toEqual([{ role: "user", content: "Will this fail?" }, { role: "assistant", content: "It works now." }]);
+  });
+
+  it("an empty final answer after a tool round is reported as empty, not as the earlier round's text (B6-F01)", async () => {
+    const { EMPTY_REPLY } = await import("../assistantLoop");
+    state.script = [
+      () => [{ type: "text", text: "I will calculate that now." }, call("sample_size", { mode: "sample_for_margin", margin_pct: 5 })],
+      () => [{ type: "text", text: "" }],
+    ];
+    expect((await ask("Sample for 5 points?")).reply).toBe(EMPTY_REPLY);
+    // A table built before an empty final answer stays listed under it.
+    state.script = [() => [{ type: "text", text: "Building it." }, call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })], () => []];
+    const withTable = await ask("Satisfaction by segment");
+    expect(withTable.reply.startsWith(EMPTY_REPLY)).toBe(true);
+    expect(withTable.reply).toContain("Tables built for this answer");
+    // Healthy: the final response's text is the answer, not the step before it.
+    state.script = [
+      () => [{ type: "text", text: "I will calculate that now." }, call("sample_size", { mode: "sample_for_margin", margin_pct: 5 })],
+      () => [{ type: "text", text: "You need 385 completed interviews." }],
+    ];
+    expect((await ask("Sample for 5 points?")).reply).toBe("You need 385 completed interviews.");
+  });
+
+  it("a question sent again under its request id after it was stored returns the stored answer, asking the model and storing nothing again (B6-F02)", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const count = async () => Number((await db.pool.query("select count(*) from assistant_messages where run_id=$1", [run])).rows[0].count);
+    const before = await count();
+    const id = randomUUID();
+    state.script = [() => [{ type: "text", text: "First and only answer." }]];
+    const first = await askResearchAssistant(tenant, run, "Answered once?", null, id);
+    expect(first).toMatchObject({ reply: "First and only answer.", alreadyAnswered: false });
+    expect(await count()).toBe(before + 2);
+    // The reply was lost on the way to the browser; Send again uses the same id.
+    state.requests = [];
+    state.script = [() => [{ type: "text", text: "A second answer that must not be stored." }]];
+    const again = await askResearchAssistant(tenant, run, "Answered once?", null, id);
+    expect(again).toMatchObject({ reply: "First and only answer.", alreadyAnswered: true });
+    expect(state.requests).toHaveLength(0);
+    expect(await count()).toBe(before + 2);
+    const rows = (await db.pool.query("select role, content, request_id from assistant_messages where run_id=$1 and request_id=$2 order by created_at", [run, id])).rows;
+    expect(rows).toEqual([{ role: "user", content: "Answered once?", request_id: id }, { role: "assistant", content: "First and only answer.", request_id: id }]);
+    // A new question gets a new id and is answered normally.
+    state.script = [() => [{ type: "text", text: "A new answer." }]];
+    expect((await askResearchAssistant(tenant, run, "Another question", null, randomUUID())).alreadyAnswered).toBe(false);
+    expect(await count()).toBe(before + 4);
+    await expect(askResearchAssistant(tenant, run, "Bad id", null, "not-a-uuid")).rejects.toThrow("The request id is not valid.");
+  });
+
+  it("two sends of one request that race store one pair, and both return its answer", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const id = randomUUID();
+    state.script = [() => [{ type: "text", text: "Racing answer one." }], () => [{ type: "text", text: "Racing answer two." }]];
+    const [a, b] = await Promise.all([askResearchAssistant(tenant, run, "Race?", null, id), askResearchAssistant(tenant, run, "Race?", null, id)]);
+    const rows = (await db.pool.query("select role, content from assistant_messages where run_id=$1 and request_id=$2 order by created_at", [run, id])).rows;
+    expect(rows).toHaveLength(2);
+    const storedAnswer = rows.find((r) => r.role === "assistant")!.content;
+    expect(a.reply).toBe(storedAnswer);
+    expect(b.reply).toBe(storedAnswer);
+    expect([a.alreadyAnswered, b.alreadyAnswered].filter(Boolean).length).toBeLessThanOrEqual(1);
   });
 
   it("gives sample sizes from the calculator", async () => {

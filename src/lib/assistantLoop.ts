@@ -13,7 +13,8 @@ import type { BuiltTable, HelpUsed } from "./researchAssistantTools";
  * A response that did not finish (stopped for length, or any stop other than a finished answer or a
  * tool call) is not an answer (Codex B5-F03): its text is dropped, none of its tool calls runs (a cut
  * revise_narrative would write a half-finished field), and the reply says it was cut off and to ask
- * again. An empty finished answer says so too. Tables already built stay listed under the reply.
+ * again. An empty finished answer says so too, whatever earlier rounds wrote beside their tool calls.
+ * Tables already built stay listed under the reply.
  */
 
 /** At most this many model rounds (each may call tools) for one message. */
@@ -66,7 +67,9 @@ export async function runAssistantLoop(options: {
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("\n")
       .trim();
-    if (text) replyText = text;
+    // Only the response that ends the turn is the answer. Text written alongside tool calls ("I will
+    // calculate that now") is a step, not an answer, so an empty final response is reported as
+    // empty even when an earlier round had text (Codex B6-F01).
     const calls = response.content.filter((block): block is Anthropic.ToolUseBlock => block.type === "tool_use");
     const terminalCall = calls.find((c) => options.terminal?.[c.name]);
     if (terminalCall) {
@@ -75,6 +78,7 @@ export async function runAssistantLoop(options: {
       break;
     }
     if (calls.length === 0) {
+      replyText = text;
       finished = true;
       break;
     }
@@ -89,7 +93,7 @@ export async function runAssistantLoop(options: {
     messages.push({ role: "user", content: results });
   }
   if (!finished) {
-    replyText = `${replyText ? `${replyText}\n\n` : ""}I stopped after ${MAX_TOOL_ROUNDS} steps without a final answer. Ask again more narrowly, or open the tables listed below.`;
+    replyText = `I stopped after ${MAX_TOOL_ROUNDS} steps without a final answer. Ask again more narrowly, or open the tables listed below.`;
     incomplete = true;
   }
   if (!replyText) {
