@@ -20,7 +20,7 @@ export async function deleteRun(runId: string): Promise<DeleteRunResult> {
   try {
     cleanupId = await withTenant(TENANT_ID, async (client) => {
       if (!(await projectCleanupAvailable(client)))
-        throw new Error(`Deleting a project needs the database update ${PROJECT_CLEANUP_MIGRATION}, so that its files can be removed from storage. Nothing was deleted.`);
+        throw new Error(`Deleting a project needs the database updates ${PROJECT_CLEANUP_MIGRATION}, so that its files can be removed from storage. Nothing was deleted.`);
       const run = await client.query<{ project_name: string | null }>("select project_name from runs where id = $1 and tenant_id = $2 for update", [runId, TENANT_ID]);
       if (!run.rowCount) throw new Error("That project was not found. Nothing was deleted.");
       const paths = await projectStoragePaths(client, TENANT_ID, runId);

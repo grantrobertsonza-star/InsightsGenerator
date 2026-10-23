@@ -7,7 +7,8 @@ import { retryProjectStorageCleanup } from "@/lib/runActions";
 import { actionFailureMessage } from "./runs/[id]/actionFailure";
 
 /**
- * Deleted projects whose files are still in storage (Codex RR-F03, 2026-10-23), with the last error
+ * Storage locations whose removal is not yet confirmed (deleted projects' files and converted copies;
+ * Codex RR-F03, RR-M02, 2026-10-23), with the last error
  * and a retry; or a plain note when the list itself could not be read. Nothing shows when there is
  * nothing pending.
  */
@@ -18,20 +19,24 @@ export default function ProjectCleanupNotice({ state }: { state: { ok: true; ite
   if (!state.ok)
     return (
       <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900" data-testid="project-cleanup-unknown">
-        {`Whether files of deleted projects are still in storage could not be checked: ${state.error.replace(/\.$/, "")}. Reload the page to try again.`}
+        {`Whether files of deleted projects or converted copies are still in storage could not be checked: ${state.error.replace(/\.$/, "")}. Reload the page to try again.`}
       </p>
     );
   if (state.items.length === 0) return null;
-  const files = state.items.reduce((n, i) => n + i.files, 0);
+  // Locations, not files (Codex RR-M02): a deleted project's record lists every place its files
+  // could be, such as a converted copy that may never have been made, and storage has not confirmed
+  // removing them. Whether a file is actually there is not known until the removal succeeds.
+  const locations = state.items.reduce((n, i) => n + i.locations, 0);
+  const where = (n: number) => (n === 1 ? "1 storage location" : `${n} storage locations`);
   return (
     <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="project-cleanup-pending">
-      <p className="font-medium">
-        {`${files === 1 ? "1 file" : `${files} files`} from ${state.items.length === 1 ? "a deleted project" : `${state.items.length} deleted projects`} ${files === 1 ? "is" : "are"} still in storage.`}
-      </p>
+      <p className="font-medium">{`Files may still be in storage: removal is not yet confirmed for ${where(locations)}.`}</p>
       <ul className="mt-1 list-disc pl-5 text-xs">
         {state.items.map((i) => (
           <li key={i.id}>
-            {`${i.projectName ?? "Untitled project"}: ${i.files === 1 ? "1 file" : `${i.files} files`}`}
+            {i.kind === "converted_copy"
+              ? `A converted copy of a data file in ${i.projectName ?? "an untitled project"}`
+              : `Deleted project ${i.projectName ?? "Untitled project"}: ${where(i.locations)}`}
             {i.lastError ? `. Last attempt failed: ${i.lastError.replace(/\.$/, "")}.` : "."}
           </li>
         ))}

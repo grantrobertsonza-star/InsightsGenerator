@@ -152,8 +152,11 @@ describe.skipIf(!TEST_DATABASE_URL)("numerical traceability on every AI-output p
     await q(`insert into tenants (id, name) values ($1, 'T')`, [TENANT]);
   }, 120000);
   afterAll(async () => {
-    const { pool } = await import("../db");
+    // The assistant now takes a capacity slot from the claim pool (RR-F08): both pools are closed
+    // before the database is dropped (Codex RR-M03).
+    const { pool, claimPool } = await import("../db");
     await pool?.end?.();
+    await claimPool?.end?.();
     await db?.drop();
   });
 

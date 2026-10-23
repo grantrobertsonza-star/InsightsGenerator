@@ -500,9 +500,21 @@ export async function generateStoryNarrative(
     // records the failure (story_narrative_error) for the Insights report section to show.
     const what = "The report generation";
     const input = finishedToolInput(response, "record_narrative", what);
-    for (const field of ["executive_summary", "situation", "complication", "question", "governing_thought", "recommendations_intro"]) {
+    // The narrative's contract (Codex batch12): the summary, situation, complication and governing
+    // thought are the report's content and must say something, so blank or whitespace-only text is a
+    // malformed result like a missing field; the question may be blank only when the project's
+    // decision statement stands in for it (as it does below); the recommendations intro and the
+    // caveats are optional and may be empty.
+    for (const field of ["executive_summary", "situation", "complication", "governing_thought"]) {
+      const v = input[field];
+      if (typeof v !== "string") throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
+      if (!v.trim()) throw new UnfinishedModelResultError("malformed", `${what} returned an empty ${field}, so nothing was saved. Try again.`);
+    }
+    for (const field of ["question", "recommendations_intro"]) {
       if (typeof input[field] !== "string") throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
     }
+    if (!(input.question as string).trim() && !run.decision_statement?.trim())
+      throw new UnfinishedModelResultError("malformed", `${what} returned an empty question and the project has no decision statement to use, so nothing was saved. Try again.`);
     for (const field of ["pillars", "caveats"]) {
       if (!Array.isArray(input[field])) throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing was saved. Try again.`);
     }

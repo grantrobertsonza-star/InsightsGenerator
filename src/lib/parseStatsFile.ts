@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { convertedCopyPath, queueOrphanStorageCleanup } from "./documentStorageCleanup";
+import { convertedCopyPath } from "./documentStorageCleanup";
+import { beginConvertedCopy, finishConvertedCopy } from "./projectStorageCleanup";
 
 const execFileAsync = promisify(execFile);
 
@@ -71,75 +72,60 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
     ? `https://${process.env.VERCEL_URL}`
     : process.env.PARSE_STATS_FILE_URL ?? "http://127.0.0.1:3000";
 
-  const response = await fetch(`${base}/api/parse-stats-file`, {
-    method: "POST",
-    // IMP-001: the request is signed for exactly this file and action (parseRequestSignature.ts);
-    // the shared secret itself is never sent. PARSE_STATS_SHARED_SECRET must hold the same value
-    // here and in the Python function's environment, or every request fails with a 401, surfaced
-    // below as an actionable message rather than a generic parsing failure.
-    headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest("convert", BUCKET, storagePath) },
-    body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
-  });
+  // The converted copy is respondent-level data (Codex RR-F03). It is recorded before the parser is
+  // asked, in a record that outlives the project, and removed (with its record) once the parser has
+  // answered; a removal that fails stays on the record for retry. A request that fails without an
+  // answer leaves the record in flight: the parser may still write the copy, and a retry removes it
+  // after the in-flight time (projectStorageCleanup.ts). Nothing is asked when it cannot be recorded.
+  const converted = convertedCopyPath(storagePath);
+  const intent = await beginConvertedCopy(storagePath, converted);
+  let parserDone = false;
+  try {
+    const response = await fetch(`${base}/api/parse-stats-file`, {
+      method: "POST",
+      // IMP-001: the request is signed for exactly this file and action (parseRequestSignature.ts);
+      // the shared secret itself is never sent. PARSE_STATS_SHARED_SECRET must hold the same value
+      // here and in the Python function's environment, or every request fails with a 401, surfaced
+      // below as an actionable message rather than a generic parsing failure.
+      headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest("convert", BUCKET, storagePath) },
+      body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
+    });
+    parserDone = true;
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    let message = detail;
-    try {
-      message = (JSON.parse(detail) as { error?: string }).error ?? detail;
-    } catch {
-      // detail wasn't JSON; use it as-is
-    }
-    if (response.status === 401) {
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      let message = detail;
+      try {
+        message = (JSON.parse(detail) as { error?: string }).error ?? detail;
+      } catch {
+        // detail wasn't JSON; use it as-is
+      }
+      if (response.status === 401) {
+        throw new Error(
+          "The conversion service rejected this request as unauthorized. PARSE_STATS_SHARED_SECRET must be set to the " +
+            "same value in both this app's environment and the parse-stats-file function's own environment.",
+        );
+      }
       throw new Error(
-        "The conversion service rejected this request as unauthorized. PARSE_STATS_SHARED_SECRET must be set to the " +
-          "same value in both this app's environment and the parse-stats-file function's own environment.",
+        `Couldn't read this data file (${response.status}). ${message || "The conversion step failed."}`
       );
     }
-    throw new Error(
-      `Couldn't read this data file (${response.status}). ${message || "The conversion step failed."}`
-    );
-  }
 
-  const { resultPath } = (await response.json()) as { resultPath: string };
-  // The converted copy is respondent-level data (Codex batch10 RR-F03). It must be where the
-  // parser is known to write it, so a reply can never point this at another object; once read (or
-  // not), it is removed, and a removal that fails is recorded for retry rather than forgotten.
-  if (resultPath !== convertedCopyPath(storagePath)) {
-    throw new Error("The conversion service answered with an unexpected result location, so its result was not used.");
-  }
-  try {
+    const { resultPath } = (await response.json()) as { resultPath: string };
+    // It must be where the parser is known to write it, so a reply can never point this at another
+    // object.
+    if (resultPath !== converted) {
+      throw new Error("The conversion service answered with an unexpected result location, so its result was not used.");
+    }
     const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
     if (error || !data) {
       throw new Error(`Converted SPSS/Stata/SAS result could not be read back from storage: ${error?.message}`);
     }
     return JSON.parse(await data.text()) as ParsedTable;
   } finally {
-    await removeConvertedCopy(resultPath);
+    await finishConvertedCopy(intent, converted, parserDone);
   }
 }
-
-/**
- * Removes the converted copy; when storage refuses or the call fails, records it as a pending
- * cleanup on its project (Import's retry; project deletion lists it too). Never fails the read:
- * the table, or the read's own error, is what the caller needs.
- */
-async function removeConvertedCopy(resultPath: string): Promise<void> {
-  let failure: string | null = null;
-  try {
-    const { error } = await supabaseAdmin.storage.from(BUCKET).remove([resultPath]);
-    if (error) failure = error.message || "Storage did not confirm the removal.";
-  } catch (e) {
-    failure = e instanceof Error ? e.message : String(e);
-  }
-  if (failure !== null) {
-    await queueOrphanStorageCleanup(resultPath, failure).catch((e) => {
-      // Not recorded either: project deletion still removes it by its derived path
-      // (projectStorageCleanup.projectStoragePaths), and the failure is logged without contents.
-      console.error("Converted copy cleanup could not be recorded", { path: resultPath, error: e instanceof Error ? e.message : String(e) });
-    });
-  }
-}
-
 // --- Local worker -------------------------------------------------------
 // Under plain `next dev` the Python engine runs on this machine. Starting a
 // new Python process, importing pandas and re-reading the data file for every

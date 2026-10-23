@@ -206,6 +206,9 @@ describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding, generator 
         ["refused", "refusal", null, /declined/],
         ["no summary", "tool_use", (i) => { const { executive_summary: _drop, ...rest } = i; void _drop; return rest; }, /without executive_summary/],
         ["pillars not a list", "tool_use", (i) => ({ ...i, pillars: "Advocacy" }), /without pillars/],
+        // Codex batch12: a finished but blank required section is malformed too.
+        ["a whitespace-only summary", "tool_use", (i) => ({ ...i, executive_summary: "   " }), /empty executive_summary/],
+        ["an empty situation", "tool_use", (i) => ({ ...i, situation: "" }), /empty situation/],
       ];
       for (const [label, stop, patch, message] of cases) {
         model.stop = stop;
@@ -219,6 +222,18 @@ describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding, generator 
     } finally {
       model.stop = "tool_use";
       model.patch = null;
+    }
+    // A blank question is filled from the decision statement; with none, it is malformed.
+    model.patch = (i) => ({ ...i, question: " " });
+    try {
+      await generateStoryNarrative(TENANT, run);
+      expect((await q<{ question: string }>(`select question from deck_narratives where run_id = $1`, [run]))[0].question).toBe("Decide");
+      await q(`update runs set decision_statement = null where id = $1`, [run]);
+      await expect(generateStoryNarrative(TENANT, run)).rejects.toThrow(/empty question and the project has no decision statement/);
+      expect(await summary()).toBe("Leadership NPS is 25.");
+    } finally {
+      model.patch = null;
+      await q(`update runs set decision_statement = 'Decide' where id = $1`, [run]);
     }
     // A finished generation replaces it, and the shown failure goes.
     model.patch = (i) => ({ ...i, executive_summary: "Leaders give an NPS of 25." });

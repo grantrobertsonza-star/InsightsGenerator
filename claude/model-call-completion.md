@@ -27,7 +27,7 @@ reading with `found: false` keeps the saved text.
 | `briefIntake.extractBriefFields` (both fields required) | throws, including when either field is missing; `saveRunContext` records `brief_intake_error` and returns a failed fill with its retry, keeps what was typed, adds no objective and records no `brief_intake_used`, so the same document is read again on the next fill |
 | `methodologyExtractor.generateMethodologySummary` | throws before writing; the saved methodology stays; the processing step records `methodology_extraction_error`. A finished reading records `methodology_extraction_done`. `methodologyStatus.latestMethodologyFailure` (the later of the two) is shown in the Insights report section, and the Word report says the methodology could not be read when nothing was read before, rather than that none was stated |
 
-| `storyNarrative.generateStoryNarrative` (Codex RR-F06) | throws before writing, on a cut-off, refused or missing result and when a required text field is not a string or `pillars` or `caveats` is not a list; the saved narrative stays; the action records `story_narrative_error`. `latestNarrativeFailure` (an error newer than the saved narrative) is shown in the Insights report section even when an earlier narrative exists, saying the report shown is the previous one |
+| `storyNarrative.generateStoryNarrative` (Codex RR-F06) | throws before writing, on a cut-off, refused or missing result and when a required text field is not a string or `pillars` or `caveats` is not a list, when the executive summary, situation, complication or governing thought is blank (Codex batch12 RR-F06), and when the question is blank and the project has no decision statement; the saved narrative stays; the action records `story_narrative_error`. `latestNarrativeFailure` (an error newer than the saved narrative) is shown in the Insights report section even when an earlier narrative exists, saying the report shown is the previous one |
 
 Other model calls have their own completion checks (the assistant loop, research quality,
 crosstab reading, instruments, findings extraction, coding); the audit's Part 2 sweep covers the
@@ -35,8 +35,10 @@ rest.
 
 ## Tests
 
-`narrativeWrongGroup.db.test.ts` (RR-F06): cut-off, refused, missing summary and non-list pillars
-each leave the saved summary and show the failure; a finished generation replaces it and clears it.
+`narrativeWrongGroup.db.test.ts` (RR-F06): cut-off, refused, missing summary and non-list pillars,
+a whitespace-only summary, an empty situation, and a blank question without a decision statement
+each leave the saved summary and show the failure; a blank question with a decision statement is
+accepted; a finished generation replaces it and clears it.
 
 
 `src/lib/__tests__/releaseAuditRepairs.db.test.ts` (real database, model client and storage

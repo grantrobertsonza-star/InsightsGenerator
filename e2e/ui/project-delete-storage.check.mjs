@@ -1,6 +1,6 @@
 // Deleting a project when storage cannot remove its files (Codex RR-F03, 2026-10-23). With the
-// stand-in refusing removals, the project disappears from the dashboard, the dashboard says its
-// files are still in storage, and the file stays in the stand-in's inventory with its record in
+// stand-in refusing removals, the project disappears from the dashboard, the dashboard says removal of its
+// files is not yet confirmed, and the file stays in the stand-in's inventory with its record in
 // project_storage_cleanup; with storage healthy again, "Remove them now" removes the file and the
 // notice and record go. Synthetic data only. No model calls.
 import { expect, test } from "@playwright/test";
@@ -52,9 +52,10 @@ test("a project deleted during a storage outage keeps its file listed for retry,
     await expect(card).toHaveCount(0, { timeout: 30_000 });
     const notice = page.getByTestId("project-cleanup-pending");
     await expect(notice).toBeVisible();
-    // The data file and its converted copy (Codex batch10 RR-F03; removing a copy never made is not an error).
-    await expect(notice).toContainText("2 files from a deleted project are still in storage.");
-    await expect(notice).toContainText(`${name}: 2 files. Last attempt failed: Synthetic storage removal outage.`);
+    // The data file and its converted copy's location (Codex RR-F03): counted as locations, since
+    // the copy may never have been made and storage has confirmed nothing (Codex RR-M02).
+    await expect(notice).toContainText("Files may still be in storage: removal is not yet confirmed for 2 storage locations.");
+    await expect(notice).toContainText(`Deleted project ${name}: 2 storage locations. Last attempt failed: Synthetic storage removal outage.`);
     if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-pending.png") });
     expect((await db.query("select 1 from runs where id=$1", [runId])).rowCount).toBe(0);
     expect((await storedKeys(runId)).length).toBeGreaterThan(0);
