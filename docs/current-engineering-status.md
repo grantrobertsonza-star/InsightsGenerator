@@ -1,6 +1,11 @@
 # Current engineering status
 
-Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): B6-F01 and B6-F02 (`docs/independent-batch6-review-main-2026-10-23.md`); see `docs/batch7-handover-2026-10-23.md`. Adds migration 0108 (additive). Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): B7-F01 (`docs/independent-batch7-review-main-2026-10-23.md`) and four open items, with a compact assistant window; see `docs/batch8-handover-2026-10-23.md`. Adds migration 0109 (additive). Last accepted scope `1e0f2a3` and release baseline 37 Closed / 6 Blocked unchanged.
+
+## Claude: B7-F01 and four open items, main copy (2026-10-23)
+
+Implemented, ready for review: `cbe4b29` (open items, migration 0109), `658ca5b` (B7-F01, compact window) and this docs commit. Checks and limits in `docs/batch8-handover-2026-10-23.md`. Codex's previous status line is kept in `.fnd001/backup-status-1023k/`.
+
 
 ## Claude: B6-F01 and B6-F02, main copy (2026-10-23)
 
