@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): release audit RR-F01, RR-F02, RR-F03 (migration 0110, additive) and RR-F04 implemented, ready for review in `1f19dfa` and the docs commit after it (`docs/batch10-handover-2026-10-23.md`). RR-F05 (dependencies) is open pending Grant. Audit Parts 2 to 4 remain. Full library 1,534 passed / 72 skipped; full native 92 passed / 1 skipped. No push, deployment or existing-database migration.
+Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): batch11 RR-F05 (Next 16.4.1, vendored SheetJS 0.20.3; `91fed93`) and batch12 RR-F01, RR-F03, RR-F06, RR-F07, RR-F08 and RR-M01 (`ce2be9e`) implemented, ready for review with the docs commit after them (`docs/batch11-handover-2026-10-23.md`, `docs/batch12-handover-2026-10-23.md`). No migration. Full library 1,545 passed / 72 skipped; full native 92 passed / 1 skipped. No push, deployment or existing-database migration.
+
+## Claude: batch11 (RR-F05) and batch12 (RR-F01, RR-F03, RR-F06, RR-F07, RR-F08, RR-M01), main copy (2026-10-23)
+
+Implemented, ready for review: `91fed93` (dependencies), `ce2be9e` (repairs) and this docs commit. Checks and limits in `docs/batch11-handover-2026-10-23.md` and `docs/batch12-handover-2026-10-23.md`. Run `npm install` after pulling. Codex's previous status line is kept in `.fnd001/backup-status-1023n/`.
 
 ## Claude: release audit RR-F01 to RR-F04, main copy (2026-10-23)
 
