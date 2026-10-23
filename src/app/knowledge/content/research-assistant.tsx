@@ -53,8 +53,11 @@ export default function ResearchAssistantGuide() {
       <H2 id="anywhere">Asking from any page</H2>
       <P>
         The Ask the assistant button sits in the bottom-right corner of every page. It opens the assistant in a small
-        window in that corner, so most of the page you are working on stays in view and usable. Esc or the close
-        button puts it away.
+        window on the right, so most of the page you are working on stays in view and usable. Drag the window by its
+        title bar to move it out of the way, or use the arrow keys on its move handle. Drag its bottom-left corner to make
+        it bigger or smaller (or use the arrow keys on that corner). A double-click on the title bar, or Home, puts it back
+        as it opened. Where you leave it, and its size, are remembered in this browser. Esc or the
+        close button puts it away. On a phone it fills the bottom of the screen instead.
       </P>
       <UL>
         <li>

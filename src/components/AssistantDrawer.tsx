@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { ChatIcon, CrossIcon, SendIcon } from "./icons";
 import { AssistantMessageText } from "./AssistantMessageText";
 import { useOpenSection } from "./openSection";
 import { plainConnectionError } from "./connectionError";
+import { useMovableWindow } from "./movableWindow";
 import { loadAssistantMessages, sendAssistantMessage, sendGeneralAssistantMessage } from "@/lib/researchAssistantActions";
 
 /**
@@ -77,6 +78,17 @@ export default function AssistantDrawer() {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const movable = useMovableWindow("assistant-window:v2");
+  // Moving and resizing apply from the sm breakpoint; on a phone the window spans the width at the bottom.
+  const wide = useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(min-width: 640px)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(min-width: 640px)").matches,
+    () => false,
+  );
 
   const conversation: Conversation = conversations[key] ?? { ...EMPTY, status: runId ? "idle" : "ready" };
   const update = useCallback(
@@ -219,16 +231,37 @@ export default function AssistantDrawer() {
           aria-modal="false"
           aria-label="Research assistant"
           data-testid="assistant-drawer"
-          // A compact window in the bottom-right corner (Grant, 2026-10-23: "make the window smaller
-          // so we can still see the window we are in"), not a full-height panel: most of the page
-          // stays in view and usable. On a phone it spans the width, less a 16px gutter.
-          className="fixed bottom-4 left-4 right-4 z-50 flex h-[min(560px,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-2xl sm:left-auto sm:w-[380px] print:hidden"
+          // A compact window (Grant, 2026-10-23: smaller, "so we can still see the window we are
+          // in"; then "pops up on the right and can be moved around", "and it should be
+          // resizable"): it opens on the right near the top; its header moves it and its
+          // bottom-left grip resizes it (movableWindow.ts). On a phone it spans the width at the
+          // bottom, less a 16px gutter, and neither moves nor resizes.
+          className="fixed bottom-4 left-4 right-4 z-50 flex h-[min(560px,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-2xl sm:bottom-auto sm:left-auto sm:right-5 sm:top-20 sm:h-[min(560px,calc(100vh-6rem))] sm:w-[380px] print:hidden"
+          style={wide && movable.frame ? { right: movable.frame.right, top: movable.frame.top, width: movable.frame.width, height: movable.frame.height } : undefined}
         >
-          <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+          <div
+            className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:cursor-move sm:select-none"
+            data-testid="assistant-drawer-header"
+            onPointerDown={wide ? movable.onMovePointerDown : undefined}
+            onDoubleClick={wide ? movable.reset : undefined}
+            title={wide ? "Drag to move. Double-click to put it back on the right." : undefined}
+          >
             <div className="min-w-0">
               <h2 className="text-sm font-semibold text-foreground">Research assistant</h2>
               <p className="text-xs text-muted" data-testid="assistant-drawer-scope">{scope}</p>
             </div>
+            {wide && (
+              <button
+                type="button"
+                aria-label="Move the assistant window (arrow keys; Home puts it back)"
+                title="Move: drag the header, or use the arrow keys here. Home puts it back on the right."
+                data-testid="assistant-drawer-move"
+                onKeyDown={movable.onMoveKey}
+                className="ml-auto cursor-move rounded-md p-1 text-muted hover:bg-slate-100 hover:text-foreground"
+              >
+                <span aria-hidden className="block text-xs leading-none">⠿</span>
+              </button>
+            )}
             <button
               type="button"
               aria-label="Close the assistant"
@@ -319,6 +352,22 @@ export default function AssistantDrawer() {
               Send
             </button>
           </div>
+          {wide && (
+            <button
+              type="button"
+              aria-label="Resize the assistant window (arrow keys: left wider, down taller; Home puts the size back)"
+              title="Resize: drag this corner, or use the arrow keys here. Home puts the size back."
+              data-testid="assistant-drawer-resize"
+              onPointerDown={movable.onResizePointerDown}
+              onKeyDown={movable.onResizeKey}
+              onDoubleClick={movable.reset}
+              className="absolute bottom-0 left-0 flex h-5 w-5 cursor-nesw-resize touch-none items-end justify-start rounded-bl-xl text-slate-400 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <svg aria-hidden viewBox="0 0 16 16" className="h-5 w-5">
+                <path d="M3 13 L3 6 M3 13 L10 13 M3 9 L7 13" stroke="currentColor" strokeWidth="1.75" fill="none" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
         </aside>
       )}
     </>

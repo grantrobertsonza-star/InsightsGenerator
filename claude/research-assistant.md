@@ -12,7 +12,17 @@ questions ... It must have access to our knowledge base". Grant's choices: every
 conversation as the Research assistant section inside a project; a side drawer.
 
 - `src/components/AssistantDrawer.tsx`, mounted in `GlobalShell`. Button bottom-right
-  (`assistant-fab`), a compact window in that corner, 380 px wide and up to 560 px tall, full width less a 16 px gutter on a phone (`assistant-drawer`, role dialog, not modal; made smaller 2026-10-23 so the page stays in view). Esc or
+  (`assistant-fab`). The window (`assistant-drawer`, role dialog, not modal) is 380 px wide and
+  up to 560 px tall; it opens on the right near the top (right 20, top 80) and can be moved
+  (Grant, 2026-10-23: "pops up on the right and can be moved around"; `movableWindow.ts`): drag
+  the header (`assistant-drawer-header`; its buttons keep their own clicks), or arrow keys (24 px)
+  on the Move handle (`assistant-drawer-move`); it resizes ("and it should be resizable") from its
+  bottom-left grip (`assistant-drawer-resize`; left wider, down taller, the right edge fixed) by
+  pointer or arrow keys, minimum 300 by 320, at most the viewport less 8 px each side. Home or a
+  header double-click resets position and size. The frame (right, top, width, height) is clamped
+  inside the viewport (also on resize) and remembered under `assistant-window:v2` with guarded
+  storage. Below the sm breakpoint it spans the width at the bottom less a 16 px gutter and neither
+  moves nor resizes. Esc or
   close; focus goes to the input on open and back to the button on close. Hidden on /login,
   /no-organisation, and on the Research assistant section (`openSection.id === "assistant"`).
 - Inside a project (`/runs/<uuid>`): `loadAssistantMessages(runId)` on each open (tenant and run

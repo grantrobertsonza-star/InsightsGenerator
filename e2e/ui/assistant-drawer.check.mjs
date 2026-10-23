@@ -333,3 +333,138 @@ test("an answer saved but lost on the way back is shown, not reported as unanswe
     await db.end();
   }
 });
+
+test("the assistant opens on the right, can be moved and resized by pointer and keys, keeps inside the window, and is remembered", async ({ page, browser }, testInfo) => {
+  test.setTimeout(3 * 60_000);
+  page.setDefaultTimeout(30_000);
+  const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+  const ui = await bind({ page, target, testInfo });
+  const run = await ui.createRun({ name: `drawer-move-${Date.now()}` });
+  const origin = new URL(run.url).origin;
+  await page.goto(`${origin}/knowledge`, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    try {
+      localStorage.removeItem("assistant-window:v2");
+    } catch {}
+  });
+  await page.reload({ waitUntil: "networkidle" });
+  const drawer = page.getByTestId("assistant-drawer");
+  const box = async () => drawer.boundingBox();
+
+  // Opens on the right, near the top.
+  await page.getByTestId("assistant-fab").click();
+  const start = await box();
+  expect(Math.round(1440 - (start.x + start.width))).toBe(20);
+  expect(Math.round(start.y)).toBe(80);
+  const s0 = shot("right");
+  if (s0) await page.screenshot({ path: s0 });
+
+  // Dragged by its header.
+  const header = drawer.getByTestId("assistant-drawer-header");
+  const h = await header.boundingBox();
+  await page.mouse.move(h.x + 40, h.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(h.x - 160, h.y + 62, { steps: 4 });
+  await page.mouse.move(h.x - 360, h.y + 112, { steps: 4 });
+  await page.mouse.up();
+  const dragged = await box();
+  expect(Math.round(dragged.x - start.x)).toBe(-400);
+  expect(Math.round(dragged.y - start.y)).toBe(100);
+  const s1 = shot("moved");
+  if (s1) await page.screenshot({ path: s1 });
+
+  // The arrow keys on the Move handle move it 24px; it stays inside the window when pushed past an edge.
+  const move = drawer.getByTestId("assistant-drawer-move");
+  await move.focus();
+  await page.keyboard.press("ArrowDown");
+  expect(Math.round((await box()).y - dragged.y)).toBe(24);
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowUp");
+  expect(Math.round((await box()).y)).toBe(8);
+  // Resized by its bottom-left grip: dragging left and down makes it wider and taller, the right
+  // edge staying where it is.
+  const beforeResize = await box();
+  const grip = drawer.getByTestId("assistant-drawer-resize");
+  const g = await grip.boundingBox();
+  await page.mouse.move(g.x + 8, g.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(g.x + 8 - 60, g.y + 8 + 30, { steps: 3 });
+  await page.mouse.move(g.x + 8 - 120, g.y + 8 + 60, { steps: 3 });
+  await page.mouse.up();
+  const grown = await box();
+  expect(Math.round(grown.width - beforeResize.width)).toBe(120);
+  expect(Math.round(grown.height - beforeResize.height)).toBe(60);
+  expect(Math.round(grown.x + grown.width)).toBe(Math.round(beforeResize.x + beforeResize.width));
+  const s2 = shot("resized");
+  if (s2) await page.screenshot({ path: s2 });
+  // The arrow keys on the grip resize by 24px; it never goes below the minimum.
+  await grip.focus();
+  await page.keyboard.press("ArrowLeft");
+  expect(Math.round((await box()).width - grown.width)).toBe(24);
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowRight");
+  expect(Math.round((await box()).width)).toBe(300);
+  await page.keyboard.press("ArrowLeft");
+  const kept = await box();
+
+  // Remembered after closing and after a reload.
+  await page.keyboard.press("Escape");
+  await page.getByTestId("assistant-fab").click();
+  expect(await box()).toEqual(kept);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByTestId("assistant-fab").click();
+  expect(await box()).toEqual(kept);
+
+  // A narrower browser window pulls it back inside.
+  await page.setViewportSize({ width: 900, height: 700 });
+  const narrow = await box();
+  expect(narrow.x).toBeGreaterThanOrEqual(8);
+  expect(narrow.y + narrow.height).toBeLessThanOrEqual(700 - 8 + 1);
+
+  // Home on the handle, or a double-click on the header, puts it back on the right.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await drawer.getByTestId("assistant-drawer-move").focus();
+  await page.keyboard.press("Home");
+  expect(Math.round(1440 - ((await box()).x + (await box()).width))).toBe(20);
+  // Home puts the whole frame back, size included.
+  expect(Math.round((await box()).width)).toBe(380);
+  expect(Math.round((await box()).height)).toBe(560);
+  await page.mouse.move(h.x + 40, h.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(h.x - 200, h.y + 40, { steps: 3 });
+  await page.mouse.up();
+  await header.dblclick({ position: { x: 40, y: 12 } });
+  expect(Math.round((await box()).y)).toBe(80);
+
+  // The buttons in the header still work: Close closes, it does not start a drag.
+  await drawer.getByRole("button", { name: "Close the assistant" }).click();
+  await expect(drawer).toBeHidden();
+
+  // On a phone it does not move: full width at the bottom, no Move handle.
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.getByTestId("assistant-fab").click();
+  const phone = await box();
+  expect(Math.round(phone.x)).toBe(16);
+  await expect(drawer.getByTestId("assistant-drawer-move")).toHaveCount(0);
+  await expect(drawer.getByTestId("assistant-drawer-resize")).toHaveCount(0);
+
+  // Storage blocked: it still opens on the right and moves, for this page view.
+  const blocked = await browser.newContext({ storageState: await page.context().storageState(), viewport: { width: 1440, height: 900 } });
+  try {
+    await blocked.addInitScript(() => {
+      Object.defineProperty(window, "localStorage", { get() { throw new Error("storage blocked"); } });
+    });
+    const p = await blocked.newPage();
+    const errors = [];
+    p.on("pageerror", (e) => errors.push(e.message));
+    await p.goto(`${origin}/knowledge`, { waitUntil: "networkidle" });
+    await p.getByTestId("assistant-fab").click();
+    const d = p.getByTestId("assistant-drawer");
+    const b0 = await d.boundingBox();
+    expect(Math.round(1440 - (b0.x + b0.width))).toBe(20);
+    await d.getByTestId("assistant-drawer-move").focus();
+    await p.keyboard.press("ArrowLeft");
+    expect(Math.round((await d.boundingBox()).x - b0.x)).toBe(-24);
+    expect(errors).toEqual([]);
+  } finally {
+    await blocked.close();
+  }
+});
