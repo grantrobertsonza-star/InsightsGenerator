@@ -1,3 +1,5 @@
+import { isBrowserNetworkErrorMessage } from "../../../components/connectionError";
+
 /**
  * Runs a server action from a client control and turns a failure into text the control can show.
  *
@@ -21,10 +23,10 @@
 export const CONNECTION_LOST_MESSAGE =
   "The connection to the server was interrupted, so this may not have been saved. Your changes are still here: check your connection and try again. Reloading the page shows what was saved.";
 
-const NETWORK_FAILURE = /^(Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|fetch failed|Network request failed)$/i;
-
+// The wordings are shared with the Research assistant (components/connectionError.ts). Only a
+// TypeError counts here: a server error that happens to read "fetch failed" is the server's message.
 function isConnectionFailure(error: unknown): boolean {
-  return error instanceof TypeError && NETWORK_FAILURE.test(error.message.trim());
+  return error instanceof TypeError && isBrowserNetworkErrorMessage(error.message);
 }
 
 export function actionFailureMessage(error: unknown): string {

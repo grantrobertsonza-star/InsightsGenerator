@@ -38,6 +38,41 @@ describe.skipIf(!TEST_DATABASE_URL)("migration history check (real database)", (
   }, 60000);
 });
 
+describe.skipIf(!TEST_DATABASE_URL)("migration history check without a migration record (real database)", () => {
+  let db: DisposableDb;
+  beforeAll(async () => {
+    db = await createDisposableDb();
+  }, 120000);
+  afterAll(async () => {
+    await db.drop();
+  });
+
+  it("with no record it reports every file by what exists, and with an empty record afterwards it still completes; nothing is written", async () => {
+    const run = () => execFileSync(process.execPath, [path.resolve("scripts/migration-history-check.mjs")], { encoding: "utf8", env: { ...process.env, DATABASE_URL: db.url } });
+    const tables = async () => (await db.pool.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows[0].n;
+    const before = await tables();
+    const out = run();
+    expect(out).toContain("The migration record could not be read");
+    expect(out).toContain("0 recorded by the Supabase CLI.");
+    // 0001 created a table a later migration renamed (claims, now findings): reported in part, as
+    // the stated limit says, and left out of the repair line.
+    expect(out).toMatch(/0001_init\.sql: not recorded; \d+ of \d+ objects exist; missing: table claims/);
+    expect(out).toMatch(/0109_tenant_api_usage\.sql: not recorded; all \d+ objects it creates exist/);
+    const repair = out.split("\n").find((l) => l.includes("supabase migration repair"))!;
+    expect(repair).toContain(" 0002 ");
+    expect(repair).toContain(" 0109");
+    expect(repair).not.toContain(" 0001 ");
+    expect(await tables()).toBe(before);
+    expect((await db.pool.query("select count(*)::int as n from pg_namespace where nspname = 'supabase_migrations'")).rows[0].n).toBe(0);
+    // Recovery: an empty record is read, and the same report follows.
+    await db.pool.query("create schema supabase_migrations; create table supabase_migrations.schema_migrations (version text primary key)");
+    const again = run();
+    expect(again).not.toContain("could not be read");
+    expect(again).toContain("0 recorded by the Supabase CLI.");
+    expect(again).toMatch(/0109_tenant_api_usage\.sql: not recorded; all \d+ objects it creates exist/);
+  }, 60000);
+});
+
 describe.skipIf(!!TEST_DATABASE_URL)("migration history check (real database)", () => {
   it.skip(DISPOSABLE_DB_SKIP_REASON, () => {});
 });

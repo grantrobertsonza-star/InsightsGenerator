@@ -75,9 +75,14 @@ async function main() {
   try {
     await client.query("begin transaction read only");
     let recorded = new Set();
+    // Read under a savepoint: when the record is missing, the failed query is rolled back to it so
+    // the read-only transaction can carry on with the object checks (Codex B8-F02).
+    await client.query("savepoint read_record");
     try {
       recorded = new Set((await client.query("select version from supabase_migrations.schema_migrations")).rows.map((r) => String(r.version)));
+      await client.query("release savepoint read_record");
     } catch (e) {
+      await client.query("rollback to savepoint read_record");
       console.log(`The migration record could not be read (${e.message}); every file is treated as unrecorded.`);
     }
     const repair = [];

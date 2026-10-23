@@ -31,6 +31,8 @@ const state = vi.hoisted(() => ({
   requests: [] as { system: unknown; messages: { role: string; content: unknown }[] }[],
   builds: [] as Record<string, unknown>[],
   failNext: false,
+  /** Answers every model call when set (concurrent tests, where calls arrive in any order). */
+  responder: null as null | ((req: { messages: { role: string; content: unknown }[] }) => unknown),
 }));
 
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
@@ -41,7 +43,7 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { system: unknown; messages: { role: string; content: unknown }[] }) => {
         state.requests.push(JSON.parse(JSON.stringify(req)));
-        const step = state.script.shift() ?? (() => [{ type: "text", text: "Done." }]);
+        const step = state.responder ?? state.script.shift() ?? (() => [{ type: "text", text: "Done." }]);
         const out = (await step(req)) as Block[] | { stop: string; content: Block[] };
         if (!Array.isArray(out)) return { content: out.content, stop_reason: out.stop, usage: { input_tokens: 1, output_tokens: 1 } };
         if (state.failNext) {
@@ -122,14 +124,16 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     foreignDoc = await one("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,ingestion_type) values($1,$2,'table','other.sav','other.sav','raw') returning id", [tenant, other]);
   }, 120000);
   afterAll(async () => {
-    const { pool } = await import("../db");
+    const { pool, claimPool } = await import("../db");
     await pool.end();
+    await claimPool.end();
     await db.drop();
   });
   beforeEach(() => {
     state.script = [];
     state.requests = [];
     state.builds = [];
+    state.responder = null;
   });
   const ask = async (text: string) => (await import("../researchAssistant")).askResearchAssistant(tenant, run, text);
 
@@ -510,6 +514,65 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     expect((await askResearchAssistant(tenant, run, "Shorten the summary", null, id)).alreadyAnswered).toBe(true);
     expect(await summary()).toBe("Edited by hand");
   });
+
+  it("ten distinct questions at once all finish: claims come from their own pool, so the work always gets a connection, and other database work goes on (B8-F01)", async () => {
+    const { askResearchAssistant } = await import("../researchAssistant");
+    const { pool, claimPool, withTenant } = await import("../db");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    // Each question builds one table, then answers; the first round of each waits at the gate.
+    state.responder = async (req) => {
+      const last = req.messages[req.messages.length - 1];
+      if (typeof last.content === "string") {
+        await gate;
+        return [call("build_table", { data_file_id: doc, rows: ["sat"], columns: ["segment"] })];
+      }
+      return [{ type: "text", text: `Answered: ${String(req.messages[0].content)}` }];
+    };
+    const questions = Array.from({ length: 10 }, (_, i) => `Capacity question ${i}`);
+    const sends = questions.map((q) => askResearchAssistant(tenant, run, q, null, randomUUID()));
+    await new Promise((r) => setTimeout(r, 800));
+    // At most the claim pool's size are answering; the rest wait for a claim, holding nothing.
+    expect(state.requests.length).toBeLessThanOrEqual(claimPool.options.max);
+    expect(state.requests.length).toBeGreaterThan(0);
+    // Ordinary database work is not blocked while every claim is held.
+    const started = Date.now();
+    const n = await withTenant(tenant, async (c) => (await c.query("select count(*)::int as n from runs")).rows[0].n);
+    expect(n).toBeGreaterThan(0);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(pool.waitingCount).toBe(0);
+    release();
+    const results = await Promise.all(sends);
+    expect(results.map((r) => r.reply.split("\n")[0])).toEqual(questions.map((q) => `Answered: ${q}`));
+    expect(state.builds).toHaveLength(10);
+    expect(state.requests).toHaveLength(20);
+  }, 60000);
+
+  it("a question that cannot get a claim before the wait runs out is refused as busy, running nothing; asked again later it is answered", async () => {
+    const { askResearchAssistant, AssistantBusyError } = await import("../researchAssistant");
+    const { claimPool } = await import("../db");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    state.responder = async (req) => {
+      if (String(req.messages[0].content).startsWith("Holding")) await gate;
+      return [{ type: "text", text: `Answered: ${String(req.messages[0].content)}` }];
+    };
+    const holders = Array.from({ length: claimPool.options.max }, (_, i) => askResearchAssistant(tenant, run, `Holding ${i}`, null, randomUUID()));
+    await new Promise((r) => setTimeout(r, 500));
+    const calls = state.requests.length;
+    process.env.ASSISTANT_REQUEST_WAIT_MS = "2500";
+    const id = randomUUID();
+    try {
+      await expect(askResearchAssistant(tenant, run, "Busy?", null, id)).rejects.toBeInstanceOf(AssistantBusyError);
+      expect(state.requests.length).toBe(calls);
+      expect(Number((await db.pool.query("select count(*) from assistant_messages where request_id=$1", [id])).rows[0].count)).toBe(0);
+    } finally {
+      delete process.env.ASSISTANT_REQUEST_WAIT_MS;
+    }
+    release();
+    await Promise.all(holders);
+    expect((await askResearchAssistant(tenant, run, "Busy?", null, id)).reply).toBe("Answered: Busy?");
+  }, 60000);
 
   it("gives sample sizes from the calculator", async () => {
     state.script = [

@@ -5,7 +5,7 @@ import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./ass
 import { helpContents } from "./helpIndex";
 import { logApiUsage } from "./apiUsage";
 import type { PoolClient } from "pg";
-import { pool, withTenant, withTenantRead } from "./db";
+import { claimPool, withTenant, withTenantRead } from "./db";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import type { DeckNarrative, DeckPillar } from "./storyNarrative";
@@ -460,9 +460,9 @@ export class RequestInProgressError extends Error {
 }
 
 /**
- * Runs `answer` while holding a Postgres session advisory lock for the request (on one pooled
- * connection kept for the duration, outside any transaction, so no transaction stays open while
- * the model works). A second send of the same request waits, trying again every 250 ms, up to
+ * Runs `answer` while holding a Postgres session advisory lock for the request (on one connection
+ * of the claim pool, db.ts claimPool, kept for the duration, outside any transaction, so no
+ * transaction stays open while the model works). A second send of the same request waits, trying again every 250 ms, up to
  * requestClaimWaitMs(). The lock is released when `answer` finishes or fails, and by Postgres if
  * the connection or server process dies. Guarantee: within one database, two sends of one request
  * never run the model or tools at the same time, and a later send sees the earlier one's stored
@@ -472,26 +472,45 @@ export class RequestInProgressError extends Error {
  * the request with the same table request is reused (researchAssistantTools.ts). What such a send
  * leaves behind is at most draft tables, which the retry reuses.
  */
+/** No answer could start before the wait ran out: as many as allowed were running (db.ts claimPool). Nothing was run or stored. */
+export class AssistantBusyError extends Error {
+  constructor() {
+    super("The assistant is answering as many questions as it can at once. Nothing was sent to it; try again in a moment.");
+    this.name = "AssistantBusyError";
+  }
+}
+
 async function withRequestClaim<T>(runId: string, requestId: string, answer: () => Promise<T>): Promise<T> {
   const key = `assistant-request:${runId}:${requestId}`;
   const deadline = Date.now() + requestClaimWaitMs();
-  // A waiting send borrows a connection only for each try, so waiting holds none of the pool.
+  // Claims come from their own pool (db.ts claimPool), so a holder's work never waits on a
+  // connection another holder is keeping. A waiting send borrows a claim connection only per try.
   let holder: PoolClient | null = null;
+  let busy = false;
   for (;;) {
-    const client = await pool.connect();
-    let ok = false;
+    let client: PoolClient | null = null;
     try {
-      ok = Boolean((await client.query<{ ok: boolean }>("select pg_try_advisory_lock(hashtextextended($1, 0)) as ok", [key])).rows[0]?.ok);
-    } catch (error) {
+      client = await claimPool.connect();
+    } catch {
+      // No claim connection free within connectionTimeoutMillis: as many answers as allowed are running.
+      busy = true;
+    }
+    if (client) {
+      busy = false;
+      let ok = false;
+      try {
+        ok = Boolean((await client.query<{ ok: boolean }>("select pg_try_advisory_lock(hashtextextended($1, 0)) as ok", [key])).rows[0]?.ok);
+      } catch (error) {
+        client.release(true);
+        throw error;
+      }
+      if (ok) {
+        holder = client;
+        break;
+      }
       client.release();
-      throw error;
     }
-    if (ok) {
-      holder = client;
-      break;
-    }
-    client.release();
-    if (Date.now() >= deadline) throw new RequestInProgressError();
+    if (Date.now() >= deadline) throw busy ? new AssistantBusyError() : new RequestInProgressError();
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   try {

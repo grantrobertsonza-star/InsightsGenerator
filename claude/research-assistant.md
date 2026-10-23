@@ -269,3 +269,29 @@ one model execution (2 calls), one build, the second returns the stored answer, 
 makes no model call; a first send that fails lets the waiting send run once (one build, one
 pair) while an unrelated request is answered during the hold; a wait past a 500 ms limit is
 `RequestInProgressError` with no model call, and the first still answers.
+
+## Claims from their own pool (Codex B8-F01, 2026-10-23)
+
+Claims (the session advisory locks above) were held on connections of the app's one pool (10),
+while each answer's own reads and writes borrowed more from the same pool. Ten distinct questions
+at once could hold all ten as claims and wait for an eleventh: none finished, and other work
+queued behind them. Claims now come from `claimPool` (`db.ts`): 3 connections by default
+(`ASSISTANT_CLAIM_POOL_MAX`; with the main 10, under Supabase session mode's 15), each wait for a
+free one bounded to 2 s (`connectionTimeoutMillis`), idle ones closed after 30 s. The work always
+uses `pool`, which no claim holds, so a holder always progresses and releases.
+
+- At most `claimPool` size answers run at once; the others wait for a claim connection, holding
+  nothing, trying again every 250 ms until `requestClaimWaitMs()`.
+- Past the wait, a question that never got a claim connection fails with `AssistantBusyError`
+  ("The assistant is answering as many questions as it can at once. Nothing was sent to it; try
+  again in a moment."), one that got connections but found its request claimed fails with
+  `RequestInProgressError`. Neither runs or stores anything.
+- A claim connection whose lock query fails is destroyed, not returned.
+
+Tests (real database): ten distinct questions at once, each building a table, with the first
+round held at a gate: no more than the claim pool's size reach the model while held, an ordinary
+tenant query completes during the hold with no queue on the main pool, and after release all ten
+finish (ten builds, twenty model calls). With every claim held, a further question past a 2.5 s
+wait is `AssistantBusyError`, makes no model call and stores nothing, and is answered when asked
+again after the holders finish. The earlier one-execution, failure-recovery and wait-limit tests
+still pass.
