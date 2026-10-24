@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch14 RR-M02 (distinct storage locations; `2cf49d9`) and batch15 TR500-F01 (reserved column names keep their values; preview check needs own values), TR500-F02/F03 (Findings edits keep drafts, refuse gone findings, bulk all or nothing) and TR500-M01 (input validation) (`ed1dc1f`), implemented, ready for review with the docs commit after them (`docs/batch14-handover-2026-10-23.md`, `docs/batch15-handover-2026-10-24.md`). No migration. Full library exit 0, 1,563 passed / 72 skipped, no Errors line; full native exit 0, 93 passed / 1 skipped. No push, deployment or existing-database migration.
+Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): the section dashboards and stage status from the 3001 prototype merged into main at Grant's request (`d5ee929`, `docs/dashboards-merge-handover-2026-10-24.md`) and B15-F01 (a grouped converted copy shows its latest attempt's error; `f95999d`, `docs/batch16-handover-2026-10-24.md`), implemented, ready for review with the docs commit after them. No migration. Full library exit 0, 1,592 passed / 72 skipped, no Errors line; full native on the merge exit 0, 95 passed / 1 skipped. No push, deployment or existing-database migration.
+
+## Claude: dashboards merge and batch16 (B15-F01), main copy (2026-10-24)
+
+Implemented, ready for review: `d5ee929` (dashboards from the 3001 prototype), `f95999d` (B15-F01) and this docs commit. Checks and limits in `docs/dashboards-merge-handover-2026-10-24.md` and `docs/batch16-handover-2026-10-24.md`. Codex's previous status line is kept in `.fnd001/backup-status-1024b/`.
 
 ## Claude: batch14 (RR-M02) and batch15 (TR500-F01, F02, F03, M01), main copy (2026-10-24)
 
