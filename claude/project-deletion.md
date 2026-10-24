@@ -38,7 +38,8 @@ RR-M02): records can name the same location (two reads of one file whose removal
 deleted project's record that also names a copy's location), so it is not a sum of the items. Each
 item reads "Deleted project X: N storage locations" or "A converted copy of a data file in X"
 (several records for the same copy are one item; the records stay separate, each with its own
-producer and retry), with the latest error and "Remove them now"
+producer and retry), with the last attempt's error (for a grouped copy, the error of the record
+whose attempt is latest by `last_attempt_at`, then by record id; Codex B15-F01) and "Remove them now"
 (`retryProjectStorageCleanup`), or says the list could not be read.
 
 ## Converted copies (Codex RR-F03, batch10 and batch12 reviews)

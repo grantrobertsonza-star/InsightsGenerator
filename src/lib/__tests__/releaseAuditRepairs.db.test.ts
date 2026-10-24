@@ -508,6 +508,58 @@ describe.skipIf(!TEST_DATABASE_URL)("release audit repairs RR-F01, RR-F02, RR-F0
         expect((await notice()).text).toBe("");
       });
 
+      // Codex B15-F01: a grouped copy shows the error of the latest attempt, whatever order its
+      // records were created or finished in.
+      it("a grouped copy shows the latest attempt's error when its reads finish out of order, and in order; the retry clears both", async () => {
+        const { beginConvertedCopy, finishConvertedCopy, loadPendingProjectCleanups } = await import("../projectStorageCleanup");
+        const { retryProjectStorageCleanup } = await import("../runActions");
+        const shownError = async (run: string) => {
+          const state = await loadPendingProjectCleanups(tenant);
+          if (!state.ok) throw new Error(state.error);
+          const items = state.items.filter((i) => i.projectName === run);
+          expect(items).toHaveLength(1);
+          return items[0];
+        };
+        for (const order of ["newer finishes first", "older finishes first"] as const) {
+          const name = `Out of order ${order}`;
+          const run = await newRun(name);
+          const file = await savFile(run);
+          const converted = `${file}.converted.json`;
+          const older = await beginConvertedCopy(file, converted);
+          const newer = await beginConvertedCopy(file, converted);
+          const finish = async (intent: typeof older, error: string) => {
+            storage.fail = error;
+            await finishConvertedCopy(intent, converted, true);
+            storage.fail = null;
+            // Attempts a few milliseconds apart, so the database times order them (ties are below).
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          };
+          if (order === "newer finishes first") {
+            await finish(newer, "Newer request failed first");
+            await finish(older, "Older request failed last");
+          } else {
+            await finish(older, "Older request failed first");
+            await finish(newer, "Newer request failed last");
+          }
+          const item = await shownError(name);
+          expect(item).toMatchObject({ kind: "converted_copy", records: 2, attempts: 2, locations: 1 });
+          expect(item.lastError).toBe(order === "newer finishes first" ? "Older request failed last" : "Newer request failed last");
+          const html = (await notice()).text;
+          expect(html).toContain(`Last attempt failed: ${item.lastError}.`);
+        }
+        // Equal attempt times fall to the later record.
+        const tie = await newRun("Same attempt time");
+        const tieFile = await savFile(tie);
+        const tieCopy = `${tieFile}.converted.json`;
+        const first = await beginConvertedCopy(tieFile, tieCopy);
+        const second = await beginConvertedCopy(tieFile, tieCopy);
+        await db.pool.query("update project_storage_cleanup set in_flight_until = null, attempts = 1, last_attempt_at = '2026-10-24T06:00:00Z', last_error = case when id = $1 then 'First record error' else 'Second record error' end where id = any($2::bigint[])", [first.id, [first.id, second.id]]);
+        expect((await shownError("Same attempt time")).lastError).toBe("Second record error");
+
+        expect(await retryProjectStorageCleanup()).toEqual({ ok: true, remaining: 0 });
+        expect((await notice()).text).toBe("");
+      });
+
       it("copies of two different files stay two items and two locations", async () => {
         const run = await newRun("Two files");
         await readFailingRemoval(await savFile(run));

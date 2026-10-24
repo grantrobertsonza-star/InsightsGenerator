@@ -250,8 +250,8 @@ export async function loadPendingProjectCleanups(tenantId: string): Promise<Pend
   try {
     return await withTenantRead(tenantId, async (client) => {
       if (!(await projectCleanupAvailable(client))) return { ok: true as const, available: false, items: [], locations: 0 };
-      const r = await client.query<{ id: string; kind: "deleted_project" | "converted_copy"; project_name: string | null; storage_paths: string[]; attempts: number; last_error: string | null; created_at: Date | string }>(
-        `select id::text, kind, project_name, storage_paths, attempts, last_error, created_at
+      const r = await client.query<{ id: string; kind: "deleted_project" | "converted_copy"; project_name: string | null; storage_paths: string[]; attempts: number; last_error: string | null; last_attempt_at: Date | string | null; created_at: Date | string }>(
+        `select id::text, kind, project_name, storage_paths, attempts, last_error, last_attempt_at, created_at
            from project_storage_cleanup
           where tenant_id = $1 and (in_flight_until is null or in_flight_until < now())
           order by created_at, id`,
@@ -260,19 +260,34 @@ export async function loadPendingProjectCleanups(tenantId: string): Promise<Pend
       const distinct = new Set<string>();
       const items: PendingProjectCleanup[] = [];
       const copyItems = new Map<string, PendingProjectCleanup>();
+      // Which record of a grouped copy made the latest attempt (Codex B15-F01): its error is the one
+      // shown as the last attempt's. Records finish in any order, so creation order is not it. The
+      // latest last_attempt_at wins; a record never attempted ranks below any attempt; equal times
+      // fall to the higher record id (the later record), so the choice is deterministic.
+      const latestAttempt = new Map<string, { at: number; id: bigint }>();
+      const attemptOf = (x: { id: string; last_attempt_at: Date | string | null }) => ({
+        at: x.last_attempt_at === null ? Number.NEGATIVE_INFINITY : new Date(x.last_attempt_at).getTime(),
+        id: BigInt(x.id),
+      });
       for (const x of r.rows) {
         for (const p of x.storage_paths) distinct.add(p);
         const createdAt = new Date(x.created_at).toISOString();
         if (x.kind === "converted_copy") {
-          // One copy, however many records name it: the newest record's error is the latest attempt's.
+          // One copy, however many records name it.
           const key = [...x.storage_paths].sort().join("\n");
           const seen = copyItems.get(key);
+          const attempt = attemptOf(x);
           if (seen) {
             seen.records += 1;
             seen.attempts += Number(x.attempts);
-            if (x.last_error !== null) seen.lastError = x.last_error;
+            const best = latestAttempt.get(key)!;
+            if (attempt.at > best.at || (attempt.at === best.at && attempt.id > best.id)) {
+              latestAttempt.set(key, attempt);
+              seen.lastError = x.last_error;
+            }
             continue;
           }
+          latestAttempt.set(key, attempt);
           const item: PendingProjectCleanup = { id: x.id, kind: x.kind, projectName: x.project_name, locations: new Set(x.storage_paths).size, records: 1, attempts: Number(x.attempts), lastError: x.last_error, createdAt };
           copyItems.set(key, item);
           items.push(item);
