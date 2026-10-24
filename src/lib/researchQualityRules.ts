@@ -393,6 +393,8 @@ export function validateObservation(
     passages: ReferencePassage[];
     coverageComplete: boolean;
     briefPresent?: boolean;
+    /** Codex RQ-F01: source ids whose extraction left out quotes that could not be verified. */
+    unverifiedSourceIds?: string[];
   },
 ): ObservationPayload {
   const criterion = ctx.criteria.find((c) => c.criterionId === raw.criterion_id);
@@ -416,7 +418,21 @@ export function validateObservation(
   if (basis === "absence_in_assessed_scope" && (documentation === "documented" || documentation === "partial" || documentation === "conflicting")) {
     throw new Error("observation claims documented content without citing any fact");
   }
-  if ((documentation === "not_documented" || documentation === "unavailable") && methodology === "concern") {
+  // Codex RQ-F01: an absence cannot be confirmed in a document some of whose proposed quotes were
+  // left out as unverifiable: those passages may have covered this criterion. The rating is "not
+  // assessed" (not rated, never Absent 0), as a checklist element is in a document not read in full.
+  // Only sources whose roles this criterion applies to count; a criterion that names no roles is
+  // affected by any such source.
+  const criterionRoles = new Set(criterion.applicability.roles);
+  const unverifiedRelevant = (ctx.unverifiedSourceIds ?? []).some((id) => {
+    const src = ctx.manifest.sources.find((s) => s.sourceId === id);
+    return !!src && (criterionRoles.size === 0 || src.roles.some((r) => criterionRoles.has(r)));
+  });
+  if (basis === "absence_in_assessed_scope" && documentation === "not_documented" && unverifiedRelevant) {
+    documentation = "not_assessed";
+    notes.push("Some passages the model quoted from the documents could not be found in them and were left out, so this absence cannot be confirmed: not rated.");
+  }
+  if ((documentation === "not_documented" || documentation === "unavailable" || documentation === "not_assessed") && methodology === "concern") {
     methodology = "cannot_assess";
     notes.push("Missing documentation is not evidence of a poor method: methodology recorded as 'cannot assess'.");
   }

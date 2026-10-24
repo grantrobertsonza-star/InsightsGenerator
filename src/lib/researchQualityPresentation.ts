@@ -6,6 +6,24 @@ import type { DocumentedFact, ObservationPayload, ReviewManifest } from "./resea
 import type { ObservationView } from "./researchQualityView";
 import type { CriterionRating, DashboardView } from "./researchQualityDashboard";
 
+/**
+ * Codex RQ-F01: quotes the model proposed that code could not find in the document (or whose
+ * topic, phase or selection was not a valid value) are left out. That is a failed reading, not
+ * evidence that the document is silent, so it is said wherever the review is shown or exported.
+ * `kept` is how many verified facts the same document still gave.
+ */
+export type UnverifiedEvidence = { filename: string; rejected: number; kept: number };
+
+export function unverifiedEvidenceNote(u: UnverifiedEvidence): string {
+  const quotes = u.rejected === 1 ? "1 quoted passage" : `${u.rejected} quoted passages`;
+  if (u.kept === 0) {
+    return `${u.filename}: none of the ${quotes} the model proposed could be found in the document, so nothing was taken from it. ` +
+      "Any Absent rating resting on this document reflects that failed reading, not the document: start a new review.";
+  }
+  return `${u.filename}: ${quotes} the model proposed could not be found in the document and ${u.rejected === 1 ? "was" : "were"} left out. ` +
+    "Absences in this document are not rated, because the left-out passages may have covered them.";
+}
+
 export const DOC_LABEL: Record<string, string> = {
   documented: "Documented",
   partial: "Partly documented",
@@ -206,6 +224,24 @@ type StepRow = { key: string; status: string };
 export function shownFailedSteps<T extends StepRow>(r: { state: string; progress: { interrupted?: boolean }; coverage: { tasks?: T[] } }): T[] {
   const running = (r.state === "pending" || r.state === "running") && !r.progress.interrupted;
   return running ? [] : (r.coverage.tasks ?? []).filter((t) => t.status === "failed");
+}
+
+/**
+ * Whether Retry failed steps can rerun this step inside the same review. A step that has used all
+ * its attempts cannot. A reading step (extract) cannot once any assessment or checklist has
+ * published: those cite facts by ids numbered across the whole review, and a new reading could
+ * renumber what they cite, so the missing document needs a new review version. The screen uses it
+ * to decide what to offer; retryFailedTasks (researchQualityReview.ts) applies the same rule when
+ * it resets steps, so what is offered is what reruns (Codex RQ-F01: the screen used to offer a
+ * retry that then reran nothing).
+ */
+export function retryableInPlace(
+  step: { stage: string; status: string; attempts: number; maxAttempts: number },
+  steps: { stage: string; status: string }[],
+): boolean {
+  if (step.attempts >= step.maxAttempts) return false;
+  if (step.stage !== "extract") return true;
+  return !steps.some((t) => (t.stage === "assess" || t.stage === "checklist") && t.status === "succeeded");
 }
 
 // ---------------------------------------------------------------- the Overview's status filter

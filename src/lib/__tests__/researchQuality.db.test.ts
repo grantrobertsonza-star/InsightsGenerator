@@ -16,7 +16,7 @@ const ROLE = "ie_test_rq_app";
 let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
 const objects = new Map<string, Buffer>();
 const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail" };
+const model = { calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail", extract: "normal" as "normal" | "invent" | "badEnum" | "mixed", extractOnly: null as null | string };
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
@@ -61,6 +61,19 @@ vi.mock("../anthropic", () => ({
             statement: s.slice(0, 80),
             exact_quote: s,
           }));
+          // Codex RQ-F01: quotes the document does not contain, or values outside the enums, for every
+          // proposed fact ("invent", "badEnum") or alongside the real ones ("mixed"); optionally only for
+          // the document whose name contains `extractOnly`.
+          const affected = model.extract !== "normal" && (!model.extractOnly || content.includes(`Document: `) && content.split("\n")[0].includes(model.extractOnly));
+          if (affected && model.extract === "invent") {
+            const invented = facts.map((f, i) => ({ ...f, exact_quote: `This sentence ${i + 1} was never written in the document.` }));
+            return { usage, content: [{ type: "tool_use", input: { nothing_found: false, facts: invented } }] };
+          }
+          if (affected && model.extract === "badEnum") return { usage, content: [{ type: "tool_use", input: { nothing_found: false, facts: facts.map((f) => ({ ...f, topic: "not_a_topic" })) } }] };
+          if (affected && model.extract === "mixed") {
+            const extra = [1, 2].map((i) => ({ topic: "claim", phase: "planned", selection: "unstated", statement: "invented", exact_quote: `An invented passage number ${i} about the sampling frame.` }));
+            return { usage, content: [{ type: "tool_use", input: { nothing_found: false, facts: [...facts, ...extra] } }] };
+          }
           if (model.cutOff === "extract") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: { facts: facts.slice(0, 1) } }] };
           // The live model's slip seen on 2026-10-18: the list arrives as a JSON string and the flag is left out.
           if (model.stringifyLists) return { usage, content: [{ type: "tool_use", input: { facts: JSON.stringify(facts) } }] };
@@ -201,6 +214,8 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     model.stringifyLists = false;
     model.cutOff = null;
     model.checklist = "normal";
+    model.extract = "normal";
+    model.extractOnly = null;
   });
 
   it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
@@ -1047,6 +1062,152 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const v = await viewOf(id);
       expect(v.review!.dashboards).toEqual([]);
       expect(v.review!.dashboardNote).toMatch(/criteria release RQC-2, before the dashboard/);
+    });
+  });
+
+  // Codex RQ-F01 (2026-10-24): an extraction whose proposed quotes were all rejected was published
+  // as a successful, empty reading, so a brief that states its decision, population and deliverables
+  // was reviewed as complete, 0%, every criterion Absent, on screen and in Word, and Retry did
+  // nothing. A rejected reading is now a failed step; a partly rejected one leaves absences unrated.
+  describe("RQ-F01 rejected extraction is never complete negative evidence", () => {
+    const realBrief = (label: string) =>
+      addDoc(A, runA, `${label}.txt`, Buffer.from("Client brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\nDeliverables are a short report and a deck.\n"));
+    const briefReview = async (documentId: string) => {
+      const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, kind: "brief", sources: [{ documentId }] });
+      if (!r.ok) throw new Error(r.error);
+      await settle();
+      return r.reviewId;
+    };
+    const docText = async (id: string) => {
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      return (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    };
+
+    it("all quotes rejected: the step fails visibly, nothing is rated Absent, Word agrees, and Retry reads the document again", async () => {
+      model.extract = "invent";
+      const id = await briefReview(await realBrief("rq-f01-all"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("failed");
+      expect(v.coverage.coverageComplete).toBe(false);
+      expect(v.observations.filter((o) => o.payload.rating.score === 0)).toEqual([]);
+      expect(v.dashboards.every((d) => d.pct === null)).toBe(true);
+      const step = v.coverage.tasks!.find((t) => t.stage === "extract")!;
+      expect(step).toMatchObject({ status: "failed" });
+      expect(step.error).toMatch(/none of the \d+ passages the model quoted from rq-f01-all\.txt .* could be found in the document/);
+      expect(step.error).toMatch(/not read as having no content/);
+      const word = await docText(id);
+      expect(word).toMatch(/could be found in the document/);
+      expect(word).not.toMatch(/Research brief: 0%/);
+      expect(word).not.toMatch(/Absent 0\b.*Absent 0\b/); // the scale legend may name Absent once; no rating does
+      // Recovery in place: the model is healthy again, Retry failed steps re-reads it.
+      model.extract = "normal";
+      expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: true });
+      await settle();
+      const after = (await viewOf(id)).review!;
+      expect(after.state).toBe("complete");
+      expect(after.facts.length).toBeGreaterThanOrEqual(3);
+      expect(after.unverifiedEvidence).toEqual([]);
+      expect(after.dashboards[0].dimensions.find((x) => x.dimensionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+    });
+
+    it("every proposed fact with an invalid topic is the same failed step", async () => {
+      model.extract = "badEnum";
+      const id = await briefReview(await realBrief("rq-f01-enum"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("failed");
+      expect(v.coverage.tasks!.find((t) => t.stage === "extract")!.error).toMatch(/none of the \d+ passages/);
+      expect(v.observations).toEqual([]);
+    });
+
+    it("some quotes rejected: verified facts are used, absences are not rated, the screen and Word say why", async () => {
+      model.extract = "mixed";
+      const id = await briefReview(await realBrief("rq-f01-mixed"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("complete");
+      expect(v.coverage.coverageComplete).toBe(false);
+      expect(v.unverifiedEvidence).toEqual([{ filename: "rq-f01-mixed.txt", rejected: 2, kept: expect.any(Number) }]);
+      expect(v.unverifiedEvidence[0].kept).toBeGreaterThanOrEqual(3);
+      // Documented criteria are still rated from verified quotes; no absence is scored Absent.
+      const [d] = v.dashboards;
+      expect(d.dimensions.find((x) => x.dimensionId === "RQ-BRIEF-DECISION")!.score).toBe(3);
+      const absences = v.observations.filter((o) => o.payload.basis === "absence_in_assessed_scope");
+      expect(absences.length).toBeGreaterThan(0);
+      for (const o of absences) {
+        expect(o.payload.assessment.documentation).toBe("not_assessed");
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/could not be found in them and were left out/);
+      }
+      expect(d.dimensions.some((x) => x.score === 0)).toBe(false);
+      for (const c of v.checklists) for (const sec of c.sections) for (const e of sec.elements) expect(e.status).not.toBe("absent");
+      const word = await docText(id);
+      expect(word).toContain("rq-f01-mixed.txt: 2 quoted passages the model proposed could not be found in the document and were left out.");
+    });
+
+    it("some quotes rejected in a full review: the checklist confirms no absence in that document", async () => {
+      model.extract = "mixed";
+      const prop = await addDoc(A, runA, "rq-f01-mixed-prop.txt", Buffer.from("Proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+      const v = (await viewOf(await start([{ documentId: prop, roles: ["proposal"] }]))).review!;
+      expect(v.checklists.length).toBeGreaterThan(0);
+      const elements = v.checklists.flatMap((c) => c.sections.flatMap((x) => x.elements));
+      expect(elements.some((e) => e.status === "present")).toBe(true);
+      expect(elements.filter((e) => e.status === "absent")).toEqual([]);
+      expect(elements.some((e) => e.notAssessedBecause === "not all of the document was read, so absence cannot be confirmed")).toBe(true);
+    });
+
+    it("control: a document where the model legitimately finds nothing is still a complete review with Absent ratings", async () => {
+      const id = await briefReview(await addDoc(A, runA, "rq-f01-empty.txt", Buffer.from("Brief.\nTBC.\nSoon.\nOk.\n")));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("complete");
+      expect(v.coverage.coverageComplete).toBe(true);
+      expect(v.unverifiedEvidence).toEqual([]);
+      expect(v.observations.some((o) => o.payload.rating.score === 0 && o.payload.absenceScope === "complete")).toBe(true);
+    });
+
+    it("two documents, one rejected: the other is still assessed, and the failed one is named with its recovery", async () => {
+      model.extract = "invent";
+      model.extractOnly = "rq-f01-prop";
+      const brief = await realBrief("rq-f01-ctrl-brief");
+      const prop = await addDoc(A, runA, "rq-f01-prop.txt", Buffer.from("Proposal.\nWe will survey the general public using an opt-in online panel.\nRecruitment will use a commercial panel provider.\n"));
+      const id = await start([{ documentId: brief, roles: ["brief"] }, { documentId: prop, roles: ["proposal"] }]);
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("partial");
+      expect(v.facts.every((f) => v.manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)!.filename === "rq-f01-ctrl-brief.txt")).toBe(true);
+      expect(v.facts.length).toBeGreaterThanOrEqual(3);
+      const failed = v.coverage.tasks!.filter((t) => t.status === "failed");
+      expect(failed.map((t) => t.error)).toEqual([expect.stringMatching(/quoted from rq-f01-prop\.txt/)]);
+      // The brief's own absences are qualified as partial (not every document was read).
+      for (const o of v.observations.filter((x) => x.payload.basis === "absence_in_assessed_scope")) expect(o.payload.absenceScope).toBe("partial");
+      // The reading cannot be retried in this review (assessments already cite the brief's facts),
+      // so the screen offers no retry for it; a retry call reruns nothing and changes nothing.
+      const { retryableInPlace } = await import("../researchQualityPresentation");
+      expect(retryableInPlace(failed[0], v.coverage.tasks!)).toBe(false);
+      model.extract = "normal";
+      expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: true });
+      await settle();
+      const again = (await viewOf(id)).review!;
+      expect(again.state).toBe("partial");
+      expect(again.facts.map((f) => f.factId)).toEqual(v.facts.map((f) => f.factId));
+      // A new review of the same documents, with the model healthy, reads both.
+      const fresh = (await viewOf(await start([{ documentId: brief, roles: ["brief"] }, { documentId: prop, roles: ["proposal"] }]))).review!;
+      expect(fresh.state).toBe("complete");
+      expect(new Set(fresh.facts.map((f) => fresh.manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)!.filename))).toEqual(new Set(["rq-f01-ctrl-brief.txt", "rq-f01-prop.txt"]));
+      // Another organisation cannot retry it.
+      current = { tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" };
+      expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: false });
+    });
+
+    it("a review saved before the repair, with an all-rejected extraction published as succeeded, is qualified on screen and in Word", async () => {
+      const id = await briefReview(await realBrief("rq-f01-old"));
+      // Reproduce the stored state the old code wrote: the extraction succeeded with no facts and every quote dropped.
+      await q(
+        `update research_quality_tasks set result = jsonb_set(result, '{facts}', '[]'::jsonb), validation = '{"droppedUnverifiableQuotes": 4}'::jsonb
+          where review_id = $1 and stage = 'extract'`,
+        [id],
+      );
+      const v = (await viewOf(id)).review!;
+      expect(v.unverifiedEvidence).toEqual([{ filename: "rq-f01-old.txt", rejected: 4, kept: 0 }]);
+      const word = await docText(id);
+      expect(word).toContain("rq-f01-old.txt: none of the 4 quoted passages the model proposed could be found in the document, so nothing was taken from it.");
     });
   });
 

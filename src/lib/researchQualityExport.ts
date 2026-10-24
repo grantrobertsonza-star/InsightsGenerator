@@ -23,6 +23,8 @@ import {
   CHECKLIST_STATUS_LABEL,
   checklistScoreText,
   criterionShortLabel,
+  unverifiedEvidenceNote,
+  reviewStepLabel,
 } from "./researchQualityPresentation";
 const DASHBOARD_BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
 import type { ObservationView, ResearchQualityView } from "./researchQualityView";
@@ -59,6 +61,10 @@ async function buildKindDocx(view: ResearchQualityView, projectName: string | nu
     const read = s.assessedRanges.reduce((n, x) => n + (x.end - x.start), 0);
     if (read < s.charCount) body.push(p(`${s.filename}: only the first ${read.toLocaleString("en-GB")} of ${s.charCount.toLocaleString("en-GB")} characters were read; later sections are not rated.`, { bold: true }));
   }
+  // Codex RQ-F01: a step that did not succeed (a reading whose quotes were all rejected, say) is
+  // named here as it is on screen, so the export never reads as a finished review when it is not.
+  for (const t of r.coverage.tasks ?? []) if (t.status !== "succeeded") body.push(p(`Not completed: ${reviewStepLabel(t.key, r.manifest)}${t.error ? `: ${t.error}` : ""}.`, { bold: true }));
+  for (const u of r.unverifiedEvidence) body.push(p(unverifiedEvidenceNote(u), { bold: true }));
   body.push(p("AI ratings of how well the document is written, each checked by code against the document's own words. A guide to where to improve it, not a certification.", { italics: true }));
   const quotesFor = (cid: string) => r.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed");
   for (const d of r.dashboards) {
@@ -112,6 +118,7 @@ export async function buildResearchQualityDocx(view: ResearchQualityView, projec
   }
   for (const c of r.manifest.criteria.filter((c) => c.status !== "selected")) body.push(bullet(`${c.criterionId} ${c.status}: ${c.reason}`));
   for (const t of r.coverage.tasks ?? []) if (t.status !== "succeeded") body.push(bullet(`Step ${t.key} ${t.status}${t.error ? `: ${t.error}` : ""}`));
+  for (const u of r.unverifiedEvidence) body.push(bullet(unverifiedEvidenceNote(u)));
   if (r.newClarifications > 0) body.push(p(`${r.newClarifications} researcher clarification(s) were added after this review and are not reflected in it.`, { bold: true }));
 
   body.push(h("Overview", HeadingLevel.HEADING_1));

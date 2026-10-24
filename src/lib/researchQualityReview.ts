@@ -457,6 +457,21 @@ async function runExtraction(tenantId: string, runId: string, review: { manifest
     );
     usage = answer.usage;
     const validated = validateExtraction(answer.input, { text: pinned.text, range: input.range, segments: pinned.segments, sourceId: src.sourceId, sourceVersionId: src.sourceVersionId });
+    // Codex RQ-F01: every proposed quote rejected (not found in the document, or an invalid topic,
+    // phase or selection) leaves no verified fact. Publishing that as a successful, empty reading
+    // made the review complete and rated the document Absent on everything. It is a failed reading
+    // of this passage instead: the step fails visibly and Retry failed steps reads it again. Only an
+    // answer that proposed nothing and said so (nothing_found) is a reading that found nothing.
+    if (validated.facts.length === 0 && validated.dropped > 0) {
+      throw Object.assign(
+        new Error(
+          `none of the ${validated.dropped === 1 ? "1 passage" : `${validated.dropped} passages`} the model quoted from ${src.filename} ` +
+            `(characters ${input.range.start} to ${input.range.end}) could be found in the document, so nothing was taken from this part. ` +
+            "It is not read as having no content",
+        ),
+        { usage },
+      );
+    }
     await publishExtraction(tenantId, task.id, lease, validated, usage);
   } catch (error) {
     usage = (error as { usage?: typeof usage }).usage ?? usage;
@@ -536,12 +551,24 @@ async function runChecklist(tenantId: string, runId: string, manifest: ReviewMan
 
 type SourceRead = "fully" | "partly" | "could not be read";
 
-async function runAssessment(tenantId: string, runId: string, reviewId: string, manifest: ReviewManifest, task: TaskRow, facts: DocumentedFact[], coverageComplete: boolean, sourceRead: SourceRead[]): Promise<void> {
+/** Source ids whose succeeded extraction steps left out quotes that could not be verified (Codex RQ-F01). */
+function unverifiedSources(extractTasks: TaskRow[], manifest: ReviewManifest): string[] {
+  const ids = new Set<string>();
+  for (const t of extractTasks) {
+    if (t.status !== "succeeded") continue;
+    const dropped = Number((t.validation as { droppedUnverifiableQuotes?: unknown } | null)?.droppedUnverifiableQuotes ?? 0);
+    const src = manifest.sources[(t.result?.input as { sourceIndex: number }).sourceIndex];
+    if (dropped > 0 && src) ids.add(src.sourceId);
+  }
+  return [...ids].sort();
+}
+
+async function runAssessment(tenantId: string, runId: string, reviewId: string, manifest: ReviewManifest, task: TaskRow, facts: DocumentedFact[], coverageComplete: boolean, sourceRead: SourceRead[], unverifiedSourceIds: string[]): Promise<void> {
   const criteriaIds = (task.result?.input as { criteria: string[] }).criteria;
   const criteria = criteriaIds.map((id) => CRITERIA.criteria.find((c) => c.criterionId === id)).filter(Boolean) as Criterion[];
   const passages = referencePassagesFor(criteriaIds, manifest.studyType, facts);
   const briefPresent = manifest.sources.some((s) => s.roles.includes("brief"));
-  const input = { criteria: criteriaIds, factIds: facts.map((f) => f.factId), factsHash: sha256(canonicalJson(facts)), passages: passages.map((p) => `${p.referenceId}:${p.passageId}`), coverageComplete };
+  const input = { criteria: criteriaIds, factIds: facts.map((f) => f.factId), factsHash: sha256(canonicalJson(facts)), passages: passages.map((p) => `${p.referenceId}:${p.passageId}`), coverageComplete, unverifiedSourceIds };
   await updateTaskInput(tenantId, task.id, input, sha256(canonicalJson(input)));
   const lease = await claimTask(tenantId, task.id);
   if (!lease) return;
@@ -579,7 +606,7 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
     const raw = (answerObj as { observations?: unknown } | null)?.observations;
     if (!Array.isArray(raw)) throw new Error(`the assessment answer is not in the required shape (${describeShape(answerObj, ["observations"])})`);
     if (raw.length === 0) throw new Error("the assessment returned no observations");
-    const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent }));
+    const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent, unverifiedSourceIds }));
     const covered = new Set(validated.map((v) => v.criterionId));
     const notAssessed = criteriaIds.filter((id) => !covered.has(id));
     const observations = validated.map((p) => {
@@ -639,12 +666,15 @@ async function runReviewSteps(tenantId: string, runId: string, reviewId: string)
   const extractAll = tasks.filter((t) => t.stage === "extract");
   const extractionComplete = extractAll.every((t) => t.status === "succeeded");
   const truncated = manifest.sources.some((s) => s.assessedRanges.reduce((n, r) => n + (r.end - r.start), 0) < s.charCount);
-  const coverageComplete = extractionComplete && !truncated;
+  // Codex RQ-F01: a source whose successful extraction still left out unverifiable quotes was not
+  // fully read: the left-out passages may have stated what an absence rating would deny.
+  const unverifiedSourceIds = unverifiedSources(extractAll, manifest);
+  const coverageComplete = extractionComplete && !truncated && unverifiedSourceIds.length === 0;
   const sourceRead: SourceRead[] = manifest.sources.map((src, i) => {
     const mine = extractAll.filter((t) => (t.result?.input as { sourceIndex: number }).sourceIndex === i);
     if (mine.every((t) => t.status !== "succeeded")) return "could not be read";
     const whole = src.assessedRanges.reduce((n, r) => n + (r.end - r.start), 0) >= src.charCount;
-    return mine.every((t) => t.status === "succeeded") && whole ? "fully" : "partly";
+    return mine.every((t) => t.status === "succeeded") && whole && !unverifiedSourceIds.includes(src.sourceId) ? "fully" : "partly";
   });
   // With nothing read at all there is nothing to assess: the review fails visibly instead of
   // reporting every criterion as undocumented.
@@ -652,7 +682,7 @@ async function runReviewSteps(tenantId: string, runId: string, reviewId: string)
     // Assessments and checklists both read the settled facts and do not depend on each other.
     const next = tasks.filter((t) => (t.stage === "assess" || t.stage === "checklist") && t.status === "pending");
     await runPool(next, manifest.limits.concurrency, (t) =>
-      t.stage === "assess" ? runAssessment(tenantId, runId, reviewId, manifest, t, facts, coverageComplete, sourceRead) : runChecklist(tenantId, runId, manifest, t, facts, sourceRead),
+      t.stage === "assess" ? runAssessment(tenantId, runId, reviewId, manifest, t, facts, coverageComplete, sourceRead, unverifiedSourceIds) : runChecklist(tenantId, runId, manifest, t, facts, sourceRead),
     );
   }
   await finishReview(tenantId, reviewId, facts.length, coverageComplete);

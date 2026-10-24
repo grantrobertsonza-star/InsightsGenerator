@@ -12,6 +12,7 @@
 import { DASHBOARDS, reviewDashboards, type DashboardView } from "./researchQualityDashboard";
 import { findChecklist, gapRecommendations, scoreChecklist, type ChecklistScore, type ElementResult, type ElementStatus, type GapRecommendation } from "./researchQualityChecklist";
 import type { PoolClient } from "pg";
+import type { UnverifiedEvidence } from "./researchQualityPresentation";
 import { withTenantRead, withTenantRepeatableRead } from "./db";
 import { CRITERIA, referenceCatalogue } from "./researchQualityRules";
 import { assertModuleTables, assertRunOwned } from "./researchQualityRepository";
@@ -90,6 +91,8 @@ export type ResearchQualityView = {
     dashboards: DashboardView[];
     /** Why there is no dashboard, when a document type has one but this review shows none. */
     dashboardNote: string | null;
+    /** Codex RQ-F01: per document, quotes left out because they could not be verified (none listed when all were). */
+    unverifiedEvidence: UnverifiedEvidence[];
   });
 };
 
@@ -125,6 +128,24 @@ export type ChecklistView = {
  */
 export type ReviewProgress = { total: number; done: number; failed: number; working: number; waiting: number; interrupted: boolean };
 export const INTERRUPTED_AFTER_SECONDS = 120;
+
+/** Quotes left out as unverifiable, summed per document over its succeeded extraction steps. */
+export function unverifiedEvidenceBySource(
+  rows: { result: { input?: { sourceIndex?: number }; facts?: unknown[] } | null; validation: { droppedUnverifiableQuotes?: unknown } | null }[],
+  manifest: Pick<ReviewManifest, "sources">,
+): UnverifiedEvidence[] {
+  const bySource = new Map<number, UnverifiedEvidence>();
+  for (const row of rows) {
+    const i = row.result?.input?.sourceIndex;
+    const src = i === undefined ? undefined : manifest.sources[i];
+    if (i === undefined || !src) continue;
+    const entry = bySource.get(i) ?? { filename: src.filename, rejected: 0, kept: 0 };
+    entry.rejected += Math.max(0, Number(row.validation?.droppedUnverifiableQuotes ?? 0) || 0);
+    entry.kept += Array.isArray(row.result?.facts) ? row.result!.facts!.length : 0;
+    bySource.set(i, entry);
+  }
+  return [...bySource.entries()].sort(([a], [b]) => a - b).map(([, e]) => e).filter((e) => e.rejected > 0);
+}
 
 function checklistViews(
   tasks: { task_key: string; status: string; error: string | null; result: { input?: { sourceIndex?: number; checklistId?: string }; elements?: ElementResult[] } | null }[],
@@ -273,9 +294,19 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
       checklistNote: null,
       dashboards: [],
       dashboardNote: null,
+      unverifiedEvidence: [],
       progress: { total: progress.total, done: progress.done, failed: progress.failed, working: progress.working, waiting: progress.waiting, interrupted: active && progress.working === 0 && progress.idle },
     };
     view.review.sourceFreshness = await sourceFreshness(client, manifest);
+    // Read from the task rows themselves (as `progress` is), so a review saved before RQ-F01, whose
+    // all-rejected extraction was published as succeeded, is qualified too.
+    const extractRows = (
+      await client.query<{ result: { input?: { sourceIndex?: number }; facts?: unknown[] } | null; validation: { droppedUnverifiableQuotes?: unknown } | null }>(
+        `select result, validation from research_quality_tasks where review_id = $1 and stage = 'extract' and status = 'succeeded' order by task_key`,
+        [chosen.id],
+      )
+    ).rows;
+    view.review.unverifiedEvidence = unverifiedEvidenceBySource(extractRows, manifest);
     view.review.facts = await reviewFacts(client, chosen.id as string, manifest);
     const checklistTasks = (
       await client.query<{ task_key: string; status: string; error: string | null; result: { input?: { sourceIndex?: number; checklistId?: string }; elements?: ElementResult[] } | null }>(

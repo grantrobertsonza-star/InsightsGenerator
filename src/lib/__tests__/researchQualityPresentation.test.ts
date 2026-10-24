@@ -119,3 +119,34 @@ describe("the Criteria tab's list and filters", () => {
     expect(criterionRating(dashboards, [], "RQ-NONE")).toEqual({ score: null, label: "Not rated" });
   });
 });
+
+// Codex RQ-F01: the wording the screen and Word share, the per-document sum, and the retry rule.
+describe("rejected quotes and retry in place", () => {
+  it("names the document and says what was left out", async () => {
+    const { unverifiedEvidenceNote } = await import("../researchQualityPresentation");
+    expect(unverifiedEvidenceNote({ filename: "brief.docx", rejected: 1, kept: 5 })).toBe(
+      "brief.docx: 1 quoted passage the model proposed could not be found in the document and was left out. Absences in this document are not rated, because the left-out passages may have covered them.",
+    );
+    expect(unverifiedEvidenceNote({ filename: "brief.docx", rejected: 4, kept: 0 })).toMatch(/^brief\.docx: none of the 4 quoted passages .* start a new review\.$/);
+  });
+  it("sums rejected and kept per document over its readings, and lists only documents with rejections", async () => {
+    const { unverifiedEvidenceBySource } = await import("../researchQualityView");
+    const manifest = { sources: [{ filename: "a.txt" }, { filename: "b.txt" }] } as never;
+    const rows = [
+      { result: { input: { sourceIndex: 0 }, facts: [1, 2] }, validation: { droppedUnverifiableQuotes: 1 } },
+      { result: { input: { sourceIndex: 0 }, facts: [3] }, validation: { droppedUnverifiableQuotes: 2 } },
+      { result: { input: { sourceIndex: 1 }, facts: [4] }, validation: { droppedUnverifiableQuotes: 0 } },
+      { result: { input: { sourceIndex: 1 }, facts: [] }, validation: null },
+    ];
+    expect(unverifiedEvidenceBySource(rows, manifest)).toEqual([{ filename: "a.txt", rejected: 3, kept: 3 }]);
+  });
+  it("a reading step is retried in place only until an assessment or checklist has published; no step past its attempts", async () => {
+    const { retryableInPlace } = await import("../researchQualityPresentation");
+    const read = { stage: "extract", status: "failed", attempts: 1, maxAttempts: 3 };
+    expect(retryableInPlace(read, [read, { stage: "assess", status: "pending" }])).toBe(true);
+    expect(retryableInPlace(read, [read, { stage: "assess", status: "succeeded" }])).toBe(false);
+    expect(retryableInPlace(read, [read, { stage: "checklist", status: "succeeded" }])).toBe(false);
+    expect(retryableInPlace({ ...read, stage: "assess" }, [{ stage: "assess", status: "succeeded" }])).toBe(true);
+    expect(retryableInPlace({ ...read, attempts: 3 }, [read])).toBe(false);
+  });
+});

@@ -41,6 +41,8 @@ import {
   reviewStepLabel,
   scorecard,
   shownFailedSteps,
+  unverifiedEvidenceNote,
+  retryableInPlace,
 } from "@/lib/researchQualityPresentation";
 import InfoDot from "@/components/InfoDot";
 import type { DashboardView } from "@/lib/researchQualityDashboard";
@@ -134,11 +136,28 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
     void load(reviewId);
   }, [load, reviewId]);
   const running = view?.review && (view.review.state === "pending" || view.review.state === "running");
+  // A retry or continue starts the run in the background, after the action has answered, so the
+  // review can still read failed or partial when the page reloads straight after it. The page then
+  // keeps reading it (for up to two minutes) until the run shows as running, and from there follows
+  // it as any run; without this, a retry that succeeded left the failure on screen (found with
+  // Codex RQ-F01's recovery check).
+  const [following, setFollowing] = useState(false);
+  const live = running || following;
   useEffect(() => {
-    if (!running) return;
+    if (!live) return;
     const t = setInterval(() => void load(reviewId), 4000);
     return () => clearInterval(t);
-  }, [running, load, reviewId]);
+  }, [live, load, reviewId]);
+  useEffect(() => {
+    if (!following) return;
+    const t = setTimeout(() => setFollowing(false), 120_000);
+    return () => clearTimeout(t);
+  }, [following]);
+  useEffect(() => {
+    // Once the run is seen running, the ordinary polling above follows it to the end.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (running) setFollowing(false);
+  }, [running]);
 
   if (error?.setup) return <p role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">{error.text}</p>;
   if (!view) return <p className="text-sm text-muted">{error ? error.text : "Loading..."}</p>;
@@ -195,6 +214,7 @@ export default function ResearchQualityReview({ runId }: { runId: string }) {
                   openReview(id);
                 }}
                 reload={() => load(reviewId)}
+                follow={() => setFollowing(true)}
               />
             ) : (
               <p className="p-5 text-sm text-muted">No briefs or proposals yet. Add one under Import data as a Brief or a Proposal; Word, PDF and text files can be reviewed.</p>
@@ -311,6 +331,7 @@ function ReviewDetail({
   setCriterion,
   onStarted,
   reload,
+  follow,
 }: {
   runId: string;
   view: ResearchQualityView;
@@ -328,6 +349,7 @@ function ReviewDetail({
   setCriterion: (c: string | null) => void;
   onStarted: (id: string) => void;
   reload: () => Promise<void>;
+  follow: () => void;
 }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [briefId, setBriefId] = useState("");
@@ -465,7 +487,8 @@ function ReviewDetail({
           </p>
         )}
         {review && <PartlyReadNotes review={review} />}
-        {review && <ReviewState runId={runId} review={review} reload={reload} />}
+        {/* Keyed by state, so a retry's "Retrying..." note goes once the review has moved on. */}
+        {review && <ReviewState key={`${review.id}:${review.state}`} runId={runId} review={review} reload={reload} follow={follow} />}
       </div>
       {review && (
         <>
@@ -600,21 +623,23 @@ const MetaRow = ({ label, value }: { label: string; value: string }) => (
 );
 
 /** Running, interrupted, partial or failed: what happened, which steps failed, and the retry. */
-function ReviewState({ runId, review, reload }: { runId: string; review: NonNullable<ResearchQualityView["review"]>; reload: () => Promise<void> }) {
+function ReviewState({ runId, review, reload, follow }: { runId: string; review: NonNullable<ResearchQualityView["review"]>; reload: () => Promise<void>; follow: () => void }) {
   const [retryMsg, setRetryMsg] = useState<string | null>(null);
   const running = (review.state === "pending" || review.state === "running") && !review.progress.interrupted;
   const failedSteps = shownFailedSteps(review);
   const retry = async (note: string) => {
     const x = await retryResearchQualityReviewAction(runId, review.id);
     setRetryMsg(x.ok ? note : x.error);
+    if (x.ok) follow();
     await reload();
   };
-  const quiet = review.state === "complete" && !review.progress.interrupted && !retryMsg;
+  const unverified = review.unverifiedEvidence ?? [];
+  const quiet = review.state === "complete" && !review.progress.interrupted && !retryMsg && unverified.length === 0;
   return (
     <div
       data-testid="rq-review-state"
       data-state={review.state}
-      className={quiet ? "hidden" : `rounded-lg p-3 text-xs ${review.state === "failed" ? "bg-red-50 text-red-800" : review.state === "complete" ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}
+      className={quiet ? "hidden" : `rounded-lg p-3 text-xs ${review.state === "failed" ? "bg-red-50 text-red-800" : review.state === "complete" && unverified.length === 0 ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}
     >
       {running && (
         <p>{`Reviewing: ${review.progress.done} of ${review.progress.total} steps done${review.progress.failed ? `, ${review.progress.failed} failed` : ""}. Each step can take a minute or two; this page updates by itself.`}</p>
@@ -629,15 +654,23 @@ function ReviewState({ runId, review, reload }: { runId: string; review: NonNull
       )}
       {review.state === "partial" && <p>{`Partly complete: ${failedSteps.length} step(s) failed. What is shown was rated; the rest is shown as not rated.`}</p>}
       {review.state === "failed" && <p>The review failed: nothing could be rated.</p>}
+      {unverified.map((u) => (
+        <p key={u.filename} className="mt-1" data-testid="rq-unverified-evidence" data-kept={u.kept} data-rejected={u.rejected}>
+          {unverifiedEvidenceNote(u)}
+        </p>
+      ))}
       {failedSteps.map((t) => (
         <p key={t.key} className="mt-1" data-testid="rq-failed-step" data-step={t.key}>{`${reviewStepLabel(t.key, review.manifest)}: ${t.error ?? "failed"}. Attempts ${t.attempts} of ${t.maxAttempts}.`}</p>
       ))}
-      {failedSteps.some((t) => t.attempts < t.maxAttempts) ? (
+      {failedSteps.some((t) => retryableInPlace(t, review.coverage.tasks ?? [])) ? (
         <button className={`${btn} mt-2`} onClick={() => void retry("Retrying the failed steps only.")}>
           Retry failed steps
         </button>
       ) : (
-        failedSteps.length > 0 && <p className="mt-1">No retries remain for these steps. Start a new review if it is still needed; this one stays as it is.</p>
+        failedSteps.length > 0 && <p className="mt-1">These steps cannot be retried in this review. Start a new review if it is still needed; this one stays as it is.</p>
+      )}
+      {failedSteps.some((t) => retryableInPlace(t, review.coverage.tasks ?? [])) && failedSteps.some((t) => t.stage === "extract" && !retryableInPlace(t, review.coverage.tasks ?? [])) && (
+        <p className="mt-1" data-testid="rq-reading-needs-new-review">A document that could not be read is not retried in this review, because its assessments are already published. Start a new review version to include it.</p>
       )}
       {retryMsg && <p className="mt-1">{retryMsg}</p>}
     </div>
