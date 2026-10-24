@@ -1,6 +1,27 @@
 # Current engineering status
 
-Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch17 at Grant's request (technical documents for the Research assistant with migration 0112, its weighting answer, the transcript "Coding incomplete" wording, later additions and the Knowledge base updates; `docs/batch17-handover-2026-10-24.md`) and Codex's two S3 findings M-B16-01 and M-B16-02, implemented, ready for review. TP500-F01/F02/F03 and IP1000-F01 to F04 remain open: Grant chose (24 October, 14:31) to repair them by making the Python reader the one reader for CSV and Excel previews, in a later batch. Migration 0112 is for Grant to apply. Full library exit 0, 1,608 passed / 72 skipped; full native 96 passed / 1 failed (timing-dependent, passed 3 of 3 alone) / 1 skipped. No push, deployment or existing-database migration.
+Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): RQ-F01 (a reading whose quotes were all rejected is a failed step, never complete negative evidence; partly rejected readings leave absences unrated; screen and Word say so; `docs/batch18-handover-2026-10-24.md`), implemented, ready for review. No migration. Full library exit 0, 1,619 passed / 72 skipped; full native exit 0, 98 passed / 1 skipped. Still open, not in this batch: TP500-F01/F02/F03 and IP1000-F01 to F04 (to be repaired with the Python reader as the one CSV/Excel reader), B17-F01, M-B17-01, V-B17-01 and OBJ500-F01. No push, deployment or existing-database migration.
+
+## Claude: batch18 (RQ-F01), main copy (2026-10-24)
+
+Implemented, ready for review: `8b3a77a` (RQ-F01) and this docs commit. Checks and limits in `docs/batch18-handover-2026-10-24.md`; the contract in `claude/research-quality-evidence.md`. Codex's previous status line is kept in `.fnd001/backup-status-1024d/`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE — Objectives500 at frozen `06aaa11`: 0 S1 / 1 S2 / 0 S3 new; 0 observed S1 / 10 S2 / 2 S3 open cumulatively; NOT READY for release.** All 500 selected permutations pass in the valid harness. Supplemental concurrent delete/reject/unaccept probes fail 60/60, with passing sequential controls; native two-page Unaccept and actual DOCX bytes confirm OBJ500-F01: saved objective context can contradict current candidate status. Retained Objectives integration 91 passed / 8 skipped; retained native Objectives 15 passed. Prior batch17 and import/Research quality findings remain separate. Application implementation unchanged; disposable infrastructure removed. No existing-database migration, commit, push or deployment."
+
+## Codex: independent Objectives500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 1 S2 / 0 S3 new.** [Review](independent-objectives500-review-main-2026-10-24.md), [500-case ledger](objectives500-cases-2026-10-24.md). Frozen `06aaa11`: 500 selected permutations pass; separate 60-permutation concurrency confirmation fails throughout. OBJ500-F01 leaves rejected/pending wording in accepted context, or a deleted objective in the stated list. Native two-page Unaccept survives reload with stale context; an actual DOCX exports rejected wording. The initial owner-seed harness errors and export alias continuation remain. Targeted retained checks: 91 library passes / 8 placeholders skipped; 15 native passes. No full-suite rerun is claimed. Review-owned services and container removed; all 1,154 tracked archive files match Git bytes and original dirty lock preserved. Cumulative independent open counts: 0 observed S1 / 10 S2 / 2 S3. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+
+## Codex: batch17 independent handoff (2026-10-24)
+
+**READY_FOR_CLAUDE at frozen `06aaa11`: 0 S1 / 1 S2 / 2 S3 new.** [Review](independent-batch17-review-main-2026-10-24.md). Technical TXT/PDF/DOCX reads, a true pre-0112 refusal followed by actual migration/recovery, project/tenant scoping, explicit query failure/recovery and weighting metadata pass their exercised controls. The browser reproduces the missing second same-name citation; technical failed reads remain failed through project processing, with no Findings mined. Both M-B16 S3 findings close. New S3 actions are lasting engineering contracts and pane-test readiness. The first full native failure, its trace and all reviewer continuations remain. Full gate results and limits are in the review. Known TP500/IP1000 import findings are not regressions in this batch; RQ-F01 remains separate. Cumulative independent open counts: 0 observed S1 / 9 S2 / 2 S3. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+
+## Codex: focused Research quality investigation (2026-10-24)
+
+**READY_FOR_CLAUDE for RQ-F01: 0 S1 / 1 S2 / 0 S3 new.** [Independent handoff](independent-research-quality-review-main-2026-10-24.md), frozen `3184b06`. Rejected extraction quotes can produce a complete 0% review with ten Absent criteria, surviving reload and Word export; retry does not recover, a healthy new review does. Independent library probes: 187 pass / 1 fail across 188 logical cases; retained Research quality/margin controls: 112 pass. Normal native journey passes; independent native repro fails the correctness expectations and verifies healthy recovery. Disposable infrastructure removed; 1,144 archive files exact. Earlier independently open totals become 0 observed S1 / 8 S2 / 2 S3; the two M-B16 S3 repairs and batch17 are awaiting separate verification. This frozen review does not replace main's newer READY_FOR_CODEX status or accept its newer changes. Last accepted release scope and counts remain unchanged.
+
 
 ## Claude: batch17 and M-B16-01/M-B16-02, main copy (2026-10-24)
 
