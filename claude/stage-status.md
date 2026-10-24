@@ -38,8 +38,9 @@ first item, in workflow order, that needs the researcher or could not be checked
 
 ## Navigation
 
-The overviews are the first entry of each sidebar group (on main the group heading folds the group,
-as it did before the merge; Grant, 2026-10-22). An item
+The overviews are the first entry of each sidebar group; the group heading folds and unfolds the
+group and does not open the overview (as on main before the merge; Grant, 2026-10-22). The 3001
+prototype's heading link was not merged. An item
 links to the module, or to the exact file and tab (Import), data file (Cross tabs) or objective;
 a link made before the module was first opened is held until it mounts. The main dashboard's stage
 pills open the overview and its next step opens the module (`/runs/<id>?section=<id>`, read by
@@ -47,6 +48,9 @@ pills open the overview and its next step opens the module (`/runs/<id>?section=
 
 ## Limits
 
+- The main dashboard reads statuses for the 25 newest projects only (`STATUS_ROWS` in
+  `app/page.tsx`; about 25 ms each, measured 2026-10-23). An older project's row says to open the
+  project for its status, and the Projects tile notes that the statuses cover the 25 newest.
 - Module status lines and overviews read the page as loaded; a change shows after the page
   refreshes (opening an overview, an action that refreshes, or a reload).
 - Raw data or a transcript with no saved setup reads as "Accept the setup" on the overviews:
@@ -60,4 +64,5 @@ pills open the overview and its next step opens the module (`/runs/<id>?section=
 precedence, roll-up, next step), `projectStageFacts.db.test.ts` (real database: each module's facts
 from stored records, an empty project, an unknown project throws, the dashboard rows) and
 `e2e/ui/stage-status.check.mjs` (overviews on a new project and after an import, item links,
-heading link, module status lines, the main dashboard's row and next step).
+the overview as the first entry of each group and the heading folding it, module status lines, the
+main dashboard's row and next step). The 25-project bound is not covered by a retained test.

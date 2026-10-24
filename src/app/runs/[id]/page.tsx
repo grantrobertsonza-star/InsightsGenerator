@@ -69,7 +69,7 @@ import StorageCleanupNotice from "./StorageCleanupNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
-import { loadObjectiveQualityStatus, objectiveQualityLookup, unscoredReasonFor, unscoredReasonText } from "@/lib/objectiveQualityStatus";
+import { loadObjectiveQualityStatus, objectiveQualityLookup } from "@/lib/objectiveQualityStatus";
 import ObjectiveCoverage, { SelectedObjectiveCoverage } from "./ObjectiveCoverage";
 import ObjectiveEvidence from "./ObjectiveEvidence";
 import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
