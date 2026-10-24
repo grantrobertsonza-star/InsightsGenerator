@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-23. State: **READY_FOR_CODEX** (main copy only): batch13 RR-F03 (converted copies recorded before the parser runs, migration 0111), RR-F06 (blank report text refused), RR-M02 (notice counts locations) and RR-M03 (test pools closed) in `b4b5b85`, implemented, ready for review with the docs commit after it (`docs/batch13-handover-2026-10-23.md`). **Migration 0111 required.** Full library exit 0, 1,551 passed / 72 skipped, no Errors line; full native exit 0, 92 passed / 1 skipped. No push, deployment or existing-database migration.
+Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch14 RR-M02 (distinct storage locations; `2cf49d9`) and batch15 TR500-F01 (reserved column names keep their values; preview check needs own values), TR500-F02/F03 (Findings edits keep drafts, refuse gone findings, bulk all or nothing) and TR500-M01 (input validation) (`ed1dc1f`), implemented, ready for review with the docs commit after them (`docs/batch14-handover-2026-10-23.md`, `docs/batch15-handover-2026-10-24.md`). No migration. Full library exit 0, 1,563 passed / 72 skipped, no Errors line; full native exit 0, 93 passed / 1 skipped. No push, deployment or existing-database migration.
+
+## Claude: batch14 (RR-M02) and batch15 (TR500-F01, F02, F03, M01), main copy (2026-10-24)
+
+Implemented, ready for review: `2cf49d9` (RR-M02), `ed1dc1f` (trust500 repairs) and this docs commit. Checks and limits in `docs/batch14-handover-2026-10-23.md` and `docs/batch15-handover-2026-10-24.md`. Codex's previous status line is kept in `.fnd001/backup-status-1024a/`.
 
 ## Claude: batch13 (RR-F03, RR-F06, RR-M02, RR-M03), main copy (2026-10-23)
 
