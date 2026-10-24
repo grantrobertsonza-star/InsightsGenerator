@@ -1,6 +1,50 @@
 # Current engineering status
 
-Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): RQ-F01 (a reading whose quotes were all rejected is a failed step, never complete negative evidence; partly rejected readings leave absences unrated; screen and Word say so; `docs/batch18-handover-2026-10-24.md`), implemented, ready for review. No migration. Full library exit 0, 1,619 passed / 72 skipped; full native exit 0, 98 passed / 1 skipped. Still open, not in this batch: TP500-F01/F02/F03 and IP1000-F01 to F04 (to be repaired with the Python reader as the one CSV/Excel reader), B17-F01, M-B17-01, V-B17-01 and OBJ500-F01. No push, deployment or existing-database migration.
+Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch19: OBJ500-F01 and DEC500-F02 (the run row is locked before every objective or decision change and in both framers), DEC500-F01 (a stale or deleted decision editor keeps the draft and shows the stored wording), RQ-F02 (a comparison is rated only from both documents, read), CT500-F01/F02 (table ownership before archive; one table number per save), B17-F01, M-B17-01, V-B17-01, M-DEC500-01; `docs/batch19-handover-2026-10-24.md`; implemented, ready for review. No migration.
+
+## Claude: batch19, main copy (2026-10-24)
+
+Implemented, ready for review: the batch19 repair commit and its docs commit. Checks and limits in `docs/batch19-handover-2026-10-24.md`. No migration. Codex's previous status line is kept in `.fnd001/backup-status-1024e`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE — Coding, Secondary analysis, Findings and Insights complete at frozen `e278adf`: 0 S1 / 3 S2 / 0 S3 new. 2,000 selected / 1,875 pass / 125 fail. Cumulative 0 observed S1 / 17 S2 / 4 S3; NOT READY for release.** All handoffs published, original implementation unchanged, shared disposable infrastructure removed."
+
+## Codex: four-review queue complete (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 3 S2 / 0 S3 new.** [Completed handoff](coding-secondary-findings-insights-handoff-2026-10-24.md). Coding 425 pass / 75 fail; Secondary analysis 450 pass / 50 fail; Findings 500 pass; Insights 500 pass. **2,000 selected / 1,875 pass / 125 fail**; all product failures repeat unchanged. COD500-F01/F02 and SEC500-F01 are actionable; no new Findings/Insights defect established at the exercised boundaries. Final shared cleanup complete, all 1,157 tracked archive files exact, original implementation unchanged. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. No full-suite rerun or release acceptance. Last accepted scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: independent Insights500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE.** [Review](independent-insights500-review-main-2026-10-24.md), [ledger](insights500-cases-2026-10-24.md). Frozen `e278adf`: **500 pass / 0 fail**. No new Insights defect at the exercised boundaries. Independent source/tier/action cases 500 pass; retained 22 pass / 4 skip. All four requested reviews are complete; shared cleanup is next. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. Original implementation read-only; shared disposable services remain for the review queue until final cleanup. Last accepted scope/counts unchanged.
+
+## Codex: independent Findings500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE.** [Review](independent-findings500-review-main-2026-10-24.md), [ledger](findings500-cases-2026-10-24.md). Frozen `e278adf`: **500 pass / 0 fail**. No new Findings defect at the exercised boundaries. Independent actions 500 pass; retained 21 pass / 2 skip; native 3 pass. Earlier observer/schema quoting errors are retained separately. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. Original implementation read-only; shared disposable services remain for the review queue until final cleanup. Last accepted scope/counts unchanged.
+
+## Codex: independent Secondary analysis500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE.** [Review](independent-secondary500-review-main-2026-10-24.md), [ledger](secondary500-cases-2026-10-24.md). Frozen `e278adf`: **450 pass / 50 fail**. SEC500-F01 (S2): malformed model output is published as an empty successful report reading, removing prior unreviewed findings; all 50 failures repeat, and native reload confirms Extracted, 0 findings. Retained library 53 pass / 3 skip. Cumulative independently open **0 observed S1 / 17 S2 / 4 S3; NOT READY**. Original implementation read-only; shared disposable services remain for the review queue until final cleanup. Last accepted scope/counts unchanged.
+
+## Codex: independent Coding500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 2 S2 / 0 S3 new.** [Review](independent-coding500-review-main-2026-10-24.md), [ledger](coding500-cases-2026-10-24.md). Frozen `e278adf`: **425 pass / 75 fail**, all 75 failures repeat unchanged. COD500-F01: cross-tenant theme metadata and turn-note creation succeeds and blocks the legitimate owner’s save; controlled cleanup restores it. COD500-F02: a wrong-run request mutates another project’s coding and records inconsistent override lineage. Retained library 57 pass; native 4 pass; build passes. Original implementation read-only. Shared disposable services remain for the immediately following three reviews; no cleanup is claimed yet. Cumulative open **0 observed S1 / 16 S2 / 4 S3; NOT READY**. Last accepted scope/counts unchanged.
+
+## Codex: independent Analytics500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 1 S2 / 0 S3 new.** [Review](independent-analytics500-review-main-2026-10-24.md), [500-case ledger](analytics500-cases-2026-10-24.md). Frozen `e278adf`: **500 selected permutations pass** (350 numerical / 150 actual action-persistence cases). Supplemental **AN500-F01 (S2)**: driver display-name allocation collides with a literal suffix label; the strongest driver receives another predictor’s performance mean **16 instead of 106**. Five collisions fail with five healthy controls passing, repeated unchanged. Native real-file chart/posting and actual Findings Excel confirm wrong chart association and ambiguous question attribution. Retained library **101 pass**; native Analytics **7 pass**; build passes. Full suites were not rerun. Disposable infrastructure removed; all 1,157 tracked archive files exact; original implementation unchanged. Cumulative independently open **0 observed S1 / 14 S2 / 4 S3; NOT READY**. Existing findings remain separate and RQ-F01 remains closed. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: independent Cross tabs500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE: 0 S1 / 1 S2 / 1 S3 new.** [Review](independent-crosstabs500-review-main-2026-10-24.md), [500-case ledger](crosstabs500-cases-2026-10-24.md). Frozen `e278adf`: **452 pass / 48 fail**; unchanged database repeat again 52 pass / 48 fail. CT500-F01 (S2): wrong-run table deletion archives/deletes the other project’s table findings while leaving its table, and the real action reports success. CT500-F02 (S3): simultaneous builds collide on max+1 table allocation; the unique constraint refuses one explicitly. All 400 independent numerical cases pass. Targeted retained library 51 pass / 1 skip; native Cross tabs 4 pass; build passes; actual Excel/Slides retain the independent mean. No full-suite rerun or general statistical certification is claimed. Disposable resources removed; all 1,157 tracked archive files exact. Cumulative independently open **0 observed S1 / 13 S2 / 4 S3; NOT READY**. RQ-F01 remains closed and other findings stay separate. Last accepted scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: batch18 independent repair handoff (2026-10-24)
+
+**RQ-F01 CLOSED; READY_FOR_CLAUDE for RQ-F02, 0 S1 / 1 S2 / 0 S3 new.** [Review](independent-batch18-review-main-2026-10-24.md). Frozen `e278adf`: all-rejected reading/retry, partial absence/checklist, genuine-empty, legacy-note and unfinished-step Word controls pass. The selected review updates after retry without reload; the documented top stage-banner limitation remains. New RQ-F02: RQ-CMP-PROBLEM is rated 3/5 as compared with the brief although the proposal failed reading and every cited quote is from the brief. Actual native screen and Word reproduce it; healthy both-source control passes. Full evidence and retained reviewer setup corrections are in the review. Cumulative independent open counts remain **0 observed S1 / 12 S2 / 3 S3; NOT READY**: close RQ-F01, open RQ-F02. Other import, citation, Objectives and Business decisions findings are unchanged. No application repair; disposable infrastructure removed and 1,157 tracked archive files exact. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+
+## Codex: independent Business decisions500 handoff (2026-10-24)
+
+**READY_FOR_CLAUDE for Business decisions: 0 S1 / 2 S2 / 1 S3 new.** [Review](independent-decisions500-review-main-2026-10-24.md), [500-case ledger](decisions500-cases-2026-10-24.md). Frozen `e278adf`: **380 pass / 120 fail**; all 120 failures repeat unchanged. DEC500-F01: stale edits overwrite the winner; gone-target saves report success and discard drafts. DEC500-F02: simultaneous reject/unaccept/delete operations leave stale current-decision context despite completed refresh; native reload and actual Excel metadata confirm it. M-DEC500-01: regeneration comment falsely says accepted candidates are never touched. Retained targeted checks: 34 library passes / 4 placeholder skips; 4 native passes. Three independent native repros fail their integrity expectations; no full-suite rerun is claimed. Services/container removed; all 1,157 tracked archive files match frozen Git bytes. Cumulative independent open counts: **0 observed S1 / 12 S2 / 3 S3; NOT READY for release**. Batch18 RQ-F01 remains awaiting separate review; its READY_FOR_CODEX header is preserved. Last accepted scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
 
 ## Claude: batch18 (RQ-F01), main copy (2026-10-24)
 
