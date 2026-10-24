@@ -19,7 +19,8 @@ const STOP = new Set(
   "the and for are but not you your with this that what how does from have has can was were will into its our out about which when where who why".split(" "),
 );
 
-function words(text: string): string[] {
+/** The words a search matches on (shared with technical-document search, technicalDocuments.ts). */
+export function words(text: string): string[] {
   return text
     .toLowerCase()
     .split(/[^a-z0-9%]+/)
@@ -27,7 +28,7 @@ function words(text: string): string[] {
 }
 
 /** A crude stem, so "weights" finds "weighted" and "weighting": the first six letters of longer words. */
-const stem = (w: string) => (w.length > 6 ? w.slice(0, 6) : w);
+export const stem = (w: string) => (w.length > 6 ? w.slice(0, 6) : w);
 
 export type HelpHit = { ref: string; title: string; heading: string; href: string; snippet: string; score: number };
 

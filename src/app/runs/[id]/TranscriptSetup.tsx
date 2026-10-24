@@ -16,7 +16,8 @@ import {
 } from "@/lib/dataSetupShared";
 import {
   ACCEPTANCE_LABEL,
-  PROCESSING_LABEL,
+  TRANSCRIPT_CODING_INCOMPLETE_HELP,
+  processingLabel,
   SOURCE_STATE_FILTERS,
   fileTag,
   matchesSearch,
@@ -363,12 +364,17 @@ function SourceHeader({ row }: { row: Row }) {
           {row.purposeText && <span data-testid="file-purpose-text">{row.purposeText}</span>}
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Chip tone={processingTone(s.processing)} testId="source-processing">{`Processing: ${PROCESSING_LABEL[s.processing]}`}</Chip>
+          <Chip tone={processingTone(s.processing)} testId="source-processing">{`Processing: ${processingLabel(s.processing, row.kind)}`}</Chip>
           <Chip tone={acceptanceTone(s.acceptance)} testId="source-acceptance">
             {s.acceptance === "none" ? ACCEPTANCE_LABEL.none : `Setup: ${ACCEPTANCE_LABEL[s.acceptance]}`}
           </Chip>
           {s.previewUnverified && <Chip tone="amber">Preview not verified</Chip>}
         </div>
+        {s.processing === "partly_read" && row.kind === "transcript" && (
+          <p className="mt-2 max-w-2xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="source-coding-incomplete">
+            {TRANSCRIPT_CODING_INCOMPLETE_HELP}
+          </p>
+        )}
         {s.readError && (
           <p role="alert" className="mt-2 max-w-2xl rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">
             {`Could not read this file: ${s.readError}`}
@@ -1101,7 +1107,7 @@ function SourceListItem({ row, selected, onSelect, needle, role, state }: { row:
             )}
           </span>
           <span className="flex flex-wrap gap-1">
-            <Chip tone={processingTone(s.processing)}>{PROCESSING_LABEL[s.processing]}</Chip>
+            <Chip tone={processingTone(s.processing)}>{processingLabel(s.processing, row.kind)}</Chip>
             <Chip tone={acceptanceTone(s.acceptance)} testId="source-row-acceptance">{ACCEPTANCE_LABEL[s.acceptance]}</Chip>
             {/* Grant, 2026-10-22: "Needs attention" beside "Partly read" said the same thing twice. The
                 read chip already says a failed or partial read; the only other cause of attention, an

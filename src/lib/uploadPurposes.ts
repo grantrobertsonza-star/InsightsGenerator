@@ -4,7 +4,7 @@
 // under the same form field the old per-type pickers used, so its limits and checks still apply.
 import { LIMITS_CAPTION } from "./importLimits";
 
-export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide";
+export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide" | "technical";
 
 export type UploadPurpose = {
   id: UploadPurposeId;
@@ -24,6 +24,7 @@ export type UploadPurpose = {
 export const UPLOAD_PURPOSES: UploadPurpose[] = [
   { id: "brief", label: "Brief", field: "briefFiles", extensions: [".pdf", ".docx", ".txt"], hint: "The research brief: context, and checked in Research quality review." },
   { id: "proposal", label: "Proposal", field: "proposalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "A research proposal: context, and checked in Research quality review." },
+  { id: "technical", label: "Technical document", field: "technicalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "Methodology, fieldwork, sampling, weighting or analysis notes: read by the Research assistant." },
   { id: "raw", label: "Raw data", field: "rawTableFiles", extensions: [".csv", ".xlsx", ".xls", ".sav", ".dta"], hint: `One row per respondent. CSV/Excel, SPSS or Stata. ${LIMITS_CAPTION}.` },
   { id: "tables", label: "Tables", field: "tableFiles", extensions: [".csv", ".xlsx", ".xls", ".sav", ".dta"], hint: "Already aggregated: totals or percentages." },
   { id: "output", label: "Statistical output", field: "outputFiles", extensions: [".zip", ".csv", ".tsv", ".xlsx", ".xls", ".txt", ".md", ".docx"], hint: "A zip of models, clusters and logs." },
@@ -117,6 +118,8 @@ export function suggestPurposeFor(filename: string, csvSample?: string | null): 
   if ([...DOCUMENT, ".txt"].includes(ext)) {
     if (/ brief |\btor\b|terms of reference/.test(name)) return fits({ id: "brief", reason: fromName });
     if (/proposal/.test(name)) return fits({ id: "proposal", reason: fromName });
+    // Before the report rule: a survey's "Technical Report" documents its method, not its findings.
+    if (/technical|methodolog|fieldwork|field work|sampling|weighting|survey design/.test(name)) return fits({ id: "technical", reason: fromName });
   }
   if (/transcript|\bfgd\b|\bidi\b|interview|focus group/.test(name) && !/guide/.test(name)) return { id: "transcript", reason: fromName };
   if ([...DOCUMENT, ".pptx"].includes(ext) && /report|deck|presentation|findings/.test(name)) return { id: "report", reason: fromName };

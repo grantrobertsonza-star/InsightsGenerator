@@ -28,7 +28,13 @@ const BUCKET = "documents";
 
 // "evidence": a brief or proposal, context for the project and not mined for findings (the same kind
 // Set Objectives stores); uploadable from Import data since 2026-10-19.
-export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evidence"] as const;
+// "technical": methodology, fieldwork, sampling, weighting or analysis documentation (Grant,
+// 2026-10-24; migration 0112), read for the Research assistant to quote; never mined for findings.
+export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evidence", "technical"] as const;
+
+/** Said when a technical document is refused because migration 0112 is not applied. */
+export const TECHNICAL_MIGRATION_MESSAGE =
+  "Technical documents need the database update 0112_technical_documents.sql. Nothing was stored; apply it and add the file again.";
 export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide"] as const;
 export type InstrumentTypeChoice = (typeof INSTRUMENT_TYPES)[number];
 export type UploadKind = (typeof UPLOAD_KINDS)[number];
@@ -170,6 +176,11 @@ export async function storeUploadedDocument(
     }
     // A concurrent retry stored the same bytes first (unique index from 0098): a duplicate,
     // reported as such - the storage object was cleaned up above like any failed insert.
+    // Before migration 0112 the kind check refuses a technical document; the insert rolled back and
+    // the stored object was cleaned up above, so nothing is left behind.
+    if (kind === "technical" && (error as { code?: string })?.code === "23514" && /documents_kind_check/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
+      throw new Error(TECHNICAL_MIGRATION_MESSAGE);
+    }
     if ((error as { code?: string })?.code === "23505" && /documents_run_kind_content_uidx/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
       throw new DuplicateUploadError(file.name, file.name);
     }

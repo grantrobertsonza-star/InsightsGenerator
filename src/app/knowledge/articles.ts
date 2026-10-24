@@ -15,12 +15,20 @@ export type ArticleMeta = {
 
 export const articles: ArticleMeta[] = [
   {
+    slug: "dashboards",
+    title: "How the dashboards and stage status work",
+    blurb: "The main dashboard's project rows, each stage's overview and the status line on every module: the five states, how they are worked out, files still in storage, and where they stop",
+    category: "Method guides",
+    updated: "2026-10-24",
+    minutes: 6,
+  },
+  {
     slug: "import",
     title: "How import works",
-    blurb: "What we accept, how files are classified, viewing and downloading originals, the quality checks, questionnaire links, statistical output sets, wave comparison, and where they stop",
+    blurb: "What we accept (technical documents included), how files are classified and read, file states, viewing and downloading originals, the quality checks, questionnaire links, statistical output sets, wave comparison, and where they stop",
     category: "Method guides",
-    updated: "2026-10-22",
-    minutes: 16,
+    updated: "2026-10-24",
+    minutes: 17,
   },
   {
     slug: "preparing-files",
@@ -49,9 +57,9 @@ export const articles: ArticleMeta[] = [
   {
     slug: "crosstabs",
     title: "How our cross tabulation works",
-    blurb: "Weighted tables, bases, rating scales, multiple response, nets, SemanticTabs and StarterTabs, significance, and where they stop",
+    blurb: "Weighted tables, bases, rating scales, multiple response, nets, SemanticTabs and StarterTabs, significance, the survey design, and where they stop",
     category: "Method guides",
-    updated: "2026-10-22",
+    updated: "2026-10-24",
     minutes: 18,
   },
   {
@@ -73,9 +81,9 @@ export const articles: ArticleMeta[] = [
   {
     slug: "findings",
     title: "How findings are produced and checked",
-    blurb: "Atomic claims, where they come from, the four verdicts, caveat tags, and where they stop",
+    blurb: "Atomic claims, where they come from, reviewing and editing them, the four verdicts, caveat tags, and where they stop",
     category: "Method guides",
-    updated: "2026-10-08",
+    updated: "2026-10-24",
     minutes: 10,
   },
   {
@@ -97,10 +105,18 @@ export const articles: ArticleMeta[] = [
   {
     slug: "research-assistant",
     title: "How the Research assistant works",
-    blurb: "Asking from any page, what it reads, how-the-app questions from the guides, answering data questions with draft tables you can open, sample sizes and margins of error from a tested calculator, method advice, report edits, and where it stops",
+    blurb: "Asking from any page, what it reads, how-the-app questions from the guides, how-the-study-was-done questions from your technical documents, how a file is weighted, data questions answered with draft tables you can open, sample sizes from a tested calculator, method advice, report edits, and where it stops",
     category: "Method guides",
-    updated: "2026-10-22",
-    minutes: 9,
+    updated: "2026-10-24",
+    minutes: 10,
+  },
+  {
+    slug: "roadmap",
+    title: "Planned, and not yet supported",
+    blurb: "SAS files, variables-in-rows workbooks with a separate Codebook, weights and survey design from a separate file, and more uses of technical documents: what to do today and what building each would take",
+    category: "Method guides",
+    updated: "2026-10-24",
+    minutes: 4,
   },
 ];
 

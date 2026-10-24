@@ -13,7 +13,7 @@ import { saveSourceRoles } from "./researchQualityRepository";
  * shows what was read instead of an empty panel until the project is processed. Reading is best
  * effort: if it fails the upload still stands and processing reads the file again and reports why.
  */
-async function storeAndRead(runId: string, kind: "report" | "transcript" | "evidence", file: File): Promise<string> {
+async function storeAndRead(runId: string, kind: "report" | "transcript" | "evidence" | "technical", file: File): Promise<string> {
   const TENANT_ID = await requireTenantId();
   const id = await storeUploadedDocument(TENANT_ID, runId, kind, file);
   try {
@@ -73,6 +73,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   const outputs = files("outputFiles");
   const briefs = files("briefFiles");
   const proposals = files("proposalFiles");
+  const technical = files("technicalFiles");
   const waveRaw = formData.get("outputWave");
   const outputWave = typeof waveRaw === "string" ? waveRaw : "";
   const typeRaw = formData.get("instrumentType");
@@ -80,7 +81,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     typeof typeRaw === "string" && (INSTRUMENT_TYPES as readonly string[]).includes(typeRaw)
       ? (typeRaw as InstrumentTypeChoice)
       : "questionnaire";
-  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...typed.map(([f]) => f), ...outputs, ...briefs, ...proposals];
+  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...typed.map(([f]) => f), ...outputs, ...briefs, ...proposals, ...technical];
   if (all.length === 0) return { ok: false, error: "Choose at least one file first.", added: [] };
 
   const added: string[] = [];
@@ -95,6 +96,8 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     ...typed.map(([f, type]): [File, () => Promise<string>] => [f, () => storeUploadedDocument(TENANT_ID, runId, "instrument", f, undefined, type)]),
     ...briefs.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "brief")]),
     ...proposals.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "proposal")]),
+    // Read straight away like a brief, for the Research assistant; no Research quality role.
+    ...technical.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "technical", f)]),
   ];
   for (const [file, run] of jobs) {
     try {

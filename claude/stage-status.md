@@ -38,7 +38,8 @@ first item, in workflow order, that needs the researcher or could not be checked
 
 ## Navigation
 
-The overviews are the first entry of each sidebar group, and the group heading opens them. An item
+The overviews are the first entry of each sidebar group (on main the group heading folds the group,
+as it did before the merge; Grant, 2026-10-22). An item
 links to the module, or to the exact file and tab (Import), data file (Cross tabs) or objective;
 a link made before the module was first opened is held until it mounts. The main dashboard's stage
 pills open the overview and its next step opens the module (`/runs/<id>?section=<id>`, read by

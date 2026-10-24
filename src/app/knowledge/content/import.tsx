@@ -92,6 +92,7 @@ export default function ImportGuide() {
           ["Transcript", "An interview or group discussion", "Checks it before coding: who speaks, how much, how the moderator behaves, and whether it is long enough to code."],
           ["Questionnaire or guide", "The instrument behind the data or the discussion", "Attached to a data file or to transcripts, read automatically, and matched. See below."],
           ["Statistical output", "A zip or several files of model results, cluster profiles, diagnostics and logs", "Sorted into a set, classified, checked as a set, and turned into findings. See below."],
+          ["Technical document", "How the study was done: methodology, fieldwork, sampling, weighting or analysis documentation (a survey's technical report, for example)", "Reads its text, shows it in the preview, and gives it to the Research assistant to search and quote. It is not mined for findings, and what it describes is not checked against the data."],
         ]}
       />
       <P>
@@ -120,6 +121,23 @@ export default function ImportGuide() {
         choice afterwards, the card changes to <em>Accept again</em>, because tables built on the old choice may no
         longer mean what they did. Wide files, with thousands of columns, keep only the usable variables, and the panel
         says how many were kept; the cross tab tool still reads every variable it needs.
+      </P>
+      <H3>What each file&apos;s status says</H3>
+      <P>
+        Each file shows whether it was read, and, where it has one, whether its setup is accepted; the two are kept
+        apart because a file can be read and still need review. Read, Reading, Not read yet and Read failed mean what
+        they say. Partly read means part of a report or questionnaire could not be read. For a transcript the partial
+        state is about its coding, not its text, and is called Coding incomplete: some passages came back without a
+        code, so findings from it may be missing them. The file says to open Coding and run Code themes again, and the
+        Prepare overview links there. Needs attention in the state filter gathers failed and partial reads and
+        previews that could not be verified.
+      </P>
+      <H3>Technical documents</H3>
+      <P>
+        A technical document (methodology, fieldwork, sampling, weighting or analysis documentation, such as a
+        survey&apos;s technical report) is read when it is added and previewed like a brief. It is not mined for findings
+        and has no acceptance step. The Research assistant reads and quotes it when you ask how the study was done;
+        what it describes is not checked against your data. It needs database update 0112.
       </P>
       <H3>The file list and the selected file</H3>
       <P>

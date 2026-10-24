@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { cachedSystemThen } from "./promptCache";
-import { DATA_TOOLS, HELP_TOOLS, SAMPLE_SIZE_TOOL, runAssistantTool } from "./researchAssistantTools";
+import { DATA_TOOLS, HELP_TOOLS, SAMPLE_SIZE_TOOL, TECHNICAL_DOCUMENT_TOOLS, runAssistantTool } from "./researchAssistantTools";
 import { pageLine, runAssistantLoop, sourceLines, type PageContext } from "./assistantLoop";
 import { helpContents } from "./helpIndex";
 import { logApiUsage } from "./apiUsage";
@@ -144,6 +144,12 @@ async function loadContext(tenantId: string, runId: string) {
       [runId, MAX_FINDINGS_FOR_CONTEXT]
     );
 
+    // Technical documents by name (Grant, 2026-10-24); their text is read through the tools.
+    const technicalResult = await client.query<{ source_filename: string; readable: boolean }>(
+      `select source_filename, coalesce(length(trim(extracted_text)), 0) > 0 as readable
+         from documents where run_id = $1 and kind = 'technical' order by uploaded_at, id`,
+      [runId],
+    );
     const historyResult = await client.query<AssistantMessage>(
       `select id, role, content, created_at::text
        from assistant_messages
@@ -160,13 +166,14 @@ async function loadContext(tenantId: string, runId: string) {
       recommendations: recommendationsResult.rows,
       objectiveValidations: objectiveValidationsResult.rows,
       findings: findingsResult.rows,
+      technicalDocuments: technicalResult.rows,
       history: historyResult.rows.reverse(),
     };
   });
 }
 
 function buildContextBlock(context: Awaited<ReturnType<typeof loadContext>>): string {
-  const { run, narrative, insights, recommendations, objectiveValidations, findings } = context;
+  const { run, narrative, insights, recommendations, objectiveValidations, findings, technicalDocuments } = context;
   const parts: string[] = [];
 
   parts.push(
@@ -231,6 +238,14 @@ function buildContextBlock(context: Awaited<ReturnType<typeof loadContext>>): st
         findings.map((f) => `  - [${f.theme ?? "Uncategorized"}/${f.verdict_tier}] ${f.finding_text}`).join("\n")
     );
   }
+
+  parts.push(
+    technicalDocuments.length > 0
+      ? `Technical documents (search and read with search_technical_documents and read_technical_document):\n${technicalDocuments
+          .map((d) => `  - ${d.source_filename}${d.readable ? "" : " (its text could not be read)"}`)
+          .join("\n")}`
+      : "This project has no technical documents.",
+  );
 
   return parts.join("\n\n");
 }
@@ -473,7 +488,8 @@ async function answerQuestion(
     "1. Answer a question about the project's evidence or report from what is given below. If it is not covered, say " +
     "so plainly rather than guessing or inventing a number.\n" +
     "2. Answer a question about the project's data by building a table: list_data_files, find_variables, then " +
-    "build_table. Every figure you give about the data must come from a build_table result: quote it as shown, name " +
+    "build_table. To say how a data file is weighted or designed, call describe_weighting: weight variables are not " +
+    "listed by find_variables. Every figure you give about the data must come from a build_table result: quote it as shown, name " +
     "the table, and give its base and whether it was weighted. Call a difference significant only when it is marked " +
     "(higher) or (lower). If a tool returns an error, fix the request or tell the researcher what could not be done. " +
     "Build only the tables the question needs.\n" +
@@ -490,7 +506,13 @@ async function answerQuestion(
     "about. Write the new text in the same voice and length discipline as what's already there.\n" +
     "5. Answer a question about how Insights Elevator works (a screen, a method, a statistic, a stated limit) from the " +
     "Knowledge base and Manual: search_help, then read_help, and answer from what they say. If the guides do not cover " +
-    "it, say so rather than describing behaviour you have not read.\n\n" +
+    "it, say so rather than describing behaviour you have not read.\n" +
+    "6. Answer a question about how this study was done (its methodology, fieldwork, sampling, weighting, survey " +
+    "design or analysis) from the project's technical documents: search_technical_documents, then " +
+    "read_technical_document, and quote or closely paraphrase what the passage says, naming the document. Say it is " +
+    "what the document states, not something checked against the data; when the data can show it (a weight " +
+    "variable, a base), say how to check. If the documents do not cover it, or there are none, say so rather than " +
+    "describing a design you have not read.\n\n" +
     "Whatever you do, always end with a short, plain-language reply to the researcher, so they see what you did or " +
     "what you found. Keep replies concise, this is a chat, not a report. No em dashes.";
   // The instructions and the project's evidence are the same for every message until the evidence
@@ -499,7 +521,7 @@ async function answerQuestion(
     `${instructions}\n\n=== Knowledge base and Manual contents (read with read_help) ===\n${helpContents()}\n\n=== This project's evidence and report ===\n${contextBlock}`,
     [historyBlock ? `=== Recent conversation ===\n${historyBlock}` : "", pageLine(page)].filter(Boolean).join("\n\n"),
   );
-  const tools: Anthropic.Tool[] = [REVISE_NARRATIVE_TOOL, ...DATA_TOOLS, SAMPLE_SIZE_TOOL, ...HELP_TOOLS];
+  const tools: Anthropic.Tool[] = [REVISE_NARRATIVE_TOOL, ...DATA_TOOLS, SAMPLE_SIZE_TOOL, ...HELP_TOOLS, ...TECHNICAL_DOCUMENT_TOOLS];
   let revisedFields: string[] = [];
   let revision: { input: NarrativeRevision; text: string } | null = null;
   const loop = await runAssistantLoop({
@@ -541,7 +563,7 @@ async function answerQuestion(
           answer = revision.text ? `${revision.text}\n\n(${error.message})` : error.message;
         }
       }
-      replyText = answer + sourceLines(loop.tables, loop.help);
+      replyText = answer + sourceLines(loop.tables, loop.help, loop.documents);
       const r = await client.query(
         `insert into assistant_messages (tenant_id, run_id, role, content, created_at, request_id)
          select $1, r.id, m.role, m.content, now() + m.offset_ms * interval '1 millisecond', $5::uuid

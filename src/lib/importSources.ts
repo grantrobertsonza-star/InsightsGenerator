@@ -29,6 +29,19 @@ export const PROCESSING_LABEL: Record<ProcessingState, string> = {
 };
 
 /**
+ * What a file's processing state is called on screen. For a transcript, a partial state is about
+ * its coding, not its reading (ANA-QUAL-001: at least one coding batch came back without a decision
+ * for every passage; the text itself was read in full), so it is called "Coding incomplete" there.
+ */
+export function processingLabel(state: ProcessingState, kind: string): string {
+  return state === "partly_read" && kind === "transcript" ? "Coding incomplete" : PROCESSING_LABEL[state];
+}
+
+/** What a transcript with incomplete coding needs, said beside its status. */
+export const TRANSCRIPT_CODING_INCOMPLETE_HELP =
+  "Some passages of this transcript were not coded, so findings from it may be missing them. Open Coding and run Code themes again for this file.";
+
+/**
  * Whether a file was read, from the strongest evidence first: a stored failure or partial read
  * outranks anything previewed (the preview may be from an earlier, successful read). After that,
  * what was actually stored decides: a data file with no tables is still being read; a text file
@@ -123,6 +136,8 @@ export function sourceTypeLabel(kind: string, ingestionType: string | null, role
       return "Qualitative data";
     case "report":
       return "Report";
+    case "technical":
+      return "Technical document";
     case "evidence": {
       const brief = roles?.includes("brief") ?? false;
       const proposal = roles?.includes("proposal") ?? false;
@@ -189,6 +204,7 @@ const TYPE_ORDER = [
   "Proposal",
   "Brief and proposal",
   "Brief or proposal",
+  "Technical document",
   "Raw data",
   "Aggregated tables",
   "Statistical output",

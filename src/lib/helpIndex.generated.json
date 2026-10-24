@@ -1,17 +1,80 @@
 {
  "pages": [
   {
+   "ref": "knowledge/dashboards",
+   "kind": "knowledge",
+   "title": "How the dashboards and stage status work",
+   "blurb": "The main dashboard's project rows, each stage's overview and the status line on every module: the five states, how they are worked out, files still in storage, and where they stop",
+   "href": "/knowledge/dashboards",
+   "sections": [
+    {
+     "id": "",
+     "heading": "Introduction",
+     "href": "/knowledge/dashboards",
+     "text": "How the dashboards and stage status work\nThe main dashboard's project rows, the overview of each project stage, and the status line at the top of every module: what each state means, how it is worked out from what the project holds, and where it stops. It describes current behaviour and will change as the app does.\nMethod guides · about 6 minute read · updated 2026-10-24"
+    },
+    {
+     "id": "what",
+     "heading": "What the dashboards are for",
+     "href": "/knowledge/dashboards#what",
+     "text": "A project moves through four stages, the same groups as its sidebar: Prepare (Import data, Research quality, Objectives, Business decisions), Analyse (Cross tabs, Analytics, Coding, Secondary analysis), Develop findings (Findings, Insights) and Deliver (Recommendations, Insights report). The dashboards answer one question at each level: what is done, what is waiting for you, and what could not be checked. They show the state of the work; they do not judge its research quality."
+    },
+    {
+     "id": "states",
+     "heading": "The five states",
+     "href": "/knowledge/dashboards#states",
+     "text": "State | What it means\nReady | Nothing in the module needs you or could not be checked. Caveats (a weak objective score, flagged data quality checks) can still be listed.\nNeeds you | Something only you can do: accept a setup, review a suggestion, commit a draft table, add a first file.\nWorking | The app is doing something by itself, such as reading a file.\nCouldn't check | Something the module depends on could not be read or verified. It is never shown as Ready.\nNot used | An optional module this project does not use, such as Coding without transcripts or Analytics never opened. It is shown, but left out of its stage's state."
+    },
+    {
+     "id": "home",
+     "heading": "The main dashboard",
+     "href": "/knowledge/dashboards#home",
+     "text": "Start a project sits above the list as a band, as on the section pages, with the two starting points side by side; it folds to its heading and remembers that. Each project row shows its four stages as coloured pills and its next step. A pill opens that stage's overview; the next step opens the module it is about. The right pane counts projects that need you (a stage needs you or could not be checked), that are working, and that are delivered (the Deliver stage is ready).\nStatuses are read for the 25 newest projects; older rows say to open the project for its status, and the Projects count says when the summary covers only those. The rows use what is stored for each project. Inside a project its overviews also check previews, data quality, survey design and support, which the dashboard does not."
+    },
+    {
+     "id": "sections",
+     "heading": "Section overviews and module status lines",
+     "href": "/knowledge/dashboards#sections",
+     "text": "Each sidebar group starts with its overview (Prepare overview, Analyse overview, and so on). The overview has a card per module with its state, a headline and the items behind it. An item links to where the work is: the exact file and tab in Import, the data file in Cross tabs, the objective in Objectives, or the module itself. A transcript whose coding is incomplete links to Coding, where Code themes is run again.\nEvery module's own page has a one-line status at the top with the same state, its most important item, and a link back to the overview when there is more to see.\nAn example\nA project with one raw data file whose setup is not yet accepted shows Prepare as Needs you, with \"Accept the setup of survey.sav\" linking to that file's Setup tab. Once accepted, and with objectives scored, Prepare turns Ready; Analyse then asks for a first committed table."
+    },
+    {
+     "id": "rules",
+     "heading": "How a state is decided",
+     "href": "/knowledge/dashboards#rules",
+     "text": "- Each module has its own rule, written in code from what the project holds; no model is asked.\n- A stage takes the worst state among the modules it uses, in the order Couldn't check, Needs you, Working, Ready.\n- The next step is the first item, in workflow order, that needs you or could not be checked.\n- Absent information is never read as fine: a record that could not be read makes the module Couldn't check, and a file with nothing read from it is not counted as ready.\n- A file's processing state is its own: Read, Reading, Read failed, Not read yet, and Partly read when part of it could not be read. For a transcript the partial state is about its coding, not its text, and is called Coding incomplete.\nWhy it works this way\nA dashboard that says Ready when it simply could not look is worse than none. Keeping Couldn't check apart from Needs you tells you whether to act or to reload."
+    },
+    {
+     "id": "storage",
+     "heading": "Files still in storage",
+     "href": "/knowledge/dashboards#storage",
+     "text": "Deleting a project removes its records at once; its files are removed from storage straight after. When storage does not confirm a removal, the dashboard lists it with the last error and a Remove them now button. A converted copy of a data file (written when the server's statistics service reads an SPSS or Stata file) is recorded before it is made, so a copy is never left behind unrecorded, even if the project is deleted while it is being read. The notice counts storage locations, each once, not files known to exist: a deleted project's record lists every place its files could be."
+    },
+    {
+     "id": "limits",
+     "heading": "Limitations",
+     "href": "/knowledge/dashboards#limits",
+     "text": "Limitation: A state is as current as the page\nStatus lines and overviews read the page as it was loaded. A change shows after the page refreshes: opening an overview refreshes it, as do actions that save and a reload.\nLimitation: The main dashboard is lighter than a project's own overviews\nIt reads stored records only, for the 25 newest projects. Preview identity, data quality flags and support freshness are checked inside the project.\nLimitation: Ready is not a quality verdict\nReady means nothing is waiting or unreadable. It says nothing about whether the data, the objectives or the findings are good; the quality panels, scores and verdicts do that.\nWhat this does\n- Shows each stage's state and next step, worked out in code from what the project holds.\n- Links each item to the file, tab, table or objective it is about.\n- Says Couldn't check rather than Ready when something could not be read.\n- Lists storage locations whose removal is not confirmed, with a retry.\nWhat this does not do\n- Judge research quality.\n- Update without a refresh.\n- Read statuses for more than the 25 newest projects on the main dashboard."
+    },
+    {
+     "id": "practice",
+     "heading": "A sensible way to work with it",
+     "href": "/knowledge/dashboards#practice",
+     "text": "- Start from the main dashboard's next step for the project you are working on.\n- Inside a project, open the stage overview, clear its Needs you items in order, and reopen it to refresh.\n- Treat Couldn't check as a reason to reload or fix a setup, never as a pass."
+    }
+   ]
+  },
+  {
    "ref": "knowledge/import",
    "kind": "knowledge",
    "title": "How import works",
-   "blurb": "What we accept, how files are classified, viewing and downloading originals, the quality checks, questionnaire links, statistical output sets, wave comparison, and where they stop",
+   "blurb": "What we accept (technical documents included), how files are classified and read, file states, viewing and downloading originals, the quality checks, questionnaire links, statistical output sets, wave comparison, and where they stop",
    "href": "/knowledge/import",
    "sections": [
     {
      "id": "",
      "heading": "Introduction",
      "href": "/knowledge/import",
-     "text": "How import works\nWhat happens to a file between upload and analysis: how it is read, checked and accepted, how a questionnaire or guide is attached, and how a set of statistical output (models, clusters, diagnostics) becomes checked findings. It describes current behaviour and will change as the app does.\nMethod guides · about 16 minute read · updated 2026-10-22"
+     "text": "How import works\nWhat happens to a file between upload and analysis: how it is read, checked and accepted, how a questionnaire or guide is attached, and how a set of statistical output (models, clusters, diagnostics) becomes checked findings. It describes current behaviour and will change as the app does.\nMethod guides · about 17 minute read · updated 2026-10-24"
     },
     {
      "id": "why",
@@ -23,13 +86,13 @@
      "id": "kinds",
      "heading": "What you can bring, and what each kind gets",
      "href": "/knowledge/import#kinds",
-     "text": "Kind | What it is | What Import does with it\nReport | A narrative document, deck or PDF that makes claims | Reads it and extracts atomic claims for verification (see the findings guide).\nData file | Case-level data (.sav, .dta, .csv, .xlsx; SAS excluded pending verification) or an already summarised table | Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings.\nTranscript | An interview or group discussion | Checks it before coding: who speaks, how much, how the moderator behaves, and whether it is long enough to code.\nQuestionnaire or guide | The instrument behind the data or the discussion | Attached to a data file or to transcripts, read automatically, and matched. See below.\nStatistical output | A zip or several files of model results, cluster profiles, diagnostics and logs | Sorted into a set, classified, checked as a set, and turned into findings. See below.\nCross tabulations are not imported as output. Any case-level data goes through the cross tab tool, which weights, tests and labels it consistently. Statistical output is for everything else a statistician produces around the data."
+     "text": "Kind | What it is | What Import does with it\nReport | A narrative document, deck or PDF that makes claims | Reads it and extracts atomic claims for verification (see the findings guide).\nData file | Case-level data (.sav, .dta, .csv, .xlsx; SAS excluded pending verification) or an already summarised table | Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings.\nTranscript | An interview or group discussion | Checks it before coding: who speaks, how much, how the moderator behaves, and whether it is long enough to code.\nQuestionnaire or guide | The instrument behind the data or the discussion | Attached to a data file or to transcripts, read automatically, and matched. See below.\nStatistical output | A zip or several files of model results, cluster profiles, diagnostics and logs | Sorted into a set, classified, checked as a set, and turned into findings. See below.\nTechnical document | How the study was done: methodology, fieldwork, sampling, weighting or analysis documentation (a survey's technical report, for example) | Reads its text, shows it in the preview, and gives it to the Research assistant to search and quote. It is not mined for findings, and what it describes is not checked against the data.\nCross tabulations are not imported as output. Any case-level data goes through the cross tab tool, which weights, tests and labels it consistently. Statistical output is for everything else a statistician produces around the data."
     },
     {
      "id": "accept",
      "heading": "Reading and accepting data files",
      "href": "/knowledge/import#accept",
-     "text": "A case-level data file is read as soon as it arrives. The read gets the variable list, labels, value labels and the structure choices (which variable is the weight, which identify respondents, which are multiple response sets). You do not have to press anything for this to happen. The file is also accepted automatically, so the cross tab tool opens without a trip back to Import.\nTranscripts follow the same rule. A transcript nobody has set up yet is accepted on import with the app's best reading of it (individual interviews when it cannot tell), and the dropdowns stay open to change it. Every file card now shows one of two badges: Accepted or Needs review. Raw case-level files are labelled Raw data on the card and in the upload list. The upload list puts each file picker on the same line as its type to save space, and a note under it says that you should upload only files that the owner has cleared for analysis, since the app does not scan for personal information.\nAcceptance is a record that the structure was looked at, not a verdict on the data. If you change a structure choice afterwards, the card changes to Accept again, because tables built on the old choice may no longer mean what they did. Wide files, with thousands of columns, keep only the usable variables, and the panel says how many were kept; the cross tab tool still reads every variable it needs.\nThe file list and the selected file\nThe list of sources rolls up with its own button, which only hides it: the search, filters and sort keep their state. Each file names its links on its type and date line (\"Linked: questionnaire.docx\", and \"and N more\"), so you can see what is linked without opening it. The selected file shows its name on one line and its type, upload date, wave and purpose on the next. Raw data offers Open Crosstabs and Open Analytics; a summarised table offers Open Crosstabs only, because Analytics needs case-level data.\nView original downloads the file exactly as it was uploaded, under its own name, without opening a window. Viewing opens a readable copy in a browser tab where there is one (a PDF). Both use a short-lived link, checked on the server to belong to this project; it stops working after ten minutes. If a download fails, the reason shows under the button and pressing it again tries again. The original file is never changed.\nWhy it works this way\nAccepting by default saves a step nearly everyone would take anyway. Asking again after a change keeps the one safeguard that matters: a table should never silently rest on a different structure than the one you approved."
+     "text": "A case-level data file is read as soon as it arrives. The read gets the variable list, labels, value labels and the structure choices (which variable is the weight, which identify respondents, which are multiple response sets). You do not have to press anything for this to happen. The file is also accepted automatically, so the cross tab tool opens without a trip back to Import.\nTranscripts follow the same rule. A transcript nobody has set up yet is accepted on import with the app's best reading of it (individual interviews when it cannot tell), and the dropdowns stay open to change it. Every file card now shows one of two badges: Accepted or Needs review. Raw case-level files are labelled Raw data on the card and in the upload list. The upload list puts each file picker on the same line as its type to save space, and a note under it says that you should upload only files that the owner has cleared for analysis, since the app does not scan for personal information.\nAcceptance is a record that the structure was looked at, not a verdict on the data. If you change a structure choice afterwards, the card changes to Accept again, because tables built on the old choice may no longer mean what they did. Wide files, with thousands of columns, keep only the usable variables, and the panel says how many were kept; the cross tab tool still reads every variable it needs.\nWhat each file's status says\nEach file shows whether it was read, and, where it has one, whether its setup is accepted; the two are kept apart because a file can be read and still need review. Read, Reading, Not read yet and Read failed mean what they say. Partly read means part of a report or questionnaire could not be read. For a transcript the partial state is about its coding, not its text, and is called Coding incomplete: some passages came back without a code, so findings from it may be missing them. The file says to open Coding and run Code themes again, and the Prepare overview links there. Needs attention in the state filter gathers failed and partial reads and previews that could not be verified.\nTechnical documents\nA technical document (methodology, fieldwork, sampling, weighting or analysis documentation, such as a survey's technical report) is read when it is added and previewed like a brief. It is not mined for findings and has no acceptance step. The Research assistant reads and quotes it when you ask how the study was done; what it describes is not checked against your data. It needs database update 0112.\nThe file list and the selected file\nThe list of sources rolls up with its own button, which only hides it: the search, filters and sort keep their state. Each file names its links on its type and date line (\"Linked: questionnaire.docx\", and \"and N more\"), so you can see what is linked without opening it. The selected file shows its name on one line and its type, upload date, wave and purpose on the next. Raw data offers Open Crosstabs and Open Analytics; a summarised table offers Open Crosstabs only, because Analytics needs case-level data.\nView original downloads the file exactly as it was uploaded, under its own name, without opening a window. Viewing opens a readable copy in a browser tab where there is one (a PDF). Both use a short-lived link, checked on the server to belong to this project; it stops working after ten minutes. If a download fails, the reason shows under the button and pressing it again tries again. The original file is never changed.\nWhy it works this way\nAccepting by default saves a step nearly everyone would take anyway. Asking again after a change keeps the one safeguard that matters: a table should never silently rest on a different structure than the one you approved."
     },
     {
      "id": "quality",
@@ -310,14 +373,14 @@
    "ref": "knowledge/crosstabs",
    "kind": "knowledge",
    "title": "How our cross tabulation works",
-   "blurb": "Weighted tables, bases, rating scales, multiple response, nets, SemanticTabs and StarterTabs, significance, and where they stop",
+   "blurb": "Weighted tables, bases, rating scales, multiple response, nets, SemanticTabs and StarterTabs, significance, the survey design, and where they stop",
    "href": "/knowledge/crosstabs",
    "sections": [
     {
      "id": "",
      "heading": "Introduction",
      "href": "/knowledge/crosstabs",
-     "text": "How our cross tabulation works\nA plain account of how survey data becomes weighted tables in this app, how to read them, how tables become findings, and where the method stops. It is a working document and will grow.\nMethod guides · about 18 minute read · updated 2026-10-22"
+     "text": "How our cross tabulation works\nA plain account of how survey data becomes weighted tables in this app, how to read them, how tables become findings, and where the method stops. It is a working document and will grow.\nMethod guides · about 18 minute read · updated 2026-10-24"
     },
     {
      "id": "what-quant",
@@ -383,7 +446,7 @@
      "id": "limits",
      "heading": "Limitations",
      "href": "/knowledge/crosstabs#limits",
-     "text": "Limitation: a rating scale is recognised by its values\nA column with no value labels counts as a 0 to 10 or 1 to 10 scale when it has 10 or more distinct whole-number codes. A scale on which fewer than 10 values were actually given is read as categories, with no mean; set the variable as continuous to get its average. A count variable with 10 or more values gets a mean too, which is still the mean of the counts. StarterTabs and the grouping words are matched by wording, not meaning: a split named otherwise needs choosing by hand.\nLimitation: the sample design is only as good as what you tell the app\nIf you name a PSU (cluster) variable, and ideally a strata variable, the app uses Taylor series linearised standard errors, the method behind the R survey package. On the FinScope 2024 file, with the strata rebuilt as in the original R run, those standard errors matched R to within 0.3% in every cell tested. Without a design the app uses the Kish effective base, which only reflects unequal weights. On the same file that understated or overstated the design-based error by up to a third, depending on the cell, so treat a weights-only arrow as indicative. Strata that contain a single PSU are pooled, which can only widen intervals. Finite population corrections are not applied.\nLimitation: the correction is a choice\nMany columns are tested at once, so some differences appear by chance. The default is the Benjamini-Hochberg false discovery rate (Benjamini & Hochberg, 1995), applied across the columns of each banner variable for each row. Bonferroni is stricter and no correction is available. A correction can only remove marks, never add them. The correction does not cover the many rows and banners in a workbook, so a finding should still be read as a lead.\nLimitation: the whole-table test is first order\nEach question gets a whole-table test against each banner variable, using a first-order Rao-Scott adjustment (Rao & Scott, 1981): the chi-square is divided by an average design effect. It is an approximation, and without a design the effect comes from the weights alone, which is optimistic for a clustered sample.\nLimitation: tables describe association, not cause\nA difference between groups can reflect something else that differs between them (age, income, access). A table cannot separate those explanations. Findings describe differences, not reasons.\nLimitation: a base reflects who was asked, which the file may not say\nThe app can tell who answered a question. It cannot always tell who was supposed to be asked. A missing answer might mean a refusal, or that the question was skipped by routing. If the file does not mark the difference, a base can be smaller or larger than the intended universe. Check the questionnaire for routing on any question where the base looks odd.\nLimitation: grouping is your decision\nNet and group definitions are analyst choices. Combining categories changes the result, and the same categories can be grouped in different defensible ways. State the grouping when you report a net.\nLimitation: small groups hide real differences, and show false ones\nWith few people in a column the test has little power, so real differences go unmarked, and figures on bases under 30 are indicative only (under 10 are hidden). Combine thin categories before concluding that groups do not differ.\nWhat this does\n- Weights each cell, states the base, and shows unweighted, weighted and effective bases.\n- Keeps every option of a multiple-response question, each on the correct base.\n- Builds nets and grouped categories from respondent-level data, never by adding percentages.\n- Offers an optional starter set split by demographics, customer groupings or columns you choose, with false discovery rate control on the findings it yields.\n- Turns a plain-English request into a setup you check first, including a requested mean, and follows a reference to a table you built earlier.\n- Tests each column against the rest of its banner variable (Taylor series variance when a design is given), shows column-pair letters, a whole-table test, a correction setting and an Excel export, marks bases under 30 as indicative only, and hides figures under 10.\n- Keeps tables as drafts until you commit, and archives findings if a table is deleted.\nWhat this does not do\n- Know your sampling design unless you name the PSU and strata variables.\n- Correct for the many tables and banners across a whole workbook.\n- Replace a statistician's review of a complex-sample analysis.\n- Tell you why two groups differ."
+     "text": "Limitation: a rating scale is recognised by its values\nA column with no value labels counts as a 0 to 10 or 1 to 10 scale when it has 10 or more distinct whole-number codes. A scale on which fewer than 10 values were actually given is read as categories, with no mean; set the variable as continuous to get its average. A count variable with 10 or more values gets a mean too, which is still the mean of the counts. StarterTabs and the grouping words are matched by wording, not meaning: a split named otherwise needs choosing by hand.\nLimitation: the sample design is only as good as what you tell the app\nIf you name a PSU (cluster) variable, and ideally a strata variable, the app uses Taylor series linearised standard errors, the method behind the R survey package. On the FinScope 2024 file, with the strata rebuilt as in the original R run, those standard errors matched R to within 0.3% in every cell tested. Without a design the app uses the Kish effective base, which only reflects unequal weights. On the same file that understated or overstated the design-based error by up to a third, depending on the cell, so treat a weights-only arrow as indicative. Strata that contain a single PSU are pooled, which can only widen intervals. Finite population corrections are not applied.\nLimitation: one cluster variable and one stratum variable\nThe design is set per data file with one PSU (cluster) variable and one stratum variable, and is used by Cross tabs and the analyses built on them (NPS, objective evidence, brand health, CSM, wave tracking); Analytics uses the weight only. A stratum made of several variables, or design fields kept in a separate weighting file, has to be prepared outside the app first: merge it into the data file with one final stratum column. That was how the FinScope 2024 strata above were rebuilt. Building them in the app is planned (see Planned, and not yet supported).\nLimitation: the correction is a choice\nMany columns are tested at once, so some differences appear by chance. The default is the Benjamini-Hochberg false discovery rate (Benjamini & Hochberg, 1995), applied across the columns of each banner variable for each row. Bonferroni is stricter and no correction is available. A correction can only remove marks, never add them. The correction does not cover the many rows and banners in a workbook, so a finding should still be read as a lead.\nLimitation: the whole-table test is first order\nEach question gets a whole-table test against each banner variable, using a first-order Rao-Scott adjustment (Rao & Scott, 1981): the chi-square is divided by an average design effect. It is an approximation, and without a design the effect comes from the weights alone, which is optimistic for a clustered sample.\nLimitation: tables describe association, not cause\nA difference between groups can reflect something else that differs between them (age, income, access). A table cannot separate those explanations. Findings describe differences, not reasons.\nLimitation: a base reflects who was asked, which the file may not say\nThe app can tell who answered a question. It cannot always tell who was supposed to be asked. A missing answer might mean a refusal, or that the question was skipped by routing. If the file does not mark the difference, a base can be smaller or larger than the intended universe. Check the questionnaire for routing on any question where the base looks odd.\nLimitation: grouping is your decision\nNet and group definitions are analyst choices. Combining categories changes the result, and the same categories can be grouped in different defensible ways. State the grouping when you report a net.\nLimitation: small groups hide real differences, and show false ones\nWith few people in a column the test has little power, so real differences go unmarked, and figures on bases under 30 are indicative only (under 10 are hidden). Combine thin categories before concluding that groups do not differ.\nWhat this does\n- Weights each cell, states the base, and shows unweighted, weighted and effective bases.\n- Keeps every option of a multiple-response question, each on the correct base.\n- Builds nets and grouped categories from respondent-level data, never by adding percentages.\n- Offers an optional starter set split by demographics, customer groupings or columns you choose, with false discovery rate control on the findings it yields.\n- Turns a plain-English request into a setup you check first, including a requested mean, and follows a reference to a table you built earlier.\n- Tests each column against the rest of its banner variable (Taylor series variance when a design is given), shows column-pair letters, a whole-table test, a correction setting and an Excel export, marks bases under 30 as indicative only, and hides figures under 10.\n- Keeps tables as drafts until you commit, and archives findings if a table is deleted.\nWhat this does not do\n- Know your sampling design unless you name the PSU and strata variables.\n- Correct for the many tables and banners across a whole workbook.\n- Replace a statistician's review of a complex-sample analysis.\n- Tell you why two groups differ."
     },
     {
      "id": "practice",
@@ -565,14 +628,14 @@
    "ref": "knowledge/findings",
    "kind": "knowledge",
    "title": "How findings are produced and checked",
-   "blurb": "Atomic claims, where they come from, the four verdicts, caveat tags, and where they stop",
+   "blurb": "Atomic claims, where they come from, reviewing and editing them, the four verdicts, caveat tags, and where they stop",
    "href": "/knowledge/findings",
    "sections": [
     {
      "id": "",
      "heading": "Introduction",
      "href": "/knowledge/findings",
-     "text": "How findings are produced and checked\nWhat a finding is in this app, where findings come from, how they are verified, and what the verdicts and caveat tags do and do not tell you. It describes current behaviour and will change as the app does.\nMethod guides · about 10 minute read · updated 2026-10-08"
+     "text": "How findings are produced and checked\nWhat a finding is in this app, where findings come from, how they are verified, and what the verdicts and caveat tags do and do not tell you. It describes current behaviour and will change as the app does.\nMethod guides · about 10 minute read · updated 2026-10-24"
     },
     {
      "id": "what",
@@ -590,7 +653,7 @@
      "id": "review",
      "heading": "Reviewing by exception",
      "href": "/knowledge/findings#review",
-     "text": "New findings arrive as accepted, not pending. A run can easily produce well over a hundred of them, and nobody reads each one before the next stage can run. So the workflow is the reverse of an approval queue: you scan, and you reject the ones that are wrong, duplicated or irrelevant. Rejected findings are kept, not deleted, and drop out of everything built downstream.\n- Accepted: in play, and eligible to feed verification and insights.\n- Rejected: set aside. Still visible, and recoverable if you change your mind.\n- Adjusted: you can change a finding's kind, theme or note. The source link stays.\n\"Regenerate rejected\" replaces only the findings you rejected and leaves everything accepted, and whatever has been built on it, untouched. If findings are about to be removed in a way that cannot be avoided (reprocessing a document, deleting a table), a snapshot is archived first so the earlier version can still be looked up."
+     "text": "New findings arrive as accepted, not pending. A run can easily produce well over a hundred of them, and nobody reads each one before the next stage can run. So the workflow is the reverse of an approval queue: you scan, and you reject the ones that are wrong, duplicated or irrelevant. Rejected findings are kept, not deleted, and drop out of everything built downstream.\n- Accepted: in play, and eligible to feed verification and insights.\n- Rejected: set aside. Still visible, and recoverable if you change your mind.\n- Adjusted: you can change a finding's kind, theme or note. The source link stays.\n\"Regenerate rejected\" replaces only the findings you rejected and leaves everything accepted, and whatever has been built on it, untouched. If findings are about to be removed in a way that cannot be avoided (reprocessing a document, deleting a table), a snapshot is archived first so the earlier version can still be looked up.\nWhen a change is saved, refused or fails\nA change to a finding's status, kind, theme or note shows as saved only once it is. If the finding is no longer in the project (deleted, or replaced when its file was read again since you opened the page), the change is refused and says so; reload to see the current findings. Accept all and Reject all are all or nothing: if any finding in the batch is gone, none is changed, and a banner says how many were missing. When a save is refused or fails, the buttons return to what they showed, a note you were writing stays in its box with the reason beside it, and Save tries again with the same text. The rest of the page stays as it was. A blank theme or note clears it; a kind, once set, can be changed but not cleared."
     },
     {
      "id": "duplicates",
@@ -802,14 +865,14 @@
    "ref": "knowledge/research-assistant",
    "kind": "knowledge",
    "title": "How the Research assistant works",
-   "blurb": "Asking from any page, what it reads, how-the-app questions from the guides, answering data questions with draft tables you can open, sample sizes and margins of error from a tested calculator, method advice, report edits, and where it stops",
+   "blurb": "Asking from any page, what it reads, how-the-app questions from the guides, how-the-study-was-done questions from your technical documents, how a file is weighted, data questions answered with draft tables you can open, sample sizes from a tested calculator, method advice, report edits, and where it stops",
    "href": "/knowledge/research-assistant",
    "sections": [
     {
      "id": "",
      "heading": "Introduction",
      "href": "/knowledge/research-assistant",
-     "text": "How the Research assistant works\nWhat the assistant reads, how it answers questions about your data with tables you can open, how it works out sample sizes and margins of error, and where its answers should be checked. It describes current behaviour and will change as the app does.\nMethod guides · about 9 minute read · updated 2026-10-22"
+     "text": "How the Research assistant works\nWhat the assistant reads, how it answers questions about your data with tables you can open, how it works out sample sizes and margins of error, and where its answers should be checked. It describes current behaviour and will change as the app does.\nMethod guides · about 10 minute read · updated 2026-10-24"
     },
     {
      "id": "what",
@@ -827,13 +890,19 @@
      "id": "reads",
      "heading": "What it reads",
      "href": "/knowledge/research-assistant#reads",
-     "text": "Each message is answered from the project's business problem, objective, decision statement and audience, the generated report narrative if there is one, accepted insights and recommendations, the objective coverage statuses, and accepted findings rated robust or use with caution. Larger projects are cut to the first 80 findings, 60 insights and 40 recommendations. The last 20 messages of the conversation go with it, so a follow-up such as \"and by region?\" is read in context."
+     "text": "Each message is answered from the project's business problem, objective, decision statement and audience, the generated report narrative if there is one, accepted insights and recommendations, the objective coverage statuses, and accepted findings rated robust or use with caution. Larger projects are cut to the first 80 findings, 60 insights and 40 recommendations. The last 20 messages of the conversation go with it, so a follow-up such as \"and by region?\" is read in context.\nTechnical documents (methodology, fieldwork, sampling, weighting or analysis documentation added under Import data) are listed by name; their text is searched and read only when a question needs it, as below."
     },
     {
      "id": "guides",
      "heading": "Questions about how the app works",
      "href": "/knowledge/research-assistant#guides",
      "text": "For a question about a screen, a method or a limit, the assistant searches the Knowledge base and the Manual and reads the sections that fit, then answers from them. The reply ends with a line naming the guides it read, with links, so you can read the source yourself. When the guides do not cover something, it is told to say so rather than describe behaviour it has not read."
+    },
+    {
+     "id": "technical",
+     "heading": "Questions about how the study was done",
+     "href": "/knowledge/research-assistant#technical",
+     "text": "For a question about the study's methodology, fieldwork, sampling, weighting or analysis, the assistant searches the project's technical documents and reads the passages that fit, then answers from them, naming the document. The reply ends with a line naming the documents and passages it read. A document's text has no page numbers once read, so a passage is cited by its number (for example passage 12 of 40). What it quotes is what the document states, not something checked against the data; when the data can show it, the assistant says how to check. With no technical documents, or none that covers the question, it says so.\nFor how a data file is weighted in this app, it asks the file itself: its weight variables (which are never offered as rows or columns), the one tables use by default, and the saved survey design. Weight variables are not found by its variable search, so it is told to use this instead of concluding a file has none."
     },
     {
      "id": "data",
@@ -863,7 +932,7 @@
      "id": "limits",
      "heading": "Where it stops",
      "href": "/knowledge/research-assistant#limits",
-     "text": "Limitation: The wording is still a model's\nThe figures come from tables, but the sentence around them is written by a model, which can misread or overstate (Ji et al., 2023). Open the table named at the end of the reply before quoting a figure.\nLimitation: A margin of error assumes a probability sample\nFor a quota or opt-in panel sample there is no sampling margin in the strict sense. The calculator's figure then describes the precision a random sample of that size would have, not the error of your survey. It covers a proportion, not a mean.\nLimitation: Design effects are your estimate\nThe calculator uses the design effect you give, or 1. It does not estimate one from your data, so a clustered or heavily weighted sample will look more precise than it is unless you supply a realistic figure.\nLimitation: Long projects are read in part\nOnly the capped numbers of findings, insights and recommendations are read, so a question about a late theme on a large project may get \"not covered\".\nLimitation: Guide search matches words\nThe guides are searched by the words in the question, not their meaning, so a question worded very differently from the guide may not find it. Asking again with the term the app uses usually does.\nLimitation: Outside a project nothing is kept\nThe chat outside a project is not saved. Its use is counted for your organisation and shown on the dashboard (the last 30 days, with the part read from the cache and an estimated cost), not on a project's API usage page, which counts only that project's calls.\nLimitation: Drafts accumulate\nEach data question can add up to four draft tables. They stay until you commit or delete them. A table saved whose figures could not be read back is still listed under the reply, marked as such, and counts towards the four.\nWhat this does\n- Builds the tables it quotes, through the same checks and engine as SemanticTabs, and saves them as drafts.\n- Uses the file's weight and saved survey design, and stops when either cannot be read.\n- Works out sample sizes and margins of error with a tested calculator and shows the working.\n- Rewrites only the report fields you name.\n- Answers how-the-app questions from the Knowledge base and Manual, and links the guides it read.\nWhat this does not do\n- Compute a figure itself, or guarantee its sentence matches the table it built.\n- Estimate a design effect from your data.\n- Give a margin of error that applies to a non-probability sample.\n- Commit its tables into findings for you."
+     "text": "Limitation: The wording is still a model's\nThe figures come from tables, but the sentence around them is written by a model, which can misread or overstate (Ji et al., 2023). Open the table named at the end of the reply before quoting a figure.\nLimitation: A margin of error assumes a probability sample\nFor a quota or opt-in panel sample there is no sampling margin in the strict sense. The calculator's figure then describes the precision a random sample of that size would have, not the error of your survey. It covers a proportion, not a mean.\nLimitation: Design effects are your estimate\nThe calculator uses the design effect you give, or 1. It does not estimate one from your data, so a clustered or heavily weighted sample will look more precise than it is unless you supply a realistic figure.\nLimitation: Long projects are read in part\nOnly the capped numbers of findings, insights and recommendations are read, so a question about a late theme on a large project may get \"not covered\".\nLimitation: Guide search matches words\nThe guides are searched by the words in the question, not their meaning, so a question worded very differently from the guide may not find it. Asking again with the term the app uses usually does.\nLimitation: Outside a project nothing is kept\nThe chat outside a project is not saved. Its use is counted for your organisation and shown on the dashboard (the last 30 days, with the part read from the cache and an estimated cost), not on a project's API usage page, which counts only that project's calls.\nLimitation: Technical documents are searched by their words\nPassages are found by the words of the question, like the guides, and cited by number (passage 12 of 40) because a document's text keeps no page numbers once read. A scanned document with no readable text cannot be searched; Import shows it as Read failed.\nLimitation: Drafts accumulate\nEach data question can add up to four draft tables. They stay until you commit or delete them. A table saved whose figures could not be read back is still listed under the reply, marked as such, and counts towards the four.\nWhat this does\n- Builds the tables it quotes, through the same checks and engine as SemanticTabs, and saves them as drafts.\n- Uses the file's weight and saved survey design, and stops when either cannot be read.\n- Works out sample sizes and margins of error with a tested calculator and shows the working.\n- Rewrites only the report fields you name.\n- Answers how-the-app questions from the Knowledge base and Manual, and links the guides it read.\n- Answers how-the-study-was-done questions from your technical documents, naming the passages it read.\n- Says how a data file is weighted from the file itself: its weight variables, the default and the saved design.\nWhat this does not do\n- Compute a figure itself, or guarantee its sentence matches the table it built.\n- Estimate a design effect from your data.\n- Give a margin of error that applies to a non-probability sample.\n- Commit its tables into findings for you.\n- Check what a technical document says against the data."
     },
     {
      "id": "practice",
@@ -876,6 +945,51 @@
      "heading": "References",
      "href": "/knowledge/research-assistant",
      "text": "- Cochran, W. G. (1977). Sampling techniques (3rd ed.). Wiley. https://www.wiley.com/en-us/Sampling+Techniques%2C+3rd+Edition-p-9780471162407\n- Kish, L. (1965). Survey sampling. Wiley. https://gov.wiley.com/WileyCDA/WileyTitle/productCd-0471109495,descCd-authorInfo.html\n- Ji, Z., Lee, N., Frieske, R., Yu, T., Su, D., Xu, Y., Ishii, E., Bang, Y. J., Madotto, A., & Fung, P. (2023). Survey of hallucination in natural language generation. ACM Computing Surveys, 55(12), Article 248. https://doi.org/10.1145/3571730"
+    }
+   ]
+  },
+  {
+   "ref": "knowledge/roadmap",
+   "kind": "knowledge",
+   "title": "Planned, and not yet supported",
+   "blurb": "SAS files, variables-in-rows workbooks with a separate Codebook, weights and survey design from a separate file, and more uses of technical documents: what to do today and what building each would take",
+   "href": "/knowledge/roadmap",
+   "sections": [
+    {
+     "id": "",
+     "heading": "Introduction",
+     "href": "/knowledge/roadmap",
+     "text": "Planned, and not yet supported\nWhat the app deliberately does not do yet, what to do instead today, and what building it would take. Nothing here is a defect; each is a decision to leave it for later. It describes current scope and will change as the app does.\nMethod guides · about 4 minute read · updated 2026-10-24"
+    },
+    {
+     "id": "what",
+     "heading": "What this page is",
+     "href": "/knowledge/roadmap#what",
+     "text": "A short list of capabilities left out on purpose, so a request that falls outside them gets a plain answer and a workaround rather than a guess. The engineering record is in the repository's docs/later-additions.md."
+    },
+    {
+     "id": "sas",
+     "heading": "SAS files",
+     "href": "/knowledge/roadmap#sas",
+     "text": "SAS data files are recognised by name and refused with a message. Export them to SPSS (.sav), Stata (.dta), CSV or Excel instead. Supporting them needs a reader with the same identity, label, missing-value and weight rules as SPSS and Stata, checked on valid and damaged reference files."
+    },
+    {
+     "id": "flipped",
+     "heading": "Variables-in-rows workbooks with a separate Codebook",
+     "href": "/knowledge/roadmap#flipped",
+     "text": "A workbook laid out with variables in rows and cases in columns is supported, but not together with weight or multiple-response declarations on a separate Codebook sheet. That combination is refused before any result, with a message to re-export as one row per respondent or to put the declarations on the data sheet."
+    },
+    {
+     "id": "design",
+     "heading": "Weights and survey design from a separate file",
+     "href": "/knowledge/roadmap#design",
+     "text": "What works now\n- Weight variables in the data file itself, found by name, used by Cross tabs and Analytics, never offered as rows or columns.\n- A survey design in Cross tabs with one cluster (PSU) variable and one stratum variable, used for design-based standard errors and tests, and by the analyses built on cross tabs (NPS, objective evidence, brand health, CSM, wave tracking). Analytics uses the weight only.\nNot yet\n- Bringing a weight or design fields from a second file, joined to the data by respondent ID.\n- A stratum made of several variables (for FinScope 2024: foreign-area flag, metro, NLI group, province and race), with single-cluster strata merged into a neighbour.\n- The survey design in Analytics.\nToday's workaround\nMerge the weighting file into the data file in R or SPSS and export it with the final weight and one final stratum column; then choose that weight, the cluster variable (for FinScope, EACode) and that stratum column in Cross tabs. On FinScope 2024 prepared this way, the app's standard errors matched R's survey package to within 0.3% in every cell compared.\nLimitation: What building it would take\nA weights-and-design file type that refuses a join unless every respondent ID matches once in both files, a shared cluster code agrees, weights are present and positive and cluster-level fields are constant within a cluster, and that records which file each attached column came from; then composite strata with a stated singleton rule, checked against the R preparation script's own counts."
+    },
+    {
+     "id": "technical",
+     "heading": "More uses of technical documents",
+     "href": "/knowledge/roadmap#technical",
+     "text": "Technical documents (methodology, fieldwork, sampling, weighting and analysis documentation) are read today by the Research assistant only. Later they could feed the report's methodology summary and suggest weight and design variables named in the document, always for you to confirm, since what a document describes is not evidence that the data file matches it."
     }
    ]
   },

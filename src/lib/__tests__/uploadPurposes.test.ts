@@ -9,6 +9,8 @@ describe("upload purposes", () => {
     expect(UPLOAD_PURPOSES.map((p) => [p.label, p.field])).toEqual([
       ["Brief", "briefFiles"],
       ["Proposal", "proposalFiles"],
+      // Context, with briefs and proposals (Grant, 2026-10-24).
+      ["Technical document", "technicalFiles"],
       ["Raw data", "rawTableFiles"],
       ["Tables", "tableFiles"],
       ["Statistical output", "outputFiles"],

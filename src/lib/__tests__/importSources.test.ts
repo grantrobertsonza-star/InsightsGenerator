@@ -1,9 +1,17 @@
 // The Import source list's status rules (importSources.ts): processing and acceptance kept apart,
 // a stored failure outranking an older preview, and the state filters not hiding one another.
 import { describe, expect, it } from "vitest";
-import { fileTag, flaggedChecks, matchesSearch, matchesStateFilter, matchesTypeFilter, processingState, sortSources, sourceGroup, sourceTypeLabel } from "../importSources";
+import { fileTag, flaggedChecks, matchesSearch, matchesStateFilter, matchesTypeFilter, processingLabel, processingState, sortSources, sourceGroup, sourceTypeLabel } from "../importSources";
 
 describe("processing state", () => {
+  it("calls a transcript's partial state Coding incomplete, and every other file's Partly read", () => {
+    const state = processingState({ kind: "transcript", processingStatus: "incomplete", preview: { kind: "text", length: 41621 } });
+    expect(state).toBe("partly_read");
+    expect(processingLabel(state, "transcript")).toBe("Coding incomplete");
+    for (const kind of ["report", "instrument", "table", "evidence"]) expect(processingLabel(state, kind)).toBe("Partly read");
+    expect(processingLabel("read", "transcript")).toBe("Read");
+    expect(processingLabel("failed", "transcript")).toBe("Read failed");
+  });
   it("reads a stored failure or partial read before anything previewed", () => {
     expect(processingState({ kind: "table", processingStatus: "failed", preview: { kind: "tables", count: 3 } })).toBe("failed");
     expect(processingState({ kind: "report", processingStatus: "incomplete", preview: { kind: "text", length: 900 } })).toBe("partly_read");

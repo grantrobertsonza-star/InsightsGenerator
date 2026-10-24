@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
-import type { BuiltTable, HelpUsed } from "./researchAssistantTools";
+import type { BuiltTable, DocumentUsed, HelpUsed } from "./researchAssistantTools";
 
 /**
  * The Research assistant's tool loop, shared by the project assistant (researchAssistant.ts) and
@@ -20,9 +20,9 @@ import type { BuiltTable, HelpUsed } from "./researchAssistantTools";
 /** At most this many model rounds (each may call tools) for one message. */
 export const MAX_TOOL_ROUNDS = 8;
 
-export type ToolOutcome = { content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed };
+export type ToolOutcome = { content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed; document?: DocumentUsed };
 
-export type LoopResult = { replyText: string; tables: BuiltTable[]; help: HelpUsed[]; incomplete: boolean };
+export type LoopResult = { replyText: string; tables: BuiltTable[]; help: HelpUsed[]; documents: DocumentUsed[]; incomplete: boolean };
 
 export const CUT_OFF_REPLY = "My answer was cut off before it finished, so it is not shown. Ask again, or ask something narrower.";
 export const EMPTY_REPLY = "No answer came back. Ask again.";
@@ -42,6 +42,7 @@ export async function runAssistantLoop(options: {
   const messages: Anthropic.MessageParam[] = [...(options.priorMessages ?? []), { role: "user", content: options.userMessage }];
   const tables: BuiltTable[] = [];
   const help: HelpUsed[] = [];
+  const documents: DocumentUsed[] = [];
   let replyText = "";
   let finished = false;
   let incomplete = false;
@@ -89,6 +90,7 @@ export async function runAssistantLoop(options: {
       // A table reused within the turn (the same request twice) is listed and counted once.
       if (r.table && !tables.some((t) => t.tableId === r.table!.tableId)) tables.push(r.table);
       if (r.help && !help.some((h) => h.href === r.help!.href)) help.push(r.help);
+      if (r.document && !documents.some((d) => d.document === r.document!.document && d.passage === r.document!.passage)) documents.push(r.document);
       results.push({ type: "tool_result", tool_use_id: call.id, content: r.content, ...(r.isError ? { is_error: true } : {}) });
     }
     messages.push({ role: "user", content: results });
@@ -101,14 +103,14 @@ export async function runAssistantLoop(options: {
     replyText = EMPTY_REPLY;
     incomplete = true;
   }
-  return { replyText, tables, help, incomplete };
+  return { replyText, tables, help, documents, incomplete };
 }
 
 /**
  * The lines code adds under a reply: which tables it built and which guides it read, so every figure
  * and every statement about the app can be traced. Written from the tool results, not the model.
  */
-export function sourceLines(tables: BuiltTable[], help: HelpUsed[]): string {
+export function sourceLines(tables: BuiltTable[], help: HelpUsed[], documents: DocumentUsed[] = []): string {
   const lines: string[] = [];
   if (tables.length > 0) {
     lines.push(
@@ -119,6 +121,23 @@ export function sourceLines(tables: BuiltTable[], help: HelpUsed[]): string {
   }
   if (help.length > 0) {
     lines.push(`Guides read for this answer: ${help.map((h) => `${h.title} (${h.href})`).join("; ")}.`);
+  }
+  if (documents.length > 0) {
+    // Grouped by document, passages in order, so each statement about how the study was done can be found.
+    const byDoc = new Map<string, { of: number; passages: number[] }>();
+    for (const d of documents) {
+      const entry = byDoc.get(d.document) ?? { of: d.of, passages: [] };
+      entry.passages.push(d.passage);
+      byDoc.set(d.document, entry);
+    }
+    lines.push(
+      `Technical documents read for this answer: ${[...byDoc]
+        .map(([name, e]) => {
+          const ps = [...e.passages].sort((a, b) => a - b);
+          return `${name} (${ps.length === 1 ? "passage" : "passages"} ${ps.join(", ")} of ${e.of})`;
+        })
+        .join("; ")}.`,
+    );
   }
   return lines.length ? `\n\n${lines.join("\n")}` : "";
 }

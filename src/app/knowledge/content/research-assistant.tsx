@@ -5,6 +5,7 @@ const toc = [
   { id: "anywhere", title: "Asking from any page" },
   { id: "reads", title: "What it reads" },
   { id: "guides", title: "Questions about how the app works" },
+  { id: "technical", title: "Questions about how the study was done" },
   { id: "data", title: "Questions about the data" },
   { id: "sample", title: "Sample sizes and margins of error" },
   { id: "advice", title: "General research advice" },
@@ -90,6 +91,10 @@ export default function ResearchAssistantGuide() {
         findings, 60 insights and 40 recommendations. The last 20 messages of the conversation go with it, so a follow-up
         such as &quot;and by region?&quot; is read in context.
       </P>
+      <P>
+        Technical documents (methodology, fieldwork, sampling, weighting or analysis documentation added under Import
+        data) are listed by name; their text is searched and read only when a question needs it, as below.
+      </P>
 
       <H2 id="guides">Questions about how the app works</H2>
       <P>
@@ -97,6 +102,21 @@ export default function ResearchAssistantGuide() {
         reads the sections that fit, then answers from them. The reply ends with a line naming the guides it read, with
         links, so you can read the source yourself. When the guides do not cover something, it is told to say so rather
         than describe behaviour it has not read.
+      </P>
+
+      <H2 id="technical">Questions about how the study was done</H2>
+      <P>
+        For a question about the study&apos;s methodology, fieldwork, sampling, weighting or analysis, the assistant
+        searches the project&apos;s technical documents and reads the passages that fit, then answers from them, naming
+        the document. The reply ends with a line naming the documents and passages it read. A document&apos;s text has no
+        page numbers once read, so a passage is cited by its number (for example passage 12 of 40). What it quotes is
+        what the document states, not something checked against the data; when the data can show it, the assistant
+        says how to check. With no technical documents, or none that covers the question, it says so.
+      </P>
+      <P>
+        For how a data file is weighted in this app, it asks the file itself: its weight variables (which are never
+        offered as rows or columns), the one tables use by default, and the saved survey design. Weight variables are
+        not found by its variable search, so it is told to use this instead of concluding a file has none.
       </P>
 
       <H2 id="data">Questions about the data</H2>
@@ -211,6 +231,11 @@ export default function ResearchAssistantGuide() {
         (the last 30 days, with the part read from the cache and an estimated cost), not on a project&apos;s API usage
         page, which counts only that project&apos;s calls.
       </Limit>
+      <Limit title="Technical documents are searched by their words">
+        Passages are found by the words of the question, like the guides, and cited by number (passage 12 of 40)
+        because a document&apos;s text keeps no page numbers once read. A scanned document with no readable text cannot
+        be searched; Import shows it as Read failed.
+      </Limit>
       <Limit title="Drafts accumulate">
         Each data question can add up to four draft tables. They stay until you commit or delete them. A table saved
         whose figures could not be read back is still listed under the reply, marked as such, and counts towards the
@@ -223,12 +248,15 @@ export default function ResearchAssistantGuide() {
           "Works out sample sizes and margins of error with a tested calculator and shows the working.",
           "Rewrites only the report fields you name.",
           "Answers how-the-app questions from the Knowledge base and Manual, and links the guides it read.",
+          "Answers how-the-study-was-done questions from your technical documents, naming the passages it read.",
+          "Says how a data file is weighted from the file itself: its weight variables, the default and the saved design.",
         ]}
         doesNot={[
           "Compute a figure itself, or guarantee its sentence matches the table it built.",
           "Estimate a design effect from your data.",
           "Give a margin of error that applies to a non-probability sample.",
           "Commit its tables into findings for you.",
+          "Check what a technical document says against the data.",
         ]}
       />
 

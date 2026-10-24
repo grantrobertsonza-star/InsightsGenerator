@@ -10,6 +10,7 @@ import { defaultWeight } from "./starterTables";
 import { isCaseTableFileName, isStatsFileName } from "./statsFileName";
 import { marginForSample, sampleSizeForMargin } from "./sampleSize";
 import { readHelp, searchHelp } from "./helpIndex";
+import { loadTechnicalDocuments, readPassage, searchPassages } from "./technicalDocuments";
 
 /**
  * The Research assistant's tools (Grant, 2026-10-22: the assistant as the project's expert). Every
@@ -41,6 +42,12 @@ export const DATA_TOOLS: Anthropic.Tool[] = [
       properties: { data_file_id: { type: "string" }, query: { type: "string", description: "Words to look for, e.g. 'satisfaction' or 'region'." } },
       required: ["data_file_id", "query"],
     },
+  },
+  {
+    name: "describe_weighting",
+    description:
+      "Say how one data file is weighted and designed in this app: its weight variables (kept out of find_variables), which one tables use by default, and the saved survey design (cluster and stratum variables). Use it before saying anything about a file's weighting.",
+    input_schema: { type: "object", properties: { data_file_id: { type: "string" } }, required: ["data_file_id"] },
   },
   {
     name: "build_table",
@@ -120,6 +127,60 @@ export const HELP_TOOLS: Anthropic.Tool[] = [
 
 export type HelpUsed = { title: string; href: string };
 
+/** This project's technical documents (methodology, fieldwork, sampling, weighting, analysis notes). */
+export const TECHNICAL_DOCUMENT_TOOLS: Anthropic.Tool[] = [
+  {
+    name: "search_technical_documents",
+    description:
+      "Search this project's technical documents (methodology, fieldwork, sampling, weighting or analysis documentation the researcher uploaded) for words. Returns matching passages with a ref to read.",
+    input_schema: {
+      type: "object",
+      properties: { query: { type: "string", description: "Words to look for, e.g. 'stratification enumeration area' or 'benchmark weight'." } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "read_technical_document",
+    description: "Read one passage of a technical document by its ref, as search_technical_documents gives it (e.g. '<document id>#12'). Read a passage before quoting it.",
+    input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
+  },
+];
+
+/** A technical-document passage the reply was based on, listed under it. */
+export type DocumentUsed = { document: string; passage: number; of: number };
+
+/**
+ * search_technical_documents and read_technical_document, for this project only. A read records the
+ * passage, so the reply can say which documents and passages it was based on. A failed read of the
+ * documents is an error result, never "no documents".
+ */
+export async function runTechnicalDocumentTool(tenantId: string, runId: string, name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean; document?: DocumentUsed }> {
+  let documents;
+  try {
+    documents = await loadTechnicalDocuments(tenantId, runId);
+  } catch (error) {
+    return { content: `This project's technical documents could not be read: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+  }
+  if (documents.length === 0) {
+    return { content: "This project has no technical documents with readable text. Say so, and that the researcher can add one under Import data as a Technical document.", isError: false };
+  }
+  if (name === "search_technical_documents") {
+    const hits = searchPassages(documents, String(input.query ?? ""));
+    if (hits.length === 0) return { content: `No passage of ${documents.map((d) => d.name).join(", ")} uses those words. Try other words, or say the technical documents do not cover it.`, isError: false };
+    return { content: hits.map((h) => `${h.ref} | ${h.document}, passage ${h.passage} of ${h.of}\n${h.snippet}`).join("\n\n"), isError: false };
+  }
+  if (name === "read_technical_document") {
+    const passage = readPassage(documents, String(input.ref ?? ""));
+    if (!passage) return { content: `"${String(input.ref ?? "")}" is not a passage of this project's technical documents. Use search_technical_documents to find one.`, isError: true };
+    return {
+      content: `${passage.document}, passage ${passage.passage} of ${passage.of}\n\n${passage.text}`,
+      isError: false,
+      document: { document: passage.document, passage: passage.passage, of: passage.of },
+    };
+  }
+  return { content: `Unknown tool "${name}".`, isError: true };
+}
+
 /** search_help and read_help. A read records the page, so the reply can link what it was based on. */
 export function runHelpTool(name: string, input: Record<string, unknown>): { content: string; isError: boolean; help?: HelpUsed } {
   if (name === "search_help") {
@@ -187,10 +248,11 @@ export async function runAssistantTool(
   tablesSoFar: number,
   /** The researcher's question this call answers (migration 0108); tables built for it are reused if it is asked again. */
   requestId: string | null = null,
-): Promise<{ content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed }> {
+): Promise<{ content: string; isError: boolean; table?: BuiltTable; help?: HelpUsed; document?: DocumentUsed }> {
   try {
     if (name === "sample_size") return runSampleSizeTool(input);
     if (name === "search_help" || name === "read_help") return runHelpTool(name, input);
+    if (name === "search_technical_documents" || name === "read_technical_document") return runTechnicalDocumentTool(tenantId, runId, name, input);
     const files = await dataFiles(tenantId, runId);
     if (name === "list_data_files") {
       return { content: files.length ? files.map((f) => `${f.id}: ${f.name}`).join("\n") : "This project has no data files that tables can be built from.", isError: false };
@@ -202,6 +264,33 @@ export async function runAssistantTool(
     if (!dictStatus.ok) return { content: `The variables of ${file.name} could not be read: ${dictStatus.error}`, isError: true };
     const dict = dictStatus.dictionary;
     if (name === "find_variables") return { content: searchVariables(dict, String(input.query ?? "")), isError: false };
+    if (name === "describe_weighting") {
+      // Weight variables are hidden from find_variables (they are never rows or columns), which once
+      // let the assistant tell a researcher a weighted file had none. This says what is there.
+      const weights = dict.variables.filter((v) => v.weightLike);
+      const chosen = defaultWeight(dict);
+      const setup = await loadDataSetupWithStatus(tenantId, file.id);
+      const lines = [
+        weights.length === 0
+          ? `${file.name} has no variable recognised as a weight (by a name or label such as weight, wgt or wt), so its tables are unweighted unless one is chosen in Cross tabs.`
+          : `Weight variables in ${file.name}: ${weights.map((w) => `${w.name}${w.label && w.label !== w.name ? ` (${w.label})` : ""}`).join(", ")}. Tables use ${chosen} by default; a researcher can choose another in Cross tabs.`,
+      ];
+      if (!setup.ok) {
+        lines.push(`The saved survey design could not be read: ${setup.error}.`);
+      } else {
+        const resolved = resolveSurveyDesign(dict, effectiveDesignChoice(setup.setup.design, undefined));
+        const how = resolved.source === "explicit" ? "chosen by the researcher" : "found from the variable names";
+        lines.push(
+          resolved.design
+            ? `Survey design used for standard errors in Cross tabs (${how}): cluster ${resolved.design.psu ?? "none (each case its own unit)"}, stratum ${resolved.design.strata ?? "none"}.`
+            : resolved.source === "explicit"
+              ? "The researcher chose no survey design (weights only): standard errors use the effective base and do not model clusters or strata."
+              : `No survey design is set or found${resolved.ambiguous.psu.length || resolved.ambiguous.strata.length ? ` (candidates that could not be told apart: ${[...resolved.ambiguous.psu, ...resolved.ambiguous.strata].join(", ")})` : ""}: standard errors use the effective base and do not model clusters or strata.`,
+        );
+      }
+      lines.push("Analytics (driver analysis and regression) uses the weight only, never the survey design.");
+      return { content: lines.join("\n"), isError: false };
+    }
     if (name !== "build_table") return { content: `Unknown tool "${name}".`, isError: true };
 
     if (tablesSoFar >= MAX_TABLES_PER_MESSAGE) {

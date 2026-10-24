@@ -240,6 +240,82 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     expect(system[1].text).toContain(`The researcher sent this message from the Findings section (/runs/${run}).`);
   });
 
+  // Technical documents (Grant, 2026-10-24): searched and read for questions about how the study was done.
+  it("answers how the study was done from this project's technical documents, quoting and naming the passage it read; another project's is not reachable", async () => {
+    const TEXT =
+      "FinScope SA 2024 technical report.\n\nFieldwork ran from March to June 2024 with 5,600 face-to-face interviews.\n\n" +
+      "Sampling. A stratified multi-stage design: enumeration areas were drawn with probability proportional to size within " +
+      "strata defined by province, metro status and NLI group, and households were then selected systematically.\n\n" +
+      "Weighting. Benchmark weights (BENCHWGT) calibrate the sample to mid-year population estimates by age, gender, race and province.";
+    const tech = (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'technical','FinScope Technical Report.pdf','tech.pdf',$3) returning id", [tenant, run, TEXT])).rows[0].id as string;
+    const foreignTech = (await db.pool.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'technical','Other Technical.pdf','other-tech.pdf','Stratified by district and benchmark weighted.') returning id", [tenant, other])).rows[0].id as string;
+    try {
+      state.script = [
+        () => [call("search_technical_documents", { query: "stratified sampling design strata" })],
+        (req) => {
+          const hits = String(lastResults(req)[0].content);
+          return [call("read_technical_document", { ref: hits.split(" | ")[0] }), call("read_technical_document", { ref: `${foreignTech}#1` })];
+        },
+        () => [{ type: "text", text: "The technical report says the design was stratified by province, metro status and NLI group." }],
+      ];
+      const r = await ask("How was FinScope sampled?");
+      const system = state.requests[0].system as { text: string }[];
+      expect(system[0].text).toContain("Technical documents (search and read with search_technical_documents and read_technical_document):\n  - FinScope Technical Report.pdf");
+      const search = String(lastResults(state.requests[1])[0].content);
+      expect(search).toContain(`${tech}#`);
+      expect(search).toContain("FinScope Technical Report.pdf, passage");
+      expect(search).not.toContain(foreignTech);
+      const [read, foreign] = lastResults(state.requests[2]);
+      expect(read.is_error).toBeUndefined();
+      expect(String(read.content)).toContain("strata defined by province, metro status and NLI group");
+      expect(foreign.is_error).toBe(true);
+      expect(String(foreign.content)).toContain("is not a passage of this project's technical documents");
+      expect(r.reply).toMatch(/\n\nTechnical documents read for this answer: FinScope Technical Report\.pdf \(passage \d+ of \d+\)\.$/);
+      expect(r.reply).not.toContain("Other Technical.pdf");
+    } finally {
+      await db.pool.query("delete from documents where id = any($1::uuid[])", [[tech, foreignTech]]);
+    }
+  });
+
+  it("with no technical documents, the tools say so and nothing is listed under the reply", async () => {
+    state.script = [
+      () => [call("search_technical_documents", { query: "weighting" })],
+      () => [{ type: "text", text: "This project has no technical documents." }],
+    ];
+    const r = await ask("How was it weighted?");
+    expect(String((state.requests[0].system as { text: string }[])[0].text)).toContain("This project has no technical documents.");
+    expect(String(lastResults(state.requests[1])[0].content)).toContain("This project has no technical documents with readable text");
+    expect(r.reply).not.toContain("Technical documents read");
+  });
+
+  it("describes a data file's weighting: its weight variables, the default, and the saved or found design", async () => {
+    state.script = [
+      () => [call("describe_weighting", { data_file_id: doc })],
+      () => [{ type: "text", text: "tracker.sav is weighted by wt." }],
+    ];
+    await ask("Is the tracker weighted?");
+    const result = String(lastResults(state.requests.at(-1)!)[0].content);
+    expect(result).toContain("Weight variables in tracker.sav: wt (Weight). Tables use wt by default");
+    expect(result).toContain("No survey design is set or found");
+    expect(result).toContain("Analytics (driver analysis and regression) uses the weight only");
+
+    const { loadDataSetupWithStatus } = await import("../dataSetup");
+    vi.mocked(loadDataSetupWithStatus).mockResolvedValueOnce({ ok: true, setup: { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: true, wave: null, design: { mode: "explicit", psu: "segment", strata: null } } } as never);
+    state.script = [() => [call("describe_weighting", { data_file_id: doc })], () => [{ type: "text", text: "Clustered by segment." }]];
+    await ask("And its design?");
+    const explicitResult = String(lastResults(state.requests.at(-1)!)[0].content);
+    expect(explicitResult, explicitResult).toContain("Survey design used for standard errors in Cross tabs (chosen by the researcher): cluster segment, stratum none.");
+
+    vi.mocked(loadDataSetupWithStatus).mockResolvedValueOnce({ ok: false, error: "permission denied", setup: null } as never);
+    state.script = [() => [call("describe_weighting", { data_file_id: doc })], () => [{ type: "text", text: "Could not read it." }]];
+    await ask("And now?");
+    expect(String(lastResults(state.requests.at(-1)!)[0].content)).toContain("The saved survey design could not be read: permission denied.");
+
+    state.script = [() => [call("describe_weighting", { data_file_id: foreignDoc })], () => [{ type: "text", text: "Not this project's." }]];
+    await ask("And the other one?");
+    expect(lastResults(state.requests.at(-1)!)[0].is_error).toBe(true);
+  });
+
   it("an unknown guide ref is an error result, and no guide is listed", async () => {
     state.script = [
       () => [call("read_help", { ref: "knowledge/not-a-guide" })],

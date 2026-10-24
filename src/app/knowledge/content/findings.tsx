@@ -107,6 +107,16 @@ export default function FindingsGuide() {
         (reprocessing a document, deleting a table), a snapshot is archived first so the earlier version can still be
         looked up.
       </P>
+      <H3>When a change is saved, refused or fails</H3>
+      <P>
+        A change to a finding&apos;s status, kind, theme or note shows as saved only once it is. If the finding is no longer
+        in the project (deleted, or replaced when its file was read again since you opened the page), the change is
+        refused and says so; reload to see the current findings. Accept all and Reject all are all or nothing: if any
+        finding in the batch is gone, none is changed, and a banner says how many were missing. When a save is refused
+        or fails, the buttons return to what they showed, a note you were writing stays in its box with the reason
+        beside it, and Save tries again with the same text. The rest of the page stays as it was. A blank theme or note
+        clears it; a kind, once set, can be changed but not cleared.
+      </P>
 
       <H2 id="duplicates">Duplicates and look-alikes</H2>
       <P>

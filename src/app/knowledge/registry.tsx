@@ -10,6 +10,8 @@ import Decisions from "./content/decisions";
 import Reports from "./content/reports";
 import ResearchQuality from "./content/research-quality";
 import ResearchAssistant from "./content/research-assistant";
+import Dashboards from "./content/dashboards";
+import Roadmap from "./content/roadmap";
 
 /** Maps each slug in articles.ts to the component that renders it. */
 export const articleComponents: Record<string, ComponentType> = {
@@ -24,4 +26,6 @@ export const articleComponents: Record<string, ComponentType> = {
   reports: Reports,
   "research-quality": ResearchQuality,
   "research-assistant": ResearchAssistant,
+  dashboards: Dashboards,
+  roadmap: Roadmap,
 };

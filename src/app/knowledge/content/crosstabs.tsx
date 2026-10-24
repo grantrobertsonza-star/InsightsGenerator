@@ -313,6 +313,14 @@ export default function CrosstabGuide() {
         weights-only arrow as indicative. Strata that contain a single PSU are pooled, which can only widen
         intervals. Finite population corrections are not applied.
       </Limit>
+      <Limit title="one cluster variable and one stratum variable">
+        The design is set per data file with one PSU (cluster) variable and one stratum variable, and is used by
+        Cross tabs and the analyses built on them (NPS, objective evidence, brand health, CSM, wave tracking); Analytics
+        uses the weight only. A stratum made of several variables, or design fields kept in a separate weighting file,
+        has to be prepared outside the app first: merge it into the data file with one final stratum column. That was
+        how the FinScope 2024 strata above were rebuilt. Building them in the app is planned (see Planned, and not yet
+        supported).
+      </Limit>
       <Limit title="the correction is a choice">
         Many columns are tested at once, so some differences appear by chance. The default is the Benjamini-Hochberg
         false discovery rate (Benjamini &amp; Hochberg, 1995), applied across the columns of each banner variable for

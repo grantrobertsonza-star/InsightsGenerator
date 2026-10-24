@@ -24,6 +24,21 @@ describe("stageStateOf", () => {
 });
 
 describe("importStageStatus", () => {
+  it("sends a transcript with incomplete coding to Coding, and another partly read file to its preview", () => {
+    const s = importStageStatus({
+      tablesReadFailed: false,
+      files: [
+        file({ documentId: "t1", filename: "groups.docx", kind: "transcript", processing: "partly_read" }),
+        file({ documentId: "r1", filename: "report.pdf", kind: "report", processing: "partly_read", acceptance: "none" }),
+      ],
+    });
+    expect(s.state).toBe("needs_you");
+    expect(s.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ state: "needs_you", text: "Coding of groups.docx is incomplete: run Code themes again for it", target: { kind: "section", id: "coding" } }),
+      expect.objectContaining({ state: "needs_you", text: "report.pdf was only partly read", target: { kind: "import_file", documentId: "r1", tab: "preview" } }),
+    ]));
+  });
+
   it("says all ready with plain counts when every file is read and accepted", () => {
     const s = importStageStatus({ tablesReadFailed: false, files: [file(), file({ documentId: "d2", filename: "brief.pdf", kind: "evidence", processing: "not_read", acceptance: "none" })] });
     expect(s.state).toBe("ready");

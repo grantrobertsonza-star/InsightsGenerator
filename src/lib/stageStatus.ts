@@ -107,6 +107,9 @@ export function importStageStatus(input: { files: readonly ImportFileFacts[]; ta
     const name = f.filename;
     if (f.previewUnverified) add(f, "unverified", "couldnt_check", `Could not verify what was read from ${name}`, "preview");
     if (f.processing === "failed") add(f, "failed", "needs_you", f.readError ? `${name} could not be read: ${f.readError.replace(/\.$/, "")}` : `${name} could not be read`, "preview");
+    else if (f.processing === "partly_read" && f.kind === "transcript")
+      // A transcript's partial state is its coding (see importSources.processingLabel); the fix is in Coding.
+      items.push({ subject: f.documentId, key: `${f.documentId}:partial`, state: "needs_you", text: `Coding of ${name} is incomplete: run Code themes again for it`, target: { kind: "section", id: "coding" } });
     else if (f.processing === "partly_read") add(f, "partial", "needs_you", `${name} was only partly read`, "preview");
     else if (f.processing === "reading") add(f, "reading", "working", `${name} is still being read`);
     else if (f.processing === "not_read") {

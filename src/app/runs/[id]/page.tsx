@@ -272,7 +272,7 @@ type Run = {
 
 type Document = {
   id: string;
-  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output";
+  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output" | "technical";
   source_filename: string;
   uploaded_at: string;
   ingestion_type: "raw" | "aggregated" | null;
@@ -2844,7 +2844,7 @@ async function processRunAction(
   const allDocuments = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{
       id: string;
-      kind: "report" | "table" | "evidence" | "transcript";
+      kind: "report" | "table" | "evidence" | "transcript" | "technical";
       has_findings: boolean;
     }>(
       `select d.id, d.kind,
@@ -2960,9 +2960,11 @@ async function processRunAction(
               `${doc.id}: coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
             );
           }
-        } else if (doc.kind === "evidence") {
-          // Context documents are not mined for findings, but their text is read and kept
-          // so they preview and the brief and methodology steps can use them.
+        } else if (doc.kind === "evidence" || doc.kind === "technical") {
+          // Context and technical documents are not mined for findings, but their text is read and
+          // kept so they preview, the brief and methodology steps can use them, and the Research
+          // assistant can quote a technical document. One whose text could not be read is read
+          // again here, and fails visibly if it still cannot be, rather than being stamped ready.
           const has = await withTenant(TENANT_ID, async (client) => {
             const r = await client.query<{ n: number }>(
               "select coalesce(length(extracted_text), 0)::int as n from documents where id = $1",
@@ -3649,6 +3651,11 @@ export default async function RunPage({
         return {
           text: "Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions. Check how well it is written in Research quality.",
           nextStep: <ReviewResearchQualityLink key="next-step" documentId={d.id} />,
+        };
+      case "technical":
+        return {
+          text: "Technical documentation (methodology, fieldwork, sampling, weighting or analysis). The Research assistant reads and quotes it when you ask about how the study was done. It is not mined for findings, and what it describes is not checked against the data.",
+          nextStep: null,
         };
       case "report":
         return { text: `Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`, nextStep: <GoToSection key="next-step" id="findings">Open Findings</GoToSection> };
@@ -4598,7 +4605,7 @@ export default async function RunPage({
                                       {doc.processing_status === "incomplete" && (
                                         <span
                                           className="mr-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-800"
-                                          title="Coding finished, but at least one batch of turns came back without a decision for every unit it was asked about. Findings from this transcript may be missing some coded passages. Try Code again."
+                                          title="Coding finished, but at least one batch of turns came back without a decision for every unit it was asked about. Findings from this transcript may be missing some coded passages. Run Code themes again for this transcript."
                                         >
                                           coding incomplete
                                         </span>
@@ -5505,6 +5512,7 @@ export default async function RunPage({
                 ["transcript", "transcript(s)"],
                 ["instrument", "questionnaire(s) or guide(s)"],
                 ["evidence", "context file(s)"],
+                ["technical", "technical document(s)"],
               ]
                 .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
                 .join(", ")}${outputSets.length > 0 ? `, ${outputSets.length} statistical output ${outputSets.length === 1 ? "set" : "sets"}` : ""}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}
