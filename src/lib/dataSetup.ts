@@ -1,5 +1,6 @@
 import { withTenant, withTenantRead } from "./db";
 import { normaliseDataSetup, DEFAULT_DATA_SETUP, type DataSetup } from "./dataSetupShared";
+import { cellValue, setCell } from "./rowCells";
 
 type Cell = string | number | null;
 
@@ -7,7 +8,7 @@ type Cell = string | number | null;
 export function transposeTable(headers: string[], rows: Record<string, Cell>[]) {
   if (headers.length < 2) return { headers, rows };
   const key = headers[0];
-  const baseNames = rows.map((r, i) => String(r[key] ?? "").trim() || `Variable ${i + 1}`);
+  const baseNames = rows.map((r, i) => String(cellValue(r, key) ?? "").trim() || `Variable ${i + 1}`);
   // IMP-003: de-duplication used to be decided per literal base name ("q" -> "q", the
   // next "q" -> "q (2)"), which collides whenever one of the ORIGINAL rows already carries
   // that generated-looking name - e.g. rows named "q", "q", "q (2)" produced "q", "q (2)",
@@ -30,7 +31,7 @@ export function transposeTable(headers: string[], rows: Record<string, Cell>[]) 
   const out = headers.slice(1).map((h) => {
     const o: Record<string, Cell> = {};
     rows.forEach((r, i) => {
-      o[names[i]] = r[h] ?? null;
+      setCell(o, names[i], cellValue(r, h) ?? null);
     });
     return o;
   });

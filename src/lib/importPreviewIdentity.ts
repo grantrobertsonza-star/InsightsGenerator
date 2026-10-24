@@ -1,6 +1,7 @@
 import { withTenantRead } from "./db";
 import { parseTableDocument } from "./parseTable";
 import { loadDataSetupWithStatus, transposeTable } from "./dataSetup";
+import { cellValue } from "./rowCells";
 
 type StoredPreview = {
   document_id: string;
@@ -73,11 +74,16 @@ export async function loadImportPreviewIdentities(
         }
       }
       const stored = tables.filter((t) => t.document_id === id && t.table_index < 100);
+      // Each stored row must hold its own value (null included) for every header, and that value
+      // must equal the fresh read's own value (Codex TR500-F01): a missing or inherited property is
+      // never read as a match. The file reader writes every header on every row it keeps, so a
+      // stored row without one was damaged, and a reread of the same defect cannot certify it.
+      const own = (row: Record<string, unknown>, h: string) => Object.hasOwn(row, h);
       const matches = stored.every((t) =>
         t.headers.length > 0 && t.headers.every((h) => parsed.headers.includes(h)) &&
         t.row_count === parsed.rows.length && (t.row_count === 0 || t.rows.length > 0) &&
         t.rows.every((row, i) => parsed.rows[i] && t.headers.every((h) =>
-          (row[h] ?? null) === (parsed.rows[i][h] ?? null))),
+          own(row, h) && own(parsed.rows[i], h) && cellValue(row, h) === cellValue(parsed.rows[i], h))),
       );
       result.set(id, matches ? { error: null } : recovery(`the cached table differs from selected sheet "${doc.selected_sheet}"`));
     } catch (error) {

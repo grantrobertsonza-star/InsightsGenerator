@@ -17,6 +17,7 @@ import {
   type CrosstabRow,
   type VariableDictionary,
 } from "./parseStatsFile";
+import { setCell } from "./rowCells";
 
 const MAX_FINDINGS_PER_QUESTION = 3;
 const MAX_FINDINGS_PER_TABLE = 40;
@@ -614,7 +615,7 @@ export async function buildCrosstab(
     q.rows.filter((r) => !r.isEffBase && (!r.isBase || q.kind === "multi")).map((r) => {
       const row: Record<string, string | number | null> = { Question: q.label, Answer: r.label };
       colNames.forEach((c, k) => {
-        row[c] = r.isBase ? (r.count[k] ?? null) : (r.pct[k] ?? null);
+        setCell(row, c, r.isBase ? (r.count[k] ?? null) : (r.pct[k] ?? null));
       });
       row.Total = r.isBase ? (r.total.count ?? null) : (r.total.pct ?? null);
       return row;

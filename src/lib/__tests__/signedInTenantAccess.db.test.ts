@@ -232,14 +232,13 @@ describe.skipIf(!TEST_DATABASE_URL)("signed-in tenant access (actual actions and
 
   it("user B cannot change user A's finding through the actual action; user A can", async () => {
     as("token-b");
-    // Row-level security hides A's row from B, so the update matches nothing. (setFindingStatus
-    // treats a missing finding as a no-op rather than an error; that pre-existing behaviour is not
-    // changed here. What matters for isolation is that A's row is untouched.)
-    await m.findings.setFindingStatus(runA, findingA, "rejected").catch(() => {});
+    // Row-level security hides A's row from B, so the update matches nothing, and the action says
+    // the finding is not in the project (Codex TR500-F03) rather than acknowledging a save.
+    expect(await m.findings.setFindingStatus(runA, findingA, "rejected")).toMatchObject({ ok: false, error: expect.stringMatching(/no longer in this project/) });
     expect((await q(`select status from findings where id = $1`, [findingA])).rows[0].status).toBe("accepted");
     jar = new Map();
     as("token-a");
-    await m.findings.setFindingStatus(runA, findingA, "rejected");
+    expect(await m.findings.setFindingStatus(runA, findingA, "rejected")).toEqual({ ok: true });
     expect((await q(`select status from findings where id = $1`, [findingA])).rows[0].status).toBe("rejected");
   });
 

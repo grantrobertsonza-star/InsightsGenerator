@@ -47,6 +47,7 @@ import {
   type FindingAttention,
 } from "@/lib/evidenceOverview";
 import { createContext, useContext } from "react";
+import { attemptResult } from "./actionFailure";
 
 const SelectionContext = createContext<{ selectedId: string | null; select: (id: string) => void }>({
   selectedId: null,
@@ -272,18 +273,31 @@ function ThemeCell({
   const [isPending, startTransition] = useTransition();
   const [isAdding, setIsAdding] = useState(false);
   const [newTheme, setNewTheme] = useState("");
+  // TR500-F02/F03: a refused or failed save is shown here, and a new theme's form stays open with
+  // what was typed; the select keeps showing the saved theme.
+  const [error, setError] = useState<string | null>(null);
+  const errorLine = error && (
+    <p role="alert" className="mt-1 text-xs text-rose-700" data-testid="finding-theme-error">
+      {error}
+    </p>
+  );
 
   if (isAdding) {
     return (
+      <div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           const value = newTheme.trim();
           if (!value) return;
-          startTransition(() => setFindingTheme(runId, finding.id, value));
-          onThemeAdded(value);
-          setIsAdding(false);
-          setNewTheme("");
+          startTransition(async () => {
+            const failure = await attemptResult(() => setFindingTheme(runId, finding.id, value));
+            setError(failure);
+            if (failure) return;
+            onThemeAdded(value);
+            setIsAdding(false);
+            setNewTheme("");
+          });
         }}
         className="flex gap-1"
       >
@@ -292,26 +306,35 @@ function ThemeCell({
           value={newTheme}
           onChange={(e) => setNewTheme(e.target.value)}
           placeholder="New theme name"
+          disabled={isPending}
           className="min-w-0 flex-1 rounded-md border border-border px-2 py-1 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
         <button
           type="submit"
+          disabled={isPending}
           className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-white hover:bg-primary-hover"
         >
-          Save
+          {isPending ? "Saving..." : "Save"}
         </button>
         <button
           type="button"
-          onClick={() => setIsAdding(false)}
+          disabled={isPending}
+          onClick={() => {
+            setIsAdding(false);
+            setError(null);
+          }}
           className="rounded-md border border-border px-2 py-1 text-xs font-medium text-muted hover:text-foreground"
         >
           Cancel
         </button>
       </form>
+      {errorLine}
+      </div>
     );
   }
 
   return (
+    <div>
     <select
       value={finding.theme ?? ""}
       disabled={isPending}
@@ -320,9 +343,8 @@ function ThemeCell({
           setIsAdding(true);
           return;
         }
-        startTransition(() =>
-          setFindingTheme(runId, finding.id, e.target.value),
-        );
+        const value = e.target.value;
+        startTransition(async () => setError(await attemptResult(() => setFindingTheme(runId, finding.id, value))));
       }}
       className={`${selectClass} w-full`}
     >
@@ -334,6 +356,8 @@ function ThemeCell({
       ))}
       <option value={NEW_THEME_VALUE}>+ Add new theme...</option>
     </select>
+    {errorLine}
+    </div>
   );
 }
 
@@ -594,18 +618,20 @@ function KindControl({
   isPending: boolean;
   startTransition: TransitionStartFunction;
 }) {
+  // TR500-F02/F03: a refused or failed save is shown here; the select keeps the saved kind.
+  const [error, setError] = useState<string | null>(null);
   if (finding.origin === "generated") {
     return <span className="text-xs text-muted">&mdash;</span>;
   }
   return (
+    <div>
     <select
       value={finding.finding_kind ?? ""}
       disabled={isPending}
-      onChange={(e) =>
-        startTransition(() => {
-          setFindingKind(runId, finding.id, e.target.value as FindingKind);
-        })
-      }
+      onChange={(e) => {
+        const kind = e.target.value as FindingKind;
+        startTransition(async () => setError(await attemptResult(() => setFindingKind(runId, finding.id, kind))));
+      }}
       className={selectClass}
     >
       {!finding.finding_kind && <option value="">Not set</option>}
@@ -615,6 +641,12 @@ function KindControl({
         </option>
       ))}
     </select>
+    {error && (
+      <p role="alert" className="mt-1 text-xs text-rose-700" data-testid="finding-kind-error">
+        {error}
+      </p>
+    )}
+    </div>
   );
 }
 
@@ -862,12 +894,29 @@ function WordingField({ runId, finding }: { runId: string; finding: Finding }) {
 function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(finding.researcher_note ?? "");
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
+  // TR500-F02: the editor closes only once the note is saved. A refusal (the finding is gone, the
+  // note is not text) or a failure (the server or connection) keeps the editor open with the draft
+  // and says what happened beside it; Save tries again with the same draft.
   function save() {
+    if (draft.trim() === (finding.researcher_note ?? "")) {
+      setIsEditing(false);
+      setError(null);
+      return;
+    }
+    startSaving(async () => {
+      const failure = await attemptResult(() => setFindingNote(runId, finding.id, draft));
+      setError(failure);
+      if (!failure) setIsEditing(false);
+    });
+  }
+
+  function cancel() {
+    setDraft(finding.researcher_note ?? "");
+    setError(null);
     setIsEditing(false);
-    if (draft.trim() === (finding.researcher_note ?? "")) return;
-    startSaving(() => setFindingNote(runId, finding.id, draft));
   }
 
   if (!isEditing) {
@@ -896,29 +945,29 @@ function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setDraft(finding.researcher_note ?? "");
-            setIsEditing(false);
-          }
+          if (e.key === "Escape" && !isSaving) cancel();
         }}
         placeholder="e.g. watch this against Q2 tracking"
         rows={2}
         disabled={isSaving}
+        aria-label="Note"
         className="w-full rounded-md border border-border px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
       />
+      {error && (
+        <p role="alert" className="text-xs text-rose-700" data-testid="finding-note-error">
+          {`${error.replace(/\.$/, "")}. Your note is still here.`}
+        </p>
+      )}
       <div className="flex gap-1.5">
         <button
           onClick={save}
           disabled={isSaving}
           className="rounded-md border border-primary/30 bg-primary-light px-2 py-0.5 text-xs font-medium text-primary transition hover:border-primary/60"
         >
-          Save
+          {isSaving ? "Saving..." : "Save"}
         </button>
         <button
-          onClick={() => {
-            setDraft(finding.researcher_note ?? "");
-            setIsEditing(false);
-          }}
+          onClick={cancel}
           disabled={isSaving}
           className="rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted transition hover:text-foreground"
         >
@@ -927,6 +976,17 @@ function NoteField({ runId, finding }: { runId: string; finding: Finding }) {
       </div>
     </div>
   );
+}
+
+// The latest status request for each finding (single or bulk), shared by every place a finding's
+// buttons are shown, so a failed request undoes its optimistic status only while no newer click on
+// that finding has been made (TR500-F02/F03): an earlier response never overwrites newer intent.
+const statusRequests = new Map<string, number>();
+let statusRequestCounter = 0;
+function claimStatusRequest(findingIds: string[]): (findingId: string) => boolean {
+  const n = ++statusRequestCounter;
+  for (const id of findingIds) statusRequests.set(id, n);
+  return (findingId) => statusRequests.get(findingId) === n;
 }
 
 function ReviewButtons({
@@ -942,12 +1002,22 @@ function ReviewButtons({
   startTransition: TransitionStartFunction;
   onOptimisticStatus: (findingId: string, status: Finding["status"]) => void;
 }) {
+  const [error, setError] = useState<string | null>(null);
   function setStatus(status: "accepted" | "rejected") {
+    const previous = finding.status;
+    const stillLatest = claimStatusRequest([finding.id]);
     onOptimisticStatus(finding.id, status);
-    startTransition(() => setFindingStatus(runId, finding.id, status));
+    startTransition(async () => {
+      const failure = await attemptResult(() => setFindingStatus(runId, finding.id, status));
+      if (!stillLatest(finding.id)) return;
+      // Not saved: the buttons go back to what they showed before this click, with the reason.
+      if (failure) onOptimisticStatus(finding.id, previous);
+      setError(failure);
+    });
   }
 
   return (
+    <div className="flex flex-col gap-1">
     <div className="flex gap-1.5">
       <button
         disabled={isPending}
@@ -975,6 +1045,12 @@ function ReviewButtons({
         <CrossIcon className="h-3 w-3" />
         Reject
       </button>
+    </div>
+    {error && (
+      <p role="alert" className="max-w-xs text-xs text-rose-700" data-testid="finding-status-error">
+        {error}
+      </p>
+    )}
     </div>
   );
 }
@@ -1545,19 +1621,26 @@ export default function FindingsTable({
     });
   }
 
-  function acceptAllVisible(findingIds: string[]) {
-    setManyOptimisticStatuses(findingIds, "accepted");
-    startTransition(() =>
-      setManyFindingStatuses(runId, findingIds, "accepted"),
-    );
+  // A bulk change is all or nothing on the server (TR500-F03): when it is refused or fails, every
+  // finding it showed as changed goes back to what it showed before, unless clicked again since.
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  function setAllVisible(findingIds: string[], status: "accepted" | "rejected") {
+    const previous = new Map(findings.filter((f) => findingIds.includes(f.id)).map((f) => [f.id, f.status]));
+    const stillLatest = claimStatusRequest(findingIds);
+    setManyOptimisticStatuses(findingIds, status);
+    startTransition(async () => {
+      const failure = await attemptResult(() => setManyFindingStatuses(runId, findingIds, status));
+      setBulkError(failure);
+      if (!failure) return;
+      setStatusOverrides((prev) => {
+        const next = { ...prev };
+        for (const [id, was] of previous) if (stillLatest(id)) next[id] = was;
+        return next;
+      });
+    });
   }
-
-  function rejectAllVisible(findingIds: string[]) {
-    setManyOptimisticStatuses(findingIds, "rejected");
-    startTransition(() =>
-      setManyFindingStatuses(runId, findingIds, "rejected"),
-    );
-  }
+  const acceptAllVisible = (findingIds: string[]) => setAllVisible(findingIds, "accepted");
+  const rejectAllVisible = (findingIds: string[]) => setAllVisible(findingIds, "rejected");
 
   const [sourceFilter, setSourceFilter] = useState(ALL);
   const [themeFilter, setThemeFilter] = useState(ALL);
@@ -2224,6 +2307,11 @@ export default function FindingsTable({
         </div>
       </details>
       <div ref={topRef} className="min-w-0">
+        {bulkError && (
+          <p role="alert" className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800" data-testid="findings-bulk-error">
+            {`The bulk change was not saved: ${bulkError.replace(/\.$/, "")}.`}
+          </p>
+        )}
         {/* Wraps rather than running past a narrow column (UI-GT500-01: at 375px the unwrapped strip
             widened the whole page); every category keeps its full name and count. */}
         <div data-testid="findings-category-strip" className="mb-3 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">

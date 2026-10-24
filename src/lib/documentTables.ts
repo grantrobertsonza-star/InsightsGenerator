@@ -9,6 +9,7 @@ import { generateFindingsFromTable } from "./generateFindingsFromTable";
 import { mapWithConcurrency } from "./concurrency";
 import type { ArchiveReason } from "./findingArchive";
 import { loadDataSetup, transposeTable } from "./dataSetup";
+import { setCell } from "./rowCells";
 
 type ExtractedTable = {
   label: string | null;
@@ -115,7 +116,7 @@ async function detectTablesAcrossPages(
           const record: Record<string, string | number | null> = {};
           headers.forEach((header, index) => {
             const cell = row[index];
-            record[header] = typeof cell === "string" || typeof cell === "number" ? cell : null;
+            setCell(record, header, typeof cell === "string" || typeof cell === "number" ? cell : null);
           });
           return record;
         });

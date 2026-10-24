@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { assertImportFileSupported, assertImportCaseCount } from "./importLimits";
+import { setCell } from "./rowCells";
 
 const BUCKET = "documents";
 
@@ -312,7 +313,7 @@ export async function parseTableDocument(storagePath: string, selectedSheet?: st
         value = text === null || NA_TOKENS.has(text.trim()) ? null : text;
       }
       if (value !== null) rowHasValue = true;
-      row[headers[i]] = value;
+      setCell(row, headers[i], value);
     }
     // Mirrors Python's `df.dropna(how="all")` in _read_plain, run after the same NA-token
     // normalization: a row with nothing but blank/NA cells across every column is dropped

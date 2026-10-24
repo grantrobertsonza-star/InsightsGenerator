@@ -13,16 +13,47 @@ import { requireTenantId } from "./requestContext";
 // review; a theme, kind or note change is an edit. Before migration 0094 the change still saves
 // and the provenance write is skipped (replacement then treats the finding as provenance unknown).
 
-export async function setFindingStatus(runId: string, findingId: string, status: "accepted" | "rejected" | "pending") {
+// TR500-F03 and TR500-M01 (Codex, 2026-10-23): each setter below says whether it saved.
+// - Inputs are checked at this boundary before any write: a status or kind outside its list, a
+//   theme or note that is not text, or an id that is not text, is refused with a reason.
+// - A finding that is not in this project any more (deleted, replaced by a reread, or never in it)
+//   is refused, never acknowledged as saved: a page left open can still send it.
+// - A bulk status change is all or nothing: if any requested finding is gone, none is changed
+//   (the transaction rolls back) and the reply says how many were missing.
+// - Clearing: a blank theme or note clears it (stored as null). A kind, once set, cannot be
+//   cleared here; the Findings page offers only the kinds. Null is not accepted for any of them.
+// A database failure still throws; the Findings page shows it beside the control (F02).
+
+export type FindingEditResult = { ok: true } | { ok: false; error: string };
+
+const STATUSES = ["accepted", "rejected", "pending"] as const;
+// An id must be text; whether it names a finding in this project is the database's answer.
+const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const GONE =
+  "This finding is no longer in this project (it may have been deleted or replaced when its file was read again). Nothing was saved. Reload the page to see the current findings.";
+
+class MissingFindings extends Error {
+  constructor(readonly missing: number, readonly requested: number) {
+    super("missing findings");
+  }
+}
+
+export async function setFindingStatus(runId: string, findingId: string, status: "accepted" | "rejected" | "pending"): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
-  await withTenant(TENANT_ID, async (client) => {
+  if (!(STATUSES as readonly unknown[]).includes(status)) return { ok: false, error: `"${String(status)}" is not a review status. Nothing was saved.` };
+  if (!isId(runId) || !isId(findingId)) return { ok: false, error: GONE };
+  const saved = await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
       "update findings set status = $1 where id = $2 and run_id = $3 returning id",
       [status, findingId, runId],
     );
+    if (r.rowCount === 0) return false;
     await recordHumanReview(client, r.rows.map((row) => row.id), reviewActionForStatus(status, false));
+    return true;
   });
+  if (!saved) return { ok: false, error: GONE };
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 /**
@@ -31,23 +62,42 @@ export async function setFindingStatus(runId: string, findingId: string, status:
  * active filters), rather than firing one request per card. Bulk acceptance
  * is an explicit researcher decision and protects a finding exactly as a
  * single acceptance does; it is recorded as bulk_accept / bulk_reject so the
- * two remain distinguishable.
+ * two remain distinguishable. All or nothing (see above): a batch naming a
+ * finding that is gone changes none of them.
  */
 export async function setManyFindingStatuses(
   runId: string,
   findingIds: string[],
   status: "accepted" | "rejected" | "pending"
-) {
+): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
-  if (findingIds.length === 0) return;
-  await withTenant(TENANT_ID, async (client) => {
-    const r = await client.query<{ id: string }>(
-      "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) returning id",
-      [status, runId, findingIds],
-    );
-    await recordHumanReview(client, r.rows.map((row) => row.id), reviewActionForStatus(status, true));
+  if (!(STATUSES as readonly unknown[]).includes(status)) return { ok: false, error: `"${String(status)}" is not a review status. Nothing was saved.` };
+  if (!Array.isArray(findingIds)) return { ok: false, error: "No findings were named. Nothing was saved." };
+  const ids = [...new Set(findingIds)];
+  if (ids.length === 0) return { ok: true };
+  const malformed = ids.filter((id) => !isId(id)).length;
+  const gone = (missing: number) => ({
+    ok: false as const,
+    error: `${missing} of the ${ids.length} findings ${missing === 1 ? "is" : "are"} no longer in this project, so none of them was changed. Reload the page to see the current findings.`,
   });
+  if (!isId(runId)) return gone(ids.length);
+  if (malformed > 0) return gone(malformed);
+  try {
+    await withTenant(TENANT_ID, async (client) => {
+      const r = await client.query<{ id: string }>(
+        "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) returning id",
+        [status, runId, ids],
+      );
+      // Thrown inside the transaction so the rows already updated roll back.
+      if ((r.rowCount ?? 0) < ids.length) throw new MissingFindings(ids.length - (r.rowCount ?? 0), ids.length);
+      await recordHumanReview(client, r.rows.map((row) => row.id), reviewActionForStatus(status, true));
+    });
+  } catch (e) {
+    if (e instanceof MissingFindings) return gone(e.missing);
+    throw e;
+  }
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
 export type FindingKind =
@@ -59,47 +109,50 @@ export type FindingKind =
   | "recommendation"
   | "stated_insight";
 
-export async function setFindingKind(runId: string, findingId: string, findingKind: FindingKind) {
-  const TENANT_ID = await requireTenantId();
-  await withTenant(TENANT_ID, async (client) => {
+const KINDS: readonly FindingKind[] = ["fact", "own_finding", "external_citation", "hypothesis", "methodology", "recommendation", "stated_insight"];
+
+/** One field of one finding, in this project, with its edit recorded; refused when the finding is gone. */
+async function editField(TENANT_ID: string, runId: string, findingId: string, column: "finding_kind" | "theme" | "researcher_note", value: string | null): Promise<FindingEditResult> {
+  if (!isId(runId) || !isId(findingId)) return { ok: false, error: GONE };
+  const saved = await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
-      "update findings set finding_kind = $1 where id = $2 and run_id = $3 returning id",
-      [findingKind, findingId, runId],
+      `update findings set ${column} = $1 where id = $2 and run_id = $3 returning id`,
+      [value, findingId, runId],
     );
-    await recordHumanEdit(client, r.rows.map((row) => row.id), "finding_kind");
+    if (r.rowCount === 0) return false;
+    await recordHumanEdit(client, r.rows.map((row) => row.id), column);
+    return true;
   });
+  if (!saved) return { ok: false, error: GONE };
   revalidatePath(`/runs/${runId}`);
+  return { ok: true };
 }
 
-export async function setFindingTheme(runId: string, findingId: string, theme: string) {
+export async function setFindingKind(runId: string, findingId: string, findingKind: FindingKind): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
-  await withTenant(TENANT_ID, async (client) => {
-    const r = await client.query<{ id: string }>(
-      "update findings set theme = $1 where id = $2 and run_id = $3 returning id",
-      [theme, findingId, runId],
-    );
-    await recordHumanEdit(client, r.rows.map((row) => row.id), "theme");
-  });
-  revalidatePath(`/runs/${runId}`);
+  if (!KINDS.includes(findingKind)) return { ok: false, error: `Choose one of the finding kinds${findingKind === null ? "; a kind cannot be cleared" : `, not "${String(findingKind)}"`}. Nothing was saved.` };
+  return editField(TENANT_ID, runId, findingId, "finding_kind", findingKind);
+}
+
+/** A blank theme clears it. */
+export async function setFindingTheme(runId: string, findingId: string, theme: string): Promise<FindingEditResult> {
+  const TENANT_ID = await requireTenantId();
+  if (typeof theme !== "string") return { ok: false, error: "A theme must be text. Nothing was saved." };
+  const trimmed = theme.trim();
+  return editField(TENANT_ID, runId, findingId, "theme", trimmed === "" ? null : trimmed);
 }
 
 /**
  * A short, freeform note a researcher attaches to a finding, e.g. "watch this
  * against Q2 tracking". Stored alongside the finding and carried into both
  * exports, so judgement added here doesn't have to be retyped later. Clearing
- * a note is still recorded as an edit.
+ * a note (saving it blank) is still recorded as an edit.
  */
-export async function setFindingNote(runId: string, findingId: string, note: string) {
+export async function setFindingNote(runId: string, findingId: string, note: string): Promise<FindingEditResult> {
   const TENANT_ID = await requireTenantId();
+  if (typeof note !== "string") return { ok: false, error: "A note must be text. Nothing was saved." };
   const trimmed = note.trim();
-  await withTenant(TENANT_ID, async (client) => {
-    const r = await client.query<{ id: string }>(
-      "update findings set researcher_note = $1 where id = $2 and run_id = $3 returning id",
-      [trimmed === "" ? null : trimmed, findingId, runId],
-    );
-    await recordHumanEdit(client, r.rows.map((row) => row.id), "researcher_note");
-  });
-  revalidatePath(`/runs/${runId}`);
+  return editField(TENANT_ID, runId, findingId, "researcher_note", trimmed === "" ? null : trimmed);
 }
 
 /**
