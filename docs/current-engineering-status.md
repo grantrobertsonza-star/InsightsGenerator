@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch19: OBJ500-F01 and DEC500-F02 (the run row is locked before every objective or decision change and in both framers), DEC500-F01 (a stale or deleted decision editor keeps the draft and shows the stored wording), RQ-F02 (a comparison is rated only from both documents, read), CT500-F01/F02 (table ownership before archive; one table number per save), B17-F01, M-B17-01, V-B17-01, M-DEC500-01; `docs/batch19-handover-2026-10-24.md`; implemented, ready for review. No migration.
+Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch20, AN500-F01 (driver display names stay unique and every chart, table and posted finding joins by the predictor's code; `docs/batch20-handover-2026-10-24.md`) on top of batch19: OBJ500-F01 and DEC500-F02 (the run row is locked before every objective or decision change and in both framers), DEC500-F01 (a stale or deleted decision editor keeps the draft and shows the stored wording), RQ-F02 (a comparison is rated only from both documents, read), CT500-F01/F02 (table ownership before archive; one table number per save), B17-F01, M-B17-01, V-B17-01, M-DEC500-01; `docs/batch19-handover-2026-10-24.md`; both implemented, ready for review. No migration.
+
+## Claude: batch20 (AN500-F01), main copy (2026-10-24)
+
+Implemented, ready for review: the batch20 repair commit and its docs commit, on top of batch19. Checks and limits in `docs/batch20-handover-2026-10-24.md`; the contract in `claude/driver-finding-provenance.md` ("Predictor identity"). No migration. Not yet started: COD500-F01, COD500-F02 and SEC500-F01 from Codex's four-review queue.
 
 ## Claude: batch19, main copy (2026-10-24)
 
