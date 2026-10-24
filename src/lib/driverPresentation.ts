@@ -45,3 +45,53 @@ export function driverSummary(report: DriverReport): DriverSummary {
     limitations: r.warnings.filter((w) => !EXCLUSION.test(w)),
   };
 }
+
+// ---------------------------------------------------------------- predictor identity (Codex AN500-F01)
+
+/**
+ * A driver report's display name for each predictor, unique within the report. A predictor's label
+ * when no other predictor has taken it, otherwise "<label> (<code>)"; every name is reserved as it
+ * is given, and every label is reserved up front, so a generated name can never land on another
+ * predictor's label or name. For codes X1, X2, X3 labelled "Service", "Service", "Service (X2)" this
+ * gives "Service", "Service (X2) (2)", "Service (X2)": the earlier rule gave X2 and X3 both
+ * "Service (X2)", and joins by name then showed X2's mean for X3. Names are for reading only; a
+ * report also records each predictor's code (`variable`), and every join uses that.
+ */
+export function driverDisplayNames(predictors: readonly { name: string; label: string }[]): string[] {
+  const bases = predictors.map((p) => (p.label || p.name).trim());
+  const reserved = new Set(bases);
+  const used = new Set<string>();
+  return predictors.map((p, i) => {
+    const base = bases[i];
+    if (!used.has(base)) {
+      used.add(base);
+      return base;
+    }
+    let candidate = `${base} (${p.name})`;
+    for (let n = 2; used.has(candidate) || (reserved.has(candidate) && candidate !== base); n += 1) {
+      candidate = `${base} (${p.name}) (${n})`;
+    }
+    used.add(candidate);
+    return candidate;
+  });
+}
+
+type NamedByVariable = { name: string; variable?: string };
+
+/**
+ * The record in `list` for a result row: by the predictor's code when both carry one; for a report
+ * saved before codes were recorded, by name only when that name is unique on both sides, else null
+ * (a colliding name cannot say which predictor it was, so nothing is guessed).
+ */
+export function recordForRow<T extends NamedByVariable>(row: NamedByVariable, list: readonly T[], rows: readonly NamedByVariable[]): T | null {
+  if (row.variable && list.some((x) => x.variable)) return list.find((x) => x.variable === row.variable) ?? null;
+  const sameName = list.filter((x) => x.name === row.name);
+  const rowsNamed = rows.filter((r) => r.name === row.name);
+  return sameName.length === 1 && rowsNamed.length === 1 ? sameName[0] : null;
+}
+
+/** True when two of a saved report's result rows share a display name and have no codes to tell them apart. */
+export function driverRowsAmbiguous(rows: readonly NamedByVariable[]): boolean {
+  if (rows.every((r) => r.variable)) return false;
+  return new Set(rows.map((r) => r.name)).size !== rows.length;
+}

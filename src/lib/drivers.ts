@@ -6,6 +6,7 @@ import { loadDocumentFile, overlayFor } from "./crosstabs";
 import { driverAnalysis, type DriverResult } from "./driverAnalysis";
 import { driverRequestVariables, parseDriverRequest } from "./driverRequest";
 import { loadVariableOverrides } from "./variableOverrides";
+import { driverDisplayNames } from "./driverPresentation";
 
 export type DriverRequest = {
   outcome: string;
@@ -35,10 +36,15 @@ export type DriverSegment = {
   stated?: DriverStated[];
 };
 
-export type DriverPerformance = { name: string; mean: number | null; topTwo: number | null };
+/** `variable` is the predictor's code (absent on reports saved before 24 October 2026). */
+export type DriverPerformance = { name: string; variable?: string; mean: number | null; topTwo: number | null };
 
-/** What respondents said about how important a predictor is, keyed by the predictor's display name. */
-export type DriverStated = { name: string; variable: string; mean: number | null; topTwo: number | null };
+/**
+ * What respondents said about how important a predictor is. `name` is the predictor's display name,
+ * `predictor` its code (absent on reports saved before 24 October 2026), `variable` the importance
+ * question's code.
+ */
+export type DriverStated = { name: string; predictor?: string; variable: string; mean: number | null; topTwo: number | null };
 
 export type DriverReport = {
   request: DriverRequest;
@@ -48,7 +54,7 @@ export type DriverReport = {
   weighted: boolean;
   skipped: { variable: string; reason: string }[];
   result: DriverResult;
-  /** Where each predictor stands today, for the importance against performance view. Keyed by display name. */
+  /** Where each predictor stands today, for the importance against performance view. Joined to rows by `variable`. */
   performance: DriverPerformance[];
   /** Stated importance for the predictors that had an importance question paired with them. */
   stated?: DriverStated[];
@@ -137,14 +143,12 @@ export async function runDriverAnalysisFor(
     outcomeNote = `Top box on ${o.label}: answers from ${min} up to ${o.max}, against everyone else who answered.`;
   }
 
-  // Display names must be unique and readable; the code stays in brackets when two labels clash.
-  const seen = new Map<string, number>();
-  const names = cols.predictors.map((p) => {
-    const base = (p.label || p.name).trim();
-    const k = (seen.get(base) ?? 0) + 1;
-    seen.set(base, k);
-    return k === 1 ? base : `${base} (${p.name})`;
-  });
+  // Display names, unique within the report (driverPresentation.driverDisplayNames, Codex AN500-F01).
+  // Every row, performance and stated record also carries the predictor's code (`variable`), and
+  // consumers join on that, never on the display name.
+  const names = driverDisplayNames(cols.predictors);
+  const codeOf = new Map(names.map((n, j) => [n, cols.predictors[j].name]));
+  const withCodes = (r: DriverResult): DriverResult => ({ ...r, rows: r.rows.map((row) => ({ ...row, variable: codeOf.get(row.name) })) });
 
   const result = driverAnalysis({
     y,
@@ -155,6 +159,7 @@ export async function runDriverAnalysisFor(
     bootstrap: request.bootstrap,
   });
   if ("error" in result) throw new Error(result.error);
+  const resultWithCodes = withCodes(result);
 
   const performance: DriverPerformance[] = cols.predictors.map((p, j) => {
     const vals: number[] = [];
@@ -174,7 +179,7 @@ export async function runDriverAnalysisFor(
         })()
       : null;
     const mean = vals.length > 0 ? wMean(vals, ws) : NaN;
-    return { name: names[j], mean: Number.isFinite(mean) ? mean : null, topTwo };
+    return { name: names[j], variable: p.name, mean: Number.isFinite(mean) ? mean : null, topTwo };
   });
 
   // Same performance calc as above, restricted to one segment's rows.
@@ -198,7 +203,7 @@ export async function runDriverAnalysisFor(
           })()
         : null;
       const mean = vals.length > 0 ? wMean(vals, ws) : NaN;
-      return { name: names[j], mean: Number.isFinite(mean) ? mean : null, topTwo };
+      return { name: names[j], variable: p.name, mean: Number.isFinite(mean) ? mean : null, topTwo };
     });
 
   // Stated importance needs a second read (the importance questions themselves aren't in cols), fetched once
@@ -243,7 +248,7 @@ export async function runDriverAnalysisFor(
         const cut = meta.max - 1;
         const topTwo = smallScale && sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
         const mean = wMean(vals, ws);
-        out.push({ name: names[k], variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
+        out.push({ name: names[k], predictor: pred, variable: imp, mean: Number.isFinite(mean) ? mean : null, topTwo });
       }
       return out;
     };
@@ -272,7 +277,7 @@ export async function runDriverAnalysisFor(
         n,
         weighted: Boolean(weights),
         skipped: false,
-        result: segResult,
+        result: withCodes(segResult),
         performance: performanceFor(idx),
         stated: statedForIdx ? statedForIdx(idx) : undefined,
       };
@@ -290,7 +295,7 @@ export async function runDriverAnalysisFor(
     casesInFile: cols.n,
     weighted: Boolean(weights),
     skipped: cols.skipped,
-    result,
+    result: resultWithCodes,
     performance,
     groupVariable: cols.group?.name ?? null,
     groupLabel: cols.group?.label ?? null,

@@ -9,6 +9,7 @@ import { normaliseDataSetup } from "./dataSetupShared";
 import { runDistributionAction, type ChartResult } from "./chartActions";
 import { runNpsAction, type NpsResult, type NpsSegment } from "./npsActions";
 import { runDriverAnalysisFor, type DriverReport } from "./drivers";
+import { recordForRow } from "./driverPresentation";
 import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
@@ -456,11 +457,13 @@ export async function runWaveDriverAction(
     // The first wave's own ranking sets the predictor order every wave's row lines up against, so the
     // table reads top to bottom as "most to least important when this started" rather than reshuffling
     // per wave.
-    const names = perWave[0].report.result.rows.map((r) => r.name);
-    const rows: WaveDriverTableRow[] = names.map((name) => ({
-      name,
+    // Rows line up across waves by the predictor's code (Codex AN500-F01), not its display name, which
+    // can differ between waves or carry a generated suffix.
+    const firstRows = perWave[0].report.result.rows;
+    const rows: WaveDriverTableRow[] = firstRows.map((first) => ({
+      name: first.name,
       shares: perWave.map(({ report }) => {
-        const row = report.result.rows.find((r) => r.name === name);
+        const row = recordForRow(first, report.result.rows, firstRows);
         return row ? Math.round(row.share * 1000) / 10 : null;
       }),
     }));

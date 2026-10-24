@@ -66,7 +66,34 @@ or 60 for a binary exact split) is a run-time bound, because every resample refi
 those columns, which refuses an unknown column. The engine itself refuses an unsupported outcome
 type and a non-integer bootstrap, so no caller can skip the intervals silently. Figures are unchanged.
 
-**Tests.** `driverProvenance.db.test.ts` (real PostgreSQL, actual actions, deleteDocument, loaders
+**Predictor identity (AN500-F01, 24 October 2026).** A driver report's display names are for
+reading only. `driverDisplayNames` (`src/lib/driverPresentation.ts`) gives each predictor its label,
+or "<label> (<code>)" when another predictor already has that label, and reserves every label up
+front, so a generated name never lands on another predictor's literal label: codes X1, X2, X3
+labelled "Service", "Service", "Service (X2)" become "Service", "Service (X2) (2)", "Service (X2)".
+(The earlier rule gave X2 and X3 the same name, and the chart then plotted X3 at X2's mean.) Every
+result row, performance record and segment row carries the predictor's code as `variable`; a
+stated-importance record carries it as `predictor` (its `variable` is the importance question). All
+joins use the code: the Analytics quadrant and stated-importance chart, the CSM quadrant, the CSM
+and wave-tracking tables across waves (`recordForRow`). Posted driver findings record `variable`
+(and `variables` for the "adds little" finding), so a finding identifies its question even where
+labels repeat.
+
+Reports saved before this change have no codes. `recordForRow` then joins by name only when that
+name is unique on both sides and otherwise joins nothing (the point is left off the chart rather
+than placed at another question's figure). Posting findings from such a report is refused when two
+of its rows share a name (`driverRowsAmbiguous`), with "Run the analysis again, then add its
+findings"; a report whose names are all distinct posts as before. Findings already posted from an
+ambiguous report are not rewritten; they stay as posted. Figures are unchanged.
+
+**Tests.** `driverLabelIdentity.test.ts` (naming: the reported fixture, ordinary duplicates, a
+literal suffix collision, reorders, distinct and empty labels; code joins and the old-report rules);
+`driverLabelCollision.db.test.ts` (real PostgreSQL and the actual run, save, reopen and post actions
+and Findings Excel route, with only the statistics-file transport supplied: the exact fixture, a
+reorder, a distinct control, saved and reopened codes, posted codes and Excel attribution, and an
+old colliding report refused with nothing posted); browser check `e2e/ui/driver-label-collision.check.mjs`
+(real SAV upload, Python reader and engine: the chart's axis reaches X3's mean and the three points
+are apart; posted findings carry the codes). `driverProvenance.db.test.ts` (real PostgreSQL, actual actions, deleteDocument, loaders
 and export routes); `driverDependency.db.test.ts` (R1000-01: tampered lists, each role, an unrelated
 control, a shortened recorded list, clear and rebuild, a non-object snapshot, refusal and retry,
 both loaders, Excel all and accepted); `driverRequestContract.test.ts` (contract, engine, actions with the file

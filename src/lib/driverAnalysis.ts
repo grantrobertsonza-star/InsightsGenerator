@@ -24,6 +24,8 @@ export type DriverInput = {
 
 export type DriverRow = {
   name: string;
+  /** The predictor's code, added by drivers.ts (absent on reports saved before 24 October 2026). */
+  variable?: string;
   /** Share of explained variance, 0 to 1. Shares add to 1. */
   share: number;
   /** Bootstrap 95% interval for the share. */

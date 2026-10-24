@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type MouseEvent } from "react";
-import { driverSummary } from "@/lib/driverPresentation";
+import { driverSummary, recordForRow } from "@/lib/driverPresentation";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { loadVariablesAction } from "@/lib/crosstabActions";
@@ -2583,9 +2583,10 @@ function Quadrant({ report }: { report: DriverReport }) {
   const [legendPos, setLegendPos] = useState<LegendPos>("top");
   const [quadColors, setQuadColors] = useState(QUAD_DEFAULT_COLORS);
 
+  // Joined by the predictor's code (Codex AN500-F01); an old report with colliding names joins nothing for them.
   const rows = report.result.rows
     .map((r) => {
-      const p = report.performance.find((x) => x.name === r.name);
+      const p = recordForRow(r, report.performance, report.result.rows);
       return { name: r.name, importance: r.share, perf: p?.topTwo ?? null, mean: p?.mean ?? null };
     });
   const useTop = rows.filter((r) => r.perf !== null).length >= Math.ceil(rows.length / 2);
@@ -2880,7 +2881,7 @@ function StatedQuadrant({ report }: { report: DriverReport }) {
   const stated = report.stated ?? [];
   const joined = stated
     .map((s) => {
-      const r = report.result.rows.find((x) => x.name === s.name);
+      const r = recordForRow({ name: s.name, variable: s.predictor }, report.result.rows, stated.map((x) => ({ name: x.name, variable: x.predictor })));
       return r ? { name: s.name, derived: r.share, top: s.topTwo, mean: s.mean } : null;
     })
     .filter((x): x is { name: string; derived: number; top: number | null; mean: number | null } => x !== null);

@@ -1,4 +1,5 @@
 import type { DriverReport } from "./drivers";
+import { driverRowsAmbiguous } from "./driverPresentation";
 
 export type DriverFindingDraft = { text: string; theme: string; stats: Record<string, unknown> };
 
@@ -17,6 +18,14 @@ function ordinal(n: number): string {
  */
 export function driverFindings(report: DriverReport, analysisId: string): DriverFindingDraft[] {
   const r = report.result;
+  // Codex AN500-F01: a report saved before predictor codes were recorded can show two drivers under one
+  // name. Which question each one is cannot be recovered from the name, so posting is refused rather than
+  // guessed; running the analysis again records the codes.
+  if (driverRowsAmbiguous(r.rows)) {
+    throw new Error(
+      "Two drivers in this saved analysis share a name, so the findings could not say which question each one is. Run the analysis again, then add its findings.",
+    );
+  }
   const binary = r.outcome === "binary";
   const outcome = binary ? `${report.outcomeLabel} (top box)` : report.outcomeLabel;
   const theme = `Drivers of ${report.outcomeLabel}`;
@@ -69,6 +78,8 @@ export function driverFindings(report: DriverReport, analysisId: string): Driver
         ...common,
         kind: "driver",
         question: x.name,
+        // The predictor's code, so a posted finding identifies the question even where labels repeat.
+        variable: x.variable ?? null,
         share: x.share,
         shareLow: x.shareLow,
         shareHigh: x.shareHigh,
@@ -89,7 +100,7 @@ export function driverFindings(report: DriverReport, analysisId: string): Driver
     out.push({
       text: `${little.map((x) => x.name).join(", ")} ${little.length === 1 ? "adds" : "add"} little to ${outcome} once the other questions are in the model (each under 3% of the explained variation). ${little.length === 1 ? "It is" : "They are"} a weak candidate for priority.`,
       theme,
-      stats: { ...common, kind: "driver_low", questions: little.map((x) => x.name), caveats: modelCaveats },
+      stats: { ...common, kind: "driver_low", questions: little.map((x) => x.name), variables: little.map((x) => x.variable ?? null), caveats: modelCaveats },
     });
   }
   return out;
