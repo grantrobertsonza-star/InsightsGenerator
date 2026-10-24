@@ -52,19 +52,26 @@ test("each section's filters band and split are remembered on their own", async 
   const folded = async () => (await band().getAttribute("data-left-collapsed")) === "true";
   const rightHandle = () => page.getByTestId("three-pane-handle-right").filter({ visible: true }).first();
   const rightWidth = async () => Number(await rightHandle().getAttribute("aria-valuenow"));
+  // Codex V-B17-01: ThreePane measures its panes through a ResizeObserver after it renders, so the
+  // handle can briefly report 0 just after a section opens. A baseline is taken only once the pane
+  // has a measured width; later widths are polled to the expected value rather than read once.
+  const measuredWidth = async () => {
+    await expect.poll(rightWidth).toBeGreaterThan(0);
+    return rightWidth();
+  };
 
   await page.goto(run.url, { waitUntil: "networkidle" });
   await open("Recommendations", "rec-tab-review");
-  const recDefault = await rightWidth();
+  const recDefault = await measuredWidth();
   await open("Findings", "findings-tab-claims");
-  const claimsDefault = await rightWidth();
+  const claimsDefault = await measuredWidth();
 
   // 1. Fold Insights and widen its detail pane.
   await open("Insights", "insights-tab-review");
   expect(await folded()).toBe(false);
   await toggle().click();
   await expect(band()).toHaveAttribute("data-left-collapsed", "true");
-  const insightsDefault = await rightWidth();
+  const insightsDefault = await measuredWidth();
   await rightHandle().focus();
   await page.keyboard.press("ArrowLeft"); // the handle is the pane's inner edge: left widens the right pane
   await page.keyboard.press("ArrowLeft");
@@ -72,16 +79,16 @@ test("each section's filters band and split are remembered on their own", async 
   const insightsWide = await rightWidth();
   await open("Recommendations", "rec-tab-review");
   expect(await folded()).toBe(false);
-  expect(await rightWidth()).toBe(recDefault);
+  await expect.poll(rightWidth).toBe(recDefault);
   await open("Findings", "findings-tab-claims");
   expect(await folded()).toBe(false);
-  expect(await rightWidth()).toBe(claimsDefault);
+  await expect.poll(rightWidth).toBe(claimsDefault);
 
   // 2. Reload: each section keeps its own choice.
   await page.reload({ waitUntil: "networkidle" });
   await open("Insights", "insights-tab-review");
   await expect(band()).toHaveAttribute("data-left-collapsed", "true");
-  expect(await rightWidth()).toBe(insightsWide);
+  await expect.poll(rightWidth).toBe(insightsWide);
   await open("Recommendations", "rec-tab-review");
   expect(await folded()).toBe(false);
   await open("Findings", "findings-tab-claims");

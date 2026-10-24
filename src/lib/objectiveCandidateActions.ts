@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateObjectiveCandidates } from "./objectiveFramer";
-import { syncResearchObjective } from "./runSync";
+import { lockRunForContextChange, syncResearchObjective } from "./runSync";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { refreshObjectiveValidationQuietly } from "./objectiveValidator";
 import { normalizeObjectiveLine, objectiveIdentityKey, parseObjectiveLines } from "./objectiveLines";
@@ -112,6 +112,7 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
 export async function acceptAllObjectiveCandidates(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update objective_candidates set status = 'accepted' where run_id = $1 and status = 'pending'", [
       runId,
     ]);
@@ -130,6 +131,7 @@ export async function acceptAllObjectiveCandidates(runId: string) {
 export async function deleteAllObjectiveCandidates(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("delete from objective_candidates where run_id = $1 and status = 'pending'", [runId]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -148,6 +150,7 @@ export async function deleteAllObjectiveCandidates(runId: string) {
 export async function unacceptObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query(
       "update objective_candidates set status = 'pending' where id = $1 and run_id = $2 and status = 'accepted'",
       [candidateId, runId]
@@ -162,6 +165,7 @@ export async function unacceptObjectiveCandidate(runId: string, candidateId: str
 export async function rejectObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update objective_candidates set status = 'rejected' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -190,6 +194,7 @@ export async function rejectObjectiveCandidate(runId: string, candidateId: strin
 export async function restoreObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query("update objective_candidates set status = 'accepted' where id = $1 and run_id = $2", [
       candidateId,
       runId,
@@ -272,6 +277,7 @@ export async function addOwnObjectiveCandidate(runId: string, candidateText: str
 export async function deleteObjectiveCandidate(runId: string, candidateId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     const result = await client.query<{ candidate_text: string; source: string }>(
       "select candidate_text, source from objective_candidates where id = $1 and run_id = $2",
       [candidateId, runId]
@@ -333,6 +339,7 @@ export async function regenerateObjectiveCandidates(
 export async function deleteSuggestedObjectives(runId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
+    await lockRunForContextChange(client, runId, TENANT_ID);
     await client.query(
       `delete from objective_candidates
        where run_id = $1 and source = 'ai_suggested' and status != 'rejected' and edited = false`,

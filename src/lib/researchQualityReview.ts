@@ -606,7 +606,7 @@ async function runAssessment(tenantId: string, runId: string, reviewId: string, 
     const raw = (answerObj as { observations?: unknown } | null)?.observations;
     if (!Array.isArray(raw)) throw new Error(`the assessment answer is not in the required shape (${describeShape(answerObj, ["observations"])})`);
     if (raw.length === 0) throw new Error("the assessment returned no observations");
-    const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent, unverifiedSourceIds }));
+    const validated = (raw as RawObservation[]).map((o) => validateObservation(o, { criteria, facts, manifest, passages, coverageComplete, briefPresent, unverifiedSourceIds, sourceRead: Object.fromEntries(manifest.sources.map((src, i) => [src.sourceId, sourceRead[i]])) }));
     const covered = new Set(validated.map((v) => v.criterionId));
     const notAssessed = criteriaIds.filter((id) => !covered.has(id));
     const observations = validated.map((p) => {

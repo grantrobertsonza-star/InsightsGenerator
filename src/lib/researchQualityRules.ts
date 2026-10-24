@@ -395,6 +395,8 @@ export function validateObservation(
     briefPresent?: boolean;
     /** Codex RQ-F01: source ids whose extraction left out quotes that could not be verified. */
     unverifiedSourceIds?: string[];
+    /** Codex RQ-F02: how far each source was read ("fully", "partly", "could not be read"), by source id. */
+    sourceRead?: Record<string, "fully" | "partly" | "could not be read">;
   },
 ): ObservationPayload {
   const criterion = ctx.criteria.find((c) => c.criterionId === raw.criterion_id);
@@ -411,7 +413,42 @@ export function validateObservation(
   if (!(DOCUMENTATION_STATES as readonly string[]).includes(documentation)) throw new Error(`invalid documentation state ${documentation}`);
   if (!(METHODOLOGY_STATES as readonly string[]).includes(methodology)) throw new Error(`invalid methodology state ${methodology}`);
   const basis = cited.length > 0 ? "documented_facts" : "absence_in_assessed_scope";
-  if (basis === "documented_facts" && documentation === "not_documented") {
+  // Codex RQ-F02: a proposal-against-brief comparison (group "comparison", RQ-CMP-*) needs the words
+  // of both documents: its required evidence is always one item from the brief and one from the
+  // proposal (RQC-6). A rating resting on one side cannot say how the other compares, so it is not
+  // rated: when either document could not be read, and when the cited quotes come from one
+  // document only. The one exception is a genuine gap: quotes from the brief only, the model saying
+  // the proposal does not cover it, and the proposal read in full; that is Absent. Absence with no
+  // quotes at all keeps the ordinary absence rules below. (Other criteria marked
+  // `comparison: "brief_if_present"` compare with a brief only when there is one, and are not
+  // affected.)
+  let comparisonGap = false;
+  if (criterion.group === "comparison" && ctx.sourceRead) {
+    const withRole = (role: string) => ctx.manifest.sources.filter((s) => s.roles.includes(role as never));
+    const proposals = withRole("proposal");
+    const briefs = withRole("brief");
+    if (proposals.length > 0 && briefs.length > 0) {
+      const readOf = (sources: typeof proposals) =>
+        sources.every((s) => ctx.sourceRead![s.sourceId] === "fully") ? "fully" : sources.some((s) => ctx.sourceRead![s.sourceId] && ctx.sourceRead![s.sourceId] !== "could not be read") ? "partly" : "unread";
+      const fromSide = (sources: typeof proposals) => cited.some((f) => sources.some((s) => s.sourceVersionId === f.sourceVersionId));
+      const unread = [readOf(proposals) === "unread" ? "proposal" : null, readOf(briefs) === "unread" ? "brief" : null].filter(Boolean);
+      const citedProposal = fromSide(proposals);
+      const citedBrief = fromSide(briefs);
+      if (unread.length > 0) {
+        documentation = "not_assessed";
+        notes.push(`The ${unread.join(" and the ")} could not be read, so this comparison is not rated.`);
+      } else if (cited.length > 0 && !(citedProposal && citedBrief)) {
+        if (citedBrief && documentation === "not_documented" && readOf(proposals) === "fully") {
+          comparisonGap = true;
+          notes.push("The brief states this and the proposal, read in full, does not: scored Absent.");
+        } else {
+          documentation = "not_assessed";
+          notes.push(`A comparison needs quotes from both the proposal and the brief; this one cited only the ${citedProposal ? "proposal" : "brief"}, so it is not rated.`);
+        }
+      }
+    }
+  }
+  if (basis === "documented_facts" && documentation === "not_documented" && !comparisonGap) {
     documentation = "partial";
     notes.push("Facts were cited, so 'not documented' was recorded as 'partial'.");
   }

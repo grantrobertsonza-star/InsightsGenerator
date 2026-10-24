@@ -24,6 +24,21 @@ export function unverifiedEvidenceNote(u: UnverifiedEvidence): string {
     "Absences in this document are not rated, because the left-out passages may have covered them.";
 }
 
+/**
+ * Codex RQ-F02: a saved comparison rating (RQ-CMP-*) whose quotes all come from one of the two
+ * documents. New reviews do not rate these (researchQualityRules.validateObservation); one saved
+ * before that rule keeps its rating and is qualified wherever the review is shown or exported.
+ */
+export type OneSidedComparison = { criterionId: string; citedOnly: "proposal" | "brief" };
+
+export function oneSidedComparisonNote(items: OneSidedComparison[]): string | null {
+  if (items.length === 0) return null;
+  const names = items.map((x) => criterionShortLabel(x.criterionId)).join(", ");
+  return `${items.length === 1 ? "One comparison rating" : `${items.length} comparison ratings`} (${names}) ` +
+    `${items.length === 1 ? "cites" : "cite"} the words of only one document, so ${items.length === 1 ? "it does" : "they do"} not show how the proposal compares with the brief. ` +
+    "Treat them as not rated; a new review rates comparisons only from both documents.";
+}
+
 export const DOC_LABEL: Record<string, string> = {
   documented: "Documented",
   partial: "Partly documented",

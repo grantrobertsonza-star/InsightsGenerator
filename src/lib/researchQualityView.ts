@@ -12,7 +12,7 @@
 import { DASHBOARDS, reviewDashboards, type DashboardView } from "./researchQualityDashboard";
 import { findChecklist, gapRecommendations, scoreChecklist, type ChecklistScore, type ElementResult, type ElementStatus, type GapRecommendation } from "./researchQualityChecklist";
 import type { PoolClient } from "pg";
-import type { UnverifiedEvidence } from "./researchQualityPresentation";
+import type { OneSidedComparison, UnverifiedEvidence } from "./researchQualityPresentation";
 import { withTenantRead, withTenantRepeatableRead } from "./db";
 import { CRITERIA, referenceCatalogue } from "./researchQualityRules";
 import { assertModuleTables, assertRunOwned } from "./researchQualityRepository";
@@ -93,6 +93,8 @@ export type ResearchQualityView = {
     dashboardNote: string | null;
     /** Codex RQ-F01: per document, quotes left out because they could not be verified (none listed when all were). */
     unverifiedEvidence: UnverifiedEvidence[];
+    /** Codex RQ-F02: saved comparison ratings resting on one document's words only. */
+    oneSidedComparisons: OneSidedComparison[];
   });
 };
 
@@ -128,6 +130,30 @@ export type ChecklistView = {
  */
 export type ReviewProgress = { total: number; done: number; failed: number; working: number; waiting: number; interrupted: boolean };
 export const INTERRUPTED_AFTER_SECONDS = 120;
+
+/**
+ * Rated comparison criteria (RQ-CMP-*, live observations) whose quoted statements come from the
+ * proposal only or the brief only. An Absent rating citing only the brief is the documented gap the
+ * rule allows ("the proposal does not cover it") and is not listed.
+ */
+export function oneSidedComparisons(
+  observations: Pick<ObservationView, "criterionId" | "status" | "payload">[],
+  manifest: Pick<ReviewManifest, "sources">,
+): OneSidedComparison[] {
+  const roleOf = (versionId: string) => manifest.sources.find((s) => s.sourceVersionId === versionId)?.roles ?? [];
+  const out: OneSidedComparison[] = [];
+  for (const o of observations) {
+    if (!o.criterionId.startsWith("RQ-CMP-") || o.status === "dismissed" || o.payload.rating.score === null) continue;
+    if (o.payload.statements.length === 0) continue;
+    const roles = new Set(o.payload.statements.flatMap((st) => roleOf(st.sourceVersionId)));
+    const proposal = roles.has("proposal");
+    const brief = roles.has("brief");
+    if (proposal && brief) continue;
+    if (!proposal && brief && o.payload.rating.score === 0) continue;
+    if (!out.some((x) => x.criterionId === o.criterionId)) out.push({ criterionId: o.criterionId, citedOnly: proposal ? "proposal" : "brief" });
+  }
+  return out;
+}
 
 /** Quotes left out as unverifiable, summed per document over its succeeded extraction steps. */
 export function unverifiedEvidenceBySource(
@@ -295,6 +321,7 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
       dashboards: [],
       dashboardNote: null,
       unverifiedEvidence: [],
+      oneSidedComparisons: [],
       progress: { total: progress.total, done: progress.done, failed: progress.failed, working: progress.working, waiting: progress.waiting, interrupted: active && progress.working === 0 && progress.idle },
     };
     view.review.sourceFreshness = await sourceFreshness(client, manifest);
@@ -326,6 +353,7 @@ export async function loadResearchQualityView(tenantId: string, runId: string, r
             ? "The scored checklist needs database migration 0106. Apply it, then start a new review version."
             : "None of the selected documents has a role with a checklist (brief, proposal, questionnaire, methodology, report or fieldwork).";
     view.review.observations = await reviewObservations(client, runId, chosen.id as string, chosen.sequence as number, view.review.sourceFreshness);
+    view.review.oneSidedComparisons = oneSidedComparisons(view.review.observations, manifest);
     const assessTasks = new Map(
       (await client.query<{ task_key: string; status: string }>(`select task_key, status from research_quality_tasks where review_id = $1 and stage = 'assess'`, [chosen.id])).rows.map((t) => [t.task_key, t.status]),
     );

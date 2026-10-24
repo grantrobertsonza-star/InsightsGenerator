@@ -33,6 +33,26 @@ left out and counted (`dropped`). Only kept facts are ever cited.
   (unchanged rule; a left-out quote now makes the document not fully read).
 - A review with a failed reading is failed (nothing published) or partial, never complete.
 
+## Comparisons need both documents (Codex RQ-F02)
+
+A proposal-against-brief comparison criterion (group `comparison`, RQ-CMP-*) always requires one item
+of evidence from the brief and one from the proposal (`requiredEvidence` in RQC-6).
+`validateObservation`, given how far each source was read (`sourceRead`, from the review's reading
+steps), applies:
+
+| Situation | Rating |
+|---|---|
+| The proposal or the brief could not be read | Not assessed (not rated), note naming which |
+| Quotes from both documents | As validated otherwise |
+| Quotes from one document only | Not assessed, note naming the one cited |
+| Quotes from the brief only, the model says the proposal does not cover it, the proposal read in full | Absent (0): a stated gap |
+| No quotes | The ordinary absence rules |
+
+Other criteria marked `comparison: "brief_if_present"` compare with a brief only when there is one and
+are not affected. A comparison saved before this rule that cites one document only keeps its stored
+rating; `researchQualityView.oneSidedComparisons` finds it from the stored statements and
+`oneSidedComparisonNote` qualifies it on screen and in Word ("treat them as not rated").
+
 ## Where it is shown
 
 - Screen (`ReviewState`): each failed step with its reason; for each document with left-out quotes,
@@ -61,6 +81,9 @@ before the repair. `researchQualityRules.test.ts` and `researchQualityPresentati
 rules. Browser: `e2e/ui/research-quality-rejected-evidence.check.mjs`.
 
 ## Limits
+
+- A comparison's two sides are told apart by source role; whether the quoted passages are the
+  relevant ones remains the model's judgement.
 
 - A reading where most quotes are left out but one is kept counts as partly read, not failed.
 - Stored ratings of reviews made before the repair are not recomputed; they carry the note.

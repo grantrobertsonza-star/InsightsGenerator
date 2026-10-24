@@ -13,6 +13,7 @@ import type { DeckNarrative, DeckPillar } from "./storyNarrative";
 import { loadNarrativeEvidence, narrativeFigureCheck } from "./storyNarrative";
 import { figureCheckAvailable } from "./figureChecks";
 import { latestVerdictLateral } from "./latestVerdict";
+import { technicalDocumentLabels } from "./technicalDocuments";
 
 const MAX_FINDINGS_FOR_CONTEXT = 80;
 const MAX_INSIGHTS_FOR_CONTEXT = 60;
@@ -145,11 +146,14 @@ async function loadContext(tenantId: string, runId: string) {
     );
 
     // Technical documents by name (Grant, 2026-10-24); their text is read through the tools.
-    const technicalResult = await client.query<{ source_filename: string; readable: boolean }>(
-      `select source_filename, coalesce(length(trim(extracted_text)), 0) > 0 as readable
+    const technicalResult = await client.query<{ id: string; source_filename: string; readable: boolean; uploaded_at: string }>(
+      `select id, source_filename, coalesce(length(trim(extracted_text)), 0) > 0 as readable,
+              to_char(uploaded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') as uploaded_at
          from documents where run_id = $1 and kind = 'technical' order by uploaded_at, id`,
       [runId],
     );
+    // The same labels the tools use, so two same-named documents are told apart here too (B17-F01).
+    const technicalLabels = technicalDocumentLabels(technicalResult.rows.map((d) => ({ id: d.id, name: d.source_filename, uploadedAt: d.uploaded_at })));
     const historyResult = await client.query<AssistantMessage>(
       `select id, role, content, created_at::text
        from assistant_messages
@@ -166,7 +170,7 @@ async function loadContext(tenantId: string, runId: string) {
       recommendations: recommendationsResult.rows,
       objectiveValidations: objectiveValidationsResult.rows,
       findings: findingsResult.rows,
-      technicalDocuments: technicalResult.rows,
+      technicalDocuments: technicalResult.rows.map((d) => ({ label: technicalLabels.get(d.id)!, readable: d.readable })),
       history: historyResult.rows.reverse(),
     };
   });
@@ -242,7 +246,7 @@ function buildContextBlock(context: Awaited<ReturnType<typeof loadContext>>): st
   parts.push(
     technicalDocuments.length > 0
       ? `Technical documents (search and read with search_technical_documents and read_technical_document):\n${technicalDocuments
-          .map((d) => `  - ${d.source_filename}${d.readable ? "" : " (its text could not be read)"}`)
+          .map((d) => `  - ${d.label}${d.readable ? "" : " (its text could not be read)"}`)
           .join("\n")}`
       : "This project has no technical documents.",
   );

@@ -146,8 +146,12 @@ export const TECHNICAL_DOCUMENT_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-/** A technical-document passage the reply was based on, listed under it. */
-export type DocumentUsed = { document: string; passage: number; of: number };
+/**
+ * A technical-document passage the reply was based on, listed under it. `documentId` is its identity
+ * (Codex B17-F01: two documents can share a file name); `document` is its label as the assistant saw
+ * it (technicalDocuments.technicalDocumentLabels), which tells same-named documents apart.
+ */
+export type DocumentUsed = { documentId: string; document: string; passage: number; of: number };
 
 /**
  * search_technical_documents and read_technical_document, for this project only. A read records the
@@ -166,7 +170,7 @@ export async function runTechnicalDocumentTool(tenantId: string, runId: string, 
   }
   if (name === "search_technical_documents") {
     const hits = searchPassages(documents, String(input.query ?? ""));
-    if (hits.length === 0) return { content: `No passage of ${documents.map((d) => d.name).join(", ")} uses those words. Try other words, or say the technical documents do not cover it.`, isError: false };
+    if (hits.length === 0) return { content: `No passage of ${documents.map((d) => d.label).join(", ")} uses those words. Try other words, or say the technical documents do not cover it.`, isError: false };
     return { content: hits.map((h) => `${h.ref} | ${h.document}, passage ${h.passage} of ${h.of}\n${h.snippet}`).join("\n\n"), isError: false };
   }
   if (name === "read_technical_document") {
@@ -175,7 +179,7 @@ export async function runTechnicalDocumentTool(tenantId: string, runId: string, 
     return {
       content: `${passage.document}, passage ${passage.passage} of ${passage.of}\n\n${passage.text}`,
       isError: false,
-      document: { document: passage.document, passage: passage.passage, of: passage.of },
+      document: { documentId: passage.documentId, document: passage.document, passage: passage.passage, of: passage.of },
     };
   }
   return { content: `Unknown tool "${name}".`, isError: true };

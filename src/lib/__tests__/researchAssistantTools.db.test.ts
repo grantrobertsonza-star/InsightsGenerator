@@ -277,6 +277,52 @@ describe.skipIf(!TEST_DATABASE_URL)("Research assistant tools (real database)", 
     }
   });
 
+  // Codex B17-F01: two different documents with the same file name were merged by name in the
+  // reply's source line, so the second (here the one that contradicts the first) was left out.
+  it("two technical documents with the same name stay separate in the reply and the saved message, in either read order; a repeated read is listed once", async () => {
+    const insert = (text: string, at: string) =>
+      db.pool
+        .query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text,uploaded_at) values($1,$2,'technical','Technical report.txt',$3,$4,$5) returning id", [tenant, run, `t-${at}.txt`, text, at])
+        .then((x) => x.rows[0].id as string);
+    const first = await insert("The sample was unweighted.", "2026-10-24T09:00:00Z");
+    // Three paragraphs of about 1,000 characters: too long to share a passage (technicalDocuments.splitPassages).
+    const para = (lead: string) => `${lead} ${"The weighting is described in detail. ".repeat(26)}`;
+    const second = await insert([para("Benchmark weights were used."), para("They calibrate to mid-year estimates."), para("Trimmed at the 99th percentile.")].join("\n\n"), "2026-10-24T10:15:30Z");
+    const FIRST = "Technical report.txt (uploaded 2026-10-24 09:00:00 UTC)";
+    const SECOND = "Technical report.txt (uploaded 2026-10-24 10:15:30 UTC)";
+    try {
+      for (const order of [[first, second], [second, first]]) {
+        state.script = [
+          () => [call("read_technical_document", { ref: `${order[0]}#1` }), call("read_technical_document", { ref: `${order[1]}#1` }), call("read_technical_document", { ref: `${order[0]}#1` })],
+          () => [{ type: "text", text: "The two technical reports disagree on weighting." }],
+        ];
+        const r = await ask("Was the study weighted?");
+        // This ask's two model calls are the last two requests (earlier asks' stay in the list).
+        const system = (state.requests.at(-2)!.system as { text: string }[])[0].text;
+        expect(system).toContain(`  - ${FIRST}\n  - ${SECOND}`);
+        const reads = lastResults(state.requests.at(-1)!).map((x) => String(x.content));
+        expect(reads[0].slice(0, (order[0] === first ? FIRST : SECOND).length)).toBe(order[0] === first ? FIRST : SECOND);
+        const listed = order[0] === first ? `${FIRST} (passage 1 of 1); ${SECOND} (passage 1 of 3)` : `${SECOND} (passage 1 of 3); ${FIRST} (passage 1 of 1)`;
+        const line = `\n\nTechnical documents read for this answer: ${listed}.`;
+        expect(r.reply.slice(-line.length)).toBe(line);
+        // As saved and read back.
+        const saved = (await db.pool.query("select content from assistant_messages where run_id = $1 and role = 'assistant' order by created_at desc limit 1", [run])).rows[0].content as string;
+        expect(saved.slice(-line.length)).toBe(line);
+      }
+      // A different name is listed by its name alone.
+      await db.pool.query("update documents set source_filename = 'Weighting note.txt' where id = $1", [second]);
+      state.script = [
+        () => [call("read_technical_document", { ref: `${first}#1` }), call("read_technical_document", { ref: `${second}#2` })],
+        () => [{ type: "text", text: "Answer." }],
+      ];
+      const r = await ask("Was the study weighted?");
+      const plain = "Technical documents read for this answer: Technical report.txt (passage 1 of 1); Weighting note.txt (passage 2 of 3).";
+      expect(r.reply.slice(-plain.length)).toBe(plain);
+    } finally {
+      await db.pool.query("delete from documents where id = any($1::uuid[])", [[first, second]]);
+    }
+  });
+
   it("with no technical documents, the tools say so and nothing is listed under the reply", async () => {
     state.script = [
       () => [call("search_technical_documents", { query: "weighting" })],

@@ -24,6 +24,7 @@ import {
   checklistScoreText,
   criterionShortLabel,
   unverifiedEvidenceNote,
+  oneSidedComparisonNote,
   reviewStepLabel,
 } from "./researchQualityPresentation";
 const DASHBOARD_BAND_LABEL: Record<string, string> = { strong: "Strong", workable: "Workable", weak: "Weak" };
@@ -65,6 +66,8 @@ async function buildKindDocx(view: ResearchQualityView, projectName: string | nu
   // named here as it is on screen, so the export never reads as a finished review when it is not.
   for (const t of r.coverage.tasks ?? []) if (t.status !== "succeeded") body.push(p(`Not completed: ${reviewStepLabel(t.key, r.manifest)}${t.error ? `: ${t.error}` : ""}.`, { bold: true }));
   for (const u of r.unverifiedEvidence) body.push(p(unverifiedEvidenceNote(u), { bold: true }));
+  const oneSided = oneSidedComparisonNote(r.oneSidedComparisons);
+  if (oneSided) body.push(p(oneSided, { bold: true }));
   body.push(p("AI ratings of how well the document is written, each checked by code against the document's own words. A guide to where to improve it, not a certification.", { italics: true }));
   const quotesFor = (cid: string) => r.observations.filter((o) => o.criterionId === cid && o.status !== "dismissed");
   for (const d of r.dashboards) {

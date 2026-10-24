@@ -16,7 +16,7 @@ const ROLE = "ie_test_rq_app";
 let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
 const objects = new Map<string, Buffer>();
 const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail", extract: "normal" as "normal" | "invent" | "badEnum" | "mixed", extractOnly: null as null | string };
+const model = { calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail", extract: "normal" as "normal" | "invent" | "badEnum" | "mixed", extractOnly: null as null | string, compare: null as null | "both" | "briefOnly" | "proposalOnly" | "briefOnlyAbsent" };
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
@@ -97,7 +97,22 @@ vi.mock("../anthropic", () => ({
         const group = payload.criteria[0].id;
         if (model.hold && payload.criteria.some((c) => c.id === model.hold!.task)) await model.hold.release;
         if (model.failTask && payload.criteria.some((c) => c.id === model.failTask)) throw new Error("synthetic model outage");
+        const cmpFacts = (payload as unknown as { facts: { id: string; source: string }[] }).facts;
+        const firstFrom = (part: string) => cmpFacts.find((f) => f.source.includes(part))?.id;
         const observations = payload.criteria.map((c) => {
+          // Codex RQ-F02: what a comparison criterion cites, on demand. Documents are told apart by
+          // "brief" and "prop" in their file names.
+          if (model.compare && c.id.startsWith("RQ-CMP-")) {
+            const ids = (model.compare === "both" ? [firstFrom("prop"), firstFrom("brief")] : model.compare === "proposalOnly" ? [firstFrom("prop")] : [firstFrom("brief")]).filter((x): x is string => !!x);
+            const absent = model.compare === "briefOnlyAbsent";
+            return {
+              criterion_id: c.id, fact_ids: ids, decision_refs: [], score: absent ? 0 : 3, score_reason: "stand-in comparison",
+              documentation: absent ? "not_documented" : "documented", methodology: "cannot_assess", decision_fitness: [],
+              reasoning: `stand-in comparison for ${c.id}`, implication: "i", uncertainty: [],
+              improvement: { current_action: `Clarify ${c.id}`, future_action: null, timing: "before_decision", rationale: "stand-in" },
+              clarification_questions: [],
+            };
+          }
           const want = c.id.includes("POPULATION") ? ["population"] : c.id.includes("DECISION") ? ["decision"] : c.id.includes("SAMPLE") ? ["recruitment"] : c.id.includes("ALIGN") ? ["population", "recruitment"] : [];
           const cited = payload.facts.filter((f) => want.includes(f.topic)).slice(0, 2).map((f) => f.id);
           return {
@@ -216,6 +231,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     model.checklist = "normal";
     model.extract = "normal";
     model.extractOnly = null;
+    model.compare = null;
   });
 
   it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
@@ -1208,6 +1224,108 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       expect(v.unverifiedEvidence).toEqual([{ filename: "rq-f01-old.txt", rejected: 4, kept: 0 }]);
       const word = await docText(id);
       expect(word).toContain("rq-f01-old.txt: none of the 4 quoted passages the model proposed could be found in the document, so nothing was taken from it.");
+    });
+  });
+
+  // Codex RQ-F02 (2026-10-24): an unread proposal was rated 3/5 Workable on a comparison citing only
+  // the brief's words. A comparison now needs quotes from both documents (or is a stated gap).
+  describe("RQ-F02 comparisons rest on both documents", () => {
+    const compare = async (prop: string, brief: string) => {
+      const r = await m.actions.startResearchQualityReviewAction(runA, { requestKey: `k${Math.random().toString(36).slice(2, 12)}`, kind: "proposal_vs_brief", sources: [{ documentId: prop }, { documentId: brief }] });
+      if (!r.ok) throw new Error(r.error);
+      await settle();
+      return r.reviewId;
+    };
+    const propDoc = (label: string) => addDoc(A, runA, `${label}-prop.txt`, Buffer.from("Proposal.\nWe will survey existing customers about the loyalty scheme decision.\nRecruitment will use the client's customer list.\n"));
+    const briefDoc = (label: string) => addDoc(A, runA, `${label}-brief.txt`, Buffer.from("Project brief.\nThe decision is whether to launch a loyalty scheme next year.\nWe will survey existing customers about loyalty.\n"));
+    const cmp = (v: NonNullable<Awaited<ReturnType<typeof viewOf>>["review"]>) => v.observations.filter((o) => o.criterionId.startsWith("RQ-CMP-"));
+    const word = async (id: string) => {
+      const { buffer } = await m.exportDocx.buildResearchQualityDocx(await m.view.loadResearchQualityView(A, runA, id), "RQ project");
+      return (await (await JSZip.loadAsync(buffer)).file("word/document.xml")!.async("string")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    };
+
+    it("an unread proposal: no comparison is rated, though the model cites a true brief quote; the screen and Word agree", async () => {
+      model.extract = "invent";
+      model.extractOnly = "f02-unread-prop";
+      model.compare = "briefOnly";
+      const id = await compare(await propDoc("f02-unread"), await briefDoc("f02-unread"));
+      const v = (await viewOf(id)).review!;
+      expect(v.state).toBe("partial");
+      expect(cmp(v).length).toBeGreaterThan(0);
+      for (const o of cmp(v)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.assessment.documentation).toBe("not_assessed");
+        expect(o.payload.validationNotes.join(" ")).toMatch(/The proposal could not be read, so this comparison is not rated/);
+      }
+      expect(v.dashboards[0].pct).toBeNull();
+      expect(v.oneSidedComparisons).toEqual([]);
+      const text = await word(id);
+      expect(text).not.toMatch(/Problem restated: 3\/5/);
+      expect(text).toContain("Not completed: Reading the document");
+    });
+
+    it("an unread brief: no comparison is rated", async () => {
+      model.extract = "invent";
+      model.extractOnly = "f02-nobrief-brief";
+      model.compare = "proposalOnly";
+      const v = (await viewOf(await compare(await propDoc("f02-nobrief"), await briefDoc("f02-nobrief")))).review!;
+      for (const o of cmp(v)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/The brief could not be read/);
+      }
+    });
+
+    it("both read, quotes from one document only: not rated, saying which; a stated gap in a fully read proposal is Absent", async () => {
+      model.compare = "briefOnly";
+      const one = (await viewOf(await compare(await propDoc("f02-one"), await briefDoc("f02-one")))).review!;
+      expect(one.state).toBe("complete");
+      for (const o of cmp(one)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/needs quotes from both the proposal and the brief; this one cited only the brief/);
+      }
+      model.compare = "proposalOnly";
+      for (const o of cmp((await viewOf(await compare(await propDoc("f02-p"), await briefDoc("f02-p")))).review!)) {
+        expect(o.payload.rating.score).toBeNull();
+        expect(o.payload.validationNotes.join(" ")).toMatch(/cited only the proposal/);
+      }
+      model.compare = "briefOnlyAbsent";
+      const gap = (await viewOf(await compare(await propDoc("f02-gap"), await briefDoc("f02-gap")))).review!;
+      for (const o of cmp(gap)) {
+        expect(o.payload.rating.score).toBe(0);
+        expect(o.payload.validationNotes.join(" ")).toMatch(/the proposal, read in full, does not: scored Absent/);
+      }
+      expect(gap.oneSidedComparisons).toEqual([]);
+    });
+
+    it("control: quotes from both documents are rated as before, also after a reload", async () => {
+      model.compare = "both";
+      const id = await compare(await propDoc("f02-both"), await briefDoc("f02-both"));
+      const v = (await viewOf(id)).review!;
+      for (const o of cmp(v)) {
+        expect(o.payload.rating.score).toBe(3);
+        expect(new Set(o.payload.statements.map((st) => v.manifest.sources.find((s) => s.sourceVersionId === st.sourceVersionId)!.roles[0]))).toEqual(new Set(["proposal", "brief"]));
+      }
+      expect(v.dashboards[0].pct).toBe(60);
+      expect((await viewOf(id)).review!.dashboards[0].pct).toBe(60);
+      expect(v.oneSidedComparisons).toEqual([]);
+    });
+
+    it("a comparison saved before the rule, rated from the brief alone, is qualified on screen and in Word; its rating is kept", async () => {
+      model.compare = "both";
+      const id = await compare(await propDoc("f02-old"), await briefDoc("f02-old"));
+      const v = (await viewOf(id)).review!;
+      const problem = v.observations.find((o) => o.criterionId === "RQ-CMP-PROBLEM")!;
+      const briefVersion = v.manifest.sources.find((s) => s.roles.includes("brief"))!.sourceVersionId;
+      // Reproduce what the old code stored: a 3/5 rating whose only quote is the brief's.
+      await q(
+        `update research_quality_observation_versions set payload = jsonb_set(payload, '{statements}', (select coalesce(jsonb_agg(st), '[]'::jsonb) from jsonb_array_elements(payload->'statements') st where st->>'sourceVersionId' = $2)) where id = $1`,
+        [problem.versionId, briefVersion],
+      );
+      const after = (await viewOf(id)).review!;
+      expect(after.oneSidedComparisons).toEqual([{ criterionId: "RQ-CMP-PROBLEM", citedOnly: "brief" }]);
+      expect(after.observations.find((o) => o.criterionId === "RQ-CMP-PROBLEM")!.payload.rating.score).toBe(3);
+      const text = await word(id);
+      expect(text).toMatch(/One comparison rating \(Problem restated\) cites the words of only one document/);
     });
   });
 

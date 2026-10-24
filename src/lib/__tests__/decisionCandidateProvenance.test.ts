@@ -32,6 +32,11 @@ function makeFakeDb(rows: Row[]) {
     query: async (sql: string, params: unknown[] = []) => {
       const s = sql.toLowerCase().replace(/\s+/g, " ").trim();
 
+      // The owned-run lock every candidate change takes first (runSync.lockRunForContextChange,
+      // Codex OBJ500-F01): the project exists for this tenant.
+      if (s.startsWith("select id from runs where id = $1 and tenant_id = $2 for update")) {
+        return { rows: [{ id: params[0] }], rowCount: 1 };
+      }
       if (s.startsWith("select candidate_text, edited from decision_candidates where id")) {
         const [id, runId] = params as [string, string];
         const r = rows.find((row) => row.id === id && row.run_id === runId);

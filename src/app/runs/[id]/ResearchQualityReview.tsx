@@ -43,6 +43,7 @@ import {
   shownFailedSteps,
   unverifiedEvidenceNote,
   retryableInPlace,
+  oneSidedComparisonNote,
 } from "@/lib/researchQualityPresentation";
 import InfoDot from "@/components/InfoDot";
 import type { DashboardView } from "@/lib/researchQualityDashboard";
@@ -634,12 +635,13 @@ function ReviewState({ runId, review, reload, follow }: { runId: string; review:
     await reload();
   };
   const unverified = review.unverifiedEvidence ?? [];
-  const quiet = review.state === "complete" && !review.progress.interrupted && !retryMsg && unverified.length === 0;
+  const oneSided = oneSidedComparisonNote(review.oneSidedComparisons ?? []);
+  const quiet = review.state === "complete" && !review.progress.interrupted && !retryMsg && unverified.length === 0 && !oneSided;
   return (
     <div
       data-testid="rq-review-state"
       data-state={review.state}
-      className={quiet ? "hidden" : `rounded-lg p-3 text-xs ${review.state === "failed" ? "bg-red-50 text-red-800" : review.state === "complete" && unverified.length === 0 ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}
+      className={quiet ? "hidden" : `rounded-lg p-3 text-xs ${review.state === "failed" ? "bg-red-50 text-red-800" : review.state === "complete" && unverified.length === 0 && !oneSided ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}
     >
       {running && (
         <p>{`Reviewing: ${review.progress.done} of ${review.progress.total} steps done${review.progress.failed ? `, ${review.progress.failed} failed` : ""}. Each step can take a minute or two; this page updates by itself.`}</p>
@@ -654,6 +656,7 @@ function ReviewState({ runId, review, reload, follow }: { runId: string; review:
       )}
       {review.state === "partial" && <p>{`Partly complete: ${failedSteps.length} step(s) failed. What is shown was rated; the rest is shown as not rated.`}</p>}
       {review.state === "failed" && <p>The review failed: nothing could be rated.</p>}
+      {oneSided && <p className="mt-1" data-testid="rq-one-sided-comparison">{oneSided}</p>}
       {unverified.map((u) => (
         <p key={u.filename} className="mt-1" data-testid="rq-unverified-evidence" data-kept={u.kept} data-rejected={u.rejected}>
           {unverifiedEvidenceNote(u)}

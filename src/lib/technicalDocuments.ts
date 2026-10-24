@@ -16,7 +16,29 @@ import { stem, words } from "./helpIndex";
 
 export const PASSAGE_CHARS = 1500;
 
-export type TechnicalDocument = { id: string; name: string; passages: string[] };
+/**
+ * `name` is the file name; `label` is how the assistant and its reply name the document: the file
+ * name, plus its upload time when another of the project's technical documents has the same name
+ * (Codex B17-F01: two "Technical report.txt" files are different documents, and the reply's source
+ * line must keep them apart and say which is which). Identity is always `id`.
+ */
+export type TechnicalDocument = { id: string; name: string; label: string; passages: string[] };
+
+/** Labels for documents whose names repeat: upload time to the second (UTC), then the id's start if even that repeats. */
+export function technicalDocumentLabels(docs: readonly { id: string; name: string; uploadedAt: string }[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  const stamp = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+  for (const d of docs) {
+    const sameName = docs.filter((x) => x.name === d.name);
+    if (sameName.length === 1) {
+      labels.set(d.id, d.name);
+      continue;
+    }
+    const sameTime = sameName.filter((x) => stamp(x.uploadedAt) === stamp(d.uploadedAt));
+    labels.set(d.id, `${d.name} (uploaded ${stamp(d.uploadedAt)}${sameTime.length > 1 ? `, document ${d.id.slice(0, 8)}` : ""})`);
+  }
+  return labels;
+}
 
 /** A document's text as numbered passages (index 0 is passage 1). */
 export function splitPassages(text: string, limit = PASSAGE_CHARS): string[] {
@@ -52,17 +74,19 @@ export function splitPassages(text: string, limit = PASSAGE_CHARS): string[] {
  */
 export async function loadTechnicalDocuments(tenantId: string, runId: string): Promise<TechnicalDocument[]> {
   const rows = await withTenantRead(tenantId, async (client) => {
-    const r = await client.query<{ id: string; source_filename: string; extracted_text: string | null }>(
-      `select id, source_filename, extracted_text from documents
+    const r = await client.query<{ id: string; source_filename: string; extracted_text: string | null; uploaded_at: string }>(
+      `select id, source_filename, extracted_text, to_char(uploaded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') as uploaded_at from documents
         where run_id = $1 and tenant_id = $2 and kind = 'technical'
         order by uploaded_at, id`,
       [runId, tenantId],
     );
     return r.rows;
   });
-  return rows
-    .filter((d) => (d.extracted_text ?? "").trim().length > 0)
-    .map((d) => ({ id: d.id, name: d.source_filename, passages: splitPassages(d.extracted_text!) }));
+  // Labelled against all of the project's technical documents, readable or not, as the assistant's
+  // context lists them (researchAssistant.ts), so a document has one label everywhere.
+  const labels = technicalDocumentLabels(rows.map((d) => ({ id: d.id, name: d.source_filename, uploadedAt: d.uploaded_at })));
+  const readable = rows.filter((d) => (d.extracted_text ?? "").trim().length > 0);
+  return readable.map((d) => ({ id: d.id, name: d.source_filename, label: labels.get(d.id)!, passages: splitPassages(d.extracted_text!) }));
 }
 
 export type PassageHit = { ref: string; document: string; passage: number; of: number; snippet: string; score: number };
@@ -89,7 +113,7 @@ export function searchPassages(documents: readonly TechnicalDocument[], query: s
       if (matched === 0) return;
       // Passages that use more of the question's words come first.
       score *= matched / terms.length;
-      hits.push({ ref: passageRef(doc.id, i + 1), document: doc.name, passage: i + 1, of: doc.passages.length, snippet: snippetOf(text, terms), score: Math.round(score * 100) / 100 });
+      hits.push({ ref: passageRef(doc.id, i + 1), document: doc.label, passage: i + 1, of: doc.passages.length, snippet: snippetOf(text, terms), score: Math.round(score * 100) / 100 });
     });
   }
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);
@@ -110,5 +134,5 @@ export function readPassage(documents: readonly TechnicalDocument[], ref: string
   const doc = documents.find((d) => d.id === m[1]);
   const n = Number(m[2]);
   if (!doc || !Number.isInteger(n) || n < 1 || n > doc.passages.length) return null;
-  return { document: doc.name, documentId: doc.id, passage: n, of: doc.passages.length, text: doc.passages[n - 1] };
+  return { document: doc.label, documentId: doc.id, passage: n, of: doc.passages.length, text: doc.passages[n - 1] };
 }

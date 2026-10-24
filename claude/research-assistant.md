@@ -66,6 +66,43 @@ conversation as the Research assistant section inside a project; a side drawer.
 - The shared loop (`assistantLoop.ts`: `runAssistantLoop`, `sourceLines`, page checks) is used by
   both assistants; `MAX_TOOL_ROUNDS` moved there.
 
+## Technical documents and weighting (Grant, 2026-10-24; Codex M-B17-01, B17-F01)
+
+- Source: documents of kind `technical` (migration 0112) of this project only. `loadTechnicalDocuments`
+  (`src/lib/technicalDocuments.ts`) reads them scoped by `run_id` and `tenant_id`; a document with no
+  extracted text is listed in the context as "its text could not be read" and is never searched. A
+  failed read of the documents is an error result, never "no documents".
+- Passages: `splitPassages` cuts the extracted text on paragraph boundaries into passages of about
+  1,500 characters (sentence and hard cuts for longer paragraphs; no text lost). Extracted text has
+  no page numbers, so a passage is cited as "n of m". A passage's ref is `<document id>#<n>`
+  (`passageRef`); `readPassage` refuses a malformed ref, another document's or project's ref, and a
+  number out of range.
+- Tools: `search_technical_documents` (word and stem matching shared with the Knowledge base,
+  `helpIndex.words`/`stem`, best five) and `read_technical_document` (one passage by ref). Only a
+  read is recorded as used; a search is not.
+- Identity in the reply (B17-F01): a read records `DocumentUsed { documentId, document, passage, of }`.
+  `runAssistantLoop` lists a document and passage once however often it was read, and `sourceLines`
+  groups by `documentId`, never by name, in first-read order:
+  `Technical documents read for this answer: <label> (passage(s) ... of m); ...`. The label is the
+  file name, plus its upload time (UTC, to the second) when another technical document of the project
+  has the same name, plus the id's first eight characters if even that repeats
+  (`technicalDocumentLabels`). The same label is used in the context list, search results and read
+  results, so the model and the reader see one name per document. The line is written by code from
+  the tool results and saved with the reply.
+- Instructions: quote or closely paraphrase, name the document, say it is the document's claim and
+  not checked against the data, and say when nothing covers the question.
+- `describe_weighting` (one data file of this project, ownership checked like the data tools): the
+  file's weight variables (dictionary `weightLike`), the weight tables use by default
+  (`defaultWeight`, the same rule as Cross tabs), the saved or detected survey design
+  (`loadDataSetupWithStatus`, `resolveSurveyDesign`), or that none is set with any ambiguous
+  candidates, and that Analytics uses weights only. A failed set-up read is reported as such, never
+  as "no design". The instructions say to use it before saying anything about a file's weighting
+  (weight variables are hidden from `find_variables`).
+- Limits: plain word matching (no synonyms); passages by number, not page; technical documents are
+  read by the assistant only (not by methodology summaries, objective evidence or design set-up);
+  what a document describes is never checked against the data; the assistant outside a project has
+  none.
+
 ## Behaviour
 
 - One chat per project (Tools, Research assistant). Context per message: project fields, report

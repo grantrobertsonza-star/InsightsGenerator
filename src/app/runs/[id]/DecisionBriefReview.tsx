@@ -15,6 +15,7 @@ import {
   deleteAllDecisionCandidates,
   retryDecisionRefresh,
   type DecisionChangeResult,
+  type DecisionConflict,
 } from "@/lib/decisionCandidateActions";
 import { TrashIcon } from "@/components/icons";
 import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
@@ -46,22 +47,44 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
   const [isPending, startTransition] = useTransition();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(candidate.candidate_text);
+  // Codex DEC500-F01: the wording the editor opened with, captured when Edit is pressed and never
+  // from later props, sent with the save so the server can refuse it when the decision changed or
+  // was deleted meanwhile. After a conflict it becomes the current stored wording, so "Replace with
+  // mine" saves deliberately over what is there now.
+  const [opened, setOpened] = useState<string | null>(null);
+  // A refused save: its message and the decision's current wording (null when it was deleted).
+  const [conflict, setConflict] = useState<{ currentText: string | null } | null>(null);
   // Each action reports its failure here instead of throwing out of the transition, which
   // replaced the page and lost an open edit; a failed save keeps the editor and draft.
   const [error, setError] = useState<string | null>(null);
-  const run = (action: () => Promise<DecisionChangeResult | void>, after?: () => void) =>
+  const run = (action: () => Promise<DecisionChangeResult | DecisionConflict | void>, after?: () => void) =>
     startTransition(async () => {
       setError(null);
-      let result: DecisionChangeResult | void = undefined;
+      setConflict(null);
+      let result: DecisionChangeResult | DecisionConflict | void = undefined;
       const failure = await attempt(async () => {
         result = await action();
       });
+      const refused = result as DecisionConflict | void;
       if (failure) setError(failure);
-      else {
-        onChanged(result);
+      else if (refused && refused.ok === false) {
+        // Nothing was saved: the editor, the draft and what is stored now stay on screen.
+        setError(refused.error);
+        setConflict({ currentText: refused.currentText });
+      } else {
+        onChanged(result as DecisionChangeResult | void);
         after?.();
       }
     });
+  const startEditing = () => {
+    setDraft(candidate.candidate_text);
+    setOpened(candidate.candidate_text);
+    setConflict(null);
+    setError(null);
+    setIsEditing(true);
+  };
+  const save = (expected: string | null) =>
+    run(() => acceptDecisionCandidate(runId, candidate.id, draft.trim(), expected ?? undefined), () => setIsEditing(false));
 
   const isAccepted = candidate.status === "accepted";
   const isRejected = candidate.status === "rejected";
@@ -131,9 +154,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
           <>
             <button
               disabled={isPending || !draft.trim()}
-              onClick={() =>
-                run(() => acceptDecisionCandidate(runId, candidate.id, draft.trim()), () => setIsEditing(false))
-              }
+              onClick={() => save(opened)}
               className="rounded-lg border border-success bg-success px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
               Save and accept
@@ -142,6 +163,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
               onClick={() => {
                 setDraft(candidate.candidate_text);
                 setError(null);
+                setConflict(null);
                 setIsEditing(false);
               }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
@@ -170,7 +192,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
             )}
             <button
               disabled={isPending}
-              onClick={() => setIsEditing(true)}
+              onClick={startEditing}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-slate-400 hover:text-foreground"
             >
               {isAccepted ? "Edit" : "Edit and accept"}
@@ -197,9 +219,44 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
         )}
       </div>
       {error && (
-        <p role="alert" className="mt-2 text-xs text-red-700">
+        <p role="alert" className="mt-2 text-xs text-red-700" data-testid={conflict ? "decision-edit-conflict" : undefined}>
           {error}
         </p>
+      )}
+      {isEditing && conflict && (
+        <div className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+          {conflict.currentText !== null ? (
+            <>
+              <p data-testid="decision-current-wording">Stored now: {conflict.currentText}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <button
+                  disabled={isPending}
+                  onClick={() => {
+                    setDraft(conflict.currentText!);
+                    setOpened(conflict.currentText);
+                    setConflict(null);
+                    setError(null);
+                  }}
+                  className="rounded-lg border border-border bg-white px-2.5 py-1 font-medium text-foreground"
+                >
+                  Use current wording
+                </button>
+                <button
+                  disabled={isPending || !draft.trim()}
+                  onClick={() => {
+                    setOpened(conflict.currentText);
+                    save(conflict.currentText);
+                  }}
+                  className="rounded-lg border border-border bg-white px-2.5 py-1 font-medium text-foreground"
+                >
+                  Replace with mine
+                </button>
+              </div>
+            </>
+          ) : (
+            <p data-testid="decision-current-wording">Reload the page to see the current decisions; your wording is kept here until you cancel.</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -262,9 +319,14 @@ export default function DecisionBriefReview({
   // (see page.tsx), so this button is rarely someone's first way of getting
   // suggestions. Its label reflects what it actually does: the first time,
   // before any AI suggestion exists, it's asking for one; after that, it
-  // replaces whatever's still pending with a fresh batch (accepted and
-  // rejected candidates are never touched), so "regenerate" is the honest
-  // word once there's something to regenerate.
+  // replaces the AI suggestions nobody has edited with a fresh batch, so
+  // "regenerate" is the honest word once there's something to regenerate.
+  // What survives is decided in decisionFramer.ts (the authoritative rule,
+  // Codex M-DEC500-01): an AI suggestion is replaced unless it was rejected or
+  // edited, so an unedited suggestion is replaced even when it is accepted,
+  // because suggestions land accepted and status alone cannot show that a
+  // researcher looked at one. The researcher's own decisions, edited
+  // suggestions and rejected ones are kept.
   const hasAnyAiSuggested = candidates.some((c) => c.source === "ai_suggested");
   const regenerateLabel = hasAnyAiSuggested ? "Regenerate suggestions" : "Get suggestions";
   const regenerateBusyLabel = hasAnyAiSuggested ? "Regenerating..." : "Generating...";

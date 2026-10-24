@@ -67,7 +67,10 @@ const handlers = {
     const p = jsonParts(content);
     return {
       observations: p.criteria.map((c, i) => {
-        const cited = p.facts.slice(i % Math.max(1, p.facts.length), (i % Math.max(1, p.facts.length)) + 1).map((f) => f.id);
+        // A proposal-against-brief comparison (RQ-CMP-*) needs the words of both documents (Codex
+        // RQ-F02), so it cites the first fact of each document; other criteria cite one fact.
+        const perSource = [...new Map(p.facts.map((f) => [f.source, f.id])).values()];
+        const cited = c.id.startsWith("RQ-CMP-") ? perSource : p.facts.slice(i % Math.max(1, p.facts.length), (i % Math.max(1, p.facts.length)) + 1).map((f) => f.id);
         return {
           criterion_id: c.id,
           fact_ids: cited,

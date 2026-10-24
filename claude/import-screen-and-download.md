@@ -77,3 +77,25 @@ browser `import-file-detail` (download with no popup, links named, both buttons)
 **Limits.** Deployed storage headers are not certified (above). The Value labels row is covered by
 the unit test only; the browser fixture has no unmatched label sheets. The source list's rolled
 state is per page load.
+
+**Technical documents (Grant, 2026-10-24; migration 0112).** A project's methodology, fieldwork,
+sampling, weighting or analysis documentation, uploaded as the "Technical document" type
+(`uploadPurposes.ts`: .pdf, .docx, .txt; suggested from names such as "Technical Report",
+methodology, fieldwork, sampling, weighting or survey design, checked before the report rule).
+- Stored as documents of kind `technical` through `documentUploadActions.storeAndRead` (form field
+  `technicalFiles`): the text is read on upload like a brief, status `ready`, or `failed` when no text
+  can be read. Project processing reads a technical document with no text again and fails it
+  visibly rather than stamping it ready (`runs/[id]/page.tsx`, the context-document branch).
+- Not mined for findings, given no Research quality role, and not used by Objectives or the design
+  set-up. Only the Research assistant reads it (`research-assistant.md`). The selected file's purpose
+  line says so, and that what it describes is not checked against the data; it is counted in the
+  project totals and has its own type in the list filter.
+- Before 0112 the documents kind check refuses the insert (`23514` on `documents_kind_check`):
+  `documentUpload.ts` rolls the insert back, removes the stored object through the ordinary cleanup
+  path (a removal that fails stays as a pending cleanup with Retry file cleanup) and shows
+  `TECHNICAL_MIGRATION_MESSAGE` ("Technical documents need the database update
+  0112_technical_documents.sql. Nothing was stored"). Once 0112 is applied the same file uploads
+  normally.
+- Tests: `technicalDocumentUpload.db.test.ts` (stored and read, unreadable PDF failed and not
+  searched, pre-0112 refusal with nothing kept, then added), `uploadPurposes.test.ts`,
+  `importSources.test.ts`; browser `technical-document.check.mjs`.

@@ -34,8 +34,8 @@ describe("splitPassages", () => {
 });
 
 const docs: TechnicalDocument[] = [
-  { id: A, name: "Technical report.pdf", passages: ["Fieldwork ran from March to June.", "The sample was stratified by province and metro, with enumeration areas as clusters.", "Benchmark weights calibrate to population estimates."] },
-  { id: B, name: "Weighting note.docx", passages: ["Weights were trimmed at the 99th percentile; weighting used raking."] },
+  { id: A, name: "Technical report.pdf", label: "Technical report.pdf", passages: ["Fieldwork ran from March to June.", "The sample was stratified by province and metro, with enumeration areas as clusters.", "Benchmark weights calibrate to population estimates."] },
+  { id: B, name: "Weighting note.docx", label: "Weighting note.docx", passages: ["Weights were trimmed at the 99th percentile; weighting used raking."] },
 ];
 
 describe("searchPassages", () => {
@@ -69,5 +69,24 @@ describe("the upload type", () => {
   it("is listed as a Technical document, with the context files", () => {
     expect(sourceTypeLabel("technical", null)).toBe("Technical document");
     expect(sourceGroup("technical")).toBe("context");
+  });
+});
+
+// Codex B17-F01: documents that share a file name are labelled apart, by upload time, then by id.
+describe("technicalDocumentLabels", () => {
+  it("leaves a unique name alone and labels repeated names by upload time, then id", async () => {
+    const { technicalDocumentLabels } = await import("../technicalDocuments");
+    const labels = technicalDocumentLabels([
+      { id: "11111111-1111-4111-8111-111111111111", name: "Technical report.txt", uploadedAt: "2026-10-24T09:00:00" },
+      { id: "22222222-2222-4222-8222-222222222222", name: "Technical report.txt", uploadedAt: "2026-10-24T10:15:30" },
+      { id: "33333333-3333-4333-8333-333333333333", name: "Weighting note.docx", uploadedAt: "2026-10-24T09:00:00" },
+      { id: "44444444-4444-4444-8444-444444444444", name: "Same.txt", uploadedAt: "2026-10-24T09:00:00" },
+      { id: "55555555-5555-4555-8555-555555555555", name: "Same.txt", uploadedAt: "2026-10-24T09:00:00" },
+    ]);
+    expect(labels.get("11111111-1111-4111-8111-111111111111")).toBe("Technical report.txt (uploaded 2026-10-24 09:00:00 UTC)");
+    expect(labels.get("22222222-2222-4222-8222-222222222222")).toBe("Technical report.txt (uploaded 2026-10-24 10:15:30 UTC)");
+    expect(labels.get("33333333-3333-4333-8333-333333333333")).toBe("Weighting note.docx");
+    expect(labels.get("44444444-4444-4444-8444-444444444444")).toBe("Same.txt (uploaded 2026-10-24 09:00:00 UTC, document 44444444)");
+    expect(labels.get("55555555-5555-4555-8555-555555555555")).toBe("Same.txt (uploaded 2026-10-24 09:00:00 UTC, document 55555555)");
   });
 });

@@ -1,7 +1,7 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import { syncResearchObjective } from "./runSync";
+import { lockRunForContextChange, syncResearchObjective } from "./runSync";
 import { parseObjectiveLines } from "./objectiveLines";
 import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
 
@@ -230,6 +230,9 @@ export async function generateObjectiveCandidates(
 
     try {
       await client.query("begin");
+      // Codex OBJ500-F01: the run row first, as every candidate change does (runSync.ts), so a
+      // regeneration and a researcher's accept, reject or delete are serialized.
+      await lockRunForContextChange(client, runId, tenantId);
 
       // Re-running the framer replaces its previous AI-suggested
       // candidates rather than piling up duplicates, but only the ones a

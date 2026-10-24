@@ -431,6 +431,12 @@ function makeFakeDb(initial: Record<string, FakeDoc>) {
         if (s.includes("insert into trace")) {
           return { rows: [] };
         }
+        // CT500-F02: buildCrosstab locks the data file's row (by id, run and tenant) before choosing the
+        // next table index; a known document is this run's.
+        if (s.includes("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update")) {
+          const [documentId] = params as [string];
+          return { rows: DOCS[documentId] ? [{ id: documentId }] : [] };
+        }
         if (s.includes("coalesce(max(table_index)")) {
           return { rows: [{ next: 1000 }] };
         }

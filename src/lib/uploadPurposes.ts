@@ -1,7 +1,8 @@
 // What an added file is for, on the Import screen's single "Add files" panel (Grant, 2026-10-19:
 // one Add files button and a type list, in place of one picker per type). Pure rules, shared by the
-// panel and its tests. The server action (documentUploadActions.ts) is unchanged: each file is sent
-// under the same form field the old per-type pickers used, so its limits and checks still apply.
+// panel and its tests. Each file is sent under its type's form field in the server action
+// (documentUploadActions.ts), where the limits and checks for that kind apply; technical documents
+// (2026-10-24) have their own field, `technicalFiles`.
 import { LIMITS_CAPTION } from "./importLimits";
 
 export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide" | "technical";

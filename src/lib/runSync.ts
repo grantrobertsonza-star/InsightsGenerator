@@ -23,6 +23,24 @@ import type { PoolClient } from "pg";
  * files and imported from the framers, purely to avoid a circular import
  * between a framer and the actions file that already imports that framer.
  */
+/**
+ * Codex OBJ500-F01: every change to a run's objective or decision candidates, or to its stated
+ * objectives list, takes the owned run row FOR UPDATE first, before it changes a candidate or reads
+ * a list to rebuild. The syncs below read every accepted candidate and write one statement; two
+ * transactions changing different candidates used to each read the accepted set while the other's
+ * change was uncommitted, so the last writer saved a statement naming an objective just unaccepted,
+ * rejected or deleted (and a deletion could undo the other's change to the stated list). With the
+ * lock first, the second transaction waits, then reads (READ COMMITTED: each statement sees what was
+ * committed before it) the first one's result. Locking only the final update is not enough: the
+ * statement would already be computed from the old view. One order everywhere (run row, then
+ * candidate rows) also keeps these paths from deadlocking each other. The lock query is the
+ * ownership check: no row for this tenant means nothing is changed.
+ */
+export async function lockRunForContextChange(client: PoolClient, runId: string, tenantId: string): Promise<void> {
+  const owned = await client.query("select id from runs where id = $1 and tenant_id = $2 for update", [runId, tenantId]);
+  if (!owned.rowCount) throw new Error("That project is not available.");
+}
+
 export async function syncResearchObjective(client: PoolClient, runId: string) {
   const result = await client.query<{ candidate_text: string }>(
     "select candidate_text from objective_candidates where run_id = $1 and status = 'accepted' order by (source = 'ai_suggested'), created_at, id",

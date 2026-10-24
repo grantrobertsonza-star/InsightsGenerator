@@ -90,7 +90,8 @@ export async function runAssistantLoop(options: {
       // A table reused within the turn (the same request twice) is listed and counted once.
       if (r.table && !tables.some((t) => t.tableId === r.table!.tableId)) tables.push(r.table);
       if (r.help && !help.some((h) => h.href === r.help!.href)) help.push(r.help);
-      if (r.document && !documents.some((d) => d.document === r.document!.document && d.passage === r.document!.passage)) documents.push(r.document);
+      // The same passage of the same document read twice is listed once; same-named documents never merge.
+      if (r.document && !documents.some((d) => d.documentId === r.document!.documentId && d.passage === r.document!.passage)) documents.push(r.document);
       results.push({ type: "tool_result", tool_use_id: call.id, content: r.content, ...(r.isError ? { is_error: true } : {}) });
     }
     messages.push({ role: "user", content: results });
@@ -123,16 +124,18 @@ export function sourceLines(tables: BuiltTable[], help: HelpUsed[], documents: D
     lines.push(`Guides read for this answer: ${help.map((h) => `${h.title} (${h.href})`).join("; ")}.`);
   }
   if (documents.length > 0) {
-    // Grouped by document, passages in order, so each statement about how the study was done can be found.
-    const byDoc = new Map<string, { of: number; passages: number[] }>();
+    // Grouped by document id (never by name: Codex B17-F01), in the order first read, passages in
+    // order, so each statement about how the study was done can be found in the right document.
+    const byDoc = new Map<string, { label: string; of: number; passages: number[] }>();
     for (const d of documents) {
-      const entry = byDoc.get(d.document) ?? { of: d.of, passages: [] };
+      const entry = byDoc.get(d.documentId) ?? { label: d.document, of: d.of, passages: [] };
       entry.passages.push(d.passage);
-      byDoc.set(d.document, entry);
+      byDoc.set(d.documentId, entry);
     }
     lines.push(
-      `Technical documents read for this answer: ${[...byDoc]
-        .map(([name, e]) => {
+      `Technical documents read for this answer: ${[...byDoc.values()]
+        .map((e) => {
+          const name = e.label;
           const ps = [...e.passages].sort((a, b) => a - b);
           return `${name} (${ps.length === 1 ? "passage" : "passages"} ${ps.join(", ")} of ${e.of})`;
         })

@@ -81,7 +81,7 @@ describe.skipIf(!TEST_DATABASE_URL)("decision changes reconcile after a failed r
   const idOf = async (text: string) => (await rows(run)).find((x) => x.candidate_text === text)!.id as string;
 
   /** Runs one transition with the refresh failing, checks it saved and is owed, then retries. */
-  async function failThenRetry(label: string, change: () => Promise<{ ok: true; refreshError: string | null } | void>, check: () => Promise<void>) {
+  async function failThenRetry(label: string, change: () => Promise<{ ok: true; refreshError: string | null } | { ok: false; conflict: true; error: string; currentText: string | null } | void>, check: () => Promise<void>) {
     const a = await import("../decisionCandidateActions");
     const otherBefore = JSON.stringify(await rows(other));
     state.fail = true;

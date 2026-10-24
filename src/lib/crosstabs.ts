@@ -668,6 +668,15 @@ export async function buildCrosstab(
   };
 
   const tableId = await withTenant(tenantId, async (client) => {
+    // Table numbers are per file, taken as the highest so far plus one. Two tables saved at once
+    // for one file (the CSM dashboard builds a variable's overall and segmented distributions
+    // together, so this happens whenever Segment by is set; Codex CT500-F02) used to read the same
+    // highest number and both insert it, and the second failed on document_tables' unique
+    // (document_id, table_index) with the database's own message. Locking the file's row first
+    // makes saves for one file take turns for the length of this transaction; the lock query also
+    // confirms the file still exists in this run before anything is written.
+    const owner = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update", [documentId, runId, tenantId]);
+    if (owner.rows.length === 0) throw new Error("That data file was not found in this project, so the table was not saved.");
     const next = await client.query<{ next: number }>(
       "select coalesce(max(table_index) + 1, $2)::int as next from document_tables where document_id = $1 and table_index >= $2",
       [documentId, FIRST_CROSSTAB_INDEX],
@@ -716,6 +725,13 @@ export async function buildCrosstab(
       }
       if (/design_snapshot/.test(message)) {
         throw new Error("Building crosstabs needs migration 0091 applied first (npx.cmd supabase migration up).");
+      }
+      // The lock above should make this impossible; if it still happens, say what it means
+      // instead of showing the constraint's name. Nothing was saved, so trying again is safe.
+      if ((error as { code?: string }).code === "23505" && /document_tables_document_id_table_index_key/.test(message)) {
+        throw new Error(
+          "Another table for this file was being saved at the same moment, so this one was not saved. Nothing was lost: try again.",
+        );
       }
       throw error;
     }
@@ -1040,13 +1056,26 @@ export async function deleteDraftCrosstabs(tenantId: string, runId: string, docu
 /** Removes a crosstab (draft or committed) and any findings built from it. */
 export async function deleteCrosstab(tenantId: string, runId: string, tableId: string): Promise<void> {
   await withTenant(tenantId, async (client) => {
+    // Codex CT500-F01: the table is found and locked by its own id AND this project's before any of
+    // its findings are archived. The archive below selects findings by table id only, so a table of
+    // another project of the same organisation used to lose its findings while the delete (scoped by
+    // run) matched nothing and the action reported success. A missing or mismatched table now stops
+    // here with nothing changed; archive and delete stay in one transaction.
+    const owned = await client.query(
+      "select id from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and crosstab is not null for update",
+      [tableId, runId, tenantId],
+    );
+    if (owned.rowCount !== 1) throw new Error("That table is not in this project (it may have been deleted already), so nothing was deleted.");
     await archiveAndReplaceFindings(client, {
       documentColumn: "source_table_id",
       documentId: tableId,
       onlyRejected: false,
       archiveReason: "manual_reextract",
     });
-    await client.query("delete from document_tables where id = $1 and run_id = $2 and crosstab is not null", [tableId, runId]);
+    const deleted = await client.query("delete from document_tables where id = $1 and run_id = $2 and crosstab is not null", [tableId, runId]);
+    // Held by the lock above, so this always deletes the one row; checked so the archive above can
+    // never commit without its table being deleted with it.
+    if (deleted.rowCount !== 1) throw new Error("The table could not be deleted, so nothing was changed. Try again.");
   });
 }
 
