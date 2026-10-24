@@ -71,7 +71,7 @@ const RunSectionContext = createContext<{
   setSelected: (id: string) => void;
 } | null>(null);
 
-function useRunSection() {
+export function useRunSection() {
   const ctx = useContext(RunSectionContext);
   if (!ctx)
     throw new Error(
@@ -96,6 +96,18 @@ export function RunSectionProvider({
   // Remember the section per run, so a reload (or the refresh after saving)
   // returns to where you were instead of the default section.
   useEffect(() => {
+    // A link naming a section (?section=, from the main dashboard's next step) opens it; otherwise
+    // the one remembered for this run.
+    const linked = new URLSearchParams(window.location.search).get("section");
+    if (linked && (!validIds || validIds.includes(linked))) {
+      setSelectedState(linked);
+      try {
+        window.sessionStorage.setItem(storageKey(), linked);
+      } catch {
+        // storage blocked: the link still opens the section
+      }
+      return;
+    }
     try {
       const saved = window.sessionStorage.getItem(storageKey());
       if (saved && saved !== defaultId && (!validIds || validIds.includes(saved)))

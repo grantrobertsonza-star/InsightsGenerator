@@ -58,7 +58,8 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
 
     // 1. open the section: no model call; the menu order agreed 2026-10-18 still holds
     await page.goto(run.url, { waitUntil: "networkidle" });
-    const menu = (await page.locator("#run-nav-slot [data-nav-label]").allInnerTexts()).map((t) => t.trim());
+    // The stages' modules in order; each stage's overview entry (2026-10-23) is left out here.
+    const menu = (await page.locator("#run-nav-slot [data-nav-label]").allInnerTexts()).map((t) => t.trim()).filter((t) => !t.endsWith(" overview"));
     expect(menu.indexOf("Import data")).toBe(0);
     expect(menu.indexOf("Research quality")).toBe(1);
     await page.getByRole("button", { name: /^Research quality/ }).first().click();

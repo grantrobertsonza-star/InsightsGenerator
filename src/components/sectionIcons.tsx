@@ -60,7 +60,20 @@ const Gauge = svg(
   </>,
 );
 
+const Overview = svg(
+  <>
+    <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+    <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+  </>,
+);
+
 const SECTION_ICONS: Record<string, (p: { className?: string }) => ReactNode> = {
+  "overview-prepare": Overview,
+  "overview-analyse": Overview,
+  "overview-develop": Overview,
+  "overview-deliver": Overview,
   upload: UploadIcon,
   "research-quality": ShieldCheck,
   objective: TargetIcon,

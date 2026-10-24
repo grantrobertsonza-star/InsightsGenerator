@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { parseObjectiveLines } from "@/lib/objectiveLines";
+import { objectiveLink, scrollToAnchor } from "./stageLinks";
 
 /**
  * What's selected, carried as both forms at once because the two panes this is shared
@@ -25,6 +26,17 @@ const SelectionContext = createContext<Ctx>({ selected: null, select: () => {}, 
 
 export function ObjectiveSelectionProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState<Selected>(null);
+  // A link from a section dashboard selects its objective (never toggles it off), whether it was
+  // asked for before Objectives was first opened or after.
+  useEffect(() => {
+    const open = (o: { id: string | null; text: string }) => {
+      setSelected(o);
+      scrollToAnchor("objective-detail");
+    };
+    const waiting = objectiveLink.takePending();
+    if (waiting) open(waiting);
+    return objectiveLink.subscribe(open);
+  }, []);
   return (
     <SelectionContext.Provider
       value={{

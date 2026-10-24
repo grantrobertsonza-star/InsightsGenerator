@@ -100,6 +100,11 @@ import { impactFor, loadDocumentDeletionImpact } from "@/lib/documentDeletionImp
 import { deleteDocumentConfirmation } from "@/lib/documentDeletionMessage";
 import SubmitButton from "@/components/SubmitButton";
 import { Pane, ThreePane } from "./ThreePane";
+import SectionDashboard, { ModuleStatusBar } from "./SectionDashboard";
+import { loadProjectStageFacts, objectiveUnscoredReason } from "@/lib/projectStageFacts";
+import { SECTIONS, sectionStatuses, type ProjectStageFacts } from "@/lib/sectionStatus";
+import { summarizeFindings, summarizeInsights } from "@/lib/evidenceOverview";
+import { summarizeRecommendations } from "@/lib/recommendationOverview";
 import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
 import CodingFormProgress from "./CodingFormProgress";
@@ -494,6 +499,8 @@ type DocumentTablePreview = {
   row_count: number;
   /** Changes whenever the stored table is rewritten. Keys the quality cache. */
   row_version: string;
+  /** A crosstab's place in its set (table_index 100 and up); null for an imported table. */
+  crosstab_status: "draft" | "committed" | null;
 };
 
 /**
@@ -504,11 +511,13 @@ type DocumentTablePreview = {
  * model misread a column or dropped a row, this is where that shows up,
  * rather than only surfacing later as a finding that looks wrong. Wrapped
  * in try/catch and defaulting to [] for the same reason getFindingHistory
- * is: document_tables only exists once migration 0023 has been applied.
+ * is: document_tables only exists once migration 0023 has been applied. The
+ * failure is reported alongside (failed), so the stage status blocks say the
+ * tables could not be checked rather than counting none.
  */
 async function getDocumentTablePreviews(
   runId: string,
-): Promise<DocumentTablePreview[]> {
+): Promise<{ rows: DocumentTablePreview[]; failed: boolean }> {
   const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
@@ -529,16 +538,16 @@ async function getDocumentTablePreviews(
                 end as rows,
                 jsonb_array_length(rows)::int as row_count,
                 xmin::text as row_version,
-                ingestion_type, banner_columns, stub_columns
+                ingestion_type, banner_columns, stub_columns, crosstab_status
          from document_tables
          where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
          order by document_id, table_index`,
         [runId],
       );
-      return result.rows;
+      return { rows: result.rows, failed: false };
     });
   } catch {
-    return [];
+    return { rows: [], failed: true };
   }
 }
 
@@ -3161,7 +3170,7 @@ export default async function RunPage({
     setupSuggestions,
     latestProcessErrors,
     pendingLegacyConfirmations,
-    documentTablePreviews,
+    documentTablePreviewsResult,
     codebooksByDocument,
     objectiveCandidates,
     decisionCandidates,
@@ -3194,6 +3203,7 @@ export default async function RunPage({
     deletionImpact,
     transcriptWaveSaves,
     projectList,
+    stageFactsResult,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
@@ -3240,11 +3250,22 @@ export default async function RunPage({
     timing("deletionImpact", loadDocumentDeletionImpact(TENANT_ID, id)),
     timing("transcriptWaveAvailable", transcriptWaveAvailable(TENANT_ID)),
     timing("projectList", listProjects(TENANT_ID)),
+    // The section dashboards' stored-record facts (projectStageFacts.ts), the same the main
+    // dashboard reads; a failed read is shown on the dashboards, never taken as an empty project.
+    timing(
+      "stageFacts",
+      loadProjectStageFacts(TENANT_ID, id).then(
+        (facts) => ({ ok: true as const, facts }),
+        (error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) }),
+      ),
+    ),
   ]);
   if (!run) {
     notFound();
   }
 
+  const documentTablePreviews = documentTablePreviewsResult.rows;
+  const documentTablesReadFailed = documentTablePreviewsResult.failed;
   const waveFiles: WaveFile[] = waveFilesResult.ok ? waveFilesResult.files : [];
 
   // Only what depends on the first batch, again all at once.
@@ -4314,12 +4335,7 @@ export default async function RunPage({
         const q = qualityFor(c.candidate_text);
         const accepted = c.status === "accepted";
         return {
-          unscoredReason:
-            q && accepted
-              ? null
-              : "error" in objectiveQualityStatus
-                ? unscoredReasonText(null, accepted)
-                : unscoredReasonText(unscoredReasonFor(objectiveQualityStatus, c.candidate_text), accepted),
+          unscoredReason: objectiveUnscoredReason(c.candidate_text, accepted, Boolean(q), objectiveQualityStatus),
           id: c.id,
           text: c.candidate_text,
           rationale: c.rationale,
@@ -4493,6 +4509,9 @@ export default async function RunPage({
                     filename: d.source_filename,
                     state,
                     savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
+                    draftTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status === "draft").length,
+                    // A crosstab with no status predates the draft set and counts as committed (crosstabs.ts reads it so).
+                    committedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status !== "draft").length,
                     node:
                       state === "ready" ? readyNode?.(d) : state === "needs_setup" ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -5049,18 +5068,23 @@ export default async function RunPage({
     // with the business decisions they serve. Objectives is one entry for two sections (Set and
     // Review), switched by tabs inside them. Cross tabs and Analytics are two entries over the same
     // data files, each showing its own part of a file's launcher.
+    // Each stage opens with its overview (Grant, 2026-10-23): the state of every module in it.
+    { id: "overview-prepare", group: "Prepare", label: "Prepare overview" },
     { id: "upload", group: "Prepare", label: "Import data" },
     { id: "research-quality", group: "Prepare", label: "Research quality" },
     { id: "objective", group: "Prepare", label: "Objectives" },
     // Decisions can always be added by hand here. Suggestions are offered once there are findings; in
     // generate mode generateDecisionCandidates reads insights, and says so when none exist yet.
     { id: "decisions", group: "Prepare", label: "Business decisions" },
+    { id: "overview-analyse", group: "Analyse", label: "Analyse overview" },
     { id: "crosstabs", group: "Analyse", label: "Cross tabs", badge: documents.filter((d) => d.kind === "table").length },
     { id: "analytics", group: "Analyse", label: "Analytics" },
     { id: "coding", group: "Analyse", label: "Coding", badge: documents.filter((d) => d.kind === "transcript").length },
     { id: "reports", group: "Analyse", label: "Secondary analysis", badge: documents.filter((d) => d.kind === "report").length },
+    { id: "overview-develop", group: "Develop findings", label: "Develop overview" },
     { id: "findings", group: "Develop findings", label: "Findings", badge: findings.length },
     { id: "synthesized", group: "Develop findings", label: "Insights", badge: synthesizedInsights.length },
+    { id: "overview-deliver", group: "Deliver", label: "Deliver overview" },
     { id: "recommendations", group: "Deliver", label: "Recommendations", badge: synthesizedRecommendations.length },
     // In Deliver: generating it draws on the decision statement and on accepted recommendations.
     { id: "insights-report", group: "Deliver", label: "Insights report" },
@@ -5105,6 +5129,11 @@ export default async function RunPage({
           n > 0 ? { text: String(n), title: `${n} ${n === 1 ? "check is" : "checks are"} flagged Check or Problem` } : undefined;
         const linksBadge = (n: number): SourcePanel["badge"] =>
           n > 0 ? { text: `${n} to check`, title: `${n} ${n === 1 ? "question has" : "questions have"} suggested links waiting for your confirmation` } : undefined;
+        // The same counts, kept as numbers for the stage status block (ImportStageStatus).
+        let qualityFlags = 0;
+        let linksWaiting = 0;
+        const flagQuality = (n: number) => ((qualityFlags += n), qualityBadge(n));
+        const flagLinks = (n: number) => ((linksWaiting += n), linksBadge(n));
         const tableFlags = ownTables
           .filter((t) => !t.previewError)
           .reduce((n, t) => n + flaggedChecks((t.quality ?? computeTableQuality(t.headers, t.rows, t.ingestionType, t.stated ?? [])).checks), 0);
@@ -5126,7 +5155,7 @@ export default async function RunPage({
             panels.push({
               id: "quality",
               label: "Data quality",
-              badge: qualityBadge(tableFlags),
+              badge: flagQuality(tableFlags),
               node: (
                 <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource />
               ),
@@ -5139,18 +5168,19 @@ export default async function RunPage({
                 .filter((t) => t.table_index < 100)
                 .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
             );
-            panels.push({ id: "quality", label: "Data quality", badge: qualityBadge(flaggedChecks(aggregated.checks)), node: <AggregatedQualityPanel key="panel" q={aggregated} /> });
+            panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(aggregated.checks)), node: <AggregatedQualityPanel key="panel" q={aggregated} /> });
           } else if (ownTables.length > 0) {
-            panels.push({ id: "quality", label: "Data quality", badge: qualityBadge(tableFlags), node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource /> });
+            panels.push({ id: "quality", label: "Data quality", badge: flagQuality(tableFlags), node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource /> });
           }
         }
         if (d.kind === "transcript" && transcriptQuality.has(d.id)) {
-          panels.push({ id: "quality", label: "Data quality", badge: qualityBadge(flaggedChecks(transcriptQuality.get(d.id)!.checks)), node: <TranscriptImportQualityPanel key="panel" q={transcriptQuality.get(d.id)!} /> });
+          panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(transcriptQuality.get(d.id)!.checks)), node: <TranscriptImportQualityPanel key="panel" q={transcriptQuality.get(d.id)!} /> });
         }
         if (attached)
           panels.push({
             id: "links",
             label: d.kind === "transcript" ? "Guide" : "Questionnaire links",
+            // Counted for the stage status on the questionnaire's own row only, so one set of links is one item.
             badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.itemsToCheck ?? 0), 0)),
             node:
               d.kind === "transcript" ? (
@@ -5177,7 +5207,7 @@ export default async function RunPage({
           panels.push({
             id: "links",
             label: isGuide ? "Guide" : "Questionnaire links",
-            badge: linksBadge(instrument.itemsToCheck),
+            badge: flagLinks(instrument.itemsToCheck),
             node: (
               <div key="panel" className="flex flex-col gap-3">
               {!isGuide && <QuestionnaireLinkingNote />}
@@ -5254,6 +5284,8 @@ export default async function RunPage({
           // The same colour as this file's card under Cross tabs, Analytics, Coding and Secondary analysis.
           accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,
           panels,
+          flaggedChecks: qualityFlags,
+          linksToCheck: linksWaiting,
           initial: transcriptSetups.get(d.id) ?? null,
           waveAvailable: transcriptWaveSaves,
           suggestion: setupSuggestions.get(d.id) ?? null,
@@ -5286,6 +5318,40 @@ export default async function RunPage({
       }),
     ),
   ];
+
+  // The section dashboards (Grant, 2026-10-23): the stored-record facts, with this page's fuller
+  // checks on top (a preview's identity and data quality flags from Import, the stored tables' read,
+  // and the Findings, Insights and Recommendations overviews' attention counts, by the same
+  // summaries those overviews show).
+  const sectionState = (() => {
+    if (!stageFactsResult.ok) return { ok: false as const, error: stageFactsResult.error };
+    const f = stageFactsResult.facts;
+    const rowOf = new Map(importRows.map((r) => [r.documentId, r]));
+    const findingsOverview = summarizeFindings(findings, statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier })));
+    const insightSupport = summarizeInsights(synthesizedInsights).support;
+    const recAttention = summarizeRecommendations(synthesizedRecommendations, parkedInsights).attention;
+    const facts: ProjectStageFacts = {
+      ...f,
+      import: {
+        tablesReadFailed: documentTablesReadFailed,
+        files: f.import.files.map((file) => {
+          const row = rowOf.get(file.documentId);
+          return row ? { ...file, previewUnverified: row.previewUnverified ?? false, flaggedChecks: row.flaggedChecks ?? 0, linksToCheck: row.linksToCheck ?? file.linksToCheck } : file;
+        }),
+      },
+      crosstabs: { ...f.crosstabs, tablesReadFailed: documentTablesReadFailed },
+      findings: { ...f.findings, attention: findingsOverview.attention },
+      insights: { ...f.insights, support: { stale: insightSupport.stale, invalid: insightSupport.invalid, unknown: insightSupport.unknown } },
+      recommendations: { ...f.recommendations, attention: recAttention },
+    };
+    return { ok: true as const, sections: sectionStatuses(facts) };
+  })();
+  // The one-line status at the top of each module's page, from the same statuses as the overviews.
+  const moduleBar = (moduleId: string) => {
+    const section = SECTIONS.find((x) => x.modules.some((m) => m.id === moduleId))!;
+    const status = sectionState.ok ? (sectionState.sections.find((x) => x.id === section.id)?.modules.find((m) => m.id === moduleId)?.status ?? null) : null;
+    return <ModuleStatusBar moduleId={moduleId} status={status} overview={{ navId: section.navId, label: section.label }} />;
+  };
 
   timing.bodyBuilt();
   return (
@@ -5396,7 +5462,18 @@ export default async function RunPage({
         <RunNav sections={navSections} projects={projectList} currentProjectId={id} />
 
         <div className="px-6 pb-6 pt-2">
+          {SECTIONS.map((s) => (
+            <SectionPanel key={s.navId} id={s.navId}>
+              <SectionDashboard
+                navId={s.navId}
+                section={sectionState.ok ? (sectionState.sections.find((x) => x.id === s.id) ?? null) : null}
+                error={sectionState.ok ? null : sectionState.error}
+              />
+            </SectionPanel>
+          ))}
+
           <SectionPanel id="upload">
+            {moduleBar("upload")}
             <ImportDetailProvider rows={importRows}>
             {/* Grant, 2026-10-20 (his Sources prototype): the heading with Add files, then the sources on
                 the left (search, filters, states) and the selected source on the right, in tabs. The
@@ -5414,7 +5491,7 @@ export default async function RunPage({
                 leftMaxShare={0.5}
                 left={<SourcesPane count={importRows.length} />}
                 middle={
-                  <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected source">
+                  <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected source" data-stage-anchor="selected-source">
                     <SelectedFileDetail />
                   </section>
                 }
@@ -5546,6 +5623,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="objective">
+            {moduleBar("objective")}
             {/* One page for objectives (Grant, 2026-10-22, prototype for 3001): the context form as a
                 foldable band across the top; below it the objectives list (the stated objectives with
                 Setup's Edit and Delete, then suggestions waiting for review), the selected objective's
@@ -5558,6 +5636,7 @@ export default async function RunPage({
               every objective scored side by side.
             </p>
             <ObjectiveSelectionProvider>
+              <div data-stage-anchor="objective-context">
               <ThreePane
                 storageKey="objectives-one-page"
                 leftMaxShare={0.5}
@@ -5615,6 +5694,7 @@ export default async function RunPage({
                 }
                 middle={
                   <Pane side="plain" title="Objective detail">
+                    <div data-stage-anchor="objective-detail" />
                     <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
                     <SelectedObjectiveCoverage
                       validations={objectiveValidations}
@@ -5655,10 +5735,12 @@ export default async function RunPage({
                   </Pane>
                 }
               />
+              </div>
             </ObjectiveSelectionProvider>
           </SectionPanel>
 
           <SectionPanel id="research-quality">
+            {moduleBar("research-quality")}
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">Research quality review</h2>
             <p className="mb-2 max-w-3xl text-sm text-muted">
               Rate how well a brief or a proposal is written against good research practice, with a score for each part and what
@@ -5668,16 +5750,20 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="crosstabs">
+            {moduleBar("crosstabs")}
             {/* Grant's review, 2026-10-20: straight into the crosstab workspace, the file chosen in its
                 header (CrosstabsSection says where each part of the old gateway page went). */}
-            <CrosstabsSection
-              runId={id}
-              findings={findings.length}
-              datasets={dataFileOptions()}
-            />
+            <div data-stage-anchor="crosstab-workspace">
+              <CrosstabsSection
+                runId={id}
+                findings={findings.length}
+                datasets={dataFileOptions()}
+              />
+            </div>
           </SectionPanel>
 
           <SectionPanel id="analytics">
+            {moduleBar("analytics")}
             {/* Grant's review, 2026-10-20: one header with the data file chooser and a grid of the
                 analyses, each opening its own workspace with "All analytics" to come back. */}
             <DataFileSection
@@ -5711,6 +5797,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="coding">
+            {moduleBar("coding")}
             {/* Grant, 2026-10-20: the Sources workspace style, one transcript at a time. */}
             <DocumentPicker
               title="Coding"
@@ -5758,6 +5845,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="reports">
+            {moduleBar("reports")}
             {/* Grant, 2026-10-20: the Sources workspace style, one report at a time. */}
             <DocumentPicker
               title="Secondary analysis"
@@ -5792,6 +5880,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="findings">
+            {moduleBar("findings")}
             <h2 className="mb-0.5 text-lg font-semibold text-foreground">
               Findings
             </h2>
@@ -5818,6 +5907,7 @@ export default async function RunPage({
 
 
           <SectionPanel id="synthesized">
+            {moduleBar("synthesized")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Synthesized insights
             </h2>
@@ -5831,6 +5921,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="decisions">
+            {moduleBar("decisions")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Business decisions
             </h2>
@@ -5838,6 +5929,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="recommendations">
+            {moduleBar("recommendations")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Recommendations
             </h2>
@@ -5845,6 +5937,7 @@ export default async function RunPage({
           </SectionPanel>
 
           <SectionPanel id="insights-report">
+            {moduleBar("insights-report")}
             <h2 className="mb-2 text-lg font-semibold text-foreground">
               Insights report
             </h2>

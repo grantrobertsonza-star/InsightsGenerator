@@ -34,6 +34,7 @@ import {
   type StoredProcessingStatus,
 } from "@/lib/importSources";
 import type { SegmentMode } from "@/lib/qualCoding";
+import { importFileLink, scrollToAnchor, type ImportOpenRequest } from "./stageLinks";
 import type {
   InterviewStyle,
   SetupSuggestion,
@@ -125,6 +126,10 @@ export type SourceRow = {
   typeGroup?: SourceGroup;
   /** The tabs after Preview and Setup, in order. */
   panels: SourcePanel[];
+  /** Import checks flagged Check or Problem (the Data quality tab's count), for the stage status. */
+  flaggedChecks?: number;
+  /** Questions whose suggested links wait for confirmation (the links tab's count), for the stage status. */
+  linksToCheck?: number;
   initial: TranscriptSetup | null;
   /** Transcripts: migration 0107 is applied, so the wave and Undo accept can be saved. */
   waveAvailable?: boolean;
@@ -178,6 +183,18 @@ export function ImportDetailProvider({ rows, children }: { rows: Row[]; children
     });
   }, []);
   const selectedId = rows.some((r) => r.documentId === chosenId) ? chosenId : (rows[0]?.documentId ?? null);
+  // A link from a section dashboard (accept this file's setup) opens the source at that tab,
+  // whether it was asked for before Import was first opened or after.
+  useEffect(() => {
+    const open = (req: ImportOpenRequest) => {
+      setChosenId(req.documentId);
+      if (req.tab) setTab(req.tab);
+      scrollToAnchor("selected-source");
+    };
+    const waiting = importFileLink.takePending();
+    if (waiting) open(waiting);
+    return importFileLink.subscribe(open);
+  }, []);
   return (
     <FileDetailContext.Provider value={{ selectedId, select: setChosenId, rows, tab, setTab, reports, report }}>
       {children}
@@ -492,6 +509,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
   const [error, setError] = useState<string | null>(null);
   const [layoutChanged, setLayoutChanged] = useState(false);
   const [autoAccepted, setAutoAccepted] = useState(false);
+  const [autoFailed, setAutoFailed] = useState(false);
   const router = useRouter();
   const autoRan = useRef(false);
   const readRan = useRef(false);
@@ -527,7 +545,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         // loaded - don't let this default-on-first-view save stomp it; just pick up
         // whatever is actually there now.
         router.refresh();
-      }
+      } else setAutoFailed(true);
     });
   }, [row.dataSetup, row.documentId, runId, router]);
 
@@ -570,7 +588,11 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
     } else setError(r.error);
   }
 
-  useReportSetup(row.documentId, pending ? "saving" : choice.accepted ? "accepted" : "needs_review", choice.wave ?? null, readError);
+  // While the first-view acceptance above is on its way, the file is being saved, not waiting for
+  // review (the stage status block would otherwise ask for an acceptance already in flight). A
+  // failed attempt leaves it needing review.
+  const autoPending = row.dataSetup === null && !autoAccepted && !autoFailed;
+  useReportSetup(row.documentId, pending || autoPending ? "saving" : choice.accepted ? "accepted" : "needs_review", choice.wave ?? null, readError);
 
   return (
     <div className="flex flex-col gap-4" data-testid="setup-form">

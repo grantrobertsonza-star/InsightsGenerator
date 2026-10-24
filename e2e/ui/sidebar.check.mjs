@@ -33,7 +33,8 @@ test("the sidebar's stages, Objectives tabs, split Cross tabs and Analytics, and
   await expect(menu.getByLabel("Current project")).toHaveValue(run.id);
   expect(await menu.getByRole("group").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Prepare", "Analyse", "Develop findings", "Deliver", "Tools"]);
   const labels = await menu.locator("[data-nav-label]").allInnerTexts();
-  expect(labels.slice(0, 12)).toEqual(["Import data", "Research quality", "Objectives", "Business decisions", "Cross tabs", "Analytics", "Coding", "Secondary analysis", "Findings", "Insights", "Recommendations", "Insights report"]);
+  // Each stage opens with its overview (Grant, 2026-10-23).
+  expect(labels.slice(0, 16)).toEqual(["Prepare overview", "Import data", "Research quality", "Objectives", "Business decisions", "Analyse overview", "Cross tabs", "Analytics", "Coding", "Secondary analysis", "Develop overview", "Findings", "Insights", "Deliver overview", "Recommendations", "Insights report"]);
 
   // 3. Objectives: one entry, two tabs, highlighted on both.
   const objectives = menu.getByRole("button", { name: /^Objectives$/ });

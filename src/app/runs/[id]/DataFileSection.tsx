@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CROSSTAB_STATE_NOTE, initialCrosstabDataset, type CrosstabDatasetState } from "@/lib/crosstabEntry";
 import { useGoToSection } from "./RunShell";
+import { dataFileLink } from "./stageLinks";
 
 export type DataFileOption = {
   id: string;
@@ -10,6 +11,9 @@ export type DataFileOption = {
   state: CrosstabDatasetState;
   /** Tables saved for this file (drafts and committed). */
   savedTables: number;
+  /** Of those, drafts not yet committed and committed tables, for the stage status. */
+  draftTables?: number;
+  committedTables?: number;
   /**
    * What the section shows for this file, prepared on the server: for a file that cannot be opened
    * (setup to accept, aggregated tables), its own controls; for an open file, when the section has
@@ -96,6 +100,24 @@ export default function DataFileSection({
     setOpened((o) => (currentId && !o.includes(currentId) ? [...o, currentId] : o));
     writeLastUsed(runId, id);
   };
+
+  // A link from a section dashboard chooses its file here, as the header's chooser does.
+  // Subscribed on every render (no dependency list), so the handler always sees the current files
+  // and choice; subscribing is cheap.
+  useEffect(() => {
+    // A request from before this section first mounted is taken once it has.
+    const timer = window.setTimeout(() => {
+      const waiting = dataFileLink.takePending();
+      if (waiting && datasets.some((d) => d.id === waiting)) choose(waiting);
+    });
+    const unsubscribe = dataFileLink.subscribe((id) => {
+      if (datasets.some((d) => d.id === id)) choose(id);
+    });
+    return () => {
+      window.clearTimeout(timer);
+      unsubscribe();
+    };
+  });
 
   const selector =
     datasets.length > 0 ? (
