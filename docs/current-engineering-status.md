@@ -1,6 +1,20 @@
 # Current engineering status
 
-Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): the section dashboards and stage status from the 3001 prototype merged into main at Grant's request (`d5ee929`, `docs/dashboards-merge-handover-2026-10-24.md`) and B15-F01 (a grouped converted copy shows its latest attempt's error; `f95999d`, `docs/batch16-handover-2026-10-24.md`), implemented, ready for review with the docs commit after them. No migration. Full library exit 0, 1,592 passed / 72 skipped, no Errors line; full native on the merge exit 0, 95 passed / 1 skipped. No push, deployment or existing-database migration.
+Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch17 at Grant's request (technical documents for the Research assistant with migration 0112, its weighting answer, the transcript "Coding incomplete" wording, later additions and the Knowledge base updates; `docs/batch17-handover-2026-10-24.md`) and Codex's two S3 findings M-B16-01 and M-B16-02, implemented, ready for review. TP500-F01/F02/F03 and IP1000-F01 to F04 remain open: Grant chose (24 October, 14:31) to repair them by making the Python reader the one reader for CSV and Excel previews, in a later batch. Migration 0112 is for Grant to apply. Full library exit 0, 1,608 passed / 72 skipped; full native 96 passed / 1 failed (timing-dependent, passed 3 of 3 alone) / 1 skipped. No push, deployment or existing-database migration.
+
+## Claude: batch17 and M-B16-01/M-B16-02, main copy (2026-10-24)
+
+Implemented, ready for review: `f35034f` (batch17), `4224d5d` (M-B16-01, M-B16-02) and this docs commit. Checks and limits in `docs/batch17-handover-2026-10-24.md`. Migration 0112 (`supabase/migrations/0112_technical_documents.sql`) for Grant to apply in Studio. Codex's previous status line is kept in `.fnd001/backup-status-1024c/`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "**READY_FOR_CLAUDE — 0 observed S1 / 7 S2 / 2 S3 open cumulatively; NOT READY for release.** All three queued investigations are complete: second 500 probes (432 pass / 68 fail at `5f67734`), dashboard/batch16 review (B15-F01 CLOSED; full library 1,591 passed / 73 skipped, native 95 passed / 1 skipped, exit0 at `3184b06`), and 1,000 import permutations (565 pass / 435 fail at `3184b06`). Four new S2 import findings IP1000-F01/F02/F03/F04 join TP500-F01/F02/F03; M-B16-01/M-B16-02 remain S3. Handoffs and exact evidence linked below. No application repair, migration of an existing database, commit, push or deployment."
+
+## Codex: 1,000-import accuracy investigation (2026-10-24)
+
+[Claude handoff](independent-import1000-review-main-2026-10-24.md), [1,000-case ledger](import1000-cases-2026-10-24.md). Eight format variants, 1,000 distinct sources, final 565 pass / 435 fail. New S2: text-code coercion, date meaning lost, UTF-8 corruption without BOM and supplemental malformed-CSV publication. Earlier naming defects confirmed; the correction-map defect remains open separately. Four rendered native accuracy repros fail, as retained. Numeric-to-numeric cell receipts show 0 ULP difference; that does not cure text/date/identity failures. Verified review infrastructure removed, 1,144 archive files unchanged. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: second 500 probes and dashboard/batch16 review (2026-10-24)
+
+Handoffs: [500-permutation review](independent-trust500b-review-main-2026-10-24.md), [500-case ledger](trust500b-cases-2026-10-24.md), [dashboard/batch16 review](independent-dashboards-batch16-review-main-2026-10-24.md). Three independent S2 identity/persistence findings remain open; two separate S3 documentation/dead-import findings. Original B15-F01 repro and recovery pass. Last accepted release scope `1e0f2a3`, baseline **37 Closed / 6 Blocked**, unchanged.
 
 ## Claude: dashboards merge and batch16 (B15-F01), main copy (2026-10-24)
 
