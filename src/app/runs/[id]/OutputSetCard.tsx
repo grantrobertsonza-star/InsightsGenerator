@@ -50,7 +50,7 @@ function FileRow({ runId, file, onError }: { runId: string; file: OutputFile; on
         disabled={pending}
         className="shrink-0 rounded-lg border border-border px-2 py-1 text-[11px] text-muted hover:border-danger hover:text-danger disabled:opacity-50"
         onClick={() => {
-          if (!confirm(`Remove ${file.name} from this set?`)) return;
+          if (!confirm(`Remove ${file.name} from this set? Its findings are archived. It stays in the bin for 30 days, where you can restore it or erase it now.`)) return;
           start(async () => {
             const r = await deleteOutputFileAction(runId, file.id);
             if (!r.ok) onError(r.error);
@@ -164,7 +164,7 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
           disabled={pending}
           className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:border-danger hover:text-danger disabled:opacity-50"
           onClick={() => {
-            if (!confirm(`Remove the whole set "${set.name}" and its ${set.files.length} files?`)) return;
+            if (!confirm(`Remove the whole set "${set.name}" and its ${set.files.length} files? Their findings are archived. The files stay in the bin for 30 days, where you can restore them (the set comes back with the first) or erase them now.`)) return;
             start(async () => {
               const r = await deleteOutputSetAction(runId, set.id);
               if (!r.ok) setError(r.error);

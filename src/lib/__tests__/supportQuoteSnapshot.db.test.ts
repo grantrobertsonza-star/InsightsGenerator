@@ -163,7 +163,7 @@ describe.skipIf(!TEST_DATABASE_URL)("GTR-02 quote grounding reads one coherent s
     // The version before the deletion, read whole: the old code mixed it with the deleted text and
     // reported "not checked".
     expect(during.status).toBe("current");
-    expect((await db.pool.query("select count(*)::int as n from documents where id = $1", [f.doc])).rows[0].n).toBe(0);
+    expect((await db.pool.query("select count(*)::int as n from documents where id = $1 and run_id = $2", [f.doc, run])).rows[0].n).toBe(0);
     // A fresh read sees the deletion: no longer valid, and the Accepted deck leaves it out with the reason.
     const after = await synth(f.si);
     expect(after.status).toBe("invalid");

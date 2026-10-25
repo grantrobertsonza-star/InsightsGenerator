@@ -16,7 +16,7 @@ export async function GET(_request: Request) {
     const result = await client.query(
       `select id, business_problem, research_objective, decision_statement, evidence_threshold, audience,
               status, created_at
-       from runs order by created_at desc`
+       from runs where (to_jsonb(runs)->>'bin_of') is null order by created_at desc`
     );
     return result.rows;
   });

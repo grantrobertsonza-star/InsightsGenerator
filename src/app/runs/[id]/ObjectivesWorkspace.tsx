@@ -1,5 +1,6 @@
 "use client";
 
+import SourceRemovedTag from "./SourceRemovedTag";
 import { type ReactNode } from "react";
 import {
   COLUMNS,
@@ -133,6 +134,7 @@ function Detail({ runId, row, index }: { runId: string; row: ObjectiveRow; index
           <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${accent.num}`}>{index + 1}</span>
           <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tag.cls}`}>{tag.label}</span>
           {row.edited && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Edited</span>}
+          <SourceRemovedTag removedAt={row.sourceRemovedAt} />
           {row.scores && (
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tierClass[row.scores.tier]}`}>
               {tierLabel[row.scores.tier]} {row.scores.total}/20

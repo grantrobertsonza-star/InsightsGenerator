@@ -164,7 +164,8 @@ describe.skipIf(!TEST_DATABASE_URL)("GT1000-F01 driver finding provenance (real 
     await deleteDocument(run, doc);
 
     expect(Number((await one("select count(*) as n from findings where stated_stats->>'analysisId'=$1", [gone.id])).n)).toBe(0);
-    expect(Number((await one("select count(*) as n from driver_analyses where id=$1", [gone.id])).n)).toBe(0);
+    // Batch 25: the analysis moves to the bin with its file (restorable), so it is out of this project.
+    expect(Number((await one("select count(*) as n from driver_analyses where id=$1 and run_id=$2", [gone.id, run])).n)).toBe(0);
     const after = await support(deleted.si);
     expect(after.status).toBe("invalid");
     expect((await support(ordinaryInsight.si)).status).toBe("invalid");

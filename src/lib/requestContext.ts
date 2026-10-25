@@ -151,7 +151,9 @@ export async function runBelongsToTenant(tenantId: string, runId: string): Promi
   try {
     await client.query("begin read only");
     await client.query("select set_config('app.current_tenant_id', $1, true)", [tenantId]);
-    const found = (await client.query(`select 1 from runs where id = $1 and tenant_id = $2`, [runId, tenantId])).rowCount === 1;
+    // A project's bin (migration 0115, documentBin.ts) is a run too, but never a project anyone opens.
+    // Read through to_jsonb so this works before the column exists.
+    const found = (await client.query(`select 1 from runs where id = $1 and tenant_id = $2 and (to_jsonb(runs)->>'bin_of') is null`, [runId, tenantId])).rowCount === 1;
     await client.query("commit");
     return found;
   } catch (error) {

@@ -72,6 +72,9 @@ function makeFakeDb(rows: Row[]) {
       if (s.startsWith("update runs set evidence_synthesis")) {
         return { rows: [] };
       }
+      // Migration 0115's source_document_ids: answered as not applied here (the files a suggestion is
+      // drawn from are checked on a real database, decisionRefreshReconciliation.db.test.ts).
+      if (s.startsWith("select count(*)::int as n from information_schema.columns")) return { rows: [{ n: 0 }] };
       if (s === "begin") return { rows: [] };
       if (s === "commit") return { rows: [] };
       if (s === "rollback") return { rows: [] };

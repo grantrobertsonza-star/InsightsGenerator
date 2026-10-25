@@ -181,10 +181,10 @@ describe.skipIf(!TEST_DATABASE_URL)("replacement and duplicate support reach the
   });
 
   it("duplicates: removing one of two duplicate sources marks the insight no longer valid; wording survives; control unaffected", async () => {
-    // The app's own delete (findings first, then the document, then storage cleanup).
+    // The app's own removal (findings archived, the file moved to the project's bin).
     const { deleteDocument } = await import("../documentActions");
     await deleteDocument(run, ids.reportB);
-    expect(await rows("select id from documents where id = $1", [ids.reportB])).toEqual([]);
+    expect(await rows("select id from documents where id = $1 and run_id = $2", [ids.reportB, run])).toEqual([]);
     const support = await csvSupport();
     expect(support["Loyalty insight"]).toMatch(/^Support no longer valid/);
     expect(support["Control insight"]).toBe("Support current");

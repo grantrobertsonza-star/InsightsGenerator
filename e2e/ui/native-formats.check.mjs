@@ -77,7 +77,8 @@ test("SAV and DTA: valid files calculate; truncated files fail visibly and recov
       const doc = (await db.query("select id from documents where run_id=$1", [badRun.id])).rows[0].id;
       expect(Number((await db.query("select count(*) from document_tables where document_id=$1", [doc])).rows[0].count)).toBe(0);
       await deleteFirstSource(page);
-      await expect.poll(async () => Number((await db.query("select count(*) from documents where id=$1", [doc])).rows[0].count), { timeout: 30_000 }).toBe(0);
+      // Removal moves the file to the project's bin (batch 25), so it leaves this project.
+      await expect.poll(async () => Number((await db.query("select count(*) from documents where id=$1 and run_id=$2", [doc, badRun.id])).rows[0].count), { timeout: 30_000 }).toBe(0);
       badRun.files = [];
       await page.goto(badRun.url, { waitUntil: "networkidle" });
       await ui.upload(badRun, path.join(dir, `valid.${ext}`), "table");

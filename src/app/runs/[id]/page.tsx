@@ -66,6 +66,7 @@ import { loadFailedBriefFill, loadLastBriefFill, loadObjectiveSources, sourceLab
 import AddFilesPanel from "./AddFilesPanel";
 import { listProjects } from "@/lib/projectList";
 import StorageCleanupNotice from "./StorageCleanupNotice";
+import BinNotice from "./BinNotice";
 import StatedObjectivesList from "./StatedObjectivesList";
 import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
@@ -342,7 +343,7 @@ async function getRun(runId: string): Promise<Run | null> {
         `select id, project_name, business_problem, research_objective, decision_statement,
                 evidence_synthesis, audience, status, entry_point, initial_research_objective,
                 stated_objectives_text, program_id, wave_label
-         from runs where id = $1`,
+         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
         [runId],
       );
       return result.rows[0] ?? null;
@@ -354,7 +355,7 @@ async function getRun(runId: string): Promise<Run | null> {
         `select id, project_name, business_problem, research_objective, decision_statement,
                 evidence_synthesis, audience, status, entry_point, initial_research_objective,
                 program_id, wave_label
-         from runs where id = $1`,
+         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
         [runId],
       );
       const row = result.rows[0];
@@ -1040,6 +1041,7 @@ type ObjectiveCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  source_removed_at: string | null;
 };
 
 async function getObjectiveCandidates(
@@ -1048,8 +1050,9 @@ async function getObjectiveCandidates(
   const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ObjectiveCandidate>(
-      `select id, candidate_text, rationale, source, status, edited
-       from objective_candidates
+      // source_removed_at (migration 0115) read through to_jsonb so the page loads before it is applied.
+      `select id, candidate_text, rationale, source, status, edited, to_jsonb(c)->>'source_removed_at' as source_removed_at
+       from objective_candidates c
        where run_id = $1
        order by created_at`,
       [runId],
@@ -1065,6 +1068,7 @@ type DecisionCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  source_removed_at: string | null;
 };
 
 async function getDecisionCandidates(
@@ -1073,8 +1077,9 @@ async function getDecisionCandidates(
   const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<DecisionCandidate>(
-      `select id, candidate_text, rationale, source, status, edited
-       from decision_candidates
+      // source_removed_at (migration 0115) read through to_jsonb so the page loads before it is applied.
+      `select id, candidate_text, rationale, source, status, edited, to_jsonb(c)->>'source_removed_at' as source_removed_at
+       from decision_candidates c
        where run_id = $1
        order by created_at`,
       [runId],
@@ -2079,7 +2084,7 @@ async function refreshObjectiveValidation(runId: string) {
     const has = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: boolean }>(
         `select (coalesce(trim(research_objective), '') <> '' or coalesce(trim(decision_statement), '') <> '') as n
-         from runs where id = $1`,
+         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
         [runId],
       );
       return r.rows[0]?.n === true;
@@ -4353,6 +4358,7 @@ export default async function RunPage({
           source: c.source,
           status: c.status,
           edited: c.edited,
+          sourceRemovedAt: c.source_removed_at,
           similarTo: similarToOf(c),
           scores:
             q && c.status === "accepted"
@@ -5496,6 +5502,7 @@ export default async function RunPage({
                 list can be collapsed, and the divider dragged; both are remembered for Import alone. */}
             <AddFilesPanel runId={id} />
             <StorageCleanupNotice runId={id} />
+            <BinNotice runId={id} />
             {importRows.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border bg-white p-6 text-sm text-muted">
                 Nothing here yet. Use Add files to add a data file, a report, a brief or a transcript.
@@ -6151,6 +6158,7 @@ const findingHistoryReasonLabel: Record<string, string> = {
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
   wave_recompare: "Wave comparison re-run",
+  source_removed: "Its file was removed",
 };
 
 const findingHistoryStatusLabel: Record<string, string> = {

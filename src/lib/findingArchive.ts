@@ -13,7 +13,7 @@ async function historyNoteAvailable(client: PoolClient): Promise<boolean> {
 }
 
 export type ArchiveReason =
-  "regenerate_unreviewed" | "full_reprocess" | "manual_reextract" | "wave_recompare";
+  "regenerate_unreviewed" | "full_reprocess" | "manual_reextract" | "wave_recompare" | "source_removed";
 
 /**
  * Before any delete that would remove findings (and, by cascade, their

@@ -1,5 +1,6 @@
 "use client";
 
+import SourceRemovedTag from "./SourceRemovedTag";
 import { useState, useTransition } from "react";
 import { attempt } from "./actionFailure";
 import { Pane, ThreePane } from "./ThreePane";
@@ -29,6 +30,8 @@ type DecisionCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  /** When a file this decision was drawn from was removed to the bin (migration 0115). */
+  source_removed_at?: string | null;
 };
 
 const sourceLabel: Record<DecisionCandidate["source"], string> = {
@@ -118,6 +121,7 @@ function CandidateCard({ runId, candidate, onChanged }: { runId: string; candida
               Edited before accepting
             </span>
           )}
+          <SourceRemovedTag removedAt={candidate.source_removed_at} />
           {isAccepted && (
             <span className="inline-block rounded bg-success px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
               Accepted decision

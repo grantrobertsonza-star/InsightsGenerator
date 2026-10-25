@@ -1,5 +1,5 @@
 // Counts behind the GT-010 delete confirmation (documentDeletionMessage.ts), per document, for one
-// run: the findings deleteDocument (documentActions.ts) removes, which are those with
+// run: the findings removing the file (documentBin.removeDocumentToBin) archives, which are those with
 // source_document_id = the document or source_table_id on one of its tables (plus legacy driver
 // findings reached through their saved analysis, driverFindingSource.ts), and the researcher
 // work and insights that go with them. One read. A failed read is reported as unavailable, so every
@@ -8,6 +8,12 @@
 import { withTenantRead } from "./db";
 import type { DocumentDeletionImpact } from "./documentDeletionMessage";
 import { driverAnalysesPresent, legacyDriverFindingOf } from "./driverFindingSource";
+import {
+  candidateSourceColumnAvailable,
+  DECISION_REMOVED_WITH_FILE,
+  KEPT_AND_MARKED,
+  OBJECTIVE_REMOVED_WITH_FILE,
+} from "./candidateSourceDocuments";
 
 export type DeletionImpactResult = { available: boolean; byDocument: Map<string, DocumentDeletionImpact> };
 
@@ -43,7 +49,36 @@ export async function loadDocumentDeletionImpact(tenantId: string, runId: string
           group by df.document_id`,
         [runId],
       );
-      return { available: true, byDocument: new Map(r.rows.map((row) => [row.document_id, { findings: row.findings, reviewed: row.reviewed, notes: row.notes, insights: row.insights }])) };
+      const byDocument = new Map<string, DocumentDeletionImpact>(
+        r.rows.map((row) => [row.document_id, { findings: row.findings, reviewed: row.reviewed, notes: row.notes, insights: row.insights }]),
+      );
+      // The objectives and decisions side of a removal, by the rules documentBin applies
+      // (candidateSourceDocuments.ts). Before migration 0115 no suggestion records its file, so none is
+      // removed or marked and these counts are left out.
+      for (const [table, removed] of [
+        ["objective_candidates", OBJECTIVE_REMOVED_WITH_FILE],
+        ["decision_candidates", DECISION_REMOVED_WITH_FILE],
+      ] as const) {
+        if (!(await candidateSourceColumnAvailable(client, table))) continue;
+        const o = await client.query<{ document_id: string; suggestions: number; kept: number }>(
+          `select d.id as document_id,
+                  count(*) filter (where ${removed("c", "d.id")})::int as suggestions,
+                  count(*) filter (where ${KEPT_AND_MARKED("c", "d.id", removed)})::int as kept
+             from documents d join ${table} c on c.run_id = d.run_id and d.id = any(c.source_document_ids)
+            where d.run_id = $1
+            group by d.id`,
+          [runId],
+        );
+        for (const row of o.rows) {
+          const was = byDocument.get(row.document_id) ?? NONE;
+          byDocument.set(row.document_id, {
+            ...was,
+            suggestions: (was.suggestions ?? 0) + row.suggestions,
+            objectives: (was.objectives ?? 0) + row.kept,
+          });
+        }
+      }
+      return { available: true, byDocument };
     });
   } catch (error) {
     // Observable fallback: the server log says why the confirmation used general wording.

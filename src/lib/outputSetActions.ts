@@ -6,7 +6,8 @@ import { verifyAfterGenerate } from "./verifyAfterGenerate";
 import { withTenant } from "./db";
 import { deleteDocument } from "./documentActions";
 import { checkOutputSet, compareOutputSets, generateOutputFindings, mergeOutputSets, type StoredChecks } from "./outputAnalysisRun";
-import { requireTenantId } from "./requestContext";
+import { requireRequestContext, requireTenantId } from "./requestContext";
+import { removeOutputSetToBin } from "./documentBin";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -76,16 +77,10 @@ export async function saveOutputSetAction(
 }
 
 export async function deleteOutputSetAction(runId: string, setId: string): Promise<Result> {
-  const TENANT_ID = await requireTenantId();
   try {
-    const ids = await withTenant(TENANT_ID, async (client) => {
-      const r = await client.query<{ id: string }>("select id from documents where output_set_id = $1 and run_id = $2", [setId, runId]);
-      return r.rows.map((x) => x.id);
-    });
-    for (const id of ids) await deleteDocument(runId, id);
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query("delete from output_sets where id = $1 and run_id = $2", [setId, runId]);
-    });
+    const context = await requireRequestContext();
+    // To the bin, files and set together (documentBin.removeOutputSetToBin).
+    await removeOutputSetToBin(context.tenantId, runId, setId, context.userId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
   } catch (e) {

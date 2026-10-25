@@ -43,7 +43,8 @@ async function getRuns(): Promise<Run[]> {
     const runsPromise = client.query<
       Omit<Run, "findings_total" | "findings_rejected">
     >(
-      "select id, project_name, business_problem, research_objective, decision_statement, audience, status, entry_point, created_at from runs order by created_at desc",
+      // A project's bin is a run too (migration 0115); it is never listed. to_jsonb works before the column exists.
+      "select id, project_name, business_problem, research_objective, decision_statement, audience, status, entry_point, created_at from runs where (to_jsonb(runs)->>'bin_of') is null order by created_at desc",
     );
     const countsPromise = client.query<{
       run_id: string;

@@ -32,16 +32,16 @@ export async function sourceCount(page) {
   return page.getByTestId("source-row").count();
 }
 
-/** Deletes a source from its row's menu; the caller handles the confirm dialog, as before. */
+/** Removes a source (to the bin) from its row's menu; the caller handles the confirm dialog, as before. */
 export async function deleteSource(page, filename) {
   const row = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: `Select ${filename}`, exact: true }) });
   await row.getByLabel(`Actions for ${filename}`).click();
-  await row.getByRole("button", { name: "Delete document" }).click();
+  await row.getByRole("button", { name: "Remove file" }).click();
 }
 
-/** Deletes the first source in the list (the newest), for checks working on a one-file project. */
+/** Removes the first source in the list (the newest), for checks working on a one-file project. */
 export async function deleteFirstSource(page) {
   const row = page.getByTestId("source-row").first();
   await row.locator("summary").click();
-  await row.getByRole("button", { name: "Delete document" }).click();
+  await row.getByRole("button", { name: "Remove file" }).click();
 }

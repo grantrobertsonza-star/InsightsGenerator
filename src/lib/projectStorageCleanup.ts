@@ -95,7 +95,9 @@ export async function finishConvertedCopy(intent: { tenantId: string; id: string
  */
 export async function projectStoragePaths(client: PoolClient, tenantId: string, runId: string): Promise<string[]> {
   const docs = await client.query<{ storage_path: string | null; preview_storage_path: string | null }>(
-    "select storage_path, preview_storage_path from documents where run_id = $1 and tenant_id = $2",
+    // With the files in the project's bin (migration 0115), which is deleted with the project.
+    `select storage_path, preview_storage_path from documents
+      where tenant_id = $2 and (run_id = $1 or run_id in (select r.id from runs r where (to_jsonb(r)->>'bin_of') = $1::text))`,
     [runId, tenantId],
   );
   const pending = await client.query<{ detail: { storagePaths?: unknown } | null }>(

@@ -20,6 +20,7 @@ const reasonLabel: Record<string, string> = {
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
   wave_recompare: "Wave comparison re-run",
+  source_removed: "Its file was removed",
 };
 
 const statusLabel: Record<string, string> = {

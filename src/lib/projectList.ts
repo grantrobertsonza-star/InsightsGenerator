@@ -11,7 +11,7 @@ export async function listProjects(tenantId: string): Promise<ProjectListItem[]>
   return withTenantRead(tenantId, async (client) =>
     (
       await client.query<{ id: string; name: string | null }>(
-        "select id, coalesce(project_name, research_objective, business_problem) as name from runs where tenant_id = $1 order by created_at desc",
+        "select id, coalesce(project_name, research_objective, business_problem) as name from runs where tenant_id = $1 and (to_jsonb(runs)->>'bin_of') is null order by created_at desc",
         [tenantId],
       )
     ).rows.map((r) => ({ id: r.id, name: r.name?.trim() || "Untitled project" })),

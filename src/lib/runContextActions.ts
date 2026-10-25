@@ -1,5 +1,6 @@
 "use server";
 
+import { candidateSourceColumnAvailable } from "./candidateSourceDocuments";
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { readContextDocument } from "./extractFindings";
@@ -469,13 +470,20 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
 
     // Lines read from a brief or proposal say which one (briefFillRecord.loadObjectiveSources shows it).
     const rationale = fromDocument ? addedFromRationale(fill?.brief?.filename ?? null, fill?.proposal?.filename ?? null) : null;
+    // The documents these lines were read from (migration 0115): removing the only one of them takes an
+    // unreviewed suggestion with it and marks an accepted objective (documentBin). Typed lines have none.
+    const readFrom = fromDocument ? [fill?.brief?.id, fill?.proposal?.id].filter((v): v is string => Boolean(v)) : [];
+    const sourceColumn = await candidateSourceColumnAvailable(client, "objective_candidates");
     const addedIds: string[] = [];
     for (const line of newLines) {
       // Every line here is new to the project by objectiveIdentityKey (above).
       const inserted = await client.query<{ id: string }>(
-        `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-         values ($1, $2, $3, $4, 'researcher_authored', 'accepted') returning id`,
-        [TENANT_ID, runId, line, rationale ?? "Written or imported at project set-up."],
+        sourceColumn
+          ? `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status, source_document_ids)
+             values ($1, $2, $3, $4, 'researcher_authored', 'accepted', $5) returning id`
+          : `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+             values ($1, $2, $3, $4, 'researcher_authored', 'accepted') returning id`,
+        [TENANT_ID, runId, line, rationale ?? "Written or imported at project set-up.", ...(sourceColumn ? [readFrom.length ? readFrom : null] : [])],
       );
       addedIds.push(inserted.rows[0].id);
     }
@@ -484,9 +492,12 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
       // New to the project by objectiveIdentityKey and lineage (above); likely restatements of an
       // existing objective are shown beside it on Review (objectiveSimilarity.ts), never merged.
       const inserted = await client.query<{ id: string }>(
-        `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-         values ($1, $2, $3, $4, 'researcher_authored', 'pending') returning id`,
-        [TENANT_ID, runId, line, suggestionRationale],
+        sourceColumn
+          ? `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status, source_document_ids)
+             values ($1, $2, $3, $4, 'researcher_authored', 'pending', $5) returning id`
+          : `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+             values ($1, $2, $3, $4, 'researcher_authored', 'pending') returning id`,
+        [TENANT_ID, runId, line, suggestionRationale, ...(sourceColumn ? [readFrom.length ? readFrom : null] : [])],
       );
       addedIds.push(inserted.rows[0].id);
     }

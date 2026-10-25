@@ -1,5 +1,6 @@
 "use client";
 
+import SourceRemovedTag from "./SourceRemovedTag";
 import { useState, useTransition } from "react";
 import { attemptResult } from "./actionFailure";
 import {
@@ -41,6 +42,8 @@ export type ObjectiveRow = {
    * likely restates (objectiveSimilarity.likelyRestates), shown beside it. Never merged.
    */
   similarTo?: string | null;
+  /** When a file this objective was drawn from was removed to the bin (migration 0115). */
+  sourceRemovedAt?: string | null;
 };
 
 export const scoreCellClass: Record<number, string> = {
@@ -122,6 +125,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             Edited
           </span>
         )}
+        <SourceRemovedTag removedAt={row.sourceRemovedAt} />
         {row.similarTo && (
           // Shown while rolled up too, so a likely repeat is seen without opening each suggestion;
           // rolling down names the objective it looks like.
