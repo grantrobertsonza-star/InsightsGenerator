@@ -295,7 +295,7 @@ function ProjectRow({ run, overview }: { run: Run; overview: ProjectOverview | u
           </div>
         </Link>
         <div className="flex shrink-0 items-start gap-2">
-          <RenameRunButton name={run.project_name ?? run.research_objective ?? run.business_problem ?? ""} onRename={renameThisRun} />
+          <RenameRunButton name={run.project_name ?? run.research_objective ?? run.business_problem ?? ""} storedName={run.project_name} onRename={renameThisRun} />
           <DeleteRunButton action={deleteThisRun} />
         </div>
       </div>

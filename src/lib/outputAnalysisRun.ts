@@ -1,8 +1,10 @@
 // Runs the set-level checks and the finding readers for one output set:
 // loads each file's table from storage, calls the pure analysis, stores the
-// checks on the set and, on request, writes the findings.
+// checks on the set and, on request, writes the findings. Every entry point
+// checks that the set is the run's own first (Codex DI-F01, DI-F03).
 
 import * as XLSX from "xlsx";
+import type { PoolClient } from "pg";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant } from "./db";
 import { archiveAndReplaceFindings } from "./findingArchive";
@@ -44,7 +46,15 @@ function sheetToTable(buf: Buffer): Table | null {
   return null;
 }
 
-async function loadSetFiles(tenantId: string, runId: string, setId: string): Promise<SetFileData[]> {
+/**
+ * A set's files with their tables. `unreadable` names the files that should have a table (a table
+ * file of a table kind with a stored copy) but whose table could not be read: the download failed,
+ * the stored file is missing, or it held no table. Codex DI-F02: their earlier findings are kept,
+ * never retired by a reading that did not read them.
+ */
+type LoadedSet = { files: SetFileData[]; unreadable: Set<string> };
+
+async function loadSetFiles(tenantId: string, runId: string, setId: string): Promise<LoadedSet> {
   const docs = await withTenant(tenantId, async (client) => {
     const r = await client.query<{
       id: string; name: string; path: string | null; family: string | null; role: OutputRole | null; kind: OutputKind | null;
@@ -57,11 +67,13 @@ async function loadSetFiles(tenantId: string, runId: string, setId: string): Pro
     );
     return r.rows;
   });
-  return mapWithConcurrency(docs, 4, async (d) => {
+  const unreadable = new Set<string>();
+  const files = await mapWithConcurrency(docs, 4, async (d) => {
     const ext = extOf(d.name);
     const kind = d.kind ?? "other_table";
     let table: Table | null = null;
-    if (TABLE_EXT.has(ext) && !NO_TABLE_KINDS.has(kind) && d.storage_path) {
+    const tableExpected = TABLE_EXT.has(ext) && !NO_TABLE_KINDS.has(kind) && Boolean(d.storage_path);
+    if (tableExpected && d.storage_path) {
       try {
         const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(d.storage_path);
         if (!error && data) {
@@ -71,6 +83,7 @@ async function loadSetFiles(tenantId: string, runId: string, setId: string): Pro
       } catch {
         table = null;
       }
+      if (!table) unreadable.add(d.id);
     }
     return {
       id: d.id,
@@ -83,6 +96,7 @@ async function loadSetFiles(tenantId: string, runId: string, setId: string): Pro
       text: d.text,
     } satisfies SetFileData;
   });
+  return { files, unreadable };
 }
 
 /** Items of every questionnaire attached to the run, for suggesting wording behind term labels. Empty before migration 0060. */
@@ -100,19 +114,44 @@ async function loadQuestionnaireItems(tenantId: string, runId: string): Promise<
   }
 }
 
-async function storeChecks(tenantId: string, setId: string, value: StoredChecks) {
-  try {
-    await withTenant(tenantId, async (client) => {
-      await client.query("update output_sets set checks = $1 where id = $2", [JSON.stringify(value), setId]);
-    });
-  } catch {
-    // Migration 0062 not applied yet: the checks still show for this visit.
-  }
+/**
+ * Confirms that the set is this run's and this tenant's and locks it for the transaction; throws,
+ * before anything is read or written, when it is not (Codex DI-F01, DI-F03).
+ */
+async function lockOwnedSet(client: PoolClient, tenantId: string, runId: string, setId: string): Promise<void> {
+  const own = await client.query("select id from output_sets where id = $1 and run_id = $2 and tenant_id = $3 for update", [setId, runId, tenantId]);
+  if (!own.rows[0]) throw new Error("That output set is not in this project; it may have been removed. Reload the page.");
+}
+
+let checksColumn: boolean | null = null;
+/** Migration 0062's column. Its absence is the one case where checks are shown without being saved. */
+async function checksColumnAvailable(client: PoolClient): Promise<boolean> {
+  if (checksColumn) return true;
+  const r = await client.query<{ n: number }>(
+    "select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'output_sets' and column_name = 'checks'",
+  );
+  checksColumn = r.rows[0]?.n === 1;
+  return checksColumn;
+}
+
+/**
+ * Codex DI-F03: the checks were written by set id alone and every failure was taken for a missing
+ * migration, so a request naming another project's set overwrote that set's checks, and a failed
+ * write was reported as stored. Now the owned set is locked and the write must change its row; any
+ * failure is thrown. Only migration 0062's absence returns `saved: false` (shown for this visit,
+ * and said so on screen).
+ */
+async function storeChecks(client: PoolClient, tenantId: string, runId: string, setId: string, value: StoredChecks): Promise<boolean> {
+  if (!(await checksColumnAvailable(client))) return false;
+  const r = await client.query("update output_sets set checks = $1 where id = $2 and run_id = $3 and tenant_id = $4", [JSON.stringify(value), setId, runId, tenantId]);
+  if (r.rowCount !== 1) throw new Error("The checks could not be saved: the output set is no longer in this project. Reload the page.");
+  return true;
 }
 
 /** Runs the checks and stores them on the set. Writes no findings. */
-export async function checkOutputSet(tenantId: string, runId: string, setId: string): Promise<{ analysis: SetAnalysis; stored: StoredChecks }> {
-  const files = await loadSetFiles(tenantId, runId, setId);
+export async function checkOutputSet(tenantId: string, runId: string, setId: string): Promise<{ analysis: SetAnalysis; stored: StoredChecks; saved: boolean }> {
+  await withTenant(tenantId, (client) => lockOwnedSet(client, tenantId, runId, setId));
+  const { files } = await loadSetFiles(tenantId, runId, setId);
   const analysis = analyseSet(files, { items: await loadQuestionnaireItems(tenantId, runId) });
   const stored: StoredChecks = {
     analysedAt: new Date().toISOString(),
@@ -122,21 +161,56 @@ export async function checkOutputSet(tenantId: string, runId: string, setId: str
     findings: analysis.findings.length,
     generatedAt: null,
   };
-  await storeChecks(tenantId, setId, stored);
-  return { analysis, stored };
+  const saved = await withTenant(tenantId, async (client) => {
+    await lockOwnedSet(client, tenantId, runId, setId);
+    return storeChecks(client, tenantId, runId, setId, stored);
+  });
+  return { analysis, stored, saved };
 }
 
-/** Replaces the set's generated findings with a fresh set built from its evidence files. */
-export async function generateOutputFindings(tenantId: string, runId: string, setId: string): Promise<{ findings: number; checks: StoredChecks }> {
-  const files = await loadSetFiles(tenantId, runId, setId);
+/**
+ * Replaces the set's generated findings with a fresh set built from its evidence files.
+ *
+ * Codex DI-F02: a file whose table could not be read used to have its findings retired all the same,
+ * so an unreadable download removed reviewed findings and put nothing in their place. Now:
+ * - every file that should have a table is unreadable: nothing is retired or written, and the
+ *   reading fails with the files named, so it can be retried;
+ * - some are unreadable: the readable files' findings are replaced and the unreadable files keep
+ *   their findings (`kept`); the stored checks list them as unread, and the screen says so;
+ * - all readable: every file's findings are replaced, as before.
+ * The set is locked and checked as this run's first (DI-F01/F03), and the findings and the checks are
+ * written in one transaction.
+ */
+export async function generateOutputFindings(
+  tenantId: string,
+  runId: string,
+  setId: string,
+): Promise<{ findings: number; checks: StoredChecks; saved: boolean; keptFrom: string[] }> {
+  await withTenant(tenantId, (client) => lockOwnedSet(client, tenantId, runId, setId));
+  const { files, unreadable } = await loadSetFiles(tenantId, runId, setId);
+  const expectingTables = files.filter((f) => unreadable.has(f.id) || f.table);
+  if (expectingTables.length > 0 && expectingTables.every((f) => unreadable.has(f.id))) {
+    throw new Error(
+      `None of this set's table files could be read (${expectingTables.map((f) => f.name).join(", ")}), so no findings were replaced. ` +
+        "Try again; if it keeps failing, upload the files again.",
+    );
+  }
   const analysis = analyseSet(files, { items: await loadQuestionnaireItems(tenantId, runId) });
-  const wave = await withTenant(tenantId, async (client) => {
-    const r = await client.query<{ wave_label: string | null; name: string }>("select wave_label, name from output_sets where id = $1 and run_id = $2", [setId, runId]);
-    return r.rows[0] ?? { wave_label: null, name: "" };
-  });
   const names = new Map(files.map((f) => [f.id, f.name]));
-  await withTenant(tenantId, async (client) => {
+  const now = new Date().toISOString();
+  const stored: StoredChecks = {
+    analysedAt: now,
+    checks: analysis.checks,
+    unread: analysis.unread,
+    references: analysis.references.length,
+    findings: analysis.findings.length,
+    generatedAt: now,
+  };
+  const saved = await withTenant(tenantId, async (client) => {
+    await lockOwnedSet(client, tenantId, runId, setId);
+    const wave = (await client.query<{ wave_label: string | null; name: string }>("select wave_label, name from output_sets where id = $1 and run_id = $2", [setId, runId])).rows[0];
     for (const f of files) {
+      if (unreadable.has(f.id)) continue;
       await archiveAndReplaceFindings(client, { documentColumn: "source_document_id", documentId: f.id, onlyRejected: false, archiveReason: "manual_reextract" });
     }
     for (const f of analysis.findings) {
@@ -155,17 +229,9 @@ export async function generateOutputFindings(tenantId: string, runId: string, se
         ],
       );
     }
+    return storeChecks(client, tenantId, runId, setId, stored);
   });
-  const stored: StoredChecks = {
-    analysedAt: new Date().toISOString(),
-    checks: analysis.checks,
-    unread: analysis.unread,
-    references: analysis.references.length,
-    findings: analysis.findings.length,
-    generatedAt: new Date().toISOString(),
-  };
-  await storeChecks(tenantId, setId, stored);
-  return { findings: analysis.findings.length, checks: stored };
+  return { findings: analysis.findings.length, checks: stored, saved, keptFrom: files.filter((f) => unreadable.has(f.id)).map((f) => f.name) };
 }
 
 /**
@@ -191,7 +257,7 @@ export async function compareOutputSets(
   const a = meta.get(earlierId);
   const b = meta.get(laterId);
   if (!a || !b) throw new Error("One of the sets was not found.");
-  const [fa, fb] = await Promise.all([loadSetFiles(tenantId, runId, earlierId), loadSetFiles(tenantId, runId, laterId)]);
+  const [fa, fb] = (await Promise.all([loadSetFiles(tenantId, runId, earlierId), loadSetFiles(tenantId, runId, laterId)])).map((l) => l.files);
   const label = (m: { name: string; wave_label: string | null }) => m.wave_label?.trim() || m.name;
   const { findings, notes } = compareWaves({ id: earlierId, label: label(a), files: fa }, { id: laterId, label: label(b), files: fb });
   const pair = `${earlierId}:${laterId}`;
@@ -210,18 +276,32 @@ export async function compareOutputSets(
   return { findings: findings.length, notes };
 }
 
-/** Moves every file of one set into another and removes the emptied set. Refuses when two files share a path. */
+/**
+ * Moves every file of one set into another and removes the emptied set. Refuses when two files share a
+ * path. Codex DI-F01: both sets are locked and checked as this run's and this tenant's before anything
+ * is read or moved (a foreign or other-project destination used to be accepted, leaving this
+ * project's files pointing at another project's set); a missing source is refused rather than
+ * reported as nothing moved. Documents already pointing at a set outside their project are left as
+ * they are; they are not loaded with either set.
+ */
 export async function mergeOutputSets(tenantId: string, runId: string, fromId: string, intoId: string): Promise<number> {
   if (fromId === intoId) throw new Error("Pick two different sets.");
   return withTenant(tenantId, async (client) => {
+    // One lock order (by id) for both sets, so two merges of the same pair cannot deadlock.
+    const owned = await client.query<{ id: string }>(
+      "select id from output_sets where id = any($1::uuid[]) and run_id = $2 and tenant_id = $3 order by id for update",
+      [[fromId, intoId], runId, tenantId],
+    );
+    if (owned.rows.length !== 2) throw new Error("One of the sets is not in this project; it may have been removed. Reload the page.");
     const clash = await client.query(
       `select a.output_path from documents a join documents b on b.output_path = a.output_path
        where a.run_id = $1 and a.output_set_id = $2 and b.run_id = $1 and b.output_set_id = $3 limit 1`,
       [runId, fromId, intoId],
     );
     if (clash.rows.length > 0) throw new Error(`Both sets hold a file at ${clash.rows[0].output_path}, so they are not parts of one output. Compare them as waves instead.`);
-    const moved = await client.query("update documents set output_set_id = $3 where run_id = $1 and output_set_id = $2", [runId, fromId, intoId]);
-    await client.query("delete from output_sets where id = $1 and run_id = $2", [fromId, runId]);
+    const moved = await client.query("update documents set output_set_id = $3 where run_id = $1 and output_set_id = $2 and tenant_id = $4", [runId, fromId, intoId, tenantId]);
+    const removed = await client.query("delete from output_sets where id = $1 and run_id = $2 and tenant_id = $3", [fromId, runId, tenantId]);
+    if (removed.rowCount !== 1) throw new Error("The emptied set could not be removed, so nothing was moved. Try again.");
     return moved.rowCount ?? 0;
   });
 }

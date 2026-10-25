@@ -2,6 +2,16 @@ import type { PoolClient } from "pg";
 import { findingProvenanceAvailable } from "./findingProvenance";
 import { findingOriginalAvailable } from "./findingWording";
 
+let historyNoteColumn: boolean | null = null;
+async function historyNoteAvailable(client: PoolClient): Promise<boolean> {
+  if (historyNoteColumn) return true;
+  const r = await client.query<{ n: number }>(
+    "select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'finding_history' and column_name = 'researcher_note'",
+  );
+  historyNoteColumn = r.rows[0]?.n === 1;
+  return historyNoteColumn;
+}
+
 export type ArchiveReason =
   "regenerate_unreviewed" | "full_reprocess" | "manual_reextract" | "wave_recompare";
 
@@ -95,15 +105,32 @@ export async function archiveAndReplaceFindings(
     // FND-001 probe B (migration 0100): an archived edited finding keeps its extracted wording too.
     ((await findingOriginalAvailable(client)) ? ", original_extraction" : "");
 
+  // Codex DI-F07 (migration 0114): the history copy keeps the researcher's note, which used to be
+  // dropped with the live row. Before 0114 there is nowhere to keep it, so retiring any finding that
+  // has a note is refused (the transaction rolls back) rather than losing it; findings without a note
+  // are retired as before.
+  const noteColumn = (await historyNoteAvailable(client)) ? ", researcher_note" : "";
+  if (!noteColumn) {
+    const noted = await client.query(
+      `select 1 from findings where ${scope("")} ${effectiveStatusClause} and coalesce(btrim(researcher_note), '') <> '' limit 1`,
+      scopeArgs,
+    );
+    if (noted.rows.length > 0) {
+      throw new Error(
+        "These findings could not be replaced: one has a researcher note, and keeping notes in the finding history needs database migration 0114. Apply it and try again; nothing was changed.",
+      );
+    }
+  }
+
   await client.query(
     `insert into finding_history (
        tenant_id, run_id, original_finding_id, origin, finding_text, finding_kind, theme, status,
        source_document_id, source_table_id, source_page, source_quote, data_type, original_created_at,
-       archived_reason, pattern_type, stated_stats, quote_verified, extraction_caveats${provenanceColumns}
+       archived_reason, pattern_type, stated_stats, quote_verified, extraction_caveats${provenanceColumns}${noteColumn}
      )
      select tenant_id, run_id, id, origin, finding_text, finding_kind, theme, status,
             source_document_id, source_table_id, source_page, source_quote, data_type, created_at, $${reasonIx},
-            pattern_type, stated_stats, quote_verified, extraction_caveats${provenanceColumns}
+            pattern_type, stated_stats, quote_verified, extraction_caveats${provenanceColumns}${noteColumn}
      from findings
      where ${scope("")} ${effectiveStatusClause}
      on conflict (original_finding_id) do nothing`,

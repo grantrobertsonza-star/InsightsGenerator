@@ -2049,7 +2049,7 @@ export type CodingRunResult = {
   findings: { id: string; finding_text: string }[];
   /** ANA-QUAL-001: false means the researcher-visible completion status (ready/incomplete)
    * could NOT actually be written back - the database rejected it (pre-0088, or pre-0079 -
-   * see markDocumentProcessingStatus) - so whatever status this document is showing is
+   * see markDocumentProcessingStatus) or the document is no longer there (DI-F05) - so whatever status this document is showing is
    * stale, not a confirmation that today's run's real coverage was recorded. Callers
    * surface this rather than letting a stale "ready" stand uncorrected. */
   statusPersisted: boolean;

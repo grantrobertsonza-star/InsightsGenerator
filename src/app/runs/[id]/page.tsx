@@ -1929,6 +1929,8 @@ export type FindingHistoryRow = {
   archived_at: string;
   insight_headline: string | null;
   insight_quality_tier: string | null;
+  /** The researcher's note at retirement (migration 0114, Codex DI-F07); null when none or not kept. */
+  researcher_note: string | null;
 };
 
 /**
@@ -1959,7 +1961,9 @@ async function getFindingHistory(runId: string): Promise<FindingHistoryRow[]> {
            fh.archived_reason,
            fh.archived_at,
            ih.headline as insight_headline,
-           ih.quality_tier as insight_quality_tier
+           ih.quality_tier as insight_quality_tier,
+           -- Read through to_jsonb so the page works before migration 0114 adds the column.
+           to_jsonb(fh)->>'researcher_note' as researcher_note
          from finding_history fh
          left join insight_history ih on ih.original_finding_id = fh.original_finding_id
          where fh.run_id = $1
@@ -2248,7 +2252,7 @@ async function runReportExtraction(
         runId,
         documentId,
         new Error(
-          `extraction finished (${status}), but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+          `extraction finished (${status}), but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
         ),
       );
     }
@@ -2260,7 +2264,7 @@ async function runReportExtraction(
         runId,
         documentId,
         new Error(
-          "extraction failed, and its failed status could not be saved either (a database migration is pending) - do not trust this document's status badge",
+          "extraction failed, and its failed status could not be saved either (the document may have been removed, or a database migration is pending) - do not trust this document's status badge",
         ),
       );
     }
@@ -2369,7 +2373,7 @@ async function reapplyCodebookAction(
         runId,
         documentId,
         new Error(
-          "Coding finished, but its completion status could not be saved (a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+          "Coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
         ),
       );
     }
@@ -2435,7 +2439,7 @@ async function codeThemesAction(runId: string, documentId: string) {
         runId,
         documentId,
         new Error(
-          "Coding finished, but its completion status could not be saved (a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+          "Coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
         ),
       );
     }
@@ -2549,7 +2553,7 @@ async function importCodingAction(
     // advisory note from this import already does - one combined message, not two competing ones.
     if (!result.statusPersisted) {
       notes.push(
-        "coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge until that migration is applied and coding is re-run",
+        "coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge until that migration is applied and coding is re-run",
       );
     }
     if (result.quotesMatched < result.quotesTotal) {
@@ -2939,7 +2943,7 @@ async function processRunAction(
           const persisted = await setDocumentProcessingStatus(doc.id, status);
           if (!persisted) {
             errors.push(
-              `${doc.id}: extraction finished (${status}), but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+              `${doc.id}: extraction finished (${status}), but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
             );
           }
         } else if (doc.kind === "table") {
@@ -2957,7 +2961,7 @@ async function processRunAction(
             // comment. Pushed into the same batch `errors` array as a real processing
             // failure would be, so it reaches the same process_run_errors banner below.
             errors.push(
-              `${doc.id}: coding finished, but its completion status could not be saved (a database migration is pending) - do not trust this document's status badge`,
+              `${doc.id}: coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
             );
           }
         } else if (doc.kind === "evidence" || doc.kind === "technical") {
@@ -2996,7 +3000,7 @@ async function processRunAction(
         const persisted = await setDocumentProcessingStatus(doc.id, "failed");
         if (!persisted) {
           errors.push(
-            `${doc.id}: failed, and its failed status could not be saved either (a database migration is pending) - do not trust this document's status badge`,
+            `${doc.id}: failed, and its failed status could not be saved either (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
           );
         }
       } finally {
@@ -4424,6 +4428,11 @@ export default async function RunPage({
                 >
                   <td className="py-1.5 pr-4 text-foreground">
                     {row.finding_text}
+                    {row.researcher_note?.trim() ? (
+                      <div className="mt-0.5 text-xs text-muted" data-testid="history-researcher-note">
+                        Your note: {row.researcher_note}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-1.5 pr-4 text-foreground">
                     {findingHistoryStatusLabel[row.status] ?? row.status}

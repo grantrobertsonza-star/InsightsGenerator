@@ -212,7 +212,8 @@ export async function storeUploadedDocument(
  * incomplete, believed it had recorded that. Returning whether the write actually took
  * effect lets a caller that cares (extractThemes.ts's three apply-codebook call sites, in
  * particular - see their own comments) tell the two apart and say so, rather than
- * implying a status was saved when it was not.
+ * implying a status was saved when it was not. False covers both a pending migration and a
+ * document that is no longer there (DI-F05); the callers' messages name both.
  */
 export async function markDocumentProcessingStatus(
   tenantId: string,
@@ -223,10 +224,14 @@ export async function markDocumentProcessingStatus(
   status: "ready" | "incomplete" | "failed",
 ): Promise<boolean> {
   try {
-    await withTenant(tenantId, async (client) => {
-      await client.query("update documents set processing_status = $1 where id = $2", [status, documentId]);
+    // Codex DI-F05: true only when this tenant's document row was updated. A deleted document (for
+    // example removed while it was being processed) or another tenant's (row-level security hides it)
+    // updates no row, and that is reported as not recorded rather than as recorded.
+    const updated = await withTenant(tenantId, async (client) => {
+      const r = await client.query("update documents set processing_status = $1 where id = $2 and tenant_id = $3", [status, documentId, tenantId]);
+      return r.rowCount ?? 0;
     });
-    return true;
+    return updated === 1;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!/processing_status/.test(message)) throw error;

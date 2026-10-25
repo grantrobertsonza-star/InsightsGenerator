@@ -128,8 +128,20 @@ export function createFakeFindingsDb(initial: Partial<FakeDbState> = {}, options
         return { rows: [] };
       }
       if (s.startsWith("select set_config")) return { rows: [] };
+      // DI-F07: finding_history.researcher_note (migration 0114) is present in the migrated world.
+      if (s.includes("from information_schema.columns") && s.includes("researcher_note")) {
+        return { rows: [{ n: provenance ? 1 : 0 }] };
+      }
       if (s.includes("from information_schema.columns")) {
         return { rows: [{ n: provenance ? 10 : 0 }] };
+      }
+      // DI-F07, before 0114: is any finding about to be retired carrying a note?
+      if (s.startsWith("select 1 from findings where") && s.includes("btrim(researcher_note)")) {
+        const ids = Array.isArray(params[0]) ? (params[0] as string[]) : null;
+        const noted = state.findings.some(
+          (f) => (ids ? ids.includes(f.id as string) : f.source_document_id === params[0]) && String(f.researcher_note ?? "").trim() !== "",
+        );
+        return { rows: noted ? [{ "?column?": 1 }] : [] };
       }
 
       if (s.startsWith("select storage_path, source_filename from documents")) {

@@ -9,6 +9,7 @@ import {
   saveOutputSetAction,
 } from "@/lib/outputSetActions";
 import type { StoredChecks } from "@/lib/outputAnalysisRun";
+import type { OutputSetLabels } from "@/lib/outputSetActions";
 import { KIND_LABEL, ROLE_LABEL, roleCounts, type OutputRole } from "@/lib/outputClassify";
 import type { OutputFile, OutputSet } from "@/lib/outputSets";
 import { actionFailureMessage } from "./actionFailure";
@@ -74,6 +75,14 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
   const [checks, setChecks] = useState<StoredChecks | null>(set.checks);
   const [busy, setBusy] = useState<"check" | "findings" | null>(null);
   const [made, setMade] = useState<number | null>(null);
+  // Codex DI-F03 / DI-F02: whether the last checks were kept (not before migration 0062), and which
+  // unreadable files kept their earlier findings.
+  const [notSaved, setNotSaved] = useState(false);
+  const [keptFrom, setKeptFrom] = useState<string[]>([]);
+  // Codex DI-F04: the name and wave label as this card last knew them stored; a save sends them, and
+  // a refused save shows what is stored now.
+  const [opened, setOpened] = useState<OutputSetLabels>({ name: set.name, waveLabel: set.waveLabel ?? "" });
+  const [conflict, setConflict] = useState<OutputSetLabels | null>(null);
   const counts = roleCounts(set.files);
 
   function run(kind: "check" | "findings") {
@@ -87,6 +96,8 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
           return;
         }
         setChecks(r.checks);
+        setNotSaved(!r.saved);
+        setKeptFrom(r.keptFrom);
         if (kind === "findings") setMade(r.checks.findings);
       })
       .catch((e) => setError(actionFailureMessage(e)))
@@ -97,11 +108,22 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
   for (const f of set.files) families.set(f.family, [...(families.get(f.family) ?? []), f]);
   const ordered = [...families.entries()].sort((a, b) => (a[0] === "Other files" ? 1 : b[0] === "Other files" ? -1 : a[0].localeCompare(b[0])));
 
-  function save(n: string, w: string) {
-    if (n.trim() === set.name && w.trim() === (set.waveLabel ?? "")) return;
+  function save(n: string, w: string, against: OutputSetLabels = opened) {
+    if (n.trim() === against.name.trim() && w.trim() === against.waveLabel.trim()) return;
     start(async () => {
-      const r = await saveOutputSetAction(runId, set.id, n, w);
-      if (!r.ok) setError(r.error);
+      setError(null);
+      try {
+        const r = await saveOutputSetAction(runId, set.id, n, w, against);
+        if (r.ok) {
+          setOpened({ name: n.trim(), waveLabel: w.trim() });
+          setConflict(null);
+          return;
+        }
+        setError(r.error);
+        if ("conflict" in r) setConflict(r.current);
+      } catch (e) {
+        setError(actionFailureMessage(e));
+      }
     });
   }
 
@@ -185,6 +207,17 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
             reads reference categories from the console log. Findings carry those notes with them.
           </p>
         )}
+        {notSaved && (
+          <p className="text-[11px] text-amber-800" data-testid="output-checks-not-saved">
+            These checks are shown for this visit only: keeping them needs database migration 0062.
+          </p>
+        )}
+        {keptFrom.length > 0 && (
+          <p className="text-[11px] text-amber-800" data-testid="output-findings-kept">
+            {keptFrom.join(", ")} could not be read, so {keptFrom.length === 1 ? "its" : "their"} earlier findings were kept. Make findings again to read{" "}
+            {keptFrom.length === 1 ? "it" : "them"}.
+          </p>
+        )}
         {made !== null && (
           <p className="text-xs text-emerald-700">
             {made} finding{made === 1 ? "" : "s"} made. They are on the Findings page, each with the assurance notes that apply to it.
@@ -244,7 +277,47 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
           })}
         </div>
       </details>
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-danger" data-testid={conflict ? "output-set-conflict" : undefined}>
+          {error}
+        </p>
+      )}
+      {conflict && (
+        <div className="space-y-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+          <p data-testid="output-set-stored">
+            Stored now: {conflict.name}
+            {conflict.waveLabel ? `, wave ${conflict.waveLabel}` : ", no wave label"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={pending}
+              className="rounded-md border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100"
+              onClick={() => {
+                setName(conflict.name);
+                setWave(conflict.waveLabel);
+                setOpened(conflict);
+                setConflict(null);
+                setError(null);
+              }}
+            >
+              Use current values
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              className="rounded-md border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100"
+              onClick={() => {
+                const current = conflict;
+                setOpened(current);
+                save(name, wave, current);
+              }}
+            >
+              Replace with mine
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

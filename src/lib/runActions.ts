@@ -49,14 +49,38 @@ export async function retryProjectStorageCleanup(): Promise<{ ok: true; remainin
   }
 }
 
-export async function renameRun(runId: string, name: string) {
-  const TENANT_ID = await requireTenantId();
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query("update runs set project_name = $1 where id = $2", [trimmed, runId]);
-  });
+export type RenameResult = { ok: true } | { ok: false; error: string; conflict?: true; current?: string | null };
 
-  revalidatePath("/");
-  revalidatePath(`/runs/${runId}`);
+/**
+ * Renames a project. Codex DI-F06: `opened` is the stored name the editor started from (null when the
+ * project had none). In one transaction the run row is locked by id and tenant; the rename is refused
+ * when the project is gone, or when its name changed since the editor opened (another editor renamed
+ * it first), with the stored name, so a stale editor never overwrites a newer name and a rename that
+ * changed nothing is never reported as done. A blank name is refused.
+ */
+export async function renameRun(runId: string, name: string, opened: string | null): Promise<RenameResult> {
+  const TENANT_ID = await requireTenantId();
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!trimmed) return { ok: false, error: "A project needs a name." };
+  const result = await withTenant(TENANT_ID, async (client): Promise<RenameResult> => {
+    const r = await client.query<{ project_name: string | null }>("select project_name from runs where id = $1 and tenant_id = $2 for update", [runId, TENANT_ID]);
+    if (!r.rows[0]) return { ok: false, error: "This project is no longer available, so it was not renamed. Reload the page." };
+    const current = r.rows[0].project_name;
+    if ((current ?? "").trim() !== (opened ?? "").trim()) {
+      return {
+        ok: false,
+        conflict: true,
+        current,
+        error: "This project was renamed after you opened the editor, so your name was not saved. Use the current name, or replace it with yours.",
+      };
+    }
+    const u = await client.query("update runs set project_name = $1 where id = $2 and tenant_id = $3", [trimmed, runId, TENANT_ID]);
+    if (u.rowCount !== 1) throw new Error("The project could not be renamed. Try again.");
+    return { ok: true };
+  });
+  if (result.ok) {
+    revalidatePath("/");
+    revalidatePath(`/runs/${runId}`);
+  }
+  return result;
 }

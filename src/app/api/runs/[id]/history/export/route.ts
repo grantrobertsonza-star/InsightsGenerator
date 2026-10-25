@@ -12,6 +12,7 @@ type ExportRow = {
   archived_at: string;
   insight_headline: string | null;
   insight_quality_tier: string | null;
+  researcher_note: string | null;
 };
 
 const reasonLabel: Record<string, string> = {
@@ -55,7 +56,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
          fh.archived_reason,
          fh.archived_at,
          ih.headline as insight_headline,
-         ih.quality_tier as insight_quality_tier
+         ih.quality_tier as insight_quality_tier,
+         -- Codex DI-F07 (migration 0114); read through to_jsonb so the export works before it.
+         to_jsonb(fh)->>'researcher_note' as researcher_note
        from finding_history fh
        left join insight_history ih on ih.original_finding_id = fh.original_finding_id
        where fh.run_id = $1
@@ -69,7 +72,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  const header = ["Finding", "Status when removed", "Insight it fed", "Removed by", "Archived"];
+  const header = ["Finding", "Status when removed", "Insight it fed", "Removed by", "Archived", "Researcher note"];
   const lines = [header.map(csvField).join(",")];
 
   for (const row of rows) {
@@ -83,6 +86,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         insight,
         reasonLabel[row.archived_reason] ?? row.archived_reason,
         new Date(row.archived_at).toLocaleString(),
+        // Last, so the earlier columns keep their places for existing readers (Codex DI-F07).
+        row.researcher_note ?? "",
       ]
         .map((value) => csvField(value))
         .join(",")

@@ -10,21 +10,63 @@ import { requireTenantId } from "./requestContext";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-export async function saveOutputSetAction(runId: string, setId: string, name: string, waveLabel: string): Promise<Result> {
+export type OutputSetLabels = { name: string; waveLabel: string };
+export type OutputSetSaveResult =
+  | { ok: true }
+  | { ok: false; error: string }
+  | { ok: false; conflict: true; error: string; current: OutputSetLabels | null };
+
+/**
+ * Saves a set's name and wave label. Codex DI-F04: `opened` is both as the editor last knew them. In
+ * one transaction the set is locked by id, run and tenant; the save is refused, with what is stored,
+ * when the set is gone or either value changed since (another editor saved first: the wave label is
+ * written into findings made later, so a stale save would mis-attribute them). A save that changes no
+ * row is never reported as saved.
+ */
+export async function saveOutputSetAction(
+  runId: string,
+  setId: string,
+  name: string,
+  waveLabel: string,
+  opened: OutputSetLabels,
+): Promise<OutputSetSaveResult> {
   const TENANT_ID = await requireTenantId();
   try {
     const clean = name.trim();
     if (!clean) return { ok: false, error: "A set needs a name." };
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query("update output_sets set name = $1, wave_label = $2 where id = $3 and run_id = $4", [
+    if (typeof waveLabel !== "string" || !opened || typeof opened.name !== "string" || typeof opened.waveLabel !== "string") {
+      return { ok: false, error: "The set could not be saved. Reload the page and try again." };
+    }
+    const result = await withTenant(TENANT_ID, async (client): Promise<OutputSetSaveResult> => {
+      const r = await client.query<{ name: string; wave_label: string | null }>(
+        "select name, wave_label from output_sets where id = $1 and run_id = $2 and tenant_id = $3 for update",
+        [setId, runId, TENANT_ID],
+      );
+      const stored = r.rows[0];
+      if (!stored) {
+        return { ok: false, conflict: true, current: null, error: "This set is no longer in the project; it may have been removed, so nothing was saved. Reload the page." };
+      }
+      const current = { name: stored.name, waveLabel: stored.wave_label ?? "" };
+      if (current.name.trim() !== opened.name.trim() || current.waveLabel.trim() !== opened.waveLabel.trim()) {
+        return {
+          ok: false,
+          conflict: true,
+          current,
+          error: "This set's name or wave label was changed after you opened it, so your change was not saved. Use the current values, or replace them with yours.",
+        };
+      }
+      const u = await client.query("update output_sets set name = $1, wave_label = $2 where id = $3 and run_id = $4 and tenant_id = $5", [
         clean.slice(0, 120),
         waveLabel.trim().slice(0, 60) || null,
         setId,
         runId,
+        TENANT_ID,
       ]);
+      if (u.rowCount !== 1) throw new Error("The set could not be saved. Try again.");
+      return { ok: true };
     });
-    revalidatePath(`/runs/${runId}`);
-    return { ok: true };
+    if (result.ok) revalidatePath(`/runs/${runId}`);
+    return result;
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -59,15 +101,19 @@ export async function deleteOutputFileAction(runId: string, documentId: string):
   }
 }
 
-type CheckResult = { ok: true; checks: StoredChecks } | { ok: false; error: string };
+/**
+ * `saved` is false only before migration 0062 (the checks show for this visit and are not kept);
+ * `keptFrom` names files that could not be read, whose earlier findings were kept (DI-F02).
+ */
+type CheckResult = { ok: true; checks: StoredChecks; saved: boolean; keptFrom: string[] } | { ok: false; error: string };
 
 /** Runs the set-level checks and stores them. Writes no findings. */
 export async function checkOutputSetAction(runId: string, setId: string): Promise<CheckResult> {
   const TENANT_ID = await requireTenantId();
   try {
-    const { stored } = await checkOutputSet(TENANT_ID, runId, setId);
+    const { stored, saved } = await checkOutputSet(TENANT_ID, runId, setId);
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, checks: stored };
+    return { ok: true, checks: stored, saved, keptFrom: [] };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -77,10 +123,10 @@ export async function checkOutputSetAction(runId: string, setId: string): Promis
 export async function generateOutputFindingsAction(runId: string, setId: string): Promise<CheckResult> {
   const TENANT_ID = await requireTenantId();
   try {
-    const { checks } = await generateOutputFindings(TENANT_ID, runId, setId);
+    const { checks, saved, keptFrom } = await generateOutputFindings(TENANT_ID, runId, setId);
     after(() => verifyAfterGenerate(TENANT_ID, runId));
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, checks };
+    return { ok: true, checks, saved, keptFrom };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: /claims_pattern_type_check|pattern_type/.test(msg) ? "Findings from statistical output need migration 0062. Run npm run backup, then apply it." : msg };

@@ -267,7 +267,7 @@ export async function resegmentTranscriptAction(
     const n = result.findings.length;
     const persistedNote = result.statusPersisted
       ? ""
-      : " (its completion status could not be saved - a database migration is pending; do not trust this document's status badge until it is applied)";
+      : " (its completion status could not be saved - the document may have been removed, or a database migration is pending; do not trust this document's status badge until it is applied)";
     return `Read the transcript again and re-applied the codebook. ${n} coded finding${n === 1 ? "" : "s"} now.${persistedNote}`;
   });
 }
