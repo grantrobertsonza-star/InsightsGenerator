@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch26: one reader for CSV, TSV and Excel (Grant, 2026-10-24): the stored preview is the engine's own read, so preview and calculation cannot disagree; addresses TP500-F01/F02/F03 and IP1000-F01 to F04 (literal names, one duplicate-name rule, `__proto__` corrections stored, codes kept as text, ISO dates, one decoding policy, malformed CSV refused); `docs/batch26-handover-2026-10-25.md`, contract `claude/one-reader-import.md`; **migration 0116**; on top of batch25 (`dbf2e8e`). The four System5000B bin findings (SYS5B-F01 to F04) are not addressed here; they are next (batch27).
+Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch27 on top of batch26. batch27: SYS5B-F01 to F04 (document bin): links between files' findings handed on and replayed through any restore order, "Source document removed" cleared only when every source is active again, Research quality text purged in the erase transaction, two identical copies allowed in the bin; `docs/batch27-handover-2026-10-25.md`; **migration 0117**. batch26: one reader for CSV, TSV and Excel (TP500-F01/F02/F03, IP1000-F01 to F04); `docs/batch26-handover-2026-10-25.md`; **migration 0116**. Both on top of batch25 (`dbf2e8e`).
+
+## Claude: batch27 (SYS5B-F01 to F04, document bin), main copy (2026-10-25)
+
+Implemented, ready for review: the batch27 repair commit and its docs commit, on top of batch26. Checks and limits in `docs/batch27-handover-2026-10-25.md`; the contract in `claude/document-deletion-contract.md` (updated). Migration 0117 (`supabase/migrations/0117_document_content_identity_active_only.sql`, index change; needs 0115) for Grant to apply; until then removing a second identical copy is refused naming it. `documentBinIntegrity.db.test.ts` 8 passed, with a mutation check per finding. Full library 1,737 passed / 72 skipped / 0 failed. Full browser 106 passed / 1 skipped; smoke 1 passed.
 
 ## Claude: batch26 (one reader for CSV, TSV and Excel), main copy (2026-10-25)
 
