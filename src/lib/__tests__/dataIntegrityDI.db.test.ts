@@ -198,11 +198,11 @@ describe.skipIf(!TEST_DATABASE_URL)("DI-F01..F07 data integrity (real database)"
       const { saveOutputSetAction } = await actions();
       const s = await set(A, runA, "Survey", "2024");
       const opened = { name: "Survey", waveLabel: "2024" };
-      expect(await saveOutputSetAction(runA, s, "Survey", "2025", opened)).toEqual({ ok: true });
+      expect(await saveOutputSetAction(runA, s, "Survey", "2025", opened)).toMatchObject({ ok: true });
       const stale = await saveOutputSetAction(runA, s, "Survey", "2023", opened);
       expect(stale).toMatchObject({ ok: false, conflict: true, current: { name: "Survey", waveLabel: "2025" } });
       expect((await one("select wave_label from output_sets where id = $1", [s])).wave_label).toBe("2025");
-      expect(await saveOutputSetAction(runA, s, "Survey", "2023", { name: "Survey", waveLabel: "2025" })).toEqual({ ok: true });
+      expect(await saveOutputSetAction(runA, s, "Survey", "2023", { name: "Survey", waveLabel: "2025" })).toMatchObject({ ok: true });
       expect((await one("select wave_label from output_sets where id = $1", [s])).wave_label).toBe("2023");
     });
 
@@ -219,6 +219,54 @@ describe.skipIf(!TEST_DATABASE_URL)("DI-F01..F07 data integrity (real database)"
       as(A);
       expect((await saveOutputSetAction(runB, foreign, "Hijack", "", { name: "B set", waveLabel: "" })).ok).toBe(false);
       expect((await one("select name from output_sets where id = $1", [foreign])).name).toBe("B set");
+    });
+  });
+
+  describe("B23-F01 label limits", () => {
+    it("an over-long wave label or name is stored at its limit, returned as stored, and the next save from those values goes through", async () => {
+      as(A);
+      const { saveOutputSetAction } = await actions();
+      const s = await set(A, runA, "Caps", "w");
+      const wave61 = "W".repeat(61);
+      const r = await saveOutputSetAction(runA, s, "Caps", wave61, { name: "Caps", waveLabel: "w" });
+      expect(r).toEqual({ ok: true, stored: { name: "Caps", waveLabel: "W".repeat(60) } });
+      if (!r.ok || !("stored" in r)) throw new Error("not saved");
+      const name121 = "N".repeat(121);
+      const r2 = await saveOutputSetAction(runA, s, name121, r.stored.waveLabel, r.stored);
+      expect(r2).toEqual({ ok: true, stored: { name: "N".repeat(120), waveLabel: "W".repeat(60) } });
+      if (!r2.ok || !("stored" in r2)) throw new Error("not saved");
+      expect(await saveOutputSetAction(runA, s, "Caps again", r2.stored.waveLabel, r2.stored)).toMatchObject({ ok: true });
+      // The exact limits are stored as typed.
+      const r3 = await saveOutputSetAction(runA, s, "N".repeat(120), "W".repeat(60), { name: "Caps again", waveLabel: "W".repeat(60) });
+      expect(r3).toEqual({ ok: true, stored: { name: "N".repeat(120), waveLabel: "W".repeat(60) } });
+    });
+  });
+
+  describe("DI-F02 wave comparisons with unreadable files", () => {
+    it("an unreadable file in either wave refuses the comparison and keeps the earlier comparison's findings; a readable retry replaces them", async () => {
+      as(A);
+      const { compareWavesAction } = await actions();
+      const w1 = await set(A, runA, "Wave 1", "2024");
+      const w2 = await set(A, runA, "Wave 2", "2025");
+      const d1 = await file(A, runA, w1, "model.csv");
+      const d2 = await file(A, runA, w2, "model.csv", false);
+      const pair = `${w1}:${w2}`;
+      const earlier = (await one(
+        "insert into findings (tenant_id, run_id, origin, finding_text, status, source_document_id, pattern_type, stated_stats, researcher_note) values ($1,$2,'generated','Earlier comparison','accepted',$3,'trend',$4,'kept note') returning id",
+        [A, runA, d1, JSON.stringify({ wavePair: pair })],
+      )).id;
+      const r = await compareWavesAction(runA, w1, w2);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/model\.csv could not be read, so the waves were not compared/);
+      expect((await one("select status from findings where id = $1", [earlier]))?.status).toBe("accepted");
+      // Another project's or tenant's set is refused too.
+      const elsewhere = await set(A, runA2, "Elsewhere");
+      expect((await compareWavesAction(runA, w1, elsewhere)).ok).toBe(false);
+      // Readable again: the comparison runs and the earlier one is archived, its note kept in history.
+      store.files.set((await one("select storage_path from documents where id = $1", [d2])).storage_path, CSV);
+      expect((await compareWavesAction(runA, w1, w2)).ok).toBe(true);
+      expect(await one("select id from findings where id = $1", [earlier])).toBeUndefined();
+      expect((await one("select researcher_note from finding_history where original_finding_id = $1", [earlier])).researcher_note).toBe("kept note");
     });
   });
 

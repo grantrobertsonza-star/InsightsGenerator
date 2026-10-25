@@ -4,6 +4,7 @@
 //      keeps the typed name and shows the stored one; "Replace with mine" then saves it.
 //   2. DI-F04: an output set's wave label saved on one page; the other page's save, opened before it,
 //      is refused with the stored values and changes nothing; "Use current values" takes them.
+//   3. B23-F01: an over-long wave label is held to its limit and the next edit saves without a conflict.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -76,6 +77,18 @@ test("stale project-name and output-set editors are refused with what is stored"
     await page.getByRole("button", { name: "Use current values" }).click();
     await expect(waveA).toHaveValue("2025");
     if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-set-conflict.png") });
+
+    // 3. B23-F01: a wave label longer than its limit is held to 60 characters, and the next edit from
+    //    the same card is saved, not refused as a conflict with itself.
+    await waveA.fill("W".repeat(61));
+    await expect(waveA).toHaveValue("W".repeat(60));
+    await waveA.blur();
+    await expect.poll(storedWave).toBe("W".repeat(60));
+    const nameA = page.getByLabel("Set name");
+    await nameA.fill("Model outputs renamed");
+    await nameA.blur();
+    await expect.poll(async () => (await db.query("select name from output_sets where id = $1", [setId])).rows[0].name).toBe("Model outputs renamed");
+    await expect(page.getByTestId("output-set-conflict")).toHaveCount(0);
     await other.close();
   } finally {
     await db.end();

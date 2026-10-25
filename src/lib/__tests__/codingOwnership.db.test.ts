@@ -206,6 +206,24 @@ describe.skipIf(!TEST_DATABASE_URL)("COD500-F01/F02 coding writes check the tran
       expect(await assignments(a.seg)).toEqual([{ code_id: a.code.Price, source: "model" }]);
     });
 
+    it("B21-F01: an operation other than add or remove is refused and changes nothing", async () => {
+      const a = await transcript(A, runA);
+      const { changeTurnCodeAction } = await actions();
+      as(A);
+      // A researcher's own assignment beside the model's.
+      expect((await changeTurnCodeAction(runA, a.doc, a.seg, a.code.Service, "add")).ok).toBe(true);
+      const before = { asg: await assignments(a.seg), ov: await overrides(a.seg) };
+      for (const bad of ["", null, undefined, "REMOVE", "Add", "delete"]) {
+        for (const code of [a.code.Price, a.code.Service]) {
+          const r = await changeTurnCodeAction(runA, a.doc, a.seg, code, bad as never);
+          expect(r.ok).toBe(false);
+          if (!r.ok) expect(r.error).toMatch(/not one this screen makes/);
+        }
+      }
+      expect({ asg: await assignments(a.seg), ov: await overrides(a.seg) }).toEqual(before);
+      expect((await changeTurnCodeAction(runA, a.doc, a.seg, a.code.Price, "remove")).ok).toBe(true);
+    });
+
     it("a change waits for a new codebook version being written, then is checked against it and refused", async () => {
       const a = await transcript(A, runA);
       const { changeTurnCodeAction } = await actions();

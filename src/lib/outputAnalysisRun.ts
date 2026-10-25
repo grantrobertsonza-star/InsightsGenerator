@@ -239,6 +239,13 @@ export async function generateOutputFindings(
  * whether each change is larger than sampling error allows. Replaces the findings
  * from an earlier comparison of the same pair, after archiving them so any
  * review the researcher did on them is kept in history.
+ *
+ * Codex DI-F02 (batch21-23 review): a comparison used to go ahead when a file of either set could not
+ * be read, so the earlier comparison's reviewed findings were retired and "0 change findings" was
+ * reported as if there were nothing to compare. A comparison is only valid when both waves were read
+ * in full, so any unreadable file (the same read outcome as `generateOutputFindings`) refuses the whole
+ * comparison, naming the files, before anything is retired. Both sets are locked and checked as this
+ * run's and this tenant's first, and again in the writing transaction.
  */
 export async function compareOutputSets(
   tenantId: string,
@@ -247,21 +254,31 @@ export async function compareOutputSets(
   laterId: string,
 ): Promise<{ findings: number; notes: string[] }> {
   if (earlierId === laterId) throw new Error("Pick two different sets.");
+  const lockBoth = (client: PoolClient) =>
+    [earlierId, laterId].sort().reduce<Promise<void>>((p, id) => p.then(() => lockOwnedSet(client, tenantId, runId, id)), Promise.resolve());
   const meta = await withTenant(tenantId, async (client) => {
+    await lockBoth(client);
     const r = await client.query<{ id: string; name: string; wave_label: string | null }>(
-      "select id, name, wave_label from output_sets where run_id = $1 and id = any($2::uuid[])",
-      [runId, [earlierId, laterId]],
+      "select id, name, wave_label from output_sets where run_id = $1 and tenant_id = $2 and id = any($3::uuid[])",
+      [runId, tenantId, [earlierId, laterId]],
     );
     return new Map(r.rows.map((x) => [x.id, x]));
   });
-  const a = meta.get(earlierId);
-  const b = meta.get(laterId);
-  if (!a || !b) throw new Error("One of the sets was not found.");
-  const [fa, fb] = (await Promise.all([loadSetFiles(tenantId, runId, earlierId), loadSetFiles(tenantId, runId, laterId)])).map((l) => l.files);
+  const a = meta.get(earlierId)!;
+  const b = meta.get(laterId)!;
+  const [la, lb] = await Promise.all([loadSetFiles(tenantId, runId, earlierId), loadSetFiles(tenantId, runId, laterId)]);
+  const unread = [...la.files.filter((f) => la.unreadable.has(f.id)), ...lb.files.filter((f) => lb.unreadable.has(f.id))].map((f) => f.name);
+  if (unread.length > 0) {
+    throw new Error(
+      `${unread.join(", ")} could not be read, so the waves were not compared and the earlier comparison's findings were kept. ` +
+        "Try again; if it keeps failing, upload the files again.",
+    );
+  }
   const label = (m: { name: string; wave_label: string | null }) => m.wave_label?.trim() || m.name;
-  const { findings, notes } = compareWaves({ id: earlierId, label: label(a), files: fa }, { id: laterId, label: label(b), files: fb });
+  const { findings, notes } = compareWaves({ id: earlierId, label: label(a), files: la.files }, { id: laterId, label: label(b), files: lb.files });
   const pair = `${earlierId}:${laterId}`;
   await withTenant(tenantId, async (client) => {
+    await lockBoth(client);
     // The earlier comparison's findings are archived first (review status, notes, verdicts and what was built on them), then replaced.
     await archiveAndReplaceFindings(client, { documentColumn: "wave_pair", documentId: runId, wavePair: pair, onlyRejected: false, archiveReason: "wave_recompare" });
     for (const f of findings) {

@@ -115,7 +115,10 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
       try {
         const r = await saveOutputSetAction(runId, set.id, n, w, against);
         if (r.ok) {
-          setOpened({ name: n.trim(), waveLabel: w.trim() });
+          // What was stored (names and labels have length limits), not what was typed.
+          setOpened(r.stored);
+          setName(r.stored.name);
+          setWave(r.stored.waveLabel);
           setConflict(null);
           return;
         }
@@ -134,6 +137,7 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
           <div className="flex flex-wrap items-center gap-2">
             <input
               aria-label="Set name"
+              maxLength={120}
               className={`${input} w-64 font-medium`}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -141,6 +145,7 @@ export default function OutputSetCard({ runId, set }: { runId: string; set: Outp
             />
             <input
               aria-label="Wave or study label"
+              maxLength={60}
               placeholder="Wave or study label (optional)"
               className={`${input} w-52`}
               value={wave}

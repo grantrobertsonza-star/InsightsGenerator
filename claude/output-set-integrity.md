@@ -4,7 +4,7 @@ Codex data-integrity extension, DI-F01 to DI-F07 (2026-10-24).
 
 ## Output sets (`src/lib/outputAnalysisRun.ts`, `src/lib/outputSetActions.ts`)
 
-- **Ownership (DI-F01, DI-F03).** Every entry point locks the set by id, run and tenant
+- **Ownership (DI-F01, DI-F03).** Checking, making findings, comparing waves and merging lock the set (or both sets, in id order) by id, run and tenant
   (`lockOwnedSet`, `for update`) before reading or writing, and refuses "That output set is not in this
   project" otherwise. Merging locks both sets in id order (no deadlock between two merges of a pair),
   refuses unless both are this run's and this tenant's, then checks clashes, moves the documents
@@ -22,12 +22,19 @@ Codex data-integrity extension, DI-F01 to DI-F07 (2026-10-24).
     so their earlier findings were kept. Make findings again to read them." (`keptFrom`);
   - all readable: every file's findings are replaced, as before.
   Findings and checks are written in one transaction.
+- **Wave comparisons (DI-F02, batch21-23 review).** A comparison needs both waves read in full: any
+  unreadable file in either set (the same read outcome) refuses the whole comparison, naming the files,
+  before the earlier comparison's findings are archived ("<files> could not be read, so the waves were
+  not compared and the earlier comparison's findings were kept"). Retrying once the files read replaces
+  them, with their notes kept in history.
 - **Name and wave label (DI-F04).** `saveOutputSetAction(runId, setId, name, waveLabel, opened)`: the
   set is locked; the save is refused with the stored values when the set is gone (or another
   project's or tenant's) or either value differs from `opened`; a save must change one row. The card
   keeps what it last knew stored as `opened`, shows "Stored now: <name>, wave <label>" with "Use
   current values" and "Replace with mine". The wave label is copied into findings made later, so a
-  stale save would mis-attribute them.
+  stale save would mis-attribute them. Names are kept to 120 characters and wave labels to 60 (the
+  inputs cap them too); a save returns the values actually stored, which become the card's values and
+  its next opened values (B23-F01: the card used to keep longer typed text and refuse its own next save).
 
 ## Finding history keeps the researcher note (DI-F07)
 

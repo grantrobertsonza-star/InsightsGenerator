@@ -17,6 +17,11 @@ that the document exists. So every coding write now confirms its transcript firs
 | `codingOverrides.addResearcherCode` | update | as above |
 | `codingOverrides.restoreCodebookVersion`, `extractThemes.insertCodebook` (every new version) | update | serialise with the hand changes above |
 
+**Operations (Codex B21-F01).** A hand change to a turn's themes is "add" or "remove" and nothing else:
+`parseTurnCodeAction` is checked in `changeTurnCode` and in `changeInTx` before anything is read or
+written, because a server action's argument is not checked by its TypeScript type (an empty, null or
+differently cased value used to be treated as remove).
+
 Callers pass the run: `saveCodeMetaAction`, `saveTurnNoteAction`, `changeTurnCodeAction` and the
 internal callers in `extractThemes.ts` (theme grouping, coded import) and `codingMemos.reuseCodebook`.
 

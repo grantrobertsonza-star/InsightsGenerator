@@ -10,6 +10,17 @@ import { lockOwnedTranscript } from "./codingTranscriptOwnership";
 export const codeKey = (name: string) =>
   name.trim().toLowerCase().replace(/\s+/g, " ");
 
+/**
+ * The only operations on a turn's themes. Codex B21-F01: a server action's argument is not checked by
+ * its TypeScript type, and the change used to treat anything other than "add" as "remove", so an empty,
+ * null or differently cased value deleted an assignment and recorded a remove override. Every caller
+ * goes through this check, before anything is read or written.
+ */
+export function parseTurnCodeAction(value: unknown): "add" | "remove" | null {
+  return value === "add" || value === "remove" ? value : null;
+}
+const INVALID_ACTION = "That change to the turn's themes is not one this screen makes (add or remove). Nothing was changed; reload the page.";
+
 export type OverrideRow = {
   segmentId: string;
   codeName: string;
@@ -101,6 +112,7 @@ async function changeInTx(
   code: { id: string; name: string },
   action: "add" | "remove",
 ) {
+  if (!parseTurnCodeAction(action)) throw new Error(INVALID_ACTION);
   const seg = await client.query(
     `select 1 from coding_segments where id = $1 and document_id = $2 and role <> 'moderator'`,
     [segmentId, documentId],
@@ -176,6 +188,7 @@ export async function changeTurnCode(
   codeId: string,
   action: "add" | "remove",
 ): Promise<void> {
+  if (!parseTurnCodeAction(action)) throw new Error(INVALID_ACTION);
   await withTenant(tenantId, async (client) => {
     if (!(await overridesAvailable(client)))
       throw new Error(

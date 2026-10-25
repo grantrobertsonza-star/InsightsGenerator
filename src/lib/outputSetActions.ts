@@ -10,9 +10,12 @@ import { requireTenantId } from "./requestContext";
 
 type Result = { ok: true } | { ok: false; error: string };
 
+const OUTPUT_SET_NAME_MAX = 120;
+const OUTPUT_SET_WAVE_MAX = 60;
+
 export type OutputSetLabels = { name: string; waveLabel: string };
 export type OutputSetSaveResult =
-  | { ok: true }
+  | { ok: true; stored: OutputSetLabels }
   | { ok: false; error: string }
   | { ok: false; conflict: true; error: string; current: OutputSetLabels | null };
 
@@ -55,15 +58,15 @@ export async function saveOutputSetAction(
           error: "This set's name or wave label was changed after you opened it, so your change was not saved. Use the current values, or replace them with yours.",
         };
       }
-      const u = await client.query("update output_sets set name = $1, wave_label = $2 where id = $3 and run_id = $4 and tenant_id = $5", [
-        clean.slice(0, 120),
-        waveLabel.trim().slice(0, 60) || null,
-        setId,
-        runId,
-        TENANT_ID,
-      ]);
+      // Codex B23-F01: names are kept to 120 characters and wave labels to 60. The values actually
+      // stored are returned, so the card shows them and uses them as its next opened values (it used
+      // to keep the longer typed text and then refuse its own next save as a conflict).
+      const u = await client.query<{ name: string; wave_label: string | null }>(
+        "update output_sets set name = $1, wave_label = $2 where id = $3 and run_id = $4 and tenant_id = $5 returning name, wave_label",
+        [clean.slice(0, OUTPUT_SET_NAME_MAX), waveLabel.trim().slice(0, OUTPUT_SET_WAVE_MAX) || null, setId, runId, TENANT_ID],
+      );
       if (u.rowCount !== 1) throw new Error("The set could not be saved. Try again.");
-      return { ok: true };
+      return { ok: true, stored: { name: u.rows[0].name, waveLabel: u.rows[0].wave_label ?? "" } };
     });
     if (result.ok) revalidatePath(`/runs/${runId}`);
     return result;
