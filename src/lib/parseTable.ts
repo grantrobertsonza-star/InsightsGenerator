@@ -1,4 +1,5 @@
 import { runEngineConversion } from "./parseStatsFile";
+import type { TableCell } from "./rowCells";
 import type { DataSetup } from "./dataSetupShared";
 
 /**
@@ -11,7 +12,7 @@ import type { DataSetup } from "./dataSetupShared";
  */
 export type ParsedTable = {
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   /** IMP-SHIP-001: the workbook sheet read ("Sheet1" for a CSV/TSV, the name its persisted
    *  selection has always carried). Callers persist it as the document's sheet choice. */
   sheetName: string;
@@ -87,7 +88,7 @@ export async function parseTableDocument(
   }
   return {
     headers: headers!,
-    rows: rows as Record<string, string | number | null>[],
+    rows: rows as Record<string, TableCell>[],
     sheetName: answer.sheetName!,
     unsupportedIdentifierColumns: Array.isArray(answer.unsupportedIdentifierColumns) ? answer.unsupportedIdentifierColumns : [],
     encoding: typeof answer.encoding === "string" ? answer.encoding : null,

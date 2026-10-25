@@ -10,7 +10,8 @@
 // headers/rows document_tables already has, for a raw OR an aggregated
 // table alike, immediately on upload.
 
-export type Row = Record<string, string | number | null>;
+import { cellText, type TableCell } from "./rowCells";
+export type Row = Record<string, TableCell>;
 
 export type CategoricalDigest = {
   kind: "categorical";
@@ -66,9 +67,10 @@ const TARGET_BIN_COUNT = 10;
 // ordered bars (flags, 0 to 10 ratings), not as a binned histogram.
 const MAX_ORDERED_VALUES = 11;
 
+// A logical cell is charted under the text a preview shows for it (TRUE/FALSE, rowCells.cellText).
 function presentValues(rows: Row[], column: string): (string | number)[] {
   return rows
-    .map((row) => row[column])
+    .map((row) => (typeof row[column] === "boolean" ? cellText(row[column]) : row[column]))
     .filter(
       (v): v is string | number => v !== null && v !== undefined && v !== "",
     );

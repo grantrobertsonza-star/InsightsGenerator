@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
+import type { TableCell } from "./rowCells";
 import { mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,7 +15,7 @@ const BUCKET = "documents";
 
 export type ParsedTable = {
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   /** Set only when a very wide file was cut down to its usable variables. */
   totalVariables?: number;
   keptVariables?: number;

@@ -500,16 +500,75 @@ export async function eraseRemovedDocument(tenantId: string, runId: string, docu
       )
     ).rows[0];
     if (!doc) throw new Error("That file is not in this project's bin. Reload the page.");
-    const removals = await client.query<{ snapshot: Snapshot }>("select snapshot from document_removals where document_id = $1 and run_id = $2", [documentId, runId]);
+    // Every removal of this file, restored ones included: their snapshots name findings and insights whose
+    // history copies are erased with the file.
+    const removals = await client.query<{ snapshot: Snapshot; restored_at: Date | null }>(
+      "select snapshot, restored_at from document_removals where document_id = $1 and run_id = $2",
+      [documentId, runId],
+    );
     const findingIds = removals.rows.flatMap((r) => (r.snapshot.findings as { id: string }[]).map((f) => f.id));
     // Links between this file's findings and other files' findings that only this bin entry still holds
-    // (SYS5B-F01): they go with the file, and the erase says how many.
-    const own = new Set(findingIds);
-    const linksRemoved = removals.rows.reduce((n, r) => {
-      const contradictions = (r.snapshot.contradictions as Contradiction[]).filter((c) => !own.has(c.original_finding_id) || (c.contradicting_finding_id && !own.has(c.contradicting_finding_id))).length;
-      const grounding = r.snapshot.groundedBy.filter((g) => !own.has(g.id) || !own.has(g.grounded_by_finding_id)).length;
-      return n + contradictions + grounding;
-    }, 0);
+    // (SYS5B-F01) go with the file, and the erase says how many. Only the current bin entry (the removal
+    // not restored) holds them: a restored removal's snapshot is history, and repeats links that were put
+    // back on restore, so counting it would count one relationship once per earlier remove and restore
+    // (Codex B27-F01). Each relationship is counted once, by its identity.
+    const current = removals.rows.filter((r) => r.restored_at === null).map((r) => r.snapshot);
+    const own = new Set(current.flatMap((sn) => (sn.findings as { id: string }[]).map((f) => f.id)));
+    // Each relationship by its identity, with the finding at its other end when that end must still
+    // exist for the link to count (null: counted as it stands, e.g. a contradiction by a synthesized
+    // insight, or a link held by another bin entry, whose holder is alive by being in the bin).
+    const lost = new Map<string, string | null>();
+    for (const sn of current) {
+      for (const c of sn.contradictions as Contradiction[]) {
+        const other = [c.original_finding_id, c.contradicting_finding_id].find((id) => id && !own.has(id));
+        if (other) lost.set(`contradiction:${c.original_finding_id}:${c.contradicting_finding_id ?? ""}:${c.contradicting_synthesized_insight_id ?? ""}`, other);
+      }
+      for (const g of sn.groundedBy) {
+        const other = [g.id, g.grounded_by_finding_id].find((id) => !own.has(id));
+        if (other) lost.set(`grounding:${g.id}:${g.grounded_by_finding_id}`, other);
+      }
+      // A claim of this file grounded by another file's finding keeps that link on its own row in the
+      // snapshot, not in groundedBy (which holds the other direction); it goes with the file too.
+      for (const f of sn.findings as { id: string; grounded_by_finding_id?: string | null }[]) {
+        if (f.grounded_by_finding_id && !own.has(f.grounded_by_finding_id)) lost.set(`grounding:${f.id}:${f.grounded_by_finding_id}`, f.grounded_by_finding_id);
+      }
+    }
+    // A link held by another file's bin entry whose other end is a finding of this file is lost too: when
+    // that file is restored, this finding is no longer there to link to.
+    const elsewhere = (
+      await client.query<{ snapshot: Snapshot }>(
+        "select snapshot from document_removals where run_id = $1 and restored_at is null and document_id <> $2",
+        [runId, documentId],
+      )
+    ).rows.map((r) => r.snapshot);
+    for (const sn of elsewhere) {
+      const theirs = new Set((sn.findings as { id: string }[]).map((f) => f.id));
+      for (const c of sn.contradictions as Contradiction[]) {
+        const other = [c.original_finding_id, c.contradicting_finding_id].find((id) => id && !theirs.has(id));
+        if (other && own.has(other)) lost.set(`contradiction:${c.original_finding_id}:${c.contradicting_finding_id ?? ""}:${c.contradicting_synthesized_insight_id ?? ""}`, null);
+      }
+      for (const g of sn.groundedBy) {
+        if (own.has(g.id) || own.has(g.grounded_by_finding_id)) lost.set(`grounding:${g.id}:${g.grounded_by_finding_id}`, null);
+      }
+      for (const f of sn.findings as { id: string; grounded_by_finding_id?: string | null }[]) {
+        if (f.grounded_by_finding_id && own.has(f.grounded_by_finding_id)) lost.set(`grounding:${f.id}:${f.grounded_by_finding_id}`, null);
+      }
+    }
+    // A link whose other finding is already gone (its file erased earlier) was counted by that erase;
+    // only links whose other end is still in the project or in another bin entry are counted here.
+    const others = [...new Set([...lost.values()].filter((id): id is string => id !== null))];
+    const alive = new Set(
+      others.length === 0 ? [] : (
+        await client.query<{ id: string }>(
+          `select f.id::text as id from findings f where f.run_id = $1 and f.id = any($2::uuid[])
+           union
+           select e->>'id' from document_removals r cross join jsonb_array_elements(r.snapshot->'findings') e
+            where r.run_id = $1 and r.restored_at is null and r.document_id <> $3 and e->>'id' = any($2::text[])`,
+          [runId, others, documentId],
+        )
+      ).rows.map((x) => x.id),
+    );
+    const linksRemoved = [...lost.values()].filter((other) => other === null || alive.has(other)).length;
     const insightIds = removals.rows.flatMap((r) => (r.snapshot.insights as { id: string }[]).map((i) => i.id));
     await client.query("delete from recommendation_history where original_insight_id = any($1::uuid[])", [insightIds]);
     for (const table of ["insight_history", "verdict_history", "finding_history"]) {

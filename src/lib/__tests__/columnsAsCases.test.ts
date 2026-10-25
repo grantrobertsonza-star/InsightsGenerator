@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 describe.skipIf(!PYTHON_READY)("IMP-009 (a): cached-preview identity for columns-as-cases", () => {
-  const check = async (stored: { headers: string[]; rows: Record<string, string | number | null>[] }) => {
+  const check = async (stored: { headers: string[]; rows: Record<string, string | number | boolean | null>[] }) => {
     const { loadImportPreviewIdentities } = await import("../importPreviewIdentity");
     const r = await loadImportPreviewIdentities("t", "run", [
       { document_id: "doc-1", table_index: 0, headers: stored.headers, rows: stored.rows, row_count: stored.rows.length },

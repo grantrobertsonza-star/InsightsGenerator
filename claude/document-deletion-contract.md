@@ -79,7 +79,12 @@ Removes, with the file, in one transaction (SYS5B-F03): its document row (cascad
 material), its archived history rows (`finding_history` and the dependent history rows of those
 findings), its Research quality source text and the quotes and facts copied from it (the purge, now part
 of the same transaction), and the links between its findings and other files' findings that only its
-bin entry held (the message says how many). If any of it fails, nothing is erased: the file stays in the
+bin entry held (the message says how many). The count is of relationships, each once (Codex B27-F01):
+the links its current bin entry holds (a grounding or contradiction with a finding of another file, in
+either direction, including a claim's own grounding by another file's finding), and the links another
+file's bin entry holds to one of its findings. Snapshots of earlier removals that were restored are
+history: they are erased with the file but never counted. A link whose other finding was already erased
+was counted by that erase and is not counted again. If any of it fails, nothing is erased: the file stays in the
 bin and Erase can be tried again. The stored bytes, preview and converted copy are removed after the
 commit through the queued storage cleanup, which keeps a visible retry. Synthesized insights and
 narratives keep the researcher's wording and stay "Support no longer valid". Reports already downloaded

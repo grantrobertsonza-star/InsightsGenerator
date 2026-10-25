@@ -157,6 +157,75 @@ describe.skipIf(!TEST_DATABASE_URL)("document bin integrity (real database)", ()
     }
   });
 
+  it("B27-F01: Erase counts each link it removes once, after zero, one or several earlier removes and restores", async () => {
+    const { removeDocumentToBin, restoreDocumentFromBin } = await bin();
+    const { eraseDocumentAction } = await import("../documentActions");
+    for (const cycles of [0, 1, 3]) {
+      // The report stays in the project; only the data file goes to the bin, so its removal holds the link.
+      const g = await grounded();
+      for (let i = 0; i < cycles; i++) {
+        await removeDocumentToBin(T, g.r, g.data, null);
+        await restoreDocumentFromBin(T, g.r, await removalOf(g.data));
+        expect(await groundedBy(g.claim), `cycle ${i + 1}`).toBe(g.computed);
+      }
+      await removeDocumentToBin(T, g.r, g.data, null);
+      expect(Number((await one("select count(*)::int as n from document_removals where document_id = $1", [g.data])).n)).toBe(cycles + 1);
+      const erased = await eraseDocumentAction(g.r, g.data);
+      expect(erased, `${cycles} cycles`).toEqual({ ok: true, message: "Erased. 1 link between its findings and other files' findings went with it." });
+      expect(await one("select id from documents where id = $1", [g.data])).toBeUndefined();
+      expect(await groundedBy(g.claim)).toBeNull();
+      // History of every earlier removal is erased with the file, as before.
+      expect(await one("select id from document_removals where document_id = $1", [g.data])).toBeUndefined();
+    }
+
+    // A contradiction and a grounding link, after two cycles: two links, each counted once.
+    const r = await newRun();
+    const a = await doc(r, "a.docx");
+    const b = await doc(r, "b.docx");
+    const data = await doc(r, "data.csv", "table");
+    const fa = await finding(r, a, "stated", "Usage rose");
+    const fb = await finding(r, b, "stated", "Usage fell");
+    const computed = await finding(r, a, "generated", "Usage index 12");
+    await finding(r, data, "stated", "Index is 12", { groundedBy: computed });
+    await db.pool.query(
+      "insert into finding_contradictions (tenant_id, run_id, original_finding_id, contradicting_finding_id, rationale, detected_by) values ($1,$2,$3,$4,'Opposite directions','chain_trace')",
+      [T, r, fa, fb],
+    );
+    for (let i = 0; i < 2; i++) {
+      await removeDocumentToBin(T, r, a, null);
+      await restoreDocumentFromBin(T, r, await removalOf(a));
+    }
+    await removeDocumentToBin(T, r, a, null);
+    expect(await eraseDocumentAction(r, a)).toEqual({ ok: true, message: "Erased. 2 links between its findings and other files' findings went with it." });
+
+    // A claim's own grounding by another file's finding goes with the claim's file, counted once, also
+    // after its other end has been removed and restored meanwhile.
+    const h = await grounded();
+    await removeDocumentToBin(T, h.r, h.report, null);
+    await restoreDocumentFromBin(T, h.r, await removalOf(h.report));
+    await removeDocumentToBin(T, h.r, h.report, null);
+    await removeDocumentToBin(T, h.r, h.data, null);
+    await restoreDocumentFromBin(T, h.r, await removalOf(h.data)); // the claim, and its link, wait in the bin
+    expect(await eraseDocumentAction(h.r, h.report)).toMatchObject({ message: "Erased. 1 link between its findings and other files' findings went with it." });
+
+    // Both ends in the bin: the first erase counts the link; the second, whose other end is gone, does not
+    // count it again.
+    const both = await grounded();
+    await removeDocumentToBin(T, both.r, both.data, null);
+    await removeDocumentToBin(T, both.r, both.report, null);
+    expect(await eraseDocumentAction(both.r, both.report)).toMatchObject({ message: "Erased. 1 link between its findings and other files' findings went with it." });
+    expect(await eraseDocumentAction(both.r, both.data)).toEqual({ ok: true, message: "Erased." });
+
+    // Refused while the file is not in the bin, nothing changed; once removed, the erase counts the link once.
+    const x = await grounded();
+    await removeDocumentToBin(T, x.r, x.data, null);
+    await restoreDocumentFromBin(T, x.r, await removalOf(x.data));
+    expect(await eraseDocumentAction(x.r, x.data)).toMatchObject({ ok: false });
+    expect(await groundedBy(x.claim)).toBe(x.computed);
+    await removeDocumentToBin(T, x.r, x.data, null);
+    expect(await eraseDocumentAction(x.r, x.data)).toEqual({ ok: true, message: "Erased. 1 link between its findings and other files' findings went with it." });
+  });
+
   it("SYS5B-F02: an erased source keeps the marker when another source is restored; it clears only when every source is back", async () => {
     const { removeDocumentToBin, restoreDocumentFromBin, eraseRemovedDocument } = await bin();
     const setup = async () => {

@@ -1,8 +1,8 @@
 import { withTenant, withTenantRead } from "./db";
 import { normaliseDataSetup, DEFAULT_DATA_SETUP, type DataSetup } from "./dataSetupShared";
-import { cellValue, setCell } from "./rowCells";
+import { cellValue, setCell, type TableCell } from "./rowCells";
 
-type Cell = string | number | null;
+type Cell = TableCell;
 
 /**
  * Unique variable names for a list of literal names, by the engine's rule (_dedupe_header_names in

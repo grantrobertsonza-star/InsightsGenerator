@@ -42,6 +42,7 @@ import type {
   TranscriptSetup,
 } from "@/lib/transcriptSetup";
 import OpenFileButton from "./OpenFileButton";
+import { cellText, type TableCell } from "@/lib/rowCells";
 import { Pane } from "./ThreePane";
 
 export const SESSION_LABEL = {
@@ -76,7 +77,7 @@ type FilePreview =
         label: string;
         headers: string[];
         totalColumns: number;
-        rows: Record<string, string | number | null>[];
+        rows: Record<string, TableCell>[];
         totalRows: number;
       }[];
     }
@@ -375,7 +376,10 @@ function SourceHeader({ row }: { row: Row }) {
             {TRANSCRIPT_CODING_INCOMPLETE_HELP}
           </p>
         )}
-        {s.readError && (
+        {/* One notice per refusal (Codex V-B27-01). Once the page shows the stored preview withheld, its
+            Preview tab gives the reason from a fresh read of the file, with the recovery; the failure of
+            the read attempted just now in this page is then not repeated here. */}
+        {s.readError && !s.previewUnverified && (
           <p role="alert" className="mt-2 max-w-2xl rounded-lg border border-danger bg-danger-light px-3 py-2 text-xs text-danger">
             {`Could not read this file: ${s.readError}`}
           </p>
@@ -466,7 +470,7 @@ function PreviewPanel({ preview, docKind }: { preview: FilePreview; docKind?: st
                   <tr key={ri} className="border-b border-border last:border-0">
                     {t.headers.map((h) => (
                       <td key={h} className="whitespace-nowrap px-3 py-2 text-foreground">
-                        {row[h] ?? ""}
+                        {cellText(row[h])}
                       </td>
                     ))}
                   </tr>
@@ -583,7 +587,12 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         if (rr.ok) {
           setLayoutChanged(false);
           router.refresh();
-        } else setReadError(rr.error);
+        } else {
+          setReadError(rr.error);
+          // The stored table was read the old way and the file cannot be read the new way: refresh so the
+          // Preview tab withholds that table with the reason and its recovery, as it will after a reload.
+          router.refresh();
+        }
       }
     } else if (r.conflict) {
       // This file's set-up changed elsewhere (another save still in flight, or another

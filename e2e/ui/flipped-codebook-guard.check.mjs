@@ -9,6 +9,9 @@
 //      SPSS/Stata/SAS read failure). Since the one reader (batch 26) the file itself cannot be read in
 //      that layout, so the stored preview is withheld with the reason and there is no Variables tab;
 //      before, the retired preview reader still showed rows that no calculation would use;
+//      The read attempted right after the layout change is reported at once; when the page refreshes,
+//      the Preview tab's notice (stored table withheld, reason from a fresh read, recovery) replaces
+//      that report, so one refusal shows at every moment (Codex V-B27-01);
 //   2. the refusal survives a reload;
 //   3. recovery works: the same data re-exported one row per respondent, uploaded as a new file,
 //      reads normally (default layout, no refusal for it). After the refused file is deleted, the
@@ -92,10 +95,15 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
     await openSource(page, "flipped-guard.xlsx", "Preview");
   };
 
-  // 1. The file's Preview tab shows the refusal once, with its recovery guidance.
+  // 1. The file's Preview tab shows the refusal once, with its recovery guidance. The read attempted
+  // after the layout change fails and is reported at once; the page then refreshes and the Preview tab's
+  // notice (the stored table withheld, with the reason from a fresh read) replaces that report, so there
+  // is one refusal at every moment (Codex V-B27-01). The check waits for that settled state, then counts.
   await showRefusal();
   await expect(notice().first()).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("import-preview-recovery")).toContainText(REFUSAL, { timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
+  await expect(page.getByTestId("import-preview-recovery")).toContainText("No cached rows or corrections are shown");
   await expect(notice().first()).toContainText("Re-export as one row per respondent");
   await expect(notice().first()).not.toContainText("SPSS/Stata/SAS");
 
@@ -103,7 +111,7 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
   await page.goto(runUrl, { waitUntil: "networkidle" });
   await openSection(page, /Import data/);
   await showRefusal();
-  await expect(notice().first()).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("import-preview-recovery")).toContainText(REFUSAL, { timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
 
   // 3. Recovery: the rows-per-respondent re-export reads normally.

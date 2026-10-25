@@ -10,6 +10,7 @@ vi.mock("@/app/useHydrated", async () => await import("../../app/useHydrated"));
 vi.mock("@/lib/dataSetupShared", async () => await import("../dataSetupShared"));
 vi.mock("@/lib/displayDate", async () => await import("../displayDate"));
 vi.mock("@/lib/importSources", async () => await import("../importSources"));
+vi.mock("@/lib/rowCells", async () => await import("../rowCells"));
 
 const { ImportDetailProvider, SelectedFileDetail } = await import("../../app/runs/[id]/TranscriptSetup");
 

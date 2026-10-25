@@ -9,13 +9,13 @@ import { generateFindingsFromTable } from "./generateFindingsFromTable";
 import { mapWithConcurrency } from "./concurrency";
 import type { ArchiveReason } from "./findingArchive";
 import { loadDataSetupWithStatus, transposeTable } from "./dataSetup";
-import { setCell } from "./rowCells";
+import { setCell, type TableCell } from "./rowCells";
 
 type ExtractedTable = {
   label: string | null;
   sourcePage: number | null;
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
 };
 
 /** How an engine-read table was read, stored on document_tables.read_provenance (migration 0116). */
@@ -133,7 +133,7 @@ async function detectTablesAcrossPages(
       const rows = rawRows
         .filter((row): row is unknown[] => Array.isArray(row))
         .map((row) => {
-          const record: Record<string, string | number | null> = {};
+          const record: Record<string, TableCell> = {};
           headers.forEach((header, index) => {
             const cell = row[index];
             setCell(record, header, typeof cell === "string" || typeof cell === "number" ? cell : null);

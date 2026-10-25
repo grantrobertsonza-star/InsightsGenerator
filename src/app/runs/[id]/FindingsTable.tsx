@@ -23,6 +23,7 @@ import {
 import type { WordingEditState } from "@/lib/findingWording";
 import { getDocumentPreviewUrl } from "@/lib/previewActions";
 import type { PreviewTable } from "@/lib/parseTable";
+import { cellText } from "@/lib/rowCells";
 import {
   EyeIcon,
   CheckIcon,
@@ -220,7 +221,7 @@ function DocumentPreviewPanel({
                             : "text-foreground"
                         }`}
                       >
-                        {row[header] ?? ""}
+                        {cellText(row[header])}
                       </td>
                     ))}
                   </tr>

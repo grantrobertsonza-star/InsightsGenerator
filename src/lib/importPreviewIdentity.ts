@@ -1,17 +1,17 @@
 import { withTenantRead } from "./db";
 import { isPlainTableFileName, parseTableDocument } from "./parseTable";
 import { loadDataSetupWithStatus } from "./dataSetup";
-import { cellValue } from "./rowCells";
+import { cellValue, type TableCell } from "./rowCells";
 
 /** The engine reader whose stored tables are shown without a fresh read (TABLE_READER in
  * api/parse-stats-file.py; engineTableReader.test.ts keeps the two equal). */
-export const ENGINE_TABLE_READER = "engine-plain-2026.10.25";
+export const ENGINE_TABLE_READER = "engine-plain-2026.10.26";
 
 type StoredPreview = {
   document_id: string;
   table_index: number;
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   row_count: number;
   /** document_tables.read_provenance (migration 0116); absent or null when not recorded. */
   read_provenance?: unknown;

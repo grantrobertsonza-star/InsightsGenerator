@@ -213,7 +213,7 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
-  if (/\.(?:csv|tsv|xlsx|xls)$/i.test(sourceFilename)) return 11;
+  if (/\.(?:csv|tsv|xlsx|xls)$/i.test(sourceFilename)) return 12;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }

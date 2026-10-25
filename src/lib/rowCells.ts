@@ -18,3 +18,21 @@ export function setCell<T>(row: Record<string, T>, name: string, value: T): void
 export function cellValue<T>(row: Record<string, T>, name: string): T | undefined {
   return Object.hasOwn(row, name) ? row[name] : undefined;
 }
+
+/**
+ * One stored table cell, as the engine's one reader writes it (parseTable.ts): text, a number, a
+ * genuine Excel logical cell (true/false, kept logical; CSV TRUE/FALSE are text), or missing (null).
+ */
+export type TableCell = string | number | boolean | null;
+
+/**
+ * The text a preview shows for one cell (Codex B26-F02). React renders neither `true` nor `false`, so a
+ * logical cell rendered directly looks the same as a missing one. Logical cells are written TRUE/FALSE,
+ * as Excel shows them and as the engine writes a logical name (_literal_text); zero stays "0"; only a
+ * missing cell (null, or no own value) is blank. Display only: the stored value is never converted.
+ */
+export function cellText(value: TableCell | undefined): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  return String(value);
+}

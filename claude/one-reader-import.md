@@ -45,7 +45,7 @@ copy and read back, as `convert` does) and refuses an answer that is not a compl
   whole number beyond 2^53 (the stored preview holds numbers as JSON doubles, so a larger one would
   differ between preview and calculation). Whole numbers with no gaps are int64; otherwise float with
   missing as NaN. Anything else is text exactly as written, so `001`, `1`, `0001` and `+2` stay four
-  codes (IP1000-F01). CSV `TRUE`/`FALSE` are text; Excel logical cells stay logical. Excel text and
+  codes (IP1000-F01). CSV `TRUE`/`FALSE` are text; Excel logical cells stay logical (stored `true`/`false`, shown as TRUE/FALSE by `rowCells.cellText` in every table preview, Codex B26-F02; a logical cell is an answer, never missing, in Data quality). Excel text and
   number cells in one mixed variable keep their own types.
 - **Dates (IP1000-F02).** A calendar cell (an Excel date-formatted number, read through openpyxl or
   xlrd) becomes ISO text: `2024-01-01` for a date with no time of day, `2024-01-01T10:30:00` otherwise,
@@ -64,8 +64,8 @@ copy and read back, as `convert` does) and refuses an answer that is not a compl
 `document_tables.read_provenance` (migration 0116): `{ reader, sheet, layout, encoding, dateColumns }`,
 written with each engine-read table and cleared for a table read any other way. Older tables are
 checked against a fresh read before they are shown (`importPreviewIdentity.ts`). The engine's
-`DICTIONARY_VERSION` is 11: every older cached dictionary of a CSV/TSV/Excel file, in either layout, is
-rebuilt on its next read (`crosstabs.minimumDictionaryVersion`); corrections live separately in
+`DICTIONARY_VERSION` is 12 and the reader `engine-plain-2026.10.26` (the exact-number rule below): every
+older cached dictionary of a CSV/TSV/Excel file, in either layout, is rebuilt on its next read (`crosstabs.minimumDictionaryVersion`); corrections live separately in
 `documents.variable_overrides` and are applied on top, so a rebuild cannot lose them.
 
 ## Behaviour that changed for existing files
@@ -74,7 +74,12 @@ rebuilt on its next read (`crosstabs.minimumDictionaryVersion`); corrections liv
   text, so a correction saved under the old name no longer applies to that variable; the variable shows
   without the correction until it is made again.
 - Zero-padded and signed codes in a non-identifier column are text, not numbers; CSV `TRUE`/`FALSE` are
-  text; a whole number beyond 2^53 makes its variable text. Tables and findings calculated before this
+  text; a number a double cannot hold exactly makes its variable text, in any spelling: a whole number
+  beyond 2^53 (`9007199254740993`, `9007199254740993.0`, `9.007199254740993e15`) and a decimal with more
+  significant digits than a double holds. The test is a round trip (`_exact_decimal`): the double's
+  shortest text must be the number written. Distinct written values therefore never merge (Codex
+  B26-F01). Tables stored by reader `engine-plain-2026.10.25` are compared with a fresh read and withheld
+  with "Read the file again" when they differ. Tables and findings calculated before this
   change keep their figures until recalculated.
 - A CSV with malformed quoting, too many values on a row, or bytes that are not UTF-8/Windows-1252 text
   is refused where it used to be read with guesses.

@@ -282,7 +282,7 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 # The reader that produced a stored preview table (documents' document_tables.read_provenance). A stored
 # table from any other reader (the retired TypeScript preview reader, or an older engine read) is checked
 # against a fresh read before it is shown (importPreviewIdentity.ts).
-TABLE_READER = "engine-plain-2026.10.25"
+TABLE_READER = "engine-plain-2026.10.26"
 
 
 def _json_cell(v):
@@ -346,8 +346,11 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 11: CSV/TSV/Excel files read by the one reader (_read_plain, _typed_series): literal names and codes,
 #     ISO dates, one duplicate-name rule in both layouts. Every cached copy of such a file is rebuilt
 #     (crosstabs.ts minimumDictionaryVersion asks for 11 for them).
-DICTIONARY_VERSION = 11
-ENGINE_VERSION = "2026.10.25-1"  # one reader for CSV/TSV/Excel (literal names, codes and dates)
+# 12: decimal and exponent spellings a double cannot hold exactly keep their variable as text
+#     (_exact_decimal, Codex B26-F01). Every cached copy of a CSV/TSV/Excel file is rebuilt again, so a
+#     version-11 dictionary that merged such values is not reused (minimumDictionaryVersion asks for 12).
+DICTIONARY_VERSION = 12
+ENGINE_VERSION = "2026.10.26-1"  # exact-number rule for decimal and exponent spellings
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -986,7 +989,8 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
 # are codes and identifiers, and reading them as numbers merges distinct codes ("001" and "1").
 _STRICT_NUMBER = re.compile(r"^-?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
 # Whole numbers beyond this are not exact in a double, which is how the stored preview (JSON read by
-# the app) holds numbers; a column holding one stays text so preview and calculation keep the same value.
+# the app) holds numbers; a column holding one, in any spelling (_exact_decimal), stays text so preview
+# and calculation keep the same, distinct values.
 _MAX_EXACT_WHOLE = 2**53
 
 
@@ -1039,6 +1043,26 @@ def _literal_text(v) -> str:
     return iso if iso is not None else str(v)
 
 
+def _exact_decimal(t: str):
+    """The double a decimal or exponent spelling holds, or None when that double is not the number
+    written. The stored preview holds numbers as doubles (JSON read by the app), so a spelling the double
+    cannot hold exactly would be stored as a different, rounded number, and two distinct values could
+    merge ("9007199254740992.0" and "9007199254740993.0" both become 9007199254740992; Codex B26-F01).
+    The test is a round trip: the shortest text that reads back as the double (repr) must be the same
+    number as the text written. "0.1", "2.50" and "1e3" pass; a whole number beyond 2^53, a spelling
+    with more significant digits than a double holds, and one that overflows or underflows do not. This
+    is the same rule as the integer branch (_MAX_EXACT_WHOLE), applied to every spelling."""
+    from decimal import Decimal, InvalidOperation
+
+    f = float(t)
+    if f in (float("inf"), float("-inf")):
+        return None
+    try:
+        return f if Decimal(repr(f)) == Decimal(t) else None
+    except InvalidOperation:
+        return None
+
+
 def _as_numbers(present):
     """The numbers these non-missing cells hold, or None when any of them is not a number by the rule
     above (a logical cell, text that is not a plain decimal number, or a whole number too large to stay
@@ -1060,8 +1084,8 @@ def _as_numbers(present):
             if not _STRICT_NUMBER.match(t):
                 return None
             if "." in t or "e" in t or "E" in t:
-                f = float(t)
-                if f in (float("inf"), float("-inf")):
+                f = _exact_decimal(t)
+                if f is None:
                     return None
                 out.append(f)
             else:

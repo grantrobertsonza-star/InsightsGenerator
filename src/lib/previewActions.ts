@@ -1,6 +1,7 @@
 "use server";
 
 import { loadImportPreviewIdentities } from "./importPreviewIdentity";
+import type { TableCell } from "./rowCells";
 import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { isPlainTableFileName, parseTableDocument, type ParsedTable, type PreviewTable } from "./parseTable";
@@ -42,7 +43,7 @@ export async function getDocumentPreviewUrl(
   const TENANT_ID = await requireTenantId();
   if (source.sourceTableId) {
     const tableRow = await withTenant(TENANT_ID, async (client) => {
-      const result = await client.query<{ headers: string[]; rows: Record<string, string | number | null>[]; document_id: string; table_index: number; row_count: number; read_provenance: unknown }>(
+      const result = await client.query<{ headers: string[]; rows: Record<string, TableCell>[]; document_id: string; table_index: number; row_count: number; read_provenance: unknown }>(
         // read_provenance is migration 0116's; before it, null (the table is then checked by a fresh read).
         `select headers, rows, document_id, table_index, jsonb_array_length(rows)::int as row_count,
                 ${(await readProvenanceAvailable(client)) ? "read_provenance" : "null::jsonb as read_provenance"}
@@ -64,7 +65,7 @@ export async function getDocumentPreviewUrl(
       kind: "table",
       table: {
         headers: tableRow.headers as string[],
-        rows: tableRow.rows as Record<string, string | number | null>[],
+        rows: tableRow.rows as Record<string, TableCell>[],
         // document_tables has no sheet concept of its own (it's the already-extracted
         // table a Word/PDF/CSV/Excel document produced, not a live re-read of the
         // workbook), so there's no sheet name to report here.

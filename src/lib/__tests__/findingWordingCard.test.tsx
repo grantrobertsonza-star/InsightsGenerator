@@ -13,6 +13,7 @@ vi.mock("@/lib/previewActions", () => ({}));
 vi.mock("@/components/icons", async () => await import("../../components/icons"));
 vi.mock("@/lib/findingsChartData", async () => await import("../findingsChartData"));
 vi.mock("@/lib/discoveryClassification", async () => await import("../discoveryClassification"));
+vi.mock("@/lib/rowCells", async () => await import("../rowCells"));
 vi.mock("@/lib/findingBasis", async () => await import("../findingBasis"));
 vi.mock("@/lib/evidenceOverview", async () => await import("../evidenceOverview"));
 vi.mock("../../app/runs/[id]/FindingsChart", () => ({ default: () => null }));

@@ -1,4 +1,5 @@
 import { loadAssistantConversation } from "@/lib/researchAssistant";
+import { cellText, type TableCell } from "@/lib/rowCells";
 import Link from "next/link";
 import { Fragment } from "react";
 import { randomUUID } from "node:crypto";
@@ -492,7 +493,7 @@ type DocumentTablePreview = {
   label: string | null;
   source_page: number | null;
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   ingestion_type: "raw" | "aggregated";
   banner_columns: string[] | null;
   stub_columns: string[] | null;
@@ -4815,7 +4816,7 @@ export default async function RunPage({
                                                                   key={h}
                                                                   className="py-1 pr-3 text-foreground"
                                                                 >
-                                                                  {row[h] ?? ""}
+                                                                  {cellText(row[h])}
                                                                 </td>
                                                               ),
                                                             )}
