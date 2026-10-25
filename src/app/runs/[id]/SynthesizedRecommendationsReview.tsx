@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { attempt } from "./actionFailure";
+import { actionFailureMessage, attempt, CONNECTION_LOST_MESSAGE } from "./actionFailure";
+import { useRecommendationEdit } from "./recommendationEditing";
 import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptRecommendation,
   rejectRecommendation,
   restoreRecommendation,
-  updateAndAcceptRecommendation,
   addOwnSynthesizedRecommendation,
   deleteRecommendation,
   regenerateSynthesizedRecommendations,
@@ -482,6 +482,14 @@ function RecommendationCard({
   // Each action reports its failure here instead of throwing out of the transition, which
   // replaced the page and lost an open edit; a failed save keeps the editor and draft.
   const [error, setError] = useState<string | null>(null);
+  const edit = useRecommendationEdit({
+    runId,
+    recommendationId: recommendation.id,
+    setDraft,
+    setError,
+    close: () => setIsEditing(false),
+    startTransition,
+  });
   const run = (action: () => Promise<unknown>, after?: () => void) =>
     startTransition(async () => {
       setError(null);
@@ -637,9 +645,7 @@ function RecommendationCard({
           <>
             <button
               disabled={isPending || !draftComplete(draft)}
-              onClick={() =>
-                run(() => updateAndAcceptRecommendation(runId, recommendation.id, draft), () => setIsEditing(false))
-              }
+              onClick={() => edit.save(draft)}
               className="rounded-lg border border-success bg-success px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
               Save and accept
@@ -647,7 +653,7 @@ function RecommendationCard({
             <button
               onClick={() => {
                 setDraft(draftFrom(recommendation));
-                setError(null);
+                edit.cancel();
                 setIsEditing(false);
               }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground"
@@ -676,7 +682,10 @@ function RecommendationCard({
             )}
             <button
               disabled={isPending}
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                edit.begin(draftFrom(recommendation));
+                setIsEditing(true);
+              }}
               className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-slate-400 hover:text-foreground"
             >
               {isAccepted ? "Edit" : "Edit and accept"}
@@ -707,6 +716,7 @@ function RecommendationCard({
           {error}
         </p>
       )}
+      {isEditing && edit.conflictPanel(draft, isPending)}
     </div>
   );
 }
@@ -784,6 +794,10 @@ export default function SynthesizedRecommendationsReview({
   const [reserveOpen, setReserveOpen] = useState(false);
   const [addInsightId, setAddInsightId] = useState(insightOptions[0]?.id ?? "");
   const [addDraft, setAddDraft] = useState<Draft>(emptyDraft);
+  // Codex REC500-F03: one identity per add, made when the form opens and sent again on every retry,
+  // so a resend after a lost reply finds the recommendation already saved instead of adding it twice.
+  // A new one is made only after a confirmed add.
+  const [addKey, setAddKey] = useState(() => crypto.randomUUID());
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
   const [reviewFilter, setReviewFilter] = useState<"all" | RecommendationReview>("all");
   const [qualityFilter, setQualityFilter] = useState<"all" | RecommendationQuality | "unscored">("all");
@@ -978,10 +992,19 @@ export default function SynthesizedRecommendationsReview({
             e.preventDefault();
             if (!addInsightId || !draftComplete(addDraft)) return;
             setAddError(null);
+            // Codex REC500-F04: a failed send (the server unreachable, the reply lost) is caught here, so
+            // the form, its fields and the chosen insight stay as they are, with the error beside them.
             startTransition(async () => {
-              const result = await addOwnSynthesizedRecommendation(runId, addInsightId, addDraft);
-              if (result.ok) setAddDraft(emptyDraft);
-              else setAddError(result.error);
+              try {
+                const result = await addOwnSynthesizedRecommendation(runId, addInsightId, addDraft, addKey);
+                if (result.ok) {
+                  setAddDraft(emptyDraft);
+                  setAddKey(crypto.randomUUID());
+                } else setAddError(result.error);
+              } catch (error) {
+                const message = actionFailureMessage(error);
+                setAddError(message === CONNECTION_LOST_MESSAGE ? message : `${message} Your recommendation is still in the form; press Add recommendation to try again.`);
+              }
             });
           }}
           className="rounded-lg border border-dashed border-border p-4"
@@ -1001,7 +1024,7 @@ export default function SynthesizedRecommendationsReview({
           </select>
           <EditFields draft={addDraft} onChange={setAddDraft} />
           {addError && (
-            <p role="alert" className="mt-2 text-sm text-danger">
+            <p role="alert" className="mt-2 text-sm text-danger" data-testid="recommendation-add-error">
               {addError}
             </p>
           )}

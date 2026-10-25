@@ -7,6 +7,7 @@
 //            covers only the missing insights - no duplicates.
 // Skipped, with a printed reason, when TEST_DATABASE_URL is not set.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -101,17 +102,17 @@ describe.skipIf(!TEST_DATABASE_URL)("recommendation integrity (real database)", 
     const rejected = await synthesized(runA, "Rejected insight in A", "rejected");
     const own = await synthesized(runA, "Own insight in A");
 
-    const cross = await addOwnSynthesizedRecommendation(runA, foreign.si, fields);
+    const cross = await addOwnSynthesizedRecommendation(runA, foreign.si, fields, randomUUID());
     expect(cross.ok).toBe(false);
-    const crossPre = await addOwnRecommendation(runA, foreign.pi, fields);
+    const crossPre = await addOwnRecommendation(runA, foreign.pi, fields, randomUUID());
     expect(crossPre.ok).toBe(false);
-    expect((await addOwnSynthesizedRecommendation(runA, rejected.si, fields)).ok).toBe(false);
-    expect((await addOwnSynthesizedRecommendation(runA, "00000000-0000-4000-8000-00000000dead", fields)).ok).toBe(false);
+    expect((await addOwnSynthesizedRecommendation(runA, rejected.si, fields, randomUUID())).ok).toBe(false);
+    expect((await addOwnSynthesizedRecommendation(runA, "00000000-0000-4000-8000-00000000dead", fields, randomUUID())).ok).toBe(false);
     expect(await recCount("run_id = $1", [runA])).toBe(0);
     expect(await recCount("synthesized_insight_id = $1 or insight_id = $2", [foreign.si, foreign.pi])).toBe(0);
 
-    expect(await addOwnSynthesizedRecommendation(runA, own.si, fields)).toEqual({ ok: true });
-    expect(await addOwnRecommendation(runA, own.pi, fields)).toEqual({ ok: true });
+    expect(await addOwnSynthesizedRecommendation(runA, own.si, fields, randomUUID())).toMatchObject({ ok: true, alreadySaved: false });
+    expect(await addOwnRecommendation(runA, own.pi, fields, randomUUID())).toMatchObject({ ok: true, alreadySaved: false });
     expect(await recCount("run_id = $1", [runA])).toBe(2);
   });
 
