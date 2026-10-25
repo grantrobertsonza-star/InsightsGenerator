@@ -28,6 +28,10 @@ export type RunNavSection = {
 const FOLDED_KEY = "run-nav-folded:v1";
 const FOLDED_EVENT = "run-nav-folded";
 let foldedInPage: string | null = null;
+// For browser values that do not announce changes (the address, a stored section, a page element):
+// read on each render in the browser, never on the server.
+const subscribeNothing = () => () => {};
+
 function readFolded(): string {
   if (foldedInPage !== null) return foldedInPage;
   try {
@@ -90,37 +94,42 @@ export function RunSectionProvider({
   validIds?: string[];
   children: ReactNode;
 }) {
-  const [selected, setSelectedState] = useState(defaultId);
+  // The section chosen in this page, once one is; until then the one the address names or the one
+  // remembered for this run. Those are read from the browser (the address and session storage) through
+  // useSyncExternalStore: the server and the hydrating render show the default section, and the
+  // remembered one applies straight after, as before, without setting state in an effect.
+  const [chosen, setChosen] = useState<string | null>(null);
   const storageKey = () => `run-section:${window.location.pathname}`;
-
-  // Remember the section per run, so a reload (or the refresh after saving)
-  // returns to where you were instead of the default section.
-  useEffect(() => {
+  const usable = (id: string | null): id is string => !!id && (!validIds || validIds.includes(id));
+  const readStartSection = () => {
     // A link naming a section (?section=, from the main dashboard's next step) opens it; otherwise
-    // the one remembered for this run.
+    // the one remembered for this run, so a reload (or the refresh after saving) returns to where
+    // you were instead of the default section.
     const linked = new URLSearchParams(window.location.search).get("section");
-    if (linked && (!validIds || validIds.includes(linked))) {
-      setSelectedState(linked);
-      try {
-        window.sessionStorage.setItem(storageKey(), linked);
-      } catch {
-        // storage blocked: the link still opens the section
-      }
-      return;
-    }
+    if (usable(linked)) return linked;
     try {
       const saved = window.sessionStorage.getItem(storageKey());
-      if (saved && saved !== defaultId && (!validIds || validIds.includes(saved)))
-        setSelectedState(saved);
+      return usable(saved) ? saved : null;
     } catch {
-      // storage blocked: stay on the default section
+      return null; // storage blocked: stay on the default section
     }
-    // Only on first load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
+  const startSection = useSyncExternalStore(subscribeNothing, readStartSection, () => null);
+  const selected = chosen ?? startSection ?? defaultId;
+
+  // A linked section is remembered too, so a later reload without the link keeps it.
+  useEffect(() => {
+    const linked = new URLSearchParams(window.location.search).get("section");
+    if (!linked || linked !== startSection) return;
+    try {
+      window.sessionStorage.setItem(storageKey(), linked);
+    } catch {
+      // storage blocked: the link still opens the section
+    }
+  }, [startSection]);
 
   const setSelected = (id: string) => {
-    setSelectedState(id);
+    setChosen(id);
     try {
       window.sessionStorage.setItem(storageKey(), id);
     } catch {
@@ -189,13 +198,10 @@ export function RunNav({
 }) {
   const { selected, setSelected } = useRunSection();
   const router = useRouter();
-  const [portalEl, setPortalEl] = useState<Element | null>(null);
-  const [railEl, setRailEl] = useState<Element | null>(null);
-
-  useEffect(() => {
-    setPortalEl(document.getElementById("run-nav-slot"));
-    setRailEl(document.getElementById("run-nav-rail"));
-  }, []);
+  // The page's navigation slots, found once the page is in the browser (none on the server or while
+  // hydrating, so the portals render after hydration as before).
+  const portalEl = useSyncExternalStore(subscribeNothing, () => document.getElementById("run-nav-slot"), () => null);
+  const railEl = useSyncExternalStore(subscribeNothing, () => document.getElementById("run-nav-rail"), () => null);
 
   // The floating Research assistant reads the open section from here (components/openSection.ts).
   const openLabel = sections.find((s) => s.id === selected || (s.activeFor ?? []).includes(selected))?.label ?? selected;

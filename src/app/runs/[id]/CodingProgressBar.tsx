@@ -37,11 +37,17 @@ export default function CodingProgressBar({
   // reading the clock during render (the bar re-renders on every poll, so the timing is the same).
   const [polledAt, setPolledAt] = useState(0);
 
+  // Progress from an earlier active period is dropped when the bar is switched off, so switching it on
+  // again never shows the previous run of work until the first poll answers. Done while rendering
+  // (React's pattern for state that follows a prop) rather than in the effect.
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (!active) setEntries([]);
+  }
+
   useEffect(() => {
-    if (!active) {
-      setEntries([]);
-      return;
-    }
+    if (!active) return;
     let cancelled = false;
     const poll = async () => {
       try {

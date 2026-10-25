@@ -71,14 +71,14 @@ vi.setConfig({ testTimeout: 20000 });
 const FAILED_SETUP = { ok: false as const, setup: { unit: "respondents" as const, layout: "rows_are_cases" as const, method: "survey" as const, accepted: false, wave: null, design: null }, error: "permission denied for table documents" };
 
 function mockDocumentRead() {
-  vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) =>
+  vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) =>
     cb({
       query: async (sql: string) => {
         const s = sql.toLowerCase();
         if (s.includes("from documents")) return { rows: [{ storage_path: "s3://x", source_filename: "data.sav", selected_sheet: null, variable_dictionary: null }] };
         return { rows: [] };
       },
-    }),
+    } as never),
   );
 }
 
@@ -116,8 +116,8 @@ describe("the real caller-to-builder chain refuses to build on a failed required
       columns: [],
       filters: [],
       unclear: [],
-    } as any);
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
+    } as never);
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => {
       const fakeClient = {
         query: async (sql: string) => {
           const s = sql.toLowerCase();
@@ -156,7 +156,7 @@ describe("the real caller-to-builder chain refuses to build on a failed required
           return { rows: [] };
         },
       };
-      return cb(fakeClient);
+      return cb(fakeClient as never);
     });
 
     const stored = await evaluateEvidenceQuestion("tenant-1", "run-1", { id: "doc-1", name: "Wave 1" }, "ev-1");
@@ -177,7 +177,7 @@ describe("the real caller-to-builder chain refuses to build on a failed required
   });
 
   it("buildStarterTablesAction (starter tables) never reaches the stats engine for any banner", async () => {
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) =>
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) =>
       cb({
         query: async (sql: string) => {
           const s = sql.toLowerCase();
@@ -203,7 +203,7 @@ describe("the real caller-to-builder chain refuses to build on a failed required
           }
           return { rows: [] };
         },
-      }),
+      } as never),
     );
 
     const r = await buildStarterTablesAction("run-1", "doc-1");

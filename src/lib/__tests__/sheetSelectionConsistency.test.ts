@@ -71,7 +71,7 @@ const freshPath = () => `${randomUUID()}/${randomUUID()}/fixture`;
 function mockDownload(buffer: ArrayBuffer) {
   vi.mocked(supabaseAdmin.storage.from).mockReturnValue({
     download: async () => ({ data: { arrayBuffer: async () => buffer }, error: null }),
-  } as any);
+  } as never);
 }
 
 function workbookBuffer(wb: XLSX.WorkBook): ArrayBuffer {
@@ -267,7 +267,7 @@ describe.skipIf(!PYTHON_OK)("sheet selection consistency (IMP-002/IMP-SHIP-001/0
         },
       };
     }
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(fakeClient()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(fakeClient() as never));
 
     const docId = "doc-race-1";
     const first = await resolveAuthoritativeSheet("tenant-1", docId, null, "Dense");
@@ -296,7 +296,7 @@ describe.skipIf(!PYTHON_OK)("sheet selection consistency (IMP-002/IMP-SHIP-001/0
         },
       };
     }
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(fakeClient()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(fakeClient() as never));
 
     await expect(resolveAuthoritativeSheet("tenant-1", "doc-fail-1", null, "Dense")).rejects.toThrow(
       "permission denied for table documents",
@@ -490,7 +490,7 @@ describe.skipIf(!PYTHON_OK)("round 4: extractAndStoreDocumentTables caller-level
     // one this workbook would rank highest on its own (both sheets here have equal real-data
     // row counts, so the ranking rule alone would pick "Alpha", the first one encountered).
     DOCS["doc-1"].selected_sheet = "Beta";
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     mockDownload(twoSheetWorkbookBuffer());
 
     const { extractAndStoreDocumentTables } = await import("../documentTables");
@@ -508,7 +508,7 @@ describe.skipIf(!PYTHON_OK)("round 4: extractAndStoreDocumentTables caller-level
     const { client } = makeFakeDb({
       "doc-2": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => {
       // The first call extractAndStoreDocumentTables makes is its own initial document read
       // (select ... from documents), which must still succeed so there is something to
       // resolve a sheet against; only the subsequent selected_sheet UPDATE (inside
@@ -522,7 +522,7 @@ describe.skipIf(!PYTHON_OK)("round 4: extractAndStoreDocumentTables caller-level
           }
           return client().query(sql, params);
         },
-      });
+      } as never);
     });
     mockDownload(simpleWorkbookBuffer("Only"));
 
@@ -542,7 +542,7 @@ describe.skipIf(!PYTHON_OK)("round 4: extractAndStoreDocumentTables caller-level
     const { client, calls } = makeFakeDb({
       "doc-9": { storage_path: freshPath(), source_filename: "fixture_unsupported_format.xlsx", selected_sheet: "Data" },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     mockDownload(workbookBuffer(buildUnsupportedFormatWorkbook()));
 
     const { extractAndStoreDocumentTables } = await import("../documentTables");
@@ -579,8 +579,8 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
         variable_dictionary: { version: 12, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
-    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) => cb(client() as never));
 
     const { loadVariableDictionary } = await import("../crosstabs");
     const dict = await loadVariableDictionary("tenant-1", "run-1", "doc-3");
@@ -627,15 +627,15 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
     // Another reader already published "Beta" as authoritative for this document moments
     // before this call's own confirmation attempt runs.
     DOCS["doc-4"].selected_sheet = "Beta";
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
-    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     const { runStatsTool } = await import("../parseStatsFile");
     vi.mocked(runStatsTool).mockResolvedValue({
       version: 6,
       sets: {},
       sheets: { data: "Beta" },
       variables: {},
-    } as any);
+    } as never);
 
     const { loadVariableDictionary } = await import("../crosstabs");
     const dict = await loadVariableDictionary("tenant-1", "run-1", "doc-4");
@@ -650,7 +650,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
     const { DOCS, client } = makeFakeDb({
       "doc-5": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => {
       return cb({
         query: async (sql: string, params: unknown[] = []) => {
           const s = sql.toLowerCase();
@@ -664,13 +664,13 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
           }
           return client().query(sql, params);
         },
-      });
+      } as never);
     });
-    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     const { runStatsTool } = await import("../parseStatsFile");
     vi.mocked(runStatsTool)
-      .mockResolvedValueOnce({ version: 6, sets: {}, sheets: { data: "Alpha" }, variables: {} } as any)
-      .mockResolvedValueOnce({ version: 6, sets: {}, sheets: { data: "Beta" }, variables: {} } as any);
+      .mockResolvedValueOnce({ version: 6, sets: {}, sheets: { data: "Alpha" }, variables: {} } as never)
+      .mockResolvedValueOnce({ version: 6, sets: {}, sheets: { data: "Beta" }, variables: {} } as never);
 
     const { loadVariableDictionary } = await import("../crosstabs");
     const dict = await loadVariableDictionary("tenant-1", "run-1", "doc-5");
@@ -683,7 +683,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
     const { client } = makeFakeDb({
       "doc-6": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: "Alpha" },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => {
       return cb({
         query: async (sql: string, params: unknown[] = []) => {
           const s = sql.toLowerCase();
@@ -692,11 +692,11 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
           }
           return client().query(sql, params);
         },
-      });
+      } as never);
     });
-    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     const { runStatsTool } = await import("../parseStatsFile");
-    vi.mocked(runStatsTool).mockResolvedValue({ version: 6, sets: {}, sheets: { data: "Alpha" }, variables: {} } as any);
+    vi.mocked(runStatsTool).mockResolvedValue({ version: 6, sets: {}, sheets: { data: "Alpha" }, variables: {} } as never);
 
     const { loadVariableDictionary } = await import("../crosstabs");
     const dict = await loadVariableDictionary("tenant-1", "run-1", "doc-6");
@@ -713,8 +713,8 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
     const { DOCS, client, calls } = makeFakeDb({
       "doc-7": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
-    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     const { runStatsTool } = await import("../parseStatsFile");
     // First compute lands against "Alpha" (whatever this read happened to rank/pick), but
     // another reader's write wins the race for this document in between - exactly the
@@ -735,7 +735,7 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
         total: { n: 10, w: 10, nEff: 10 },
         questions: [{ key: "q1", label: "Q1", kind: "single", rows: [] }],
         skipped: [],
-      } as any)
+      } as never)
       .mockResolvedValueOnce({
         version: 2,
         engine: "test-engine",
@@ -750,11 +750,11 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
         total: { n: 10, w: 10, nEff: 10 },
         questions: [{ key: "q1", label: "Q1", kind: "single", rows: [] }],
         skipped: [],
-      } as any);
+      } as never);
     // Simulate the race: by the time resolveAuthoritativeSheet's own UPDATE runs, "Beta" has
     // already been published by someone else.
     const originalClient = client;
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => {
       return cb({
         query: async (sql: string, params: unknown[] = []) => {
           const s = sql.toLowerCase();
@@ -764,14 +764,14 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
           }
           return originalClient().query(sql, params);
         },
-      });
+      } as never);
     });
 
     const { buildCrosstab } = await import("../crosstabs");
     const result = await buildCrosstab("tenant-1", "run-1", "doc-7", {
       columnVars: [],
       rowItems: [{ key: "q1", label: "Q1", kind: "single", vars: ["q1"] }],
-    } as any);
+    } as never);
 
     expect(result.tableId).toBe("table-1");
     expect(vi.mocked(runStatsTool)).toHaveBeenCalledTimes(2);
@@ -804,8 +804,8 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
         variable_overrides: { "Q1 (2)": { type: "continuous" } },
       },
     });
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
-    vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
+    vi.mocked(withTenantRead).mockImplementation(async (_tenantId, cb) => cb(client() as never));
     const { runStatsTool } = await import("../parseStatsFile");
     vi.mocked(runStatsTool).mockResolvedValue({
       version: 2,
@@ -825,7 +825,7 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
         { key: "Q1 (2)", label: "Q1 (2)", kind: "single", rows: [] },
       ],
       skipped: [],
-    } as any);
+    } as never);
 
     const { buildCrosstab } = await import("../crosstabs");
     await buildCrosstab("tenant-1", "run-1", "doc-8", {
@@ -835,7 +835,7 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
         { key: "Q1 (3)", label: "Q1 (3)", kind: "single", vars: ["Q1 (3)"] },
         { key: "Q1 (2)", label: "Q1 (2)", kind: "single", vars: ["Q1 (2)"] },
       ],
-    } as any);
+    } as never);
 
     const crosstabArgs = vi.mocked(runStatsTool).mock.calls[0][3] as { typeOverrides: Record<string, string> };
     expect(crosstabArgs.typeOverrides).toEqual({ "Q1 (2)": "continuous" });

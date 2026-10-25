@@ -114,7 +114,7 @@ let sharedIdCounter = 1;
  */
 async function runAsOneTransaction<T>(
   db: Store,
-  fn: (client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> }, calls: Call[]) => Promise<T>,
+  fn: (client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }, calls: Call[]) => Promise<T>,
   opts: { failOn?: string } = {},
 ): Promise<T> {
   const working = cloneStore(db);

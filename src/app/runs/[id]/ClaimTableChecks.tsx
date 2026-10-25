@@ -30,9 +30,18 @@ export default function ClaimTableChecks({ runId }: { runId: string }) {
     if (r.ok) setClaims(r.claims);
     else setError(r.error);
   }
+  // The first load for this project. A response that arrives after the project changed (or the panel
+  // closed) is dropped, so an earlier project's claims never replace the current one's.
   useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let live = true;
+    void loadClaimChecksAction(runId).then((r) => {
+      if (!live) return;
+      if (r.ok) setClaims(r.claims);
+      else setError(r.error);
+    });
+    return () => {
+      live = false;
+    };
   }, [runId]);
 
   async function run(fresh: boolean) {

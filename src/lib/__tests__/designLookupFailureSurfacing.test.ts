@@ -36,7 +36,7 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 const FAKE_DICT = {
   variables: [{ name: "q1", label: "Q1", nValid: 100, nDistinct: 5, pctValid: 95, weightLike: false, inSet: null }],
   sets: [],
-} as any;
+} as never;
 
 const BASE_SETUP: DataSetup = { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, design: null };
 const OK_SETUP_STATUS: { ok: true; setup: DataSetup } = { ok: true, setup: BASE_SETUP };
@@ -81,8 +81,8 @@ describe("calculation callers surface a design-lookup failure instead of silentl
   it("runNpsAction proceeds normally when the CALLER supplies its own explicit design, even if the persisted DESIGN lookup fails - it would never have been consulted anyway", async () => {
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: true, dictionary: FAKE_DICT });
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue(FAILED_SETUP_STATUS("permission denied for table documents"));
-    vi.mocked(buildCrosstab).mockResolvedValue({ tableId: "table-1" } as any);
-    vi.mocked(loadCrosstab).mockResolvedValue({ result: null } as any);
+    vi.mocked(buildCrosstab).mockResolvedValue({ tableId: "table-1" } as never);
+    vi.mocked(loadCrosstab).mockResolvedValue({ result: null } as never);
 
     // An explicit design (including explicit null) always wins over the persisted setting per
     // effectiveDesignChoice, so a failed lookup of a setting that would never be consulted must
@@ -141,13 +141,13 @@ describe("calculation callers surface a design-lookup failure instead of silentl
         throw new Error("unhandled mock query: " + sql);
       },
     };
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(fakeClient));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(fakeClient as never));
     vi.mocked(planCrosstabFromText).mockResolvedValue({
       rows: [{ key: "revenue", label: "Revenue", vars: ["revenue"] }],
       columns: [],
       filters: [],
       unclear: [],
-    } as any);
+    } as never);
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: true, dictionary: FAKE_DICT });
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue(FAILED_SETUP_STATUS("permission denied for table documents"));
 
@@ -257,13 +257,13 @@ describe("ANA-NPS-003 (Brief 37 repair): a layout/dictionary lookup failure is j
         throw new Error("unhandled mock query: " + sql);
       },
     };
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(fakeClient));
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(fakeClient as never));
     vi.mocked(planCrosstabFromText).mockResolvedValue({
       rows: [{ key: "revenue", label: "Revenue", vars: ["revenue"] }],
       columns: [],
       filters: [],
       unclear: [],
-    } as any);
+    } as never);
     vi.mocked(loadVariableDictionaryWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" });
 
     const stored = await evaluateEvidenceQuestion("tenant-1", "run-1", { id: "doc-1", name: "Wave 1" }, "ev-1");

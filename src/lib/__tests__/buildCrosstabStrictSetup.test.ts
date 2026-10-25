@@ -40,18 +40,18 @@ vi.setConfig({ testTimeout: 20000 });
 describe("buildCrosstab enforces a strict setup lookup itself (ANA-NPS-003, Brief 38 repair)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) =>
+    vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) =>
       cb({
         query: async () => ({
           rows: [{ storage_path: "s3://x", source_filename: "data.sav", selected_sheet: null }],
         }),
-      }),
+      } as never),
     );
     vi.mocked(loadVariableOverrides).mockResolvedValue({});
   });
 
   it("fails before constructing any engine request when the setup lookup fails, even though the request itself is otherwise well-formed", async () => {
-    vi.mocked(loadDataSetupWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" } as any);
+    vi.mocked(loadDataSetupWithStatus).mockResolvedValue({ ok: false, error: "permission denied for table documents" } as never);
 
     await expect(
       buildCrosstab("tenant-1", "run-1", "doc-1", {
@@ -71,7 +71,7 @@ describe("buildCrosstab enforces a strict setup lookup itself (ANA-NPS-003, Brie
     vi.mocked(loadDataSetupWithStatus).mockResolvedValue({
       ok: true,
       setup: { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, design: null },
-    } as any);
+    } as never);
     vi.mocked(runStatsTool).mockResolvedValue({
       questions: [{ label: "Q1", kind: "single", rows: [] }],
       columns: [],
@@ -82,7 +82,7 @@ describe("buildCrosstab enforces a strict setup lookup itself (ANA-NPS-003, Brie
       overall: true,
       engine: "test",
       notes: {},
-    } as any);
+    } as never);
 
     // Whatever happens next (this fixture is deliberately minimal, not a full engine result)
     // is unrelated to this test's point, which is only that buildCrosstab got PAST its own

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import CodingProgressBar from "./CodingProgressBar";
 
@@ -34,18 +34,16 @@ function formatEta(ms: number): string {
 export default function ProcessProgress({ runId }: { runId: string }) {
   const { pending } = useFormStatus();
   const [progress, setProgress] = useState<ProgressPayload>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The last submission's progress is dropped when it ends, so the next one never starts from it.
+  // Done while rendering (React's pattern for state that follows a value) rather than in the effect.
+  const [wasPending, setWasPending] = useState(pending);
+  if (pending !== wasPending) {
+    setWasPending(pending);
+    if (!pending) setProgress(null);
+  }
 
   useEffect(() => {
-    if (!pending) {
-      setProgress(null);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-
+    if (!pending) return;
     let cancelled = false;
 
     const poll = async () => {
@@ -62,14 +60,11 @@ export default function ProcessProgress({ runId }: { runId: string }) {
     };
 
     poll();
-    intervalRef.current = setInterval(poll, 1500);
+    const timer = setInterval(poll, 1500);
 
     return () => {
       cancelled = true;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      clearInterval(timer);
     };
   }, [pending, runId]);
 
