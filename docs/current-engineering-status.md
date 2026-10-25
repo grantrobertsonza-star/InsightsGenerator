@@ -1,6 +1,29 @@
 # Current engineering status
 
-Updated: 2026-10-24. State: **READY_FOR_CODEX** (main copy only): batch20, AN500-F01 (driver display names stay unique and every chart, table and posted finding joins by the predictor's code; `docs/batch20-handover-2026-10-24.md`) on top of batch19: OBJ500-F01 and DEC500-F02 (the run row is locked before every objective or decision change and in both framers), DEC500-F01 (a stale or deleted decision editor keeps the draft and shows the stored wording), RQ-F02 (a comparison is rated only from both documents, read), CT500-F01/F02 (table ownership before archive; one table number per save), B17-F01, M-B17-01, V-B17-01, M-DEC500-01; `docs/batch19-handover-2026-10-24.md`; both implemented, ready for review. No migration.
+Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch21: COD500-F01 and COD500-F02 (coding writes check and lock the transcript's project and tenant), SEC500-F01 (a malformed report reading fails and keeps the previous findings), V-B19-01 (Research quality test cases isolated); `docs/batch21-handover-2026-10-24.md`; no migration. Implemented, ready for review.
+
+## Claude: batch21, main copy (2026-10-25)
+
+Implemented, ready for review: the batch21 repair commit and its docs commit. Checks and limits in `docs/batch21-handover-2026-10-24.md`. No migration. Codex's previous status line is kept in `.fnd001/backup-status-1025a`, and recorded here as it set it:
+
+Codex's verdict, recorded as it set the state line: "State: **READY_FOR_CLAUDE — integrity extension complete at frozen ed8c9c3: 1,400 additional selected / 1,170 pass / 230 fail; all failures repeat unchanged. 0 S1 / 5 S2 / 2 S3 new (DI-F01–F07; DI-F07 supplemental). Ten cases reproduce TP500-F03. Cumulative 0 observed S1 / 19 S2 / 3 S3; NOT READY for release.**"
+
+## Codex: data-integrity extension complete (2026-10-24)
+
+**READY_FOR_CLAUDE — integrity extension complete at frozen ed8c9c3: 1,400 additional selected / 1,170 pass / 230 fail; all failures repeat unchanged. 0 S1 / 5 S2 / 2 S3 new (DI-F01–F07; DI-F07 supplemental). Ten cases reproduce TP500-F03. Cumulative 0 observed S1 / 19 S2 / 3 S3; NOT READY for release.** [Review and Claude handoff](independent-data-integrity-extension-review-main-2026-10-24.md), [1,400-case ledger](data-integrity-extension-cases-2026-10-24.md). Prioritize cross-project/tenant output-set merges, destructive regeneration after unread sources, lost history notes, checks persistence and wave-label conflicts. Retained 36-file gate: 267 passed / 17 skipped, exit 0. Earlier same-HEAD full gates remain separately reported; no fresh full-suite/browser claim. Original implementation unchanged, all 1,168 archive files exact, disposable database container removed. Earlier findings/closures and last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: Recommendations, Insights Reports and System3000 complete (2026-10-24)
+
+**READY_FOR_CLAUDE — Recommendations500, Insights Reports500 and System3000 complete at frozen ed8c9c3. 4,000 selected / 3,715 pass / 285 fail; repeated failures unchanged. 0 S1 / 4 S2 / 0 S3 new (REC500-F01–F04, one supplemental native finding). Cumulative 0 observed S1 / 14 S2 / 1 S3; NOT READY for release.** [Completed handoff](recommendations-reports-system3000-handoff-2026-10-24.md). Full library 1,654 passed / 73 skipped, exit 0; full native 101 passed / 1 skipped, exit 0. Existing Import/Coding/Secondary failures remain open; no new system defect beyond the four Recommendations findings. Shared cleanup complete; both 1,168-file archives exact, original implementation and package-lock change preserved. Last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: Recommendations and Insights Reports handoffs (2026-10-24)
+
+**READY_FOR_CLAUDE — Recommendations500: 380 pass / 120 fail, unchanged repeat; 0 S1 / 4 S2 / 0 S3 new (REC500-F01–F04, one supplemental native finding). Insights Reports500: 500 pass / 0 fail. System3000 IN PROGRESS, not complete. Cumulative 0 observed S1 / 14 S2 / 1 S3; NOT READY for release.** [Recommendations handoff](independent-recommendations500-review-main-2026-10-24.md), [Insights Reports review](independent-reports500-review-main-2026-10-24.md). The 3,000 additional distinct system permutations are selected and hash-frozen; no completed system result is claimed. Shared disposable infrastructure remains active. Original application unchanged. Last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
+
+## Codex: independent batch19/batch20 repair review (2026-10-24)
+
+**READY_FOR_CLAUDE — batch19/batch20 reviewed at frozen `ed8c9c3`: all 11 named targets closed at the exercised boundaries; 0 S1 / 0 S2 / 1 S3 new (V-B19-01, RQ test isolation). Full native 101 passed / 1 skipped, exit 0. Full library exit 1: 1,652 passed / 2 failed / 73 skipped; both unchanged focused continuations 58 passed / 1 skipped. Cumulative 0 observed S1 / 10 S2 / 1 S3; NOT READY for release.** [Review and handoff](independent-batch19-20-review-main-2026-10-24.md). Retained original action/export probes: 302 pass; original native repros: 8 pass; decision conflict 5/5 and pane readiness 3/3 repetitions pass. The controlled scheduler probe proves a timed-out RQ case can change the next case's shared tenant; its intentional failures are separate from product outcomes. The earlier decision-editor typing timeout was not reproduced and remains unexplained. Documentation closures are separate. Shared review infrastructure removed, both 1,168-file archives exact, original implementation and package-lock change preserved. Remaining TP500/IP1000/COD500/SEC500 findings stay open; last accepted release `1e0f2a3`, **37 Closed / 6 Blocked**, unchanged.
+
 
 ## Claude: batch20 (AN500-F01), main copy (2026-10-24)
 
