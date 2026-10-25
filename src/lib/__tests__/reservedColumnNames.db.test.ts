@@ -117,17 +117,17 @@ describe.skipIf(!TEST_DATABASE_URL)("TR500-F01: column names special to JavaScri
       // The stored preview loses the column's values (what the earlier reader did): not verified,
       // whatever an inherited property would have compared as.
       await q("update document_tables set rows = (select jsonb_agg(r - '__proto__') from jsonb_array_elements(rows) r) where document_id = $1", [imported.doc]);
-      expect((await imported.identity())?.error).toMatch(/differs from selected sheet/);
+      expect((await imported.identity())?.error).toMatch(/differs from what the file's selected sheet/);
       // A changed value is not verified either; a reread restores a verified preview.
       await imported.reread();
       expect(await imported.identity()).toEqual({ error: null });
       await q("update document_tables set rows = jsonb_set(rows, '{0,__proto__}', '11') where document_id = $1", [imported.doc]);
-      expect((await imported.identity())?.error).toMatch(/differs from selected sheet/);
+      expect((await imported.identity())?.error).toMatch(/differs from what the file's selected sheet/);
       // A stored row that lost a column whose value was missing is damaged too: it is not read as
       // "missing equals missing".
       await imported.reread();
       await q("update document_tables set rows = jsonb_set(rows, '{3}', (rows->3) - 'ordinary') where document_id = $1", [imported.doc]);
-      expect((await imported.identity())?.error).toMatch(/differs from selected sheet/);
+      expect((await imported.identity())?.error).toMatch(/differs from what the file's selected sheet/);
     });
   }
 

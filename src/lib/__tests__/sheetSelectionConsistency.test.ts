@@ -1,7 +1,9 @@
 // Permanent regression tests for the Codex round-2/3/4 parser-consistency repair
 // (IMP-002 / IMP-SHIP-001 / IMP-SHIP-002 / IMP-003). These exercise the ACTUAL entry
 // points - parseTableDocument and resolveAuthoritativeSheet - not reimplementations of
-// their logic.
+// their logic. Since the one-reader repair (batch 26) parseTableDocument is the engine's own read
+// (api/parse-stats-file.py through the local engine runner), so these run the actual Python reader;
+// only storage and the database are stubbed. Skipped without python3 + pandas/openpyxl/pyreadstat.
 //
 // Round 4 (the five-defect repair): the native `vitest run` blocker from earlier rounds
 // is now resolved on this engineering sandbox (the Linux bridge VM's node_modules was
@@ -20,6 +22,9 @@
 // speak to either way.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as XLSX from "xlsx";
+import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { PYTHON } from "./helpers/pythonEngine";
 
 vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
@@ -49,6 +54,7 @@ import { supabaseAdmin } from "../supabaseAdmin";
 import { parseTableDocument, SheetSelectionLostError } from "../parseTable";
 import { resolveAuthoritativeSheet } from "../crosstabs";
 import { withTenant, withTenantRead } from "../db";
+import { ENGINE_TABLE_READER } from "../importPreviewIdentity";
 
 // Round 4's caller-level tests dynamically import ../documentTables and ../crosstabs for the
 // first time inside the test body; that first-time transform of their (now heavily-mocked,
@@ -56,6 +62,11 @@ import { withTenant, withTenantRead } from "../db";
 // this sandbox. Raised file-wide rather than per-test since the slow part is the one-time
 // transform, not any test's own logic looping or genuinely hanging.
 vi.setConfig({ testTimeout: 20000 });
+
+// The local engine runner keeps a download for a few minutes keyed by its storage path (a stored file
+// never changes in production). These fixtures differ per test, so each read gets its own path.
+const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], { encoding: "utf8" }).status === 0;
+const freshPath = () => `${randomUUID()}/${randomUUID()}/fixture`;
 
 function mockDownload(buffer: ArrayBuffer) {
   vi.mocked(supabaseAdmin.storage.from).mockReturnValue({
@@ -158,30 +169,29 @@ function buildUnsupportedFormatWorkbook(): XLSX.WorkBook {
   return wb;
 }
 
-describe("sheet selection consistency (IMP-002/IMP-SHIP-001/002, IMP-003 - Codex round 2)", () => {
+describe.skipIf(!PYTHON_OK)("sheet selection consistency (IMP-002/IMP-SHIP-001/002, IMP-003 - Codex round 2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("item 1: both independent readers' ranking resolves identically on Codex's own Sparse/Dense repro (no selection)", async () => {
+  it("item 1: the one reader's ranking picks the sheet with the most real data rows on Codex's own Sparse/Dense repro (no selection)", async () => {
     mockDownload(workbookBuffer(buildSparseDenseWorkbook()));
-    const result = await parseTableDocument("fixture_sparse_dense.xlsx", null);
+    const result = await parseTableDocument(freshPath(), "fixture_sparse_dense.xlsx");
     // Before the round-2 fix, TypeScript's !ref-dimension ranking picked "Sparse" here
-    // while Python's parsed-size ranking picked "Dense" from the identical buffer - this
-    // is exactly the disagreement Codex's review demonstrated. The unified actual-data-row
-    // ranking rule must now pick "Dense" (10 real rows) over "Sparse" (1 real row dressed
-    // up with formatting across A1:J101).
+    // while Python's parsed-size ranking picked "Dense" from the identical buffer. The
+    // actual-data-row ranking rule picks "Dense" (10 real rows) over "Sparse" (1 real row
+    // dressed up with formatting across A1:J101).
     expect(result.sheetName).toBe("Dense");
     expect(result.rows).toHaveLength(10);
   });
 
   it("item 3: a named but missing selected sheet raises an explicit recovery error, never a silent substitution", async () => {
     mockDownload(workbookBuffer(buildSparseDenseWorkbook()));
-    await expect(parseTableDocument("fixture_sparse_dense.xlsx", "Removed")).rejects.toThrow(SheetSelectionLostError);
+    await expect(parseTableDocument(freshPath(), "fixture_sparse_dense.xlsx", { selectedSheet: "Removed" })).rejects.toThrow(SheetSelectionLostError);
 
     mockDownload(workbookBuffer(buildSparseDenseWorkbook()));
     try {
-      await parseTableDocument("fixture_sparse_dense.xlsx", "Removed");
+      await parseTableDocument(freshPath(), "fixture_sparse_dense.xlsx", { selectedSheet: "Removed" });
       expect.unreachable("expected SheetSelectionLostError to be thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(SheetSelectionLostError);
@@ -191,13 +201,13 @@ describe("sheet selection consistency (IMP-002/IMP-SHIP-001/002, IMP-003 - Codex
 
   it("item 3b: an absent (never-chosen) selection is NOT treated as lost - it still resolves via the ranking rule", async () => {
     mockDownload(workbookBuffer(buildSparseDenseWorkbook()));
-    const result = await parseTableDocument("fixture_sparse_dense.xlsx", null);
+    const result = await parseTableDocument(freshPath(), "fixture_sparse_dense.xlsx");
     expect(result.sheetName).toBe("Dense");
   });
 
   it("items 6 (identifiers) and IMP-003 (header collisions): preserve zero-pad ids, long text ids, and generated-header dedup on the original workbook", async () => {
     mockDownload(workbookBuffer(buildOriginalWorkbook()));
-    const result = await parseTableDocument("fixture.xlsx", "Data");
+    const result = await parseTableDocument(freshPath(), "fixture.xlsx", { selectedSheet: "Data" });
 
     expect(result.sheetName).toBe("Data");
     expect(result.headers).toEqual(["RespID", "Age", "Q1", "Q1 (3)", "Q1 (2)"]);
@@ -213,22 +223,17 @@ describe("sheet selection consistency (IMP-002/IMP-SHIP-001/002, IMP-003 - Codex
 
   it("item 6: an id-like column with an unsupported custom Excel format is explicitly flagged, not silently mismatched", async () => {
     mockDownload(workbookBuffer(buildUnsupportedFormatWorkbook()));
-    const result = await parseTableDocument("fixture_unsupported_format.xlsx", "Data");
+    const result = await parseTableDocument(freshPath(), "fixture_unsupported_format.xlsx", { selectedSheet: "Data" });
 
     expect(result.rows[0].RespID).toBe("0007"); // supported zero-pad: not flagged
     expect(result.unsupportedIdentifierColumns).toEqual(["AccountID"]);
   });
 
-  // Overnight queue, "resolve the unsupported-ID disagreement": identical bytes previously
-  // produced formatted text in TypeScript (parseTable.ts kept the cell's rendered text,
-  // e.g. "123,456") and null in Python (_apply_zero_padded_id_formats nulled the same
-  // cell) - a genuine cross-reader disagreement on the same identifier, not just an
-  // unflagged one. Both sides now null the value for any cell flagged unsupported, so
-  // there is one consistent contract (block, not guess) rather than two readers quietly
-  // returning two different things for the same bytes.
-  it("criterion 2 (overnight queue): an unsupported-format identifier cell is blanked out, not merely flagged, in the TS reader - matching Python's null-out exactly", async () => {
+  // Overnight queue, "resolve the unsupported-ID disagreement": a cell flagged unsupported is
+  // nulled (block, not guess), by the one reader, for preview and calculation alike.
+  it("criterion 2 (overnight queue): an unsupported-format identifier cell is blanked out, not merely flagged", async () => {
     mockDownload(workbookBuffer(buildUnsupportedFormatWorkbook()));
-    const result = await parseTableDocument("fixture_unsupported_format.xlsx", "Data");
+    const result = await parseTableDocument(freshPath(), "fixture_unsupported_format.xlsx", { selectedSheet: "Data" });
 
     expect(result.unsupportedIdentifierColumns).toEqual(["AccountID"]);
     // The unsupported column's values are blanked (null), not the formatted display text
@@ -305,7 +310,7 @@ describe("sheet selection consistency (IMP-002/IMP-SHIP-001/002, IMP-003 - Codex
 // loadVariableDictionary/buildCrosstab (crosstabs.ts) entry points, using a fake-DB
 // harness rather than mocking resolveAuthoritativeSheet away - the whole point of this
 // round is that callers, not just that one helper, honor the contract.
-describe("round 4: canonical NA/whitespace/tie semantics (criterion 1)", () => {
+describe.skipIf(!PYTHON_OK)("round 4: canonical NA/whitespace/tie semantics (criterion 1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -333,7 +338,7 @@ describe("round 4: canonical NA/whitespace/tie semantics (criterion 1)", () => {
 
   it("a sheet padded out with NA/whitespace-only rows never outranks a genuinely smaller sheet", async () => {
     mockDownload(workbookBuffer(buildNaWhitespaceWorkbook()));
-    const result = await parseTableDocument("fixture_na_whitespace.xlsx", null);
+    const result = await parseTableDocument(freshPath(), "fixture_na_whitespace.xlsx");
     expect(result.sheetName).toBe("TwoReal");
     expect(result.rows).toHaveLength(2);
   });
@@ -345,7 +350,7 @@ describe("round 4: canonical NA/whitespace/tie semantics (criterion 1)", () => {
     const second = XLSX.utils.aoa_to_sheet([["A"], ["r1"], ["r2"]]);
     XLSX.utils.book_append_sheet(wb, second, "Second");
     mockDownload(workbookBuffer(wb));
-    const result = await parseTableDocument("fixture_tie.xlsx", null);
+    const result = await parseTableDocument(freshPath(), "fixture_tie.xlsx");
     expect(result.sheetName).toBe("First");
   });
 
@@ -353,10 +358,10 @@ describe("round 4: canonical NA/whitespace/tie semantics (criterion 1)", () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["respondent_id", "q"], [" 001 ", 1], ["001", 2], [" ", 3], ["NA", 4]]), "Data");
     mockDownload(workbookBuffer(wb));
-    const parsed = await parseTableDocument("literal-identifiers.xlsx", "Data");
+    const parsed = await parseTableDocument(freshPath(), "literal-identifiers.xlsx", { selectedSheet: "Data" });
     expect(parsed.rows.map(row => row.respondent_id)).toEqual([" 001 ", "001", null, null]);
     mockDownload(Uint8Array.from(Buffer.from('respondent_id,q\n" 001 ",1\n001,2\n" ",3\nNA,4\n')).buffer);
-    const csv = await parseTableDocument("literal-identifiers.csv");
+    const csv = await parseTableDocument(freshPath(), "literal-identifiers.csv");
     expect(csv.rows.map(row => row.respondent_id)).toEqual([" 001 ", "001", null, null]);
   });
 });
@@ -431,6 +436,10 @@ function makeFakeDb(initial: Record<string, FakeDoc>) {
         if (s.includes("insert into trace")) {
           return { rows: [] };
         }
+        // Migration 0116's read_provenance column, asked for before a table is stored.
+        if (s.includes("information_schema.columns") && s.includes("read_provenance")) {
+          return { rows: [{ n: 1 }] };
+        }
         // CT500-F02: buildCrosstab locks the data file's row (by id, run and tenant) before choosing the
         // next table index; a known document is this run's.
         if (s.includes("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update")) {
@@ -466,14 +475,14 @@ function twoSheetWorkbookBuffer(): ArrayBuffer {
   return workbookBuffer(wb);
 }
 
-describe("round 4: extractAndStoreDocumentTables caller-level tests (criterion 2/3 adjacent)", () => {
+describe.skipIf(!PYTHON_OK)("round 4: extractAndStoreDocumentTables caller-level tests (criterion 2/3 adjacent)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("a losing publisher re-parses against the real winner before storing anything, rather than saving its own stale guess", async () => {
-    const { DOCS, client } = makeFakeDb({
-      "doc-1": { storage_path: "fixture.xlsx", source_filename: "fixture.xlsx", selected_sheet: null },
+    const { DOCS, client, calls } = makeFakeDb({
+      "doc-1": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
     // Simulate another reader (e.g. a concurrent dictionary load) winning the race for this
     // document's selected_sheet the instant before extraction's own resolveAuthoritativeSheet
@@ -488,14 +497,16 @@ describe("round 4: extractAndStoreDocumentTables caller-level tests (criterion 2
     const ids = await extractAndStoreDocumentTables("tenant-1", "run-1", "doc-1");
 
     expect(ids).toEqual(["table-1"]);
-    // Had this not re-parsed against the already-authoritative "Beta", it would have stored
-    // Alpha's single-column data under Beta's header name entirely by coincidence of shape -
-    // checking the actual header name stored is what proves the re-parse happened.
+    // Had this not read the already-authoritative "Beta", it would have stored Alpha's column:
+    // the stored header and the recorded provenance prove which sheet was read.
+    const insertCall = calls.find((c) => c.sql.toLowerCase().includes("insert into document_tables"));
+    expect(JSON.parse(insertCall!.params[6] as string)).toEqual(["B"]);
+    expect(JSON.parse(insertCall!.params[9] as string)).toMatchObject({ sheet: "Beta", layout: "rows_are_cases", reader: ENGINE_TABLE_READER });
   });
 
   it("a selection-persistence failure before storing propagates rather than silently saving under the wrong sheet", async () => {
     const { client } = makeFakeDb({
-      "doc-2": { storage_path: "fixture.xlsx", source_filename: "fixture.xlsx", selected_sheet: null },
+      "doc-2": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
       // The first call extractAndStoreDocumentTables makes is its own initial document read
@@ -529,7 +540,7 @@ describe("round 4: extractAndStoreDocumentTables caller-level tests (criterion 2
   // the reader function itself.
   it("unsupported-ID recovery: extraction blanks the unsupported column's values and records a recovery trace event with the exact column name", async () => {
     const { client, calls } = makeFakeDb({
-      "doc-9": { storage_path: "fixture_unsupported_format.xlsx", source_filename: "fixture_unsupported_format.xlsx", selected_sheet: "Data" },
+      "doc-9": { storage_path: freshPath(), source_filename: "fixture_unsupported_format.xlsx", selected_sheet: "Data" },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
     mockDownload(workbookBuffer(buildUnsupportedFormatWorkbook()));
@@ -561,11 +572,11 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
   it("criterion 3: an unconfirmed cache (selected_sheet null) is confirmed/published and reused when nothing else has raced ahead", async () => {
     const { DOCS, client } = makeFakeDb({
       "doc-3": {
-        storage_path: "fixture.xlsx",
+        storage_path: freshPath(),
         source_filename: "fixture.xlsx",
         selected_sheet: null,
-        // IMP-015: version 7 is the current dictionary version (a version-6 cache is recomputed; see below).
-        variable_dictionary: { version: 7, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        // Version 11 is the oldest valid for a CSV/Excel file (the one reader; crosstabs.minimumDictionaryVersion).
+        variable_dictionary: { version: 11, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
@@ -584,7 +595,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
   it("IMP-015: a version-6 cache (labels possibly chosen silently from conflicting sheets) is recomputed, not reused", async () => {
     const { client } = makeFakeDb({
       "doc-6": {
-        storage_path: "fixture.xlsx",
+        storage_path: freshPath(),
         source_filename: "fixture.xlsx",
         selected_sheet: "Alpha",
         variable_dictionary: { version: 6, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
@@ -606,11 +617,11 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
   it("criterion 3: a cache naming a sheet that LOSES the confirmation race is not reused - it is invalidated and rebuilt", async () => {
     const { DOCS, client } = makeFakeDb({
       "doc-4": {
-        storage_path: "fixture.xlsx",
+        storage_path: freshPath(),
         source_filename: "fixture.xlsx",
         selected_sheet: null,
-        // IMP-015: version 7 is the current dictionary version (a version-6 cache is recomputed; see below).
-        variable_dictionary: { version: 7, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        // Version 11 is the oldest valid for a CSV/Excel file (the one reader; crosstabs.minimumDictionaryVersion).
+        variable_dictionary: { version: 11, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     // Another reader already published "Beta" as authoritative for this document moments
@@ -637,7 +648,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
 
   it("criterion 3 (losing-publication reparse on a fresh compute): a dictionary computed before another reader's write lands adopts the real winner before being cached or returned", async () => {
     const { DOCS, client } = makeFakeDb({
-      "doc-5": { storage_path: "fixture.xlsx", source_filename: "fixture.xlsx", selected_sheet: null },
+      "doc-5": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
       return cb({
@@ -670,7 +681,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
 
   it("a dictionary-cache persistence failure (best-effort) does not stop the correct dictionary from being returned", async () => {
     const { client } = makeFakeDb({
-      "doc-6": { storage_path: "fixture.xlsx", source_filename: "fixture.xlsx", selected_sheet: "Alpha" },
+      "doc-6": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: "Alpha" },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => {
       return cb({
@@ -700,7 +711,7 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
 
   it("records the sheet this calculation actually ran against, and re-fetches when it loses the confirmation race", async () => {
     const { DOCS, client, calls } = makeFakeDb({
-      "doc-7": { storage_path: "fixture.xlsx", source_filename: "fixture.xlsx", selected_sheet: null },
+      "doc-7": { storage_path: freshPath(), source_filename: "fixture.xlsx", selected_sheet: null },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
     vi.mocked(withTenantRead).mockImplementation(async (_tenantId: string, cb: any) => cb(client()));
@@ -787,7 +798,7 @@ describe("round 4: buildCrosstab persists the authoritative sheet in provenance 
   it("correction-to-calculation: a saved type override keyed by a canonical collision header reaches the engine under that exact name, not a sibling", async () => {
     const { client } = makeFakeDb({
       "doc-8": {
-        storage_path: "fixture.xlsx",
+        storage_path: freshPath(),
         source_filename: "fixture.xlsx",
         selected_sheet: "Data",
         variable_overrides: { "Q1 (2)": { type: "continuous" } },

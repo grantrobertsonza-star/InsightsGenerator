@@ -1,7 +1,11 @@
 import { withTenantRead } from "./db";
-import { parseTableDocument } from "./parseTable";
-import { loadDataSetupWithStatus, transposeTable } from "./dataSetup";
+import { isPlainTableFileName, parseTableDocument } from "./parseTable";
+import { loadDataSetupWithStatus } from "./dataSetup";
 import { cellValue } from "./rowCells";
+
+/** The engine reader whose stored tables are shown without a fresh read (TABLE_READER in
+ * api/parse-stats-file.py; engineTableReader.test.ts keeps the two equal). */
+export const ENGINE_TABLE_READER = "engine-plain-2026.10.25";
 
 type StoredPreview = {
   document_id: string;
@@ -9,13 +13,26 @@ type StoredPreview = {
   headers: string[];
   rows: Record<string, string | number | null>[];
   row_count: number;
+  /** document_tables.read_provenance (migration 0116); absent or null when not recorded. */
+  read_provenance?: unknown;
 };
 
 export type ImportPreviewIdentity = { error: string | null };
 
-/** Stored workbook tables have no sheet provenance column. Compare their displayed values with
- * the current, explicitly selected sheet instead of treating a dictionary cache as proof. This
- * read never publishes a choice, replaces stored tables or invokes the statistical engine. */
+type Provenance = { reader?: unknown; sheet?: unknown; layout?: unknown };
+
+/**
+ * Whether each stored CSV/TSV/Excel table may be shown as the file's data. A stored table must be what
+ * the engine's one reader reads from the file now (parseTable.ts), under the document's persisted sheet
+ * and layout:
+ *  - a table whose read_provenance names the current engine reader, that sheet and that layout is that
+ *    read, and is shown after a structural check (every sampled row holds its own value for every header);
+ *  - any other table (read by the retired TypeScript preview reader, by an earlier engine reader, before
+ *    migration 0116, or under another sheet or layout) is compared value by value with a fresh engine
+ *    read, and withheld with a recovery notice when they differ. That is how a preview the old reader
+ *    stored with different names, codes or dates (Codex TP500/IP1000) stops being shown.
+ * This never publishes a sheet choice and never replaces a stored table; reading the file again does.
+ */
 export async function loadImportPreviewIdentities(
   tenantId: string,
   runId: string,
@@ -25,9 +42,9 @@ export async function loadImportPreviewIdentities(
   const result = new Map<string, ImportPreviewIdentity>();
   if (ids.length === 0) return result;
   const recovery = (reason: string) => ({
-    error: `Stored preview cannot be verified: ${reason} No cached rows or corrections are shown. ` +
-      "Retry by reloading. If the file or selected sheet changed, re-upload the corrected file; " +
-      "the existing evidence is kept until you deliberately replace it.",
+    error: `Stored preview cannot be verified: ${/[.!?]$/.test(reason.trim()) ? reason.trim() : `${reason.trim()}.`} No cached rows or corrections are shown. ` +
+      "Read the file again to replace the stored table with what the file holds. If the file or selected " +
+      "sheet changed, re-upload the corrected file; the existing evidence is kept until you deliberately replace it.",
   });
   let documents: {
     id: string;
@@ -48,46 +65,52 @@ export async function loadImportPreviewIdentities(
     for (const id of ids) result.set(id, recovery(error instanceof Error ? error.message : "source identity lookup failed"));
     return result;
   }
+  // Each stored row must hold its own value (null included) for every header (Codex TR500-F01): a
+  // missing or inherited property is never read as a value.
+  const own = (row: Record<string, unknown>, h: string) => Object.hasOwn(row, h);
   await Promise.all(ids.map(async (id) => {
     const doc = documents.find((d) => d.id === id);
     if (!doc) { result.set(id, recovery("the source document is unavailable")); return; }
-    if (doc.kind !== "table" || !/\.(xlsx|xls)$/i.test(doc.source_filename)) return;
-    if (!doc.selected_sheet) { result.set(id, recovery("the workbook has no confirmed data sheet")); return; }
-    try {
-      let parsed: { headers: string[]; rows: Record<string, string | number | null>[] } = await parseTableDocument(
-        doc.storage_path,
-        doc.selected_sheet,
-      );
-      // IMP-009: a raw file set up as columns-as-cases is stored TRANSPOSED (extractAndStoreDocumentTables
-      // flips it once with transposeTable), so it is compared with the same flip of the selected sheet.
-      // Comparing the untransposed parse withheld every valid columns-as-cases workbook. A layout that
-      // cannot be read fails closed (recovery notice), never a guessed orientation.
-      if (doc.ingestion_type === "raw") {
-        const setup = await loadDataSetupWithStatus(tenantId, doc.id);
-        if (!setup.ok) {
-          result.set(id, recovery(`the file's layout setting could not be read (${setup.error})`));
-          return;
-        }
-        if (setup.setup.layout === "columns_are_cases") {
-          const flipped = transposeTable(parsed.headers, parsed.rows);
-          parsed = { headers: flipped.headers, rows: flipped.rows as Record<string, string | number | null>[] };
-        }
+    if (doc.kind !== "table" || !isPlainTableFileName(doc.source_filename)) return;
+    const isWorkbook = /\.(xlsx|xls)$/i.test(doc.source_filename);
+    if (isWorkbook && !doc.selected_sheet) { result.set(id, recovery("the workbook has no confirmed data sheet")); return; }
+    let layout: "rows_are_cases" | "columns_are_cases" = "rows_are_cases";
+    if (doc.ingestion_type === "raw") {
+      const setup = await loadDataSetupWithStatus(tenantId, doc.id);
+      if (!setup.ok) {
+        result.set(id, recovery(`the file's layout setting could not be read (${setup.error})`));
+        return;
       }
-      const stored = tables.filter((t) => t.document_id === id && t.table_index < 100);
-      // Each stored row must hold its own value (null included) for every header, and that value
-      // must equal the fresh read's own value (Codex TR500-F01): a missing or inherited property is
-      // never read as a match. The file reader writes every header on every row it keeps, so a
-      // stored row without one was damaged, and a reread of the same defect cannot certify it.
-      const own = (row: Record<string, unknown>, h: string) => Object.hasOwn(row, h);
-      const matches = stored.every((t) =>
-        t.headers.length > 0 && t.headers.every((h) => parsed.headers.includes(h)) &&
-        t.row_count === parsed.rows.length && (t.row_count === 0 || t.rows.length > 0) &&
+      layout = setup.setup.layout;
+    }
+    const stored = tables.filter((t) => t.document_id === id && t.table_index < 100);
+    const structurallyWhole = stored.every((t) =>
+      t.headers.length > 0 && (t.row_count === 0 || t.rows.length > 0) && t.rows.every((row) => t.headers.every((h) => own(row, h))),
+    );
+    const current = stored.every((t) => {
+      const p = (t.read_provenance ?? null) as Provenance | null;
+      return !!p && p.reader === ENGINE_TABLE_READER && p.layout === layout &&
+        (isWorkbook ? p.sheet === doc.selected_sheet : true);
+    });
+    if (current) {
+      result.set(id, structurallyWhole ? { error: null } : recovery("a stored row is missing a value for one of its columns"));
+      return;
+    }
+    try {
+      const parsed = await parseTableDocument(doc.storage_path, doc.source_filename, { selectedSheet: doc.selected_sheet, layout });
+      const matches = structurallyWhole && stored.every((t) =>
+        t.headers.every((h) => parsed.headers.includes(h)) &&
+        t.row_count === parsed.rows.length &&
         t.rows.every((row, i) => parsed.rows[i] && t.headers.every((h) =>
-          own(row, h) && own(parsed.rows[i], h) && cellValue(row, h) === cellValue(parsed.rows[i], h))),
+          own(parsed.rows[i], h) && cellValue(row, h) === cellValue(parsed.rows[i], h))),
       );
-      result.set(id, matches ? { error: null } : recovery(`the cached table differs from selected sheet "${doc.selected_sheet}"`));
+      result.set(id, matches ? { error: null } : recovery(
+        isWorkbook
+          ? `the stored table differs from what the file's selected sheet "${doc.selected_sheet}" holds now (it may have been read by an earlier version of the reader)`
+          : "the stored table differs from what the file holds now (it may have been read by an earlier version of the reader)",
+      ));
     } catch (error) {
-      result.set(id, recovery(error instanceof Error ? error.message : "the selected sheet could not be read"));
+      result.set(id, recovery(error instanceof Error ? error.message : "the file could not be read"));
     }
   }));
   return result;

@@ -205,11 +205,15 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * valid except for SAV/ZSAV: version 9 preserves their user-missing declarations in the audit.
  * Version10 rechecks flipped workbooks for unsupported separate-Codebook weight/MR definitions,
  * so an older dictionary cannot bypass the refusal by serving already-cached variable metadata.
+ * Version 11 is the one reader for CSV, TSV and Excel (Codex TP500/IP1000): names and codes are read
+ * as written, dates as ISO dates, and repeated names allocated by one rule, so every older cache of
+ * such a file, in either layout, may name or type variables differently and is rebuilt.
  * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
+  if (/\.(?:csv|tsv|xlsx|xls)$/i.test(sourceFilename)) return 11;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }

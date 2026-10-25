@@ -1,8 +1,10 @@
-"""Vercel Python serverless function: converts an SPSS (.sav), Stata (.dta),
-or SAS (.sas7bdat) file into the same {headers, rows} shape parseTable.ts
-already produces for CSV/Excel, so every downstream consumer in the
-TypeScript app (the table preview, the banner-plan picker,
-bannerPlanComputation.ts) needs no format-specific handling of its own.
+"""Vercel Python serverless function: the app's reader of data files. It converts
+an SPSS (.sav), Stata (.dta) or SAS (.sas7bdat) file into a {headers, rows}
+table ("convert"), and since batch 26 is also the only reader of CSV, TSV and
+Excel files ("table", read_table): the stored preview and every dictionary,
+cross tab and driver calculation are built from the same read, so every
+downstream consumer in the TypeScript app (the table preview, the banner-plan
+picker, bannerPlanComputation.ts) needs no format-specific handling of its own.
 
 This exists because there is no reliable JavaScript/Node reader for these
 binary formats, and because the metadata these formats carry - variable
@@ -31,10 +33,13 @@ download, not a function invocation payload.
 """
 
 import csv
+import datetime
 import hashlib
+import io
 import json
 import math
 import os
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -273,6 +278,53 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 
 
 
+
+# The reader that produced a stored preview table (documents' document_tables.read_provenance). A stored
+# table from any other reader (the retired TypeScript preview reader, or an older engine read) is checked
+# against a fresh read before it is shown (importPreviewIdentity.ts).
+TABLE_READER = "engine-plain-2026.10.25"
+
+
+def _json_cell(v):
+    if v is None or _is_nat(v):
+        return None
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):
+        v = v.item()
+    if isinstance(v, float) and v != v:
+        return None
+    return v
+
+
+def read_table(file_bytes: bytes, source_filename: str, args=None) -> dict:
+    """The stored preview of a CSV, TSV or Excel file: exactly the table every calculation reads
+    (_read_raw, the same cached read the dictionary and cross tabs use), one object per case keyed by
+    canonical variable name. args: layout ("rows_are_cases" or "columns_are_cases") and selectedSheet
+    (the persisted sheet choice, if any). A persisted sheet that is gone is answered as
+    sheetSelectionLost rather than raised, so the app can show its own recovery message."""
+    args = args or {}
+    ext = os.path.splitext(source_filename.lower())[1]
+    if ext not in TABLE_EXTS:
+        raise ValueError(f"Only CSV, TSV and Excel files are read as plain tables, not {ext or '(none)'} files.")
+    layout = args.get("layout")
+    if layout not in (None, "rows_are_cases", "columns_are_cases"):
+        raise ValueError(f"Unknown data layout {layout!r}.")
+    try:
+        df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None)
+    except SheetSelectionLostError as exc:
+        return {"sheetSelectionLost": {"documentSheetName": exc.document_sheet_name, "availableSheets": exc.available_sheets}}
+    headers = [str(c) for c in df.columns]
+    rows = [{h: _json_cell(v) for h, v in zip(headers, rec)} for rec in df.itertuples(index=False, name=None)]
+    return {
+        "headers": headers,
+        "rows": rows,
+        # A CSV has no sheets; "Sheet1" is the name its persisted selection has always carried.
+        "sheetName": meta.data_sheet or "Sheet1",
+        "unsupportedIdentifierColumns": list(meta.unsupported_identifier_columns),
+        "encoding": meta.encoding,
+        "dateColumns": list(meta.date_columns),
+        "reader": TABLE_READER,
+    }
+
 # ---------------------------------------------------------------------------
 # Variable dictionary and on-demand weighted crosstabs.
 #
@@ -291,8 +343,11 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 8: columns-as-cases files typed per variable after the flip (_flip_types): exact large integers,
 #    identifiers kept literally. Only that layout's cached copies need rebuilding; crosstabs.ts asks
 #    for 8 there and still accepts 7 for rows-as-cases, whose typing did not change.
-DICTIONARY_VERSION = 10
-ENGINE_VERSION = "2026.10.16-12"  # refuses unsupported flipped workbook research metadata
+# 11: CSV/TSV/Excel files read by the one reader (_read_plain, _typed_series): literal names and codes,
+#     ISO dates, one duplicate-name rule in both layouts. Every cached copy of such a file is rebuilt
+#     (crosstabs.ts minimumDictionaryVersion asks for 11 for them).
+DICTIONARY_VERSION = 11
+ENGINE_VERSION = "2026.10.25-1"  # one reader for CSV/TSV/Excel (literal names, codes and dates)
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -308,7 +363,7 @@ class _PlainMeta:
     An Excel workbook can carry them on other sheets; see _excel_labels and
     _excel_codebook."""
 
-    def __init__(self, labels=None, value_labels=None, used=None, mr_sets=None, variable_measure=None, missing_ranges=None, label_conflicts=None, unsupported_identifier_columns=None):
+    def __init__(self, labels=None, value_labels=None, used=None, mr_sets=None, variable_measure=None, missing_ranges=None, label_conflicts=None, unsupported_identifier_columns=None, data_sheet=None, encoding=None, date_columns=None):
         self.column_names_to_labels = labels or {}
         self.variable_value_labels = value_labels or {}
         self.sheets = used or {}
@@ -333,6 +388,11 @@ class _PlainMeta:
         # _apply_zero_padded_id_formats. Empty for CSV (no cell-format concept) and for
         # any file where every id-like column was plain text, unformatted, or zero-padding.
         self.unsupported_identifier_columns = unsupported_identifier_columns or []
+        # The worksheet read (None for CSV/TSV), the text encoding a CSV/TSV was read in
+        # (_decode_plain_text) and the variables holding calendar values written as ISO text.
+        self.data_sheet = data_sheet
+        self.encoding = encoding
+        self.date_columns = date_columns or []
 
 
 TABLE_EXTS = (".csv", ".tsv", ".xlsx", ".xls")
@@ -697,25 +757,13 @@ def _excel_codebook(xl, other_sheets, data_columns):
     return var_labels, value_labels, mr_sets, conflicts
 
 
-# pandas' default read_csv/read_excel NA-token matching (pandas.io.parsers.STR_NA_VALUES)
-# does not strip surrounding whitespace before comparing, so a literal "NA " (trailing
-# space) survives as a real string value instead of becoming missing - unlike
-# parseTable.ts's preview path, which strips the cell text before checking the same
-# token list. Keeping a second, stripped pass here after the read keeps both paths
-# producing the same missing cells for the same file.
+# The declared missing-value tokens for response values in CSV, TSV and Excel files: pandas' own
+# default list (pandas.io.parsers.STR_NA_VALUES), compared after trimming so "NA " is missing too.
+# Applied cell by cell by _is_missing_cell; never applied to names (_literal_text).
 _NA_STRING_TOKENS = {
     "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan",
     "1.#IND", "1.#QNAN", "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null",
 }
-
-
-def _normalize_na_strings(df):
-    import pandas as pd
-
-    for c in df.columns:
-        if df[c].dtype == object:
-            df[c] = df[c].map(lambda v: None if isinstance(v, str) and v.strip() in _NA_STRING_TOKENS else v)
-    return df
 
 
 # A header naming an identifier ("ID", "Respondent ID", "Case_ID", "RespID", "UUID")
@@ -737,9 +785,12 @@ def _is_id_like_header(name):
 
 
 def _dedupe_header_names(headers: list[str]) -> list[str]:
-    """IMP-003: disambiguates a repeated header ("q, q, q (2)" -> "q", "q (2)", "q (3)"),
-    ported statement-for-statement from src/lib/parseTable.ts's dedupeHeaders() so the two
-    sides can never assign a colliding header a different canonical name.
+    """IMP-003 / TP500-F02: unique names for repeated literal names, the one allocation rule for
+    header names (rows-as-cases) and row names (columns-as-cases). Every literal name is reserved
+    first; the first occurrence keeps it and each later repeat takes the next "name (n)" that no
+    literal name or earlier allocation holds: "q, q, q (2)" -> "q", "q (3)", "q (2)", so a column
+    literally named "q (2)" keeps its name and values. dataSetup.allocateVariableNames is the same
+    rule for tables found in Word/PDF text, which this reader never sees.
 
     MUST run on the raw header text before pandas ever constructs a DataFrame from it:
     pd.read_csv/pd.ExcelFile.parse unconditionally rename a genuine duplicate column to
@@ -749,8 +800,7 @@ def _dedupe_header_names(headers: list[str]) -> list[str]:
     came back empty, because pandas had already resolved every duplicate under a DIFFERENT
     naming convention than this one, before this function's own loop ever got a chance.
     Calling this directly on the worksheet's own first row - read with header=None so
-    pandas never gets to name the columns itself - is the only way the two readers can
-    still agree on a collision's resulting name.
+    pandas never gets to name the columns itself - keeps the allocation this rule's own.
     """
     if len(set(headers)) == len(headers):
         return list(headers)
@@ -788,8 +838,8 @@ GENERAL_FORMAT_RE = re.compile(r"^general$", re.I)
 
 
 # IMP-SHIP-001 (Codex round 2, "a missing selected sheet must produce an explicit
-# recovery state, never automatic substitution"): the Python counterpart of
-# src/lib/parseTable.ts's SheetSelectionLostError. Raised only when `selected_sheet` is a
+# recovery state, never automatic substitution"); read_table answers it as sheetSelectionLost,
+# which parseTable.ts raises as its SheetSelectionLostError. Raised only when `selected_sheet` is a
 # non-empty name that no longer exists in this workbook; a `selected_sheet` of None/""
 # (nothing persisted yet for this document) is not an error and still resolves via the
 # normal ranking rule below.
@@ -806,27 +856,15 @@ class SheetSelectionLostError(ValueError):
         )
 
 
-# IMP-SHIP-001 (Codex round 2): counts a sheet's actual DATA rows (any row, after the
-# header row, with at least one non-blank cell) - mirrors src/lib/parseTable.ts's
-# countDataRows() exactly. This replaced ranking candidate sheets by
-# `xl.parse(n, header=None).size` (the parsed dataframe's cell count, which still counts
-# every cell in the sheet's used range whether or not it actually holds a value), which
-# Codex's Sparse/Dense fixture showed could disagree with the TS preview's old
-# `!ref`-extent ranking in the same direction: a sheet formatted out to a large empty
-# range (for example formatting applied across A1:J101 with only one real row of data)
-# inflates its apparent size on EITHER of the old per-side heuristics, independently of
-# the other. Counting only rows that actually contain a value removes the disagreement at
-# its source - both sides now rank by the same real quantity - rather than relying solely
-# on provenance persistence to paper over two different answers.
+# IMP-SHIP-001 (Codex round 2): the data sheet of a workbook with no persisted choice is the
+# non-dictionary sheet with the most actual DATA rows (any row, after the header row, with at
+# least one cell that is not blank or a missing token). Ranking by a sheet's used range or parsed
+# size let a sheet formatted out to a large empty range (formatting across A1:J101 with one real
+# row) outrank a genuinely larger sheet (Codex's Sparse/Dense fixture).
 def _is_blank_or_na_token(value) -> bool:
-    """Codex round 3: the canonical "missing for ranking purposes" rule, shared with
-    parseTable.ts's `countDataRows`. A plain pandas `.notna()` check is not enough here:
-    it does not strip whitespace before comparing against pandas' own default NA-token
-    list (so "NA " with a trailing space survives as a real string instead of becoming
-    missing), and the TypeScript preview's own ranking path strips the cell text before
-    checking the same token list. Reusing `_NA_STRING_TOKENS` (already applied elsewhere
-    in this file via `_normalize_na_strings`) after a trim keeps both readers counting
-    the same rows as "has data" for the identical file."""
+    """The "missing for ranking purposes" rule: a library missing value, or text that is blank or
+    a declared missing token after trimming (_NA_STRING_TOKENS). A plain pandas `.notna()` check
+    is not enough: it does not trim, so "NA " with a trailing space would count as data."""
     try:
         import pandas as pd
 
@@ -936,154 +974,314 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
     return unsupported
 
 
-_INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
-_WHOLE_NUMBER_TEXT = re.compile(r"^\s*[+-]?\d+\s*$")
+# One reader for CSV, TSV and Excel (Grant, 24 October 2026; Codex TP500-F01/F02, IP1000-F01 to F04).
+# This file is the only reader of a plain data file: the stored preview (read_table, below) and every
+# dictionary, cross tab and driver calculation are built from the same _read_plain result, so they
+# cannot disagree about a file. Library value inference is not used: pandas and SheetJS both guessed
+# types cell by cell or column by column and turned literal names and codes into other values ("01" to
+# 1, "NaN" to missing, a date to a serial number). Cells are read as written and typed here, by one rule.
+
+# A cell written as a plain decimal number. A leading "+", a leading zero on a multi-digit whole part
+# ("001"), thousands separators and words such as "inf" are not numbers here: in research files they
+# are codes and identifiers, and reading them as numbers merges distinct codes ("001" and "1").
+_STRICT_NUMBER = re.compile(r"^-?(?:(?:0|[1-9][0-9]*)(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
+# Whole numbers beyond this are not exact in a double, which is how the stored preview (JSON read by
+# the app) holds numbers; a column holding one stays text so preview and calculation keep the same value.
+_MAX_EXACT_WHOLE = 2**53
 
 
-def _fits_int64(numeric):
-    """Every value of an all-whole-number series lies in the signed 64-bit range. Compared as
-    Python integers: a uint64 series compared with int64 bounds inside numpy can itself wrap."""
-    return all(_INT64_MIN <= int(v) <= _INT64_MAX for v in numeric.tolist())
+def _is_nat(v):
+    return type(v).__name__ == "NaTType"
 
 
-def _converts_exactly(original, numeric):
-    """True when every whole number written in `original` (text such as "9223372036854775808",
-    or an int cell) has exactly the same value after conversion. Decimal text ("1.5") is judged
-    as ordinary floating point, as any numeric read of it is, and is not checked here."""
-    for v, x in zip(original.tolist(), numeric.tolist()):
-        if v is None or (isinstance(v, float) and v != v):
-            continue
+def _is_missing_cell(v) -> bool:
+    """Blank, a library missing value, or one of the declared missing tokens (_NA_STRING_TOKENS, compared
+    after trimming). This is the response-value missing policy; names are never put through it."""
+    if v is None or _is_nat(v):
+        return True
+    if isinstance(v, float) and v != v:
+        return True
+    if isinstance(v, str):
+        return v.strip() in _NA_STRING_TOKENS
+    return False
+
+
+def _iso_datetime(v):
+    """ISO text for a calendar value, else None. A date with no time of day is written as a date
+    ("2024-01-01"); otherwise the date and time ("2024-01-01T10:30:00"), or a time alone ("10:30:00").
+    Excel stores no time zone, so none is added or assumed."""
+    if _is_nat(v):
+        return None
+    if isinstance(v, datetime.datetime):
+        if v.tzinfo is None and v.hour == v.minute == v.second == v.microsecond == 0:
+            return v.date().isoformat()
+        return v.isoformat()
+    if isinstance(v, (datetime.date, datetime.time)):
+        return v.isoformat()
+    return None
+
+
+def _literal_text(v) -> str:
+    """A cell as the text it shows, for names and identifiers: a name is its literal text, so "NaN",
+    "None", "01" and "TRUE" stay those names. Excel number cells are written without a trailing ".0",
+    logical cells as TRUE/FALSE (as Excel shows them) and calendar cells in ISO form."""
+    if v is None or _is_nat(v) or (isinstance(v, float) and v != v):
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return str(int(v)) if v.is_integer() and abs(v) < 1e16 else repr(v)
+    iso = _iso_datetime(v)
+    return iso if iso is not None else str(v)
+
+
+def _as_numbers(present):
+    """The numbers these non-missing cells hold, or None when any of them is not a number by the rule
+    above (a logical cell, text that is not a plain decimal number, or a whole number too large to stay
+    exact). Integers stay int so a gap-free whole-number variable keeps an integer type."""
+    out = []
+    for v in present:
         if isinstance(v, bool):
-            continue
+            return None
         if isinstance(v, int):
-            want = v
-        elif isinstance(v, str) and _WHOLE_NUMBER_TEXT.match(v):
-            want = int(v)
+            if abs(v) > _MAX_EXACT_WHOLE:
+                return None
+            out.append(v)
+        elif isinstance(v, float):
+            if v != v or v in (float("inf"), float("-inf")):
+                return None
+            out.append(v)
+        elif isinstance(v, str):
+            t = v.strip()
+            if not _STRICT_NUMBER.match(t):
+                return None
+            if "." in t or "e" in t or "E" in t:
+                f = float(t)
+                if f in (float("inf"), float("-inf")):
+                    return None
+                out.append(f)
+            else:
+                n = int(t)
+                if abs(n) > _MAX_EXACT_WHOLE:
+                    return None
+                out.append(n)
         else:
-            continue
-        if x is None or (isinstance(x, float) and (x != x or not x.is_integer())):
-            return False
-        if int(x) != want:
-            return False
-    return True
+            return None
+    return out
 
 
-def _flip_types(df):
-    """Types each variable of a columns-as-cases file AFTER its flip. Reading such a file infers
-    a type per file COLUMN, but a file column there is one case holding every variable's values,
-    so pandas used to coerce a text cell such as an identifier "001" to the number 1 because the
-    other cells in that case were numbers: leading zeros were lost and the identifier became a
-    numeric variable. Each flipped variable now gets the type its own values support, the way a
-    rows-as-cases read types a column:
-      - an identifier-like name (the same _is_id_like_header rule the rows-as-cases readers use to
-        read an ID column as text): kept as text exactly as written, including any surrounding
-        spaces, as a rows-as-cases read with dtype=str keeps them; " 001 " and "001" stay two
-        different identifiers rather than silently becoming one. A number cell (Excel) is written
-        without a trailing ".0"
-      - otherwise numeric when every non-missing value converts AND the conversion keeps each
-        whole number exactly (_converts_exactly); else left as text, exactly as written. A whole
-        number beyond the signed 64-bit range (above 9223372036854775807) used to be converted to
-        an unsigned value and then cast to int64, which wrapped it to a NEGATIVE number with no
-        message; one beyond what a float holds exactly (above 2**53) would silently round when
-        the variable has gaps. Such a variable now stays text, so its values are unchanged and it
-        is visibly listed as a text variable rather than as plausible-looking wrong numbers.
-    Missing cells stay missing. Zero-padding that exists only as an Excel number FORMAT on a
-    numeric cell (handled for rows-as-cases by _apply_zero_padded_id_formats) is not recovered
-    here: in this layout the format belongs to a case column, not the identifier variable."""
+def _typed_series(name, values, date_columns):
+    """Types one variable from its cells, the same way in both layouts:
+      - missing cells (_is_missing_cell) are missing;
+      - calendar cells become ISO text, and the variable is listed in date_columns;
+      - an identifier-like name (_is_id_like_header) keeps every value as its literal text;
+      - otherwise the variable is numeric when every value is a number by _as_numbers (int64 when
+        whole with no gaps, else float with missing as NaN), and text exactly as written when not;
+      - a variable with no values at all is numeric and empty, as before.
+    Excel text and number cells in one mixed variable keep their own types, as the file has them."""
     import pandas as pd
 
-    out = {}
-    for name in df.columns:
-        col = df[name]
-        if _is_id_like_header(name):
-            out[name] = col.map(
-                lambda v: None
-                if v is None or (isinstance(v, float) and v != v)
-                else (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
-            ).astype(object)
+    cells = []
+    has_date = False
+    for v in values:
+        if _is_missing_cell(v):
+            cells.append(None)
             continue
+        iso = _iso_datetime(v)
+        if iso is not None:
+            has_date = True
+            cells.append(iso)
+            continue
+        cells.append(v)
+    if has_date:
+        date_columns.add(name)
+    if _is_id_like_header(name):
+        return pd.Series([None if v is None else (v if isinstance(v, str) else _literal_text(v)) for v in cells], dtype=object)
+    present = [v for v in cells if v is not None]
+    if not present:
+        return pd.Series([float("nan")] * len(cells), dtype="float64")
+    numbers = None if has_date else _as_numbers(present)
+    if numbers is None:
+        return pd.Series(cells, dtype=object)
+    it = iter(numbers)
+    typed = [None if v is None else next(it) for v in cells]
+    if all(isinstance(v, int) for v in typed):
+        return pd.Series(typed, dtype="int64")
+    return pd.Series([float("nan") if v is None else float(v) for v in typed], dtype="float64")
+
+
+def _decode_plain_text(raw: bytes):
+    """The text of a CSV/TSV file and the encoding it was read in. One policy, applied before anything is
+    parsed: UTF-8 (with or without a byte-order mark) first; a UTF-16 file when it starts with a UTF-16
+    byte-order mark; otherwise Windows-1252, the encoding of a "CSV" saved by Excel on Western-locale
+    Windows. A Windows-1252 read is reported (encoding), not silent. A file that is none of these is
+    refused rather than read with replacement characters."""
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
         try:
-            pd.to_numeric(col.dropna(), errors="raise")
+            return raw.decode("utf-16"), "utf-16"
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                f"This file starts as UTF-16 text but has an unreadable byte at position {exc.start}. "
+                "Save it again as \"CSV UTF-8\" and upload it again; nothing was imported."
+            ) from exc
+    if raw.startswith(b"\xef\xbb\xbf"):
+        try:
+            return raw[3:].decode("utf-8"), "utf-8"
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                f"This file is marked as UTF-8 but byte {exc.start + 3} is not valid UTF-8. "
+                "Save it again as \"CSV UTF-8\" and upload it again; nothing was imported."
+            ) from exc
+    try:
+        return raw.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("cp1252"), "windows-1252"
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"This file is neither UTF-8 nor Windows-1252 text (byte {exc.start} cannot be read). "
+            "Save it again as \"CSV UTF-8\" and upload it again; nothing was imported."
+        ) from exc
+
+
+def _sniff_delimiter(text: str) -> str:
+    """A plain "," default used to mean a semicolon-delimited CSV (the common export format wherever the
+    system locale uses a comma as the decimal separator) silently became a single column. Sniffed
+    instead, from whichever delimiter is most consistent across the file's first lines."""
+    sample = "\n".join(text.splitlines()[:10])
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+    except csv.Error:
+        return ","
+
+
+def _csv_grid(text: str, sep: str):
+    """The file's rows as lists of literal text. Quoted fields, doubled quotes and line breaks inside
+    quotes are read as written. Malformed quoting (a quoted value never closed, or text after a closing
+    quote) and a row with more values than the header row are refused with the line, before anything is
+    published (IP1000-F04): a guessed row is never imported. A short row is padded with missing values;
+    surplus trailing empty values (a trailing delimiter) are dropped. Blank lines are skipped."""
+    csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=sep, strict=True)
+    grid = []
+    width = None
+    try:
+        for row in reader:
+            if not row:
+                continue
+            if width is None:
+                width = len(row)
+                grid.append(row)
+                continue
+            if len(row) > width:
+                if any(c.strip() for c in row[width:]):
+                    raise ValueError(
+                        f"Line {reader.line_num} of this CSV file has {len(row)} values but its header row has "
+                        f"{width} columns, so its values cannot be matched to their columns. Nothing was imported; "
+                        "fix the file and upload it again."
+                    )
+                row = row[:width]
+            elif len(row) < width:
+                row = row + [None] * (width - len(row))
+            grid.append(row)
+    except csv.Error as exc:
+        raise ValueError(
+            f"This CSV file could not be read near line {reader.line_num} ({exc}): a quoted value may be "
+            "missing its closing quotation mark. Nothing was imported; fix the file and upload it again."
+        ) from exc
+    return grid
+
+
+def _excel_cell(v):
+    """A cell from pandas' object read of a worksheet, as a plain Python value (Timestamp to datetime,
+    numpy scalars unwrapped); blanks stay "" or NaN and are read as missing by _is_missing_cell."""
+    if hasattr(v, "to_pydatetime") and not _is_nat(v):
+        return v.to_pydatetime()
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):
+        try:
+            return v.item()
         except (ValueError, TypeError):
-            out[name] = col.astype(object)
+            return v
+    return v
+
+
+def _typed_frame(headers, body, date_columns):
+    """Rows-as-cases: one variable per column."""
+    import pandas as pd
+
+    columns = {}
+    for i, h in enumerate(headers):
+        columns[h] = _typed_series(h, [row[i] if i < len(row) else None for row in body], date_columns)
+    df = pd.DataFrame(columns, index=pd.RangeIndex(len(body))) if columns else pd.DataFrame(index=pd.RangeIndex(len(body)))
+    return df
+
+
+def _flipped_frame(headers, body, date_columns):
+    """Columns-as-cases: each row is a variable whose name is its first cell, each further column a case.
+    The name is the first cell's literal text (_literal_text: "NaN", "None", "01" and "TRUE" are names, not
+    values); a blank one becomes "Variable n". A row with no name and no values is skipped. Repeated
+    names get the same allocation as repeated header names (_dedupe_header_names, TP500-F02): literal
+    names are reserved first, so a row literally named "q (2)" keeps that name and its own values, and a
+    second "q" becomes "q (3)". Each variable is typed by _typed_series, as a rows-as-cases column is."""
+    import pandas as pd
+
+    n_cases = max(len(headers) - 1, 0)
+    kept = []
+    for row in body:
+        name = _literal_text(row[0] if row else None).strip()
+        values = [row[j] if j < len(row) else None for j in range(1, n_cases + 1)]
+        if not name and all(_is_missing_cell(v) for v in values):
             continue
-        numeric = pd.to_numeric(col, errors="coerce")
-        # An all-integer variable keeps an integer dtype when nothing is missing, as a rows-as-cases
-        # read would give it; with gaps it is float (NaN), again as pandas reads such a column.
-        if numeric.notna().all() and (numeric % 1 == 0).all() and _fits_int64(numeric):
-            numeric = numeric.astype("int64")
-        if not _converts_exactly(col, numeric):
-            out[name] = col.astype(object)
-            continue
-        out[name] = numeric
-    return pd.DataFrame(out, index=df.index)
+        kept.append((name, values))
+    names = _dedupe_header_names([name or f"Variable {i + 1}" for i, (name, _) in enumerate(kept)])
+    columns = {name: _typed_series(name, values, date_columns) for name, (_, values) in zip(names, kept)}
+    return pd.DataFrame(columns, index=pd.RangeIndex(n_cases)) if columns else pd.DataFrame(index=pd.RangeIndex(n_cases))
 
 
 def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=None):
-    """CSV, TSV and Excel case-level files: one row per case, header row of names.
-    No variable labels or value labels exist, so names stand in for labels and
-    coded answers stay as they are (the dictionary treats a numeric column with
-    few distinct values as categories)."""
+    """CSV, TSV and Excel case-level files: one row per case and a header row of names, or (layout
+    "columns_are_cases") one row per variable and a column per case. No variable labels or value labels
+    exist in the data itself, so names stand in for labels and coded answers stay as they are; an Excel
+    workbook may carry labels on other sheets (_excel_labels, _excel_codebook).
+
+    This is the only reader of these files (see _typed_series): the stored preview and every calculation
+    use what it returns. Cells are read as written (CSV text, or Excel's own cell values), names are their
+    literal text, repeated names are allocated by _dedupe_header_names in both layouts, and each variable
+    is typed by _typed_series. The meta records the sheet read, a CSV's encoding and the date columns."""
     import pandas as pd
 
     unsupported_id_formats: set[str] = set()  # CSV has no cell-format concept; only Excel can populate this
+    xl = None
+    data_sheet = None
+    encoding = None
+    sheets = []
     if ext in (".csv", ".tsv"):
-        if ext == ".tsv":
-            sep = "\t"
-        else:
-            # A plain "," default used to mean a semicolon-delimited CSV (the common export
-            # format wherever the system locale uses a comma as the decimal separator) silently
-            # became a single column, with every field crammed into one header. Sniffed instead,
-            # the same way a researcher's own spreadsheet software would read it, from whichever
-            # of the two delimiters is more consistent across the file's first several lines.
-            with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-                sample = "".join(fh.readline() for _ in range(10))
-            try:
-                sep = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
-            except csv.Error:
-                sep = ","
-        last = None
-        for enc in ("utf-8-sig", "latin-1"):
-            try:
-                # IMP-003: header=None + nrows=1 reads the header row AS DATA, so pandas never
-                # gets a chance to apply its own "name", "name.1", "name.2" mangling to a
-                # duplicate column before this file's own disambiguation runs - see
-                # _dedupe_header_names for why that matters. The real data read below
-                # likewise uses header=None (skipping that same row) so the final column
-                # names are entirely this file's own choice, not pandas'.
-                raw_row = pd.read_csv(path, sep=sep, encoding=enc, header=None, nrows=1).iloc[0].tolist()
-                raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
-                headers = _dedupe_header_names(raw_headers)
-                id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
-                if layout == "columns_are_cases":
-                    # Each file column is a case here, so its cells mix every variable's values;
-                    # read them as text and type each variable after the flip (_flip_types).
-                    id_dtype = str
-                df = pd.read_csv(
-                    path, sep=sep, encoding=enc, low_memory=False, header=None, skiprows=1, dtype=id_dtype
-                )
-                df.columns = headers
-                break
-            except UnicodeDecodeError as exc:
-                last = exc
-        else:
-            raise last
-        xl = None
+        with open(path, "rb") as fh:
+            text, encoding = _decode_plain_text(fh.read())
+        sep = "\t" if ext == ".tsv" else _sniff_delimiter(text)
+        grid = _csv_grid(text, sep)
     else:
-        xl = pd.ExcelFile(path)
+        try:
+            xl = pd.ExcelFile(path)
+        except Exception as exc:  # noqa: BLE001 - any failure to open is the same answer to the researcher
+            raise ValueError(
+                f"This file doesn't parse as a spreadsheet ({exc}). If it's a Word document or PDF that was "
+                'uploaded as a "Table" document, remove it and upload it again as a "Report" instead.'
+            ) from exc
         # RR-05: every exit after the workbook opens must close it, the refusals and the
         # format-inspection failure included, or Windows keeps the uploaded temp file locked
         # and the caller cannot delete it. Success closes it after the label sheets are read below.
         try:
             sheets = list(xl.sheet_names)
-            # IMP-SHIP-001 (Codex round 2): a sheet choice a prior read of this same document
-            # already resolved (persisted on documents.selected_sheet) is used directly rather
-            # than re-derived. If it no longer names a real sheet in this workbook (a
-            # re-uploaded file could have dropped it), this raises SheetSelectionLostError
-            # instead of silently falling back to an independently re-derived sheet - "a
-            # missing selected sheet must produce an explicit recovery state, never automatic
-            # substitution". A selected_sheet of None/"" (nothing persisted for this document
-            # yet) is the legitimate first-ever read and still resolves via the ranking rule.
+            # IMP-SHIP-001: a sheet choice already persisted for this document (documents.selected_sheet)
+            # is used directly. If it no longer names a sheet in this workbook, SheetSelectionLostError is
+            # raised rather than another sheet substituted. None/"" (nothing persisted yet) is the first
+            # read and resolves by the ranking rule: the non-dictionary sheet with the most data rows.
             if selected_sheet:
                 if selected_sheet not in sheets:
                     raise SheetSelectionLostError(selected_sheet, sheets)
@@ -1093,29 +1291,37 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
                 data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
             if layout == "columns_are_cases":
                 _refuse_flipped_codebook_metadata(xl, [n for n in sheets if n != data_sheet])
-            # IMP-003: same reasoning as the CSV branch above - xl.parse(..., header=0) would let
-            # pandas mangle a duplicate header to its own "name"/"name.1" convention before this
-            # file's own _dedupe_header_names ever ran. header=None + nrows=1 reads the header
-            # row as plain data instead, so this file keeps full control of the resulting name.
-            raw_row = xl.parse(data_sheet, header=None, nrows=1).iloc[0].tolist()
-            raw_headers = ["" if pd.isna(v) else str(v).strip() for v in raw_row]
-            headers = _dedupe_header_names(raw_headers)
-            id_dtype = {i: str for i, h in enumerate(headers) if _is_id_like_header(h)} or None
-            if layout == "columns_are_cases":
-                # As in the CSV branch: no per-column type inference across a case's mixed cells;
-                # Excel's own cell types are kept and each variable is typed after the flip.
-                id_dtype = object
-            df = xl.parse(data_sheet, header=None, skiprows=1, dtype=id_dtype)
-            df.columns = headers
-            unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
+            # header=None so pandas never names (or de-duplicates) a column itself; dtype=object and
+            # na_filter=False so it infers no type and treats no text as missing: every cell arrives as
+            # Excel holds it (text, number, logical or calendar value) and is typed by _typed_series.
+            raw = xl.parse(data_sheet, header=None, dtype=object, na_filter=False)
+            grid = [[_excel_cell(v) for v in row] for row in raw.values.tolist()]
         except BaseException:
             xl.close()
             raise
     try:
-        df = _normalize_na_strings(df)
-        df = df.dropna(how="all")
-        meta = _PlainMeta(unsupported_identifier_columns=sorted(unsupported_id_formats))
-        if xl is not None and len(sheets) > 1:
+        if grid:
+            headers = _dedupe_header_names([_literal_text(v).strip() for v in grid[0]])
+            body = grid[1:]
+        else:
+            headers, body = [], []
+        date_columns: set[str] = set()
+        if layout == "columns_are_cases":
+            df = _flipped_frame(headers, body, date_columns)
+        else:
+            df = _typed_frame(headers, body, date_columns)
+            if xl is not None:
+                # Body row i is sheet row i + 2 here (row 1 is the header), the alignment this check reads.
+                unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
+            # A row with nothing but blank or missing cells is not a case.
+            df = df.dropna(how="all")
+        meta = _PlainMeta(
+            unsupported_identifier_columns=sorted(unsupported_id_formats),
+            data_sheet=data_sheet,
+            encoding=encoding,
+            date_columns=sorted(date_columns),
+        )
+        if xl is not None and len(sheets) > 1 and layout != "columns_are_cases":
             numeric_cols = {c for c in df.columns if df[c].dtype.kind in "fiu"}
             other = [n for n in sheets if n != data_sheet]
             labs, vlabs, used, conflicts = _excel_labels(xl, other, list(df.columns), numeric_cols)
@@ -1160,49 +1366,18 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
                 used["values"] = "codebook"
             used["data"] = data_sheet
             labs, vlabs = _show_label_conflicts(labs, vlabs, conflicts)
-            meta = _PlainMeta(labs, vlabs, used, mr_sets, label_conflicts=conflicts)
+            meta = _PlainMeta(
+                labs, vlabs, used, mr_sets, label_conflicts=conflicts,
+                unsupported_identifier_columns=sorted(unsupported_id_formats),
+                data_sheet=data_sheet, encoding=encoding, date_columns=sorted(date_columns),
+            )
+        elif xl is not None and len(sheets) > 1:
+            # Columns-as-cases: label sheets name the original (pre-flip) columns, which are cases here,
+            # so they are not applied; a separate Codebook declaring weights or MR sets was refused above.
+            meta.sheets = {"data": data_sheet}
     finally:
         if xl is not None:
             xl.close()  # Windows will not delete a temp file that is still open
-    if layout == "columns_are_cases":
-        # A raw file laid out with variables in rows and cases in columns, flipped here the same
-        # way transposeTable (dataSetup.ts) flips the stored preview table - so the dictionary,
-        # crosstab and driver actions below see the same one-row-per-case shape the preview does,
-        # instead of silently reading the original, unflipped orientation as before this fix.
-        # Any variable/value labels read above came from the ORIGINAL (pre-flip) column names and
-        # are not re-targeted at the new ones; a workbook that both needs this flip and carries a
-        # separate Codebook declaring weights/MR is refused above until metadata retargeting is
-        # supported; a label-only sheet does not claim those research definitions.
-        key_col = df.columns[0]
-        # Same collision this file's plain-header renamer had (see the `used` set above): counting
-        # occurrences of a base name alone can generate "X (2)" for a second "X" even when a real,
-        # distinct case already used that literal value as its own key. Tracking every name already
-        # claimed, not just a per-base-name count, keeps a generated name from landing on one.
-        used_names: set[str] = set()
-        for v in df[key_col].tolist():
-            base = str(v).strip() if v is not None and str(v).strip() else None
-            if base:
-                used_names.add(base)
-        seen: dict[str, int] = {}
-        names = []
-        for i, v in enumerate(df[key_col].tolist()):
-            base = str(v).strip() if v is not None and str(v).strip() else f"Variable {i + 1}"
-            seen[base] = seen.get(base, 0) + 1
-            if seen[base] == 1:
-                names.append(base)
-                continue
-            n = seen[base]
-            candidate = f"{base} ({n})"
-            while candidate in used_names:
-                n += 1
-                candidate = f"{base} ({n})"
-            seen[base] = n
-            used_names.add(candidate)
-            names.append(candidate)
-        flipped = df.drop(columns=[key_col]).transpose()
-        flipped.columns = names
-        flipped = flipped.reset_index(drop=True)
-        df = _flip_types(flipped)
     if usecols:
         df = df[[c for c in usecols if c in df.columns]]
     return df, meta
@@ -1253,15 +1428,19 @@ def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None
             # silently stopped reporting a conflict it had reported moments before.
             list(getattr(meta, "label_conflicts", None) or []),
             list(getattr(meta, "unsupported_identifier_columns", None) or []),
+            (getattr(meta, "data_sheet", None), getattr(meta, "encoding", None), list(getattr(meta, "date_columns", None) or [])),
         )
         _READ_CACHE[key] = hit
-    df, labels, vlabels, sheets, mr_sets, measure, missing_ranges, label_conflicts, unsupported_identifier_columns = hit
+    df, labels, vlabels, sheets, mr_sets, measure, missing_ranges, label_conflicts, unsupported_identifier_columns, read_facts = hit
     return _slice_read(
         df,
         _PlainMeta(
             dict(labels), dict(vlabels), dict(sheets), dict(mr_sets), dict(measure), dict(missing_ranges),
             label_conflicts=list(label_conflicts),
             unsupported_identifier_columns=list(unsupported_identifier_columns),
+            data_sheet=read_facts[0],
+            encoding=read_facts[1],
+            date_columns=list(read_facts[2]),
         ),
         usecols,
     )
@@ -3526,7 +3705,7 @@ _SIGNED_PATH = re.compile(
     re.IGNORECASE,
 )
 _SIGNATURE_LIFETIME_SECONDS = 300
-_SIGNED_ACTIONS = {"convert", "dictionary", "categories", "columns", "crosstab"}
+_SIGNED_ACTIONS = {"convert", "table", "dictionary", "categories", "columns", "crosstab"}
 
 
 def verify_parse_request(secret, header, action, bucket, storage_path, now=None):
@@ -3601,10 +3780,16 @@ class handler(BaseHTTPRequestHandler):
             if action == "crosstab":
                 self._send_json(200, {"result": crosstab(file_bytes, source_filename, body.get("args") or {})})
                 return
-            result = convert(file_bytes, source_filename)
+            # Both answers are respondent-level tables, often past the 4.5 MB response limit, so both are
+            # written to the converted copy the app reads back (and removes) rather than returned.
+            # allow_nan=False: a number JSON cannot hold fails here, never as an unreadable preview.
+            if action == "table":
+                result = read_table(file_bytes, source_filename, body.get("args") or {})
+            else:
+                result = convert(file_bytes, source_filename)
 
             result_path = f"{storage_path}.converted.json"
-            _storage_upload(bucket, result_path, json.dumps(result).encode("utf-8"), "application/json")
+            _storage_upload(bucket, result_path, json.dumps(result, allow_nan=False).encode("utf-8"), "application/json")
 
             self._send_json(200, {"resultPath": result_path})
         except Exception as exc:  # noqa: BLE001 - surfaced to the Node caller as a clear parse failure

@@ -3,15 +3,16 @@
 import { loadImportPreviewIdentities } from "./importPreviewIdentity";
 import { withTenant } from "./db";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { parseTableDocument, type ParsedTable } from "./parseTable";
+import { isPlainTableFileName, parseTableDocument, type ParsedTable, type PreviewTable } from "./parseTable";
 import { resolveAuthoritativeSheet } from "./crosstabs";
+import { readProvenanceAvailable } from "./documentTables";
 import { requireTenantId } from "./requestContext";
 
 const BUCKET = "documents";
 
 export type PreviewResult =
   | { kind: "pdf"; url: string }
-  | { kind: "table"; table: ParsedTable }
+  | { kind: "table"; table: PreviewTable }
   | { error: string };
 
 /**
@@ -41,8 +42,11 @@ export async function getDocumentPreviewUrl(
   const TENANT_ID = await requireTenantId();
   if (source.sourceTableId) {
     const tableRow = await withTenant(TENANT_ID, async (client) => {
-      const result = await client.query<{ headers: string[]; rows: Record<string, string | number | null>[]; document_id: string; table_index: number; row_count: number }>(
-        "select headers, rows, document_id, table_index, jsonb_array_length(rows)::int as row_count from document_tables where id = $1 and run_id = $2",
+      const result = await client.query<{ headers: string[]; rows: Record<string, string | number | null>[]; document_id: string; table_index: number; row_count: number; read_provenance: unknown }>(
+        // read_provenance is migration 0116's; before it, null (the table is then checked by a fresh read).
+        `select headers, rows, document_id, table_index, jsonb_array_length(rows)::int as row_count,
+                ${(await readProvenanceAvailable(client)) ? "read_provenance" : "null::jsonb as read_provenance"}
+           from document_tables where id = $1 and run_id = $2`,
         [source.sourceTableId, runId]
       );
       return result.rows[0];
@@ -119,9 +123,13 @@ export async function getDocumentPreviewUrl(
         err instanceof Error ? err.message : "unknown error"
       }`,
     });
+    // The file itself, as written (rows as cases): the engine's one reader, the same read calculations use.
+    if (!isPlainTableFileName(document.source_filename)) {
+      return { error: `"${document.source_filename}" is not a CSV or Excel file, so it has no table preview here. Open it from Import data.` };
+    }
     let table: ParsedTable;
     try {
-      table = await parseTableDocument(document.storage_path, document.selected_sheet);
+      table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet });
     } catch (err) {
       return readFailure(err);
     }
@@ -143,7 +151,7 @@ export async function getDocumentPreviewUrl(
     }
     if (authoritative !== table.sheetName) {
       try {
-        table = await parseTableDocument(document.storage_path, authoritative);
+        table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative });
       } catch (err) {
         return readFailure(err);
       }

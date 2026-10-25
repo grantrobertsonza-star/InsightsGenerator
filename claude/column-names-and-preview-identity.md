@@ -1,43 +1,57 @@
 # Column names as data, and the stored preview check
 
-Codex TR500-F01 (2026-10-23).
+Codex TR500-F01 (2026-10-23); TP500-F01 to F03 and the one reader (batch 26, 2026-10-25).
 
 A column's name is the researcher's data and is used unchanged as its canonical identity. Some names
 are special to plain JavaScript objects: assigning `row["__proto__"] = 10` sets the object's prototype
 rather than storing 10, and reading `row["constructor"]` from a row with no own value of that name
-returns a function. Before this repair a `__proto__` column kept its header while every value in it
-was lost, in both layouts, and the stored-preview check passed the damaged rows.
+returns a function. Before TR500-F01 a `__proto__` column kept its header while every value in it was
+lost, in both layouts, and the stored-preview check passed the damaged rows.
 
-## The rule
+## Names are literal, and allocated by one rule
 
-`src/lib/rowCells.ts` is the one rule:
+CSV, TSV and Excel files are read only by the engine (`claude/one-reader-import.md`). A name is the
+header cell's (or, columns-as-cases, the first cell's) literal text: `NaN`, `null`, `None`, `NA`, `01`,
+`TRUE` and `Infinity` are names, never values, missing markers or numbers (TP500-F01). Repeated names
+are allocated by `_dedupe_header_names` in both layouts: literal names are reserved first, so
+`q, q, q (2)` become `q, q (3), q (2)` and the column literally named `q (2)` keeps its values
+(TP500-F02). The stored preview, the dictionary, corrections and every calculation use these names.
+`dataSetup.allocateVariableNames` is the same rule for tables found in Word/PDF text.
 
-- `setCell(row, name, value)` defines the value as the row's own property. Every reader that builds
-  rows keyed by column name uses it: the workbook/CSV reader (`parseTable.ts`), the columns-as-cases
-  flip (`dataSetup.transposeTable`), tables read from documents (`documentTables.ts`) and the
-  crosstab export rows (`crosstabs.ts`).
-- `cellValue(row, name)` reads only the row's own value (undefined when it has none).
+## Own properties
 
-Rows built this way serialise to JSON with the column, and JSON parsing (the database, the engine's
-replies) gives own properties back, so stored rows and everything read from them keep the values. No
-name is renamed or dropped; a repeated name gets the usual " (2)" suffix.
+`src/lib/rowCells.ts` is the one rule for objects keyed by a name:
+
+- `setCell(obj, name, value)` defines the value as an own property. Used by every builder of rows keyed
+  by column name (`dataSetup.transposeTable`, tables read from documents in `documentTables.ts`, the
+  crosstab export rows) and, since TP500-F03, by `saveVariableOverride` for the correction map.
+- `cellValue(obj, name)` reads only an own value (undefined when there is none). Used by the stored
+  preview check, the correction map's read in `saveVariableOverride` and the ask-a-table lookup in
+  `crosstabAsk.ts`.
+
+The engine's answers are JSON, and JSON parsing gives own properties, so a `__proto__` column read by
+the engine keeps its values. TP500-F03: a first correction of a variable named `__proto__` used to be
+assigned through the prototype setter and dropped by JSON while the save reported success; it is now
+stored, reloads, combines with a second field and clears like any other (`oneReaderImport.db.test.ts`).
 
 ## The stored preview check
 
-`importPreviewIdentity.loadImportPreviewIdentities` compares the stored preview with a fresh read of
-the selected sheet. A stored row now matches only when it holds its own value (null included) for
-every header and that value equals the fresh read's own value. The reader writes every header on
-every row it keeps, so a stored row without one was damaged; a missing or inherited property is never
-read as "missing equals missing", and a reread through the same defect cannot certify it. A preview
-damaged by the earlier reader is shown as not verified, with the usual recovery (read the file again).
+`importPreviewIdentity.loadImportPreviewIdentities` decides whether a stored CSV/TSV/Excel table may be
+shown as the file's data:
 
-## Agreement with the engine
+- a table whose `read_provenance` (migration 0116) names the current engine reader
+  (`ENGINE_TABLE_READER`, kept equal to the engine's `TABLE_READER` by `engineTableReader.test.ts`),
+  the document's persisted sheet (workbooks) and its current layout is that read; it is shown after a
+  structural check that every stored row holds its own value for every header;
+- any other table (stored by the retired TypeScript reader, an earlier engine reader, before 0116, or
+  under another sheet or layout) is compared value by value with a fresh engine read, and withheld when
+  they differ, with "Read the file again" on the Preview tab (`ReadFileAgainButton`, which replaces
+  only the stored table).
 
-The Python engine reads the file's own bytes with pandas, where these names are ordinary. Its case
-count, valid counts and category counts for such columns now agree with what the app stores, in both
-layouts (`reservedColumnNames.db.test.ts`).
+A missing or inherited property is never read as "missing equals missing".
 
 ## Not covered
 
-Maps keyed by variable name elsewhere (question types, label lookups) are not part of this rule;
-they hold settings, not data values. A sheet named `__proto__` is SheetJS's own concern.
+Maps keyed by variable name that hold settings rather than data (question-type definitions, label
+lookups) are built with `Object.fromEntries`/`Object.entries`, which use own properties; they are not
+otherwise audited here. A sheet named `__proto__` is the workbook library's own concern.

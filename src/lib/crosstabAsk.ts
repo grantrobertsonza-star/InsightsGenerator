@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { cellValue } from "./rowCells";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { loadCategories, loadRecentTableDefinitions, loadVariableDictionary, type RecentTableDefinition } from "./crosstabs";
@@ -303,7 +304,8 @@ async function validate(
       continue;
     }
     overrides ??= await loadVariableOverrides(tenantId, runId, documentId);
-    if (tabulatedAsAverage(v, overrides[v.name])) {
+    // Own entries only: a variable named "constructor" or "__proto__" has no inherited correction.
+    if (tabulatedAsAverage(v, cellValue(overrides, v.name))) {
       averageOnly.push(item.key);
       notes.push(`${v.label || v.name} is shown as an average (it is set as a number, or has many numeric values), so the table gives its average over the people who answered, with the table's weight, and no list of answers.`);
       continue;

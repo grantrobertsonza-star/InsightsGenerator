@@ -96,6 +96,8 @@ def main() -> int:
                 result = mod.driver_columns(data, name, args)
             elif action == "crosstab":
                 result = mod.crosstab(data, name, args)
+            elif action == "table":
+                result = mod.read_table(data, name, args)
             else:
                 result = mod.convert(data, name)
             send({"id": req_id, "result": result})

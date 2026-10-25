@@ -22,7 +22,7 @@ import {
 } from "@/lib/findingActions";
 import type { WordingEditState } from "@/lib/findingWording";
 import { getDocumentPreviewUrl } from "@/lib/previewActions";
-import type { ParsedTable } from "@/lib/parseTable";
+import type { PreviewTable } from "@/lib/parseTable";
 import {
   EyeIcon,
   CheckIcon,
@@ -101,7 +101,7 @@ type Viewer =
   | { kind: "pdf"; url: string; page: number | null; title: string }
   | {
       kind: "table";
-      table: ParsedTable;
+      table: PreviewTable;
       title: string;
       highlightRowIndices: number[];
     };

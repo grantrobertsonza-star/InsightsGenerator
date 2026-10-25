@@ -1,14 +1,14 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import { parseTableDocument } from "./parseTable";
+import { isPlainTableFileName, parseTableDocument } from "./parseTable";
 import { resolveAuthoritativeSheet } from "./crosstabs";
 import { parseStatsFile, isStatsFileName } from "./parseStatsFile";
 import { extractDocumentText } from "./extractFindings";
 import { generateFindingsFromTable } from "./generateFindingsFromTable";
 import { mapWithConcurrency } from "./concurrency";
 import type { ArchiveReason } from "./findingArchive";
-import { loadDataSetup, transposeTable } from "./dataSetup";
+import { loadDataSetupWithStatus, transposeTable } from "./dataSetup";
 import { setCell } from "./rowCells";
 
 type ExtractedTable = {
@@ -17,6 +17,26 @@ type ExtractedTable = {
   headers: string[];
   rows: Record<string, string | number | null>[];
 };
+
+/** How an engine-read table was read, stored on document_tables.read_provenance (migration 0116). */
+export type TableReadProvenance = {
+  reader: string;
+  sheet: string;
+  layout: "rows_are_cases" | "columns_are_cases";
+  encoding: string | null;
+  dateColumns: string[];
+};
+
+let readProvenanceColumn: boolean | null = null;
+/** Migration 0116's document_tables.read_provenance. Before it, no read provenance is stored or read. */
+export async function readProvenanceAvailable(client: import("pg").PoolClient): Promise<boolean> {
+  if (readProvenanceColumn) return true;
+  const r = await client.query<{ n: number }>(
+    "select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'document_tables' and column_name = 'read_provenance'",
+  );
+  readProvenanceColumn = r.rows[0]?.n === 1;
+  return readProvenanceColumn;
+}
 
 const PAGES_PER_TABLE_DETECTION_CALL = 5;
 const TABLE_DETECTION_CONCURRENCY = 3;
@@ -179,9 +199,23 @@ export async function extractAndStoreDocumentTables(
 
   const lowerName = document.source_filename.toLowerCase();
   let extracted: ExtractedTable[];
+  let provenance: TableReadProvenance | null = null;
 
-  if (lowerName.endsWith(".csv") || lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
-    let parsed = await parseTableDocument(document.storage_path, document.selected_sheet);
+  // The layout decides how the file is read (a columns-as-cases file is flipped by the reader). A
+  // setting that cannot be read fails the read: guessing an orientation would store the wrong table.
+  let layout: TableReadProvenance["layout"] = "rows_are_cases";
+  if (document.ingestion_type === "raw") {
+    const setup = await loadDataSetupWithStatus(tenantId, documentId);
+    if (!setup.ok) {
+      throw new Error(`This file's layout setting could not be read (${setup.error}), so it was not read. Try again.`);
+    }
+    layout = setup.setup.layout;
+  }
+
+  if (isPlainTableFileName(lowerName)) {
+    // The one reader (parseTable.ts): the engine reads the file, applying the layout, so the stored
+    // table is exactly what every calculation reads. Nothing is flipped or retyped here.
+    let parsed = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet, layout });
     // IMP-SHIP-001 (Codex round 2, "a losing publisher must adopt that choice and reparse
     // before returning, caching or saving data"): find out which sheet is ACTUALLY
     // authoritative after attempting to persist this read's own choice. If a dictionary
@@ -196,17 +230,13 @@ export async function extractAndStoreDocumentTables(
       parsed.sheetName,
     );
     if (authoritative !== parsed.sheetName) {
-      parsed = await parseTableDocument(document.storage_path, authoritative);
+      parsed = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative, layout });
     }
     extracted = [{ label: null, sourcePage: null, headers: parsed.headers, rows: parsed.rows }];
-    // Codex round 3, "preserve the qualification through extraction": parseTableDocument
-    // already detects an id-like column whose Excel format this pipeline can't guarantee
-    // matches between preview and calculation (see parseTable.ts's
-    // unsupportedIdentifierColumns). Extraction used to just read .headers/.rows off
-    // `parsed` and drop this flag on the floor, so nothing downstream of this function
-    // ever learned about it. Recorded the same way wide_file_trimmed already is, so the
-    // Import screen can show a recovery message instead of silently importing a column
-    // whose identifier values aren't cross-reader-verified.
+    provenance = { reader: parsed.reader, sheet: parsed.sheetName, layout, encoding: parsed.encoding, dateColumns: parsed.dateColumns };
+    // Codex round 3, "preserve the qualification through extraction": an identifier column whose
+    // Excel format the engine cannot reproduce is blank in preview and calculation alike, and is
+    // recorded so the Import screen shows a recovery message instead of importing it silently.
     if (parsed.unsupportedIdentifierColumns.length > 0) {
       await withTenant(tenantId, async (client) => {
         await client.query(
@@ -220,10 +250,18 @@ export async function extractAndStoreDocumentTables(
       });
     }
   } else if (isStatsFileName(lowerName)) {
-    // SPSS/Stata/SAS: no JS reader exists for these, so this hands off to
-    // the Python conversion function (api/parse-stats-file.py), which also
+    // SPSS/Stata/SAS: the engine's converter (api/parse-stats-file.py), which also
     // resolves variable labels and decodes value-labeled codes, so what
     // comes back needs no different handling than a CSV/Excel upload.
+    // These files declare their own case structure and every calculation refuses a columns-as-cases
+    // layout for them (_read_raw_uncached), so the stored table refuses it too rather than showing a
+    // flip that nothing else uses.
+    if (layout === "columns_are_cases") {
+      throw new Error(
+        "This file's layout is set to \"columns_are_cases\", but SPSS, Stata and SAS files declare their own " +
+          "case and variable structure, so that flip is not supported for them. Set the layout back to rows are cases.",
+      );
+    }
     const parsed = await parseStatsFile(document.storage_path, document.source_filename);
     const { headers, rows } = parsed;
     extracted = [{ label: null, sourcePage: null, headers, rows }];
@@ -255,14 +293,10 @@ export async function extractAndStoreDocumentTables(
       );
     }
     extracted = await detectTablesAcrossPages(tenantId, runId, pages);
-  }
-
-  // A raw file laid out with variables in rows and cases in columns is
-  // flipped once, here, so everything downstream (banner plans, cross-tabs,
-  // digests) reads the usual one-row-per-case shape.
-  if (document.ingestion_type === "raw") {
-    const setup = await loadDataSetup(tenantId, documentId);
-    if (setup.layout === "columns_are_cases") {
+    // A table found in a document's text has no engine read. A raw one laid out with variables in rows
+    // is flipped here, so everything downstream reads one row per case, with the engine's naming rules
+    // (transposeTable).
+    if (layout === "columns_are_cases") {
       extracted = extracted.map((t) => {
         const flipped = transposeTable(t.headers, t.rows);
         return { ...t, headers: flipped.headers, rows: flipped.rows };
@@ -288,27 +322,42 @@ export async function extractAndStoreDocumentTables(
   }
 
   return withTenant(tenantId, async (client) => {
+    // read_provenance (migration 0116) records that a table came from the engine's one reader. It is
+    // written with the table, and cleared for a table read any other way, so a replaced table never
+    // keeps an earlier read's provenance. Before 0116 nothing is recorded, and the table is checked
+    // against a fresh read when shown (importPreviewIdentity.ts).
+    const withProvenance = await readProvenanceAvailable(client);
     const ids: string[] = [];
     for (let index = 0; index < extracted.length; index++) {
       const t = extracted[index];
+      const params: unknown[] = [
+        tenantId,
+        runId,
+        documentId,
+        index,
+        t.label,
+        t.sourcePage,
+        JSON.stringify(t.headers),
+        JSON.stringify(t.rows),
+        document.ingestion_type,
+      ];
+      if (withProvenance) params.push(provenance ? JSON.stringify(provenance) : null);
       const result = await client.query<{ id: string }>(
-        `insert into document_tables (tenant_id, run_id, document_id, table_index, label, source_page, headers, rows, ingestion_type)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         on conflict (document_id, table_index)
-         do update set label = excluded.label, source_page = excluded.source_page,
-                        headers = excluded.headers, rows = excluded.rows, ingestion_type = excluded.ingestion_type
-         returning id`,
-        [
-          tenantId,
-          runId,
-          documentId,
-          index,
-          t.label,
-          t.sourcePage,
-          JSON.stringify(t.headers),
-          JSON.stringify(t.rows),
-          document.ingestion_type,
-        ]
+        withProvenance
+          ? `insert into document_tables (tenant_id, run_id, document_id, table_index, label, source_page, headers, rows, ingestion_type, read_provenance)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             on conflict (document_id, table_index)
+             do update set label = excluded.label, source_page = excluded.source_page,
+                            headers = excluded.headers, rows = excluded.rows, ingestion_type = excluded.ingestion_type,
+                            read_provenance = excluded.read_provenance
+             returning id`
+          : `insert into document_tables (tenant_id, run_id, document_id, table_index, label, source_page, headers, rows, ingestion_type)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             on conflict (document_id, table_index)
+             do update set label = excluded.label, source_page = excluded.source_page,
+                            headers = excluded.headers, rows = excluded.rows, ingestion_type = excluded.ingestion_type
+             returning id`,
+        params,
       );
       ids.push(result.rows[0].id);
     }

@@ -7,6 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/lib/dataQuality", async () => await import("../dataQuality"));
+// The withheld-preview notice offers "Read the file again" (a server action); not exercised here.
+vi.mock("@/lib/dataSetupActions", () => ({ readDataFileAction: vi.fn() }));
 
 const { LabelDiagnosticsNotice, ValueLabelsRow } = await import("../../app/runs/[id]/ImportQualityPanel");
 

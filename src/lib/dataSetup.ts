@@ -4,30 +4,42 @@ import { cellValue, setCell } from "./rowCells";
 
 type Cell = string | number | null;
 
-/** Flips a table whose rows are variables and columns are cases. */
-export function transposeTable(headers: string[], rows: Record<string, Cell>[]) {
-  if (headers.length < 2) return { headers, rows };
-  const key = headers[0];
-  const baseNames = rows.map((r, i) => String(cellValue(r, key) ?? "").trim() || `Variable ${i + 1}`);
-  // IMP-003: de-duplication used to be decided per literal base name ("q" -> "q", the
-  // next "q" -> "q (2)"), which collides whenever one of the ORIGINAL rows already carries
-  // that generated-looking name - e.g. rows named "q", "q", "q (2)" produced "q", "q (2)",
-  // then "q (2)" again for the third row, silently overwriting the second row's value in
-  // `out` because both ended up keyed by the same string. Uniqueness is now decided
-  // against the full set of names already assigned so far (literal or generated), so a
-  // genuine "q (2)" row claims that name first if it comes first, and any later collision
-  // (generated or literal) is pushed to the next untaken suffix instead of overwriting it.
-  const used = new Set<string>();
-  const names = baseNames.map((base) => {
-    let candidate = base;
-    let suffix = 2;
+/**
+ * Unique variable names for a list of literal names, by the engine's rule (_dedupe_header_names in
+ * api/parse-stats-file.py, TP500-F02): every literal name is reserved first, the first occurrence keeps
+ * it, and each later repeat takes the next "name (n)" that no literal name or earlier allocation holds.
+ * So "q", "q", "q (2)" become "q", "q (3)", "q (2)": the row literally named "q (2)" keeps its name and
+ * values, and nothing is overwritten. Must stay statement-for-statement with the engine's function.
+ */
+export function allocateVariableNames(names: string[]): string[] {
+  if (new Set(names).size === names.length) return [...names];
+  const used = new Set(names);
+  const counts = new Map<string, number>();
+  return names.map((name) => {
+    const count = (counts.get(name) ?? 0) + 1;
+    counts.set(name, count);
+    if (count === 1) return name;
+    let n = count;
+    let candidate = `${name} (${n})`;
     while (used.has(candidate)) {
-      candidate = `${base} (${suffix})`;
-      suffix += 1;
+      n += 1;
+      candidate = `${name} (${n})`;
     }
+    counts.set(name, n);
     used.add(candidate);
     return candidate;
   });
+}
+
+/**
+ * Flips a table whose rows are variables and columns are cases. Used only for a table found in a
+ * document's text (Word, PDF): CSV, TSV and Excel files are flipped by the engine's own reader. A row's
+ * name is its first cell's literal text ("Variable n" when blank), allocated by allocateVariableNames.
+ */
+export function transposeTable(headers: string[], rows: Record<string, Cell>[]) {
+  if (headers.length < 2) return { headers, rows };
+  const key = headers[0];
+  const names = allocateVariableNames(rows.map((r, i) => String(cellValue(r, key) ?? "").trim() || `Variable ${i + 1}`));
   const out = headers.slice(1).map((h) => {
     const o: Record<string, Cell> = {};
     rows.forEach((r, i) => {

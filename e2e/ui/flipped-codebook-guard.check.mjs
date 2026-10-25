@@ -5,8 +5,10 @@
 // release pending verification). Engine tests prove the refusal; this checks, in a real browser
 // against the disposable local stack, that:
 //   1. after choosing "one column per respondent", the refusal, with its re-export guidance, is
-//      shown once for the file in its Variables panel (not repeated per variable, and not framed
-//      as an SPSS/Stata/SAS read failure);
+//      shown once for the file on its Preview tab (not repeated per variable, and not framed as an
+//      SPSS/Stata/SAS read failure). Since the one reader (batch 26) the file itself cannot be read in
+//      that layout, so the stored preview is withheld with the reason and there is no Variables tab;
+//      before, the retired preview reader still showed rows that no calculation would use;
 //   2. the refusal survives a reload;
 //   3. recovery works: the same data re-exported one row per respondent, uploaded as a new file,
 //      reads normally (default layout, no refusal for it). After the refused file is deleted, the
@@ -82,14 +84,16 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
   expect((await saved).status()).toBe(200);
 
   const notice = () => page.getByRole("alert").filter({ hasText: REFUSAL });
-  // The selected data file's Variables tab (the refused file is listed first, as the newest, until
-  // the recovered file is added; then the check names the file it means).
-  const showVariables = async (name = "flipped-guard.xlsx") => {
+  // A data file's Variables tab; the refused file's refusal is on its Preview tab.
+  const showVariables = async (name) => {
     await openSource(page, name, "Variables");
   };
+  const showRefusal = async () => {
+    await openSource(page, "flipped-guard.xlsx", "Preview");
+  };
 
-  // 1. The file's Variables panel shows the refusal once, with its recovery guidance.
-  await showVariables();
+  // 1. The file's Preview tab shows the refusal once, with its recovery guidance.
+  await showRefusal();
   await expect(notice().first()).toBeVisible({ timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
   await expect(notice().first()).toContainText("Re-export as one row per respondent");
@@ -98,7 +102,7 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
   // 2. It survives a reload.
   await page.goto(runUrl, { waitUntil: "networkidle" });
   await openSection(page, /Import data/);
-  await showVariables();
+  await showRefusal();
   await expect(notice().first()).toBeVisible({ timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
 
@@ -108,7 +112,7 @@ test("a flipped workbook with Codebook MR is refused visibly; a rows-per-respond
   await openSource(page, "rows-recovered.xlsx", "Setup");
   await expect(recoveredLayout).toBeEnabled({ timeout: 60_000 });
   await expect(recoveredLayout).toHaveValue("rows_are_cases");
-  await showVariables();
+  await showRefusal();
   await expect(notice().first()).toBeVisible({ timeout: 90_000 });
   await expect(notice()).toHaveCount(1);
 

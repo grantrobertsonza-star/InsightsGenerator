@@ -9,7 +9,7 @@ import { withTenant, withTenantRead } from "@/lib/db";
 import { loadImportQuestionDefinitions } from "@/lib/importQuestionDefinitions";
 import { extractFindingsFromDocument, readContextDocument } from "@/lib/extractFindings";
 import { findingProvenanceAvailable } from "@/lib/findingProvenance";
-import { processTableDocument } from "@/lib/documentTables";
+import { processTableDocument, readProvenanceAvailable, type TableReadProvenance } from "@/lib/documentTables";
 import { generateFindingsFromBannerPlan } from "@/lib/generateFindingsFromBannerPlan";
 import {
   extractThemesFromTranscript,
@@ -502,6 +502,8 @@ type DocumentTablePreview = {
   row_version: string;
   /** A crosstab's place in its set (table_index 100 and up); null for an imported table. */
   crosstab_status: "draft" | "committed" | null;
+  /** How an engine-read table was read (migration 0116; documentTables.TableReadProvenance), else null. */
+  read_provenance: TableReadProvenance | null;
 };
 
 /**
@@ -539,7 +541,8 @@ async function getDocumentTablePreviews(
                 end as rows,
                 jsonb_array_length(rows)::int as row_count,
                 xmin::text as row_version,
-                ingestion_type, banner_columns, stub_columns, crosstab_status
+                ingestion_type, banner_columns, stub_columns, crosstab_status,
+                ${(await readProvenanceAvailable(client)) ? "read_provenance" : "null::jsonb as read_provenance"}
          from document_tables
          where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
          order by document_id, table_index`,
@@ -3517,6 +3520,9 @@ export default async function RunPage({
         trimmed: trimmedFiles.get(t.document_id) ?? null,
         previewError: importPreviewIdentities.get(t.document_id)?.error,
         unsupportedIdentifierColumns: unsupportedIdentifierColumnsByDoc.get(t.document_id) ?? [],
+        readNotes: t.read_provenance
+          ? { encoding: t.read_provenance.encoding ?? null, dateColumns: Array.isArray(t.read_provenance.dateColumns) ? t.read_provenance.dateColumns : [] }
+          : undefined,
         labelConflicts: labelDiagnosticsByDoc.get(t.document_id)?.conflicts ?? [],
         unmatchedLabelVariables: labelDiagnosticsByDoc.get(t.document_id)?.unmatched ?? [],
         fullyCovered: !!full,
@@ -5159,7 +5165,7 @@ export default async function RunPage({
         const tableFlags = ownTables
           .filter((t) => !t.previewError)
           .reduce((n, t) => n + flaggedChecks((t.quality ?? computeTableQuality(t.headers, t.rows, t.ingestionType, t.stated ?? [])).checks), 0);
-        if (previewError) panels.push({ id: "preview", label: "Preview", node: <ImportPreviewRecovery key="panel" error={previewError} /> });
+        if (previewError) panels.push({ id: "preview", label: "Preview", node: <ImportPreviewRecovery key="panel" error={previewError} reread={d.kind === "table" ? { runId: id, documentId: d.id } : undefined} /> });
         if (d.kind === "table" && !previewError) {
           if (isRaw && ownTables.length > 0) {
             // The missing-value check sits with the variables it describes, as its own fold; weights have

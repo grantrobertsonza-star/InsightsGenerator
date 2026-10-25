@@ -53,11 +53,26 @@ export { isStatsFileName };
  * download, not a function invocation payload, so it has no such limit.
  */
 export async function parseStatsFile(storagePath: string, sourceFilename: string): Promise<ParsedTable> {
+  return runEngineConversion<ParsedTable>("convert", storagePath, sourceFilename, {});
+}
+
+/**
+ * Runs one of the engine's two table-producing actions: "convert" (SPSS/Stata/SAS, above) or "table"
+ * (the one reader for CSV, TSV and Excel; parseTable.ts). Both answers are respondent-level tables,
+ * usually past a serverless response limit, so the engine writes them to the file's converted copy and
+ * this reads them back from storage (see parseStatsFile's comment), then removes the copy.
+ */
+export async function runEngineConversion<T>(
+  action: "convert" | "table",
+  storagePath: string,
+  sourceFilename: string,
+  args: Record<string, unknown>,
+): Promise<T> {
   // Plain `next dev` does not serve the Python function, so when neither
   // VERCEL_URL nor PARSE_STATS_FILE_URL is set, run the same conversion
   // with a local Python instead (needs: pip install pyreadstat).
   if (!process.env.VERCEL_URL && !process.env.PARSE_STATS_FILE_URL) {
-    return runLocalStatsPython<ParsedTable>(storagePath, sourceFilename, "convert");
+    return runLocalStatsPython<T>(storagePath, sourceFilename, action, args);
   }
   // VERCEL_URL is set automatically on Vercel (preview and production) to
   // this deployment's own hostname, so this always calls the sibling
@@ -87,8 +102,8 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
       // the shared secret itself is never sent. PARSE_STATS_SHARED_SECRET must hold the same value
       // here and in the Python function's environment, or every request fails with a 401, surfaced
       // below as an actionable message rather than a generic parsing failure.
-      headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest("convert", BUCKET, storagePath) },
-      body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET }),
+      headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signParseRequest(action, BUCKET, storagePath) },
+      body: JSON.stringify({ storagePath, sourceFilename, bucket: BUCKET, action, args }),
     });
     parserDone = true;
 
@@ -119,9 +134,9 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
     }
     const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(resultPath);
     if (error || !data) {
-      throw new Error(`Converted SPSS/Stata/SAS result could not be read back from storage: ${error?.message}`);
+      throw new Error(`The data file's converted result could not be read back from storage: ${error?.message}`);
     }
-    return JSON.parse(await data.text()) as ParsedTable;
+    return JSON.parse(await data.text()) as T;
   } finally {
     await finishConvertedCopy(intent, converted, parserDone);
   }
@@ -298,7 +313,7 @@ export async function sweepStatsCache(dir: string = tmpdir(), now: number = Date
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
-  action: "convert" | "dictionary" | "crosstab" | "categories" | "columns",
+  action: "convert" | "table" | "dictionary" | "crosstab" | "categories" | "columns",
   args: unknown = {},
 ): Promise<T> {
   // The same data file is read many times in a session (every table built,

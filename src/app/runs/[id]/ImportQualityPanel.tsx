@@ -8,6 +8,7 @@ import {
 } from "@/lib/dataQuality";
 import type { QuestionType, VariableOverrides } from "@/lib/variableOverrides";
 import { ChecksFold } from "./ImportQualityChecks";
+import ReadFileAgainButton from "./ReadFileAgainButton";
 
 export type ImportQualityTable = {
   /** Cached workbook preview could not be reconciled with its authoritative sheet. */
@@ -62,6 +63,9 @@ export type ImportQualityTable = {
    * value rather than guess at a format neither side can reproduce identically) - this
    * is a block with a recovery instruction, not a warning over a value that still works. */
   unsupportedIdentifierColumns?: string[];
+  /** How the file was read (document_tables.read_provenance): a CSV/TSV read as Windows-1252 or UTF-16
+   * text rather than UTF-8, and the variables holding calendar dates (stored as ISO dates). */
+  readNotes?: { encoding: string | null; dateColumns: string[] };
   /** IMP-015: variables whose label sheets disagree about what a code (or the variable) means.
    * The engine shows such codes with every competing label instead of choosing one. */
   labelConflicts?: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[];
@@ -135,8 +139,43 @@ export function ValueLabelsRow({
   );
 }
 
-export function ImportPreviewRecovery({ error }: { error: string }) {
-  return <p role="alert" data-testid="import-preview-recovery" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{error}</p>;
+const ENCODING_NAME: Record<string, string> = { "windows-1252": "Windows-1252 (Western European)", "utf-16": "UTF-16" };
+
+/** How the file was read, where that is worth knowing before trusting text and dates. */
+function ReadNotes({ notes }: { notes?: { encoding: string | null; dateColumns: string[] } }) {
+  if (!notes) return null;
+  const legacy = notes.encoding && notes.encoding !== "utf-8" ? ENCODING_NAME[notes.encoding] ?? notes.encoding : null;
+  const dates = notes.dateColumns;
+  if (!legacy && dates.length === 0) return null;
+  return (
+    <div data-testid="read-notes" className="space-y-1 rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-muted">
+      {legacy && (
+        <p data-testid="read-encoding">
+          This file is not UTF-8 text, so it was read as <strong>{legacy}</strong>. If accented or non-Latin letters look
+          wrong in the preview, save the file as &ldquo;CSV UTF-8&rdquo; and upload it again.
+        </p>
+      )}
+      {dates.length > 0 && (
+        <p data-testid="read-dates">
+          {dates.length === 1 ? "The variable " : "The variables "}
+          <strong>{dates.slice(0, 6).map((c) => `"${c}"`).join(", ")}</strong>
+          {dates.length > 6 ? ` and ${dates.length - 6} more` : ""}{" "}
+          {dates.length === 1 ? "holds" : "hold"} dates, read as calendar dates (year-month-day, with the time of day where
+          the cell has one) in the preview and in every calculation. No time zone is applied.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A withheld stored preview (importPreviewIdentity.ts), with "Read the file again" where `reread` names the file. */
+export function ImportPreviewRecovery({ error, reread }: { error: string; reread?: { runId: string; documentId: string } }) {
+  return (
+    <div role="alert" data-testid="import-preview-recovery" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <p>{error}</p>
+      {reread && <ReadFileAgainButton runId={reread.runId} documentId={reread.documentId} />}
+    </div>
+  );
 }
 
 export const typeLabel: Record<VariableType, string> = {
@@ -295,6 +334,7 @@ export default function ImportQualityPanel({
                 Cases blanked out this way won&rsquo;t match or group correctly until that&rsquo;s done.
               </p>
             ) : null}
+            <ReadNotes notes={table.readNotes} />
             <div className="grid grid-cols-2 gap-2 @lg:grid-cols-4">
               <Stat value={q.cases.toLocaleString()} label={caseLabel} />
               <Stat

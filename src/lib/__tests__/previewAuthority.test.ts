@@ -1,8 +1,9 @@
 // P2a repair, IMP-002 / IMP-SHIP-001 (raw preview authority). Exercises the ACTUAL
-// getDocumentPreviewUrl server action with the ACTUAL parseTableDocument and
-// resolveAuthoritativeSheet underneath. Mocked boundaries only: the database wrapper (a fake
-// client holding one documents row), Supabase storage (serves an in-memory workbook), and the
-// model/stats modules crosstabs.ts imports at its top level but this path never calls.
+// getDocumentPreviewUrl server action with the ACTUAL parseTableDocument (the engine's one reader,
+// batch 26, through the local engine runner) and resolveAuthoritativeSheet underneath. Mocked
+// boundaries only: the database wrapper (a fake client holding one documents row), Supabase storage
+// (serves an in-memory workbook), and the model/stats modules crosstabs.ts imports at its top level
+// but this path never calls. Skipped without python3 + pandas/openpyxl/pyreadstat.
 //
 // What this does NOT establish: real PostgreSQL blocking between two clients (the P2a
 // core-state-h two-client fixture) - here the competing publication is modelled as already
@@ -15,13 +16,22 @@ vi.mock("../db", () => ({ withTenant: vi.fn(), withTenantRead: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() } } }));
 vi.mock("../anthropic", () => ({ anthropic: {}, CLAUDE_MODEL: "test-model" }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
+// runEngineConversion is the ACTUAL engine read (the one reader, batch 26), wrapped only to count reads.
 vi.mock("../parseStatsFile", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parseStatsFile")>();
-  return { ...actual, runStatsTool: vi.fn() };
+  return { ...actual, runStatsTool: vi.fn(), runEngineConversion: vi.fn(actual.runEngineConversion) };
 });
 
 import { withTenant } from "../db";
 import { supabaseAdmin } from "../supabaseAdmin";
+import { runEngineConversion } from "../parseStatsFile";
+import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { PYTHON } from "./helpers/pythonEngine";
+
+const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], { encoding: "utf8" }).status === 0;
+/** Engine reads of the file made by this call (each a full read by the one reader). */
+const reads = () => vi.mocked(runEngineConversion).mock.calls.length;
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -59,7 +69,8 @@ type Doc = { selected_sheet: string | null; source_filename: string };
 type World = {
   doc: Doc;
   writes: unknown[][];
-  downloads: number;
+  /** A storage path of its own: the local engine runner keeps a download by path for a few minutes. */
+  path: string;
   /** Runs right after this call's own read of the documents row: models another reader's
    *  publication committing in between. */
   afterDocumentRead?: () => void;
@@ -69,12 +80,9 @@ type World = {
 let world: World;
 
 function install(buffer: ArrayBuffer, doc: Doc) {
-  world = { doc, writes: [], downloads: 0 };
+  world = { doc, writes: [], path: `${randomUUID()}/${randomUUID()}/file` };
   vi.mocked(supabaseAdmin.storage.from).mockReturnValue({
-    download: async () => {
-      world.downloads++;
-      return { data: { arrayBuffer: async () => buffer }, error: null };
-    },
+    download: async () => ({ data: { arrayBuffer: async () => buffer }, error: null }),
   } as never);
   vi.mocked(withTenant).mockImplementation((async (_tenant: string, cb: (c: unknown) => unknown) =>
     cb({
@@ -85,7 +93,7 @@ function install(buffer: ArrayBuffer, doc: Doc) {
           const row = {
             preview_storage_path: null,
             source_filename: world.doc.source_filename,
-            storage_path: "tenant/doc-1",
+            storage_path: world.path,
             kind: "table",
             selected_sheet: world.doc.selected_sheet,
           };
@@ -118,9 +126,10 @@ async function preview() {
 beforeEach(() => {
   vi.mocked(withTenant).mockReset();
   vi.mocked(supabaseAdmin.storage.from).mockReset();
+  vi.mocked(runEngineConversion).mockClear();
 });
 
-describe("raw preview authority (P2a, IMP-002 / IMP-SHIP-001)", () => {
+describe.skipIf(!PYTHON_OK)("raw preview authority (P2a, IMP-002 / IMP-SHIP-001)", () => {
   it("reproduction: a competing Sparse publication committed after this read is adopted and reparsed, never the preview's own Dense pick", async () => {
     install(sparseDenseBuffer(), { selected_sheet: null, source_filename: "sparse-dense.xlsx" });
     world.afterDocumentRead = () => {
@@ -134,7 +143,7 @@ describe("raw preview authority (P2a, IMP-002 / IMP-SHIP-001)", () => {
     // One conditional publication attempt (which lost), then a reparse of the winner.
     expect(world.writes).toEqual([["Dense", DOC]]);
     expect(world.doc.selected_sheet).toBe("Sparse");
-    expect(world.downloads).toBe(2);
+    expect(reads()).toBe(2);
   });
 
   it("with no competitor, the preview publishes its own choice before returning, and the rows are that sheet's", async () => {
@@ -145,7 +154,7 @@ describe("raw preview authority (P2a, IMP-002 / IMP-SHIP-001)", () => {
     expect(r.table.rows).toHaveLength(10);
     expect(world.writes).toEqual([["Dense", DOC]]);
     expect(world.doc.selected_sheet).toBe("Dense");
-    expect(world.downloads).toBe(1);
+    expect(reads()).toBe(1);
   });
 
   it("an already-persisted selection is used as-is with no write and no reparse", async () => {
@@ -155,7 +164,7 @@ describe("raw preview authority (P2a, IMP-002 / IMP-SHIP-001)", () => {
     expect(r.table.sheetName).toBe("Sparse");
     expect(r.table.rows).toHaveLength(1);
     expect(world.writes).toEqual([]);
-    expect(world.downloads).toBe(1);
+    expect(reads()).toBe(1);
   });
 
   it("a persistence failure returns a recovery error and never the unconfirmed table", async () => {

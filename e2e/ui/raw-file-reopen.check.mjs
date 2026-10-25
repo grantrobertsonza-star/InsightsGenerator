@@ -13,7 +13,10 @@
 //      On a dev server, whose log names each server action, the log for the reopen must also not
 //      contain readDataFileAction (the action that parses the stored file).
 //   3. Positive control: changing the file's layout makes the page read the file again, and both
-//      signals change, so the unchanged values in step 2 are not a blind check.
+//      table version changes, so the unchanged version in step 2 is not a blind check. (Since the one
+//      reader, batch 26, a read goes through the engine, whose local runner keeps a recent download of
+//      the file for a few minutes; so a re-read need not download again, and the download count is a
+//      supporting signal in step 2, not the positive control.)
 // Real browser on the disposable stack; the table row is read from the database and the download
 // count from the stand-in's disposable /__reads endpoint.
 import { expect, test } from "@playwright/test";
@@ -104,13 +107,12 @@ test("reopening a ready 5,000 x 301 raw file shows a bounded preview with its tr
       expect(await stored(), `reopen ${reopen} rewrote the stored table`).toEqual(before);
     }
 
-    // 3. Positive control: a layout change reads the file again, and both signals move.
+    // 3. Positive control: a layout change reads the file again, and the stored table is rewritten.
     await openSourceTab(page, "Setup");
     const layout = page.getByLabel(/^How the file is laid out: wide-tall\.csv$/).first();
     const current = await layout.inputValue();
     const other = await layout.locator("option").evaluateAll((os, cur) => os.map((o) => o.value).find((v) => v && v !== cur), current);
     await layout.selectOption(other);
-    await expect.poll(downloads, { timeout: 120_000, message: "a layout change downloads the file" }).toBeGreaterThan(downloadsBefore);
     await expect.poll(async () => (await stored())[0]?.version, { timeout: 120_000, message: "a layout change rewrites the table" }).not.toBe(before[0].version);
   } finally {
     await db.end();
