@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-25. State: **READY_FOR_CODEX** (batch28 on top of afc1b39): B26-F01, B26-F02, B27-F01 and V-B27-01 repaired, implemented and ready for independent review; no migration. **NOT READY for release.** See the batch28 handover below.
+Updated: 2026-10-25. State: **READY_FOR_CODEX** (batch29 on top of batch28, on top of afc1b39): batch28 repairs B26-F01, B26-F02, B27-F01 and V-B27-01; batch29 clears the lint errors (lint exit 0). Both implemented, ready for independent review; no migration (Grant confirms 0116 and 0117 applied). **NOT READY for release.**
+
+## Claude: batch29 (lint to zero errors), main copy (2026-10-25)
+
+Implemented, ready for review: the batch29 repair commit and its docs commit, on top of batch28. No migration. Details in `docs/batch29-handover-2026-10-25.md`. `npm run lint` exit 0: 0 errors (was 349), 41 inherited warnings, none added. The 295 `.cjs` require errors are cleared by a rule change scoped to `**/*.cjs` (CommonJS by extension), stated as such; 48 test `any` casts typed; six `set-state-in-effect` fixes in ClaimTableChecks, CodingProgressBar, ProcessProgress, CrosstabFilters and RunShell, without suppressions (ClaimTableChecks also gains a stale-response guard it lacked). `effectStateRefactors.test.tsx` 6 passed with a mutation check each. Full library 1,750 passed / 72 skipped / 0 failed. Full browser 107 passed / 1 skipped / 0 failed; smoke 1 passed. **READY_FOR_CODEX.**
 
 ## Claude: batch28 (B26-F01, B26-F02, B27-F01, V-B27-01), main copy (2026-10-25)
 
