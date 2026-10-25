@@ -56,3 +56,13 @@ export const DECISION_REMOVED_WITH_FILE = (c: string, doc: string) =>
 /** Kept objectives and decisions that name the file among their sources (status accepted). */
 export const KEPT_AND_MARKED = (c: string, doc: string, removedWithFile: (c: string, doc: string) => string) =>
   `${c}.status = 'accepted' and ${doc} = any(${c}.source_document_ids) and not (${removedWithFile(c, doc)})`;
+
+/**
+ * Every recorded source of candidate `c` is an active file of project `run` (SQL; `run` is a SQL
+ * expression): it exists, belongs to the project and is not in the bin. The one test for clearing a
+ * kept objective's or decision's "Source document removed" marker (SYS5B-F02): a source that was erased
+ * no longer exists, so it is never active again, and the marker stays.
+ */
+export const ALL_SOURCES_ACTIVE = (c: string, run: string) =>
+  `not exists (select 1 from unnest(${c}.source_document_ids) as s(id)
+                where not exists (select 1 from documents d where d.id = s.id and d.run_id = ${run} and d.removed_at is null))`;

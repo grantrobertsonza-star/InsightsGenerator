@@ -24,9 +24,17 @@ type BinResult = { ok: true; message: string } | { ok: false; error: string };
 export async function restoreDocumentAction(runId: string, removalId: string): Promise<BinResult> {
   const TENANT_ID = await requireTenantId();
   try {
-    const { findings } = await restoreDocumentFromBin(TENANT_ID, runId, removalId);
+    const { findings, linksWaiting, linksLost } = await restoreDocumentFromBin(TENANT_ID, runId, removalId);
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, message: `Restored, with ${findings} finding${findings === 1 ? "" : "s"}.` };
+    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+    let message = `Restored, with ${plural(findings, "finding", "findings")}.`;
+    if (linksWaiting > 0) {
+      message += ` ${plural(linksWaiting, "link", "links")} to findings of another removed file will come back when that file is restored.`;
+    }
+    if (linksLost > 0) {
+      message += ` ${plural(linksLost, "link", "links")} to findings that were erased could not be restored.`;
+    }
+    return { ok: true, message };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -36,9 +44,15 @@ export async function restoreDocumentAction(runId: string, removalId: string): P
 export async function eraseDocumentAction(runId: string, documentId: string): Promise<BinResult> {
   const TENANT_ID = await requireTenantId();
   try {
-    await eraseRemovedDocument(TENANT_ID, runId, documentId);
+    const { linksRemoved } = await eraseRemovedDocument(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, message: "Erased." };
+    return {
+      ok: true,
+      message:
+        linksRemoved > 0
+          ? `Erased. ${linksRemoved} ${linksRemoved === 1 ? "link" : "links"} between its findings and other files' findings went with it.`
+          : "Erased.",
+    };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }

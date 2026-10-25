@@ -46,7 +46,9 @@ The document row is locked by id, run and tenant. Then:
      "never touched by a researcher"; one kept unchanged looks the same and is removed too. The
      project's decision statement is re-synced in the same transaction;
    - an accepted objective or decision that names the file among its sources is kept and shows
-     "Source document removed" until the file is restored;
+     "Source document removed" until every file it was drawn from is active in the project again
+     (`ALL_SOURCES_ACTIVE`, SYS5B-F02): one still in the bin, or erased, keeps the marker, since an
+     erased source is lost for good;
    - suggestions with no recorded source (typed, made before migration 0115, or drawn partly from
      evidence with no recorded file) are never removed: which file they came from is not known.
 5. **Storage** is untouched while the item is in the bin.
@@ -59,17 +61,29 @@ findings are restored from history under their original ids, with review decisio
 notes, followed by their verdicts, per-finding insights and recommendations. Synthesized insights that
 cited them read current again once their support matches. Removed objective and decision suggestions
 are not restored (they are made again by reading the file). Restore is refused, with the reason, when
-the project is gone, or when a file of the same name and content has been added since (the researcher
-chooses which to keep).
+the project is gone, or when a file of the same kind and content has been added since (the researcher
+chooses which to keep: removing the new copy puts it in the bin beside the original, migration 0117,
+and the original can then be restored; SYS5B-F04).
+
+**Links between files (SYS5B-F01).** A grounding link (a report claim grounded by a calculated finding)
+or a contradiction between a finding of this file and one of another file is restored when both
+findings are in the project. When the other finding is in a file still in the bin, the link is added to
+that file's removal record and comes back when that file is restored, in either order and through any
+number of removals and restores; the restore message says how many links are waiting. When the other
+finding no longer exists (its file was erased), the link cannot come back and the restore says so. The
+discovery classification derived from grounding (validated or net new) follows the restored links.
 
 ## Erase permanently
 
-Removes, with the file: its document row (cascading the file-only material), its archived history rows
-(`finding_history` and the dependent history rows of those findings), its Research quality source text
-snapshots (the existing purge), the extracted text, and the stored bytes, preview and converted copy
-(queued storage cleanup with retry, as today). Synthesized insights and narratives keep the researcher's
-wording and stay "Support no longer valid". Reports already downloaded cannot be recalled; the project
-history records that a file was erased and when.
+Removes, with the file, in one transaction (SYS5B-F03): its document row (cascading the file-only
+material), its archived history rows (`finding_history` and the dependent history rows of those
+findings), its Research quality source text and the quotes and facts copied from it (the purge, now part
+of the same transaction), and the links between its findings and other files' findings that only its
+bin entry held (the message says how many). If any of it fails, nothing is erased: the file stays in the
+bin and Erase can be tried again. The stored bytes, preview and converted copy are removed after the
+commit through the queued storage cleanup, which keeps a visible retry. Synthesized insights and
+narratives keep the researcher's wording and stay "Support no longer valid". Reports already downloaded
+cannot be recalled; the project history records that a file was erased and when.
 
 ## The confirmation
 
@@ -92,6 +106,9 @@ stores those counts with the removal (shown in the bin), and reports what it act
 - `finding_history.archived_reason` gains `source_removed`.
 - Without 0115 a file cannot be removed (refused with the reason; nothing changes), and pages read the
   new columns through `to_jsonb` so they still load.
+- Migration 0117: the content-identity index (0098) covers files in use only (`removed_at is null`), so
+  two identical copies can both be in the bin. Before 0117, removing a second identical copy is refused
+  naming the migration, with nothing changed.
 
 ## Known costs and limits
 

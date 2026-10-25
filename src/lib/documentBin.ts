@@ -23,9 +23,9 @@ import { withTenant, withTenantRead } from "./db";
 import { archiveAndReplaceFindings } from "./findingArchive";
 import { driverAnalysesPresent, legacyDriverFindingOf } from "./driverFindingSource";
 import { lockRunForContextChange, syncDecisionStatement } from "./runSync";
-import { DECISION_REMOVED_WITH_FILE, KEPT_AND_MARKED, OBJECTIVE_REMOVED_WITH_FILE } from "./candidateSourceDocuments";
+import { ALL_SOURCES_ACTIVE, DECISION_REMOVED_WITH_FILE, KEPT_AND_MARKED, OBJECTIVE_REMOVED_WITH_FILE } from "./candidateSourceDocuments";
 import { convertedCopyPath, finishDocumentStorageCleanup, queueDocumentStorageCleanup } from "./documentStorageCleanup";
-import { purgeSourceText } from "./researchQualityRepository";
+import { purgeSourceTextInTransaction } from "./researchQualityRepository";
 
 export const BIN_DAYS = 30;
 
@@ -258,10 +258,23 @@ export async function removeDocumentToBin(
     await syncDecisionStatement(client, runId);
     const binRun = await binRunFor(client, tenantId, runId);
     await moveOwnMaterial(client, documentId, runId, binRun);
-    const moved = await client.query(
-      "update documents set run_id = $3, removed_at = now(), removed_by = $4, removed_from_run = $2 where id = $1 and run_id = $2 and tenant_id = $5",
-      [documentId, runId, binRun, removedBy, tenantId],
-    );
+    let moved;
+    try {
+      moved = await client.query(
+        "update documents set run_id = $3, removed_at = now(), removed_by = $4, removed_from_run = $2 where id = $1 and run_id = $2 and tenant_id = $5",
+        [documentId, runId, binRun, removedBy, tenantId],
+      );
+    } catch (error) {
+      // Before migration 0117 the content-identity index (0098) also covers the bin, so a second
+      // identical copy cannot join one already there (SYS5B-F04). Nothing was changed (the transaction
+      // rolls back); 0117 lets both copies wait in the bin.
+      if ((error as { code?: string; constraint?: string }).code === "23505" && (error as { constraint?: string }).constraint === "documents_run_kind_content_uidx") {
+        throw new Error(
+          "A copy of this file with the same content is already in the bin, and keeping two needs database migration 0117. Apply it and try again; nothing was changed.",
+        );
+      }
+      throw error;
+    }
     if (moved.rowCount !== 1) throw new Error("The file could not be removed. Try again.");
     const removal = await client.query<{ id: string }>(
       `insert into document_removals (tenant_id, run_id, document_id, filename, removed_by, snapshot, counts)
@@ -282,6 +295,117 @@ async function putBack(client: PoolClient, table: string, rows: unknown[], keepI
   return r.rowCount ?? 0;
 }
 
+type Contradiction = { original_finding_id: string; contradicting_finding_id: string | null; contradicting_synthesized_insight_id: string | null };
+type Grounding = { id: string; grounded_by_finding_id: string };
+
+/**
+ * Puts a removal's findings, and what rests on them, back under their original ids, with the links
+ * between findings of different files (SYS5B-F01). A grounding link (a report claim grounded by a
+ * calculated finding, findings.grounded_by_finding_id) or a contradiction (finding_contradictions) whose
+ * other finding is not in the project now is not dropped:
+ *   - when that finding is in another file still in the bin, the link is added to that file's removal
+ *     snapshot, and restoring that file puts it back (in either restore order, through any number of
+ *     removals and restores, since each restore replays or passes on what it cannot place yet);
+ *   - when that finding no longer exists anywhere (its file was erased, or it was replaced by a reread),
+ *     the link cannot come back, and it is counted so the researcher is told.
+ * Runs inside the restore's transaction, under the project's lock, so a failure leaves every snapshot
+ * and finding as it was.
+ */
+async function restoreFindingsWithRelationships(
+  client: PoolClient,
+  runId: string,
+  removalId: string,
+  s: Snapshot,
+): Promise<{ findings: number; waiting: number; lost: number }> {
+  const ownIds = new Set((s.findings as { id: string }[]).map((f) => f.id));
+  const referenced = new Set<string>();
+  for (const f of s.findings as { grounded_by_finding_id?: string | null }[]) if (f.grounded_by_finding_id) referenced.add(f.grounded_by_finding_id);
+  for (const c of s.contradictions as Contradiction[]) {
+    referenced.add(c.original_finding_id);
+    if (c.contradicting_finding_id) referenced.add(c.contradicting_finding_id);
+  }
+  for (const g of s.groundedBy) referenced.add(g.id);
+  const liveRows = await client.query<{ id: string }>("select id from findings where id = any($1::uuid[])", [[...referenced]]);
+  const present = new Set([...ownIds, ...liveRows.rows.map((r) => r.id)]);
+  let waiting = 0;
+  let lost = 0;
+  // The removal still in the bin that holds a finding, which will restore it; null when none does.
+  const holderOf = async (findingId: string) =>
+    (
+      await client.query<{ id: string }>(
+        `select id from document_removals
+          where run_id = $1 and restored_at is null and id <> $2
+            and snapshot->'findings' @> jsonb_build_array(jsonb_build_object('id', $3::text))
+          limit 1`,
+        [runId, removalId, findingId],
+      )
+    ).rows[0]?.id ?? null;
+  const passOn = async (missingFindingId: string, key: "contradictions" | "groundedBy", link: unknown) => {
+    const holder = await holderOf(missingFindingId);
+    if (!holder) {
+      lost += 1;
+      return;
+    }
+    await client.query(
+      `update document_removals set snapshot = jsonb_set(snapshot, $2::text[], coalesce(snapshot->$3, '[]'::jsonb) || $4::jsonb) where id = $1`,
+      [holder, [key], key, JSON.stringify([link])],
+    );
+    waiting += 1;
+  };
+
+  // A restored finding grounded by a finding that is not back yet is restored without the link, which is
+  // passed to the file that holds that finding.
+  const findingRows = (s.findings as (Record<string, unknown> & { id: string; grounded_by_finding_id?: string | null })[]).map((f) => ({ ...f }));
+  for (const f of findingRows) {
+    const target = f.grounded_by_finding_id;
+    if (target && !present.has(target)) {
+      f.grounded_by_finding_id = null;
+      await passOn(target, "groundedBy", { id: f.id, grounded_by_finding_id: target } satisfies Grounding);
+    }
+  }
+  const findings = await putBack(client, "findings", findingRows);
+  await putBack(client, "verdicts", s.verdicts);
+  await putBack(client, "insights", s.insights);
+  await putBack(client, "recommendations", s.recommendations);
+  await putBack(client, "claim_table_checks", s.claimTableChecks, "exists (select 1 from findings f where f.id = x.finding_id)");
+  // A contradiction with a synthesized insight that no longer exists (shared work deleted since) cannot
+  // come back; it is counted.
+  const synthesized = (s.contradictions as Contradiction[]).map((c) => c.contradicting_synthesized_insight_id).filter((id): id is string => Boolean(id));
+  const liveSynthesized = new Set(
+    synthesized.length
+      ? (await client.query<{ id: string }>("select id from synthesized_insights where id = any($1::uuid[])", [synthesized])).rows.map((r) => r.id)
+      : [],
+  );
+  const placeable: Contradiction[] = [];
+  for (const c of s.contradictions as Contradiction[]) {
+    const missing = [c.original_finding_id, c.contradicting_finding_id].find((id) => id && !present.has(id));
+    if (missing) await passOn(missing, "contradictions", c);
+    else if (c.contradicting_synthesized_insight_id && !liveSynthesized.has(c.contradicting_synthesized_insight_id)) lost += 1;
+    else placeable.push(c);
+  }
+  await putBack(client, "finding_contradictions", placeable);
+  await putBack(client, "synthesized_insight_sources", s.synthesizedSources, "exists (select 1 from synthesized_insights si where si.id = x.synthesized_insight_id)");
+  // Grounding links of findings outside this file (the findings this file's findings ground), and links
+  // passed on to this file. Both ends must be in the project; a link whose dependent or grounding finding
+  // is still in another removed file waits with that file.
+  for (const g of s.groundedBy) {
+    referenced.add(g.grounded_by_finding_id);
+  }
+  const groundingTargets = s.groundedBy.map((g) => g.grounded_by_finding_id).filter((id) => !present.has(id));
+  if (groundingTargets.length) {
+    for (const r of (await client.query<{ id: string }>("select id from findings where id = any($1::uuid[])", [groundingTargets])).rows) present.add(r.id);
+  }
+  for (const g of s.groundedBy) {
+    const missing = [g.id, g.grounded_by_finding_id].find((id) => !present.has(id));
+    if (missing) {
+      await passOn(missing, "groundedBy", g);
+    } else {
+      await client.query("update findings set grounded_by_finding_id = $2 where id = $1 and grounded_by_finding_id is null", [g.id, g.grounded_by_finding_id]);
+    }
+  }
+  return { findings, waiting, lost };
+}
+
 /**
  * Restores a removed file from the bin into its project, in one transaction: the file and its own
  * material move back, and its findings and what rested on them are put back under their original ids,
@@ -289,7 +413,11 @@ async function putBack(client: PoolClient, table: string, rows: unknown[], keepI
  * Refused when the item is not this project's, was already restored or erased, or when the project now
  * has a file with the same kind and content (the researcher keeps one or the other).
  */
-export async function restoreDocumentFromBin(tenantId: string, runId: string, removalId: string): Promise<{ findings: number }> {
+export async function restoreDocumentFromBin(
+  tenantId: string,
+  runId: string,
+  removalId: string,
+): Promise<{ findings: number; linksWaiting: number; linksLost: number }> {
   return withTenant(tenantId, async (client) => {
     if (!(await binAvailable(client))) throw new Error(NEEDS_BIN);
     await lockRunForContextChange(client, runId, tenantId);
@@ -327,22 +455,9 @@ export async function restoreDocumentFromBin(tenantId: string, runId: string, re
     );
     await moveOwnMaterialBack(client, removal.document_id, binRun, runId);
     const s = removal.snapshot;
-    const findings = await putBack(client, "findings", s.findings);
+    const links = await restoreFindingsWithRelationships(client, runId, removalId, s);
+    const findings = links.findings;
     const findingIds = (s.findings as { id: string }[]).map((f) => f.id);
-    await putBack(client, "verdicts", s.verdicts);
-    await putBack(client, "insights", s.insights);
-    await putBack(client, "recommendations", s.recommendations);
-    await putBack(client, "claim_table_checks", s.claimTableChecks, "exists (select 1 from findings f where f.id = x.finding_id)");
-    await putBack(
-      client,
-      "finding_contradictions",
-      s.contradictions,
-      "exists (select 1 from findings f where f.id = x.original_finding_id) and (x.contradicting_finding_id is null or exists (select 1 from findings f where f.id = x.contradicting_finding_id)) and (x.contradicting_synthesized_insight_id is null or exists (select 1 from synthesized_insights si where si.id = x.contradicting_synthesized_insight_id))",
-    );
-    await putBack(client, "synthesized_insight_sources", s.synthesizedSources, "exists (select 1 from synthesized_insights si where si.id = x.synthesized_insight_id)");
-    for (const g of s.groundedBy) {
-      await client.query("update findings set grounded_by_finding_id = $2 where id = $1 and grounded_by_finding_id is null", [g.id, g.grounded_by_finding_id]);
-    }
     // The removal's history copies described findings that are current again.
     const insightIds = (s.insights as { id: string }[]).map((i) => i.id);
     await client.query("delete from recommendation_history where original_insight_id = any($1::uuid[])", [insightIds]);
@@ -350,28 +465,30 @@ export async function restoreDocumentFromBin(tenantId: string, runId: string, re
       await client.query(`delete from ${table} where original_finding_id = any($1::uuid[])`, [findingIds]);
     }
     await client.query("delete from finding_history where original_finding_id = any($1::uuid[]) and archived_reason = 'source_removed'", [findingIds]);
-    // A kept objective or decision is unmarked once none of its files is in the bin. Suggestions removed
-    // with the file are not put back: reading the file again makes them again (contract).
+    // A kept objective or decision is unmarked only once every file it was drawn from is active in the
+    // project again (ALL_SOURCES_ACTIVE, SYS5B-F02): one still in the bin, or erased, keeps the marker.
+    // Suggestions removed with the file are not put back: reading the file again makes them again.
     for (const table of ["objective_candidates", "decision_candidates"]) {
       await client.query(
         `update ${table} c set source_removed_at = null
-         where c.run_id = $1 and $2::uuid = any(c.source_document_ids)
-           and not exists (select 1 from documents d where d.id = any(c.source_document_ids) and d.removed_at is not null and d.id <> $2::uuid)`,
+         where c.run_id = $1 and c.source_removed_at is not null and $2::uuid = any(c.source_document_ids)
+           and ${ALL_SOURCES_ACTIVE("c", "$1")}`,
         [runId, removal.document_id],
       );
     }
     await client.query("update document_removals set restored_at = now() where id = $1", [removalId]);
-    return { findings };
+    return { findings, linksWaiting: links.waiting, linksLost: links.lost };
   });
 }
 
 /**
- * Erases a removed file for good. Removes its document row (cascading its own material), the snapshot
- * and history copies of its findings, and the Research quality text read from it; queues its stored
- * bytes, preview and converted copy for removal. Synthesized insights and narratives keep the
+ * Erases a removed file for good, in one transaction: its document row (cascading its own material), the
+ * snapshot and history copies of its findings, and the Research quality text read from it (with the
+ * quotes copied from it); its stored bytes, preview and converted copy are queued for removal, which runs
+ * after the commit and can be retried. Synthesized insights and narratives keep the
  * researcher's wording and stay "no longer valid". Downloaded reports cannot be recalled.
  */
-export async function eraseRemovedDocument(tenantId: string, runId: string, documentId: string): Promise<void> {
+export async function eraseRemovedDocument(tenantId: string, runId: string, documentId: string): Promise<{ linksRemoved: number }> {
   const prepared = await withTenant(tenantId, async (client) => {
     if (!(await binAvailable(client))) throw new Error(NEEDS_BIN);
     await lockRunForContextChange(client, runId, tenantId);
@@ -385,12 +502,24 @@ export async function eraseRemovedDocument(tenantId: string, runId: string, docu
     if (!doc) throw new Error("That file is not in this project's bin. Reload the page.");
     const removals = await client.query<{ snapshot: Snapshot }>("select snapshot from document_removals where document_id = $1 and run_id = $2", [documentId, runId]);
     const findingIds = removals.rows.flatMap((r) => (r.snapshot.findings as { id: string }[]).map((f) => f.id));
+    // Links between this file's findings and other files' findings that only this bin entry still holds
+    // (SYS5B-F01): they go with the file, and the erase says how many.
+    const own = new Set(findingIds);
+    const linksRemoved = removals.rows.reduce((n, r) => {
+      const contradictions = (r.snapshot.contradictions as Contradiction[]).filter((c) => !own.has(c.original_finding_id) || (c.contradicting_finding_id && !own.has(c.contradicting_finding_id))).length;
+      const grounding = r.snapshot.groundedBy.filter((g) => !own.has(g.id) || !own.has(g.grounded_by_finding_id)).length;
+      return n + contradictions + grounding;
+    }, 0);
     const insightIds = removals.rows.flatMap((r) => (r.snapshot.insights as { id: string }[]).map((i) => i.id));
     await client.query("delete from recommendation_history where original_insight_id = any($1::uuid[])", [insightIds]);
     for (const table of ["insight_history", "verdict_history", "finding_history"]) {
       await client.query(`delete from ${table} where original_finding_id = any($1::uuid[])`, [findingIds]);
     }
-    const sources = (await client.query<{ id: string }>("select id from research_quality_sources where run_id = $1 and document_id = $2", [runId, documentId])).rows.map((r) => r.id);
+    // Research quality keeps its reviews; the text read from this file, and the quotes copied from it, are
+    // purged in this same transaction (SYS5B-F03), before the file and its bin entry go. A purge that
+    // fails rolls the whole erase back, so the file stays in the bin and Erase can be tried again.
+    const sources = (await client.query<{ id: string }>("select id from research_quality_sources where run_id = $1 and document_id = $2 order by id", [runId, documentId])).rows.map((r) => r.id);
+    for (const source of sources) await purgeSourceTextInTransaction(client, tenantId, runId, source);
     const paths = [doc.storage_path, doc.preview_storage_path, convertedCopyPath(doc.storage_path)].filter((p): p is string => Boolean(p));
     const cleanupId = paths.length ? await queueDocumentStorageCleanup(client, tenantId, runId, documentId, paths) : null;
     await client.query("delete from document_removals where document_id = $1 and run_id = $2", [documentId, runId]);
@@ -406,11 +535,12 @@ export async function eraseRemovedDocument(tenantId: string, runId: string, docu
       runId,
       JSON.stringify({ documentId, findings: findingIds.length }),
     ]);
-    return { cleanupId, sources };
+    return { cleanupId, linksRemoved };
   });
-  // Research quality keeps its reviews; the text read from this file is purged from them.
-  for (const source of prepared.sources) await purgeSourceText(tenantId, runId, source);
+  // The stored bytes are removed after the commit through the queued, retryable cleanup (a storage
+  // outage leaves a visible retry, documentStorageCleanup.ts); everything in the database is already gone.
   if (prepared.cleanupId) await finishDocumentStorageCleanup(tenantId, runId, prepared.cleanupId).catch(() => {});
+  return { linksRemoved: prepared.linksRemoved };
 }
 
 /** The project's bin, newest first. */

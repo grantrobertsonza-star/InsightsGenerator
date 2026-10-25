@@ -128,7 +128,7 @@ describe.skipIf(!TEST_DATABASE_URL)("the document bin (real database)", () => {
     expect(items.map((i) => i.documentId)).toContain(p.doc);
     const item = items.find((i) => i.documentId === p.doc)!;
     expect(new Date(item.expiresAt).getTime() - new Date(item.removedAt).getTime()).toBe(30 * 86400000);
-    expect(await restoreDocumentFromBin(A, run, item.removalId)).toEqual({ findings: 2 });
+    expect(await restoreDocumentFromBin(A, run, item.removalId)).toEqual({ findings: 2, linksWaiting: 0, linksLost: 0 });
     expect(await one("select finding_text, researcher_note, human_review_action from findings where id = $1", [p.f1])).toEqual({ finding_text: "Reviewed finding", researcher_note: "My note ✓", human_review_action: "accept" });
     expect(await n("select count(*) as n from findings where id = $1", [p.f2])).toBe(1);
     expect(await n("select count(*) as n from insights where id = $1", [p.ins])).toBe(1);
