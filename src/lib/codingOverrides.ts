@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { withTenant } from "./db";
 import { MAX_CODES } from "./qualCoding";
+import { lockOwnedTranscript } from "./codingTranscriptOwnership";
 
 // Researcher changes to the themes on a turn. They are stored as overrides
 // keyed by theme name, so a later "Save as new version and re-apply" (which
@@ -180,6 +181,9 @@ export async function changeTurnCode(
       throw new Error(
         "Changing themes by hand needs database migration 0050. Run it and try again.",
       );
+    // COD500-F02: the transcript must be this run's before the codebook, code and turn are looked up
+    // under it; the override below records this run.
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const code = await loadCodeInForce(client, documentId, codeId);
     if (!code)
       throw new Error(
@@ -221,6 +225,7 @@ export async function addResearcherCode(
       throw new Error(
         "Adding a theme by hand needs database migration 0050. Run it and try again.",
       );
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const book = await client.query(
       `select 1 from coding_codebooks b
        where b.id = $1 and b.document_id = $2
@@ -324,6 +329,7 @@ export async function restoreCodebookVersion(
   codebookId: string,
 ): Promise<number> {
   return withTenant(tenantId, async (client) => {
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const old = await client.query<{ id: string; version: number }>(
       `select id, version from coding_codebooks where id = $1 and document_id = $2`,
       [codebookId, documentId],

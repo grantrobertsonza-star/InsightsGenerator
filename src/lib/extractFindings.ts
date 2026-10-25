@@ -319,7 +319,12 @@ type StagedFinding = {
   supportRawIndices: number[];
 };
 
-type StagedChunk = { chunkIndex: number; findings: StagedFinding[] };
+/**
+ * `discarded`: how many records the model returned for this chunk that failed validation and were left
+ * out (SEC500-F01). A chunk with some left out is read only in part, and the document is treated as
+ * partly read (see extractFindingsFromDocument), never as a complete reading.
+ */
+type StagedChunk = { chunkIndex: number; findings: StagedFinding[]; discarded: number };
 
 /**
  * Runs one chunk of a document's text through the extraction call: builds
@@ -566,15 +571,13 @@ async function extractFindingsFromChunk(
   }
 
   const rawInput = toolUse.input as { findings?: unknown };
-  let findings: RawFinding[];
-
-  if (Array.isArray(rawInput.findings)) {
-    findings = rawInput.findings;
-  } else {
-    // Rather than crashing the whole run when the model returns nothing
-    // usable, record it for diagnosis and treat it as "no findings found".
-    findings = [];
-    await withTenant(tenantId, async (client) => {
+  const partLabel = chunk.total > 1 ? ` (part ${chunk.index + 1} of ${chunk.total})` : "";
+  // SEC500-F01 (Codex, 2026-10-24): an answer with no findings list used to be treated as "this part
+  // has no findings", so a complete, empty reading was published and replaced the document's previous
+  // findings. Only an explicit list says what the part contains: a missing or malformed one is recorded
+  // for diagnosis and fails this part, so the previous reading stays (the same as a cut-off answer).
+  const recordBadResponse = (reason: string) =>
+    withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'extract_findings_bad_response', $3)`,
         [
@@ -587,12 +590,20 @@ async function extractFindingsFromChunk(
             totalChunks: chunk.total,
             textLength: chunk.excerpt.length,
             stopReason: response.stop_reason,
+            reason,
             rawInput: JSON.stringify(rawInput).slice(0, 1000),
           }),
         ],
       );
     });
+  if (!Array.isArray(rawInput.findings)) {
+    await recordBadResponse("no_findings_list");
+    throw new Error(
+      `Claude's answer for "${document.source_filename}"${partLabel} had no findings list, so it could not be used ` +
+        `and nothing was replaced. Run Extract findings again.`,
+    );
   }
+  const findings: RawFinding[] = rawInput.findings;
 
   // Claude occasionally proposes something with no real text attached, or an
   // unrecognized classification; per the extraction rules, that should be
@@ -622,6 +633,17 @@ async function extractFindingsFromChunk(
         typeof finding.source_quote === "string" &&
         finding.source_quote.trim().length > 0,
     );
+  const discarded = findings.length - validFindings.length;
+  // Records were returned but none is usable: that is a failed reading of this part, not an empty one.
+  // Some usable and some not: the usable ones are kept and the part counts as read only in part.
+  if (findings.length > 0 && validFindings.length === 0) {
+    await recordBadResponse("no_usable_findings");
+    throw new Error(
+      `None of the ${findings.length} finding${findings.length === 1 ? "" : "s"} Claude returned for "${document.source_filename}"${partLabel} ` +
+        `could be used (each needs its text, a quote, a theme and a recognised kind), so nothing was replaced. Run Extract findings again.`,
+    );
+  }
+  if (discarded > 0) await recordBadResponse("some_findings_unusable");
 
   // Build a lookup so a finding's quote can be checked against the specific
   // page it says it came from, falling back to the whole document text.
@@ -701,7 +723,7 @@ async function extractFindingsFromChunk(
     });
   }
 
-  return { chunkIndex: chunk.index, findings: staged };
+  return { chunkIndex: chunk.index, findings: staged, discarded };
 }
 
 /**
@@ -739,6 +761,11 @@ async function extractFindingsFromChunk(
  * - Some chunks failed and there is nothing prior to protect (a first read, or
  *   regenerate-rejected with no rejected rows): the partial set is published
  *   and `failedParts > 0` keeps the document "incomplete" (IMP-006 criterion 2).
+ * - A part whose answer had no findings list, or none of whose returned
+ *   findings was usable, is a failed part (SEC500-F01): only an explicit list
+ *   says a part has no findings. A part with some unusable findings left out
+ *   counts as read in part: it is in `failedParts` and the reading is partial,
+ *   as above. An explicit, empty list is a genuine empty reading.
  * - Publication itself fails: the transaction rolls back to the prior state,
  *   the staged rows are discarded, a trace event records why, and the result
  *   says `published: false` with a retry message. This is a deliberate,
@@ -893,10 +920,19 @@ export async function extractFindingsFromDocument(
   } finally {
     endCodingWork(documentId);
   }
+  // Parts read only in part (SEC500-F01): some of the model's records were unusable and left out. They
+  // count with the failed parts, so the reading is partial: it cannot replace findings it would retire,
+  // and a first reading that publishes is marked incomplete.
+  const partlyRead: string[] = [];
   for (const r of chunkResults) {
     if (r.staged) stagedChunks.push(r.staged);
     if (r.error) chunkErrors.push(r.error);
+    if (r.staged && r.staged.discarded > 0) {
+      const part = chunks.length > 1 ? `part ${r.staged.chunkIndex + 1} of ${chunks.length}` : `"${document.source_filename}"`;
+      partlyRead.push(`${r.staged.discarded} of the findings Claude returned for ${part} could not be used and were left out`);
+    }
   }
+  const incomplete = [...chunkErrors, ...partlyRead];
   const stagedCount = stagedChunks.reduce((n, c) => n + c.findings.length, 0);
 
   // What was read, for the report card on the run page. Best effort: never blocks extraction.
@@ -911,7 +947,7 @@ export async function extractFindingsFromDocument(
           pages: extracted.pages.length,
           characters: extracted.fullText.length,
           parts: chunks.length,
-          failedParts: chunkErrors.length,
+          failedParts: incomplete.length,
           findings: stagedCount,
         }),
       ],
@@ -940,7 +976,7 @@ export async function extractFindingsFromDocument(
         runId,
         documentId,
         stagedChunks,
-        partial: chunkErrors.length > 0,
+        partial: incomplete.length > 0,
         onlyReplacePending,
         archiveReason,
         confirmedLegacyIds: new Set(confirmLegacyReplacement?.findingIds ?? []),
@@ -953,12 +989,12 @@ export async function extractFindingsFromDocument(
     const message = error instanceof Error ? error.message : String(error);
     await recordWithheldReplacement(tenantId, runId, documentId, "publish_failed", {
       message,
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       stagedFindings: stagedCount,
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
@@ -970,20 +1006,20 @@ export async function extractFindingsFromDocument(
 
   if (!outcome.published && outcome.reason === "partial_read") {
     await recordWithheldReplacement(tenantId, runId, documentId, "partial_read", {
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       stagedFindings: stagedCount,
       retainedFindings: outcome.retainedCount,
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
-        `${chunkErrors.length} of ${chunks.length} parts of "${document.source_filename}" could not be read, so the new ` +
-        `reading was not applied and the previous ${outcome.retainedCount} finding${outcome.retainedCount === 1 ? "" : "s"} ` +
-        `are unchanged. Retry extraction for this document to replace them. First error: ${chunkErrors[0]}`,
+        `${incomplete.length} of ${chunks.length} parts of "${document.source_filename}" could not be read in full, so the new ` +
+        `reading was not applied and the previous ${outcome.retainedCount} finding${outcome.retainedCount === 1 ? " is" : "s are"} ` +
+        `unchanged. Retry extraction for this document to replace them. First problem: ${incomplete[0]}`,
       legacyConfirmation: null,
     };
   }
@@ -996,7 +1032,7 @@ export async function extractFindingsFromDocument(
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
@@ -1017,7 +1053,7 @@ export async function extractFindingsFromDocument(
     });
     return {
       rows: [],
-      failedParts: chunkErrors.length,
+      failedParts: incomplete.length,
       totalParts: chunks.length,
       published: false,
       notPublishedReason:
@@ -1049,7 +1085,7 @@ export async function extractFindingsFromDocument(
 
   return {
     rows: outcome.rows,
-    failedParts: chunkErrors.length,
+    failedParts: incomplete.length,
     totalParts: chunks.length,
     published: true,
     notPublishedReason: null,

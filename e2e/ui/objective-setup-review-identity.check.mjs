@@ -41,7 +41,9 @@ test("Setup A to B, Review B to C, delete in Review: one candidate id throughout
     const editing = page.locator("li").filter({ has: page.locator("textarea") });
     await editing.locator("textarea").fill("Native objective B");
     await editing.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Native objective B", { exact: true })).toBeVisible();
+    // The saved wording can show in the Setup list and in the review table at once, so any one of them
+    // (the batch21 full run: a strict-mode match of two elements failed this line once).
+    await expect(page.getByText("Native objective B", { exact: true }).first()).toBeVisible();
     // The new wording shows before the save finishes; wait for the stored row before reloading
     // (the original harness reloaded at once and passed only when the save happened to be quicker).
     await expect.poll(async () => (await db.query("select candidate_text from objective_candidates where id=$1", [id])).rows[0]?.candidate_text).toBe("Native objective B");

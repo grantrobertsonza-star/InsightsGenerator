@@ -59,7 +59,8 @@ describe.skipIf(!TEST_DATABASE_URL)("recommendations are judged on the decisions
     process.env.DEFAULT_TENANT_ID = tenant;
     await db.pool.query("insert into tenants(id,name) values($1,'Synthetic recommendation context')", [tenant]);
   }, 120000);
-  afterAll(async () => { const { pool } = await import("../db"); await pool.end(); await db.drop(); });
+  // A drop under a loaded full run can take longer than the 10-second hook default (Codex V-B19-01 review).
+  afterAll(async () => { const { pool } = await import("../db"); await pool.end(); await db.drop(); }, 60000);
 
   const id = async (sql: string, p: unknown[]) => (await db.pool.query(sql, p)).rows[0].id as string;
   const newRun = async (decision: string, entry = "generate") => {

@@ -390,7 +390,7 @@ export async function saveCodeMetaAction(
 ) {
   const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
-    await saveCodeMeta(TENANT_ID, documentId, entries);
+    await saveCodeMeta(TENANT_ID, runId, documentId, entries);
     await syncFindingThemes(TENANT_ID, documentId);
     return "Saved.";
   });
@@ -404,7 +404,7 @@ export async function saveTurnNoteAction(
 ) {
   const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
-    await saveTurnNote(TENANT_ID, documentId, segmentIndex, note);
+    await saveTurnNote(TENANT_ID, runId, documentId, segmentIndex, note);
   });
 }
 

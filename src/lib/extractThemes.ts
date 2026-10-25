@@ -17,6 +17,7 @@ import { withTenant } from "./db";
 import { markDocumentProcessingStatus } from "./documentUpload";
 import { mapWithConcurrency } from "./concurrency";
 import type { ParsedCoding } from "./codedImport";
+import { lockOwnedTranscript } from "./codingTranscriptOwnership";
 import {
   loadCodeMeta,
   loadCodeMetaForDocuments,
@@ -692,7 +693,7 @@ async function groupCodesIntoThemes(
       name: c.name,
       theme: groups.find((g) => g.codes.includes(i + 1))?.theme ?? "",
     }));
-    await saveCodeMeta(tenantId, documentId, entries);
+    await saveCodeMeta(tenantId, runId, documentId, entries);
     return { themes: groups.length, reason: null };
   } catch (error) {
     return {
@@ -1015,7 +1016,7 @@ export async function integrateThemes(
     byDoc.set(r.document_id, list);
   });
   for (const [documentId, entries] of byDoc) {
-    await saveCodeMeta(tenantId, documentId, entries);
+    await saveCodeMeta(tenantId, runId, documentId, entries);
     await syncFindingThemes(tenantId, documentId);
   }
   return {
@@ -1757,6 +1758,8 @@ async function insertCodebook(
   }[],
 ): Promise<{ codebookId: string; rows: CodeRow[]; version: number }> {
   return withTenant(tenantId, async (client) => {
+    // Serialises with hand changes to turns (COD500-F02), which check the version in force.
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
     const version = await nextVersion(client, documentId);
     const book = await client.query<{ id: string }>(
       `insert into coding_codebooks (tenant_id, run_id, document_id, version, source)
@@ -2468,6 +2471,7 @@ export async function importCodedTranscript(
   try {
     await saveCodeMeta(
       tenantId,
+      runId,
       documentId,
       coding.codes.map((c) => ({
         name: c.name,

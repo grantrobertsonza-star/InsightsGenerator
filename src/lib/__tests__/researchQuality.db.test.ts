@@ -5,7 +5,8 @@
 // next/server after() (run inline so the test can await it). The cases are the deterministic
 // parts of the brief's finite suite (section 10): RQ01, RQ04, RQ10 to RQ14, the missing-migration
 // guard and purge. The semantic "M" cases need the real model and are in the Windows kit.
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it as vitestIt, vi } from "vitest";
+import { AsyncLocalStorage } from "node:async_hooks";
 import JSZip from "jszip";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 import { criteriaForKind } from "../researchQualityRules";
@@ -13,17 +14,40 @@ import { criteriaForKind } from "../researchQualityRules";
 const A = "00000000-0000-4000-8000-0000000000a7";
 const B = "00000000-0000-4000-8000-0000000000b7";
 const ROLE = "ie_test_rq_app";
-let current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+type Signed = { tenantId: string; userId: string; email: string };
+const signedInA = (): Signed => ({ tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" });
 const objects = new Map<string, Buffer>();
-const pendingAfter: Promise<unknown>[] = [];
-const model = { calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail", extract: "normal" as "normal" | "invent" | "badEnum" | "mixed", extractOnly: null as null | string, compare: null as null | "both" | "briefOnly" | "proposalOnly" | "briefOnlyAbsent" };
+const freshModel = () => ({ calls: [] as string[], cached: [] as string[], failTask: null as null | string, malformed: null as null | string, hold: null as null | { task: string; release: Promise<void> }, stringifyLists: false, cutOff: null as null | "extract" | "assess", checklist: "normal" as "normal" | "overclaim" | "fail", extract: "normal" as "normal" | "invent" | "badEnum" | "mixed", extractOnly: null as null | string, compare: null as null | "both" | "briefOnly" | "proposalOnly" | "briefOnlyAbsent" });
+type ModelState = ReturnType<typeof freshModel>;
+/**
+ * Codex V-B19-01 (2026-10-24): the signed-in tenant, the model stand-in's switches and the queue of
+ * after() work were module-wide, so a case that ran past its timeout could still set tenant B (or a
+ * model switch) under the next case. Each case now runs in its own async context with its own copy
+ * (`it` below); a late continuation of an earlier case keeps writing to that case's copy only. Code
+ * outside any case (beforeAll fixtures) uses the shared copy.
+ */
+type CaseState = { current: Signed; model: ModelState; pendingAfter: Promise<unknown>[] };
+const sharedState: CaseState = { current: signedInA(), model: freshModel(), pendingAfter: [] };
+const caseState = new AsyncLocalStorage<CaseState>();
+const state = () => caseState.getStore() ?? sharedState;
+const signedIn = () => state().current;
+const signInAs = (who: Signed) => { state().current = who; };
+const model = new Proxy({} as ModelState, {
+  get: (_t, k) => Reflect.get(state().model, k),
+  set: (_t, k, v) => Reflect.set(state().model, k, v),
+});
+const it = Object.assign(
+  (name: string, fn: () => Promise<void> | void, timeout?: number) =>
+    vitestIt(name, () => caseState.run({ current: signedInA(), model: freshModel(), pendingAfter: [] }, fn), timeout),
+  { skip: vitestIt.skip },
+);
 
 vi.mock("../requestContext", async () => ({
   ...(await vi.importActual<object>("../requestContext")),
-  requireRequestContext: async () => ({ ...current, organisationName: "Org", role: "owner", memberships: [] }),
-  requireTenantId: async () => current.tenantId,
+  requireRequestContext: async () => ({ ...signedIn(), organisationName: "Org", role: "owner", memberships: [] }),
+  requireTenantId: async () => signedIn().tenantId,
 }));
-vi.mock("next/server", async () => ({ ...(await vi.importActual<object>("next/server")), after: (fn: () => Promise<unknown>) => void pendingAfter.push(fn()) }));
+vi.mock("next/server", async () => ({ ...(await vi.importActual<object>("next/server")), after: (fn: () => Promise<unknown>) => void state().pendingAfter.push(fn()) }));
 vi.mock("../supabaseAdmin", () => ({
   supabaseAdmin: {
     storage: {
@@ -155,7 +179,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
   let m: M;
   const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
   const settle = async () => {
-    while (pendingAfter.length) await pendingAfter.shift();
+    while (state().pendingAfter.length) await state().pendingAfter.shift();
   };
   const addDoc = async (tenant: string, run: string, name: string, bytes: Buffer, kind = "evidence") => {
     const path = `${tenant}/${run}/${Date.now()}-${Math.random().toString(16).slice(2)}-${name}`;
@@ -220,18 +244,6 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     await c.connect();
     await c.query(`drop role if exists ${ROLE}`).catch(() => {});
     await c.end();
-  });
-  beforeEach(() => {
-    current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
-    model.failTask = null;
-    model.malformed = null;
-    model.hold = null;
-    model.stringifyLists = false;
-    model.cutOff = null;
-    model.checklist = "normal";
-    model.extract = "normal";
-    model.extractOnly = null;
-    model.compare = null;
   });
 
   it("guard: without migration 0105 every action refuses with a setup message before any write or model call", async () => {
@@ -426,7 +438,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     const v = await viewOf(null);
     const o = v.review!.observations[1];
     const src = v.documents.find((d) => d.source)!.source!;
-    current = { tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" };
+    signInAs({ tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" });
     model.calls = [];
     expect(await m.actions.loadResearchQualityViewAction(runA, null)).toMatchObject({ ok: false });
     expect(await m.actions.loadResearchQualityViewAction(runA, v.review!.id)).toMatchObject({ ok: false });
@@ -439,7 +451,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     expect(model.calls).toEqual([]);
     expect((await q(`select count(*)::int n from research_quality_researcher_entries where tenant_id = $1`, [B])).rows[0].n).toBe(0);
     expect((await q(`select count(*)::int n from research_quality_source_versions where source_id = $1 and purged_at is not null`, [src.sourceId])).rows[0].n).toBe(0);
-    current = { tenantId: A, userId: "20000000-0000-4000-8000-0000000000a7", email: "researcher-a@example.test" };
+    signInAs(signedInA());
     expect((await m.actions.loadResearchQualityViewAction(runA, null)).ok).toBe(true);
   });
 
@@ -639,7 +651,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       const input = (requestKey: string) => ({
         requestKey, parentReviewId: null, mode: base.mode, studyType: base.study_type, purpose: base.purpose, manifest: base.manifest,
         criteriaRelease: base.criteria_release, criteriaHash: base.criteria_hash, referencesRelease: base.references_release, referencesHash: base.references_hash,
-        promptVersion: base.prompt_version, model: base.model, estimatedCostUsd: 0, actor: { userId: current.userId, email: current.email }, tasks: [],
+        promptVersion: base.prompt_version, model: base.model, estimatedCostUsd: 0, actor: { userId: signedIn().userId, email: signedIn().email }, tasks: [],
       });
       const together = async (calls: (() => Promise<{ reviewId: string; created: boolean }>)[]) => {
         const holder = await db.pool.connect();
@@ -1208,9 +1220,9 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       expect(fresh.state).toBe("complete");
       expect(new Set(fresh.facts.map((f) => fresh.manifest.sources.find((s) => s.sourceVersionId === f.sourceVersionId)!.filename))).toEqual(new Set(["rq-f01-ctrl-brief.txt", "rq-f01-prop.txt"]));
       // Another organisation cannot retry it.
-      current = { tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" };
+      signInAs({ tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" });
       expect(await m.actions.retryResearchQualityReviewAction(runA, id)).toMatchObject({ ok: false });
-    });
+    }, 60000);
 
     it("a review saved before the repair, with an all-rejected extraction published as succeeded, is qualified on screen and in Word", async () => {
       const id = await briefReview(await realBrief("rq-f01-old"));
@@ -1224,6 +1236,31 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       expect(v.unverifiedEvidence).toEqual([{ filename: "rq-f01-old.txt", rejected: 4, kept: 0 }]);
       const word = await docText(id);
       expect(word).toContain("rq-f01-old.txt: none of the 4 quoted passages the model proposed could be found in the document, so nothing was taken from it.");
+    });
+
+    // Codex V-B19-01: a case that runs past its timeout keeps going after the next case has started. Here
+    // the first case leaves a continuation behind (as a timed-out case does) that, once released, signs in
+    // as tenant B and breaks the model; the second case releases it, waits for it to finish, and still
+    // acts as tenant A with a healthy model.
+    let releaseLate: () => void = () => {};
+    let lateDone: Promise<void> = Promise.resolve();
+    it("isolation, part 1: a continuation outlives its case", async () => {
+      const gate = new Promise<void>((r) => (releaseLate = r));
+      lateDone = (async () => {
+        await gate;
+        signInAs({ tenantId: B, userId: "20000000-0000-4000-8000-0000000000b7", email: "b@example.test" });
+        model.failTask = "RQ-B-DECISION";
+        model.extract = "invent";
+      })();
+    });
+    it("isolation, part 2: the earlier case's late tenant and model changes do not reach this case", async () => {
+      releaseLate();
+      await lateDone;
+      expect(signedIn().tenantId).toBe(A);
+      expect(model.failTask).toBeNull();
+      expect(model.extract).toBe("normal");
+      const id = await briefReview(await realBrief("v-b19-01-isolation"));
+      expect((await viewOf(id)).review!.state).toBe("complete");
     });
   });
 
@@ -1426,4 +1463,5 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
     }
     expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n).toBe(reviews.length);
   });
+
 });
