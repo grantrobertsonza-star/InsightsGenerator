@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch22: REC500-F01 to F04 (stale and deleted recommendation edits refused; the old score cleared with the wording; one recommendation per add request; a failed add keeps its form); `docs/batch22-handover-2026-10-24.md`; **migration 0113**; on top of batch21: COD500-F01 and COD500-F02 (coding writes check and lock the transcript's project and tenant), SEC500-F01 (a malformed report reading fails and keeps the previous findings), V-B19-01 (Research quality test cases isolated); `docs/batch21-handover-2026-10-24.md`; no migration. Implemented, ready for review.
+Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch23: DI-F01 to DI-F07 (output-set ownership, unreadable files keep their findings, stored checks, stale set labels, history keeps researcher notes, processing status, project rename); `docs/batch23-handover-2026-10-24.md`; **migration 0114**; on top of batch22: REC500-F01 to F04 (stale and deleted recommendation edits refused; the old score cleared with the wording; one recommendation per add request; a failed add keeps its form); `docs/batch22-handover-2026-10-24.md`; **migration 0113**; on top of batch21: COD500-F01 and COD500-F02 (coding writes check and lock the transcript's project and tenant), SEC500-F01 (a malformed report reading fails and keeps the previous findings), V-B19-01 (Research quality test cases isolated); `docs/batch21-handover-2026-10-24.md`; no migration. Implemented, ready for review.
+
+## Claude: batch23 (DI-F01 to DI-F07), main copy (2026-10-25)
+
+Implemented, ready for review: the batch23 repair commit and its docs commit, on top of batch22. Checks and limits in `docs/batch23-handover-2026-10-24.md`; the contracts in `claude/output-set-integrity.md`. Migration 0114 (`supabase/migrations/0114_finding_history_researcher_note.sql`, additive) for Grant to apply; until then retiring a finding with a researcher note is refused with a message naming it.
 
 ## Claude: batch22 (REC500-F01 to F04), main copy (2026-10-25)
 
