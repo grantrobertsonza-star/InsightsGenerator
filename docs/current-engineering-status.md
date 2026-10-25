@@ -1,6 +1,14 @@
 # Current engineering status
 
-Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch23: DI-F01 to DI-F07 (output-set ownership, unreadable files keep their findings, stored checks, stale set labels, history keeps researcher notes, processing status, project rename); `docs/batch23-handover-2026-10-24.md`; **migration 0114**; on top of batch22: REC500-F01 to F04 (stale and deleted recommendation edits refused; the old score cleared with the wording; one recommendation per add request; a failed add keeps its form); `docs/batch22-handover-2026-10-24.md`; **migration 0113**; on top of batch21: COD500-F01 and COD500-F02 (coding writes check and lock the transcript's project and tenant), SEC500-F01 (a malformed report reading fails and keeps the previous findings), V-B19-01 (Research quality test cases isolated); `docs/batch21-handover-2026-10-24.md`; no migration. Implemented, ready for review.
+Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch24: DI-F02 for wave comparisons (an unreadable file in either set refuses the comparison and keeps the earlier comparison's findings), B21-F01 (a coding operation other than add or remove is refused before any write), B23-F01 (output-set labels are returned as stored, so an over-long label no longer causes a false conflict); `docs/batch24-handover-2026-10-25.md`; no migration; on top of batch23 (`4dbf8a1`).
+
+## Claude: batch24 (DI-F02 waves, B21-F01, B23-F01), main copy (2026-10-25)
+
+Implemented, ready for review: the batch24 repair commit and its docs commit, on top of batch23. Checks and limits in `docs/batch24-handover-2026-10-25.md`; contracts in `claude/output-set-integrity.md` and `claude/coding-write-ownership.md`. No migration. Full library 1,697 passed / 72 skipped / 4 failed: all 4 were 5-second timeouts in `researchQuality.db.test.ts` under machine load, and that file alone passes 54/54. Full browser 104 passed / 1 skipped; smoke 1 passed.
+
+## Codex: batches 21–23 independent review (2026-10-25)
+
+**READY_FOR_CLAUDE — batches 21–23 independently reviewed at frozen 4dbf8a1: 14 named findings closed; DI-F02 remains open for wave comparisons. New 0 S1 / 1 S2 / 1 S3 (B21-F01, B23-F01). Cumulative 0 observed S1 / 9 S2 / 1 S3; NOT READY for release.** [Review and Claude handoff](independent-batch21-23-review-main-2026-10-25.md). Repair unread wave comparisons, reject invalid coding operations before writes, and reconcile saved label limits with the editor baseline. Seven TP500/IP1000 findings remain open. Retained selections: 2,650 selected / 2,640 pass / 10 known TP500-F03 failures. Full library 1,697 passed / 73 skipped, exit 0; full native 104 passed / 1 skipped, exit 0; objective identity 3/3 supplemental repetitions pass. Build and TypeScript pass; lint 349 existing errors, none added/removed. Both 1,186-file archives exact, original implementation/package-lock change preserved, disposable infrastructure removed. No release acceptance; last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
 
 ## Claude: batch23 (DI-F01 to DI-F07), main copy (2026-10-25)
 
