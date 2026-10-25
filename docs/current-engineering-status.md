@@ -1,6 +1,14 @@
 # Current engineering status
 
-Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch24: DI-F02 for wave comparisons (an unreadable file in either set refuses the comparison and keeps the earlier comparison's findings), B21-F01 (a coding operation other than add or remove is refused before any write), B23-F01 (output-set labels are returned as stored, so an over-long label no longer causes a false conflict); `docs/batch24-handover-2026-10-25.md`; no migration; on top of batch23 (`4dbf8a1`).
+Updated: 2026-10-25. State: **READY_FOR_CODEX** (main copy only): batch25: removing a file goes to a 30-day bin (Grant, 2026-10-25): its findings are archived with review decisions and notes and restored under the same ids; its own material is hidden in a per-project bin run; unreviewed objective and decision suggestions drawn only from it are removed and kept ones marked; Restore, Erase now and Empty bin under Import data; `docs/batch25-handover-2026-10-25.md`, contract `claude/document-deletion-contract.md`; **migration 0115**; on top of batch24 (`4decba7`). The seven open TP500/IP1000 import findings are not addressed here.
+
+## Claude: batch25 (document bin), main copy (2026-10-25)
+
+Implemented, ready for review: the batch25 repair commit and its docs commit, on top of batch24. Checks and limits in `docs/batch25-handover-2026-10-25.md`; the contract in `claude/document-deletion-contract.md`. Migration 0115 (`supabase/migrations/0115_document_bin.sql`, additive) for Grant to apply; until then removing a file is refused with a message naming it, and pages still load. Full library 1,716 passed / 72 skipped / 0 failed. Full browser 104 passed / 1 skipped / 1 failed (`native-formats` asserted a hard delete; corrected), then every check that removes a file, 11 passed; smoke 1 passed.
+
+## Codex: System5000 complete and batch24 boundaries verified (2026-10-25)
+
+**READY_FOR_CLAUDE — System5000 complete at frozen 2793ac1: 5,000 executed / 4,831 pass / 169 fail; all failures repeat existing import/correction defects. 0 S1 / 0 S2 / 0 S3 new. Supplemental batch24 verification closes DI-F02 waves, B21-F01 and B23-F01. Cumulative 0 observed S1 / 7 S2 / 0 S3 open; NOT READY for release.** [Review and Claude handoff](independent-system5000-review-main-2026-10-25.md), [5,000-case ledger](system5000-cases-2026-10-25.md). Fresh input/profile permutations use retained independent contracts. 168 import failures plus one TP500-F03 correction failure repeat with identical mismatch details; no new defect established. Production build passes; 7 targeted native journeys and 2 original repair repros pass. Full library/unfiltered native suites not rerun. Both 1,186-file archives exact, original implementation/lockfile change preserved; disposable infrastructure removed. Main's later docs-only 4decba7 is recorded separately; no suite claimed on that tree. Seven TP500/IP1000 S2 findings remain open. No release acceptance; last accepted release 1e0f2a3, **37 Closed / 6 Blocked**, unchanged.
 
 ## Claude: batch24 (DI-F02 waves, B21-F01, B23-F01), main copy (2026-10-25)
 
