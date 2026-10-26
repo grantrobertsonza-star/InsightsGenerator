@@ -85,7 +85,9 @@ export default function SectionDashboard({ navId, section, error }: { navId: str
           </p>
         </div>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
+      {/* Tiles (Grant, 2026-10-26): as many columns of about 17rem as the page holds, so the overview
+          reads as a grid of modules rather than a few long rows across the page. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
         {section.modules.map((m) => (
           <ModuleCard key={m.id} id={m.id} label={m.label} status={m.status} />
         ))}
@@ -101,12 +103,12 @@ function ModuleCard({ id, label, status }: { id: string; label: string; status: 
   return (
     <section
       aria-labelledby={`module-${id}-label`}
-      className={`flex flex-col rounded-xl border border-border border-l-4 bg-white p-4 shadow-sm ${look.rail} ${muted ? "bg-slate-50/60" : ""}`}
+      className={`flex flex-col rounded-xl border border-border border-l-4 bg-white p-3 shadow-sm ${look.rail} ${muted ? "bg-slate-50/60" : ""}`}
       data-testid={`module-card-${id}`}
       data-state={status.state}
     >
-      <div className="flex items-start gap-3">
-        <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${muted ? "bg-slate-100 text-slate-500" : "bg-primary-light text-primary"}`}>
+      <div className="flex items-start gap-2.5">
+        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${muted ? "bg-slate-100 text-slate-500" : "bg-primary-light text-primary"}`}>
           <SectionIcon id={id} label={label} className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
@@ -118,16 +120,16 @@ function ModuleCard({ id, label, status }: { id: string; label: string; status: 
               {look.label}
             </span>
           </div>
-          <p className={`text-sm ${muted ? "text-muted" : "text-foreground"}`}>{status.headline}</p>
+          <p className={`text-[13px] leading-snug ${muted ? "text-muted" : "text-foreground"}`}>{status.headline}</p>
           {status.counts.length > 1 && <p className="mt-0.5 text-xs text-muted">{status.counts.map((c) => c.label).join(" · ")}</p>}
         </div>
-        <StateDisc state={status.state} size="md" />
+        <StateDisc state={status.state} size="sm" />
       </div>
-      {status.issues.length > 0 && <Items items={status.issues} onFollow={(t) => follow(id, t)} testId="module-issues" />}
+      {status.issues.length > 0 && <Items items={status.issues} onFollow={(t) => follow(id, t)} testId="module-issues" limit={3} />}
       {status.caveats.length > 0 && (
         <div className="mt-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Keep in mind</p>
-          <Items items={status.caveats} onFollow={(t) => follow(id, t)} testId="module-caveats" />
+          <Items items={status.caveats} onFollow={(t) => follow(id, t)} testId="module-caveats" limit={2} />
         </div>
       )}
       <div className="mt-auto pt-3">
@@ -139,13 +141,15 @@ function ModuleCard({ id, label, status }: { id: string; label: string; status: 
   );
 }
 
-function Items({ items, onFollow, testId }: { items: StageItem[]; onFollow: (t: StageTarget) => void; testId: string }) {
+/** A module's items, the first `limit` shown with the rest behind "Show all" (no limit: all shown). */
+function Items({ items, onFollow, testId, limit }: { items: StageItem[]; onFollow: (t: StageTarget) => void; testId: string; limit?: number }) {
   const [all, setAll] = useState(false);
-  const shown = all ? items : items.slice(0, 4);
+  const cap = limit ?? items.length;
+  const shown = all ? items : items.slice(0, cap);
   return (
     <ul className="mt-2 flex flex-col gap-1" data-testid={testId}>
       {shown.map((it) => (
-        <li key={it.key} className="flex items-start gap-2 text-sm" data-item-state={it.state}>
+        <li key={it.key} className="flex items-start gap-2 text-[13px] leading-snug" data-item-state={it.state}>
           <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${ITEM_DOT[it.state]}`} />
           {it.target.kind !== "none" ? (
             <button type="button" onClick={() => onFollow(it.target)} className="text-left text-primary hover:underline">
@@ -156,7 +160,7 @@ function Items({ items, onFollow, testId }: { items: StageItem[]; onFollow: (t: 
           )}
         </li>
       ))}
-      {items.length > 4 && (
+      {items.length > cap && (
         <li>
           <button type="button" onClick={() => setAll(!all)} className="ml-4 text-xs text-muted hover:text-foreground hover:underline">
             {all ? "Show fewer" : `Show all ${items.length}`}
@@ -168,13 +172,16 @@ function Items({ items, onFollow, testId }: { items: StageItem[]; onFollow: (t: 
 }
 
 /**
- * The one-line status at the top of a module's page (Grant, 2026-10-23: "the dashboard on the pages
- * as well, and a detailed full one per section"): the module's state and headline, its first item
- * linked, and how many more there are on the section's overview. Not shown for an unused module.
+ * The status at the top of a module's page (Grant, 2026-10-23: "the dashboard on the pages as well";
+ * 2026-10-26: everything the overview lists for the module, rolled up on the page itself rather than a
+ * jump to the overview): the module's state and headline and its first item, linked; "N more" opens the
+ * rest of its items and its caveats in place, from the same rule as the overview card
+ * (lib/sectionStatus.ts). Not shown for an unused module.
  */
 export function ModuleStatusBar({ moduleId, status, overview }: { moduleId: string; status: ModuleStatus | null; overview: { navId: string; label: string } | null }) {
   const follow = useFollow();
   const { setSelected } = useRunSection();
+  const [open, setOpen] = useState(false);
   if (!status)
     return (
       <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" data-testid={`module-bar-${moduleId}`} data-state="couldnt_check">
@@ -184,30 +191,60 @@ export function ModuleStatusBar({ moduleId, status, overview }: { moduleId: stri
   if (status.state === "not_used") return null;
   const look = STATE_LOOK[status.state];
   const first = status.issues[0] ?? null;
-  const more = status.issues.length - (first ? 1 : 0) + status.caveats.length;
+  const rest = status.issues.slice(1);
+  const more = rest.length + status.caveats.length;
+  const detailId = `module-bar-${moduleId}-detail`;
   return (
     <div
-      className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border border-l-4 bg-white px-3 py-2 text-sm shadow-sm ${look.rail}`}
+      className={`mb-3 rounded-lg border border-border border-l-4 bg-white px-3 py-2 text-sm shadow-sm ${look.rail}`}
       data-testid={`module-bar-${moduleId}`}
       data-state={status.state}
     >
-      <StateDisc state={status.state} size="sm" />
-      <span className={`text-[11px] font-bold uppercase tracking-wider ${look.text}`}>{look.label}</span>
-      <span className="font-medium text-foreground">{status.headline}</span>
-      {first &&
-        (first.target.kind !== "none" && !(first.target.kind === "section" && first.target.id === moduleId) ? (
-          <button type="button" onClick={() => follow(moduleId, first.target)} className="text-left text-primary hover:underline" data-testid="module-bar-first">
-            {first.text}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <StateDisc state={status.state} size="sm" />
+        <span className={`text-[11px] font-bold uppercase tracking-wider ${look.text}`}>{look.label}</span>
+        <span className="font-medium text-foreground">{status.headline}</span>
+        {first &&
+          (first.target.kind !== "none" && !(first.target.kind === "section" && first.target.id === moduleId) ? (
+            <button type="button" onClick={() => follow(moduleId, first.target)} className="text-left text-primary hover:underline" data-testid="module-bar-first">
+              {first.text}
+            </button>
+          ) : (
+            <span className="text-muted" data-testid="module-bar-first">
+              {first.text}
+            </span>
+          ))}
+        {more > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-controls={detailId}
+            className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-foreground"
+            data-testid="module-bar-toggle"
+          >
+            {open ? "Show less" : `${more} more`}
+            <svg aria-hidden="true" viewBox="0 0 16 16" className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}>
+              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
-        ) : (
-          <span className="text-muted" data-testid="module-bar-first">
-            {first.text}
-          </span>
-        ))}
-      {overview && (more > 0 || status.caveats.length > 0) && (
-        <button type="button" onClick={() => setSelected(overview.navId)} className="ml-auto text-xs text-muted hover:text-foreground hover:underline">
-          {more > 0 ? `${more} more on the ${overview.label} overview` : `${overview.label} overview`}
-        </button>
+        )}
+      </div>
+      {open && (
+        <div id={detailId} className="mt-2 border-t border-border pt-2" data-testid="module-bar-detail">
+          {rest.length > 0 && <Items items={rest} onFollow={(t) => follow(moduleId, t)} testId="module-bar-issues" />}
+          {status.caveats.length > 0 && (
+            <div className={rest.length > 0 ? "mt-2" : ""}>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Keep in mind</p>
+              <Items items={status.caveats} onFollow={(t) => follow(moduleId, t)} testId="module-bar-caveats" />
+            </div>
+          )}
+          {overview && (
+            <button type="button" onClick={() => setSelected(overview.navId)} className="mt-2 text-xs text-muted hover:text-foreground hover:underline" data-testid="module-bar-overview">
+              {`See every module on the ${overview.label} overview`}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

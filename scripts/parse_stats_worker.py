@@ -61,8 +61,15 @@ def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     target = os.path.join(here, "..", "api", "parse-stats-file.py")
     watched = [target, os.path.join(here, "..", "api", "import-limits.json")]
+    # This script itself cannot be reloaded in place: a worker started before its dispatch changed
+    # kept answering new actions with the old one (2026-10-26: a worker from before batch 26 read a
+    # workbook's "table" request as an SPSS "convert" and refused ".xlsx"). When it changes on disk
+    # the worker answers {"restart": true} and exits; parseStatsFile.ts starts a fresh worker and
+    # sends the request again.
+    own = [os.path.abspath(__file__)]
     mod = _load_engine(target)  # raises if pyreadstat is missing: the caller then falls back
     loaded_from = _fingerprint(watched)
+    started_from = _fingerprint(own)
     import numpy  # noqa: F401  (warm the heavy imports before the first request)
     import pandas  # noqa: F401
 
@@ -75,6 +82,9 @@ def main() -> int:
         try:
             req = json.loads(line)
             req_id = req.get("id")
+            if _fingerprint(own) != started_from:
+                send({"id": req_id, "restart": True})
+                return 0
             current = _fingerprint(watched)
             if current != loaded_from:
                 try:
@@ -98,8 +108,11 @@ def main() -> int:
                 result = mod.crosstab(data, name, args)
             elif action == "table":
                 result = mod.read_table(data, name, args)
-            else:
+            elif action == "convert":
                 result = mod.convert(data, name)
+            else:
+                # An action this worker does not know is refused, never run as another one.
+                raise ValueError(f"The statistics worker does not know the action {action!r}. Restart the app to load the current engine.")
             send({"id": req_id, "result": result})
         except Exception as exc:  # noqa: BLE001 - reported to the caller, worker stays up
             send({"id": req_id, "error": str(exc)})

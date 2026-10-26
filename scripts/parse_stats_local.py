@@ -39,8 +39,11 @@ def main() -> int:
         result = mod.crosstab(data, source_filename, args)
     elif action == "table":
         result = mod.read_table(data, source_filename, args)
-    else:
+    elif action == "convert":
         result = mod.convert(data, source_filename)
+    else:
+        # An action this runner does not know is refused, never run as another one.
+        raise ValueError(f"The statistics runner does not know the action {action!r}.")
     with open(out, "w", encoding="utf-8") as f:
         json.dump(result, f, allow_nan=False)
     return 0

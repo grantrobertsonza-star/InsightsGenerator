@@ -149,7 +149,9 @@ export async function runEngineConversion<T>(
 // and keeps the last files it read in memory. If it cannot start, or dies, the
 // one-shot runner below is used instead, exactly as before.
 
-type WorkerReply = { id?: number; result?: unknown; error?: string; ready?: boolean };
+type WorkerReply = { id?: number; result?: unknown; error?: string; ready?: boolean; restart?: boolean };
+/** The worker's own script changed on disk since it started; it exits and the request goes to a fresh one. */
+class WorkerRestarting extends Error {}
 type LocalWorker = {
   proc: ChildProcess;
   pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>;
@@ -158,7 +160,13 @@ type LocalWorker = {
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
-const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean };
+const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean; __statsWorkerLive?: LocalWorker };
+/** Forgets this worker, unless a newer one has replaced it (an old worker exiting must not orphan the new one). */
+function forgetWorker(worker: LocalWorker) {
+  if (workerHolder.__statsWorkerLive !== worker) return;
+  workerHolder.__statsWorker = undefined;
+  workerHolder.__statsWorkerLive = undefined;
+}
 
 function startWorker(): Promise<LocalWorker | null> {
   return new Promise((resolve) => {
@@ -179,7 +187,7 @@ function startWorker(): Promise<LocalWorker | null> {
           p.reject(new Error(message));
         }
         worker.pending.clear();
-        workerHolder.__statsWorker = undefined; // next call starts a fresh one
+        forgetWorker(worker); // next call starts a fresh one
       };
       const startupTimer = setTimeout(() => {
         if (settled) return;
@@ -214,7 +222,10 @@ function startWorker(): Promise<LocalWorker | null> {
           if (!p) continue;
           worker.pending.delete(msg.id as number);
           clearTimeout(p.timer);
-          if (msg.error !== undefined) p.reject(new Error(msg.error));
+          if (msg.restart) {
+            forgetWorker(worker);
+            p.reject(new WorkerRestarting("restart"));
+          } else if (msg.error !== undefined) p.reject(new Error(msg.error));
           else p.resolve(msg.result);
         }
       });
@@ -243,9 +254,20 @@ function startWorker(): Promise<LocalWorker | null> {
 }
 
 async function callWorker<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
+  try {
+    return await callWorkerOnce<T>(srcPath, sourceFilename, action, args);
+  } catch (error) {
+    // Once only: a fresh worker runs the current script, so it does not ask again.
+    if (error instanceof WorkerRestarting) return callWorkerOnce<T>(srcPath, sourceFilename, action, args);
+    throw error;
+  }
+}
+
+async function callWorkerOnce<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
   if (workerHolder.__statsWorkerOff) return { ok: false, unavailable: true };
   if (!workerHolder.__statsWorker) workerHolder.__statsWorker = startWorker();
   const worker = await workerHolder.__statsWorker;
+  if (worker) workerHolder.__statsWorkerLive = worker;
   if (!worker) {
     workerHolder.__statsWorker = undefined;
     workerHolder.__statsWorkerOff = true; // do not retry a worker that cannot start this session
@@ -256,7 +278,7 @@ async function callWorker<T>(srcPath: string, sourceFilename: string, action: st
     const timer = setTimeout(() => {
       worker.pending.delete(id);
       worker.proc.kill(); // a stuck request: drop the worker, the next call starts a new one
-      workerHolder.__statsWorker = undefined;
+      forgetWorker(worker);
       reject(new Error("The statistics worker took too long and was restarted. Try again."));
     }, WORKER_REQUEST_TIMEOUT_MS);
     worker.pending.set(id, {

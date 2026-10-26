@@ -56,7 +56,7 @@ test("section dashboards: module states, linked items, refresh on reopening, and
   await nav(page, "Import data").click();
   await expect(page.getByTestId("module-bar-upload")).toHaveAttribute("data-state", "ready");
   await shot(page, "2c-import-bar");
-  // Its "more on the overview" link returns to the stage's overview when there is more to see.
+  // A module with one item has no roll-up; module-bar-rollup.check.mjs covers the roll-up.
   await nav(page, "Business decisions").click();
   await expect(page.getByTestId("module-bar-decisions")).toHaveAttribute("data-state", "needs_you");
 
