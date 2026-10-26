@@ -16,7 +16,7 @@ export type RespondentQuality = {
     minItems: number;
     minBatteries: number;
   };
-  nonAnswer: { measured: boolean; variables: number; flagged: number; threshold: number; minAnswers: number; medianShare?: number | null };
+  nonAnswer: { measured: boolean; variables: number; flagged: number; threshold: number; minAnswers: number; eligible?: number; medianShare?: number | null };
   duration: { variable: string | null; median?: number | null; speeders?: number; superSpeeders?: number; long?: number; speederBelow?: number; superSpeederBelow?: number };
   interviewers: { variable: string | null; rows: { interviewer: string; cases: number; straightlinerRate: number; medianDuration?: number; check: string[] }[] };
   flaggedCases: number;

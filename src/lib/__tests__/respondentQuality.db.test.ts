@@ -10,7 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
@@ -138,6 +138,77 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("respondent quality checks (re
     // One battery answered the same way is not enough to flag a respondent.
     expect(r.straightlining.grids[0].straightliners).toBe(1);
     expect(r.flaggedCases).toBe(0);
+  });
+
+  // B36-F04 (Codex): text codes ("DK") were coerced to numbers and lost, and SPSS user-missing
+  // codes were masked by the analysis read before the check saw them, so a respondent answering
+  // "Don't know" or a declared-missing 9 throughout was reported as measured-and-clean or unmeasured.
+  // Ten questions each; respondents by construction:
+  //   1: non-answer to all 10 (flagged)  2: to 5 of 10 (50%: flagged)  3: to 4 of 10 (not flagged)
+  //   4: 9 non-answers and one blank (9 answers, under the 10 minimum: not eligible)  5: none
+  function nonAnswerSav(kind: "text" | "declared" | "numeric"): Buffer {
+    const dir = mkdtempSync(path.join(tmpdir(), "rq-non-answers-"));
+    const out = path.join(dir, `${kind}.sav`);
+    const script = String.raw`
+import sys, pandas as pd, pyreadstat
+kind = sys.argv[2]
+na = {"text": "DK", "declared": 9.0, "numeric": 99.0}[kind]
+yes = "Y" if kind == "text" else 1.0
+counts = {1: 10, 2: 5, 3: 4, 4: 9, 5: 0}
+cols = {"ID": [float(i) for i in counts]}
+for j in range(10):
+    col = []
+    for i, k in counts.items():
+        if i == 4 and j == 9:
+            col.append("" if kind == "text" else None)
+        else:
+            col.append(na if j < k else yes)
+    cols[f"S{j + 1}"] = col
+df = pd.DataFrame(cols)
+if kind == "text":
+    labels = {f"S{j + 1}": {"Y": "Yes", "N": "No", "DK": "Don't know"} for j in range(10)}
+    pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels)
+elif kind == "declared":
+    # Code 9 is declared user-missing and has no "Don't know" label: only the declaration says so.
+    labels = {f"S{j + 1}": {1.0: "Yes", 2.0: "No", 9.0: "Not stated"} for j in range(10)}
+    pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels, missing_ranges={f"S{j + 1}": [9.0] for j in range(10)})
+else:
+    labels = {f"S{j + 1}": {1.0: "Yes", 2.0: "No", 99.0: "Don't know"} for j in range(10)}
+    pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels)
+`;
+    const r = spawnSync(PYTHON, ["-I", "-c", script, out, kind], { encoding: "utf8" });
+    if (r.status !== 0) throw new Error(r.stderr);
+    return readFileSync(out);
+  }
+  for (const kind of ["text", "declared", "numeric"] as const) {
+    it(`counts ${kind} non-answer codes against the answers given (B36-F04)`, async () => {
+      const r = await check(await file(`na-${kind}.sav`, nonAnswerSav(kind)));
+      expect(r.cases).toBe(5);
+      expect(r.nonAnswer).toMatchObject({ measured: true, variables: 10, flagged: 2, eligible: 4 });
+      expect(r.nonAnswer.medianShare).toBeCloseTo(0.45, 6); // shares 1, 0.5, 0.4, 0 over the four eligible
+      expect(r.topCases.map((c) => Number(c.id)).sort()).toEqual([1, 2]);
+      expect(r.topCases.find((c) => c.id === "2")!.reasons.join(" ")).toMatch(/50% of 10 answers were non-answers/);
+      expect(r.notes.join(" ")).not.toMatch(/Non-answers could not be measured/);
+    });
+  }
+  it("keeps declared missing codes out of the analysis read while the check counts them (B36-F04)", () => {
+    const bytes = nonAnswerSav("declared");
+    const dir = mkdtempSync(path.join(tmpdir(), "rq-read-"));
+    const f = path.join(dir, "declared.sav");
+    writeFileSync(f, bytes);
+    const engine = path.resolve(__dirname, "../../../api/parse-stats-file.py");
+    const script = String.raw`
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("engine", sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+b = open(sys.argv[2], "rb").read()
+m.respondent_quality(b, "declared.sav", {})
+df, _ = m._read_raw(b, "declared.sav")
+print(int(df["S1"].isna().sum()), int((df["S1"] == 9).sum()))
+`;
+    const r = spawnSync(PYTHON, ["-I", "-c", script, engine, f], { encoding: "utf8" });
+    if (r.status !== 0) throw new Error(r.stderr);
+    // S1: respondents 1-4 gave the declared-missing 9; the analysis read still has them as missing.
+    expect(r.stdout.trim()).toBe("4 0");
   });
 
   it("reads the file in its saved layout: a columns-as-cases file is checked case by case", async () => {

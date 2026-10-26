@@ -17,6 +17,7 @@ import { PYTHON } from "./helpers/pythonEngine";
 //      PDF text, and every END_nn sentinel present.
 // Skipped parts say why (no python engine, no LibreOffice/pdftotext).
 import { describe, expect, it } from "vitest";
+import { SOFFICE, officeConvert } from "./helpers/officeRender";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,7 +33,6 @@ import type { CrosstabResult } from "../parseStatsFile";
 const ENGINE = path.join(process.cwd(), "api", "parse-stats-file.py");
 const GOLDEN = path.join(process.cwd(), "fixtures", "golden-thread-1", "golden-survey-documented.xlsx");
 const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], { encoding: "utf8" }).status === 0;
-const SOFFICE = ["soffice", "libreoffice"].find((b) => spawnSync("which", [b]).status === 0);
 const PDFTOTEXT = spawnSync("which", ["pdftotext"]).status === 0;
 const EMU = 914400;
 
@@ -229,8 +229,8 @@ describe("crosstab slides fit the page (GT-005)", () => {
     const norm = (s: string) => s.replace(/\s+/g, "");
     for (const [name, r] of cases) {
       writeFileSync(path.join(dir, `${name}.pptx`), await deckOf(r));
-      const conv = spawnSync(SOFFICE!, ["--headless", "--convert-to", "pdf", "--outdir", dir, path.join(dir, `${name}.pptx`)], { encoding: "utf8", timeout: 120_000 });
-      expect(conv.status, conv.stderr).toBe(0);
+      const conv = officeConvert(path.join(dir, `${name}.pptx`), "pdf", dir);
+      expect(conv.status, conv.detail).toBe(0);
       const bbox = spawnSync("pdftotext", ["-bbox", path.join(dir, `${name}.pdf`), "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout;
       const pages = bbox.split(/<page /).slice(1);
       const plans = plansOf(r);

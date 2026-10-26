@@ -9,7 +9,9 @@
 //   - one row per value (variable, value, value label) as CSV;
 //   - JSON in three shapes;
 //   - an XLSForm questionnaire (survey and choices sheets): its questions, choice lists and groups;
-//   - a spreadsheet that is no codebook is refused with its reason, and nothing is stored.
+//   - a spreadsheet that is no codebook is refused with its reason, and nothing is stored;
+//   - batch 36 review: text codes kept as written (B36-F01), malformed quoting refused with the earlier
+//     read and its links kept (B36-F03), a one-variable codebook read (B36-F05).
 // Skipped, with the reason, without a test database or python3 + pandas/openpyxl.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -165,5 +167,115 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("codebooks and spreadsheet que
     const doc = await stored("instrument", "notes.xlsx", workbook({ Notes: [["Fieldwork ran in May."], ["Weights were raked."]] }), "codebook");
     await expect(readInstrumentItems(tenant, run, doc)).rejects.toThrow(/No codebook table was found/);
     expect(await getInstrumentItems(tenant, doc)).toEqual([]);
+  });
+
+  // ---- Batch 36 review (Codex) ----
+  const confirmAll = async (codebook: string, data: string) => {
+    const { suggestInstrumentLinks, confirmInstrumentLinks } = await lib();
+    await suggestInstrumentLinks(tenant, run, codebook, data);
+    await confirmInstrumentLinks(tenant, run, codebook, 0.9);
+  };
+
+  // B36-F01 (Codex): "1.0" was read as "1" before the data column's type was known, so on a text
+  // column response "1" took the decimal code's label and "1.0" was left unlabelled. Codes are kept as
+  // written; on a numeric column two codes for one value are an IMP-015 conflict, never a silent pick.
+  const codeData = () => stored("table", "codes.csv", Buffer.from("id,q,n\n1,1.0,1\n2,1,2\n3,AA,1\n4,1,2\n5,1e0,2\n", "utf-8"));
+  const textCategories = { "Integer string": 2, "Decimal string": 1, Letters: 1, "Exponent string": 1 };
+  it("keeps text codes as written in JSON, long CSV, long Excel and XLSForm; numeric collisions are conflicts (B36-F01)", async () => {
+    const { readInstrumentItems, getInstrumentItems } = await lib();
+    const json = Buffer.from(JSON.stringify([
+      { name: "q", label: "Answer", values: { "1.0": "Decimal string", "1": "Integer string", AA: "Letters", "1e0": "Exponent string" } },
+      { name: "n", label: "Number", values: { "1.0": "One decimal", "1": "One", "2": "Two" } },
+    ]));
+    const longRows = [["Variable", "Label", "Value", "Value label"], ["q", "Answer", "1.0", "Decimal string"], ["", "", "1", "Integer string"], ["", "", "AA", "Letters"], ["", "", "1e0", "Exponent string"], ["n", "Number", "1", "One"], ["", "", "2", "Two"]];
+    const longCsv = Buffer.from(longRows.map((r) => r.map((c) => (c.includes(",") ? `"${c}"` : c)).join(",")).join("\n") + "\n", "utf-8");
+    const longXlsx = workbook({ Codebook: longRows });
+    const xlsform = workbook({
+      survey: [["type", "name", "label"], ["select_one qa", "q", "Answer"], ["select_one na", "n", "Number"]],
+      choices: [["list_name", "name", "label"], ["qa", "1.0", "Decimal string"], ["qa", "1", "Integer string"], ["qa", "AA", "Letters"], ["qa", "1e0", "Exponent string"], ["na", "1", "One"], ["na", "2", "Two"]],
+    });
+    for (const [name, bytes, type] of [["cb.json", json, "codebook"], ["cb-long.csv", longCsv, "codebook"], ["cb-long.xlsx", longXlsx, "codebook"], ["form.xlsx", xlsform, "questionnaire"]] as const) {
+      await q("delete from instrument_links where run_id = $1", [run]);
+      const data = await codeData();
+      const doc = await stored("instrument", name, bytes, type);
+      expect(await readInstrumentItems(tenant, run, doc), name).toMatchObject({ complete: true });
+      const items = await getInstrumentItems(tenant, doc);
+      expect(items.find((i) => i.code === "q")!.options.map((o) => o.code).sort(), name).toEqual(["1", "1.0", "1e0", "AA"]);
+      await confirmAll(doc, data);
+      const { loadCategories } = await import("../crosstabs");
+      const qc = (await loadCategories(tenant, run, data, "q")).categories;
+      expect(Object.fromEntries(qc.map((c) => [c.label, c.n])), name).toEqual(textCategories);
+      const nc = (await loadCategories(tenant, run, data, "n")).categories.map((c) => [c.label, c.n]);
+      if (name === "cb.json") expect(nc, name).toEqual([['1 [conflicting labels: "One" / "One decimal"]', 2], ["Two", 3]]);
+      else expect(nc, name).toEqual([["One", 2], ["Two", 3]]);
+    }
+  });
+
+  // B36-F03 (Codex): a quotation mark left open merged two variables into one item with an invented
+  // option, and the read was saved as complete. Malformed quoting is refused with its line, nothing is
+  // replaced, and the earlier read and its confirmed links survive; valid multiline cells still read.
+  it("refuses malformed quoting with its location, keeps the earlier read and confirmed links, and recovers (B36-F03)", async () => {
+    const { readInstrumentItems, getInstrumentItems } = await lib();
+    const good = Buffer.from('Variable,Label,Values\nq1,First,"1=Good, 2=Bad"\nq2,"Second,\nover two lines","1=Up, 2=Down"\nq3,Third,"1=Yes, 2=No"\n', "utf-8");
+    const data = await stored("table", "q.csv", Buffer.from("q1,q2,q3\n1,2,1\n2,1,2\n", "utf-8"));
+    const key = `${tenant}/${run}/${randomUUID()}-cb.csv`;
+    storage.objects.set(key, good);
+    const doc = (await q(
+      `insert into documents (tenant_id, run_id, kind, source_filename, storage_path, instrument_type) values ($1,$2,'instrument','cb.csv',$3,'codebook') returning id`,
+      [tenant, run, key],
+    ))[0].id as string;
+    expect(await readInstrumentItems(tenant, run, doc)).toMatchObject({ count: 3, complete: true });
+    const before = await getInstrumentItems(tenant, doc);
+    // A valid quoted cell over two lines is one cell of one variable.
+    expect(before.map((i) => i.code)).toEqual(["q1", "q2", "q3"]);
+    expect(before.find((i) => i.code === "q2")!.text).toMatch(/^Second,\s+over two lines$/);
+    await confirmAll(doc, data);
+    const links = async () => (await q("select l.variable, l.status from instrument_links l join instrument_items i on i.id = l.item_id where i.document_id = $1 order by l.variable", [doc])).map((r) => `${r.variable}:${r.status}`);
+    const confirmed = await links();
+    expect(confirmed).toEqual(["q1:confirmed", "q2:confirmed", "q3:confirmed"]);
+    const bad = [
+      // Codex's shape: q2's values never close, so the quote runs into q3's line.
+      ["unclosed, followed by another variable", 'Variable,Label,Values\nq1,First,"1=Good, 2=Bad\nq3,Third,"1=Up, 2=Down"\n'],
+      ["text after a closing quote", 'Variable,Label,Values\nq1,"First"x,"1=Good, 2=Bad"\nq3,Third,"1=Yes, 2=No"\n'],
+      ["unclosed at the end of the file", 'Variable,Label,Values\nq1,First,"1=Good, 2=Bad"\nq3,Third,"1=Yes, 2=No\n'],
+    ] as const;
+    // A stored file never changes in place (the engine's download cache is keyed by its path), so each
+    // version is put at a path of its own, as a replaced file would be.
+    const putFile = async (bytes: Buffer) => {
+      const k = `${tenant}/${run}/${randomUUID()}-cb.csv`;
+      storage.objects.set(k, bytes);
+      await q("update documents set storage_path = $2 where id = $1", [doc, k]);
+    };
+    for (const [why, text] of bad) {
+      await putFile(Buffer.from(text, "utf-8"));
+      await expect(readInstrumentItems(tenant, run, doc), why).rejects.toThrow(/quoting is not valid near line \d+/);
+      expect((await getInstrumentItems(tenant, doc)).map((i) => [i.code, i.text, i.options]), why).toEqual(before.map((i) => [i.code, i.text, i.options]));
+      expect(await links(), why).toEqual(confirmed);
+    }
+    await putFile(good);
+    expect(await readInstrumentItems(tenant, run, doc)).toMatchObject({ count: 3, complete: true });
+    expect(await links()).toEqual(confirmed);
+  });
+
+  // B36-F05 (Codex): a header and a single variable was refused as "no codebook table".
+  it("reads a one-variable codebook in CSV and Excel; prose is still refused (B36-F05)", async () => {
+    const { readInstrumentItems, getInstrumentItems } = await lib();
+    const one = [["Variable", "Label", "Values"], ["q", "Which response?", "1=Yes, 2=No"]];
+    for (const [name, bytes] of [
+      ["one.csv", Buffer.from('Variable,Label,Values\nq,Which response?,"1=Yes, 2=No"\n', "utf-8")],
+      ["one.xlsx", workbook({ Codebook: one })],
+      ["two.csv", Buffer.from('Variable,Label,Values\nq,Which response?,"1=Yes, 2=No"\nr,Region,"1=North, 2=South"\n', "utf-8")],
+    ] as const) {
+      const doc = await stored("instrument", name, bytes, "codebook");
+      await readInstrumentItems(tenant, run, doc);
+      const items = await getInstrumentItems(tenant, doc);
+      expect(items[0], name).toMatchObject({ code: "q", text: "Which response?", options: [{ code: "1", label: "Yes" }, { code: "2", label: "No" }] });
+      expect(items.length, name).toBe(name === "two.csv" ? 2 : 1);
+    }
+    const prose = await stored("instrument", "prose.csv", Buffer.from("Notes\nFieldwork ran in May, with two waves.\n", "utf-8"), "codebook");
+    await expect(readInstrumentItems(tenant, run, prose)).rejects.toThrow(/No codebook table was found/);
+    // A header naming no variable column, over one row, is not taken as a codebook either.
+    const misleading = await stored("instrument", "minutes.csv", Buffer.from("Date,Attendees,Decision\n2026-05-01,Five,Proceed with wave two\n", "utf-8"), "codebook");
+    await expect(readInstrumentItems(tenant, run, misleading)).rejects.toThrow(/No codebook table was found/);
   });
 });

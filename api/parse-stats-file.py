@@ -69,6 +69,14 @@ def _check_import_limits(file_bytes, cases=None):
     if cases is not None and cases > IMPORT_LIMITS["maxCases"]:
         raise ValueError(CASE_LIMIT_MESSAGE)
 
+def _beyond_exact_whole(series) -> bool:
+    """True when an integer column holds a value a double cannot hold exactly (|v| > 2^53)."""
+    present = series.dropna()
+    if len(present) == 0:
+        return False
+    return bool((present.astype(object).map(lambda v: abs(int(v)) > _MAX_EXACT_WHOLE)).any())
+
+
 def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
     """A data frame from R or Parquet as the readers' (data, meta) pair. An R factor (a pandas
     Categorical of text levels) becomes its R codes 1, 2, ... with each level as the code's label, as
@@ -89,15 +97,24 @@ def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
                 out[str(col)] = codes
                 continue
             series = series.astype(object).where(series.notna(), None)
+        elif pd.api.types.is_integer_dtype(series.dtype) and _beyond_exact_whole(series):
+            # B36-F02 (Codex): a whole number beyond 2^53 is not exact in a double, so a float column
+            # would merge distinct identifiers (9007199254740992 and ...993). The same rule as the
+            # plain-text readers (_MAX_EXACT_WHOLE): such a column stays text, each value written exactly.
+            series = series.astype(object).map(lambda v: None if v is None or v is pd.NA or (isinstance(v, float) and v != v) else str(int(v)))
         elif pd.api.types.is_extension_array_dtype(series.dtype) and pd.api.types.is_numeric_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype):
             # A nullable integer (R integer with NA, pandas Int64) as the plain float column every
-            # numeric variable is read as, with NA as NaN, so it stays numeric.
+            # numeric variable is read as, with NA as NaN, so it stays numeric (exact: every value is
+            # within 2^53, checked above).
             series = series.astype("float64")
         elif pd.api.types.is_extension_array_dtype(series.dtype):
             series = series.astype(object).where(series.notna(), None)
         elif series.dtype == object:
             present = [v for v in series if v is not None and not (isinstance(v, float) and v != v)]
-            if present and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in present):
+            if present and all(isinstance(v, int) and not isinstance(v, bool) for v in present) and any(abs(v) > _MAX_EXACT_WHOLE for v in present):
+                # B36-F02: exact identifiers beyond 2^53 stay text (see above).
+                series = series.map(lambda v: None if v is None or (isinstance(v, float) and v != v) else str(v))
+            elif present and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in present):
                 # pyreadr returns an R integer column with NA as objects; it is a number column.
                 series = pd.to_numeric(series, errors="coerce").astype("float64")
         out[str(col)] = series
@@ -496,6 +513,22 @@ class _PlainMeta:
 # file, and its delimiter is sniffed like a CSV's.
 DELIMITED_EXTS = (".csv", ".tsv", ".txt")
 TABLE_EXTS = DELIMITED_EXTS + (".xlsx", ".xls")
+
+# The reader for each workbook format, named rather than left to pandas (V-B36-01, Codex): pandas 3
+# picks python-calamine for .xls when no engine is given, which requirements.txt does not install, so a
+# fresh install refused valid .xls files that read correctly with xlrd. Both readers named here are
+# pinned in requirements.txt; any other workbook extension is not a supported format.
+WORKBOOK_ENGINES = {".xlsx": "openpyxl", ".xlsm": "openpyxl", ".xls": "xlrd"}
+
+
+def _open_workbook(path):
+    import pandas as pd
+
+    ext = os.path.splitext(str(path).lower())[1]
+    engine = WORKBOOK_ENGINES.get(ext)
+    if engine is None:
+        raise ValueError(f"Unsupported workbook format: {ext or '(none)'}")
+    return pd.ExcelFile(path, engine=engine)
 
 _DICT_SHEET_RE = re.compile(r"variable|dictionary|codebook|label|metadata|legend|value|code|lookup|readme|notes|schema", re.I)
 _VAR_COL_RE = re.compile(r"^(variable( name)?|var( name)?|name|column( name)?|field( name)?|item|question ?id|qid|var ?id|code ?name)$", re.I)
@@ -1485,7 +1518,7 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
             )
     else:
         try:
-            xl = pd.ExcelFile(path)
+            xl = _open_workbook(path)
         except Exception as exc:  # noqa: BLE001 - any failure to open is the same answer to the researcher
             raise ValueError(
                 f"This file doesn't parse as a spreadsheet ({exc}). If it's a Word document or PDF that was "
@@ -1745,14 +1778,32 @@ def _apply_overlay(df, meta, overlay):
     for name, text in (overlay.get("variableLabels") or {}).items():
         if name in cols and text and (not labels.get(name) or labels.get(name) == name):
             labels[name] = str(text)
+    conflicts = getattr(meta, "label_conflicts", None)
+    if conflicts is None:
+        conflicts = []
+        meta.label_conflicts = conflicts
     for name, mapping in (overlay.get("valueLabels") or {}).items():
         if name not in cols or vlabels.get(name):
             continue
-        mapped = {}
+        # B36-F01: in a numeric column "1" and "1.0" are the same answer; in a text column they are two.
+        # Two codes of the linked document that land on one answer of this column with different labels
+        # are not resolved by order: the answer is shown with both labels and recorded as a conflict
+        # (IMP-015's form), so no label is silently attached to another answer.
+        mapped, competing = {}, {}
         for code, label in (mapping or {}).items():
             key = _overlay_key(df[name], code)
-            if key is not None and label:
-                mapped[key] = str(label)
+            if key is None or not label:
+                continue
+            competing.setdefault(key, [])
+            if str(label) not in competing[key]:
+                competing[key].append(str(label))
+            mapped.setdefault(key, str(label))
+        for key, labs in competing.items():
+            if len(labs) > 1:
+                shown = " / ".join(f'"{lab}"' for lab in labs)
+                mapped[key] = f"{_format_code(key)} [conflicting labels: {shown}]"
+                conflicts.append({"variable": name, "kind": "value_label", "value": key, "kept": labs[0], "discarded": labs[1],
+                                  "source": "linked codebook or questionnaire", "resolution": "shown_as_conflict"})
         if mapped:
             vlabels[name] = mapped
 
@@ -2388,12 +2439,19 @@ def _cb_sheet_items(grid, sheet):
                     items[name]["label"] = r[pos["label"]]
                 code = r[pos["value"]]
                 if code != "":
-                    items[name]["options"].append({"code": _format_code(float(code)) if _STRICT_NUMBER.match(code) else code, "label": r[vl]})
+                    # The code as written (B36-F01): "1.0" and "1" are matched to the column when applied.
+                    items[name]["options"].append({"code": code, "label": r[vl]})
             return [items[n] for n in order]
     # One row per variable, by content: the name column holds name-like cells, the values column
     # "<code>=" lists, the label column the longest text of the rest.
     body = [r for r in rows if sum(1 for c in r if c) >= 2]
-    if len(body) < 3:
+    # Without a header, three or more such rows are needed before a sheet is taken for a codebook (a
+    # prose document can have two). With a header naming a variable and a label column, one variable
+    # under it is enough (B36-F05, Codex: a valid one-variable codebook was refused).
+    headed = any(
+        (lambda pos: pos["var"] is not None and pos["label"] is not None)(_classify_header([c.lower() for c in r])) for r in rows[: min(6, len(rows))]
+    )
+    if len(body) < (2 if headed else 3):
         return []
 
     def share(col, test):
@@ -2468,8 +2526,11 @@ def _cb_json_options(values):
 
 
 def _cb_code(code):
-    t = _cb_text(code)
-    return _format_code(float(t)) if _STRICT_NUMBER.match(t) else t
+    """A codebook answer code as its literal identity (B36-F01, Codex): a code written as text keeps its
+    exact text, so "1.0", "1" and "01" stay three codes; only a cell that is a number is written as
+    that number (an Excel 1 or 1.0 cell is "1"). Whether "1" and "1.0" are the same answer depends on
+    the data column, so it is decided when the labels are applied (_apply_overlay), not here."""
+    return _cb_text(code)
 
 
 def _codebook_from_json(file_bytes: bytes) -> dict:
@@ -2573,9 +2634,22 @@ def _sheet_grids(file_bytes: bytes, source_filename: str):
             with open(path, "rb") as fh:
                 text, _enc = _decode_plain_text(fh.read())
             sep = "\t" if ext == ".tsv" else _sniff_delimiter(text)
-            # Read leniently, cell by cell: a document row can be shorter or longer than the first.
-            return [(None, [[c for c in r] for r in csv.reader(io.StringIO(text, newline=""), delimiter=sep)])]
-        xl = pd.ExcelFile(path)
+            # A document row may be shorter or longer than the first (ragged rows are allowed), but its
+            # quoting must be valid (B36-F03, Codex): an unclosed quote or text after a closing quote
+            # used to merge the following rows into one cell, and the read was stored as complete.
+            # strict=True refuses it here, before any item is stored, with where it went wrong.
+            reader = csv.reader(io.StringIO(text, newline=""), delimiter=sep, strict=True)
+            rows = []
+            try:
+                for r in reader:
+                    rows.append(list(r))
+            except csv.Error as exc:
+                raise ValueError(
+                    f"This file's quoting is not valid near line {reader.line_num} ({exc}), so it was not read: "
+                    "a quotation mark is not closed, or text follows a closing one. Correct it and read the file again."
+                ) from exc
+            return [(None, rows)]
+        xl = _open_workbook(path)
         try:
             return [(name, [[_cb_text(c) for c in r] for r in _excel_sheet_grid(xl, name)]) for name in xl.sheet_names]
         finally:
@@ -2743,6 +2817,105 @@ def _num_or_none(v):
         return None
 
 
+def _rq_raw_answers(file_bytes, source_filename, df):
+    """The answers as given, for the non-answer diagnostic only. The analysis read masks SPSS
+    user-missing values as empty, which is right for every table and statistic and wrong here: a
+    respondent who gave "Refused" (declared missing) ten times would look as if they skipped the
+    questions, and the diagnostic would report nothing measured (B36-F04). So a .sav/.zsav file is read
+    a second time with user_missing=True, and that frame is used by this check alone; it never enters
+    the read cache or any other calculation. Other formats have no separately declared missing codes
+    that the reader masks, so their analysis frame already holds the answers as given."""
+    ext = os.path.splitext(source_filename.lower())[1]
+    if ext not in (".sav", ".zsav"):
+        return df
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+    try:
+        raw, _ = READERS[ext](tmp_path, user_missing=True)
+    finally:
+        _remove_quietly(tmp_path)
+    if len(raw) != len(df) or list(raw.columns) != list(df.columns):
+        raise ValueError("The non-answer check could not read this file's answers consistently. Re-upload the file, or contact support if it persists.")
+    return raw
+
+
+def _rq_code_identity(v):
+    """One answer or label code as an identity: numbers compare as numbers (label key 9 and value
+    9.0 are the same code), anything else as its trimmed text ("DK" is never coerced away). None for
+    no answer at all (empty, blank text, NaN)."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        t = v.strip()
+        if t == "":
+            return None
+        try:
+            f = float(t)
+        except ValueError:
+            return ("s", t)
+        return None if f != f else ("n", f)
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return ("s", str(v).strip())
+    return None if f != f else ("n", f)
+
+
+def _rq_non_answers(raw, meta, n):
+    """Per respondent, the share of answers that are non-answers, over the variables where the file
+    says which codes are not answers: a value label meaning no usable answer (_DK_RE), or a declared
+    user-missing value or range (B36-F04). Codes are compared as identities, so a labelled text code
+    such as "DK" counts. The denominator is the answers the respondent gave to those variables
+    (non-answers included); a blank is no answer and is in neither count. A respondent is flagged at
+    RQ_NON_ANSWER_SHARE or more of at least RQ_NON_ANSWER_MIN answers. A diagnostic prompt only: no case
+    is excluded."""
+    import numpy as np
+
+    value_labels = getattr(meta, "variable_value_labels", None) or {}
+    missing = getattr(meta, "missing_ranges", None) or {}
+    measured_vars = 0
+    na_count = np.zeros(n)
+    answered = np.zeros(n)
+    for c in raw.columns:
+        labels = value_labels.get(c) or {}
+        codes = {_rq_code_identity(k) for k in _non_answer_codes(labels, None, True)} - {None}
+        ranges = []
+        for r in missing.get(c) or []:
+            if not isinstance(r, dict):
+                continue
+            lo, hi = _rq_code_identity(r.get("lo")), _rq_code_identity(r.get("hi"))
+            if lo is None or hi is None:
+                continue
+            if lo[0] == "n" and hi[0] == "n":
+                ranges.append((lo[1], hi[1]))
+            else:
+                codes |= {lo, hi}  # a declared text missing value is a code, not a range
+        if not codes and not ranges:
+            continue
+        measured_vars += 1
+        for i, v in enumerate(raw[c].tolist()):
+            ident = _rq_code_identity(v)
+            if ident is None:
+                continue
+            answered[i] += 1
+            if ident in codes or (ident[0] == "n" and any(lo <= ident[1] <= hi for lo, hi in ranges)):
+                na_count[i] += 1
+    out = {"measured": measured_vars > 0, "variables": measured_vars, "flagged": 0, "threshold": RQ_NON_ANSWER_SHARE, "minAnswers": RQ_NON_ANSWER_MIN}
+    flags = []
+    if measured_vars == 0:
+        return out, flags
+    share = np.where(answered > 0, na_count / np.maximum(answered, 1), 0)
+    eligible = answered >= RQ_NON_ANSWER_MIN
+    bad = eligible & (share >= RQ_NON_ANSWER_SHARE)
+    out["flagged"] = int(bad.sum())
+    out["eligible"] = int(eligible.sum())
+    out["medianShare"] = float(np.median(share[eligible])) if eligible.any() else None
+    for i in np.flatnonzero(bad):
+        flags.append((int(i), f"{round(100 * share[i])}% of {int(answered[i])} answers were non-answers"))
+    return out, flags
+
+
 def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> dict:
     """Respondent-level checks over every case: straightlining in batteries, the share of non-answers,
     speeders (when a duration variable is found) and interviewer differences (when an interviewer
@@ -2791,26 +2964,12 @@ def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> di
     for i in np.flatnonzero(straight_flag):
         flags[i].append(f"straightlined {int(straight_cases[i])} of {int(eligible_cases[i])} batteries")
 
-    # Non-answers, where the file labels its codes.
-    labelled = [c for c in df.columns if labels_of(c) and _non_answer_codes(labels_of(c), None, True)]
-    non_answer = {"measured": bool(labelled), "variables": len(labelled), "flagged": 0, "threshold": RQ_NON_ANSWER_SHARE, "minAnswers": RQ_NON_ANSWER_MIN}
-    if labelled:
-        na_count = np.zeros(n)
-        answered = np.zeros(n)
-        for c in labelled:
-            codes = {float(k) for k in _non_answer_codes(labels_of(c), None, True) if _num_or_none(k) is not None}
-            vals = pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float)
-            present = ~np.isnan(vals)
-            answered += present
-            na_count += present & np.isin(vals, list(codes))
-        share = np.where(answered > 0, na_count / np.maximum(answered, 1), 0)
-        bad = (answered >= RQ_NON_ANSWER_MIN) & (share >= RQ_NON_ANSWER_SHARE)
-        non_answer["flagged"] = int(bad.sum())
-        non_answer["medianShare"] = float(np.median(share[answered >= RQ_NON_ANSWER_MIN])) if (answered >= RQ_NON_ANSWER_MIN).any() else None
-        for i in np.flatnonzero(bad):
-            flags[i].append(f"{round(100 * share[i])}% of {int(answered[i])} labelled answers were non-answers")
-    else:
-        notes.append("Non-answers could not be measured: the file has no value labels marking codes such as \"Don't know\" or \"Refused\".")
+    # Non-answers: codes the file labels as no usable answer, and codes it declares user-missing.
+    non_answer, na_flags = _rq_non_answers(_rq_raw_answers(file_bytes, source_filename, df), meta, n)
+    for i, text in na_flags:
+        flags[i].append(text)
+    if not non_answer["measured"]:
+        notes.append("Non-answers could not be measured: the file has no value labels marking codes such as \"Don't know\" or \"Refused\", and declares no missing-value codes.")
 
     # Speeders.
     variable_labels = getattr(meta, "column_names_to_labels", None) or {}

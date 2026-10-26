@@ -255,4 +255,32 @@ df.to_parquet(sys.argv[1], engine="fastparquet")
     expect(t.rows.map((x) => x.spend)).toEqual([10.5, null, 3.25, 8]);
     expect(await categories(doc, "city")).toEqual({ "Cape Town": 1, Durban: 2 });
   });
+
+  // B36-F02 (Codex): nullable Int64 was turned into float64, so 9007199254740992 and ...993 became one
+  // identifier, stored and counted as one. Beyond 2^53 a whole number is kept as its exact text
+  // (_MAX_EXACT_WHOLE, the policy the delimited readers already use); up to 2^53 it stays a number.
+  it.skipIf(!R_PARQUET_OK)("Parquet: whole numbers beyond 2^53 keep their exact identity, nullable or not; safe ones stay numbers", async () => {
+    const out = path.join(mkdtempSync(path.join(tmpdir(), "parquet-big-")), "ids.parquet");
+    const script = String.raw`
+import sys, pandas as pd
+df = pd.DataFrame({
+    "rid": pd.array([9007199254740992, 9007199254740993, None, 9007199254740993], dtype="Int64"),
+    "plain": pd.array([9007199254740993, 9007199254740992, 9007199254740995, 9007199254740993], dtype="int64"),
+    "safe": pd.array([9007199254740991, 1, None, 9007199254740991], dtype="Int64"),
+})
+df.to_parquet(sys.argv[1], engine="fastparquet")
+`;
+    const r = spawnSync(PYTHON, ["-I", "-c", script, out], { encoding: "utf8" });
+    if (r.status !== 0) throw new Error(r.stderr);
+    const doc = await file("ids.parquet", readFileSync(out));
+    for (const pass of ["first read", "reread"]) {
+      const t = await imported(doc);
+      expect(t.headers, pass).toEqual(["rid", "plain", "safe"]);
+      expect(t.rows.map((x) => x.rid), pass).toEqual(["9007199254740992", "9007199254740993", null, "9007199254740993"]);
+      expect(t.rows.map((x) => x.plain), pass).toEqual(["9007199254740993", "9007199254740992", "9007199254740995", "9007199254740993"]);
+      expect(t.rows.map((x) => x.safe), pass).toEqual([9007199254740991, 1, null, 9007199254740991]);
+    }
+    expect(await categories(doc, "rid")).toEqual({ "9007199254740992": 1, "9007199254740993": 2 });
+    expect(await categories(doc, "plain")).toEqual({ "9007199254740992": 1, "9007199254740993": 2, "9007199254740995": 1 });
+  });
 });

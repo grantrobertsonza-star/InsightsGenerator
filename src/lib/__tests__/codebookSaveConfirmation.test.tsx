@@ -9,7 +9,8 @@
 //     the draft back; a success from a much earlier visit is not shown again;
 //   - an ordinary refusal keeps the draft and a retry then saves; another document's panel is untouched;
 //   - B35-F01: wording typed in the remounted panel while the earlier save is out is never replaced by
-//     that save's drafts when it is refused late, and a late success does not touch it either.
+//     that save's drafts when it is refused late, and a late success does not touch it either;
+//   - B36-F06: that late success says the newer edits are not saved yet, rather than a bare Saved.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement, type ComponentType } from "react";
 import { parseHTML } from "linkedom";
@@ -197,7 +198,8 @@ describe("Codebook save confirmation (R2P-F01)", () => {
     expect(savedShown()).toBe(true);
   });
 
-  it("a late success after newer edits shows Saved for the earlier save and keeps the newer edits unsaved", async () => {
+  // B36-F06 (Codex): the late success used to show a bare "Saved" beside the newer, unsaved wording.
+  it("a late success after newer edits says the earlier change was saved and the newer edits are not", async () => {
     const Panel = await load();
     const answer = deferred<unknown>();
     saveMeta.mockReturnValue(answer.promise);
@@ -207,8 +209,28 @@ describe("Codebook save confirmation (R2P-F01)", () => {
     await mountPanel(Panel, "b");
     await typeTheme("NEW_UNSAVED_EDIT");
     await act(async () => answer.resolve({ ok: true, message: "Saved." }));
-    expect(savedShown()).toBe(true);
+    expect(savedShown()).toBe(false);
+    expect(text()).toContain("Your earlier change was saved. The edits you have made since are not saved yet.");
     expect(themeInput().value).toBe("NEW_UNSAVED_EDIT");
+    expect(saveButton()).toBeTruthy();
+  });
+
+  it("a success in the same panel after newer typing is qualified the same way; with no newer typing it is a plain Saved", async () => {
+    const Panel = await load();
+    const answer = deferred<unknown>();
+    saveMeta.mockReturnValueOnce(answer.promise).mockResolvedValueOnce({ ok: true, message: "Saved." });
+    await mountPanel(Panel, "a");
+    await typeTheme("FIRST_SUBMITTED");
+    await clickSave();
+    await typeTheme("NEW_UNSAVED_EDIT");
+    await act(async () => answer.resolve({ ok: true, message: "Saved." }));
+    expect(savedShown()).toBe(false);
+    expect(text()).toContain("The edits you have made since are not saved yet.");
+    expect(themeInput().value).toBe("NEW_UNSAVED_EDIT");
+    await clickSave();
+    expect(saveMeta.mock.calls[1][2][0]).toMatchObject({ theme: "NEW_UNSAVED_EDIT" });
+    expect(savedShown()).toBe(true);
+    expect(text()).not.toContain("not saved yet");
   });
 
   it("a reload before the reply says the outcome is unknown, never Saved, and puts the draft back", async () => {

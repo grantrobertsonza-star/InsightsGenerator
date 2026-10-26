@@ -96,6 +96,19 @@ non-answer codes.
   from one, or a label that differs apart from case and spacing), the stronger source's are applied and
   the pair is kept in `LabelOverlay.conflicts`. Unlike IMP-015 inside one workbook (neither label
   applied), a codebook outranks a questionnaire by Grant's rule, so a choice is made, and it is shown.
+- **A source that labels one answer (B36-F07, 26 October 2026).** One labelled code on its own never
+  makes a variable's answers labelled (a count question's "99 = Don't know" would turn it into a
+  categorical one), so the base map is the strongest source that labels at least two answers. A
+  stronger source's codes are never dropped for being few: each code a source ranked above the base
+  gives takes precedence for that code (`valueLabelsOverriddenBy`), and where the base said something
+  else for it, the pair is a conflict. A weaker source is compared on the codes both give (all codes
+  when both are full maps), so its disagreement is listed, never applied. When every source labels only
+  one answer, none is applied and the tab says so (`valueLabelsNotApplied`, `answerLabelsNote`).
+- **Answer codes are identities as written (B36-F01).** The engine keeps a codebook's code as its text
+  ("1.0", "1", "1e0", "AA" are four codes); only matching against the data column decides whether two
+  codes are the same answer. On a numeric column "1.0" and "1" are one value, and two different labels
+  for it are an IMP-015 conflict (`code [conflicting labels: "A" / "B"]`, `meta.label_conflicts`), never a
+  silent choice.
 - **The tab.** A raw data file's links tab is now "Labels and documentation"
   (`LabelDocumentationPanel.tsx`, `labelDocumentation.ts`): coverage tiles, the linked documents, the
   disagreements, a per-variable table (data file label, codebook entry, questionnaire question, where the

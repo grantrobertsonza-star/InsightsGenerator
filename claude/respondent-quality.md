@@ -22,9 +22,14 @@ respondent is flagged when they give one answer throughout at least two batterie
 batteries they answered. One battery alone is not enough: it can be answered the same way honestly.
 Reverse-worded items are not known to the check, which is one reason a flag is a prompt, not a verdict.
 
-**Non-answers.** Only where the file labels codes as non-answers (don't know, refused and the like,
-`_DK_RE`, or declared user-missing). A respondent is flagged when non-answers are half or more of at least
-ten such labelled answers. Without labels the check is "not measured".
+**Non-answers** (`_rq_non_answers`). Over the variables where the file says which codes are not
+answers: a value label meaning no usable answer (`_DK_RE`), or a declared user-missing value or range.
+Codes are identities, not numbers: a labelled text code such as "DK" counts (B36-F04). The denominator is
+the answers a respondent gave to those variables, non-answers included; a blank is in neither count. A
+respondent is flagged when non-answers are half or more of at least ten answers. An SPSS file is read a
+second time with its user-missing values kept (`_rq_raw_answers`), for this check only: the analysis read,
+every table and the read cache still treat them as missing. Without such labels or declarations the check
+is "not measured". A diagnostic prompt: no case is excluded.
 
 **Speeders.** The first numeric variable whose name or label reads as an interview length (duration,
 length of interview, LOI, interview time, time taken, elapsed, seconds, minutes). Against the median of

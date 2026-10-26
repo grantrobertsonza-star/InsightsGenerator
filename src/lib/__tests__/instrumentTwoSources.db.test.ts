@@ -132,6 +132,42 @@ describe.skipIf(!TEST_DATABASE_URL)("LBL-01 a codebook and a questionnaire for o
     expect(d.entriesWithoutColumnTotal).toBe(2);
   });
 
+  // B36-F07 (Codex's case): a JSON codebook gives Q7 only `1 = CB positive`; an XLSForm questionnaire
+  // gives `1 = QN negative, 2 = QN positive`. The codebook's one code was dropped, so tables used
+  // "QN negative" for code 1 with no disagreement shown.
+  it("keeps a one-code codebook's label over the questionnaire's, in either confirmation order, and documents it", async () => {
+    const { chooseInstrumentLinkAction, loadLabelDocumentationAction } = await import("../instrumentActions");
+    const { getLabelOverlay } = await import("../instruments");
+    const cbQ7 = (await db.pool.query("insert into instrument_items(tenant_id,run_id,document_id,item_order,code,item_text,response_options) values($1,$2,$3,9,'Q7','Attitude',$4) returning id", [tenant, run, codebook, JSON.stringify([{ code: "1", label: "CB positive" }])])).rows[0].id;
+    const qnQ7 = (await db.pool.query("insert into instrument_items(tenant_id,run_id,document_id,item_order,code,item_text,response_options) values($1,$2,$3,9,'Q7','How do you feel?',$4) returning id", [tenant, run, questionnaire, JSON.stringify([{ code: "1", label: "QN negative" }, { code: "2", label: "QN positive" }])])).rows[0].id;
+    try {
+      for (const order of [[[codebook, cbQ7], [questionnaire, qnQ7]], [[questionnaire, qnQ7], [codebook, cbQ7]]] as const) {
+        await db.pool.query("delete from instrument_links where run_id = $1", [run]);
+        for (const [doc, item] of order) expect(await chooseInstrumentLinkAction(run, doc, item, data, "Q7")).toEqual({ ok: true });
+        const o = await getLabelOverlay(tenant, run, data);
+        expect(o?.valueLabels.Q7).toEqual({ "1": "CB positive", "2": "QN positive" });
+        expect(o?.conflicts).toEqual([
+          { variable: "Q7", applied: { documentId: codebook, instrumentType: "codebook", labels: { "1": "CB positive" } }, other: { documentId: questionnaire, instrumentType: "questionnaire", labels: { "1": "QN negative", "2": "QN positive" } } },
+        ]);
+        const r = await loadLabelDocumentationAction(run, data);
+        if (!r.ok) throw new Error(r.error);
+        const q7 = r.documentation.variables.find((v) => v.name === "Q7");
+        expect(q7).toMatchObject({ answerLabelsFrom: "questionnaire", conflict: true, answerLabelsNote: expect.stringMatching(/codebook take precedence/) });
+        expect(r.documentation.conflicts).toEqual([{ variable: "Q7", applied: { filename: "cb.xlsx", labels: { "1": "CB positive" } }, other: { filename: "q.docx", labels: { "1": "QN negative", "2": "QN positive" } } }]);
+      }
+      // Only the codebook's single code: nothing applied, and the tab says so.
+      await db.pool.query("delete from instrument_links where run_id = $1", [run]);
+      expect(await chooseInstrumentLinkAction(run, codebook, cbQ7, data, "Q7")).toEqual({ ok: true });
+      expect((await getLabelOverlay(tenant, run, data))?.valueLabels.Q7).toBeUndefined();
+      const r = await loadLabelDocumentationAction(run, data);
+      if (!r.ok) throw new Error(r.error);
+      expect(r.documentation.variables.find((v) => v.name === "Q7")).toMatchObject({ answerLabelsFrom: null, answerLabelsNote: expect.stringMatching(/^Not applied: the codebook labels only one answer/) });
+    } finally {
+      await db.pool.query("delete from instrument_links where item_id = any($1)", [[cbQ7, qnQ7]]);
+      await db.pool.query("delete from instrument_items where id = any($1)", [[cbQ7, qnQ7]]);
+    }
+  });
+
   it("refuses rather than reporting nothing documented when the links cannot be read, and refuses another project's file", async () => {
     const { loadLabelDocumentationAction } = await import("../instrumentActions");
     const other = (await db.pool.query("insert into runs(tenant_id) values($1) returning id", [tenant])).rows[0].id;

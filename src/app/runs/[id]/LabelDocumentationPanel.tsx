@@ -183,10 +183,11 @@ export default function LabelDocumentationPanel({ runId, documentId }: { runId: 
                     <td className="py-1 pr-2">{v.codebook ? entry(v.codebook) : <span className="text-muted">Not linked</span>}</td>
                     <td className="py-1 pr-2">{v.questionnaire ? entry(v.questionnaire) : <span className="text-muted">Not linked</span>}</td>
                     <td className="py-1">
-                      {v.labelFrom || v.answerLabelsFrom ? (
+                      {v.labelFrom || v.answerLabelsFrom || v.answerLabelsNote ? (
                         <>
                           {v.labelFrom && <div>Label: {ORIGIN[v.labelFrom]}</div>}
                           {v.answerLabelsFrom && <div>Answers: {ORIGIN[v.answerLabelsFrom]}</div>}
+                          {v.answerLabelsNote && <div className="text-amber-800" data-testid="answer-labels-note">{v.answerLabelsNote}</div>}
                         </>
                       ) : (
                         <span className="text-muted">Name only</span>

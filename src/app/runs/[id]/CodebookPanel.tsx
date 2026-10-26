@@ -120,6 +120,12 @@ function reproductionBadge(run: number | null, total: number | null) {
  * every participant turn as a new version. Re-applying replaces this
  * transcript's coded findings, and one model call is made per batch of turns.
  */
+/** A save that finished after the researcher kept typing: it saved what was submitted, not what is shown. */
+export function savedWithNewerEdits(message: string): string {
+  const done = message === "Saved" ? "Your earlier change was saved." : /[.!?]$/.test(message) ? message : `${message}.`;
+  return `${done} The edits you have made since are not saved yet.`;
+}
+
 export default function CodebookPanel({
   codebook,
   reapply,
@@ -150,8 +156,12 @@ export default function CodebookPanel({
   // of an earlier save (made before a remount) must not put that save's drafts back over newer
   // wording typed since, so the submitted drafts are restored only onto an untouched panel.
   const editedSinceMount = useRef(false);
+  // B36-F06: counts edits in this mount, so a save that succeeds after newer typing says the newer
+  // edits are not saved yet rather than a bare "Saved" beside them.
+  const editCount = useRef(0);
   const editDrafts = (update: (list: Draft[]) => Draft[]) => {
     editedSinceMount.current = true;
+    editCount.current += 1;
     setDrafts(update);
   };
   const [error, setError] = useState<string | null>(null);
@@ -212,7 +222,7 @@ export default function CodebookPanel({
       if (state.kind === "none" || state.kind === "waiting") return;
       setOpen(true);
       if (state.kind === "succeeded") {
-        setSaved(state.message);
+        setSaved(editedSinceMount.current ? savedWithNewerEdits(state.message) : state.message);
         return;
       }
       // Drafts are put back only onto the codebook version they were written against, and only
@@ -249,6 +259,7 @@ export default function CodebookPanel({
     setError(null);
     setSaved(null);
     const token = beginConfirmation<Restore>(reopenKey, { version: codebook.version, drafts });
+    const editsAtSubmit = editCount.current;
     startTransition(async () => {
       let r: { ok: true; message?: string } | { ok: false; error: string };
       try {
@@ -260,7 +271,7 @@ export default function CodebookPanel({
         // Recorded even when shown here: the remount a success causes may still be to come.
         const message = (useServerMessage && r.message) || success;
         settleConfirmation<Restore>(reopenKey, token, { ok: true, message });
-        if (mounted.current) setSaved(message);
+        if (mounted.current) setSaved(editCount.current !== editsAtSubmit ? savedWithNewerEdits(message) : message);
       } else if (mounted.current) {
         // A refusal does not remount: this panel keeps the drafts and says why.
         clearConfirmation(reopenKey, token);

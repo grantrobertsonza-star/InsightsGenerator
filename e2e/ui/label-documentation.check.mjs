@@ -20,19 +20,22 @@ const SHOT = process.env.SHOT;
 
 function fixtures() {
   const dir = mkdtempSync(path.join(tmpdir(), "labeldoc-"));
-  writeFileSync(path.join(dir, "poll.txt"), "ID\tparty_reg\tq_extra\n1\t1\t5\n2\t4\t3\n3\t1\t2\n4\t2\t5\n");
+  writeFileSync(path.join(dir, "poll.txt"), "ID\tparty_reg\tq_extra\tq_free\n1\t1\t5\t7\n2\t4\t3\t8\n3\t1\t2\t7\n4\t2\t5\t9\n");
   const cb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(cb, XLSX.utils.aoa_to_sheet([
     ["VARIABLE NAME", "VARIABLE LABEL", "VALUES"],
     ["party_reg", "Party registration", "1=Democrat, 2=No Party Preference, 3=Other Party, 4=Republican"],
     ["ID", "Identification number assigned to respondent", "as is"],
     ["dropped_var", "A variable not in this release", "1=Yes, 2=No"],
+    // B36-F07: the codebook labels one answer of q_extra, and differently from the questionnaire.
+    ["q_extra", "Extra rating", "5=Top score"],
   ]), "Codebook");
   writeFileSync(path.join(dir, "poll_codebook.xlsx"), XLSX.write(cb, { type: "buffer", bookType: "xlsx" }));
   const form = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(form, XLSX.utils.aoa_to_sheet([
     ["type", "name", "label"],
     ["select_one party", "party_reg", "With which party are you registered?"],
+    ["select_one extra", "q_extra", "How would you rate it?"],
   ]), "survey");
   XLSX.utils.book_append_sheet(form, XLSX.utils.aoa_to_sheet([
     ["list_name", "name", "label"],
@@ -40,6 +43,9 @@ function fixtures() {
     ["party", "2", "Decline to state"],
     ["party", "3", "Other"],
     ["party", "4", "Republican"],
+    ["extra", "2", "Low"],
+    ["extra", "3", "Middle"],
+    ["extra", "5", "Highest"],
   ]), "choices");
   writeFileSync(path.join(dir, "poll_questionnaire.xlsx"), XLSX.write(form, { type: "buffer", bookType: "xlsx" }));
   return dir;
@@ -84,14 +90,26 @@ test("a data file's codebook and questionnaire are documented side by side, the 
   await expect(panel.getByTestId("ld-conflicts")).toContainText("used from poll_codebook.xlsx");
   await expect(panel.getByTestId("ld-conflicts")).toContainText("2 = Decline to state");
   await expect(panel.getByTestId("ld-undocumented")).toContainText("1");
-  await expect(panel.locator('tr[data-variable="q_extra"]')).toContainText("Name only");
+  // B36-F07: the codebook's one label takes precedence for its code, and the disagreement is listed.
+  const extra = panel.locator('tr[data-variable="q_extra"]');
+  await expect(extra).toContainText("disagree");
+  await expect(extra).toContainText("Answers: Questionnaire");
+  await expect(extra.getByTestId("answer-labels-note")).toContainText("Labels from the codebook take precedence for the answer codes it gives.");
+  await expect(panel.getByTestId("ld-conflicts")).toContainText("5 = Top score");
+  await expect(panel.locator('tr[data-variable="q_free"]')).toContainText("Name only");
   await panel.getByTestId("ld-unmatched").locator("summary").click();
   await expect(panel.getByTestId("ld-unmatched")).toContainText("dropped_var");
   await panel.getByLabel("Show").selectOption("undocumented");
   await expect(panel.locator("tbody tr")).toHaveCount(1);
   if (SHOT) await panel.screenshot({ path: SHOT });
+  await panel.getByLabel("Show").selectOption("all");
+  if (SHOT) await panel.screenshot({ path: SHOT.replace(/\.png$/, "-all.png") });
 
   const table = await ui.buildTable(run, { row: "party_reg" });
   await expect(table.table).toContainText("No Party Preference");
   await expect(table.table).not.toContainText("Decline to state");
+  const extraTable = await ui.buildTable(run, { row: "q_extra" });
+  await expect(extraTable.table).toContainText("Top score");
+  await expect(extraTable.table).toContainText("Middle");
+  await expect(extraTable.table).not.toContainText("Highest");
 });

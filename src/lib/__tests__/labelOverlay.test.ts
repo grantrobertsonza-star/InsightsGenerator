@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLabelOverlay, enrichDictionary } from "../labelOverlay";
+import { buildLabelOverlay, enrichDictionary, resolveLabels } from "../labelOverlay";
 
 const yn = [{ code: "1", label: "Yes" }, { code: "2", label: "No" }];
 
@@ -77,5 +77,55 @@ describe("buildLabelOverlay with a codebook and a questionnaire", () => {
     const o = buildLabelOverlay([{ ...fromQuestionnaire, itemId: "u", source: undefined, options: [{ code: "1", label: "Ja" }, { code: "2", label: "Nee" }] }, fromQuestionnaire]);
     expect(o.valueLabels.Q5).toEqual({ "1": "Yes", "2": "No" });
     expect(o.conflicts).toBeUndefined();
+  });
+});
+
+// B36-F07 (Codex): a codebook giving one code was dropped entirely, so the questionnaire's
+// different label for that code was used with no conflict shown.
+describe("resolveLabels with a single-code source (B36-F07)", () => {
+  const cb = { documentId: "cb", instrumentType: "codebook" };
+  const qn = { documentId: "qn", instrumentType: "questionnaire" };
+  const cbLink = { itemId: "c1", variable: "Q1", code: "Q1", text: "Attitude", options: [{ code: "1", label: "CB positive" }], source: cb };
+  const qnLink = {
+    itemId: "q1", variable: "Q1", code: "Q1", text: "How do you feel?",
+    options: [{ code: "1", label: "QN negative" }, { code: "2", label: "QN positive" }], source: qn,
+  };
+  for (const [order, links] of [["codebook first", [cbLink, qnLink]], ["questionnaire first", [qnLink, cbLink]]] as const) {
+    it(`keeps the codebook's label for its one code and shows the disagreement (${order})`, () => {
+      const { overlay, sources } = resolveLabels([...links]);
+      expect(overlay.valueLabels.Q1).toEqual({ "1": "CB positive", "2": "QN positive" });
+      expect(overlay.conflicts).toHaveLength(1);
+      expect(overlay.conflicts![0]).toMatchObject({ variable: "Q1", applied: { documentId: "cb" }, other: { documentId: "qn", labels: qnLink.options.reduce((m, o) => ({ ...m, [o.code]: o.label }), {}) } });
+      expect(sources.Q1).toMatchObject({ valueLabels: qn, valueLabelsOverriddenBy: cb });
+    });
+  }
+  it("does not record a conflict when the single code agrees", () => {
+    const { overlay, sources } = resolveLabels([{ ...cbLink, options: [{ code: "1", label: "qn  NEGATIVE" }] }, qnLink]);
+    expect(overlay.valueLabels.Q1).toEqual({ "1": "qn  NEGATIVE", "2": "QN positive" });
+    expect(overlay.conflicts).toBeUndefined();
+    expect(sources.Q1.valueLabelsOverriddenBy).toEqual(cb);
+  });
+  it("applies nothing and says so when every source labels only one code", () => {
+    const { overlay, sources } = resolveLabels([cbLink, { ...qnLink, options: [{ code: "99", label: "Don't know" }] }]);
+    expect(overlay.valueLabels.Q1).toBeUndefined();
+    expect(sources.Q1.valueLabelsNotApplied).toEqual(cb);
+    expect(sources.Q1.valueLabels).toBeUndefined();
+  });
+  it("lists a weaker single-code source's disagreement without applying it", () => {
+    const full = { ...cbLink, options: [{ code: "1", label: "Agree" }, { code: "2", label: "Disagree" }] };
+    const { overlay } = resolveLabels([full, { ...qnLink, options: [{ code: "1", label: "Disagree" }] }]);
+    expect(overlay.valueLabels.Q1).toEqual({ "1": "Agree", "2": "Disagree" });
+    expect(overlay.conflicts).toHaveLength(1);
+    expect(overlay.conflicts![0]).toMatchObject({ applied: { documentId: "cb" }, other: { documentId: "qn" } });
+  });
+  it("does not flag a weaker single-code source that agrees on its code", () => {
+    const full = { ...cbLink, options: [{ code: "1", label: "Agree" }, { code: "2", label: "Disagree" }] };
+    expect(resolveLabels([full, { ...qnLink, options: [{ code: "2", label: "disagree" }] }]).overlay.conflicts).toBeUndefined();
+  });
+  it("still applies zero-code links' wording without answer labels", () => {
+    const { overlay, sources } = resolveLabels([{ ...cbLink, options: [] }]);
+    expect(overlay.variableLabels.Q1).toBe("Q1. Attitude");
+    expect(overlay.valueLabels.Q1).toBeUndefined();
+    expect(sources.Q1.valueLabelsNotApplied).toBeUndefined();
   });
 });

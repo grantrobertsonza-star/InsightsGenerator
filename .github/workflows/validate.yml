@@ -42,8 +42,8 @@ jobs:
           python-version: '3.12'
           cache: pip
       # The statistics engine (api/parse-stats-file.py) and its tests need pandas, openpyxl and
-      # pyreadstat; requirements.txt pins them (pandas arrives with pyreadstat).
-      - run: python -m pip install -r requirements.txt pandas
+      # pyreadstat; requirements.txt pins them, pandas included (a supported range).
+      - run: python -m pip install -r requirements.txt
       - run: npm ci
       # The change's tier (AGENTS.md, "Change tiers"): written to the job summary so the review step
       # it needs is visible on the pull request.

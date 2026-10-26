@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: python -m pip install -r requirements.txt pandas
+      - run: python -m pip install -r requirements.txt
       - run: npm ci
       # LibreOffice renders exported Word and PowerPoint files for the export checks.
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-impress

@@ -132,12 +132,12 @@ function Results({ q }: { q: RespondentQuality }) {
       <Section title="Non-answers" testId="rq-non-answers">
         {q.nonAnswer.measured ? (
           <p className="text-muted">
-            {fmt(q.nonAnswer.flagged)} respondents gave non-answers (don&apos;t know, refused and similar, as the file labels them) to{" "}
-            {Math.round(q.nonAnswer.threshold * 100)}% or more of at least {q.nonAnswer.minAnswers} labelled answers, across{" "}
+            {fmt(q.nonAnswer.flagged)} respondents gave non-answers (don&apos;t know, refused and similar, as the file labels them or declares them missing) to{" "}
+            {Math.round(q.nonAnswer.threshold * 100)}% or more of at least {q.nonAnswer.minAnswers} answers, across{" "}
             {fmt(q.nonAnswer.variables)} questions with such codes.
           </p>
         ) : (
-          <p className="text-muted">Not measured: the file does not label which codes are &quot;Don&apos;t know&quot; or &quot;Refused&quot;.</p>
+          <p className="text-muted">Not measured: the file does not label which codes are &quot;Don&apos;t know&quot; or &quot;Refused&quot;, and declares no missing-value codes.</p>
         )}
       </Section>
 

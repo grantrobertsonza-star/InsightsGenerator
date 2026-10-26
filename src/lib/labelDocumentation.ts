@@ -8,7 +8,7 @@
 import { withTenantRead } from "./db";
 import { loadFileOwnVariableDictionary } from "./crosstabs";
 import { getConfirmedItemsForData } from "./instruments";
-import { resolveLabels, labelSourceRank, type LabelSource } from "./labelOverlay";
+import { resolveLabels, labelSourceRank, type AppliedLabelSources, type LabelSource } from "./labelOverlay";
 
 export type LabelOrigin = "data_file" | "codebook" | "questionnaire" | "other";
 
@@ -22,6 +22,12 @@ export type DocumentedVariable = {
   /** Where the label and the answer labels in tables come from; null when there are none. */
   labelFrom: LabelOrigin | null;
   answerLabelsFrom: LabelOrigin | null;
+  /**
+   * Why the answer labels are not simply one source's (B36-F07): a stronger source's codes took
+   * precedence over the base map, or the linked documents label only one answer and nothing was
+   * applied. Null when neither applies or the file's own answer labels are used.
+   */
+  answerLabelsNote: string | null;
   conflict: boolean;
 };
 
@@ -36,6 +42,17 @@ export type LabelDocumentation = {
 };
 
 export const MAX_ENTRIES_LISTED = 200;
+
+const SOURCE_NAME: Record<LabelOrigin, string> = { data_file: "the data file", codebook: "the codebook", questionnaire: "the questionnaire", other: "a linked document" };
+
+function answerLabelsNoteOf(src: AppliedLabelSources[string] | undefined): string | null {
+  if (!src) return null;
+  if (src.valueLabelsOverriddenBy !== undefined)
+    return `Labels from ${SOURCE_NAME[originOf(src.valueLabelsOverriddenBy)]} take precedence for the answer codes it gives.`;
+  if (src.valueLabelsNotApplied !== undefined)
+    return `Not applied: ${SOURCE_NAME[originOf(src.valueLabelsNotApplied)]} labels only one answer, so the answers are not treated as labelled categories.`;
+  return null;
+}
 
 const originOf = (s: LabelSource | null | undefined): LabelOrigin =>
   s?.instrumentType === "codebook" ? "codebook" : s?.instrumentType === "questionnaire" ? "questionnaire" : "other";
@@ -101,6 +118,7 @@ export async function loadLabelDocumentation(tenantId: string, runId: string, da
       // The engine's rule (_apply_overlay, enrichDictionary): the file's own label is never replaced.
       labelFrom: own ? "data_file" : src?.variableLabel !== undefined ? originOf(src.variableLabel) : null,
       answerLabelsFrom: v.labelled ? "data_file" : src?.valueLabels !== undefined ? originOf(src.valueLabels) : null,
+      answerLabelsNote: v.labelled ? null : answerLabelsNoteOf(src),
       conflict: conflicted.has(v.name),
     };
   });
