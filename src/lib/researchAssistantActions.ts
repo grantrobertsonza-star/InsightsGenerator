@@ -1,21 +1,28 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { askResearchAssistant } from "./researchAssistant";
+import { askResearchAssistant, loadAssistantConversation, RequestInProgressError, type AssistantMessage } from "./researchAssistant";
+import { askGeneralAssistant, checkedHistory } from "./generalAssistant";
+import { checkedPageContext } from "./assistantLoop";
 import { storeUploadedDocument } from "./documentUpload";
 import { extractFindingsFromDocument } from "./extractFindings";
 import { detectDuplicateFindings } from "./dedupe";
 import { refreshVerdicts } from "./verifyFindings";
 import { refreshStatedInsightValidations } from "./validateStatedInsights";
 import { refreshInsights } from "./insightGenerator";
-import { generateObjectiveCandidates } from "./objectiveFramer";
 import { generateDecisionCandidates } from "./decisionFramer";
 import { refreshSynthesizedInsights } from "./insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "./synthesizedInsightQualityScorer";
 import { refreshRecommendations } from "./recommendationAgent";
 import { withTenant } from "./db";
+import { requireTenantId } from "./requestContext";
 
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+/** A database without migration 0108 (assistant_messages.request_id) says so, as the other migration checks do. */
+function needsMigration0108(message: string): string {
+  return /request_id/.test(message) && /(column|does not exist|constraint|ON CONFLICT)/i.test(message)
+    ? "This needs migration 0108 applied first (npx.cmd supabase migration up)."
+    : message;
+}
 
 /**
  * The chat-box server action behind the Research assistant card: sends one
@@ -27,14 +34,20 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  */
 export async function sendAssistantMessage(
   runId: string,
-  message: string
-): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  message: string,
+  page?: unknown,
+  requestId?: unknown,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string; stillRunning?: boolean }> {
+  const TENANT_ID = await requireTenantId();
   try {
-    const { reply } = await askResearchAssistant(TENANT_ID, runId, message);
+    if (requestId !== undefined && requestId !== null && typeof requestId !== "string") throw new Error("The request id is not valid.");
+    const { reply } = await askResearchAssistant(TENANT_ID, runId, message, checkedPageContext(page), requestId ?? null);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, reply };
   } catch (error) {
-    const messageText = error instanceof Error ? error.message : String(error);
+    // Another send of this request is still answering it: nothing was run or stored by this one.
+    if (error instanceof RequestInProgressError) return { ok: false, error: error.message, stillRunning: true };
+    const messageText = needsMigration0108(error instanceof Error ? error.message : String(error));
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'research_assistant_error', $3)`,
@@ -45,24 +58,51 @@ export async function sendAssistantMessage(
   }
 }
 
+/**
+ * The floating drawer's copy of a project's conversation, read when it opens. A failed read is an
+ * error the drawer shows; it is never shown as an empty conversation.
+ */
+export async function loadAssistantMessages(
+  runId: string,
+): Promise<{ ok: true; messages: AssistantMessage[] } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  if (!/^[0-9a-f-]{36}$/i.test(runId)) return { ok: false, error: "Not a project." };
+  try {
+    return { ok: true, messages: await loadAssistantConversation(TENANT_ID, runId, true) };
+  } catch (error) {
+    return { ok: false, error: needsMigration0108(error instanceof Error ? error.message : String(error)) };
+  }
+}
+
+/**
+ * The drawer outside a project (dashboard, Programs, Knowledge base, Manual): how-the-app and method
+ * questions, not stored. The earlier turns come from the drawer and are checked (generalAssistant.ts).
+ */
+export async function sendGeneralAssistantMessage(
+  message: string,
+  history: unknown,
+  page?: unknown,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const { reply } = await askGeneralAssistant(TENANT_ID, String(message ?? ""), checkedHistory(history), checkedPageContext(page));
+    return { ok: true, reply };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 // Same non-fatal, logged-to-trace resilience as page.tsx's own
 // refreshObjectiveCandidates/refreshDecisionCandidates: neither framer
 // having nothing to propose (or failing) should stop a document uploaded
 // here from otherwise going through the full extract/verify/insight chain.
 async function refreshObjectiveCandidatesQuietly(runId: string) {
-  try {
-    await generateObjectiveCandidates(TENANT_ID, runId);
-  } catch (error) {
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
-        [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
-      );
-    });
-  }
+  // No-op by design: objectives are optional and never inferred automatically.
+  void runId;
 }
 
 async function refreshDecisionCandidatesQuietly(runId: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
   } catch (error) {
@@ -90,6 +130,7 @@ export async function uploadAssistantDocument(
   runId: string,
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   const file = formData.get("file") as File | null;
   if (!file || file.size === 0) {
     return { ok: false, error: "No file selected." };
@@ -98,7 +139,10 @@ export async function uploadAssistantDocument(
   try {
     const documentId = await storeUploadedDocument(TENANT_ID, runId, "report", file);
     try {
-      await extractFindingsFromDocument(TENANT_ID, runId, documentId);
+      const result = await extractFindingsFromDocument(TENANT_ID, runId, documentId);
+      // REP-IN-002: a publication that rolled back returns published: false rather than
+      // throwing; route it to the same error trace as a thrown failure.
+      if (!result.published) throw new Error(result.notPublishedReason ?? "the reading of this document was not saved");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await withTenant(TENANT_ID, async (client) => {

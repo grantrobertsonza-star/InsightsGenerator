@@ -61,9 +61,26 @@ describe("cohenKappa", () => {
     expect(k.kappa).toBeCloseTo(0);
   });
 
-  it("is undefined when one side never varies", () => {
-    expect(cohenKappa(pairs([[true, true, 10]])).kappa).toBeNull();
+  it("is undefined only when BOTH sides never vary in the same direction (chance agreement reaches 1)", () => {
+    expect(cohenKappa(pairs([[true, true, 10]])).kappa).toBeNull(); // both always yes
+    expect(cohenKappa(pairs([[false, false, 10]])).kappa).toBeNull(); // both always no
     expect(cohenKappa([]).kappa).toBeNull();
+  });
+
+  // Coding-quality finding alongside ANA-QUAL-001/ANA-QUAL-002: the comment above cohenKappa used
+  // to say kappa is undefined whenever EITHER coder is constant, which this disproves - one side
+  // being constant while the other still varies does not push expected agreement to 1, so kappa
+  // stays defined (and is informative: a constant model next to a varying researcher is real
+  // disagreement, not an undefined case to hide).
+  it("stays defined when only one coder is constant and the other still varies", () => {
+    const k = cohenKappa(
+      pairs([
+        [true, true, 5], // model always says yes; researcher agrees half the time
+        [true, false, 5],
+      ]),
+    );
+    expect(k.kappa).not.toBeNull();
+    expect(k.kappa).toBeCloseTo(0, 5); // model's constant "yes" carries no information here
   });
 
   it("labels bands and warns on thin samples", () => {

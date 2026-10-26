@@ -1,0 +1,9 @@
+{
+  "reason": "Frozen omitted-effect note incorrectly said its z/p equalled purchase; pooled proportion is .6 not .5. Recomputed independently, no application function. Expected direction/significance unchanged. Original key is unchanged.",
+  "convenience_z": 2.886751345948128,
+  "convenience_p": 0.0038924171227786367,
+  "nps_normal_95": [
+    14.377053139547387,
+    35.622946860452615
+  ]
+}

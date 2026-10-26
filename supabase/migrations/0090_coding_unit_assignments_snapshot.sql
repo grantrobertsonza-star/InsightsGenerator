@@ -1,0 +1,20 @@
+-- ANA-QUAL-002 (counter-review: "never silently resolve an old assignment to different current
+-- text"): coding_unit_assignments (migration 0085) recorded WHICH unit a code came from, but not
+-- what that unit's text actually WAS at the time - reconstructCodedUnitText (qualCoding.ts)
+-- re-derives it fresh from whatever coding_segments.text currently holds, every time it is
+-- called. That is correct for a transcript that has never changed since coding, but gives no way
+-- to tell a stable passage apart from one whose re-derivation has quietly started reading
+-- differently (eg because the footer-detection pass that strips a repeated disclaimer - run over
+-- every segment of the document together, not just the one being read - sees a different set of
+-- segment texts than it did when the code was first applied, and infers different footers).
+--
+-- unit_text is the exact (footer-stripped) passage the model was actually shown for this unit,
+-- captured once at the moment the code was applied (extractThemes.ts's own unitsOf output,
+-- already computed for the apply call itself - nothing new is derived to fill this column).
+-- Nullable and purely additive: a row written before this migration simply has no snapshot
+-- (existing behaviour - live re-derivation only - is exactly what callers get for it), and this
+-- does not change coding_unit_assignments' primary key, its cascade-delete behaviour, or any
+-- existing query against it.
+--
+-- Run npm run backup before applying.
+alter table coding_unit_assignments add column if not exists unit_text text;

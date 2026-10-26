@@ -6,6 +6,10 @@ import {
   type InputCompleteness,
   type VerificationBasis,
 } from "@/lib/discoveryClassification";
+import { CAVEAT_LABELS, caveatLabel } from "@/lib/caveatLabels";
+import { EARLIER_DECISIONS_LABEL } from "@/lib/decisionContext";
+import { SUPPORT_STATUS_LABEL } from "@/lib/supportStatusShared";
+import { FigureCheckFor } from "./FigureCheckNotice";
 
 type VerdictTier = "robust" | "use_with_caution";
 
@@ -24,6 +28,10 @@ type Insight = {
   from_report: boolean;
   verification_basis: VerificationBasis;
   caveats: string[];
+  written_for_earlier_decisions: boolean;
+  // GT-006: the pre-insight's support from the shared rule; summary is null when current.
+  support_status: "current" | "stale" | "invalid" | "unknown";
+  support_summary: string | null;
 };
 
 // Short, plain-language labels for the fixed caveat vocabulary (see the
@@ -31,20 +39,11 @@ type Insight = {
 // caveat this map doesn't recognize still renders, just with its raw name
 // (underscores swapped for spaces) rather than disappearing silently, so a
 // future caveat type is never invisible while this map catches up.
-const CAVEAT_LABELS: Record<string, string> = {
-  sampling_assumed_random: "Random sampling assumed",
-  base_size_small: "Small base",
-  base_size_borderline: "Borderline base",
-  base_size_unknown: "Base size unknown",
-  std_unknown: "Spread unknown",
-  uncorrected_multiple_comparisons: "Multiple comparisons",
-  post_hoc_after_significant_anova: "Post-hoc (after significant ANOVA)",
-  insufficient_n_for_test: "Too little data to test",
-};
-
-function caveatLabel(caveat: string): string {
-  return CAVEAT_LABELS[caveat] ?? caveat.replace(/_/g, " ");
-}
+//
+// FND-001/REP-OUT-001 (second counter-review): moved to src/lib/caveatLabels.ts so the DOCX/
+// PPTX export routes can render the same label for the same tag, rather than keeping a second,
+// independently-drifting copy here. No behaviour change - same map, same fallback, imported
+// instead of declared inline.
 
 type VerdictSummary = { verdictedCount: number; passedCount: number };
 type FailedVerdictSample = {
@@ -297,6 +296,26 @@ export default function InsightsReview({
                     {caveatLabel(caveat)}
                   </span>
                 ))}
+                {insight.support_status !== "current" && (
+                  <span
+                    data-testid="pre-insight-support"
+                    data-support-status={insight.support_status}
+                    title={insight.support_summary ?? undefined}
+                    className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      insight.support_status === "invalid" ? "bg-danger-light text-danger" : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {SUPPORT_STATUS_LABEL[insight.support_status]}
+                  </span>
+                )}
+                {insight.written_for_earlier_decisions && (
+                  <span
+                    title="The accepted decisions changed after this insight was written; it has not been rewritten for the current ones."
+                    className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                  >
+                    {EARLIER_DECISIONS_LABEL}
+                  </span>
+                )}
               </div>
               {verificationCaption(insight.verification_basis, inputState) && (
                 <p className="mb-1.5 text-xs italic text-slate-500">
@@ -306,6 +325,7 @@ export default function InsightsReview({
               <div className="mb-2 text-sm font-semibold text-foreground">
                 {insight.headline}
               </div>
+              <FigureCheckFor kind="preInsights" id={insight.id} />
               <dl className="space-y-1.5 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-muted">

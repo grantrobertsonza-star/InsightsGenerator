@@ -42,6 +42,8 @@ const INK = "1A1A1A";
 const MUTED = "595959";
 const RULE = "D9D9D9";
 const ACCENT = "1E2761";
+// A qualification that must not read as ordinary body text (FND-001 framing notes).
+const QUALIFY = "A1261B";
 
 const BODY_FONT = "Calibri";
 const DISPLAY_FONT = "Cambria";
@@ -136,13 +138,44 @@ function chartImageParagraph(image: {
 export type NarrativeReportPillar = {
   headline: string;
   so_what: string;
-  insights: { headline: string; observation: string; implication: string }[];
+  insights: {
+    headline: string;
+    observation: string;
+    implication: string;
+    /** FND-001/REP-OUT-001 (second counter-review): export-worthy caveat labels aggregated
+     * live, at export time, from every still-eligible (non-rejected) finding this insight was
+     * built from - never from deck_narratives.caveats, which is model-authored free text and
+     * does not qualify specific evidence numbers (see that table's own migration comment).
+     * Omitted or [] when this insight carries no export-worthy caveat, so it renders with no
+     * extra line - this must stay invisible when there is nothing to say. Distinct from
+     * omittedInsightCount below: that says an insight is no longer current; this says a still-
+     * current insight carries residual uncertainty. The two never merge into one sentence. */
+    caveats?: string[];
+    /** FND-001: set when this insight's support changed since it was drafted, or cannot be
+     * checked (supportStatus.ts summariseSupport) - e.g. "Support changed since drafted: the
+     * figures in "..." changed." Rendered as its own line, separate from caveats: a caveat
+     * qualifies current evidence; this says the evidence itself moved. Omitted when the support
+     * is current, so a current insight renders exactly as before. */
+    supportNote?: string;
+  }[];
+  /** REP-OUT-001: how many of this pillar's ORIGINAL referenced insights were left out of
+   * `insights` above because they (or a finding one of their pre-insights depends on) are no
+   * longer accepted - see the export routes' own comment on the `insightsResult` query. Omitted
+   * or 0 when nothing was left out, so a caller only needs to check this before rendering a
+   * pillar, never diff insight_ids itself. This replaces a silent `.filter(Boolean)` drop: the
+   * reader of this report is told a pillar thinned out, rather than seeing a shorter pillar with
+   * no explanation that anything changed since it was written. */
+  omittedInsightCount?: number;
+  /** FND-001 / REP-OUT-001: what was left out of this pillar and why (headline plus reason), so
+   * the reader sees which conclusions were withdrawn, not only how many. omittedInsightCount
+   * stays equal to its length. */
+  excluded?: { headline: string; reason: string }[];
 };
 
 export type NarrativeReportObjectiveItem = {
   item_kind: "objective" | "decision";
   item_text: string;
-  status: "resolved" | "partial" | "gap";
+  status: "resolved" | "partial" | "gap" | "inferred";
   conclusion: string;
 };
 
@@ -152,6 +185,14 @@ export type NarrativeReportRecommendation = {
   timeline: string;
   metric: string;
   priority: "high" | "medium" | "low";
+  /** FND-001/REP-OUT-001 (second counter-review): same meaning and same aggregation rule as
+   * NarrativeReportPillar['insights'][number]['caveats'] - a recommendation is itself a claim
+   * anchored to a synthesized insight, so it is qualified the same way, via the insight it is
+   * anchored to (recommendations.synthesized_insight_id). */
+  caveats?: string[];
+  /** FND-001: inherited from the anchor insight's support status; same meaning as
+   * NarrativeReportPillar['insights'][number]['supportNote']. */
+  supportNote?: string;
 };
 
 export type NarrativeReportDocument = {
@@ -177,12 +218,38 @@ export type NarrativeReportChartImage = {
 
 export type NarrativeReportInput = {
   title: string;
+  /** REP-OUT-001 / FND-001: true when at least one pillar had an insight omitted for the reason
+   * NarrativeReportPillar['omittedInsightCount'] documents - surfaced once, at the top of the
+   * Insights section, as a single run-level note rather than only the per-pillar counts, so a
+   * reader who skims past one pillar's note still sees that this narrative's framing may be out
+   * of date overall. This does not rewrite governingThought/executiveSummary - closing that
+   * fully is a narrative-GENERATION concern (regenerating the narrative text itself), out of
+   * scope for an export-time fix; this only flags that the framing may no longer match the
+   * evidence it was written from. */
+  narrativeMayBeStale?: boolean;
+  /** FND-001: the qualification for the narrative's saved framing (narrativeFramingQualification),
+   * printed directly after the executive summary and after the governing thought - beside the
+   * passages it qualifies, not only as a distant note. The framing text itself is printed as
+   * saved. Omitted when every insight the narrative cites has current support. */
+  framingNote?: string;
+  /** Numerical traceability (numberTrace.ts): the narrative's own figure-check note (figures that
+   * need review or are unsupported), or that the checks could not be read. Rendered once at the
+   * top of the Insights section. Omitted when every figure traced or nothing was checked. */
+  figureNote?: string;
+  /** FND-001 / REP-OUT-001: every insight and recommendation the generated narrative referenced
+   * that this export left out because its support is no longer valid or it is no longer
+   * accepted, with the reason. Rendered as its own "Excluded from this report" section so a
+   * withdrawn conclusion is visible rather than silently missing. Omitted or [] when nothing was
+   * excluded. */
+  excludedFromReport?: { kind: "insight" | "recommendation" | "contradiction"; headline: string; reason: string }[];
   decisionStatement: string | null;
   audience: string | null;
   businessProblem: string | null;
   researchObjective: string | null;
   entryPoint: "generate" | "validate" | null;
   methodology: string | null;
+  /** The latest methodology reading failed and none was saved before (methodologyStatus.latestMethodologyFailure). */
+  methodologyUnread?: boolean;
   executiveSummary: string;
   situation: string;
   complication: string;
@@ -211,6 +278,7 @@ const statusLabel: Record<NarrativeReportObjectiveItem["status"], string> = {
   resolved: "Resolved",
   partial: "Partially answered",
   gap: "Gap",
+  inferred: "Inferred, not independently tested",
 };
 
 const priorityLabel: Record<NarrativeReportRecommendation["priority"], string> =
@@ -304,6 +372,8 @@ function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
         body(`“${insight.implication}”`, { italic: true, color: MUTED }),
       );
       out.push(body(insight.provenanceCaption, { color: MUTED }));
+      // FND-001: changed or uncheckable support, said beside the insight it qualifies.
+      if (insight.supportNote) out.push(body(insight.supportNote, { italic: true, color: MUTED }));
     }
   }
 
@@ -318,7 +388,7 @@ function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
     for (const finding of d.netNewFindings) {
       out.push(
         bullet(
-          `${finding.theme ? `${finding.theme}: ` : ""}${finding.text} (${verdictTierLabel[finding.verdictTier] ?? finding.verdictTier})`,
+          `${finding.theme ? `${finding.theme}: ` : ""}${finding.text} (${verdictTierLabel[finding.verdictTier] ?? finding.verdictTier}${finding.source ? `; source: ${finding.source}` : ""})`,
         ),
       );
     }
@@ -374,7 +444,7 @@ function buildDiscoverySection(d: DiscoveryReportData): Paragraph[] {
       );
       out.push(
         body(
-          `Contradicted by ${by}: “${c.contradictingText}”. ${c.rationale}`,
+          `Contradicted by ${by}: “${c.contradictingText}”. ${c.rationale}${c.supportNote ? ` ${c.supportNote}` : ""}`,
           { color: MUTED },
         ),
       );
@@ -503,6 +573,7 @@ export async function buildNarrativeReportDocx(
   if (input.executiveSummary) {
     children.push(heading("Executive summary", HeadingLevel.HEADING_1));
     children.push(body(input.executiveSummary));
+    if (input.framingNote) children.push(body(input.framingNote, { italic: true, color: QUALIFY }));
   }
 
   // --- Introduction: business problem, objectives, background --------
@@ -539,6 +610,15 @@ export async function buildNarrativeReportDocx(
   children.push(heading("Methodology", HeadingLevel.HEADING_1));
   if (input.methodology) {
     children.push(body(input.methodology));
+  } else if (input.methodologyUnread) {
+    // RR-F02: the last reading failed and nothing was read before, so whether the documents state
+    // a methodology is unknown; saying none was stated would turn unknown into false.
+    children.push(
+      body(
+        "The research methodology could not be read from the uploaded brief, proposal, or report when this report " +
+          "was prepared. It may be stated in them; check the source documents for how the underlying evidence was gathered.",
+      ),
+    );
   } else {
     children.push(
       body(
@@ -606,6 +686,19 @@ export async function buildNarrativeReportDocx(
       body(input.governingThought, { italic: true, color: ACCENT }),
     );
   }
+  if (input.governingThought && input.framingNote) {
+    children.push(body(input.framingNote, { italic: true, color: QUALIFY }));
+  } else if (input.narrativeMayBeStale) {
+    children.push(
+      body(
+        "This narrative's framing may be out of date: one or more insights it referenced when generated are no longer current. Regenerate it to incorporate the change.",
+        { italic: true, color: MUTED },
+      ),
+    );
+  }
+  if (input.figureNote) {
+    children.push(body(input.figureNote, { italic: true, color: MUTED }));
+  }
 
   input.pillars.forEach((pillar, index) => {
     children.push(
@@ -631,6 +724,17 @@ export async function buildNarrativeReportDocx(
     if (pillar.so_what) {
       children.push(body(pillar.so_what, { italic: true, color: MUTED }));
     }
+    if (pillar.omittedInsightCount) {
+      children.push(
+        body(
+          `${pillar.omittedInsightCount} insight${pillar.omittedInsightCount === 1 ? "" : "s"} referenced here ${pillar.omittedInsightCount === 1 ? "is" : "are"} no longer current and ${pillar.omittedInsightCount === 1 ? "has" : "have"} been left out.`,
+          { italic: true, color: MUTED },
+        ),
+      );
+      for (const item of pillar.excluded ?? []) {
+        children.push(body(`Left out: ${item.headline} (${item.reason})`, { italic: true, color: MUTED }));
+      }
+    }
     for (const insight of pillar.insights) {
       children.push(
         new Paragraph({
@@ -649,6 +753,17 @@ export async function buildNarrativeReportDocx(
       children.push(
         body(`“${insight.implication}”`, { italic: true, color: MUTED }),
       );
+      if (insight.supportNote) {
+        children.push(body(insight.supportNote, { italic: true, color: MUTED }));
+      }
+      if (insight.caveats && insight.caveats.length > 0) {
+        children.push(
+          body(`Caveats: ${insight.caveats.join("; ")}.`, {
+            italic: true,
+            color: MUTED,
+          }),
+        );
+      }
     }
   });
 
@@ -683,6 +798,17 @@ export async function buildNarrativeReportDocx(
         }),
       );
       children.push(body(item.conclusion, { color: MUTED }));
+    }
+    if (input.objectiveItems.some((i) => i.status === "inferred")) {
+      children.push(
+        body(
+          "Note on inferred objectives: where no objective was stated, objectives were generated from this " +
+            "project's own evidence. Because the same evidence was then used to check them, they cannot " +
+            "show that the research answered what was asked, so no verdict is given. Treat them as themes " +
+            "the evidence points to, and set a stated objective if a real test is needed.",
+          { italic: true, color: MUTED },
+        ),
+      );
     }
 
     if (input.unmappedInsightHeadlines.length > 0) {
@@ -740,6 +866,37 @@ export async function buildNarrativeReportDocx(
         { color: MUTED },
       ),
     );
+    if (rec.supportNote) {
+      children.push(body(rec.supportNote, { italic: true, color: MUTED }));
+    }
+    if (rec.caveats && rec.caveats.length > 0) {
+      children.push(
+        body(`Caveats: ${rec.caveats.join("; ")}.`, {
+          italic: true,
+          color: MUTED,
+        }),
+      );
+    }
+  }
+
+  // FND-001 / REP-OUT-001: withdrawn conclusions, listed rather than silently dropped.
+  const excludedFromReport = input.excludedFromReport ?? [];
+  if (excludedFromReport.length > 0) {
+    children.push(rule());
+    children.push(heading("Excluded from this report: needs review", HeadingLevel.HEADING_1));
+    children.push(
+      body(
+        "These conclusions and contradictions were part of this report's generated content but are not reported above, because the evidence " +
+          "they rested on was rejected or removed, or they are no longer accepted. Review them in the app before " +
+          "relying on this report.",
+        { color: MUTED },
+      ),
+    );
+    for (const item of excludedFromReport) {
+      children.push(
+        body(`${item.kind === "insight" ? "Insight" : item.kind === "contradiction" ? "Contradiction" : "Recommendation"}: ${item.headline} (${item.reason})`),
+      );
+    }
   }
 
   // --- Next steps: gaps worth following up, plus scope & limitations -----

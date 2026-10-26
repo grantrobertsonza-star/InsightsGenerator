@@ -2,10 +2,17 @@ import { NextResponse } from "next/server";
 import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
 import { addTitleSlide, addFooter, CARD_LAYOUT, safeFileStem } from "@/lib/deckSlides";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { recommendationDecisionContextAvailable, recommendationDecisionStateSql } from "@/lib/decisionContext";
+import { decisionTag, decisionsWrittenFor } from "@/lib/recommendationQualification";
+import { loadPreInsightSupportOrUnchecked } from "@/lib/supportStatus";
+import { summariseSupport, type SupportStatus } from "@/lib/supportStatusShared";
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportRecommendation = {
+  insight_id: string;
+  source: string;
+  decision_context: string | null;
+  decision_state: "earlier" | "unknown" | null;
   theme: string | null;
   action_text: string;
   owner_role: string;
@@ -31,20 +38,28 @@ const priorityColor: Record<ExportRecommendation["priority"], string> = {
  * too, each tagged with its status.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") === "all" ? "all" : "accepted";
 
-  const [run, recommendations] = await withTenant(TENANT_ID, async (client) => {
+  const [run, allRecommendations] = await withTenant(TENANT_ID, async (client) => {
     const runResult = await client.query<{
       project_name: string | null;
       decision_statement: string | null;
       audience: string | null;
     }>("select project_name, decision_statement, audience from runs where id = $1", [runId]);
 
+    // GT-004: each recommendation's own decision record (0102), judged by the shared rule.
+    const recorded = await recommendationDecisionContextAvailable(client);
     const recommendationsResult = await client.query<ExportRecommendation>(
-      `select f.theme, r.action_text, r.owner_role, r.timeline, r.priority, r.status
+      `select r.insight_id, r.source, ${recorded ? "r.decision_context" : "null::text as decision_context"},
+              ${recommendationDecisionStateSql("r", "run.decision_statement", recorded)} as decision_state,
+              f.theme, r.action_text, r.owner_role, r.timeline, r.priority, r.status
        from recommendations r
+       join runs run on run.id = r.run_id
        join insights i on i.id = r.insight_id
        join findings f on f.id = i.finding_id
        where r.run_id = $1${scope === "accepted" ? " and r.status = 'accepted'" : ""}
@@ -57,6 +72,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!run) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
+
+  // GT-004 / GT-006: in the default (accepted, client-facing) scope a recommendation whose
+  // pre-insight's support is no longer valid is left out and listed on a closing slide; changed or
+  // uncheckable support, and recommendations written for earlier or unrecorded decisions, stay,
+  // tagged in words on the card. scope=all is the audit view: everything stays, tagged.
+  const support = await loadPreInsightSupportOrUnchecked(TENANT_ID, runId, Array.from(new Set(allRecommendations.map((r) => r.insight_id))));
+  const supportTag: Record<SupportStatus, string> = {
+    current: "",
+    stale: " · SUPPORT CHANGED",
+    unknown: " · SUPPORT NOT CHECKED",
+    invalid: " · SUPPORT NO LONGER VALID",
+  };
+  const leftOut = scope === "accepted" ? allRecommendations.filter((r) => support.statusOf(r.insight_id).status === "invalid") : [];
+  const recommendations = scope === "accepted" ? allRecommendations.filter((r) => support.statusOf(r.insight_id).status !== "invalid") : allRecommendations;
 
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
@@ -73,7 +102,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (recommendations.length === 0) {
     const emptySlide = pptx.addSlide();
     emptySlide.addText(
-      scope === "accepted"
+      leftOut.length > 0
+        ? "Every accepted recommendation rests on support that is no longer valid. They are listed on the last slide."
+        : scope === "accepted"
         ? "No recommendations have been accepted yet. Review and accept recommendations in the app, then export again."
         : "No recommendations have been generated for this project yet.",
       { x: 0.6, y: 2.3, w: 8.8, h: 1, fontSize: 16, color: "374151" }
@@ -132,7 +163,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               : " · Pending review"
             : "";
 
-        slide.addText(`${rec.priority.toUpperCase()} PRIORITY${statusTag}`, {
+        slide.addText(`${rec.priority.toUpperCase()} PRIORITY${statusTag}${decisionTag(rec)}${supportTag[support.statusOf(rec.insight_id).status]}`, {
           x: x + 0.15,
           y: y + 0.08,
           w: CARD_W - 0.3,
@@ -148,8 +179,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             { text: rec.action_text, options: { fontSize: 11.5, bold: true, color: "111827", breakLine: true } },
             {
               text: `${rec.owner_role} · ${rec.timeline}`,
-              options: { fontSize: 9.5, italic: true, color: "6B7280" },
+              options: { fontSize: 9.5, italic: true, color: "6B7280", breakLine: rec.decision_state !== null },
             },
+            // The decisions it was written for, when they are not the current ones (or unknown).
+            ...(rec.decision_state !== null
+              ? [{ text: decisionsWrittenFor(rec), options: { fontSize: 9, color: "B45309" } }]
+              : []),
           ],
           {
             x: x + 0.15,
@@ -164,6 +199,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
       addFooter(slide, deckTitle, `${theme} · ${page + 1}/${pageCount}`);
     }
+  }
+
+  if (leftOut.length > 0) {
+    const slide = pptx.addSlide();
+    slide.addText("Left out: support no longer valid", { x: 0.5, y: 0.35, w: 9, h: 0.55, fontSize: 22, bold: true, color: "B91C1C" });
+    slide.addText(
+      leftOut.map((r) => ({ text: `${r.action_text}. ${summariseSupport(support.statusOf(r.insight_id))}`, options: { fontSize: 11, color: "111827", breakLine: true } })),
+      { x: 0.5, y: 1.0, w: 9, h: 4.2, valign: "top", autoFit: true },
+    );
+    addFooter(slide, deckTitle, "Left out");
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;

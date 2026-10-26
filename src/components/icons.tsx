@@ -97,6 +97,15 @@ export function TrashIcon({ className }: IconProps) {
   );
 }
 
+export function PencilIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  );
+}
+
 export function EyeIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>
@@ -204,6 +213,18 @@ export function BookIcon({ className }: IconProps) {
     <svg {...base} className={className}>
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </svg>
+  );
+}
+
+export function LibraryIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 4v16" />
+      <path d="M9 4v16" />
+      <path d="M14 5l4.5 14.5" />
+      <path d="M19 4l-3 .9" />
+      <path d="M3 20h12" />
     </svg>
   );
 }

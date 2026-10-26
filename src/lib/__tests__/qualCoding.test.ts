@@ -7,6 +7,11 @@ import {
   pageForSegment,
   matchQuote,
   parseAssignments,
+  parseUnitAssignments,
+  parseUnitDecisions,
+  splitIntoUnits,
+  findRepeatedFooters,
+  stripFooters,
   pickExemplar,
   segmentTranscript,
   tallyQuoteMatches,
@@ -405,5 +410,154 @@ describe("segmentTranscriptDetailed, several sessions in one file", () => {
     const u01 = r.profiles.find((p) => p.speaker === "U01");
     expect(u01?.fields["Session title"]).toBe("Unstructured interview");
     expect(u01?.fields.Profile).toContain("Nandi");
+  });
+});
+
+describe("splitIntoUnits", () => {
+  it("returns one unit for a short single statement", () => {
+    expect(splitIntoUnits("The fees are too high for what we get.")).toHaveLength(1);
+  });
+
+  it("splits a multi-concept turn into its sentences", () => {
+    const turn =
+      "The bundles confuse me because I never know what is included. I also do not trust the app with my money. My sister uses it daily and says it is fine.";
+    const units = splitIntoUnits(turn);
+    expect(units).toHaveLength(3);
+    expect(units[1]).toContain("trust the app");
+  });
+
+  it("does not split on abbreviations or list numbers", () => {
+    const units = splitIntoUnits(
+      "Things like e.g. airtime and data bundles are confusing to me. Number 3. is the one I dislike most of all.",
+    );
+    expect(units).toHaveLength(2);
+  });
+
+  it("joins a short fragment to the sentence it belongs with", () => {
+    const units = splitIntoUnits("Yes. Because the fees are far too high for what I get.");
+    expect(units).toHaveLength(1);
+    const tail = splitIntoUnits("The fees are far too high for what I get. Yes.");
+    expect(tail).toHaveLength(1);
+  });
+
+  it("is deterministic and returns nothing for blank text", () => {
+    const t = "First thing I said here today. Second thing I said after that.";
+    expect(splitIntoUnits(t)).toEqual(splitIntoUnits(t));
+    expect(splitIntoUnits("   ")).toEqual([]);
+  });
+});
+
+describe("parseUnitAssignments", () => {
+  it("takes the union of unit codes per turn and keeps which unit carried which", () => {
+    const counts = new Map([[54, 3]]);
+    const r = parseUnitAssignments(
+      [{ index: 54, units: [{ unit: 1, codes: [2] }, { unit: 2, codes: [5, 2] }, { unit: 3, codes: [] }] }],
+      counts,
+      6,
+    );
+    expect(r.assignments.get(54)).toEqual([2, 5]);
+    expect(r.unitCodes.get(54)).toEqual([
+      { unit: 1, codes: [2] },
+      { unit: 2, codes: [2, 5] },
+    ]);
+  });
+
+  it("ignores turns outside the batch, units out of range and codes outside the codebook", () => {
+    const counts = new Map([[7, 2]]);
+    const r = parseUnitAssignments(
+      [
+        { index: 99, units: [{ unit: 1, codes: [1] }] },
+        { index: 7, units: [{ unit: 3, codes: [1] }, { unit: 1, codes: [0, 9, 1.5, 4] }] },
+      ],
+      counts,
+      5,
+    );
+    expect(r.assignments.has(99)).toBe(false);
+    expect(r.assignments.get(7)).toEqual([4]);
+  });
+
+  it("returns empty maps for malformed output", () => {
+    const r = parseUnitAssignments("nope", new Map([[1, 1]]), 3);
+    expect(r.assignments.size).toBe(0);
+  });
+});
+
+describe("parseUnitDecisions", () => {
+  it("keeps only units that meet the code, per turn, in order", () => {
+    const { hits } = parseUnitDecisions(
+      [
+        { id: "54.3", why: "x", meets: true },
+        { id: "54.1", why: "x", meets: true },
+        { id: "54.2", why: "x", meets: false },
+        { id: "60.1", why: "x", meets: true },
+      ],
+      new Map([[54, 3], [60, 1]]),
+    );
+    expect(hits.get(54)).toEqual([1, 3]);
+    expect(hits.get(60)).toEqual([1]);
+  });
+
+  it("ignores malformed ids, other turns, out-of-range units and duplicates", () => {
+    const { hits } = parseUnitDecisions(
+      [
+        { id: "abc", meets: true },
+        { id: "99.1", meets: true },
+        { id: "5.4", meets: true },
+        { id: "5.1", meets: true },
+        { id: "5.1", meets: true },
+        { id: "5.2", meets: "yes" },
+      ],
+      new Map([[5, 2]]),
+    );
+    expect(hits.get(5)).toEqual([1]);
+    expect(hits.size).toBe(1);
+  });
+
+  it("returns an empty result for malformed output", () => {
+    const r = parseUnitDecisions(null, new Map());
+    expect(r.hits.size).toBe(0);
+    expect(r.decided.size).toBe(0);
+  });
+
+  // ANA-QUAL-001: an explicit "no" and an omitted decision must be distinguishable. Both leave a
+  // unit out of `hits`, but only a unit the model actually ruled on (true or false) appears in
+  // `decided` - the caller compares `decided` against how many units a turn actually has to find
+  // the units the model never mentioned at all.
+  it("tracks decided units separately from hits, so an explicit false and an omitted unit can be told apart", () => {
+    const { hits, decided } = parseUnitDecisions(
+      [
+        { id: "5.1", why: "x", meets: true },
+        { id: "5.2", why: "x", meets: false },
+        // unit 5.3 is never mentioned at all - omitted, not decided
+      ],
+      new Map([[5, 3]]),
+    );
+    expect(hits.get(5)).toEqual([1]);
+    expect(decided.get(5)).toEqual(new Set([1, 2]));
+    expect(decided.get(5)?.has(3)).toBe(false);
+  });
+});
+
+describe("repeated footers", () => {
+  const F = "Synthetic interviews. All respondents and dialogue are fictional.";
+  const texts = [
+    "I use the wifi on campus, it is fine. " + F,
+    "Another long answer about bundles being confusing. " + F,
+    "Short one. " + F + " " + F,
+    "A real answer with no footer at all.",
+  ];
+  it("finds a footer that ends several turns", () => {
+    expect(findRepeatedFooters(texts)[0]).toBe(F);
+  });
+  it("removes it, even when it was repeated at the end of one turn", () => {
+    const footers = findRepeatedFooters(texts);
+    expect(stripFooters(texts[0], footers)).toBe("I use the wifi on campus, it is fine.");
+    expect(stripFooters(texts[2], footers)).toBe("Short one.");
+  });
+  it("leaves a turn without the footer exactly as it was", () => {
+    expect(stripFooters(texts[3], findRepeatedFooters(texts))).toBe(texts[3]);
+  });
+  it("does not treat a sentence said by only two turns as a footer", () => {
+    expect(findRepeatedFooters(["One answer here, thanks very much for asking.", "Two answer here, thanks very much for asking."])).toEqual([]);
   });
 });

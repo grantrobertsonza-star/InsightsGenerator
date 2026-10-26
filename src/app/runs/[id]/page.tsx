@@ -1,11 +1,16 @@
+import { loadAssistantConversation } from "@/lib/researchAssistant";
+import { cellText, type TableCell } from "@/lib/rowCells";
 import Link from "next/link";
+import { Fragment } from "react";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { withTenant, withTenantRead } from "@/lib/db";
-import { extractFindingsFromDocument } from "@/lib/extractFindings";
-import { processTableDocument } from "@/lib/documentTables";
+import { loadImportQuestionDefinitions } from "@/lib/importQuestionDefinitions";
+import { extractFindingsFromDocument, readContextDocument } from "@/lib/extractFindings";
+import { findingProvenanceAvailable } from "@/lib/findingProvenance";
+import { processTableDocument, readProvenanceAvailable, type TableReadProvenance } from "@/lib/documentTables";
 import { generateFindingsFromBannerPlan } from "@/lib/generateFindingsFromBannerPlan";
 import {
   extractThemesFromTranscript,
@@ -17,9 +22,8 @@ import { detectDuplicateFindings } from "@/lib/dedupe";
 import { readCodingFile } from "@/lib/codedImportFile";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { deleteDocument } from "@/lib/documentActions";
-import { storeUploadedDocument } from "@/lib/documentUpload";
+import { markDocumentProcessingStatus } from "@/lib/documentUpload";
 import { generateDecisionCandidates } from "@/lib/decisionFramer";
-import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
 import { refreshVerdicts, reverifyFindings } from "@/lib/verifyFindings";
 import { refreshStatedInsightValidations } from "@/lib/validateStatedInsights";
 import {
@@ -32,24 +36,49 @@ import {
 } from "@/lib/processProgress";
 import { refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
-import { generateStoryNarrative, type DeckPillar } from "@/lib/storyNarrative";
+import { generateStoryNarrative, latestNarrativeFailure, type DeckPillar } from "@/lib/storyNarrative";
+import { loadInsightSupportOrUnchecked, loadPreInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
+import { summariseSupport } from "@/lib/supportStatusShared";
+import { NarrativeSupportBanner } from "./NarrativeSupportBanner";
+import { loadWordingEdits } from "@/lib/findingWording";
+import { loadRunFigureChecks, type RunFigureChecks } from "@/lib/figureChecks";
+import { FigureChecksProvider, FigureCheckNotice } from "./FigureCheckNotice";
+import type { WordingEdits } from "./FindingsTable";
 import {
   generateObjectiveValidation,
   type ObjectiveValidation,
 } from "@/lib/objectiveValidator";
 import { generateMethodologySummary } from "@/lib/methodologyExtractor";
+import { latestMethodologyFailure } from "@/lib/methodologyStatus";
 import { refreshSynthesizedInsights } from "@/lib/insightSynthesizer";
 import { refreshSynthesizedInsightQuality } from "@/lib/synthesizedInsightQualityScorer";
-import { estimateCostUsd } from "@/lib/apiUsage";
+import { costOfUsage } from "@/lib/apiUsage";
 import {
   summarizeSynthesizedProvenance,
   type DiscoveryType,
 } from "@/lib/discoveryClassification";
 import { getRunInputCompleteness } from "@/lib/inputCompleteness";
 import DecisionBriefReview from "./DecisionBriefReview";
-import ObjectiveBriefReview from "./ObjectiveBriefReview";
+import { decisionContextMismatch, decisionRefreshPending } from "@/lib/decisionRefresh";
+import { recommendationDecisionContextAvailable, recommendationDecisionStateSql, writtenForEarlierDecisionsSql } from "@/lib/decisionContext";
+import ObjectiveReviewTable, { type ObjectiveRow } from "./ObjectiveReviewTable";
+import RunContextForm from "./RunContextForm";
+import { loadFailedBriefFill, loadLastBriefFill, loadObjectiveSources, sourceLabelFromRationale } from "@/lib/briefFillRecord";
+import AddFilesPanel from "./AddFilesPanel";
+import { listProjects } from "@/lib/projectList";
+import StorageCleanupNotice from "./StorageCleanupNotice";
+import BinNotice from "./BinNotice";
+import StatedObjectivesList from "./StatedObjectivesList";
+import { generateObjectiveCandidates } from "@/lib/objectiveFramer";
+import { refreshObjectiveQuality } from "@/lib/objectiveQualityScorer";
+import { loadObjectiveQualityStatus, objectiveQualityLookup } from "@/lib/objectiveQualityStatus";
+import ObjectiveCoverage, { SelectedObjectiveCoverage } from "./ObjectiveCoverage";
+import ObjectiveEvidence from "./ObjectiveEvidence";
+import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
+import { ObjectiveBadges, ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
+import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
-import SynthesizedRecommendationsReview from "./SynthesizedRecommendationsReview";
+import RecommendationsWorkspace from "./RecommendationsWorkspace";
 import InsightsReview from "./InsightsReview";
 import StatedInsightValidationsReview, {
   type StatedInsightValidation,
@@ -63,19 +92,72 @@ import {
   RunNav,
   SectionPanel,
   type RunNavSection,
+  GoToSection,
 } from "./RunShell";
 import type { FindingKind } from "@/lib/findingActions";
 import DeleteDocumentButton from "@/app/DeleteDocumentButton";
+import ResearchQualityReview from "./ResearchQualityReview";
+import ReviewResearchQualityLink from "./ReviewResearchQualityLink";
+import { impactFor, loadDocumentDeletionImpact } from "@/lib/documentDeletionImpact";
+import { deleteDocumentConfirmation } from "@/lib/documentDeletionMessage";
 import SubmitButton from "@/components/SubmitButton";
+import { Pane, ThreePane } from "./ThreePane";
+import SectionDashboard, { ModuleStatusBar } from "./SectionDashboard";
+import { loadProjectStageFacts, objectiveUnscoredReason } from "@/lib/projectStageFacts";
+import { SECTIONS, sectionStatuses, type ProjectStageFacts } from "@/lib/sectionStatus";
+import { summarizeFindings, summarizeInsights } from "@/lib/evidenceOverview";
+import { summarizeRecommendations } from "@/lib/recommendationOverview";
+import RerunExtractButton from "./RerunExtractButton";
 import ProcessProgress from "./ProcessProgress";
+import CodingFormProgress from "./CodingFormProgress";
+import CodeThemesSubmit from "./CodeThemesSubmit";
+import FindingsWorkspace from "./FindingsWorkspace";
+import InsightsWorkspace from "./InsightsWorkspace";
+import InsightsReportWorkspace from "./InsightsReportWorkspace";
+import { claimCodingRun, releaseCodingRun } from "@/lib/codingProgress";
+import ReportReadSummary, { type ReportReadStats } from "./ReportReadSummary";
 import PipelineStatus from "./PipelineStatus";
 import WorkingDataTabs from "./WorkingDataTabs";
-import ImportQualityPanel from "./ImportQualityPanel";
+import ImportQualityPanel, { ImportPreviewRecovery } from "./ImportQualityPanel";
+import { loadImportPreviewIdentities } from "@/lib/importPreviewIdentity";
+import ImportVariablesPanel from "./ImportVariablesPanel";
+import DocumentPicker from "./DocumentPicker";
+import DataAuditPanel from "./DataAuditPanel";
+import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
+import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
+import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
+import { isRereadSuggestion } from "@/lib/briefFillText";
+import { likelyRestates } from "@/lib/objectiveSimilarity";
+import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources";
+import { getDocumentRoles } from "@/lib/researchQualityRepository";
+import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
+import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
+import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
+import { loadVariableDictionary, resolveCurrentDesignSnapshotStatus, designFreshnessStatus, type DesignFreshness, type CurrentDesignSnapshotStatus } from "@/lib/crosstabs";
+import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverrides";
+import type { VariableDictionary } from "@/lib/parseStatsFile";
+import InstrumentCard from "./InstrumentCard";
+import InstrumentAutoRead from "./InstrumentAutoRead";
+import AttachedInstruments, { QuestionnaireLinkingNote } from "./AttachedInstruments";
+import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
+import AcceptDataButton from "./AcceptDataButton";
+import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
+import DataFileSection from "./DataFileSection";
+import { crosstabDatasetState } from "@/lib/crosstabEntry";
+import OutputSetCard from "./OutputSetCard";
+import RelatedOutputSets from "./RelatedOutputSets";
+import { getOutputSets } from "@/lib/outputSets";
 import TranscriptQualityPanel from "./TranscriptQualityPanel";
 import CodebookPanel, { type CodebookView } from "./CodebookPanel";
+import CodingExtras from "./CodingExtras";
 import CodingAnalysisPanel from "./CodingAnalysisPanel";
-import TranscriptSetupTable, {
+import {
+  SourcesPane,
   CodeGate,
+  ImportDetailProvider,
+  SelectedFileDetail,
+  type SourcePanel,
+  type SourceRow,
   MODE_LABEL,
   SESSION_LABEL,
 } from "./TranscriptSetup";
@@ -83,48 +165,44 @@ import {
   findUnconfirmedTranscripts,
   getSetupSuggestions,
   getTranscriptSetups,
+  transcriptWaveAvailable,
   SETUP_NEEDED_MESSAGE,
 } from "@/lib/transcriptSetup";
-import ObjectiveQualityPanel, {
-  type ObjectiveQualityRow,
-} from "./ObjectiveQualityPanel";
-import { parseNumberedItems } from "@/lib/text";
+import { loadDataSetups } from "@/lib/dataSetup";
 import {
   crossTranscriptThemes,
   getCodingAnalysis,
   getFindingCodingCounts,
 } from "@/lib/codingAnalysis";
 import AcrossTranscripts from "./AcrossTranscripts";
+import AnalyticsBuilder from "./AnalyticsBuilder";
+import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
+import { isStatsFileName, isCaseTableFileName } from "@/lib/statsFileName";
 import FindingsTable from "./FindingsTable";
 import TableDigest from "./TableDigest";
+import { objectiveIdentityKey, parseObjectiveLines, setupLineCandidateIds } from "@/lib/objectiveLines";
 import ResearchAssistantCard, {
   type AssistantChatMessage,
 } from "./ResearchAssistantCard";
 import {
-  ArrowLeftIcon,
   UploadIcon,
   BoltIcon,
   DocumentIcon,
   ChartIcon,
-  GridIcon,
   DownloadIcon,
   PresentationIcon,
-  TranscriptIcon,
   ListIcon,
   SparkleIcon,
   TargetIcon,
   CheckIcon,
   ChatIcon,
-  BookIcon,
-  InfoIcon,
 } from "@/components/icons";
-import FileInput from "@/components/FileInput";
 import {
-  computeCrossTabPreview,
   type CrossTabPreviewTable,
 } from "@/lib/crossTabPreview";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { latestVerdictLateral } from "@/lib/latestVerdict";
+import { getSampleFailedVerdicts, getVerdictSummary } from "@/lib/verdictSummary";
+import { requireTenantId } from "@/lib/requestContext";
 
 // Opening an already-processed run used to take as long as processing it,
 // because these three self-heal checks (retry a framer or the
@@ -152,7 +230,6 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
 // minutes", which is enough to self-heal a transient failure without
 // quietly burning a full pass's worth of Claude calls on every reload a
 // genuinely stuck insight can no longer benefit from anyway.
-const objectiveRefreshesInFlight = new Set<string>();
 const decisionRefreshesInFlight = new Set<string>();
 const recommendationRefreshesInFlight = new Set<string>();
 const refreshCooldownUntil = new Map<string, number>();
@@ -187,16 +264,27 @@ type Run = {
   status: string;
   entry_point: "generate" | "validate" | null;
   initial_research_objective: string | null;
+  // OBJ-SET-M01: the current, editable list of stated objectives. Null on a
+  // pre-migration-0080 database (getRun falls back to a column-less query,
+  // same guard pattern used elsewhere for a not-yet-applied migration).
+  stated_objectives_text: string | null;
   program_id: string | null;
   wave_label: string | null;
 };
 
 type Document = {
   id: string;
-  kind: "report" | "table" | "evidence" | "transcript";
+  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output" | "technical";
   source_filename: string;
   uploaded_at: string;
   ingestion_type: "raw" | "aggregated" | null;
+  // IMP-006: null until a processing attempt has actually run; see
+  // 0079_document_processing_status.sql for why this can't be inferred from
+  // document_tables/findings alone. Selected with a fallback below so a
+  // pre-migration database doesn't 42703 on this query. 'incomplete' (0088,
+  // ANA-QUAL-001): a transcript whose coding came back without full per-unit
+  // coverage - not a failure, but not a clean run either.
+  processing_status: "ready" | "incomplete" | "failed" | null;
 };
 
 type Finding = {
@@ -234,18 +322,52 @@ type Finding = {
   supporting_segments: number | null;
   supporting_speakers: number | null;
   quote_match: "exact" | "near" | "none" | null;
+  // Codex re-review, package 4 (cross-tab handover repair); Brief 37 repair: "demonstrate
+  // downstream staleness after design changes through saved tables, findings, insights,
+  // recommendations and narratives." This is the findings-level piece of that: "current" or
+  // "stale" when this finding's source table's design snapshot could be compared against what a
+  // fresh build of its document would resolve now (same rule as a crosstab's own
+  // designFreshness in crosstabs.ts); "unknown" when it has a source table but the comparison
+  // itself could not be made - a legacy snapshot never recorded, or the document's current
+  // set-up failing to load just now - which Brief 37's re-review found this previously
+  // collapsed into the same `false` a genuine match would show. Never alters finding_text or
+  // any human wording - purely an additional, read-only signal. Null for a finding with no
+  // source table at all (nothing to compare, a different thing from "couldn't compare").
+  designFreshness: DesignFreshness | null;
 };
 
 async function getRun(runId: string): Promise<Run | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Run>(
-      `select id, project_name, business_problem, research_objective, decision_statement,
-              evidence_synthesis, audience, status, entry_point, initial_research_objective,
-              program_id, wave_label
-       from runs where id = $1`,
-      [runId],
-    );
-    return result.rows[0] ?? null;
+    try {
+      const result = await client.query<Run>(
+        `select id, project_name, business_problem, research_objective, decision_statement,
+                evidence_synthesis, audience, status, entry_point, initial_research_objective,
+                stated_objectives_text, program_id, wave_label
+         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
+        [runId],
+      );
+      return result.rows[0] ?? null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/stated_objectives_text/.test(message)) throw error;
+      // Pre-migration-0080 database: same query without the new column.
+      const result = await client.query<Omit<Run, "stated_objectives_text">>(
+        `select id, project_name, business_problem, research_objective, decision_statement,
+                evidence_synthesis, audience, status, entry_point, initial_research_objective,
+                program_id, wave_label
+         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
+        [runId],
+      );
+      const row = result.rows[0];
+      // Pre-migration-0080, a run's current objective list lived in initial_research_objective
+      // (migration 0080's own backfill is `stated_objectives_text = initial_research_objective`
+      // for exactly this reason - see its comment). Hardcoding null here instead ignored that
+      // and made every existing project's objectives vanish from Setup's display with nothing
+      // to say why (OBJ-SET-005): falling back to the same column the migration itself treats
+      // as the legacy source of truth keeps them visible until the migration actually runs.
+      return row ? { ...row, stated_objectives_text: row.initial_research_objective } : null;
+    }
   });
 }
 
@@ -255,6 +377,7 @@ type Program = {
 };
 
 async function getPrograms(): Promise<Program[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<Program>(
       "select id, name from programs order by name asc",
@@ -276,6 +399,7 @@ async function getProgramWaves(
   programId: string,
   excludeRunId: string,
 ): Promise<ProgramWave[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ProgramWave>(
       `select id, project_name, wave_label from runs
@@ -287,14 +411,79 @@ async function getProgramWaves(
   });
 }
 
-async function getDocuments(runId: string): Promise<Document[]> {
+async function getReportReadStats(runId: string): Promise<Map<string, NonNullable<ReportReadStats>>> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Document>(
-      "select id, kind, source_filename, uploaded_at, ingestion_type from documents where run_id = $1 order by uploaded_at desc",
+    const result = await client.query<{ detail: Record<string, unknown>; ran_at: string | null }>(
+      `select distinct on (detail->>'documentId') detail, occurred_at::text as ran_at
+         from trace
+        where run_id = $1 and event = 'extract_findings_summary'
+        order by detail->>'documentId', occurred_at desc`,
       [runId],
     );
-    return result.rows;
+    const out = new Map<string, NonNullable<ReportReadStats>>();
+    for (const r of result.rows) {
+      const d = r.detail;
+      if (typeof d.documentId !== "string") continue;
+      out.set(d.documentId, {
+        pages: Number(d.pages) || 0,
+        characters: Number(d.characters) || 0,
+        parts: Number(d.parts) || 0,
+        failedParts: Number(d.failedParts) || 0,
+        ranAt: r.ran_at,
+      });
+    }
+    return out;
   });
+}
+
+async function getDocuments(runId: string): Promise<Document[]> {
+  const TENANT_ID = await requireTenantId();
+  return withTenantRead(TENANT_ID, async (client) => {
+    try {
+      const result = await client.query<Document>(
+        "select id, kind, source_filename, uploaded_at, ingestion_type, processing_status from documents where run_id = $1 order by uploaded_at desc",
+        [runId],
+      );
+      return result.rows;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/processing_status/.test(message)) throw error;
+      // Pre-migration-0079 database: same query without the new column.
+      const result = await client.query<Omit<Document, "processing_status">>(
+        "select id, kind, source_filename, uploaded_at, ingestion_type from documents where run_id = $1 order by uploaded_at desc",
+        [runId],
+      );
+      return result.rows.map((row) => ({ ...row, processing_status: null as "ready" | "incomplete" | "failed" | null }));
+    }
+  });
+}
+
+/**
+ * Best-effort, like stampSingleDocumentBatch: records the one durable fact
+ * IMP-006 needed a column for (did this document's last processing attempt
+ * succeed or fail), independent of the run-level error banner, which is
+ * scoped to "the most recent click on this run" and so loses an earlier
+ * failure the moment any other document on the run is processed afterward.
+ * Silently a no-op pre-0079, same migration-guard shape used elsewhere in
+ * this file for document_tables/variable_overrides etc.
+ */
+async function setDocumentProcessingStatus(
+  documentId: string,
+  status: "ready" | "incomplete" | "failed",
+): Promise<boolean> {
+  const TENANT_ID = await requireTenantId();
+  // Shared with storeAndRead's upload-time read (documentUploadActions.ts), so a document's
+  // status reflects every attempt that could tell whether it has usable data, not just the
+  // ones triggered from this page.
+  //
+  // IMP-006 / REP-IN-001: returns markDocumentProcessingStatus's own boolean (false on a
+  // pre-migration database where the write could not land) instead of discarding it. Every
+  // call site below now checks this, so a status-persistence failure surfaces as an
+  // actionable error rather than leaving the document looking like whatever status it had
+  // before this attempt - which, for a document that just finished reading successfully,
+  // would otherwise read as an unqualified "ready" that was never actually saved.
+  return await markDocumentProcessingStatus(TENANT_ID, documentId, status);
 }
 
 type DocumentTablePreview = {
@@ -304,10 +493,18 @@ type DocumentTablePreview = {
   label: string | null;
   source_page: number | null;
   headers: string[];
-  rows: Record<string, string | number | null>[];
+  rows: Record<string, TableCell>[];
   ingestion_type: "raw" | "aggregated";
   banner_columns: string[] | null;
   stub_columns: string[] | null;
+  /** Raw files come back with no rows (they can be huge); this is the true count. */
+  row_count: number;
+  /** Changes whenever the stored table is rewritten. Keys the quality cache. */
+  row_version: string;
+  /** A crosstab's place in its set (table_index 100 and up); null for an imported table. */
+  crosstab_status: "draft" | "committed" | null;
+  /** How an engine-read table was read (migration 0116; documentTables.TableReadProvenance), else null. */
+  read_provenance: TableReadProvenance | null;
 };
 
 /**
@@ -318,25 +515,127 @@ type DocumentTablePreview = {
  * model misread a column or dropped a row, this is where that shows up,
  * rather than only surfacing later as a finding that looks wrong. Wrapped
  * in try/catch and defaulting to [] for the same reason getFindingHistory
- * is: document_tables only exists once migration 0023 has been applied.
+ * is: document_tables only exists once migration 0023 has been applied. The
+ * failure is reported alongside (failed), so the stage status blocks say the
+ * tables could not be checked rather than counting none.
  */
 async function getDocumentTablePreviews(
   runId: string,
-): Promise<DocumentTablePreview[]> {
+): Promise<{ rows: DocumentTablePreview[]; failed: boolean }> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<DocumentTablePreview>(
-        `select id, document_id, table_index, label, source_page, headers, rows,
-                ingestion_type, banner_columns, stub_columns
+        // A raw table's full `rows` column can be huge, so this never ships it whole - but
+        // shipping literally nothing (the previous '[]'::jsonb, regardless of actual size) left
+        // the "Raw data" preview with a true row_count and zero rows to ever show for it (IMP-010).
+        // jsonb_array_length already has to read and parse that same column to get the true
+        // count, so pulling the first 10 elements alongside it with jsonb_array_elements + a
+        // LIMIT adds no new full-table read, just a small in-memory slice of what was parsed
+        // anyway; an aggregated table's rows column is already small enough to send whole.
+        `select id, document_id, table_index, label, source_page, headers,
+                case when ingestion_type = 'raw'
+                  then coalesce((select jsonb_agg(elem) from (
+                         select elem from jsonb_array_elements(rows) as elem limit 10
+                       ) sample), '[]'::jsonb)
+                  else rows
+                end as rows,
+                jsonb_array_length(rows)::int as row_count,
+                xmin::text as row_version,
+                ingestion_type, banner_columns, stub_columns, crosstab_status,
+                ${(await readProvenanceAvailable(client)) ? "read_provenance" : "null::jsonb as read_provenance"}
          from document_tables
-         where run_id = $1
+         where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
          order by document_id, table_index`,
         [runId],
       );
-      return result.rows;
+      return { rows: result.rows, failed: false };
     });
   } catch {
-    return [];
+    return { rows: [], failed: true };
+  }
+}
+
+// Quality figures for a raw data file are worked out from every stored row,
+// which is slow to fetch and to count. They only change when the stored table
+// is rewritten or the skip logic changes, so the result is kept in memory per
+// table and reused on later page loads.
+const rawQualityCache = new Map<string, { version: string; q: TableQuality }>();
+
+async function getRawQuality(
+  t: { id: string; headers: string[]; row_version: string },
+  stated: StatedRouting[],
+): Promise<TableQuality | null> {
+  const TENANT_ID = await requireTenantId();
+  const version = `${t.row_version}|${t.headers.length}|${JSON.stringify(stated)}`;
+  const hit = rawQualityCache.get(t.id);
+  if (hit && hit.version === version) return hit.q;
+  try {
+    const rows = await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ rows: Record<string, string | number | null>[] }>(
+        "select rows from document_tables where id = $1",
+        [t.id],
+      );
+      return r.rows[0]?.rows ?? [];
+    });
+    const q = computeTableQuality(t.headers, rows, "raw", stated);
+    if (rawQualityCache.size >= 40) rawQualityCache.delete(rawQualityCache.keys().next().value as string);
+    rawQualityCache.set(t.id, { version, q });
+    return q;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The brief or proposal role recorded for each document (at upload through Import's Brief and
+ * Proposal pickers, or by a review), for Set Objectives' "Fill in from" choice. A convenience: before
+ * migration 0105 there is no such table, and every document is simply offered without a role.
+ */
+async function getDocumentReviewRoles(runId: string): Promise<Map<string, "brief" | "proposal">> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ document_id: string; roles: string[] }>(
+        `select document_id, roles from research_quality_sources where run_id = $1 and document_id is not null`,
+        [runId],
+      );
+      const out = new Map<string, "brief" | "proposal">();
+      for (const x of r.rows) {
+        if (x.roles.includes("brief")) out.set(x.document_id, "brief");
+        else if (x.roles.includes("proposal")) out.set(x.document_id, "proposal");
+      }
+      return out;
+    });
+  } catch (error) {
+    if (/research_quality_sources/.test(error instanceof Error ? error.message : String(error))) return new Map();
+    throw error;
+  }
+}
+
+/**
+ * The opening of each report or transcript's extracted text, so a researcher
+ * can check on the Import page that the file was read properly. Only the
+ * first characters are fetched, never the whole text.
+ */
+async function getDocumentExcerpts(
+  runId: string,
+): Promise<Map<string, { excerpt: string; length: number }>> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ id: string; excerpt: string | null; length: number }>(
+        `select id, substring(extracted_text from 1 for 2500) as excerpt,
+                coalesce(length(extracted_text), 0)::int as length
+         from documents where run_id = $1 and kind <> 'table'`,
+        [runId],
+      );
+      return new Map(
+        r.rows.map((row) => [row.id, { excerpt: row.excerpt ?? "", length: row.length }] as const),
+      );
+    });
+  } catch {
+    return new Map();
   }
 }
 
@@ -347,6 +646,7 @@ async function getDocumentTablePreviews(
  * coding tables only exist once migration 0043 has been applied.
  */
 async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
+  const TENANT_ID = await requireTenantId();
   const out = new Map<string, CodebookView>();
   try {
     await withTenantRead(TENANT_ID, async (client) => {
@@ -560,6 +860,7 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
           createdAt: book.created_at,
           codes: codes.rows
             .filter((c) => c.codebook_id === book.id)
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             .map(({ codebook_id: _codebookId, ...c }) => {
               const meta = metaRows.get(
                 `${book.document_id}|${c.name.trim().toLowerCase().replace(/\s+/g, " ")}`,
@@ -594,26 +895,146 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
   return out;
 }
 
+type FindingRow = Omit<Finding, "designFreshness"> & {
+  source_table_document_id: string | null;
+  design_snapshot: { design: { psu: string | null; strata: string | null } | null } | null;
+};
+
+/**
+ * FND-001 probe B: which findings carry researcher-edited wording (and whether each still waits for
+ * a re-check). A failed read is reported to the findings screen, never shown as "nothing edited".
+ */
+/**
+ * Numerical traceability (0101): every stored figure check in the run that is not "traced". A
+ * failed read is reported on the page, never shown as "nothing to review".
+ */
+async function getFigureChecks(runId: string): Promise<RunFigureChecks> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, (client) => loadRunFigureChecks(client, runId));
+  } catch (error) {
+    return {
+      available: false,
+      preInsights: {},
+      synthesizedInsights: {},
+      recommendations: {},
+      narrative: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getWordingEdits(runId: string): Promise<WordingEdits> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, (client) => loadWordingEdits(client, runId));
+  } catch (error) {
+    return { available: false, edits: {}, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// V-R1000-01: findings saved in one statement share a created_at; the id breaks the tie so the list
+// keeps one order across reloads (the exports use the same key after their theme grouping).
 async function getFindings(runId: string): Promise<Finding[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Finding>(
-      `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
-              coalesce(d1.source_filename, d2.source_filename) as source_filename,
-              c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
-              c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
-              c.pattern_type, c.stated_stats, c.created_at::text as created_at,
-              c.reproduced_runs, c.total_runs, c.supporting_segments, c.supporting_speakers, c.quote_match,
-              exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
-              exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
-              exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report
-       from findings c
-       left join documents d1 on d1.id = c.source_document_id
-       left join documents d2 on d2.id = c.source_table_id
-       where c.run_id = $1
-       order by c.created_at`,
-      [runId],
-    );
-    return result.rows;
+  const TENANT_ID = await requireTenantId();
+  const rows = await withTenantRead(TENANT_ID, async (client) => {
+    try {
+      const result = await client.query<FindingRow>(
+        `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
+                coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
+                c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
+                c.pattern_type, c.stated_stats, c.created_at::text as created_at,
+                c.reproduced_runs, c.total_runs, c.supporting_segments, c.supporting_speakers, c.quote_match,
+                exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
+                exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
+                exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
+                dt2.document_id as source_table_document_id, dt2.design_snapshot
+         from findings c
+         left join documents d1 on d1.id = c.source_document_id
+         left join document_tables dt2 on dt2.id = c.source_table_id
+         left join documents d2 on d2.id = dt2.document_id
+         where c.run_id = $1
+         order by c.created_at, c.id`,
+        [runId],
+      );
+      return result.rows;
+    } catch (error) {
+      // Migration 0091 (design_snapshot) not applied yet: same query without that column, same
+      // way listCrosstabs itself degrades (crosstabs.ts). Brief 38 repair (Codex re-review of
+      // Brief 37, item 3): `dt2.document_id as source_table_document_id` is a column on the
+      // long-existing `document_tables` table - it predates migration 0091 and needs no
+      // fallback of its own, so it stays in this query even though `design_snapshot` is dropped.
+      // Previously this fallback hardcoded `source_table_document_id: null` below regardless of
+      // what the join actually found, which collapsed two different situations into the same
+      // result: a finding with NO source table at all (genuinely nothing to compare) and a
+      // finding that DOES have a source table but whose design freshness can't be verified
+      // because this database predates the migration. Both produced `designFreshness: null`
+      // ("not applicable"), when only the first one should.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/design_snapshot/.test(message)) throw error;
+      const result = await client.query<Omit<FindingRow, "design_snapshot">>(
+        `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
+                coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
+                c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
+                c.pattern_type, c.stated_stats, c.created_at::text as created_at,
+                c.reproduced_runs, c.total_runs, c.supporting_segments, c.supporting_speakers, c.quote_match,
+                exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
+                exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
+                exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
+                dt2.document_id as source_table_document_id
+         from findings c
+         left join documents d1 on d1.id = c.source_document_id
+         left join document_tables dt2 on dt2.id = c.source_table_id
+         left join documents d2 on d2.id = dt2.document_id
+         where c.run_id = $1
+         order by c.created_at, c.id`,
+        [runId],
+      );
+      // `source_table_document_id` is now a real selected column (present whenever the finding
+      // has a source table, migration or no migration) - only `design_snapshot` is forced to
+      // null here, because that column genuinely cannot be read without the migration. The
+      // mapper below already turns (real document id + null design_snapshot) into
+      // designFreshness: "unknown" via designFreshnessStatus's own first branch, so no change
+      // is needed there.
+      return result.rows.map((r) => ({ ...r, design_snapshot: null }));
+    }
+  });
+
+  // Codex re-review, package 4: resolve "what design would a fresh build use right now" once per
+  // DISTINCT document among these findings' source tables, not once per finding - the same
+  // resolution listCrosstabs performs per document already, now shared via
+  // resolveCurrentDesignSnapshotStatus (crosstabs.ts) so this cannot drift from that rule.
+  const distinctDocIds = Array.from(
+    new Set(rows.map((r) => r.source_table_document_id).filter((id): id is string => id !== null)),
+  );
+  // Brief 37 repair: a failed per-document lookup is now recorded as its own explicit status
+  // ({ ok: false, error }), not simply left absent from the map. Previously an absent entry and
+  // a "nothing to compare" finding (no source table at all) were indistinguishable - both ended
+  // up with `currentSnapshot === undefined`, and both produced `designStale: null` - so a real
+  // lookup failure silently looked exactly like "not applicable" instead of "couldn't verify."
+  const currentSnapshotStatuses = new Map<string, CurrentDesignSnapshotStatus>();
+  await Promise.all(
+    distinctDocIds.map(async (docId) => {
+      currentSnapshotStatuses.set(docId, await resolveCurrentDesignSnapshotStatus(TENANT_ID, runId, docId));
+    }),
+  );
+
+  return rows.map((r) => {
+    const { source_table_document_id, design_snapshot, ...finding } = r;
+    if (!source_table_document_id) {
+      // No source table at all - there is nothing to compare, a different thing from having
+      // tried to compare and failed. Unchanged from before this repair.
+      return { ...finding, designFreshness: null };
+    }
+    const status = currentSnapshotStatuses.get(source_table_document_id);
+    // Brief 37 repair: `status` is only ever absent here if the Promise.all above somehow never
+    // resolved for this docId, which `distinctDocIds` guarantees it was scheduled for - but
+    // treat a missing entry as a failed lookup rather than assuming anyway, consistent with
+    // "failed configuration lookups must be unknown, not verified agreement."
+    const resolvedStatus = status ?? { ok: false as const, error: "design freshness was not resolved for this document" };
+    return { ...finding, designFreshness: designFreshnessStatus(design_snapshot, resolvedStatus) };
   });
 }
 
@@ -624,15 +1045,18 @@ type ObjectiveCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  source_removed_at: string | null;
 };
 
 async function getObjectiveCandidates(
   runId: string,
 ): Promise<ObjectiveCandidate[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ObjectiveCandidate>(
-      `select id, candidate_text, rationale, source, status, edited
-       from objective_candidates
+      // source_removed_at (migration 0115) read through to_jsonb so the page loads before it is applied.
+      `select id, candidate_text, rationale, source, status, edited, to_jsonb(c)->>'source_removed_at' as source_removed_at
+       from objective_candidates c
        where run_id = $1
        order by created_at`,
       [runId],
@@ -648,15 +1072,18 @@ type DecisionCandidate = {
   source: "researcher_authored" | "ai_suggested";
   status: "pending" | "accepted" | "rejected";
   edited: boolean;
+  source_removed_at: string | null;
 };
 
 async function getDecisionCandidates(
   runId: string,
 ): Promise<DecisionCandidate[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<DecisionCandidate>(
-      `select id, candidate_text, rationale, source, status, edited
-       from decision_candidates
+      // source_removed_at (migration 0115) read through to_jsonb so the page loads before it is applied.
+      `select id, candidate_text, rationale, source, status, edited, to_jsonb(c)->>'source_removed_at' as source_removed_at
+       from decision_candidates c
        where run_id = $1
        order by created_at`,
       [runId],
@@ -682,6 +1109,11 @@ type InsightRow = {
   from_report: boolean;
   verification_basis: "data_backed" | "report_only";
   caveats: string[];
+  // Written for accepted decisions that have since changed (rule in decisionContext.ts).
+  written_for_earlier_decisions: boolean;
+  // GT-006: the pre-insight's support (shared rule), so the card says what the exports say.
+  support_status: "current" | "stale" | "invalid" | "unknown";
+  support_summary: string | null;
 };
 
 // Sorted by quality_score first (highest first, unscored insights last via
@@ -691,27 +1123,29 @@ type InsightRow = {
 // that hasn't been scored yet, or that scored low, still appears, it just
 // sorts lower.
 async function getInsights(runId: string): Promise<InsightRow[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<InsightRow>(
+  const TENANT_ID = await requireTenantId();
+  const rows = await withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<Omit<InsightRow, "support_status" | "support_summary">>(
       `select i.id, i.headline, i.observation, i.tension, i.implication, i.decision_context,
               f.finding_text, f.theme, v.verdict_tier, v.verification_basis,
               (f.origin in ('stated', 'coded')
                 or exists (select 1 from findings g where g.grounded_by_finding_id = f.id)) as from_report,
-              coalesce(v.statistical_checks->'caveats', '[]'::jsonb) as caveats
+              coalesce(v.statistical_checks->'caveats', '[]'::jsonb) as caveats,
+              ${writtenForEarlierDecisionsSql("i.decision_context", "r.decision_statement")} as written_for_earlier_decisions
        from insights i
+       join runs r on r.id = i.run_id
        join findings f on f.id = i.finding_id
-       join lateral (
-         select vv.verdict_tier, vv.verification_basis, vv.statistical_checks
-           from verdicts vv
-          where vv.finding_id = f.id
-          order by vv.created_at desc
-          limit 1
-       ) v on true
+       join ${latestVerdictLateral("f.id", ["verdict_tier", "verification_basis", "statistical_checks"])} v on true
        where i.run_id = $1
        order by f.theme nulls last, i.created_at`,
       [runId],
     );
     return result.rows;
+  });
+  const support = await loadPreInsightSupportOrUnchecked(TENANT_ID, runId, rows.map((row) => row.id));
+  return rows.map((row) => {
+    const s = support.statusOf(row.id);
+    return { ...row, support_status: s.status, support_summary: s.status === "current" ? null : summariseSupport(s) };
   });
 }
 
@@ -728,25 +1162,32 @@ type SynthesizedInsightQueryRow = Omit<
 
 async function getSynthesizedInsights(
   runId: string,
+  supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedInsightRow[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<SynthesizedInsightQueryRow>(
       `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status,
               si.triangulation_count, si.source_theme_count, si.materiality_rationale, si.confidence_tier,
+              -- INS-001: read through to_jsonb so this works before migration 0097 (null = not checked).
+              (to_jsonb(si)->>'independent_source_count')::int as independent_source_count,
               si.review_status, si.why_score, si.actionability_score, si.novelty_score, si.synthesis_score,
               si.evidentiary_score, si.quality_score, si.quality_tier, si.quality_rationale,
               si.stability_testable_count, si.stability_reappeared_count, si.stability_checked_at::text,
-              array_agg(pi.headline order by pi.created_at) as source_headlines,
-              array_agg(
+              coalesce(array_agg(pi.headline order by pi.created_at) filter (where pi.id is not null), '{}') as source_headlines,
+              coalesce(array_agg(pf.id::text order by pi.created_at) filter (where pf.id is not null), '{}') as source_finding_ids,
+              coalesce(array_agg(
                 case when pf.origin in ('stated', 'coded')
                        or exists (select 1 from findings g where g.grounded_by_finding_id = pf.id)
                      then 'validated' else 'net_new' end
                 order by pi.created_at
-              ) as member_discovery_types
+              ) filter (where pf.id is not null), '{}') as member_discovery_types
        from synthesized_insights si
-       join synthesized_insight_sources s on s.synthesized_insight_id = si.id
-       join insights pi on pi.id = s.pre_insight_id
-       join findings pf on pf.id = pi.finding_id
+       -- FND-001: left joins, so an insight whose supporting findings were all deleted still
+       -- appears (with "Support no longer valid") instead of silently disappearing from review.
+       left join synthesized_insight_sources s on s.synthesized_insight_id = si.id
+       left join insights pi on pi.id = s.pre_insight_id
+       left join findings pf on pf.id = pi.finding_id
        where si.run_id = $1
        group by si.id
        order by case si.review_status when 'rejected' then 1 else 0 end,
@@ -777,8 +1218,10 @@ async function getSynthesizedInsights(
     return result.rows;
   });
 
+  const support = await supportPromise;
   return rows.map(({ member_discovery_types, ...row }) => ({
     ...row,
+    support: support.statusOf(row.id),
     provenance_caption: summarizeSynthesizedProvenance(member_discovery_types)
       .caption,
     contradicts: contradictionRows
@@ -794,63 +1237,6 @@ async function getSynthesizedInsights(
 // enough to say which one it is: how many findings have a verdict at all
 // yet, how many of those passed, and the most recent failure (if any) from
 // the automatic pipeline (verification or insight generation) for this run.
-type VerdictSummary = {
-  verdictedCount: number;
-  passedCount: number;
-};
-
-async function getVerdictSummary(runId: string): Promise<VerdictSummary> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<{ tier: string; count: string }>(
-      `select v.verdict_tier as tier, count(*) as count
-       from verdicts v
-       join findings f on f.id = v.finding_id
-       where f.run_id = $1
-       group by v.verdict_tier`,
-      [runId],
-    );
-    let verdictedCount = 0;
-    let passedCount = 0;
-    for (const row of result.rows) {
-      const count = Number(row.count);
-      verdictedCount += count;
-      if (row.tier === "robust" || row.tier === "use_with_caution") {
-        passedCount += count;
-      }
-    }
-    return { verdictedCount, passedCount };
-  });
-}
-
-type FailedVerdictSample = {
-  finding_text: string;
-  verdict_tier: string;
-  rationale: string;
-};
-
-// A count alone ("0 of 58 passed") says something is off but not what,
-// verification is a model judgment call, not a fixed rule, so seeing a
-// couple of its actual rationales is the fastest way to tell "this
-// evidence genuinely is that weak" apart from "the verifier is being
-// unreasonably strict here". Only worth fetching when nothing passed at
-// all; once some findings are passing, the ones that didn't are a much
-// less urgent question.
-async function getSampleFailedVerdicts(
-  runId: string,
-): Promise<FailedVerdictSample[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<FailedVerdictSample>(
-      `select f.finding_text, v.verdict_tier, v.rationale
-       from verdicts v
-       join findings f on f.id = v.finding_id
-       where f.run_id = $1 and v.verdict_tier in ('not_supported', 'insufficient_information')
-       order by v.id
-       limit 3`,
-      [runId],
-    );
-    return result.rows;
-  });
-}
 
 // One row per stated_insight finding (the report's own higher-order
 // claims), left-joined to its chain-trace verdict (null until the
@@ -863,6 +1249,7 @@ async function getSampleFailedVerdicts(
 async function getStatedInsightValidations(
   runId: string,
 ): Promise<StatedInsightValidation[]> {
+  const TENANT_ID = await requireTenantId();
   const rows = await withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<
       Omit<StatedInsightValidation, "contradicted_by">
@@ -885,7 +1272,7 @@ async function getStatedInsightValidations(
                 )
               ), array[]::text[]) as relied_texts
        from findings f
-       left join verdicts v on v.finding_id = f.id
+       left join ${latestVerdictLateral("f.id", ["verdict_tier", "rationale", "verification_basis", "due_care"])} v on true
        left join insights i on i.finding_id = f.id
        where f.run_id = $1 and f.finding_kind = 'stated_insight' and f.status != 'rejected'
        order by f.created_at`,
@@ -941,10 +1328,114 @@ async function getStatedInsightValidations(
   }));
 }
 
+/**
+ * Files too wide to store whole are cut down to their usable variables on
+ * import (a 'wide_file_trimmed' trace row records by how much). Read here so
+ * the Import screen can say "185 of 3,776 variables kept" instead of
+ * quietly reporting the smaller number as if it were the whole file.
+ */
+async function getTrimmedFiles(
+  runId: string,
+): Promise<Map<string, { total: number; kept: number }>> {
+  const TENANT_ID = await requireTenantId();
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ detail: unknown }>(
+      `select detail from trace where run_id = $1 and event = 'wide_file_trimmed' order by occurred_at asc`,
+      [runId],
+    );
+    const out = new Map<string, { total: number; kept: number }>();
+    for (const row of result.rows) {
+      let d: unknown = row.detail;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          continue;
+        }
+      }
+      const o = d as { documentId?: unknown; totalVariables?: unknown; keptVariables?: unknown } | null;
+      if (o && typeof o.documentId === "string" && typeof o.totalVariables === "number" && typeof o.keptVariables === "number") {
+        out.set(o.documentId, { total: o.totalVariables, kept: o.keptVariables });
+      }
+    }
+    return out;
+  });
+}
+
+/**
+ * Codex round 3, "preserve the qualification through extraction": a document whose
+ * extraction found an id-like column with an Excel format the calculation side can't
+ * faithfully reproduce records an 'unsupported_identifier_format' trace row (see
+ * documentTables.ts). Read here the same way getTrimmedFiles reads its own event, so the
+ * Import screen can show a recovery message instead of silently importing the column.
+ */
+/**
+ * IMP-015: label diagnostics from each table document's cached variable dictionary - variables whose
+ * label sheets disagree (shown with every competing label, never one silently chosen) and label-sheet
+ * names matching no data column. Read-only. A document whose dictionary has not been computed yet has
+ * no entry, which shows no notice; the conflict text itself is still in every computed table.
+ */
+async function getLabelDiagnostics(
+  runId: string,
+): Promise<Map<string, { conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[]; unmatched: string[] }>> {
+  const TENANT_ID = await requireTenantId();
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ id: string; conflicts: unknown; unmatched: unknown }>(
+      `select id, variable_dictionary->'labelConflicts' as conflicts, variable_dictionary->'unmatchedLabelVariables' as unmatched
+       from documents
+       where run_id = $1 and variable_dictionary is not null
+         and (variable_dictionary ? 'labelConflicts' or variable_dictionary ? 'unmatchedLabelVariables')`,
+      [runId],
+    );
+    const out = new Map<string, { conflicts: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[]; unmatched: string[] }>();
+    for (const row of result.rows) {
+      const conflicts = (Array.isArray(row.conflicts) ? row.conflicts : []).filter(
+        (c): c is { variable: string; kind: "variable_label" | "value_label"; value?: string | number } =>
+          !!c && typeof c === "object" && typeof (c as { variable?: unknown }).variable === "string" &&
+          ((c as { kind?: unknown }).kind === "value_label" || (c as { kind?: unknown }).kind === "variable_label"),
+      );
+      const unmatched = (Array.isArray(row.unmatched) ? row.unmatched : []).filter((u): u is string => typeof u === "string");
+      out.set(row.id, { conflicts, unmatched });
+    }
+    return out;
+  });
+}
+
+async function getUnsupportedIdentifierColumns(
+  runId: string,
+): Promise<Map<string, string[]>> {
+  const TENANT_ID = await requireTenantId();
+  return withTenantRead(TENANT_ID, async (client) => {
+    const result = await client.query<{ detail: unknown }>(
+      `select detail from trace where run_id = $1 and event = 'unsupported_identifier_format' order by occurred_at asc`,
+      [runId],
+    );
+    const out = new Map<string, string[]>();
+    for (const row of result.rows) {
+      let d: unknown = row.detail;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          continue;
+        }
+      }
+      const o = d as { documentId?: unknown; columns?: unknown } | null;
+      if (o && typeof o.documentId === "string" && Array.isArray(o.columns)) {
+        const existing = out.get(o.documentId) ?? [];
+        const merged = Array.from(new Set([...existing, ...o.columns.filter((c): c is string => typeof c === "string")]));
+        out.set(o.documentId, merged);
+      }
+    }
+    return out;
+  });
+}
+
 async function getLatestTraceMessage(
   runId: string,
   events: string[],
 ): Promise<string | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{ detail: unknown }>(
       `select detail from trace where run_id = $1 and event = any($2::text[]) order by occurred_at desc limit 1`,
@@ -983,6 +1474,7 @@ type ProcessRunErrors = { errors: string[]; occurredAt: string };
 async function getLatestProcessErrors(
   runId: string,
 ): Promise<ProcessRunErrors | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     // Only an error from the most recent processing click should ever show:
     // processRunAction writes a 'process_run_batch' marker the instant you
@@ -1020,6 +1512,61 @@ async function getLatestProcessErrors(
   });
 }
 
+type PendingLegacyConfirmation = {
+  documentId: string;
+  filename: string;
+  findings: { id: string; text: string }[];
+};
+
+/**
+ * REP-IN-002: documents whose most recent replacement attempt was withheld because findings with
+ * unknown provenance would have been retired, and which have not been replaced since. Only the
+ * listed findings that still exist on that document (and, once migration 0094 is applied, still
+ * carry no recorded review or edit) are offered. This is a prompt, not a decision: publication
+ * re-checks every id under its lock.
+ */
+async function getPendingLegacyConfirmations(runId: string): Promise<PendingLegacyConfirmation[]> {
+  const TENANT_ID = await requireTenantId();
+  return withTenantRead(TENANT_ID, async (client) => {
+    const latest = await client.query<{
+      event: string;
+      detail: { documentId?: unknown; reason?: unknown; legacyFindingIds?: unknown };
+    }>(
+      `select distinct on (detail->>'documentId') event, detail from trace
+        where run_id = $1
+          and event in ('extract_findings_replacement_withheld', 'extract_findings_replacement_published')
+        order by detail->>'documentId', occurred_at desc, id desc`,
+      [runId],
+    );
+    const provenance = await findingProvenanceAvailable(client);
+    const pending: PendingLegacyConfirmation[] = [];
+    for (const row of latest.rows) {
+      if (row.event !== "extract_findings_replacement_withheld" || row.detail?.reason !== "legacy_unconfirmed") continue;
+      const documentId = typeof row.detail.documentId === "string" ? row.detail.documentId : null;
+      const ids = Array.isArray(row.detail.legacyFindingIds)
+        ? row.detail.legacyFindingIds.filter((x): x is string => typeof x === "string")
+        : [];
+      if (!documentId || ids.length === 0) continue;
+      const live = await client.query<{ id: string; finding_text: string; source_filename: string }>(
+        `select f.id, f.finding_text, d.source_filename
+           from findings f join documents d on d.id = f.source_document_id
+          where f.run_id = $1 and f.source_document_id = $2 and f.id = any($3::uuid[])
+            and f.status = 'accepted'
+            ${provenance ? "and f.provenance_tracked = false and f.human_reviewed_at is null and cardinality(f.human_edited_fields) = 0" : ""}
+          order by f.created_at, f.id`,
+        [runId, documentId, ids],
+      );
+      if (live.rows.length === 0) continue;
+      pending.push({
+        documentId,
+        filename: live.rows[0].source_filename,
+        findings: live.rows.map((r) => ({ id: r.id, text: r.finding_text })),
+      });
+    }
+    return pending;
+  });
+}
+
 type Priority = "high" | "medium" | "low";
 
 type Recommendation = {
@@ -1049,6 +1596,7 @@ type Recommendation = {
 // answers a different question first, which one is worth looking at at
 // all, nothing here drops or filters a recommendation.
 async function getRecommendations(runId: string): Promise<Recommendation[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<Recommendation>(
       `select r.id, r.insight_id, i.headline as insight_headline, f.theme, r.action_text, r.owner_role,
@@ -1085,6 +1633,11 @@ type SynthesizedRecommendation = {
   confidence_tier: "strong" | "moderate" | "exploratory" | null;
   quality_score: number | null;
   quality_tier: "finding" | "partial" | "qualified" | null;
+  /** FND-001: inherited from the anchor insight (supportStatus.ts). */
+  support?: import("@/lib/supportStatusShared").InsightSupport;
+  /** GT-007: the decisions it was written for, and whether they are earlier or unrecorded. */
+  decision_context: string | null;
+  decision_state: "earlier" | "unknown" | null;
 };
 
 type RecommendationQuality = {
@@ -1106,6 +1659,7 @@ type RecommendationQuality = {
 async function getRecommendationQuality(
   runId: string,
 ): Promise<Map<string, RecommendationQuality>> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<RecommendationQuality>(
@@ -1137,6 +1691,7 @@ type StoredObjectiveQuality = {
 async function getObjectiveQuality(
   runId: string,
 ): Promise<{ rows: StoredObjectiveQuality[]; missing: boolean }> {
+  const TENANT_ID = await requireTenantId();
   try {
     const rows = await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<StoredObjectiveQuality>(
@@ -1164,22 +1719,32 @@ async function getObjectiveQuality(
  */
 async function getSynthesizedRecommendations(
   runId: string,
+  supportPromise: Promise<InsightSupportResult>,
 ): Promise<SynthesizedRecommendation[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
+  const TENANT_ID = await requireTenantId();
+  const rows = await withTenantRead(TENANT_ID, async (client) => {
+    // GT-007: each card states the decisions it was written for by the same rule the main-list
+    // exports use (decisionContext.ts), so screen and files agree. Same order as the exports.
+    const recorded = await recommendationDecisionContextAvailable(client);
     const result = await client.query<SynthesizedRecommendation>(
       `select r.id, r.synthesized_insight_id, si.headline as synthesized_insight_headline, r.action_text,
               r.owner_role, r.owner_feasibility_note, r.timeline, r.metric, r.priority,
               r.assumptions_and_risks, r.alternatives_considered, r.source, r.status, r.edited,
-              si.confidence_tier, si.quality_score, si.quality_tier
+              si.confidence_tier, si.quality_score, si.quality_tier,
+              ${recorded ? "r.decision_context" : "null::text as decision_context"},
+              ${recommendationDecisionStateSql("r", "run.decision_statement", recorded)} as decision_state
        from recommendations r
+       join runs run on run.id = r.run_id
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1
          and r.synthesized_insight_id is not null
-       order by si.quality_score desc nulls last, r.created_at`,
+       order by si.quality_score desc nulls last, r.created_at, r.id`,
       [runId],
     );
     return result.rows;
   });
+  const support = await supportPromise;
+  return rows.map((row) => ({ ...row, support: support.statusOf(row.synthesized_insight_id) }));
 }
 
 type ParkedInsight = {
@@ -1189,6 +1754,8 @@ type ParkedInsight = {
   tension: string;
   implication: string;
   action_plan_status: "has_action" | "retained_no_action";
+  /** REC-002: false when no recommendation of any status exists for it (a partial run left it out). */
+  has_any_recommendation: boolean;
 };
 
 /**
@@ -1205,9 +1772,11 @@ type ParkedInsight = {
  * or domain knowledge arrives.
  */
 async function getParkedInsights(runId: string): Promise<ParkedInsight[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<ParkedInsight>(
-      `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status
+      `select si.id, si.headline, si.observation, si.tension, si.implication, si.action_plan_status,
+              exists (select 1 from recommendations r2 where r2.synthesized_insight_id = si.id) as has_any_recommendation
        from synthesized_insights si
        where si.run_id = $1
          and si.review_status = 'accepted'
@@ -1243,6 +1812,7 @@ type StoryNarrative = {
 async function getStoryNarrative(
   runId: string,
 ): Promise<StoryNarrative | null> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<StoryNarrative>(
       `select executive_summary, situation, complication, question, governing_thought, pillars,
@@ -1254,25 +1824,9 @@ async function getStoryNarrative(
   });
 }
 
-/**
- * The Research assistant card's chat history for this run (see
- * src/lib/researchAssistant.ts). Oldest first, matching reading order in
- * the chat panel; the card itself caps how many of these it keeps visible,
- * this just hands back everything that's been said so far on this run.
- */
-async function getAssistantMessages(
-  runId: string,
-): Promise<AssistantChatMessage[]> {
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<AssistantChatMessage>(
-      `select id, role, content, created_at::text
-       from assistant_messages
-       where run_id = $1
-       order by created_at asc`,
-      [runId],
-    );
-    return result.rows;
-  });
+/** The Research assistant card's chat history for this run, oldest first (shared with the floating drawer). */
+async function getAssistantMessages(runId: string): Promise<AssistantChatMessage[]> {
+  return loadAssistantConversation(await requireTenantId(), runId);
 }
 
 /**
@@ -1286,15 +1840,37 @@ async function getAssistantMessages(
 async function getObjectiveValidations(
   runId: string,
 ): Promise<ObjectiveValidation[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<ObjectiveValidation>(
-      `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids
+    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a
+    // catalog probe rather than try/catch - a failed SELECT (the column doesn't exist
+    // pre-migration) would abort the rest of this transaction, taking a plain fallback query
+    // down with it, the same failure mode this fix's own package (OBJ-REV-007) had to correct
+    // elsewhere. The catalog check below cannot itself fail the transaction.
+    const colCheck = await client.query<{ exists: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
+       ) as "exists"`,
+    );
+    if (colCheck.rows[0]?.exists === true) {
+      const result = await client.query<ObjectiveValidation>(
+        `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, evidence_digest_degraded
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+        [runId],
+      );
+      return result.rows;
+    }
+    const result = await client.query<Omit<ObjectiveValidation, "evidence_digest_degraded">>(
+      `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred
        from objective_validations
        where run_id = $1
        order by item_kind, item_order`,
       [runId],
     );
-    return result.rows;
+    return result.rows.map((row) => ({ ...row, evidence_digest_degraded: false }));
   });
 }
 
@@ -1303,6 +1879,9 @@ type ApiUsageRow = {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  /** Prompt caching (promptCache.ts): tokens written to and read from the cache, priced by costOfUsage. */
+  cache_write_tokens: number;
+  cache_read_tokens: number;
 };
 
 /**
@@ -1315,18 +1894,23 @@ type ApiUsageRow = {
  * below rather than trusting the declared row type.
  */
 async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
     const result = await client.query<{
       agent: string;
       calls: string;
       input_tokens: string;
       output_tokens: string;
+      cache_write_tokens: string;
+      cache_read_tokens: string;
     }>(
       `select
          detail->>'agent' as agent,
          count(*) as calls,
          coalesce(sum((detail->>'input_tokens')::bigint), 0) as input_tokens,
-         coalesce(sum((detail->>'output_tokens')::bigint), 0) as output_tokens
+         coalesce(sum((detail->>'output_tokens')::bigint), 0) as output_tokens,
+         coalesce(sum((detail->>'cache_creation_input_tokens')::bigint), 0) as cache_write_tokens,
+         coalesce(sum((detail->>'cache_read_input_tokens')::bigint), 0) as cache_read_tokens
        from trace
        where run_id = $1 and event = 'api_usage'
        group by detail->>'agent'
@@ -1338,6 +1922,8 @@ async function getApiUsage(runId: string): Promise<ApiUsageRow[]> {
       calls: Number(row.calls),
       input_tokens: Number(row.input_tokens),
       output_tokens: Number(row.output_tokens),
+      cache_write_tokens: Number(row.cache_write_tokens),
+      cache_read_tokens: Number(row.cache_read_tokens),
     }));
   });
 }
@@ -1352,6 +1938,8 @@ export type FindingHistoryRow = {
   archived_at: string;
   insight_headline: string | null;
   insight_quality_tier: string | null;
+  /** The researcher's note at retirement (migration 0114, Codex DI-F07); null when none or not kept. */
+  researcher_note: string | null;
 };
 
 /**
@@ -1369,6 +1957,7 @@ export type FindingHistoryRow = {
  * quietly renders no History section rather than breaking the whole page.
  */
 async function getFindingHistory(runId: string): Promise<FindingHistoryRow[]> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<FindingHistoryRow>(
@@ -1381,7 +1970,9 @@ async function getFindingHistory(runId: string): Promise<FindingHistoryRow[]> {
            fh.archived_reason,
            fh.archived_at,
            ih.headline as insight_headline,
-           ih.quality_tier as insight_quality_tier
+           ih.quality_tier as insight_quality_tier,
+           -- Read through to_jsonb so the page works before migration 0114 adds the column.
+           to_jsonb(fh)->>'researcher_note' as researcher_note
          from finding_history fh
          left join insight_history ih on ih.original_finding_id = fh.original_finding_id
          where fh.run_id = $1
@@ -1403,6 +1994,9 @@ export type ApiUsageBatchRow = {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  /** Prompt caching (promptCache.ts): tokens written to and read from the cache, priced by costOfUsage. */
+  cache_write_tokens: number;
+  cache_read_tokens: number;
 };
 
 /**
@@ -1418,6 +2012,7 @@ export type ApiUsageBatchRow = {
  * counting toward getApiUsage's all-time total.
  */
 async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
+  const TENANT_ID = await requireTenantId();
   try {
     return await withTenantRead(TENANT_ID, async (client) => {
       const result = await client.query<{
@@ -1427,6 +2022,8 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
         calls: string;
         input_tokens: string;
         output_tokens: string;
+        cache_write_tokens: string;
+        cache_read_tokens: string;
       }>(
         `with batches as (
            select
@@ -1443,7 +2040,9 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
            b.started_at,
            count(t.id) as calls,
            coalesce(sum((t.detail->>'input_tokens')::bigint), 0) as input_tokens,
-           coalesce(sum((t.detail->>'output_tokens')::bigint), 0) as output_tokens
+           coalesce(sum((t.detail->>'output_tokens')::bigint), 0) as output_tokens,
+           coalesce(sum((t.detail->>'cache_creation_input_tokens')::bigint), 0) as cache_write_tokens,
+           coalesce(sum((t.detail->>'cache_read_input_tokens')::bigint), 0) as cache_read_tokens
          from batches b
          left join trace t
            on t.run_id = $1
@@ -1461,6 +2060,8 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
         calls: Number(row.calls),
         input_tokens: Number(row.input_tokens),
         output_tokens: Number(row.output_tokens),
+        cache_write_tokens: Number(row.cache_write_tokens),
+        cache_read_tokens: Number(row.cache_read_tokens),
       }));
     });
   } catch {
@@ -1478,26 +2079,69 @@ async function getApiUsageBatches(runId: string): Promise<ApiUsageBatchRow[]> {
 // reads runs.research_objective. Accepting one is still a manual step the
 // researcher takes on the Objective brief screen, this only makes sure
 // there's something to accept.
-async function refreshObjectiveCandidates(runId: string) {
+// Ties the synthesized insights back to the stated objectives and decisions
+// after each analysis run. Skipped when none exist (objectives are optional).
+// Failures are logged, never thrown, so they cannot stop the pipeline.
+async function refreshObjectiveValidation(runId: string) {
+  const TENANT_ID = await requireTenantId();
   try {
+    const has = await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query<{ n: boolean }>(
+        `select (coalesce(trim(research_objective), '') <> '' or coalesce(trim(decision_statement), '') <> '') as n
+         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
+        [runId],
+      );
+      return r.rows[0]?.n === true;
+    });
+    if (!has) return;
+    await generateObjectiveValidation(TENANT_ID, runId);
+  } catch (error) {
+    await withTenant(TENANT_ID, async (client) => {
+      await client.query(
+        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
+      );
+    }).catch(() => {});
+  }
+}
+
+// Early trigger points (after extraction, verification and so on) no longer
+// touch objectives. Setup records the researcher's own objectives; inferred
+// ones are generated later, after the insights exist (refreshInferredObjectives).
+async function refreshObjectiveCandidates(runId: string) {
+  void runId;
+}
+
+async function refreshInferredObjectives(runId: string) {
+  const TENANT_ID = await requireTenantId();
+  // Objectives are optional. When the researcher stated none (typed or
+  // imported from a brief), objectives are inferred from the findings and
+  // accepted automatically, marked as inferred so reports can flag that
+  // their coverage is circular. Once a stated objective exists this does
+  // nothing; suggestions are then only made on request.
+  try {
+    const hasStated = await withTenantRead(TENANT_ID, async (client) => {
+      const r = await client.query(
+        "select 1 from objective_candidates where run_id = $1 and source = 'researcher_authored' and status = 'accepted' limit 1",
+        [runId],
+      );
+      return r.rows.length > 0;
+    });
+    if (hasStated) return;
     await generateObjectiveCandidates(TENANT_ID, runId);
+    await refreshObjectiveQuality(TENANT_ID, runId);
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
-        [
-          TENANT_ID,
-          runId,
-          JSON.stringify({
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        ],
+        [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
       );
-    });
+    }).catch(() => {});
   }
 }
 
 async function refreshDecisionCandidates(runId: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     await generateDecisionCandidates(TENANT_ID, runId);
   } catch (error) {
@@ -1526,6 +2170,7 @@ async function refreshDecisionCandidates(runId: string) {
  * here shouldn't block the actual processing.
  */
 async function stampSingleDocumentBatch(runId: string, mode: string) {
+  const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
@@ -1552,6 +2197,7 @@ async function recordSingleDocumentError(
   documentId: string,
   error: unknown,
 ) {
+  const TENANT_ID = await requireTenantId();
   const message = error instanceof Error ? error.message : String(error);
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
@@ -1567,11 +2213,70 @@ async function recordSingleDocumentError(
 
 async function extractFindingsAction(runId: string, documentId: string) {
   "use server";
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
+  await runReportExtraction(runId, documentId, {});
+}
+
+/**
+ * REP-IN-002: the researcher's explicit confirmation, from the legacy-replacement prompt, that
+ * exactly the listed findings on exactly this document may be replaced. The ids come from that
+ * prompt's hidden inputs; publication re-validates every one under its document lock and never
+ * retires a finding that has since been reviewed, edited, annotated or used.
+ */
+async function confirmLegacyReplacementAction(runId: string, documentId: string, formData: FormData) {
+  "use server";
+  // G6: checked here as well as in the delegated action, so this entry point never relies on a callee.
+  await requireTenantId();
+  const findingIds = formData
+    .getAll("findingId")
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
+  if (findingIds.length === 0) return;
+  await runReportExtraction(runId, documentId, { confirmLegacyReplacement: { findingIds } });
+}
+
+// The single-document report extraction (formerly extractFindingsAction's body, unchanged apart
+// from passing `options` through), shared by the normal action and the legacy confirmation.
+async function runReportExtraction(
+  runId: string,
+  documentId: string,
+  options: { confirmLegacyReplacement?: { findingIds: string[] } },
+) {
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   try {
-    await extractFindingsFromDocument(TENANT_ID, runId, documentId);
+    const result = await extractFindingsFromDocument(TENANT_ID, runId, documentId, options);
+    // IMP-006 / REP-IN-001: some but not all chunks failing is not "ready" - it is a
+    // document a researcher must be told to treat as partially read, the same way a
+    // transcript's own coverage gap already surfaces as "incomplete" rather than "ready".
+    // REP-IN-002: a replacement that was withheld or could not be published left the
+    // previous findings in place; that is also "incomplete", with the retry instruction.
+    const status = result.failedParts > 0 || !result.published ? "incomplete" : "ready";
+    if (!result.published) {
+      await recordSingleDocumentError(runId, documentId, new Error(result.notPublishedReason ?? "the new reading was not applied; retry extraction for this document"));
+    }
+    const persisted = await setDocumentProcessingStatus(documentId, status);
+    if (!persisted) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          `extraction finished (${status}), but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
+        ),
+      );
+    }
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    const persisted = await setDocumentProcessingStatus(documentId, "failed");
+    if (!persisted) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          "extraction failed, and its failed status could not be saved either (the document may have been removed, or a database migration is pending) - do not trust this document's status badge",
+        ),
+      );
+    }
   }
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
@@ -1605,76 +2310,19 @@ async function extractFindingsAction(runId: string, documentId: string) {
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
   await refreshRecommendations(TENANT_ID, runId);
-  revalidatePath(`/runs/${runId}`);
-}
-
-/**
- * Captures the banner plan for one raw document_tables row: which columns
- * are the banner (segmenting/breaking variables, e.g. Gender, Age band)
- * and which are the stub (outcome measures), picked from that table's own
- * headers rather than typed freehand, so there's no mismatch between what
- * was named and what the table actually contains. Per the 2026-10-04
- * decision, every category within a named banner column is compared
- * against every other by default once the dedicated statistical path
- * reads this, naming a column is the only discipline needed, not naming
- * individual comparison pairs within it.
- *
- * Schema-only consumer for now: nothing downstream reads banner_columns or
- * stub_columns yet, since the banner-plan-driven statistical service
- * itself hasn't been built. This just gives a raw table's plan somewhere
- * real to live, and a visible confirmation that it was captured, while
- * that table sits in the table_awaiting_statistical_path state (see
- * generateFindingsFromTable.ts).
- */
-async function saveBannerPlanAction(
-  runId: string,
-  documentTableId: string,
-  formData: FormData,
-) {
-  "use server";
-  const bannerColumns = formData
-    .getAll("bannerColumns")
-    .map(String)
-    .filter(Boolean);
-  const stubColumns = formData
-    .getAll("stubColumns")
-    .map(String)
-    .filter(Boolean);
-  const strataColumn = String(formData.get("strataColumn") ?? "").trim();
-  const weightColumn = String(formData.get("weightColumn") ?? "").trim();
-  const samplingDesign =
-    strataColumn || weightColumn
-      ? {
-          strataColumn: strataColumn || null,
-          weightColumn: weightColumn || null,
-        }
-      : null;
-
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query(
-      `update document_tables
-       set banner_columns = $1, stub_columns = $2, sampling_design = $3
-       where id = $4 and run_id = $5`,
-      [
-        JSON.stringify(bannerColumns),
-        JSON.stringify(stubColumns),
-        JSON.stringify(samplingDesign),
-        documentTableId,
-        runId,
-      ],
-    );
-  });
-
   revalidatePath(`/runs/${runId}`);
 }
 
 async function generateFindingsAction(runId: string, documentId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   try {
     await processTableDocument(TENANT_ID, runId, documentId);
+    await setDocumentProcessingStatus(documentId, "ready");
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    await setDocumentProcessingStatus(documentId, "failed");
   }
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
@@ -1704,38 +2352,6 @@ async function generateFindingsAction(runId: string, documentId: string) {
   // finding already has an insight from the pass above), and for
   // "validate" mode it's the first real chance generateInsights has had to
   // run now that a decision exists.
-  await refreshInsights(TENANT_ID, runId);
-  await refreshSynthesizedInsights(TENANT_ID, runId);
-  await refreshSynthesizedInsightQuality(TENANT_ID, runId);
-  await refreshRecommendations(TENANT_ID, runId);
-  revalidatePath(`/runs/${runId}`);
-}
-
-/**
- * The raw-table counterpart to generateFindingsAction: runs the
- * pre-specified banner x stub comparisons (generateFindingsFromBannerPlan,
- * bannerPlanComputation.ts) against a raw document_tables row instead of
- * processTableDocument's exploratory scan, then feeds whatever findings
- * come out through the same verify -> insight -> decision chain every
- * other generation path uses, so a banner-plan finding is reviewed,
- * verified, and synthesized exactly like any other.
- */
-async function computeBannerPlanAction(runId: string, documentTableId: string) {
-  "use server";
-  await stampSingleDocumentBatch(runId, "single_document");
-  try {
-    await generateFindingsFromBannerPlan(TENANT_ID, runId, documentTableId);
-  } catch (error) {
-    await recordSingleDocumentError(runId, documentTableId, error);
-  }
-  await detectDuplicateFindings(TENANT_ID, runId);
-  await Promise.all([
-    refreshVerdicts(TENANT_ID, runId)
-      .then(() => refreshStatedInsightValidations(TENANT_ID, runId))
-      .then(() => refreshInsights(TENANT_ID, runId)),
-    refreshObjectiveCandidates(runId),
-  ]);
-  await refreshDecisionCandidates(runId);
   await refreshInsights(TENANT_ID, runId);
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
@@ -1755,10 +2371,23 @@ async function reapplyCodebookAction(
   codes: CodebookEdit[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   try {
-    await reapplyCodebook(TENANT_ID, runId, documentId, codes);
+    // ANA-QUAL-001: reapplyCodebook stamps "ready"/"incomplete" itself now - see
+    // extractThemesFromTranscript's own comment on the same change.
+    const result = await reapplyCodebook(TENANT_ID, runId, documentId, codes);
+    if (!result.statusPersisted) {
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          "Coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+        ),
+      );
+    }
   } catch (error) {
+    await setDocumentProcessingStatus(documentId, "failed");
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
@@ -1782,6 +2411,7 @@ async function reapplyCodebookAction(
 
 async function codeThemesAction(runId: string, documentId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -1793,10 +2423,40 @@ async function codeThemesAction(runId: string, documentId: string) {
     revalidatePath(`/runs/${runId}`);
     return;
   }
+  // One run per transcript (Codex IR-07): a second start while one is running is refused, not queued.
+  if (!claimCodingRun(runId, documentId)) {
+    await recordSingleDocumentError(
+      runId,
+      documentId,
+      new Error("This transcript is already being coded. Wait for that run to finish; its progress shows on the transcript's card."),
+    );
+    revalidatePath(`/runs/${runId}`);
+    return;
+  }
   try {
-    await extractThemesFromTranscript(TENANT_ID, runId, documentId);
+    // ANA-QUAL-001: extractThemesFromTranscript now stamps "ready" or "incomplete" itself
+    // (see its own comment) based on whether coding actually reached full per-unit coverage,
+    // so this no longer overwrites that with an unconditional "ready".
+    const result = await extractThemesFromTranscript(TENANT_ID, runId, documentId);
+    if (!result.statusPersisted) {
+      // Counter-review: the write was swallowed by a migration guard (pre-0088), so
+      // whatever status this document is showing now is NOT a confirmation that today's
+      // coverage was actually recorded - surfaced the same way a real processing error
+      // would be, since a researcher trusting a stale badge is exactly the failure mode
+      // this is meant to prevent.
+      await recordSingleDocumentError(
+        runId,
+        documentId,
+        new Error(
+          "Coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending). Do not trust this document's status badge until that migration is applied and coding is re-run.",
+        ),
+      );
+    }
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    await setDocumentProcessingStatus(documentId, "failed");
+  } finally {
+    releaseCodingRun(documentId);
   }
   await refreshAfterCoding(runId);
 }
@@ -1807,6 +2467,7 @@ async function codeThemesAction(runId: string, documentId: string) {
  * detection, verification, insights, objectives, decisions, recommendations.
  */
 async function refreshAfterCoding(runId: string) {
+  const TENANT_ID = await requireTenantId();
   await detectDuplicateFindings(TENANT_ID, runId);
   // Objective-candidate generation only reads findings, not verdicts or
   // insights, so it has nothing to wait for here; running it alongside the
@@ -1854,6 +2515,7 @@ async function importCodingAction(
   formData: FormData,
 ) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await stampSingleDocumentBatch(runId, "single_document");
   const waiting = await findUnconfirmedTranscripts(TENANT_ID, runId);
   if (waiting.some((w) => w.id === documentId)) {
@@ -1889,6 +2551,20 @@ async function importCodingAction(
       parsed,
     );
     const notes: string[] = [];
+    // ANA-QUAL-001: this codebook-only import handler is a third caller of the same
+    // statusPersisted contract reapplyCodebookAction and codeThemesAction already check (see
+    // their own comments above) - importCodedTranscript stamps the document's "ready"/"incomplete"
+    // status itself and reports whether that status write actually persisted, but this call site
+    // never inspected it, so a failed status write here (a pending migration, say) was reported to
+    // the researcher as a plain successful import with no sign the status badge can't be trusted.
+    // Folded into this function's own existing `notes` accumulator (not a second, separate
+    // recordSingleDocumentError call) so it reaches the researcher the same way every other
+    // advisory note from this import already does - one combined message, not two competing ones.
+    if (!result.statusPersisted) {
+      notes.push(
+        "coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge until that migration is applied and coding is re-run",
+      );
+    }
     if (result.quotesMatched < result.quotesTotal) {
       const missed = result.quotesTotal - result.quotesMatched;
       notes.push(
@@ -1929,8 +2605,15 @@ async function importCodingAction(
         ),
       );
     }
+    // Import itself succeeded even when there are advisory notes above -
+    // those aren't a processing failure. When codebookOnly, importCodedTranscript already
+    // stamped "ready" or "incomplete" itself based on the model's own apply-codebook
+    // coverage (ANA-QUAL-001); only a plain researcher-coded import (no model involved,
+    // so no coverage question to report) is set unconditionally here.
+    if (!result.codebookOnly) await setDocumentProcessingStatus(documentId, "ready");
   } catch (error) {
     await recordSingleDocumentError(runId, documentId, error);
+    await setDocumentProcessingStatus(documentId, "failed");
     revalidatePath(`/runs/${runId}`);
     return;
   }
@@ -1947,6 +2630,7 @@ async function importCodingAction(
  */
 async function reverifyFindingsAction(runId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await reverifyFindings(TENANT_ID, runId);
   // reverifyFindings just wiped every verdict on this run, including the
   // chain-trace verdicts stated_insight claims had; without this they would
@@ -1972,6 +2656,7 @@ async function reverifyFindingsAction(runId: string) {
  */
 async function synthesizeInsightsAction(runId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   await refreshSynthesizedInsights(TENANT_ID, runId);
   await refreshSynthesizedInsightQuality(TENANT_ID, runId);
   // Every other workflow trigger in this file already chains
@@ -2005,6 +2690,7 @@ async function synthesizeInsightsAction(runId: string) {
  */
 async function generateStoryReportAction(runId: string) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   try {
     await generateStoryNarrative(TENANT_ID, runId);
   } catch (error) {
@@ -2052,6 +2738,7 @@ async function generateStoryReportAction(runId: string) {
 // pipeline (see supabase/migrations/0026_programs.sql).
 async function updateProgramLinkAction(runId: string, formData: FormData) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   const action = String(formData.get("action") ?? "link");
 
   if (action === "unlink") {
@@ -2131,6 +2818,11 @@ const DOC_KIND_STYLE: Record<
     badge: "bg-amber-50 text-amber-700",
     label: "Evidence",
   },
+  instrument: {
+    border: "border-l-cyan-500",
+    badge: "bg-cyan-50 text-cyan-700",
+    label: "Questionnaire or guide",
+  },
 };
 
 /**
@@ -2157,6 +2849,7 @@ async function processRunAction(
   mode: "new" | "unreviewed" | "all",
 ) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   // A previous click's later stages may still be running in the background.
   // Starting another pass on top of them would reset the progress card and
   // race the same writes, so do nothing; the status card shows it is running.
@@ -2164,13 +2857,13 @@ async function processRunAction(
   const allDocuments = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{
       id: string;
-      kind: "report" | "table" | "evidence" | "transcript";
+      kind: "report" | "table" | "evidence" | "transcript" | "technical";
       has_findings: boolean;
     }>(
       `select d.id, d.kind,
               exists (
                 select 1 from findings f
-                where (d.kind = 'table' and f.source_table_id = d.id)
+                where (d.kind = 'table' and f.source_table_id in (select t.id from document_tables t where t.document_id = d.id))
                    or (d.kind != 'table' and f.source_document_id = d.id)
               ) as has_findings
        from documents d
@@ -2242,26 +2935,83 @@ async function processRunAction(
     async (doc) => {
       try {
         if (doc.kind === "report") {
-          await extractFindingsFromDocument(TENANT_ID, runId, doc.id, {
+          const result = await extractFindingsFromDocument(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
             archiveReason,
           });
+          // IMP-006 / REP-IN-001: mirrors the transcript carve-out just below - a report
+          // with failed chunks has its own accurate status to stamp ("incomplete"), so it is
+          // pulled out of the shared unconditional "ready" line the same way transcripts
+          // already are, rather than overwriting a partial result back to an unqualified
+          // "ready". REP-IN-002: a withheld or unpublished replacement keeps the previous
+          // findings and is reported as "incomplete" with its retry instruction.
+          const status = result.failedParts > 0 || !result.published ? "incomplete" : "ready";
+          if (!result.published) {
+            errors.push(`${doc.id}: ${result.notPublishedReason ?? "the new reading was not applied; retry extraction for this document"}`);
+          }
+          const persisted = await setDocumentProcessingStatus(doc.id, status);
+          if (!persisted) {
+            errors.push(
+              `${doc.id}: extraction finished (${status}), but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
+            );
+          }
         } else if (doc.kind === "table") {
           await processTableDocument(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
             archiveReason,
           });
         } else if (doc.kind === "transcript") {
-          await extractThemesFromTranscript(TENANT_ID, runId, doc.id, {
+          const result = await extractThemesFromTranscript(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
             archiveReason,
           });
+          if (!result.statusPersisted) {
+            // Same migration-guard case as the single-document coding action - see its own
+            // comment. Pushed into the same batch `errors` array as a real processing
+            // failure would be, so it reaches the same process_run_errors banner below.
+            errors.push(
+              `${doc.id}: coding finished, but its completion status could not be saved (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
+            );
+          }
+        } else if (doc.kind === "evidence" || doc.kind === "technical") {
+          // Context and technical documents are not mined for findings, but their text is read and
+          // kept so they preview, the brief and methodology steps can use them, and the Research
+          // assistant can quote a technical document. One whose text could not be read is read
+          // again here, and fails visibly if it still cannot be, rather than being stamped ready.
+          const has = await withTenant(TENANT_ID, async (client) => {
+            const r = await client.query<{ n: number }>(
+              "select coalesce(length(extracted_text), 0)::int as n from documents where id = $1",
+              [doc.id],
+            );
+            return (r.rows[0]?.n ?? 0) > 0;
+          });
+          if (!has) await readContextDocument(TENANT_ID, runId, doc.id);
         }
-        // "evidence" documents are not processed by either agent yet.
+        // ANA-QUAL-001 / IMP-006: a transcript or report already stamped its own accurate
+        // status above ("ready" or "incomplete", depending on whether coding or extraction
+        // reached full coverage) - this unconditional "ready" used to run right after it
+        // regardless and overwrite "incomplete" back to "ready" before a researcher ever saw
+        // it. Every other kind has no coverage concept of its own, so "ready" is still
+        // unconditionally correct for them.
+        if (doc.kind !== "transcript" && doc.kind !== "report") {
+          await setDocumentProcessingStatus(doc.id, "ready");
+        }
       } catch (error) {
         errors.push(
           `${doc.id}: ${error instanceof Error ? error.message : String(error)}`,
         );
+        // IMP-006 / REP-IN-001: the "failed" write itself can silently not land (same
+        // pre-migration-database case setDocumentProcessingStatus already guards elsewhere),
+        // which would otherwise leave this document showing whatever status it had before -
+        // for a document that had never been processed, that is no badge at all, which reads
+        // as "nothing wrong yet" rather than "failed". Surface that as its own error line in
+        // the same batch, rather than only here in the catch's own error push above.
+        const persisted = await setDocumentProcessingStatus(doc.id, "failed");
+        if (!persisted) {
+          errors.push(
+            `${doc.id}: failed, and its failed status could not be saved either (the document may have been removed, or a database migration is pending) - do not trust this document's status badge`,
+          );
+        }
       } finally {
         incrementProcessProgress(runId);
       }
@@ -2348,6 +3098,9 @@ async function processRunAction(
       await stage("synthesis", async () => {
         await refreshSynthesizedInsights(TENANT_ID, runId);
         await refreshSynthesizedInsightQuality(TENANT_ID, runId);
+        await refreshInferredObjectives(runId);
+        await refreshObjectiveQuality(TENANT_ID, runId);
+        await refreshObjectiveValidation(runId);
       });
       await stage("recommendations", () =>
         refreshRecommendations(TENANT_ID, runId),
@@ -2360,244 +3113,6 @@ async function processRunAction(
   });
 
   revalidatePath(`/runs/${runId}`);
-}
-
-async function uploadDocument(runId: string, formData: FormData) {
-  "use server";
-  const reportFiles = (formData.getAll("reportFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const tableFiles = (formData.getAll("tableFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const rawTableFiles = (formData.getAll("rawTableFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const transcriptFiles = (formData.getAll("transcriptFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-
-  if (
-    reportFiles.length +
-      tableFiles.length +
-      rawTableFiles.length +
-      transcriptFiles.length ===
-    0
-  ) {
-    return;
-  }
-
-  await Promise.all([
-    ...reportFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "report", file),
-    ),
-    ...tableFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "table", file, "aggregated"),
-    ),
-    ...rawTableFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "table", file, "raw"),
-    ),
-    ...transcriptFiles.map((file) =>
-      storeUploadedDocument(TENANT_ID, runId, "transcript", file),
-    ),
-  ]);
-
-  revalidatePath(`/runs/${runId}`);
-}
-
-/**
- * A quick, non-statistical look at a saved banner plan's shape, rendered
- * right below it once both sides have at least one column (see
- * computeCrossTabPreview for why a continuous stub gets a group-summary
- * table here instead of a frequency grid). This is purely descriptive --
- * nothing here runs a significance test or writes a finding -- so a
- * degenerate column choice (a near-unique continuous measure ticked as a
- * banner, say) is visible before "Compute banner comparisons" turns it
- * into hundreds of meaningless findings.
- */
-function CrossTabPreviewSection({
-  tables,
-}: {
-  tables: CrossTabPreviewTable[];
-}) {
-  if (tables.length === 0) return null;
-  return (
-    <details
-      open
-      className="mt-2 rounded-lg border border-border bg-white p-2 text-[11px]"
-    >
-      <summary className="cursor-pointer select-none font-medium text-foreground">
-        Preview cross-tabs ({tables.length})
-      </summary>
-      <p className="mt-1 text-muted">
-        Every banner x stub pairing in this plan, counts and averages only, no
-        significance testing. Check this before computing: a banner or stub
-        column that looks sparse or near-unique here will produce the same kind
-        of noise once comparisons actually run.
-      </p>
-      <div className="mt-2 space-y-4">
-        {tables.map((table) => {
-          const bannerIsTooGranular = table.bannerTruncated;
-          return (
-            <div key={`${table.bannerColumn}__${table.stubColumn}`}>
-              <p className="mb-1 font-medium text-foreground">
-                {table.bannerColumn} &times; {table.stubColumn}
-              </p>
-              {table.kind === "categorical" && table.bannerIsContinuous && (
-                <p className="mb-1 rounded border border-red-200 bg-red-50 px-1.5 py-1 text-red-800">
-                  {table.bannerColumn} looks like a continuous measurement
-                  rather than a set of categories (more than{" "}
-                  {table.bannerCategories.length} distinct values), so it&apos;s
-                  excluded as a banner: comparing individual readings against
-                  each other row by row isn&apos;t meaningful. If you want a
-                  mean {table.bannerColumn} per {table.stubColumn}, swap them:
-                  make {table.stubColumn} the banner and {table.bannerColumn}{" "}
-                  the stub instead. (Compute banner comparisons already skips
-                  this column as a banner for the same reason, nothing will
-                  actually be generated from it.)
-                </p>
-              )}
-              {bannerIsTooGranular &&
-                !(table.kind === "categorical" && table.bannerIsContinuous) && (
-                  <p className="mb-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-amber-800">
-                    {table.bannerColumn} has more than{" "}
-                    {table.bannerCategories.length} distinct values; only the
-                    first {table.bannerCategories.length} are shown below. A
-                    column this granular is closer to an ID than a segment, and
-                    usually makes a poor banner.
-                  </p>
-                )}
-              {table.kind === "categorical" &&
-              table.bannerIsContinuous ? null : table.kind === "categorical" ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          {table.bannerColumn}
-                        </th>
-                        {table.stubCategories.map((stubCategory) => (
-                          <th
-                            key={stubCategory}
-                            className="py-1 pr-3 font-semibold text-muted"
-                          >
-                            {stubCategory}
-                          </th>
-                        ))}
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          n
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.bannerCategories.map((bannerCategory, i) => (
-                        <tr
-                          key={bannerCategory}
-                          className="border-b border-border last:border-0"
-                        >
-                          <td className="py-1 pr-3 text-foreground">
-                            {bannerCategory}
-                          </td>
-                          {table.counts[i].map((count, j) => (
-                            <td
-                              key={table.stubCategories[j]}
-                              className="py-1 pr-3 text-foreground"
-                            >
-                              {count}
-                              {table.rowTotals[i] > 0 && (
-                                <span className="text-muted">
-                                  {" "}
-                                  (
-                                  {Math.round(
-                                    (count / table.rowTotals[i]) * 1000,
-                                  ) / 10}
-                                  %)
-                                </span>
-                              )}
-                            </td>
-                          ))}
-                          <td className="py-1 pr-3 text-muted">
-                            {table.rowTotals[i]}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {table.stubTruncated && (
-                    <p className="mt-1 text-muted">
-                      Showing first {table.stubCategories.length} categories of{" "}
-                      {table.stubColumn}.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  {table.anova && (
-                    <p
-                      className={`mb-1 inline-block rounded px-1.5 py-0.5 ${
-                        table.anova.significant
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-50 text-slate-500"
-                      }`}
-                    >
-                      One-way ANOVA across {table.bannerCategories.length}{" "}
-                      groups:{" "}
-                      {table.anova.fStat !== null && table.anova.pValue !== null
-                        ? `F=${table.anova.fStat}, p=${table.anova.pValue}`
-                        : "not enough data per group"}
-                      {table.anova.significant
-                        ? " -- significant overall"
-                        : " -- not significant overall"}
-                    </p>
-                  )}
-                  <table className="w-full border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          {table.bannerColumn}
-                        </th>
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          n
-                        </th>
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          Mean {table.stubColumn}
-                        </th>
-                        <th className="py-1 pr-3 font-semibold text-muted">
-                          Std dev
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.bannerCategories.map((bannerCategory, i) => (
-                        <tr
-                          key={bannerCategory}
-                          className="border-b border-border last:border-0"
-                        >
-                          <td className="py-1 pr-3 text-foreground">
-                            {bannerCategory}
-                          </td>
-                          <td className="py-1 pr-3 text-foreground">
-                            {table.n[i]}
-                          </td>
-                          <td className="py-1 pr-3 text-foreground">
-                            {table.mean[i] ?? "--"}
-                          </td>
-                          <td className="py-1 pr-3 text-muted">
-                            {table.stdDev[i] ??
-                              (table.n[i] < 2 ? "n too small" : "--")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </details>
-  );
 }
 
 /**
@@ -2617,6 +3132,13 @@ function startPageTiming() {
       marks.push({ name, ms: Date.now() - t0 });
     });
   };
+  // Logged just before the page is returned: the gap between "data ready" and
+  // this is page-body computation; the rest of the request time is the render
+  // and sending the result to the browser.
+  timing.bodyBuilt = () => {
+    if (!enabled) return;
+    console.log(`[run page] body computed at ${Date.now() - started}ms`);
+  };
   timing.done = () => {
     if (!enabled) return;
     const slow = [...marks]
@@ -2631,25 +3153,39 @@ function startPageTiming() {
   return timing;
 }
 
+/** "1 transcript", "3 transcripts": a count with its noun, singular for one. */
+function countOf(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export default async function RunPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const TENANT_ID = await requireTenantId();
   const { id } = await params;
   // Every loader below only needs the run id, so they all run at once. They
   // used to run one after another, which meant the page waited on the sum of
   // some thirty database round trips instead of the slowest one.
   const timing = startPageTiming();
+  // FND-001: one support check per page load, shared by the synthesized-insight and
+  // recommendation loaders below (and the narrative note), so they cannot disagree. A failed
+  // check reads "Support not checked" with its reason; it never fails the page or shows current.
+  const insightSupport = loadInsightSupportOrUnchecked(TENANT_ID, id);
   const [
     run,
     documents,
     rawFindings,
     codingAnalysis,
     transcriptSetups,
+    dataSetups,
+    documentExcerpts,
+    documentReviewRoles,
     setupSuggestions,
     latestProcessErrors,
-    documentTablePreviews,
+    pendingLegacyConfirmations,
+    documentTablePreviewsResult,
     codebooksByDocument,
     objectiveCandidates,
     decisionCandidates,
@@ -2668,25 +3204,44 @@ export default async function RunPage({
     assistantMessages,
     programs,
     apiUsageBatches,
+    trimmedFiles,
+    unsupportedIdentifierColumnsByDoc,
+    labelDiagnosticsByDoc,
+    transcriptQuality,
+    instrumentSummaries,
+    contextRoles,
+    outputSets,
+    reportReadStats,
+    waveFilesResult,
+    decisionRefreshIsPending,
+    earlierDecisionCounts,
+    deletionImpact,
+    transcriptWaveSaves,
+    projectList,
+    stageFactsResult,
   ] = await Promise.all([
     timing("run", getRun(id)),
     timing("documents", getDocuments(id)),
     timing("findings", getFindings(id)),
     timing("codingAnalysis", getCodingAnalysis(TENANT_ID, id)),
     timing("transcriptSetups", getTranscriptSetups(TENANT_ID, id)),
+    timing("dataSetups", loadDataSetups(TENANT_ID, id)),
+    timing("documentExcerpts", getDocumentExcerpts(id)),
+    timing("documentReviewRoles", getDocumentReviewRoles(id)),
     timing("setupSuggestions", getSetupSuggestions(TENANT_ID, id)),
     timing("latestProcessErrors", getLatestProcessErrors(id)),
+    timing("pendingLegacyConfirmations", getPendingLegacyConfirmations(id)),
     timing("documentTablePreviews", getDocumentTablePreviews(id)),
     timing("codebooks", getCodebooks(id)),
     timing("objectiveCandidates", getObjectiveCandidates(id)),
     timing("decisionCandidates", getDecisionCandidates(id)),
     timing("insights", getInsights(id)),
-    timing("synthesizedInsights", getSynthesizedInsights(id)),
+    timing("synthesizedInsights", getSynthesizedInsights(id, insightSupport)),
     timing("statedInsightValidations", getStatedInsightValidations(id)),
     timing("inputCompleteness", getRunInputCompleteness(TENANT_ID, id)),
     timing("recommendations", getRecommendations(id)),
     timing("recommendationQuality", getRecommendationQuality(id)),
-    timing("synthesizedRecommendations", getSynthesizedRecommendations(id)),
+    timing("synthesizedRecommendations", getSynthesizedRecommendations(id, insightSupport)),
     timing("parkedInsights", getParkedInsights(id)),
     timing("apiUsage", getApiUsage(id)),
     timing("findingHistory", getFindingHistory(id)),
@@ -2695,10 +3250,38 @@ export default async function RunPage({
     timing("assistantMessages", getAssistantMessages(id)),
     timing("programs", getPrograms()),
     timing("apiUsageBatches", getApiUsageBatches(id)),
+    timing("trimmedFiles", getTrimmedFiles(id)),
+    timing("unsupportedIdentifierColumnsByDoc", getUnsupportedIdentifierColumns(id)),
+    timing("labelDiagnosticsByDoc", getLabelDiagnostics(id)),
+    timing("transcriptQuality", getTranscriptImportQuality(TENANT_ID, id)),
+    timing("instrumentSummaries", getInstrumentSummaries(TENANT_ID, id)),
+    timing("contextRoles", getDocumentRoles(TENANT_ID, id)),
+    timing("outputSets", getOutputSets(TENANT_ID, id)),
+    timing("reportReadStats", getReportReadStats(id)),
+    timing("waveFiles", listWaveFilesAction(id)),
+    timing("decisionRefreshPending", decisionRefreshPending(TENANT_ID, id)),
+    timing("decisionContextMismatch", decisionContextMismatch(TENANT_ID, id)),
+    // GT-010: what deleting each document takes with it, for its confirmation.
+    timing("deletionImpact", loadDocumentDeletionImpact(TENANT_ID, id)),
+    timing("transcriptWaveAvailable", transcriptWaveAvailable(TENANT_ID)),
+    timing("projectList", listProjects(TENANT_ID)),
+    // The section dashboards' stored-record facts (projectStageFacts.ts), the same the main
+    // dashboard reads; a failed read is shown on the dashboards, never taken as an empty project.
+    timing(
+      "stageFacts",
+      loadProjectStageFacts(TENANT_ID, id).then(
+        (facts) => ({ ok: true as const, facts }),
+        (error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) }),
+      ),
+    ),
   ]);
   if (!run) {
     notFound();
   }
+
+  const documentTablePreviews = documentTablePreviewsResult.rows;
+  const documentTablesReadFailed = documentTablePreviewsResult.failed;
+  const waveFiles: WaveFile[] = waveFilesResult.ok ? waveFilesResult.files : [];
 
   // Only what depends on the first batch, again all at once.
   const needsVerdictSummary = insights.length === 0 && rawFindings.length > 0;
@@ -2709,35 +3292,38 @@ export default async function RunPage({
     storyReportError,
     objectiveValidationError,
     programWaves,
+    methodologyFailure,
   ] = await Promise.all([
     timing(
       "findingCodingCounts",
       getFindingCodingCounts(TENANT_ID, id, codingAnalysis),
     ),
-    needsVerdictSummary ? getVerdictSummary(id) : Promise.resolve(null),
+    needsVerdictSummary ? getVerdictSummary(TENANT_ID, id) : Promise.resolve(null),
     needsVerdictSummary
       ? getLatestTraceMessage(id, [
           "insight_generator_error",
           "verify_findings_error",
         ])
       : Promise.resolve(null),
-    !storyNarrative
-      ? getLatestTraceMessage(id, ["story_narrative_error"])
-      : Promise.resolve(null),
+    // RR-F06: a failed generation newer than the saved narrative, shown even when one exists.
+    latestNarrativeFailure(TENANT_ID, id),
     objectiveValidations.length === 0
       ? getLatestTraceMessage(id, ["objective_validation_error"])
       : Promise.resolve(null),
     run.program_id
       ? getProgramWaves(run.program_id, id)
       : Promise.resolve([]),
+    latestMethodologyFailure(TENANT_ID, id),
   ]);
   const failedVerdictSamples =
     verdictSummary &&
     verdictSummary.verdictedCount > 0 &&
     verdictSummary.passedCount === 0
-      ? await getSampleFailedVerdicts(id)
+      ? await getSampleFailedVerdicts(TENANT_ID, id)
       : [];
   timing.done();
+  const wordingEdits = await getWordingEdits(id);
+  const figureChecks = await getFigureChecks(id);
   const findings = rawFindings.map((f) => ({
     ...f,
     coding_counts: findingCodingCounts.get(f.id) ?? null,
@@ -2748,11 +3334,6 @@ export default async function RunPage({
   // findings each run, see archiveAndReplaceFindings), but its label read
   // as a one-shot "do this once" action even once results already existed,
   // which is what prompted the mislabeling question.
-  const tableIdsWithFindings = new Set(
-    findings
-      .map((f) => f.source_table_id)
-      .filter((tableId): tableId is string => tableId !== null),
-  );
   const reapplyForRun = reapplyCodebookAction.bind(null, id);
   const documentTablesByDocument = new Map<string, DocumentTablePreview[]>();
   for (const preview of documentTablePreviews) {
@@ -2767,17 +3348,193 @@ export default async function RunPage({
   const documentNameById = new Map(
     documents.map((d) => [d.id, d.source_filename]),
   );
-  const importQualityTables = documentTablePreviews
-    .filter((t) => t.headers.length > 0)
-    .map((t) => ({
-      id: t.id,
-      documentName: documentNameById.get(t.document_id) ?? "Table",
-      label: t.label,
-      tableIndex: t.table_index,
-      headers: t.headers,
-      rows: t.rows,
-      ingestionType: t.ingestion_type,
-    }));
+  const importPreviewIdentities = await loadImportPreviewIdentities(TENANT_ID, id, documentTablePreviews);
+
+  // Skip logic from a confirmed questionnaire, per raw data file. Best
+  // effort: without a questionnaire the detected routing is used.
+  const statedRoutingByDoc = new Map<string, StatedRouting[]>();
+  // GT100-F01: a file whose confirmed questionnaire could not be read. Its quality check still runs
+  // on the routing detected in the data, but says so, rather than reading as if no questionnaire
+  // had been confirmed.
+  const statedRoutingUnread = new Set<string>();
+  await Promise.all(
+    documents
+      .filter((d) => d.kind === "table" && d.ingestion_type === "raw")
+      .filter((d) => [...instrumentSummaries.values()].some((s) => s.forDocumentId === d.id && s.links.confirmed > 0))
+      .map(async (d) => {
+        try {
+          const items = await getConfirmedItemsForData(TENANT_ID, id, d.id);
+          if (!items.some((i) => i.routing)) return;
+          const dict = await loadVariableDictionary(TENANT_ID, id, d.id);
+          statedRoutingByDoc.set(d.id, buildStatedRouting(items, dict.variables));
+        } catch (e) {
+          // Fall back to detected routing; a failed questionnaire read is said on the check below.
+          if (e instanceof InstrumentMeaningUnavailableError) statedRoutingUnread.add(d.id);
+        }
+      }),
+  );
+  const importQualityBase = documentTablePreviews.filter((t) => t.headers.length > 0 && t.table_index < 100);
+  const rawQualities = (
+    await Promise.all(
+      importQualityBase.map((t) =>
+        t.ingestion_type === "raw" ? getRawQuality(t, statedRoutingByDoc.get(t.document_id) ?? []) : Promise.resolve(null),
+      ),
+    )
+  ).map((q, i): TableQuality | null =>
+    // A new object: getRawQuality's results are cached and shared between requests.
+    q && statedRoutingUnread.has(importQualityBase[i].document_id)
+      ? {
+          ...q,
+          status: q.status === "fail" ? "fail" : "warn",
+          checks: [
+            ...q.checks,
+            {
+              id: "stated_routing",
+              label: "Questionnaire routing",
+              status: "warn",
+              detail: "The confirmed questionnaire could not be read, so empty answers are judged by the routing detected in the data. Reload the page to try again.",
+            },
+          ],
+        }
+      : q,
+  );
+
+  // A file too wide to store whole only has the capped quality above, which
+  // covers the kept subset named in trimmedFiles. Where that happened, pull
+  // in the uncapped variable dictionary (the same one the cross tab tool
+  // reads, read from the full file with no column cap) and fold it into a
+  // quality report that covers every variable, not just the kept ones.
+  type FullCoverageExtra = { quality: TableQuality; questionTypeByVariable: Record<string, QuestionType> };
+  const trimmedRawRows = importQualityBase
+    .map((t, i) => ({ t, capped: rawQualities[i] }))
+    .filter(
+      (r): r is { t: (typeof importQualityBase)[number]; capped: TableQuality } =>
+        r.t.ingestion_type === "raw" && !!r.capped && trimmedFiles.has(r.t.document_id),
+    );
+  const trimmedDocs = [...new Map(trimmedRawRows.map((r) => [r.t.document_id, r.capped])).entries()];
+  const fullCoverageByDoc = new Map<string, FullCoverageExtra>();
+  await Promise.all(
+    trimmedDocs.map(async ([documentId, capped]) => {
+      try {
+        const dict = await loadVariableDictionary(TENANT_ID, id, documentId);
+        const quality = computeFullTableQuality(dict as VariableDictionary, capped);
+        const questionTypeByVariable: Record<string, QuestionType> = {};
+        for (const set of dict.sets ?? []) {
+          for (const name of set.vars) questionTypeByVariable[name] = (set.kind ?? "multi") as QuestionType;
+        }
+        fullCoverageByDoc.set(documentId, { quality, questionTypeByVariable });
+      } catch {
+        // Dictionary unavailable (e.g. a non-SPSS/Stata/SAS file was trimmed some
+        // other way): fall back to the capped view for this file rather than failing.
+      }
+    }),
+  );
+
+  // The researcher's saved type/question-type corrections apply to any raw
+  // file, not only ones too wide to store whole, so these are loaded for
+  // every raw document shown here (a single small jsonb read each).
+  const rawDocIds = [...new Set(importQualityBase.filter((t) => t.ingestion_type === "raw").map((t) => t.document_id))];
+  const questionDefinitionsByDoc = new Map(await Promise.all(rawDocIds.map(async documentId =>
+    [documentId, await loadImportQuestionDefinitions(TENANT_ID, id, documentId)] as const,
+  )));
+  const overridesByDoc = new Map(
+    await Promise.all(
+      rawDocIds.map(
+        async (documentId) => [documentId, await loadVariableOverrides(TENANT_ID, id, documentId)] as const,
+      ),
+    ),
+  );
+
+  // An SPSS/Stata/SAS file not caught by the uncapped-coverage path above (it
+  // was never too wide to need it) still has its stored table, and so its
+  // quality.variableDetails, keyed by each variable's display LABEL rather
+  // than its canonical name - a correction saved against that label would
+  // otherwise reach nowhere the dictionary, crosstabs or any calculation
+  // actually looks. Built only for this case: CSV/Excel headers already are
+  // the canonical name, and a trimmed file's coverage is already canonically
+  // keyed via fullCoverageByDoc above.
+  const statsRawDocIds = rawDocIds.filter(
+    (documentId) => !fullCoverageByDoc.has(documentId) && isStatsFileName(documentNameById.get(documentId) ?? ""),
+  );
+  const canonicalMapByDoc = new Map(
+    await Promise.all(
+      statsRawDocIds.map(async (documentId) => {
+        try {
+          const dict = await loadVariableDictionary(TENANT_ID, id, documentId);
+          // Keyed only by the exact display header a correction was actually saved
+          // against (the disambiguated label _build_headers produced, falling back
+          // to the raw name only when no label exists). A raw name is never added
+          // as a second key: a variable's own name can coincide with another
+          // variable's disambiguated label (e.g. a label literally "q (2)" next to
+          // a raw-named column "q (2)"), and folding both into one object let
+          // whichever was written second silently redirect the other's corrections.
+          // If a key is ever claimed by two different variables, that key is left
+          // out entirely rather than guessing.
+          const map: Record<string, string> = {};
+          const ambiguous = new Set<string>();
+          for (const v of dict.variables) {
+            const key = v.label || v.name;
+            if (key in map && map[key] !== v.name) ambiguous.add(key);
+            else map[key] = v.name;
+          }
+          for (const key of ambiguous) delete map[key];
+          // IMP-003: the client used to fall back to the raw header text itself as the
+          // canonical name whenever a lookup here came up empty - correct for an
+          // unlabelled header, which already equals its own canonical name, but not
+          // generally safe: a display label with no entry in `map` (ambiguous, or any
+          // other reason) can still coincide, purely by chance, with some OTHER
+          // variable's actual canonical name (a label "Shared" sitting next to a
+          // genuinely different variable literally named "Shared"), and silently
+          // falling back to it then writes a correction into that other variable's
+          // override slot instead. Every real canonical name in this dictionary is
+          // sent down too, so the client can refuse that fallback whenever it would
+          // collide, rather than trust that no name ever repeats as a label elsewhere.
+          const allNames = dict.variables.map((v) => v.name);
+          return [documentId, { map, allNames }] as const;
+        } catch {
+          // Dictionary unavailable: headers are used as-is, same as before this fix.
+          return [documentId, { map: {} as Record<string, string>, allNames: [] as string[] }] as const;
+        }
+      }),
+    ),
+  );
+
+  const importQualityTables = importQualityBase
+    .map((t, i) => ({
+      quality: rawQualities[i] ?? undefined,
+      t,
+    }))
+    // A raw file whose quality could not be worked out is left out rather than shown as empty.
+    .filter(({ t, quality }) => t.ingestion_type !== "raw" || quality !== undefined)
+    .map(({ t, quality }) => {
+      const full = fullCoverageByDoc.get(t.document_id);
+      return {
+        quality: full?.quality ?? quality,
+        id: t.id,
+        documentId: t.document_id,
+        documentName: documentNameById.get(t.document_id) ?? "Table",
+        label: t.label,
+        tableIndex: t.table_index,
+        headers: t.headers,
+        rows: t.rows,
+        ingestionType: t.ingestion_type,
+        trimmed: trimmedFiles.get(t.document_id) ?? null,
+        previewError: importPreviewIdentities.get(t.document_id)?.error,
+        unsupportedIdentifierColumns: unsupportedIdentifierColumnsByDoc.get(t.document_id) ?? [],
+        readNotes: t.read_provenance
+          ? { encoding: t.read_provenance.encoding ?? null, dateColumns: Array.isArray(t.read_provenance.dateColumns) ? t.read_provenance.dateColumns : [] }
+          : undefined,
+        labelConflicts: labelDiagnosticsByDoc.get(t.document_id)?.conflicts ?? [],
+        unmatchedLabelVariables: labelDiagnosticsByDoc.get(t.document_id)?.unmatched ?? [],
+        fullyCovered: !!full,
+        stated: statedRoutingByDoc.get(t.document_id) ?? [],
+        questionTypeByVariable: questionDefinitionsByDoc.get(t.document_id)?.types ?? full?.questionTypeByVariable,
+        questionTypeError: questionDefinitionsByDoc.get(t.document_id)?.error,
+        overrides: overridesByDoc.get(t.document_id),
+        canonicalNameByHeader: canonicalMapByDoc.get(t.document_id)?.map,
+        claimedCanonicalNames: canonicalMapByDoc.get(t.document_id)?.allNames,
+      };
+    });
 
   // The framer is meant to run automatically once there's evidence to read,
   // not wait for the researcher to notice nothing showed up and click a
@@ -2792,15 +3549,6 @@ export default async function RunPage({
   // the "Get suggestions" button in the decision brief section gives the
   // researcher an explicit way to retry rather than needing a fresh
   // document upload (or another page load) to re-trigger it.
-  if (findings.length > 0 && objectiveCandidates.length === 0) {
-    refreshInBackground(
-      id,
-      objectiveRefreshesInFlight,
-      () => refreshObjectiveCandidates(id),
-      `objective:${id}`,
-    );
-  }
-
   if (findings.length > 0 && decisionCandidates.length === 0) {
     refreshInBackground(
       id,
@@ -2835,7 +3583,10 @@ export default async function RunPage({
     refreshInBackground(
       id,
       recommendationRefreshesInFlight,
-      () => refreshRecommendations(TENANT_ID, id),
+      // Background refresh: failures are already logged by refreshRecommendations.
+      async () => {
+        await refreshRecommendations(TENANT_ID, id);
+      },
       `recommendation:${id}`,
     );
   }
@@ -2844,7 +3595,6 @@ export default async function RunPage({
     ? (programs.find((program) => program.id === run.program_id) ?? null)
     : null;
 
-  const uploadWithRunId = uploadDocument.bind(null, id);
   const processRunWithId = processRunAction.bind(null, id, "new");
   const regenerateUnreviewedWithId = processRunAction.bind(
     null,
@@ -2885,14 +3635,103 @@ export default async function RunPage({
   // worth glancing back at the same way findings do.
   const generateMode = run.entry_point === "generate";
 
-  const uploadDone = documents.length > 0;
-  const documentsReached = uploadDone;
-  const documentsDone = findings.length > 0;
-  const objectiveReached = findings.length > 0;
+  // Questionnaires and guides sit inside the card of the file they belong to,
+  // above its data quality. One with nowhere to go yet keeps its own card.
+  const rawDataDocs = documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw");
+  const transcriptDocs = documents.filter((x) => x.kind === "transcript");
+  const instrumentHome = new Map<string, string>(); // instrument id to host document id, "*" for every transcript
+  for (const x of documents) {
+    if (x.kind !== "instrument") continue;
+    const sm = instrumentSummaries.get(x.id);
+    if (!sm) continue;
+    if (sm.type === "interview_guide" || sm.type === "focus_group_guide") {
+      if (transcriptDocs.length > 0) instrumentHome.set(x.id, "*");
+    } else if (rawDataDocs.length > 0) {
+      instrumentHome.set(x.id, rawDataDocs.find((r) => r.id === sm.forDocumentId)?.id ?? rawDataDocs[0].id);
+    }
+  }
+  const hostedBy = (d: (typeof documents)[number]) =>
+    documents.filter((x) => {
+      const h = instrumentHome.get(x.id);
+      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
+    });
+  // What one file is for and its next step, for the right-hand pane. A brief or proposal ("evidence")
+  // is context, not mined for findings: its own quality is checked in Research quality review.
+  const findingsByDocument = new Map<string, number>();
+  for (const f of findings) if (f.source_document_id) findingsByDocument.set(f.source_document_id, (findingsByDocument.get(f.source_document_id) ?? 0) + 1);
+  // What one source is for, in a line under its name, and its next step beside View original.
+  const purposeOf = (d: (typeof documents)[number]): { text: string; nextStep: React.ReactNode } => {
+    const n = findingsByDocument.get(d.id) ?? 0;
+    switch (d.kind) {
+      case "evidence":
+        return {
+          text: "Context for the project, such as a brief or proposal. It is not mined for findings; it informs objectives and decisions. Check how well it is written in Research quality.",
+          nextStep: <ReviewResearchQualityLink key="next-step" documentId={d.id} />,
+        };
+      case "technical":
+        return {
+          text: "Technical documentation (methodology, fieldwork, sampling, weighting or analysis). The Research assistant reads and quotes it when you ask about how the study was done. It is not mined for findings, and what it describes is not checked against the data.",
+          nextStep: null,
+        };
+      case "report":
+        return { text: `Report, read for the findings it states: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`, nextStep: <GoToSection key="next-step" id="findings">Open Findings</GoToSection> };
+      case "instrument": {
+        const type = instrumentSummaries.get(d.id)?.type;
+        return {
+          text:
+            type === "interview_guide" || type === "focus_group_guide"
+              ? `${type === "interview_guide" ? "Interview guide" : "Focus group guide"}. Read once it is added, then checked against your transcripts: which of its questions each session raised.`
+              : "Questionnaire. Read once it is added, then matched to your raw data file's variables, so answers carry its wording and codes once you confirm the links.",
+          nextStep: null,
+        };
+      }
+      case "table":
+        return {
+          text: d.ingestion_type === "raw" ? "Case-level data. Build tables in Cross tabs and run analyses in Analytics once you accept it." : `Tables, already aggregated: ${n} ${n === 1 ? "finding" : "findings"} from this file so far.`,
+          // The button says where it goes: tables are built in Cross tabs; case-level data can also be
+          // analysed in Analytics (Grant, 2026-10-22).
+          nextStep:
+            d.ingestion_type === "raw" ? (
+              <span key="next-step" className="flex flex-wrap gap-2">
+                <GoToSection id="crosstabs">Open Crosstabs</GoToSection>
+                <GoToSection id="analytics" secondary>
+                  Open Analytics
+                </GoToSection>
+              </span>
+            ) : (
+              <GoToSection key="next-step" id="crosstabs">Open Crosstabs</GoToSection>
+            ),
+        };
+      case "transcript":
+        return { text: "Transcript. Code it under Coding once its setup is accepted.", nextStep: <GoToSection key="next-step" id="coding">Open Coding</GoToSection> };
+      default:
+        return { text: "", nextStep: null };
+    }
+  };
+  const attachedFor = (d: (typeof documents)[number]): React.ReactNode => {
+    const hosted = documents.filter((x) => {
+      const h = instrumentHome.get(x.id);
+      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
+    });
+    if (hosted.length === 0) return null;
+    return (
+        <AttachedInstruments
+          key={`attached-${d.id}`}
+          runId={id}
+          instruments={hosted.map((x) => ({
+            documentId: x.id,
+            filename: x.source_filename,
+            summary: instrumentSummaries.get(x.id)!,
+          }))}
+          targetId={d.kind === "table" ? d.id : undefined}
+          dataDocs={d.kind === "table" ? rawDataDocs.map((r) => ({ id: r.id, name: r.source_filename })) : undefined}
+          autoStart={d.kind === "table" || transcriptDocs[0]?.id === d.id}
+        />
+    );
+  };
   const objectiveDone = Boolean(run.research_objective);
   const decisionReached = generateMode ? insights.length > 0 : objectiveDone;
   const decisionDone = Boolean(run.decision_statement);
-  const insightsReached = generateMode ? objectiveDone : decisionDone;
   const recommendationsReached = Boolean(run.decision_statement);
 
   const startingPointLabel =
@@ -2901,20 +3740,19 @@ export default async function RunPage({
       : "Validate existing insights";
 
   const decisionSection = (
-    <CollapsibleSection
+    <div
       key={`decision-${decisionReached}-${decisionDone}`}
-      title="Business decisions"
-      bare
-      icon={<ListIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={decisionReached && !decisionDone}
+      className="flex flex-col gap-4"
     >
       <DecisionBriefReview
         runId={id}
         candidates={decisionCandidates}
         hasFindings={findings.length > 0}
         evidenceSynthesis={run.evidence_synthesis}
+        refreshPending={decisionRefreshIsPending}
+        earlierDecisions={earlierDecisionCounts}
       />
-    </CollapsibleSection>
+    </div>
   );
 
   const statedInsightValidationsSection = (
@@ -2964,14 +3802,12 @@ export default async function RunPage({
     />
   );
 
-  const synthesizedInsightsSection = (
-    <CollapsibleSection
-      key={`synthesized-insights-${synthesizedInsights.length}`}
-      title={`Synthesized insights${synthesizedInsights.length > 0 ? ` (${synthesizedInsights.length})` : ""}`}
-      bare
-      icon={<SparkleIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={false}
-      headerRight={
+  // The exports and Run synthesis, shown above the Insights review (InsightsWorkspace).
+  // Elements built here and handed to a client workspace sit beside its own children, so each carries a
+  // key (React warns about unkeyed server elements in that position in development).
+  const synthesizedToolbar = (
+      <div key="insights-toolbar" className="flex flex-wrap items-center gap-3">
+        <div className="ml-auto">
         <div className="flex flex-wrap items-center gap-2">
           {synthesizedInsights.length > 0 && (
             <>
@@ -3025,21 +3861,69 @@ export default async function RunPage({
             </SubmitButton>
           </form>
         </div>
-      }
-    >
-      <SynthesizedInsightsReview runId={id} insights={synthesizedInsights} />
-    </CollapsibleSection>
+        </div>
+      </div>
   );
 
+
+  // GT-007: exports of this (main) list, separate from the per-pre-insight list's exports on the
+  // Working data tab. Shown whenever the list has anything, including only rejected items. The
+  // links are downloads (the download attribute), so a download that fails in transit is reported
+  // by the browser's download list and leaves this page, and any open edit, where it is, rather
+  // than replacing the page with the browser's error page.
+  const mainRecommendationExportControls =
+    synthesizedRecommendations.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-2" data-testid="main-recommendation-exports">
+        <div className="flex items-center gap-1 rounded-lg border border-border px-2 py-1">
+          <DownloadIcon className="ml-0.5 h-3.5 w-3.5 text-muted" />
+          <span className="mr-0.5 text-sm font-medium text-foreground">Main list Excel:</span>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export?scope=all`}
+            download
+            aria-label="Excel: all recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            All
+          </a>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export?scope=accepted`}
+            download
+            aria-label="Excel: accepted recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            Accepted
+          </a>
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-border px-2 py-1">
+          <PresentationIcon className="ml-0.5 h-3.5 w-3.5 text-muted" />
+          <span className="mr-0.5 text-sm font-medium text-foreground">Main list Slides:</span>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export-deck?scope=all`}
+            download
+            aria-label="Slides: all recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            All
+          </a>
+          <a
+            href={`/api/runs/${id}/synthesized-recommendations/export-deck?scope=accepted`}
+            download
+            aria-label="Slides: accepted recommendations from the main list"
+            className="rounded-md px-2 py-1 text-sm font-medium text-foreground transition hover:bg-primary-light hover:text-primary"
+          >
+            Accepted
+          </a>
+        </div>
+      </div>
+    ) : null;
+
   const recommendationsSection = (
-    <CollapsibleSection
+    <div
       key={`recommendations-${recommendationsReached}`}
-      title={`Recommendations${synthesizedRecommendations.length > 0 ? ` (${synthesizedRecommendations.length})` : ""}`}
-      bare
-      icon={<TargetIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={false}
+      className="flex flex-col gap-4"
     >
-      <SynthesizedRecommendationsReview
+      <RecommendationsWorkspace
+        toolbar={mainRecommendationExportControls ? <div key="recommendations-toolbar" className="flex justify-end">{mainRecommendationExportControls}</div> : null}
         runId={id}
         recommendations={synthesizedRecommendations}
         insightOptions={synthesizedInsights
@@ -3049,7 +3933,7 @@ export default async function RunPage({
         hasDecision={Boolean(run.decision_statement)}
         hasInsights={acceptedSynthesizedInsightCount > 0}
       />
-    </CollapsibleSection>
+    </div>
   );
 
   // The original 1:1 pre-insight recommendations, kept additive alongside
@@ -3057,7 +3941,8 @@ export default async function RunPage({
   // (same "add, don't hide" pattern as pre-insights vs synthesized
   // insights). This is also where the Excel/Slides export buttons stay,
   // since those routes were built against this join and still only ever
-  // export this list.
+  // export this list. The main list above has its own exports (GT-007,
+  // synthesized-recommendations/export and export-deck).
   const allRecommendationsTabLabel = `Recommendations${recommendations.length > 0 ? ` (${recommendations.length})` : ""}`;
   const allRecommendationsTabHeaderRight =
     recommendations.length > 0 ? (
@@ -3122,35 +4007,27 @@ export default async function RunPage({
   );
 
   const storyReportSection = (
-    <CollapsibleSection
-      key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}
-      title="Insights Report"
-      bare
-      icon={<PresentationIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={false}
-      headerRight={
-        storyNarrative ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={`/api/runs/${id}/story/export`}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
-            >
-              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
-              Export deck (.pptx)
-            </a>
-            <a
-              href={`/api/runs/${id}/story/export-docx`}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
-            >
-              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
-              Export report (.docx)
-            </a>
-          </div>
-        ) : undefined
-      }
-    >
-      <div className="space-y-4">
-        <p className="text-sm text-muted">
+    <div>
+      {/* The readiness overview first, this screen as its second tab (Grant, 2026-10-21). */}
+      <InsightsReportWorkspace
+        runId={id}
+        insights={synthesizedInsights.map((insight) => ({ id: insight.id, review_status: insight.review_status, support: insight.support }))}
+        recommendations={synthesizedRecommendations.map((rec) => ({ id: rec.id, status: rec.status, synthesized_insight_id: rec.synthesized_insight_id }))}
+        narrative={
+          storyNarrative
+            ? { generated_at: storyNarrative.generated_at, pillars: storyNarrative.pillars.map((pillar) => ({ insight_ids: pillar.insight_ids, insight_overflow_count: pillar.insight_overflow_count })) }
+            : null
+        }
+        // A failed load is not "nothing to review": the overview then claims nothing about figures.
+        narrativeFigures={figureChecks.error ? null : (figureChecks.narrative?.status ?? null)}
+        // Keyed on the narrative so a new one resets the narrative screen's state; the key sits
+        // here, not on the workspace, so regenerating keeps the researcher on this tab.
+        narrativeView={
+      <div key={`story-report-${storyNarrative ? storyNarrative.generated_at : "none"}`}>
+      <ThreePane
+        left={
+          <Pane side="left" title="Generate and export">
+        <p className="text-xs text-muted">
           Weaves this project&apos;s accepted synthesized insights and
           recommendations into one underlying narrative, then lays it out two
           ways: the slide deck as an SCQA / Pyramid Principle argument built to
@@ -3166,8 +4043,19 @@ export default async function RunPage({
         </p>
 
         {storyReportError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-            {storyReportError}
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" data-testid="story-report-error">
+            {storyNarrative
+              ? `The last generation did not finish: ${storyReportError.replace(/\.?\s*Try again\.?$/, "").replace(/\.$/, "")}. The report below is the previous one, unchanged; use Regenerate report content to try again.`
+              : storyReportError}
+          </div>
+        )}
+
+        {/* RR-F02: the methodology step failed on the last generation; the saved text was kept. */}
+        {methodologyFailure && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="methodology-failure">
+            {`${methodologyFailure.message.replace(/\.?\s*Try again\.?$/, "").replace(/\.$/, "")}. ${
+              methodologyFailure.savedEarlier ? "The report keeps the methodology read before." : "The Word report says the methodology could not be read, not that none was stated."
+            } Use Regenerate report content to try again.`}
           </div>
         )}
 
@@ -3192,8 +4080,44 @@ export default async function RunPage({
           )}
         </div>
 
+            {storyNarrative ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/api/runs/${id}/story/export`}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
+            >
+              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
+              Export deck (.pptx)
+            </a>
+            <a
+              href={`/api/runs/${id}/story/export-docx`}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-slate-400 hover:bg-primary-light hover:text-primary"
+            >
+              <DownloadIcon className="h-3.5 w-3.5 text-muted" />
+              Export report (.docx)
+            </a>
+          </div>
+        ) : undefined}
+          </Pane>
+        }
+        middle={
+          <Pane side="middle" title="Narrative">
+            {!storyNarrative && (
+              <p className="text-sm text-muted">
+                Nothing generated yet. Generate the Insights Report on the left to see the narrative here.
+              </p>
+            )}
         {storyNarrative && (
           <div className="space-y-3 rounded-lg border border-border bg-slate-50 px-4 py-3">
+            {/* FND-001 / REP-OUT-001: counts each support status separately; unknown is never
+                reported as changed or removed. Placed above the executive summary and governing
+                thought, which it qualifies, so the saved framing never reads unqualified. */}
+            <NarrativeSupportBanner
+              insightIds={storyNarrative.pillars.flatMap((pillar) => pillar.insight_ids)}
+              supportById={Object.fromEntries(
+                synthesizedInsights.map((insight) => [insight.id, insight.support]),
+              )}
+            />
             {storyNarrative.executive_summary && (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted">
@@ -3238,12 +4162,23 @@ export default async function RunPage({
                 ))}
               </ul>
             </div>
+            {/* Numerical traceability: figures in the narrative that need review, or the stored check. */}
+            <FigureCheckNotice check={figureChecks.narrative} />
             <p className="text-xs text-muted">
               Generated {new Date(storyNarrative.generated_at).toLocaleString()}
             </p>
           </div>
         )}
 
+          </Pane>
+        }
+        right={
+          <Pane side="right" title="Objectives and decisions checked">
+            {objectiveValidations.length === 0 && !objectiveValidationError && (
+              <p className="text-sm text-muted">
+                Objectives and decisions, checked against the evidence, show here once the report is generated.
+              </p>
+            )}
         {objectiveValidationError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
             {objectiveValidationError}
@@ -3259,7 +4194,12 @@ export default async function RunPage({
             <ul className="space-y-2">
               {objectiveValidations.map((item, index) => {
                 const badge =
-                  item.status === "resolved"
+                  item.inferred
+                    ? {
+                        label: "Inferred",
+                        className: "bg-slate-100 text-slate-600",
+                      }
+                    : item.status === "resolved"
                     ? {
                         label: "Resolved",
                         className: "bg-emerald-100 text-emerald-800",
@@ -3276,6 +4216,14 @@ export default async function RunPage({
                 return (
                   <li key={index} className="text-sm">
                     <div className="flex flex-wrap items-center gap-2">
+                      {item.evidence_digest_degraded && (
+                        <span
+                          className="rounded px-1.5 py-0.5 text-xs font-semibold uppercase bg-orange-100 text-orange-800"
+                          title="This conclusion was generated while direct data-evidence retrieval was failing (a connection or permission error, not a missing lane) - it may be missing evidence a working check would have cited."
+                        >
+                          Evidence check degraded
+                        </span>
+                      )}
                       <span
                         className={`rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${badge.className}`}
                       >
@@ -3290,15 +4238,25 @@ export default async function RunPage({
                     <p className="mt-0.5 font-medium text-foreground">
                       {item.item_text}
                     </p>
-                    <p className="text-muted">{item.conclusion}</p>
+                    <p className="text-muted">
+                      {item.inferred
+                        ? "Inferred from this project's own evidence, so not an independent test. "
+                        : ""}
+                      {item.conclusion}
+                    </p>
                   </li>
                 );
               })}
             </ul>
           </div>
         )}
+          </Pane>
+        }
+      />
       </div>
-    </CollapsibleSection>
+        }
+      />
+    </div>
   );
 
   // True whenever a business problem/objective was already given before
@@ -3309,21 +4267,10 @@ export default async function RunPage({
   // its decision framer reads raw findings rather than insights, Decision
   // too) can render ahead of Findings, since generateObjectiveCandidates
   // has no evidence to infer an objective from until findings exist.
-  const findingsSection = (
-    <CollapsibleSection
-      key={`findings-${findings.length > 0}`}
-      title="Findings"
-      bare
-      icon={<ChartIcon className="h-4 w-4 text-primary" />}
-      // Findings insert as 'accepted' by default now, so there's no
-      // 'pending' state left to key this open/closed on; it opens whenever
-      // there's anything to look at, since review is now by exception
-      // (rejecting the ones that are wrong) rather than a gate everything
-      // waits behind.
-      defaultOpen={findings.length > 0}
-      headerRight={
+  // Re-verify and the exports, shown above the Findings review (FindingsWorkspace).
+  const findingsToolbar =
         findings.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <div key="findings-toolbar" className="flex flex-wrap items-center gap-2">
             <form action={reverifyFindingsWithId}>
               <SubmitButton
                 pendingLabel="Re-verifying..."
@@ -3370,16 +4317,8 @@ export default async function RunPage({
               </a>
             </div>
           </div>
-        ) : undefined
-      }
-    >
-      {findings.length === 0 ? (
-        <p className="text-sm text-muted">None extracted yet.</p>
-      ) : (
-        <FindingsTable runId={id} findings={findings} />
-      )}
-    </CollapsibleSection>
-  );
+        ) : undefined;
+
 
   // Objective setting sits adjacent to Findings, but which side depends on
   // whether the objective was already known before any evidence existed
@@ -3393,82 +4332,66 @@ export default async function RunPage({
   // below, computed once in RunPage and used to order both this section and
   // Decision (in validate mode only; in generate mode Decision has its own
   // hard dependency on Insights, unrelated to this).
+  // Which brief or proposal last filled Set objectives, and which objectives came from one.
+  const [lastBriefFill, failedBriefFill, objectiveSources] = await Promise.all([loadLastBriefFill(TENANT_ID, id), loadFailedBriefFill(TENANT_ID, id), loadObjectiveSources(TENANT_ID, id)]);
+  const objectiveSourceLabels = (lines: string[]) =>
+    lines.map((line) => {
+      if (!(objectiveSources instanceof Map)) return null;
+      const rationale = objectiveSources.get(objectiveIdentityKey(line));
+      return rationale ? sourceLabelFromRationale(rationale) : null;
+    });
   const objectiveQuality = await getObjectiveQuality(id);
-  const objectiveQualityRows: ObjectiveQualityRow[] = parseNumberedItems(
-    run.research_objective,
-  ).map((text, order) => {
-    const stored = objectiveQuality.rows.find(
-      (r) => r.item_order === order && r.item_text === text,
-    );
-    return {
-      order,
-      text,
-      scores: stored
-        ? {
-            specific: stored.specific_score,
-            measurable: stored.measurable_score,
-            answerable: stored.answerable_score,
-            relevant: stored.relevant_score,
-            total: stored.quality_score,
-            tier: stored.quality_tier,
-            rationale: stored.rationale,
-            suggestion: stored.suggestion,
-          }
-        : null,
-    };
+  // Scores are matched by objective identity (markers, case, punctuation ignored), and an unscored
+  // accepted objective carries the reason it is unscored (objectiveQualityStatus.ts).
+  const objectiveQualityStatus = await loadObjectiveQualityStatus(TENANT_ID, id);
+  const qualityFor = objectiveQualityLookup(objectiveQuality.rows);
+  // A suggestion from re-reading a document is shown beside the existing objective it most likely
+  // restates (Grant, 2026-10-22; objectiveSimilarity.ts), so the researcher keeps one or the other.
+  const similarToOf = (c: (typeof objectiveCandidates)[number]): string | null =>
+    c.status === "pending" && isRereadSuggestion(c.rationale)
+      ? likelyRestates(
+          c.candidate_text,
+          objectiveCandidates.filter((o) => o.id !== c.id && o.status !== "rejected" && !isRereadSuggestion(o.rationale)).map((o) => ({ text: o.candidate_text })),
+        )?.text ?? null
+      : null;
+  const objectiveRows: ObjectiveRow[] = objectiveCandidates.map((c): ObjectiveRow => {
+        const q = qualityFor(c.candidate_text);
+        const accepted = c.status === "accepted";
+        return {
+          unscoredReason: objectiveUnscoredReason(c.candidate_text, accepted, Boolean(q), objectiveQualityStatus),
+          id: c.id,
+          text: c.candidate_text,
+          rationale: c.rationale,
+          source: c.source,
+          status: c.status,
+          edited: c.edited,
+          sourceRemovedAt: c.source_removed_at,
+          similarTo: similarToOf(c),
+          scores:
+            q && c.status === "accepted"
+              ? {
+                  specific: q.specific_score,
+                  measurable: q.measurable_score,
+                  answerable: q.answerable_score,
+                  relevant: q.relevant_score,
+                  total: q.quality_score,
+                  tier: q.quality_tier,
+                  rationale: q.rationale,
+                  suggestion: q.suggestion,
+                }
+              : null,
+        };
   });
-
-  const objectiveSection = (
-    <CollapsibleSection
-      key={`objective-${objectiveReached}-${objectiveDone}`}
-      title="Objective setting"
-      bare
-      icon={<ListIcon className="h-4 w-4 text-primary" />}
-      defaultOpen={objectiveReached && !objectiveDone}
-    >
-      <WorkingDataTabs
-        tabs={[
-          {
-            id: "objectives",
-            label: "Objectives",
-            content: (
-              <ObjectiveBriefReview
-                runId={id}
-                candidates={objectiveCandidates}
-                hasFindings={findings.length > 0}
-              />
-            ),
-          },
-          {
-            id: "objective-quality",
-            label: "Quality scores",
-            content: (
-              <ObjectiveQualityPanel
-                runId={id}
-                rows={objectiveQualityRows}
-                missingMigration={objectiveQuality.missing}
-              />
-            ),
-          },
-        ]}
-      />
-    </CollapsibleSection>
+  const objectiveReviewList = (
+    <ObjectiveReviewTable
+      runId={id}
+      hasFindings={findings.length > 0}
+      missingMigration={objectiveQuality.missing}
+      rows={objectiveRows}
+    />
   );
 
-  const objectiveKnownUpfront = Boolean(
-    run.initial_research_objective &&
-    run.initial_research_objective.trim().length > 0,
-  );
 
-  // Decision's nav placement follows the same hard data dependency this
-  // comment used to explain for the old scroll-order build: in generate
-  // mode, generateDecisionCandidates reads insights, not raw findings, and
-  // throws if none exist yet, so Decision has to stay grouped after
-  // Analysis regardless of what's known upfront. In validate mode it reads
-  // raw findings directly and needs nothing from Insights, so it's free to
-  // sit with Objective instead -- see decisionGroup below, used when
-  // building navSections.
-  const decisionGroup = run.entry_point === "validate" ? "Setup" : "Decisions";
 
   // The granular, per-finding/per-pre-insight audit trail: pre-insights,
   // the full (unclustered) recommendations list, and a record of anything
@@ -3518,6 +4441,11 @@ export default async function RunPage({
                 >
                   <td className="py-1.5 pr-4 text-foreground">
                     {row.finding_text}
+                    {row.researcher_note?.trim() ? (
+                      <div className="mt-0.5 text-xs text-muted" data-testid="history-researcher-note">
+                        Your note: {row.researcher_note}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-1.5 pr-4 text-foreground">
                     {findingHistoryStatusLabel[row.status] ?? row.status}
@@ -3549,20 +4477,16 @@ export default async function RunPage({
     );
 
   const workingDataSection = (
-    <CollapsibleSection
-      key={`working-data-${insights.length}-${recommendations.length}-${findingHistory.length}`}
-      title="Working data"
-      bare
-      icon={<ListIcon className="h-4 w-4 text-muted" />}
-      defaultOpen={false}
-    >
-      <p className="mb-6 max-w-2xl text-sm text-muted">
-        The granular layer underneath the sections above: one pre-insight per
-        verified finding, one recommendation per pre-insight, and anything
-        removed along the way. Kept here as a full audit trail rather than
-        hidden, not meant as the first thing to read.
-      </p>
+    <div key={`working-data-${insights.length}-${recommendations.length}-${findingHistory.length}`}>
       <WorkingDataTabs
+        layout="pane"
+        intro={
+          <p className="text-xs text-muted">
+            The granular layer underneath the sections above: one pre-insight per verified finding,
+            one recommendation per pre-insight, and anything removed along the way. Kept as a full
+            audit trail, not meant as the first thing to read.
+          </p>
+        }
         tabs={[
           {
             id: "pre-insights",
@@ -3584,7 +4508,7 @@ export default async function RunPage({
           },
         ]}
       />
-    </CollapsibleSection>
+    </div>
   );
 
   // objectiveSection's own comment explains the dependency this mirrors:
@@ -3595,394 +4519,56 @@ export default async function RunPage({
   // so a run with no upfront objective still showed it ahead of Findings,
   // the same regression objectiveKnownUpfront already fixed for the content
   // order (RunPage) but never for this list.
-  const navSections: RunNavSection[] = [
-    ...(objectiveKnownUpfront
-      ? [{ id: "objective", group: "Setup", label: "Objective setting" }]
-      : []),
-    { id: "upload", group: "Setup", label: "Upload documents" },
-    {
-      id: "documents",
-      group: "Setup",
-      label: "Documents",
-      badge: documents.length,
-    },
-    {
-      id: "findings",
-      group: "Analysis",
-      label: "Findings",
-      badge: findings.length,
-    },
-    ...(objectiveKnownUpfront
-      ? []
-      : [{ id: "objective", group: "Analysis", label: "Objective setting" }]),
-    {
-      id: "validations",
-      group: "Analysis",
-      label: "Report validations",
-      badge: statedInsightValidations.length,
-    },
-    {
-      id: "synthesized",
-      group: "Analysis",
-      label: "Synthesized insights",
-      badge: synthesizedInsights.length,
-    },
-    { id: "decisions", group: decisionGroup, label: "Business decisions" },
-    {
-      id: "recommendations",
-      group: "Decisions",
-      label: "Recommendations",
-      badge: synthesizedRecommendations.length,
-    },
-    // Lives in Decisions, not Analysis: generating it draws on the
-    // decision statement and on accepted recommendations, both of which
-    // sit above it in this same group, not on raw findings analysis alone.
-    { id: "insights-report", group: "Decisions", label: "Insights report" },
-    { id: "assistant", group: "Tools", label: "Research assistant" },
-    // Grouped with Tools, not Analysis, and placed right before API usage &
-    // cost: this nav list is meant to mirror the page's own scroll order
-    // (see SectionPanel id="working-data" below, which sits directly between
-    // the assistant and api-usage panels), and "Analysis" would have put it
-    // near the top of the sidebar while the actual section lives at the very
-    // bottom of the page -- clicking it jumped the reader straight past
-    // everything the sidebar implied came after it.
-    { id: "working-data", group: "Tools", label: "Working data" },
-    ...(apiUsage.length > 0
-      ? [{ id: "api-usage", group: "Tools", label: "API usage & cost" }]
-      : []),
-  ];
-  // The section a researcher lands on: whichever of the workflow's own
-  // gating steps (see the reached/done flags above) is next up, falling
-  // back to Findings -- the raw evidence, always relevant -- once nothing
-  // is pending.
-  const defaultSectionId = !objectiveDone
-    ? "objective"
-    : decisionReached && !decisionDone
-      ? "decisions"
-      : "findings";
-
-  return (
-    <RunSectionProvider
-      defaultId={defaultSectionId}
-      validIds={navSections.map((s) => s.id)}
-    >
-      <main className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-[90rem] px-6 pt-8">
-          <PipelineStatus runId={id} />
-          <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
-            {run.project_name ??
-              run.research_objective ??
-              run.business_problem ??
-              "Untitled project"}
-          </h1>
-          {run.project_name && run.business_problem && (
-            <p className="mb-3 text-sm text-foreground">
-              <span className="font-medium text-muted">Business problem: </span>
-              {run.business_problem}
-            </p>
-          )}
-          <div className="mb-10 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-            <span>Audience: {run.audience}</span>
-            <span className="text-border">&middot;</span>
-            <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
-              {run.status.replace(/_/g, " ")}
-            </span>
-            <span className="text-border">&middot;</span>
-            <span>Starting point: {startingPointLabel}</span>
-          </div>
-
-          {/* Program/wave membership is a Documents-page concern (it's
-              about this project's identity, not any one analysis step), but
-              lived outside every SectionPanel, so it rendered above
-              whichever section was selected instead of only on Documents. */}
-          <SectionPanel id="documents">
-            <div className="mb-8 rounded-lg border border-dashed border-border bg-slate-50 p-4">
-              <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <ChartIcon className="h-4 w-4 text-primary" />
-                Tracking
-              </div>
-              {currentProgram ? (
-                <div>
-                  <p className="text-sm text-foreground">
-                    Part of{" "}
-                    <Link
-                      href="/programs"
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {currentProgram.name}
-                    </Link>
-                    {run.wave_label ? (
-                      <>
-                        {" "}
-                        as <span className="font-medium">{run.wave_label}</span>
-                      </>
-                    ) : null}
-                    .
-                  </p>
-                  {programWaves.length > 0 && (
-                    <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">
-                      {programWaves.map((wave) => (
-                        <li key={wave.id}>
-                          Other wave:{" "}
-                          <Link
-                            href={`/runs/${wave.id}`}
-                            className="text-foreground hover:text-primary"
-                          >
-                            {wave.wave_label ?? wave.project_name ?? "Untitled"}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <form action={updateProgramLinkWithId} className="mt-3">
-                    <input type="hidden" name="action" value="unlink" />
-                    <SubmitButton
-                      pendingLabel="Removing..."
-                      className="w-fit rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
-                    >
-                      Remove from program
-                    </SubmitButton>
-                  </form>
-                </div>
-              ) : (
-                <div>
-                  <p className="mb-3 text-sm text-muted">
-                    Not part of a program yet. If this project is one wave of an
-                    ongoing tracking study, link it to a program below, picking
-                    an existing one or naming a new one.
-                  </p>
-                  <form
-                    action={updateProgramLinkWithId}
-                    className="flex flex-col gap-2 sm:flex-row sm:items-end"
-                  >
-                    <label className="block flex-1">
-                      <span className="text-xs font-medium text-foreground">
-                        Existing program
-                      </span>
-                      <select
-                        name="programId"
-                        className="mt-1 block w-full rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      >
-                        <option value="">None</option>
-                        {programs.map((program) => (
-                          <option key={program.id} value={program.id}>
-                            {program.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block flex-1">
-                      <span className="text-xs font-medium text-foreground">
-                        Or new program name
-                      </span>
-                      <input
-                        name="newProgramName"
-                        placeholder="e.g. Acme Member Satisfaction Tracker"
-                        className="mt-1 block w-full rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      />
-                    </label>
-                    <label className="block flex-1">
-                      <span className="text-xs font-medium text-foreground">
-                        Wave label
-                      </span>
-                      <input
-                        name="waveLabel"
-                        placeholder="e.g. Wave 1"
-                        className="mt-1 block w-full rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      />
-                    </label>
-                    <SubmitButton
-                      pendingLabel="Linking..."
-                      className="w-fit rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover"
-                    >
-                      Link
-                    </SubmitButton>
-                  </form>
-                </div>
-              )}
-            </div>
-          </SectionPanel>
-
-          {latestProcessErrors && (
-            <div className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-              <p className="font-medium">
-                The last processing run hit an error on{" "}
-                {latestProcessErrors.errors.length === 1
-                  ? "one document"
-                  : `${latestProcessErrors.errors.length} documents`}
-                , at {new Date(latestProcessErrors.occurredAt).toLocaleString()}
-                .
-              </p>
-              <p className="mt-1 text-red-800">
-                Whatever succeeded elsewhere in that run still went through;
-                only the document(s) below didn&apos;t. Try processing again,
-                and if the same error keeps coming back, it&apos;s worth looking
-                into rather than retrying.
-              </p>
-              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-red-800">
-                {latestProcessErrors.errors.map((error, index) => (
-                  <li key={index} className="break-words">
-                    {error}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        <RunNav sections={navSections} />
-
-        <div className="px-8 py-8">
-          <SectionPanel id="upload">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Upload documents
-            </h2>
-            <CollapsibleSection
-              key={`upload-${uploadDone}`}
-              title="Upload additional documents"
-              bare
-              icon={<UploadIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={!uploadDone}
-            >
-              <form
-                action={uploadWithRunId}
-                className="flex max-w-xl flex-col gap-3"
-              >
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <FileInput
-                    name="reportFiles"
-                    multiple
-                    icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Reports"
-                  />
-                  <FileInput
-                    name="tableFiles"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                    icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Tables"
-                    caption="Already aggregated"
-                  />
-                  <FileInput
-                    name="rawTableFiles"
-                    multiple
-                    accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                    icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
-                    label="Quant data"
-                    caption="One row per respondent"
-                  />
-                  <FileInput
-                    name="transcriptFiles"
-                    multiple
-                    icon={
-                      <TranscriptIcon className="h-3.5 w-3.5 text-primary" />
-                    }
-                    label="Qual data"
-                    caption="Coded or uncoded"
-                  />
-                </div>
-                <SubmitButton
-                  pendingLabel="Uploading..."
-                  className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                  icon={<UploadIcon className="h-4 w-4" />}
-                >
-                  Upload
-                </SubmitButton>
-              </form>
-            </CollapsibleSection>
-          </SectionPanel>
-
-          {documents.some((d) => d.kind === "transcript") && (
-            <SectionPanel id="documents">
-              <TranscriptSetupTable
-                  runId={id}
-                  rows={documents
-                    .filter((d) => d.kind === "transcript")
-                    .map((d) => ({
-                      documentId: d.id,
-                      filename: d.source_filename,
-                      initial: transcriptSetups.get(d.id) ?? null,
-                      suggestion: setupSuggestions.get(d.id) ?? null,
-                      hasCoding: codebooksByDocument.has(d.id),
-                      accent:
-                        DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length],
-                    }))}
-                />
-            </SectionPanel>
-          )}
-
-          <SectionPanel id="documents">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Documents
-            </h2>
-            <CollapsibleSection
-              key={`documents-${documentsReached}-${documentsDone}`}
-              title="Documents"
-              bare
-              icon={<DocumentIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={documentsReached && !documentsDone}
-              headerRight={
-                documents.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <form action={processRunWithId}>
-                      <SubmitButton
-                        pendingLabel="Processing..."
-                        className="flex items-center gap-2 whitespace-nowrap rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                        icon={<BoltIcon className="h-4 w-4" />}
-                      >
-                        Process new documents
-                      </SubmitButton>
-                      <ProcessProgress runId={id} />
-                    </form>
-                    <form action={regenerateUnreviewedWithId}>
-                      <SubmitButton
-                        pendingLabel="Regenerating..."
-                        title="Redo every document's extraction, but only replace findings you've rejected -- accepted findings (and everything built on them) are left alone"
-                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
-                      >
-                        Regenerate rejected
-                      </SubmitButton>
-                      <ProcessProgress runId={id} />
-                    </form>
-                    <form action={reprocessAllWithId}>
-                      <SubmitButton
-                        pendingLabel="Reprocessing..."
-                        title="Delete and redo every document's extraction from scratch, including findings you've already accepted or rejected"
-                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
-                      >
-                        Reprocess all documents
-                      </SubmitButton>
-                      <ProcessProgress runId={id} />
-                    </form>
-                  </div>
-                ) : undefined
-              }
-            >
-              <WorkingDataTabs
-                tabs={[
-                  {
-                    id: "files",
-                    label: "Files",
-                    content: (
-                      <>
-                        {documents.length === 0 && (
-                          <p className="text-sm text-muted">
-                            Nothing uploaded yet.
-                          </p>
-                        )}
-                        {codingAnalysis.size > 1 && (
-                          <div className="mb-4">
-                            <AcrossTranscripts
-                              rows={crossTranscriptThemes(codingAnalysis)}
-                              documentNames={Object.fromEntries(
-                                documents.map((d) => [d.id, d.source_filename]),
-                              )}
-                              runId={id}
-                            />
-                          </div>
-                        )}
-                        <ul className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-                          {documents.map((doc) => {
+  // Per-document cards, one list per kind of document, so Cross tabs (tables),
+  // Coding (transcripts) and Reports each show only their own.
+  // The project's data files for Cross tabs and Analytics (DataFileSection): each file's state, and
+  // what the section shows for a file that cannot open there (or, with readyNode, for one that can).
+  const dataFileOptions = (readyNode?: (d: (typeof documents)[number]) => React.ReactNode): CrosstabDataset[] =>
+    documents
+                .filter((d) => d.kind === "table")
+                .map((d): CrosstabDataset => {
+                  const state = crosstabDatasetState({
+                    filename: d.source_filename,
+                    ingestion: d.ingestion_type,
+                    processingStatus: d.processing_status,
+                    setupAccepted: dataSetups.has(d.id) ? dataSetups.get(d.id)?.accepted === true : undefined,
+                  });
+                  return {
+                    id: d.id,
+                    filename: d.source_filename,
+                    state,
+                    savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
+                    draftTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status === "draft").length,
+                    // A crosstab with no status predates the draft set and counts as committed (crosstabs.ts reads it so).
+                    committedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status !== "draft").length,
+                    node:
+                      state === "ready" ? readyNode?.(d) : state === "needs_setup" ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <span>The setup for this file changed, or acceptance was undone. Accept it to open it here, or review it in Sources first.</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <GoToSection id="upload">Review in Sources</GoToSection>
+                            <AcceptDataButton runId={id} documentId={d.id} setup={dataSetups.get(d.id)!} />
+                          </span>
+                        </div>
+                      ) : state === "aggregated" ? (
+                        documentCards("table", true, d.id, false, "crosstabs")
+                      ) : undefined,
+                  };
+                });
+  const documentCards = (
+    kind: "table" | "transcript" | "report",
+    single = false,
+    onlyId?: string,
+    omitSide = false,
+    // Which tiles a data file's launcher shows: the Cross tabs and Analytics sections each show theirs.
+    analyticsPart: "crosstabs" | "analytics" | "all" = "all",
+  ) => (
+                        <ul
+                          className={`grid grid-cols-1 items-start gap-4 ${single ? "" : "xl:grid-cols-2"}`}
+                        >
+                          {documents
+                            .filter((d) => d.kind === kind && (!onlyId || d.id === onlyId))
+                            .map((doc) => {
                             const extractAction = extractFindingsAction.bind(
                               null,
                               id,
@@ -4006,16 +4592,23 @@ export default async function RunPage({
                             return (
                               <li
                                 key={doc.id}
-                                className={`flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`}
+                                className={
+                                  single
+                                    ? "flex flex-col gap-3"
+                                    : `flex flex-col justify-between gap-3 rounded-lg border border-l-4 border-border bg-white p-3 transition hover:border-primary/30 ${DOC_ACCENTS[documents.indexOf(doc) % DOC_ACCENTS.length].border}`
+                                }
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <div
-                                      className="truncate text-sm font-medium text-foreground"
-                                      title={doc.source_filename}
-                                    >
-                                      {doc.source_filename}
-                                    </div>
+                                    {/* Alone in a pane, the pane's title already names the file. */}
+                                    {!single && (
+                                      <div
+                                        className="truncate text-sm font-medium text-foreground"
+                                        title={doc.source_filename}
+                                      >
+                                        {doc.source_filename}
+                                      </div>
+                                    )}
                                     <div className="text-xs text-muted">
                                       <span
                                         className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${DOC_KIND_STYLE[doc.kind]?.badge ?? ""}`}
@@ -4023,30 +4616,86 @@ export default async function RunPage({
                                         {DOC_KIND_STYLE[doc.kind]?.label ??
                                           doc.kind}
                                       </span>{" "}
+                                      {doc.processing_status === "failed" && (
+                                        <span
+                                          className="mr-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800"
+                                          title="The last processing attempt for this document failed. Check the error banner above, fix the issue, then try again."
+                                        >
+                                          processing failed
+                                        </span>
+                                      )}
+                                      {doc.processing_status === "incomplete" && (
+                                        <span
+                                          className="mr-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-800"
+                                          title="Coding finished, but at least one batch of turns came back without a decision for every unit it was asked about. Findings from this transcript may be missing some coded passages. Run Code themes again for this transcript."
+                                        >
+                                          coding incomplete
+                                        </span>
+                                      )}
                                       {new Date(
                                         doc.uploaded_at,
                                       ).toLocaleDateString()}
                                     </div>
                                   </div>
-                                  <form
-                                    action={deleteAction}
-                                    className="shrink-0"
-                                  >
-                                    <DeleteDocumentButton />
-                                  </form>
+                                  {/* Research quality reviews briefs and proposals, which are context files. */}
+                                  {doc.kind === "evidence" && /\.(pdf|docx|txt)$/i.test(doc.source_filename) && (
+                                    <ReviewResearchQualityLink documentId={doc.id} />
+                                  )}
+                                  {/* Alone in a section's pane, a file is deleted in Sources, with the rest. */}
+                                  {!single && (
+                                    <form
+                                      action={deleteAction}
+                                      className="shrink-0"
+                                    >
+                                      <DeleteDocumentButton confirmMessage={deleteDocumentConfirmation(impactFor(deletionImpact, doc.id))} />
+                                    </form>
+                                  )}
                                 </div>
                                 {doc.kind === "report" && (
                                   <form action={extractAction}>
-                                    <SubmitButton
-                                      pendingLabel="Extracting..."
-                                      className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-                                      icon={
-                                        <DocumentIcon className="h-3.5 w-3.5" />
+                                    {(() => {
+                                      const docFindings = rawFindings.filter(
+                                        (f) => f.source_document_id === doc.id,
+                                      );
+                                      const ranAt = reportReadStats.get(doc.id)?.ranAt;
+                                      if (docFindings.length === 0 && !ranAt) {
+                                        return (
+                                          <SubmitButton
+                                            pendingLabel="Extracting..."
+                                            className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                                            icon={<DocumentIcon className="h-3.5 w-3.5" />}
+                                          >
+                                            Extract findings
+                                          </SubmitButton>
+                                        );
                                       }
-                                    >
-                                      Extract findings
-                                    </SubmitButton>
+                                      const when = ranAt
+                                        ? new Date(ranAt.replace(" ", "T").replace(/\+00$/, "Z")).toLocaleString("en-ZA", {
+                                            dateStyle: "medium",
+                                            timeStyle: "short",
+                                          })
+                                        : null;
+                                      return (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="min-w-0 text-xs text-muted">
+                                            <span className="font-medium text-emerald-700">Extracted</span>
+                                            {when && !when.includes("Invalid") ? ` ${when}` : ""}
+                                            {`, ${docFindings.length} ${docFindings.length === 1 ? "finding" : "findings"}`}
+                                          </span>
+                                          <RerunExtractButton />
+                                        </div>
+                                      );
+                                    })()}
+                                    <CodingFormProgress runId={id} />
                                   </form>
+                                )}
+                                {doc.kind === "report" && (
+                                  <ReportReadSummary
+                                    stats={reportReadStats.get(doc.id) ?? null}
+                                    findings={rawFindings.filter(
+                                      (f) => f.source_document_id === doc.id,
+                                    )}
+                                  />
                                 )}
                                 {doc.kind === "table" &&
                                   doc.ingestion_type !== "raw" && (
@@ -4063,22 +4712,51 @@ export default async function RunPage({
                                     </form>
                                   )}
                                 {doc.kind === "table" &&
-                                  doc.ingestion_type === "raw" && (
+                                  doc.ingestion_type === "raw" &&
+                                  !single && (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
-                                      Flagged as raw data. This skips the
-                                      automatic scan used for aggregated tables,
-                                      since an open search over case-level data
-                                      risks far more uncorrected comparisons.
-                                      Name a banner plan below (which columns to
-                                      compare), then compute it directly.
-                                      Stratified survey designs (strata/weight
-                                      columns) aren&apos;t applied yet,
-                                      that&apos;s later work, every comparison
-                                      here assumes quota or simple-random
-                                      sampling.
+                                      Case-level data. Nothing is compared until you build a
+                                      table in Cross tabs (or start from suggested tables), and
+                                      committed tables become findings. Column differences use
+                                      the multiple-comparison correction chosen there (false
+                                      discovery rate by default), and a survey design is applied
+                                      when a PSU or strata variable is set.
                                     </div>
                                   )}
                                 {doc.kind === "table" &&
+                                  (isStatsFileName(doc.source_filename) ||
+                                    (doc.ingestion_type === "raw" &&
+                                      isCaseTableFileName(doc.source_filename))) &&
+                                  (!dataSetups.has(doc.id) || dataSetups.get(doc.id)?.accepted ? (
+                                    <AnalyticsBuilder
+                                      part={analyticsPart}
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                      waveFiles={waveFiles}
+                                      saved={(
+                                        documentTablesByDocument.get(doc.id) ?? []
+                                      )
+                                        .filter((t) => t.table_index >= 100)
+                                        .map((t) => ({
+                                          id: t.id,
+                                          label: t.label ?? "Crosstab",
+                                        }))}
+                                    />
+                                  ) : (
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                      <span>
+                                        The set-up for this file changed, or acceptance was undone. Accept it to carry on, or review it
+                                        under Import data first.
+                                      </span>
+                                      <span className="flex flex-wrap items-center gap-2">
+                                        <GoToSection id="upload">Review in Import data</GoToSection>
+                                        <AcceptDataButton runId={id} documentId={doc.id} setup={dataSetups.get(doc.id)!} />
+                                      </span>
+                                    </div>
+                                  ))}
+                                {doc.kind === "table" &&
+                                  doc.ingestion_type !== "raw" &&
                                   (() => {
                                     const tables = (
                                       documentTablesByDocument.get(doc.id) ?? []
@@ -4138,7 +4816,7 @@ export default async function RunPage({
                                                                   key={h}
                                                                   className="py-1 pr-3 text-foreground"
                                                                 >
-                                                                  {row[h] ?? ""}
+                                                                  {cellText(row[h])}
                                                                 </td>
                                                               ),
                                                             )}
@@ -4156,198 +4834,12 @@ export default async function RunPage({
                                                     {t.rows.length} rows.
                                                   </p>
                                                 )}
-                                                <TableDigest
-                                                  headers={t.headers}
-                                                  rows={t.rows}
-                                                />
-                                                {t.ingestion_type === "raw" && (
-                                                  <form
-                                                    action={saveBannerPlanAction.bind(
-                                                      null,
-                                                      id,
-                                                      t.id,
-                                                    )}
-                                                    className="mt-2 rounded-lg border border-border bg-white p-2"
-                                                  >
-                                                    <p className="mb-1 text-[11px] font-medium text-foreground">
-                                                      Banner plan{" "}
-                                                      <span className="font-normal text-muted">
-                                                        (which columns to
-                                                        compare once the
-                                                        statistical path exists)
-                                                      </span>
-                                                    </p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                      <div>
-                                                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                                          Banner (segmenting
-                                                          columns)
-                                                        </p>
-                                                        <div className="max-h-28 space-y-0.5 overflow-y-auto">
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <label
-                                                                key={h}
-                                                                className="flex items-center gap-1 text-[11px] text-foreground"
-                                                              >
-                                                                <input
-                                                                  type="checkbox"
-                                                                  name="bannerColumns"
-                                                                  value={h}
-                                                                  defaultChecked={
-                                                                    t.banner_columns?.includes(
-                                                                      h,
-                                                                    ) ?? false
-                                                                  }
-                                                                  className="h-3 w-3"
-                                                                />
-                                                                {h}
-                                                              </label>
-                                                            ),
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                      <div>
-                                                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                                          Stub (outcome columns)
-                                                        </p>
-                                                        <div className="max-h-28 space-y-0.5 overflow-y-auto">
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <label
-                                                                key={h}
-                                                                className="flex items-center gap-1 text-[11px] text-foreground"
-                                                              >
-                                                                <input
-                                                                  type="checkbox"
-                                                                  name="stubColumns"
-                                                                  value={h}
-                                                                  defaultChecked={
-                                                                    t.stub_columns?.includes(
-                                                                      h,
-                                                                    ) ?? false
-                                                                  }
-                                                                  className="h-3 w-3"
-                                                                />
-                                                                {h}
-                                                              </label>
-                                                            ),
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                    <p className="mb-0.5 mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                                      Stratified design (leave
-                                                      blank for
-                                                      quota/simple-random)
-                                                    </p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                      <label className="block">
-                                                        <span
-                                                          className="inline-flex items-center gap-1 text-[10px] text-muted"
-                                                          title="Name the column that records which stratum (named sub-group) each respondent was drawn from, only if your sample was deliberately split into groups sampled at different rates (e.g. a province oversampled to get enough responses there). Leave on None for an ordinary simple-random or quota sample, the common case."
-                                                        >
-                                                          Strata column
-                                                          <InfoIcon className="h-3 w-3 shrink-0" />
-                                                        </span>
-                                                        <select
-                                                          name="strataColumn"
-                                                          defaultValue=""
-                                                          className="mt-0.5 block w-full rounded border border-border px-1.5 py-1 text-[11px]"
-                                                        >
-                                                          <option value="">
-                                                            None
-                                                          </option>
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <option
-                                                                key={h}
-                                                                value={h}
-                                                              >
-                                                                {h}
-                                                              </option>
-                                                            ),
-                                                          )}
-                                                        </select>
-                                                      </label>
-                                                      <label className="block">
-                                                        <span
-                                                          className="inline-flex items-center gap-1 text-[10px] text-muted"
-                                                          title="Name the numeric column that already holds each respondent's survey weight (a correction factor for being over- or under-represented in the raw sample), if your data has one. Leave on None if respondents should all count equally."
-                                                        >
-                                                          Weight column
-                                                          <InfoIcon className="h-3 w-3 shrink-0" />
-                                                        </span>
-                                                        <select
-                                                          name="weightColumn"
-                                                          defaultValue=""
-                                                          className="mt-0.5 block w-full rounded border border-border px-1.5 py-1 text-[11px]"
-                                                        >
-                                                          <option value="">
-                                                            None
-                                                          </option>
-                                                          {t.headers.map(
-                                                            (h) => (
-                                                              <option
-                                                                key={h}
-                                                                value={h}
-                                                              >
-                                                                {h}
-                                                              </option>
-                                                            ),
-                                                          )}
-                                                        </select>
-                                                      </label>
-                                                    </div>
-                                                    <SubmitButton
-                                                      pendingLabel="Saving..."
-                                                      className="mt-2 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-white shadow-sm transition hover:bg-primary-hover"
-                                                    >
-                                                      Save banner plan
-                                                    </SubmitButton>
-                                                  </form>
+                                                {t.table_index < 100 && (
+                                                  <TableDigest
+                                                    headers={t.headers}
+                                                    rows={t.rows}
+                                                  />
                                                 )}
-                                                {t.ingestion_type === "raw" &&
-                                                  (t.banner_columns?.length ??
-                                                    0) > 0 &&
-                                                  (t.stub_columns?.length ??
-                                                    0) > 0 && (
-                                                    <CrossTabPreviewSection
-                                                      tables={computeCrossTabPreview(
-                                                        t.rows,
-                                                        t.banner_columns ?? [],
-                                                        t.stub_columns ?? [],
-                                                      )}
-                                                    />
-                                                  )}
-                                                {t.ingestion_type === "raw" &&
-                                                  (t.banner_columns?.length ??
-                                                    0) > 0 &&
-                                                  (t.stub_columns?.length ??
-                                                    0) > 0 && (
-                                                    <form
-                                                      action={computeBannerPlanAction.bind(
-                                                        null,
-                                                        id,
-                                                        t.id,
-                                                      )}
-                                                      className="mt-1.5"
-                                                    >
-                                                      <SubmitButton
-                                                        pendingLabel="Computing..."
-                                                        className="flex items-center gap-1.5 rounded-lg bg-success px-2.5 py-1 text-[11px] font-medium text-white shadow-sm transition hover:opacity-90"
-                                                        icon={
-                                                          <ChartIcon className="h-3 w-3" />
-                                                        }
-                                                      >
-                                                        {tableIdsWithFindings.has(
-                                                          t.id,
-                                                        )
-                                                          ? "Recompute banner comparisons"
-                                                          : "Compute banner comparisons"}
-                                                      </SubmitButton>
-                                                    </form>
-                                                  )}
                                               </div>
                                             );
                                           })}
@@ -4355,6 +4847,13 @@ export default async function RunPage({
                                       </details>
                                     );
                                   })()}
+                                {doc.kind === "transcript" && transcriptSetups.get(doc.id)?.wave && (
+                                  // Recorded on Import (migration 0107). Shown so a coder knows which
+                                  // round this is; themes are not yet compared across waves.
+                                  <p className="text-[11px] text-muted" data-testid="coding-wave">
+                                    {`Wave: ${transcriptSetups.get(doc.id)!.wave}`}
+                                  </p>
+                                )}
                                 {doc.kind === "transcript" && (
                                   <CodeGate
                                     documentId={doc.id}
@@ -4366,21 +4865,29 @@ export default async function RunPage({
                                       const setup = transcriptSetups.get(
                                         doc.id,
                                       );
-                                      return setup
-                                        ? `${SESSION_LABEL[setup.sessionType]}; ${MODE_LABEL[setup.mode]}`
-                                        : null;
+                                      if (!setup) return null;
+                                      // Transcripts confirmed by migration 0051 have no
+                                      // session type stored, so name only what exists.
+                                      const parts = [
+                                        SESSION_LABEL[setup.sessionType],
+                                        MODE_LABEL[setup.mode],
+                                      ].filter(Boolean);
+                                      return parts.length > 0
+                                        ? parts.join("; ")
+                                        : "confirmed";
                                     })()}
                                   >
                                     <form action={codeAction}>
-                                      <SubmitButton
-                                        pendingLabel="Coding..."
-                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                                      <CodeThemesSubmit
+                                        runId={id}
+                                        documentId={doc.id}
+                                        className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
                                         icon={
                                           <DocumentIcon className="h-3.5 w-3.5" />
                                         }
                                       >
                                         Code themes
-                                      </SubmitButton>
+                                      </CodeThemesSubmit>
                                     </form>
                                     <details className="rounded-lg border border-border bg-white p-2 text-xs">
                                       <summary className="cursor-pointer select-none font-medium text-muted">
@@ -4417,7 +4924,7 @@ export default async function RunPage({
                                         />
                                         <SubmitButton
                                           pendingLabel="Importing..."
-                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:opacity-90"
+                                          className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-primary-hover"
                                           icon={
                                             <UploadIcon className="h-3.5 w-3.5" />
                                           }
@@ -4428,24 +4935,6 @@ export default async function RunPage({
                                     </details>
                                   </CodeGate>
                                 )}
-                                {doc.kind === "transcript" &&
-                                  codebooksByDocument.has(doc.id) && (
-                                    <a
-                                      href={`/api/runs/${id}/coding/export`}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
-                                    >
-                                      Export codebook and coding checks (.xlsx)
-                                    </a>
-                                  )}
-                                {doc.kind === "transcript" &&
-                                  codebooksByDocument.has(doc.id) && (
-                                    <a
-                                      href={`/api/runs/${id}/coding/extract`}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
-                                    >
-                                      Themed extract for writing up (.docx)
-                                    </a>
-                                  )}
                                 {doc.kind === "transcript" &&
                                   codebooksByDocument.has(doc.id) && (
                                     <CodebookPanel
@@ -4464,129 +4953,1049 @@ export default async function RunPage({
                                       view={codingAnalysis.get(doc.id)!}
                                     />
                                   )}
+                                {!omitSide && (
+                                  <>
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <CodingExtras
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codingAnalysis.has(doc.id) && (
+                                    <TranscriptQualityPanel
+                                      key={`coding-quality-${doc.id}-${codingAnalysis.get(doc.id)!.version}`}
+                                      runId={id}
+                                      title="Quality control"
+                                      items={[
+                                        {
+                                          documentId: doc.id,
+                                          filename: doc.source_filename,
+                                          view: codingAnalysis.get(doc.id)!,
+                                        },
+                                      ]}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      href={`/api/runs/${id}/coding/export`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Export codebook and coding checks (.xlsx)
+                                    </a>
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      href={`/api/runs/${id}/coding/extract`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Themed extract for writing up (.docx)
+                                    </a>
+                                  )}
+                                  </>
+                                )}
                               </li>
                             );
                           })}
                         </ul>
-                      </>
-                    ),
-                  },
-                  {
-                    id: "import-quality",
-                    label: "Data quality",
-                    content: (() => {
-                      const codedTranscripts = documents.filter(
-                        (d) =>
-                          d.kind === "transcript" && codingAnalysis.has(d.id),
-                      );
-                      return (
-                        <div className="space-y-8">
-                          {(importQualityTables.length > 0 ||
-                            codedTranscripts.length === 0) && (
-                            <ImportQualityPanel
-                              tables={importQualityTables}
-                              hasReportOnly={
-                                importQualityTables.length === 0 &&
-                                documents.length > 0
-                              }
-                            />
-                          )}
-                          {codedTranscripts.length > 0 && (
-                            <TranscriptQualityPanel
-                              runId={id}
-                              items={codedTranscripts.map((d) => ({
-                                documentId: d.id,
-                                filename: d.source_filename,
-                                view: codingAnalysis.get(d.id)!,
-                              }))}
-                            />
-                          )}
-                        </div>
-                      );
-                    })(),
-                  },
-                ]}
+  );
+  // The quality checks, extras and exports of one transcript, shown in the right-hand pane of Coding.
+  // Nothing until the transcript is coded, so its pane is not shown empty.
+  const transcriptSide = (doc: (typeof documents)[number]) => !codebooksByDocument.has(doc.id) && !codingAnalysis.has(doc.id) ? null : (
+    <div className="flex flex-col gap-3">
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <CodingExtras
+                                      key="extras"
+                                      runId={id}
+                                      documentId={doc.id}
+                                      filename={doc.source_filename}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codingAnalysis.has(doc.id) && (
+                                    <TranscriptQualityPanel
+                                      key={`coding-quality-${doc.id}-${codingAnalysis.get(doc.id)!.version}`}
+                                      runId={id}
+                                      title="Quality control"
+                                      items={[
+                                        {
+                                          documentId: doc.id,
+                                          filename: doc.source_filename,
+                                          view: codingAnalysis.get(doc.id)!,
+                                        },
+                                      ]}
+                                    />
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      key="export"
+                                      href={`/api/runs/${id}/coding/export`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Export codebook and coding checks (.xlsx)
+                                    </a>
+                                  )}
+                                {doc.kind === "transcript" &&
+                                  codebooksByDocument.has(doc.id) && (
+                                    <a
+                                      key="extract"
+                                      href={`/api/runs/${id}/coding/extract`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-slate-50"
+                                    >
+                                      Themed extract for writing up (.docx)
+                                    </a>
+                                  )}
+    </div>
+  );
+  const documentsToolbar =
+    documents.length > 0 ? (
+<div className="flex flex-wrap items-center gap-2">
+                    <form action={processRunWithId}>
+                      <SubmitButton
+                        pendingLabel="Running..."
+                        title="Reads the reports, tables and raw data, codes any transcripts, checks the findings and writes the insights. Qual and quant files are analysed together."
+                        className="flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
+                        icon={<BoltIcon className="h-4 w-4" />}
+                      >
+                        Run analysis
+                      </SubmitButton>
+                      <ProcessProgress runId={id} />
+                    </form>
+                    <form action={regenerateUnreviewedWithId}>
+                      <SubmitButton
+                        pendingLabel="Regenerating..."
+                        title="Redo every document's extraction, but only replace findings you've rejected -- accepted findings (and everything built on them) are left alone"
+                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
+                      >
+                        Regenerate rejected
+                      </SubmitButton>
+                      <ProcessProgress runId={id} />
+                    </form>
+                    <form action={reprocessAllWithId}>
+                      <SubmitButton
+                        pendingLabel="Reprocessing..."
+                        title="Delete and redo every document's extraction from scratch, including findings you've already accepted or rejected"
+                        className="whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground"
+                      >
+                        Reprocess all documents
+                      </SubmitButton>
+                      <ProcessProgress runId={id} />
+                    </form>
+                  </div>
+    ) : null;
+
+  const navSections: RunNavSection[] = [
+    // Grant's sidebar, 2026-10-19, adopted on this copy 2026-10-20 without the two-letter codes:
+    // four stages (Prepare, Analyse, Develop findings, Deliver), then Tools. Within Prepare the order
+    // agreed on 2026-10-18 stands: import first, then the research quality review, then objectives
+    // with the business decisions they serve. Objectives is one entry for two sections (Set and
+    // Review), switched by tabs inside them. Cross tabs and Analytics are two entries over the same
+    // data files, each showing its own part of a file's launcher.
+    // Each stage opens with its overview (Grant, 2026-10-23): the state of every module in it.
+    { id: "overview-prepare", group: "Prepare", label: "Prepare overview" },
+    { id: "upload", group: "Prepare", label: "Import data" },
+    { id: "research-quality", group: "Prepare", label: "Research quality" },
+    { id: "objective", group: "Prepare", label: "Objectives" },
+    // Decisions can always be added by hand here. Suggestions are offered once there are findings; in
+    // generate mode generateDecisionCandidates reads insights, and says so when none exist yet.
+    { id: "decisions", group: "Prepare", label: "Business decisions" },
+    { id: "overview-analyse", group: "Analyse", label: "Analyse overview" },
+    { id: "crosstabs", group: "Analyse", label: "Cross tabs", badge: documents.filter((d) => d.kind === "table").length },
+    { id: "analytics", group: "Analyse", label: "Analytics" },
+    { id: "coding", group: "Analyse", label: "Coding", badge: documents.filter((d) => d.kind === "transcript").length },
+    { id: "reports", group: "Analyse", label: "Secondary analysis", badge: documents.filter((d) => d.kind === "report").length },
+    { id: "overview-develop", group: "Develop findings", label: "Develop overview" },
+    { id: "findings", group: "Develop findings", label: "Findings", badge: findings.length },
+    { id: "synthesized", group: "Develop findings", label: "Insights", badge: synthesizedInsights.length },
+    { id: "overview-deliver", group: "Deliver", label: "Deliver overview" },
+    { id: "recommendations", group: "Deliver", label: "Recommendations", badge: synthesizedRecommendations.length },
+    // In Deliver: generating it draws on the decision statement and on accepted recommendations.
+    { id: "insights-report", group: "Deliver", label: "Insights report" },
+    { id: "assistant", group: "Tools", label: "Research assistant" },
+    // Working data sits at the very bottom of the page's own order, so it stays in Tools.
+    { id: "working-data", group: "Tools", label: "Working data" },
+    ...(apiUsage.length > 0 ? [{ id: "api-usage", group: "Tools", label: "API usage & cost" }] : []),
+  ];
+  // The section a researcher lands on: whichever of the workflow's own
+  // gating steps (see the reached/done flags above) is next up, falling
+  // back to Findings -- the raw evidence, always relevant -- once nothing
+  // is pending.
+  // A new project starts with context (all optional), then data import;
+  // once there are documents, the work is Findings.
+  const defaultSectionId =
+    documents.length === 0
+      ? "objective"
+      : findings.length === 0
+        ? "upload"
+        : "findings";
+
+  // The Import screen's sources (TranscriptSetup.tsx): every document, then each statistical output
+  // set, with the tabs its type has after Preview and Setup. Grant, 2026-10-20, from his prototype:
+  // raw data has Variables, Data quality and Questionnaire links; qualitative data Data quality and
+  // Guide; aggregated tables Data quality; a questionnaire or guide its questions and links; a
+  // brief, proposal or report its document details; an output set its overview and related sets.
+  const importRows: SourceRow[] = [
+    ...documents
+      .filter((d) => d.kind !== "output")
+      .map((d): SourceRow => {
+        const isRaw = d.kind === "table" && d.ingestion_type === "raw";
+        const previewError = importPreviewIdentities.get(d.id)?.error ?? null;
+        const ownTables = importQualityTables.filter((t) => t.documentId === d.id);
+        const attached = attachedFor(d);
+        const instrument = d.kind === "instrument" ? instrumentSummaries.get(d.id) : undefined;
+        const isGuide = instrument?.type === "interview_guide" || instrument?.type === "focus_group_guide";
+        const panels: SourcePanel[] = [];
+        // A count on a tab brings a problem forward without opening it (Grant, 2026-10-20): the
+        // import checks flagged Check or Problem, and questions whose suggested links are still to
+        // confirm (counted by question, as a grid question can carry dozens of links).
+        const qualityBadge = (n: number): SourcePanel["badge"] =>
+          n > 0 ? { text: String(n), title: `${n} ${n === 1 ? "check is" : "checks are"} flagged Check or Problem` } : undefined;
+        const linksBadge = (n: number): SourcePanel["badge"] =>
+          n > 0 ? { text: `${n} to check`, title: `${n} ${n === 1 ? "question has" : "questions have"} suggested links waiting for your confirmation` } : undefined;
+        // The same counts, kept as numbers for the stage status block (ImportStageStatus).
+        let qualityFlags = 0;
+        let linksWaiting = 0;
+        const flagQuality = (n: number) => ((qualityFlags += n), qualityBadge(n));
+        const flagLinks = (n: number) => ((linksWaiting += n), linksBadge(n));
+        const tableFlags = ownTables
+          .filter((t) => !t.previewError)
+          .reduce((n, t) => n + flaggedChecks((t.quality ?? computeTableQuality(t.headers, t.rows, t.ingestionType, t.stated ?? [])).checks), 0);
+        if (previewError) panels.push({ id: "preview", label: "Preview", node: <ImportPreviewRecovery key="panel" error={previewError} reread={d.kind === "table" ? { runId: id, documentId: d.id } : undefined} /> });
+        if (d.kind === "table" && !previewError) {
+          if (isRaw && ownTables.length > 0) {
+            // The missing-value check sits with the variables it describes, as its own fold; weights have
+            // their own tab (Grant, 2026-10-22: the two did not belong together).
+            panels.push({
+              id: "variables",
+              label: "Variables",
+              node: (
+                <div key="panel" className="flex flex-col gap-3">
+                  <ImportVariablesPanel runId={id} tables={ownTables} withinSource />
+                  <DataAuditPanel runId={id} documentId={d.id} part="missing" />
+                </div>
+              ),
+            });
+            panels.push({
+              id: "quality",
+              label: "Data quality",
+              badge: flagQuality(tableFlags),
+              node: (
+                <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource />
+              ),
+            });
+            // Its own tab (Grant, 2026-10-20), read from the whole file when the tab is first shown.
+            panels.push({ id: "weights", label: "Weights", node: <DataAuditPanel key="panel" runId={id} documentId={d.id} asTab part="weights" /> });
+          } else if (!isRaw && (documentTablesByDocument.get(d.id) ?? []).length > 0) {
+            const aggregated = computeAggregatedQuality(
+              (documentTablesByDocument.get(d.id) ?? [])
+                .filter((t) => t.table_index < 100)
+                .map((t) => ({ label: t.label, headers: t.headers, rows: t.rows })),
+            );
+            panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(aggregated.checks)), node: <AggregatedQualityPanel key="panel" q={aggregated} /> });
+          } else if (ownTables.length > 0) {
+            panels.push({ id: "quality", label: "Data quality", badge: flagQuality(tableFlags), node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource /> });
+          }
+        }
+        if (d.kind === "transcript" && transcriptQuality.has(d.id)) {
+          panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(transcriptQuality.get(d.id)!.checks)), node: <TranscriptImportQualityPanel key="panel" q={transcriptQuality.get(d.id)!} /> });
+        }
+        if (attached)
+          panels.push({
+            id: "links",
+            label: d.kind === "transcript" ? "Guide" : "Questionnaire links",
+            // Counted for the stage status on the questionnaire's own row only, so one set of links is one item.
+            badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.itemsToCheck ?? 0), 0)),
+            node:
+              d.kind === "transcript" ? (
+                attached
+              ) : (
+                <div key="panel" className="flex flex-col gap-3">
+                  <QuestionnaireLinkingNote />
+                  {attached}
+                </div>
+              ),
+          });
+        else if (isRaw)
+          panels.push({
+            id: "links",
+            label: "Questionnaire links",
+            node: (
+              <div key="panel" className="flex flex-col gap-3">
+                <QuestionnaireLinkingNote />
+                <p className="text-xs text-muted">No questionnaire is linked to this file. Add one with Add files, as a questionnaire or guide; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p>
+              </div>
+            ),
+          });
+        if (instrument) {
+          panels.push({
+            id: "links",
+            label: isGuide ? "Guide" : "Questionnaire links",
+            badge: flagLinks(instrument.itemsToCheck),
+            node: (
+              <div key="panel" className="flex flex-col gap-3">
+              {!isGuide && <QuestionnaireLinkingNote />}
+              <InstrumentCard
+                runId={id}
+                documentId={d.id}
+                summary={instrument}
+                autoStart
+                dataDocs={
+                  instrument.type === "questionnaire" || instrument.type === null
+                    ? documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => ({ id: x.id, name: x.source_filename }))
+                    : []
+                }
               />
-            </CollapsibleSection>
+              </div>
+            ),
+          });
+        }
+        if (d.kind === "evidence" || d.kind === "report") {
+          panels.push({ id: "details", label: "Document details", node: <DocumentIndicatorsPanel key="panel" runId={id} documentId={d.id} /> });
+        }
+        const excerpt = documentExcerpts.get(d.id);
+        const purpose = purposeOf(d);
+        return {
+          documentId: d.id,
+          runId: id,
+          filename: d.source_filename,
+          kind: d.kind,
+          kindLabel: sourceTypeLabel(d.kind, d.ingestion_type, contextRoles === null ? undefined : (contextRoles.get(d.id) ?? []), instrument?.type),
+          uploadedAt: d.uploaded_at,
+          isRawData: isRaw,
+          dataSetup: dataSetups.get(d.id) ?? null,
+          // A questionnaire's own read record (instrument_items) says whether its questions were read,
+          // and whether that read was complete; every instrument has a summary, read or not.
+          processingStatus: instrument?.readStatus && !instrument.readStatus.complete ? "incomplete" : d.processing_status,
+          instrumentRead: instrument ? instrument.items > 0 || instrument.readStatus !== undefined : undefined,
+          previewUnverified: previewError !== null,
+          preview:
+            d.kind === "instrument" || previewError
+              ? null
+              : d.kind === "table"
+                ? {
+                    kind: "tables" as const,
+                    // row_count, not rows.length: getDocumentTablePreviews caps a raw table's rows at a
+                    // small sample, with row_count holding the true count. Counting rows.length here used
+                    // to read every raw file as having zero rows, which made the setup form see "no
+                    // tables yet" and re-read the file on every page load (IMP-010).
+                    tables: (documentTablesByDocument.get(d.id) ?? [])
+                      .filter((t) => t.table_index < 100 && t.headers.length > 0 && t.row_count > 0)
+                      .map((t) => ({
+                        label: t.label ?? `Table ${t.table_index + 1}`,
+                        headers: t.headers.slice(0, 12),
+                        totalColumns: t.headers.length,
+                        rows: t.rows.slice(0, 8),
+                        totalRows: t.row_count,
+                      })),
+                  }
+                : excerpt
+                  ? { kind: "text" as const, excerpt: excerpt.excerpt, length: excerpt.length }
+                  : null,
+          linked: hostedBy(d).map((x) => ({ documentId: x.id, filename: x.source_filename })),
+          linkedTo:
+            d.kind === "instrument" && instrumentHome.has(d.id)
+              ? instrumentHome.get(d.id) === "*"
+                ? "your transcripts"
+                : (documents.find((x) => x.id === instrumentHome.get(d.id))?.source_filename ?? null)
+              : null,
+          purposeText: purpose.text,
+          nextStep: purpose.nextStep,
+          typeGroup: sourceGroup(d.kind, instrument?.type),
+          autoWork: instrument ? (
+            <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} dataDocIds={documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => x.id)} />
+          ) : undefined,
+          // The same colour as this file's card under Cross tabs, Analytics, Coding and Secondary analysis.
+          accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,
+          panels,
+          flaggedChecks: qualityFlags,
+          linksToCheck: linksWaiting,
+          initial: transcriptSetups.get(d.id) ?? null,
+          waveAvailable: transcriptWaveSaves,
+          suggestion: setupSuggestions.get(d.id) ?? null,
+          hasCoding: codebooksByDocument.has(d.id),
+          deleteAction: deleteDocument.bind(null, id, d.id),
+          deleteConfirm: deleteDocumentConfirmation(impactFor(deletionImpact, d.id)),
+        };
+      }),
+    ...outputSets.map(
+      (set): SourceRow => ({
+        documentId: `output-set:${set.id}`,
+        runId: id,
+        filename: set.name,
+        kind: "output",
+        kindLabel: sourceTypeLabel("output", null),
+        accent: "border-l-slate-400",
+        typeGroup: "quant",
+        isRawData: false,
+        dataSetup: null,
+        preview: null,
+        processingStatus: null,
+        purposeText: `${set.files.length} ${set.files.length === 1 ? "file" : "files"} of statistical output, checked and turned into findings from its Overview tab.`,
+        panels: [
+          { id: "overview", label: "Overview", node: <OutputSetCard key="panel" runId={id} set={set} /> },
+          ...(outputSets.length > 1 ? [{ id: "related", label: "Related sets", node: <RelatedOutputSets key="panel" runId={id} sets={outputSets} /> }] : []),
+        ],
+        initial: null,
+        suggestion: null,
+        hasCoding: false,
+      }),
+    ),
+  ];
+
+  // The section dashboards (Grant, 2026-10-23): the stored-record facts, with this page's fuller
+  // checks on top (a preview's identity and data quality flags from Import, the stored tables' read,
+  // and the Findings, Insights and Recommendations overviews' attention counts, by the same
+  // summaries those overviews show).
+  const sectionState = (() => {
+    if (!stageFactsResult.ok) return { ok: false as const, error: stageFactsResult.error };
+    const f = stageFactsResult.facts;
+    const rowOf = new Map(importRows.map((r) => [r.documentId, r]));
+    const findingsOverview = summarizeFindings(findings, statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier })));
+    const insightSupport = summarizeInsights(synthesizedInsights).support;
+    const recAttention = summarizeRecommendations(synthesizedRecommendations, parkedInsights).attention;
+    const facts: ProjectStageFacts = {
+      ...f,
+      import: {
+        tablesReadFailed: documentTablesReadFailed,
+        files: f.import.files.map((file) => {
+          const row = rowOf.get(file.documentId);
+          return row ? { ...file, previewUnverified: row.previewUnverified ?? false, flaggedChecks: row.flaggedChecks ?? 0, linksToCheck: row.linksToCheck ?? file.linksToCheck } : file;
+        }),
+      },
+      crosstabs: { ...f.crosstabs, tablesReadFailed: documentTablesReadFailed },
+      findings: { ...f.findings, attention: findingsOverview.attention },
+      insights: { ...f.insights, support: { stale: insightSupport.stale, invalid: insightSupport.invalid, unknown: insightSupport.unknown } },
+      recommendations: { ...f.recommendations, attention: recAttention },
+    };
+    return { ok: true as const, sections: sectionStatuses(facts) };
+  })();
+  // The one-line status at the top of each module's page, from the same statuses as the overviews.
+  const moduleBar = (moduleId: string) => {
+    const section = SECTIONS.find((x) => x.modules.some((m) => m.id === moduleId))!;
+    const status = sectionState.ok ? (sectionState.sections.find((x) => x.id === section.id)?.modules.find((m) => m.id === moduleId)?.status ?? null) : null;
+    return <ModuleStatusBar moduleId={moduleId} status={status} overview={{ navId: section.navId, label: section.label }} />;
+  };
+
+  timing.bodyBuilt();
+  return (
+    <FigureChecksProvider checks={figureChecks}>
+    <RunSectionProvider
+      defaultId={defaultSectionId}
+      validIds={navSections.flatMap((s) => [s.id, ...(s.activeFor ?? [])])}
+    >
+      <main className="flex min-h-0 flex-1 flex-col">
+        {/* Same left edge as every section below (px-6, no centring), so the project title lines up
+            with "Import data" and the other section headings (Grant, 2026-10-19). */}
+        <div className="w-full px-6 pt-3">
+          <PipelineStatus runId={id} />
+          <div className="mb-2 flex flex-col items-start gap-y-0.5 text-left">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            {run.project_name ??
+              run.research_objective ??
+              run.business_problem ??
+              "Untitled project"}
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+            {run.audience && (
+              <>
+                <span>Audience: {run.audience}</span>
+                <span className="text-border">&middot;</span>
+              </>
+            )}
+            {/* No run status chip (Grant, 2026-10-22): runs.status is set to "draft" when a project is
+                created and nothing in the app moves it on, so the chip said "draft" on every page. */}
+            <span>Starting point: {startingPointLabel}</span>
+          </div>
+          </div>
+
+          {/* Program/wave membership is a Documents-page concern (it's
+              about this project's identity, not any one analysis step), but
+              lived outside every SectionPanel, so it rendered above
+              whichever section was selected instead of only on Documents. */}
+
+          {latestProcessErrors && (
+            <div className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <p className="font-medium">
+                The last processing run hit an error on{" "}
+                {latestProcessErrors.errors.length === 1
+                  ? "one document"
+                  : `${latestProcessErrors.errors.length} documents`}
+                , at {new Date(latestProcessErrors.occurredAt).toLocaleString()}
+                .
+              </p>
+              <p className="mt-1 text-red-800">
+                Whatever succeeded elsewhere in that run still went through;
+                only the document(s) below didn&apos;t. Try processing again,
+                and if the same error keeps coming back, it&apos;s worth looking
+                into rather than retrying.
+              </p>
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-red-800">
+                {latestProcessErrors.errors.map((error, index) => (
+                  <li key={index} className="break-words">
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {pendingLegacyConfirmations.map((pending) => {
+            const n = pending.findings.length;
+            const confirmAction = confirmLegacyReplacementAction.bind(null, id, pending.documentId);
+            return (
+              <div
+                key={pending.documentId}
+                className="mb-8 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              >
+                <p className="font-medium">
+                  A new reading of {pending.filename} was not applied: {n} existing finding{n === 1 ? "" : "s"}{" "}
+                  {n === 1 ? "predates" : "predate"} review tracking.
+                </p>
+                <p className="mt-1 text-amber-800">
+                  Whether a researcher accepted or edited {n === 1 ? "it" : "them"} cannot be established, so every
+                  existing finding was kept. Review {n === 1 ? "it" : "them"} under Findings (accepting, rejecting or
+                  editing a finding keeps it), or re-read the document and replace exactly the findings below. Replaced
+                  findings are archived to history; any that have been reviewed, edited, annotated or used since are
+                  kept regardless.
+                </p>
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-amber-800">
+                  {pending.findings.slice(0, 5).map((f) => (
+                    <li key={f.id} className="break-words">
+                      {f.text}
+                    </li>
+                  ))}
+                  {n > 5 && <li>and {n - 5} more</li>}
+                </ul>
+                <form action={confirmAction} className="mt-3">
+                  {pending.findings.map((f) => (
+                    <input key={f.id} type="hidden" name="findingId" value={f.id} />
+                  ))}
+                  <button
+                    type="submit"
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+                  >
+                    Re-read and replace {n === 1 ? "this finding" : `these ${n} findings`}
+                  </button>
+                </form>
+              </div>
+            );
+          })}
+        </div>
+
+        <RunNav sections={navSections} projects={projectList} currentProjectId={id} />
+
+        <div className="px-6 pb-6 pt-2">
+          {SECTIONS.map((s) => (
+            <SectionPanel key={s.navId} id={s.navId}>
+              <SectionDashboard
+                navId={s.navId}
+                section={sectionState.ok ? (sectionState.sections.find((x) => x.id === s.id) ?? null) : null}
+                error={sectionState.ok ? null : sectionState.error}
+              />
+            </SectionPanel>
+          ))}
+
+          <SectionPanel id="upload">
+            {moduleBar("upload")}
+            <ImportDetailProvider rows={importRows}>
+            {/* Grant, 2026-10-20 (his Sources prototype): the heading with Add files, then the sources on
+                the left (search, filters, states) and the selected source on the right, in tabs. The
+                list can be collapsed, and the divider dragged; both are remembered for Import alone. */}
+            <AddFilesPanel runId={id} />
+            <StorageCleanupNotice runId={id} />
+            <BinNotice runId={id} />
+            {importRows.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border bg-white p-6 text-sm text-muted">
+                Nothing here yet. Use Add files to add a data file, a report, a brief or a transcript.
+              </p>
+            ) : (
+              <ThreePane
+                storageKey="import"
+                // The left list may take up to half the width, as Research quality's panes can (Grant, 2026-10-21).
+                leftMaxShare={0.5}
+                left={<SourcesPane count={importRows.length} />}
+                middle={
+                  <section className="overflow-hidden rounded-xl border-2 border-border bg-white lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto" aria-label="Selected source" data-stage-anchor="selected-source">
+                    <SelectedFileDetail />
+                  </section>
+                }
+              />
+            )}
+            {/* Project totals, kept to one line. */}
+            <p className="mt-3 text-[11px] text-muted" data-testid="project-totals">
+              {`Project so far: ${[
+                ["report", "report(s)"],
+                ["table", "data table(s)"],
+                ["transcript", "transcript(s)"],
+                ["instrument", "questionnaire(s) or guide(s)"],
+                ["evidence", "context file(s)"],
+                ["technical", "technical document(s)"],
+              ]
+                .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
+                .join(", ")}${outputSets.length > 0 ? `, ${outputSets.length} statistical output ${outputSets.length === 1 ? "set" : "sets"}` : ""}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}
+            </p>
+            <details className="mt-4 rounded-xl border border-border bg-white p-4" data-testid="programme-and-wave">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-foreground">Programme and wave (optional)</summary>
+              <div className="mt-3">
+            <div className="rounded-lg border border-dashed border-border bg-slate-50 p-4">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <ChartIcon className="h-3.5 w-3.5 text-primary" />
+                Tracking
+              </div>
+              {currentProgram ? (
+                <div>
+                  <p className="text-xs text-foreground">
+                    Part of{" "}
+                    <Link
+                      href="/programs"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {currentProgram.name}
+                    </Link>
+                    {run.wave_label ? (
+                      <>
+                        {" "}
+                        as <span className="font-medium">{run.wave_label}</span>
+                      </>
+                    ) : null}
+                    .
+                  </p>
+                  {programWaves.length > 0 && (
+                    <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">
+                      {programWaves.map((wave) => (
+                        <li key={wave.id}>
+                          Other wave:{" "}
+                          <Link
+                            href={`/runs/${wave.id}`}
+                            className="text-foreground hover:text-primary"
+                          >
+                            {wave.wave_label ?? wave.project_name ?? "Untitled"}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <form action={updateProgramLinkWithId} className="mt-3">
+                    <input type="hidden" name="action" value="unlink" />
+                    <SubmitButton
+                      pendingLabel="Removing..."
+                      className="w-fit rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
+                    >
+                      Remove from program
+                    </SubmitButton>
+                  </form>
+                </div>
+              ) : (
+                <div>
+                  <p className="mb-3 text-xs text-muted">
+                    Not part of a program yet. If this project is one wave of an
+                    ongoing tracking study, link it to a program below, picking
+                    an existing one or naming a new one.
+                  </p>
+                  <form
+                    action={updateProgramLinkWithId}
+                    className="flex flex-col gap-2"
+                  >
+                    <label className="block">
+                      <span className="text-xs font-medium text-foreground">
+                        Existing program
+                      </span>
+                      <select
+                        name="programId"
+                        className="mt-1 block w-full rounded-lg border border-border px-2 py-1 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">None</option>
+                        {programs.map((program) => (
+                          <option key={program.id} value={program.id}>
+                            {program.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-foreground">
+                        Or new program name
+                      </span>
+                      <input
+                        name="newProgramName"
+                        placeholder="e.g. Acme Member Satisfaction Tracker"
+                        className="mt-1 block w-full rounded-lg border border-border px-2 py-1 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-foreground">
+                        Wave label
+                      </span>
+                      <input
+                        name="waveLabel"
+                        placeholder="e.g. Wave 1"
+                        className="mt-1 block w-full rounded-lg border border-border px-2 py-1 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </label>
+                    <SubmitButton
+                      pendingLabel="Linking..."
+                      className="w-fit rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover"
+                    >
+                      Link
+                    </SubmitButton>
+                  </form>
+                </div>
+              )}
+            </div>
+              </div>
+            </details>
+            </ImportDetailProvider>
           </SectionPanel>
 
           <SectionPanel id="objective">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Objective setting
-            </h2>
-            {objectiveSection}
+            {moduleBar("objective")}
+            {/* One page for objectives (Grant, 2026-10-22, prototype for 3001): the context form as a
+                foldable band across the top; below it the objectives list (the stated objectives with
+                Setup's Edit and Delete, then suggestions waiting for review), the selected objective's
+                detail and review, and the evidence check. It replaces the Set and Review tabs; every
+                action and rule they had is the same component as before. */}
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Objectives</h2>
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Add the business problem and your own objectives, or fill them in from a brief or proposal added under Import data.
+              Pick an objective to see its quality score and what the evidence says about it; with none picked, the middle shows
+              every objective scored side by side.
+            </p>
+            <ObjectiveSelectionProvider>
+              <div data-stage-anchor="objective-context">
+              <ThreePane
+                storageKey="objectives-one-page"
+                leftMaxShare={0.5}
+                band={
+                  <Pane side="left" title="Objective and context">
+                    <RunContextForm
+                      layout="band"
+                      runId={id}
+                      businessProblem={run.business_problem}
+                      objective={run.stated_objectives_text}
+                      audience={run.audience}
+                      documents={documents
+                        // Briefs and proposals only: imported as context, or given that role by a review.
+                        .filter((d) => (d.kind === "evidence" || documentReviewRoles.has(d.id)) && /\.(pdf|docx|pptx|txt)$/i.test(d.source_filename))
+                        .map((d) => ({ id: d.id, filename: d.source_filename, role: documentReviewRoles.get(d.id) ?? null }))}
+                      lastFill={lastBriefFill}
+                      failedFill={failedBriefFill}
+                    />
+                  </Pane>
+                }
+                left={
+                  <Pane side="plain" title="Objectives">
+                    {(() => {
+                      const statedLines = parseObjectiveLines(run.stated_objectives_text);
+                      const statedIds = setupLineCandidateIds(statedLines, objectiveCandidates);
+                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred }));
+                      const statedIdSet = new Set(statedIds.filter((x): x is string => !!x));
+                      const others = objectiveRows.filter((r) => !statedIdSet.has(r.id));
+                      return (
+                        <>
+                          <StatedObjectivesList
+                            runId={id}
+                            lines={statedLines}
+                            candidateIds={statedIds}
+                            sources={objectiveSourceLabels(statedLines)}
+                            badges={statedIds.map((cid, i) => {
+                              const row = cid ? objectiveRows.find((r) => r.id === cid) : undefined;
+                              // Keyed: React checks keys on elements made in an array, even when each is rendered on its own.
+                              return row ? <ObjectiveBadges key={`${cid}:${i}`} row={row} verdicts={verdicts} /> : null;
+                            })}
+                          />
+                          {others.some((r) => r.status !== "rejected") && statedLines.length > 0 && (
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Suggested and waiting for review</p>
+                          )}
+                          <ObjectiveList
+                            rows={others}
+                            verdicts={verdicts}
+                            startAt={statedLines.length}
+                            empty={statedLines.length > 0 ? null : "No objectives yet. Add them under Objective and context above."}
+                          />
+                        </>
+                      );
+                    })()}
+                  </Pane>
+                }
+                middle={
+                  <Pane side="plain" title="Objective detail">
+                    <div data-stage-anchor="objective-detail" />
+                    <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
+                    <SelectedObjectiveCoverage
+                      validations={objectiveValidations}
+                      insights={synthesizedInsights.map((i) => ({ id: i.id, headline: i.headline, review_status: i.review_status }))}
+                    />
+                  </Pane>
+                }
+                right={
+                  <Pane side="plain" title="Objective review">
+                    <ObjectiveCoverage
+                      runId={id}
+                      validations={objectiveValidations}
+                      insights={synthesizedInsights.map((i) => ({
+                        id: i.id,
+                        headline: i.headline,
+                        review_status: i.review_status,
+                      }))}
+                      hasObjectiveOrDecision={Boolean(
+                      (run.research_objective && run.research_objective.trim()) ||
+                        (run.decision_statement && run.decision_statement.trim()),
+                    )}
+                    />
+                    <ObjectiveEvidence
+                      runId={id}
+                      dataFiles={documents
+                        .filter(
+                          (d) =>
+                            d.kind === "table" &&
+                            (isStatsFileName(d.source_filename) ||
+                              (d.ingestion_type === "raw" && isCaseTableFileName(d.source_filename))),
+                        )
+                        .map((d) => ({ id: d.id, name: d.source_filename }))}
+                      hasObjectiveOrDecision={Boolean(
+                      (run.research_objective && run.research_objective.trim()) ||
+                        (run.decision_statement && run.decision_statement.trim()),
+                    )}
+                    />
+                  </Pane>
+                }
+              />
+              </div>
+            </ObjectiveSelectionProvider>
+          </SectionPanel>
+
+          <SectionPanel id="research-quality">
+            {moduleBar("research-quality")}
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">Research quality review</h2>
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Rate how well a brief or a proposal is written against good research practice, with a score for each part and what
+              to improve, or check a proposal against its brief. Opening this section does not call the model.
+            </p>
+            <ResearchQualityReview runId={id} />
+          </SectionPanel>
+
+          <SectionPanel id="crosstabs">
+            {moduleBar("crosstabs")}
+            {/* Grant's review, 2026-10-20: straight into the crosstab workspace, the file chosen in its
+                header (CrosstabsSection says where each part of the old gateway page went). */}
+            <div data-stage-anchor="crosstab-workspace">
+              <CrosstabsSection
+                runId={id}
+                findings={findings.length}
+                datasets={dataFileOptions()}
+              />
+            </div>
+          </SectionPanel>
+
+          <SectionPanel id="analytics">
+            {moduleBar("analytics")}
+            {/* Grant's review, 2026-10-20: one header with the data file chooser and a grid of the
+                analyses, each opening its own workspace with "All analytics" to come back. */}
+            <DataFileSection
+              runId={id}
+              title="Analytics"
+              intro="Choose an analysis to open it on this file. Nothing runs until you start it there, and opening this page calls no model."
+              howTitle="How Analytics works"
+              how={
+                <>
+                  <p>Each analysis opens in its own workspace on the chosen file, where you pick its variables and, where the file has one, a weight. Results you add there flow into Findings.</p>
+                  <p>NPS intervals take the file&apos;s survey design (PSU or strata) into account when one is set in Cross tabs; otherwise they assume a simple random sample. Driver analysis uses weights but not a full design-based variance, and its report says so.</p>
+                  <p>Tables themselves are built under Cross tabs, from the same file.</p>
+                </>
+              }
+              emptyText="No data files yet. Add a survey data file (SPSS, Stata, CSV or Excel; SAS files are not supported yet) in Sources, then run analyses here."
+              aggregatedText="This file holds tables that are already aggregated, so the analyses, which work on each respondent's answers, cannot run on it. Generate findings from its tables below."
+              findings={findings.length}
+              datasets={dataFileOptions((d) => (
+                <AnalyticsBuilder
+                  layout="grid"
+                  part="analytics"
+                  runId={id}
+                  documentId={d.id}
+                  filename={d.source_filename}
+                  waveFiles={waveFiles}
+                  saved={(documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).map((t) => ({ id: t.id, label: t.label ?? "Crosstab" }))}
+                />
+              ))}
+              testIds={{ section: "analytics-section", select: "analytics-file-select", state: "analytics-file-state", findings: "analytics-findings-link" }}
+            />
+          </SectionPanel>
+
+          <SectionPanel id="coding">
+            {moduleBar("coding")}
+            {/* Grant, 2026-10-20: the Sources workspace style, one transcript at a time. */}
+            <DocumentPicker
+              title="Coding"
+              chooserLabel="Transcript"
+              intro="Code the themes in each interview or group discussion; the coded themes flow into Findings."
+              howTitle="How Coding works"
+              how={
+                <>
+                  <p>A transcript is coded once its setup (who is speaking, the kind of interview, its wave) is accepted in Sources. Code themes reads it and groups what was said into themes.</p>
+                  <p>Quality control, beside the coding, checks the coding for this transcript, and the coded themes can be exported. With more than one transcript coded, themes are compared across them below.</p>
+                </>
+              }
+              findings={findings.length}
+              storageKey="coding"
+              testId="coding-section"
+              empty="No transcripts yet. Add an interview or focus group transcript in Sources, then code it here."
+              workLabel="Coding"
+              sideLabel="Quality and exports"
+              sideEmpty="Quality control and exports appear here once this transcript is coded."
+              summary={`${countOf(documents.filter((d) => d.kind === "transcript").length, "transcript")} · ${codebooksByDocument.size} coded`}
+              items={documents
+                .filter((d) => d.kind === "transcript")
+                .map((d) => {
+                  const confirmed = transcriptSetups.get(d.id)?.confirmed ?? false;
+                  const coded = codebooksByDocument.has(d.id);
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: coded ? "Coded" : confirmed ? "Ready to code" : "Not coded",
+                    flag: !coded && !confirmed ? "Needs set-up" : undefined,
+                    node: documentCards("transcript", true, d.id, true),
+                    side: transcriptSide(d),
+                  };
+                })}
+              footer={
+                codingAnalysis.size > 1 ? (
+                  <AcrossTranscripts
+                    rows={crossTranscriptThemes(codingAnalysis)}
+                    documentNames={Object.fromEntries(documents.map((d) => [d.id, d.source_filename]))}
+                    runId={id}
+                  />
+                ) : null
+              }
+            />
+          </SectionPanel>
+
+          <SectionPanel id="reports">
+            {moduleBar("reports")}
+            {/* Grant, 2026-10-20: the Sources workspace style, one report at a time. */}
+            <DocumentPicker
+              title="Secondary analysis"
+              chooserLabel="Report or deck"
+              intro="Extract the claims a written report or presentation makes; they are then checked in Findings."
+              howTitle="How Secondary analysis works"
+              how={
+                <>
+                  <p>Extract findings reads the selected report and lists the claims it states. Each becomes a finding, checked against the data in Findings; nothing is read until you press it.</p>
+                  <p>Run again reads the report afresh. Findings from every report and table are reviewed together under Findings.</p>
+                </>
+              }
+              findings={findings.length}
+              storageKey="reports"
+              testId="reports-section"
+              empty="No reports yet. Add a report or deck (Word, PDF or PowerPoint) in Sources, then extract its findings here."
+              workLabel="Report"
+              summary={`${countOf(documents.filter((d) => d.kind === "report").length, "report or deck", "reports and decks")} · ${countOf(findings.length, "finding")} so far, from every report and table`}
+              items={documents
+                .filter((d) => d.kind === "report")
+                .map((d) => {
+                  const n = rawFindings.filter((f) => f.source_document_id === d.id).length;
+                  const read = reportReadStats.get(d.id)?.ranAt;
+                  return {
+                    id: d.id,
+                    name: d.source_filename,
+                    meta: n > 0 || read ? `Extracted, ${n} ${n === 1 ? "finding" : "findings"}` : "Not extracted yet",
+                    node: documentCards("report", true, d.id, true),
+                  };
+                })}
+            />
           </SectionPanel>
 
           <SectionPanel id="findings">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            {moduleBar("findings")}
+            <h2 className="mb-0.5 text-lg font-semibold text-foreground">
               Findings
             </h2>
-            {findingsSection}
+            <p className="mb-2 max-w-3xl text-sm text-muted">
+              Every claim in one place: comparisons from committed tables, themes from coding, and
+              claims extracted from reports.
+            </p>
+            {documentsToolbar && <div className="mb-4">{documentsToolbar}</div>}
+            {/* Grant, 2026-10-21: an overview first, the review and the report claims as tabs. */}
+            <FindingsWorkspace
+              runId={id}
+              findings={findings}
+              wordingEdits={wordingEdits}
+              claims={statedInsightValidations.map((v) => ({ verdict_tier: v.verdict_tier }))}
+              reviewToolbar={findingsToolbar}
+              claimsContent={
+                <Fragment key="findings-claims">
+                  {statedInsightValidationsSection}
+                  <ClaimTableChecks runId={id} />
+                </Fragment>
+              }
+            />
           </SectionPanel>
 
-          <SectionPanel id="validations">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
-              Report insight validations
-            </h2>
-            {statedInsightValidationsSection}
-          </SectionPanel>
 
           <SectionPanel id="synthesized">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            {moduleBar("synthesized")}
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Synthesized insights
             </h2>
-            {synthesizedInsightsSection}
+            {/* Grant, 2026-10-21: an overview first, the review as a tab. */}
+            <InsightsWorkspace
+              key={`synthesized-insights-${synthesizedInsights.length}`}
+              runId={id}
+              insights={synthesizedInsights}
+              toolbar={synthesizedToolbar}
+            />
           </SectionPanel>
 
           <SectionPanel id="decisions">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            {moduleBar("decisions")}
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Business decisions
             </h2>
             {decisionSection}
           </SectionPanel>
 
           <SectionPanel id="recommendations">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            {moduleBar("recommendations")}
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Recommendations
             </h2>
             {recommendationsSection}
           </SectionPanel>
 
           <SectionPanel id="insights-report">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            {moduleBar("insights-report")}
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Insights report
             </h2>
             {storyReportSection}
           </SectionPanel>
 
           <SectionPanel id="assistant">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Research assistant
             </h2>
-            <CollapsibleSection
+            <ResearchAssistantCard
               key="research-assistant"
-              title="Research assistant"
-              bare
-              icon={<ChatIcon className="h-4 w-4 text-primary" />}
-              defaultOpen={false}
-            >
-              <ResearchAssistantCard
-                runId={id}
-                initialMessages={assistantMessages}
-                hasReport={Boolean(storyNarrative)}
-              />
-            </CollapsibleSection>
+              runId={id}
+              initialMessages={assistantMessages}
+              hasReport={Boolean(storyNarrative)}
+            />
           </SectionPanel>
 
           <SectionPanel id="working-data">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               Working data
             </h2>
             {workingDataSection}
           </SectionPanel>
 
           <SectionPanel id="api-usage">
-            <h2 className="mb-5 text-xl font-semibold text-foreground">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
               API usage &amp; cost
             </h2>
             {apiUsage.length > 0 && (
@@ -4642,17 +6051,15 @@ export default async function RunPage({
                                 {batch.calls.toLocaleString()}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
-                                {batch.input_tokens.toLocaleString()}
+                                {(batch.input_tokens + batch.cache_write_tokens + batch.cache_read_tokens).toLocaleString()}
+                                {batch.cache_read_tokens > 0 && <span className="ml-1 text-xs text-muted">{`(${batch.cache_read_tokens.toLocaleString()} from cache)`}</span>}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
                                 {batch.output_tokens.toLocaleString()}
                               </td>
                               <td className="py-1.5 pr-4 text-foreground">
                                 $
-                                {estimateCostUsd(
-                                  batch.input_tokens,
-                                  batch.output_tokens,
-                                ).toFixed(3)}
+                                {costOfUsage({ input: batch.input_tokens, output: batch.output_tokens, cacheWrite: batch.cache_write_tokens, cacheRead: batch.cache_read_tokens }).toFixed(3)}
                               </td>
                             </tr>
                           ))}
@@ -4689,17 +6096,15 @@ export default async function RunPage({
                             {row.calls.toLocaleString()}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
-                            {row.input_tokens.toLocaleString()}
+                            {(row.input_tokens + row.cache_write_tokens + row.cache_read_tokens).toLocaleString()}
+                            {row.cache_read_tokens > 0 && <span className="ml-1 text-xs text-muted">{`(${row.cache_read_tokens.toLocaleString()} from cache)`}</span>}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
                             {row.output_tokens.toLocaleString()}
                           </td>
                           <td className="py-1.5 pr-4 text-foreground">
                             $
-                            {estimateCostUsd(
-                              row.input_tokens,
-                              row.output_tokens,
-                            ).toFixed(3)}
+                            {costOfUsage({ input: row.input_tokens, output: row.output_tokens, cacheWrite: row.cache_write_tokens, cacheRead: row.cache_read_tokens }).toFixed(3)}
                           </td>
                         </tr>
                       ))}
@@ -4712,7 +6117,7 @@ export default async function RunPage({
                         </td>
                         <td className="py-1.5 pr-4">
                           {apiUsage
-                            .reduce((sum, row) => sum + row.input_tokens, 0)
+                            .reduce((sum, row) => sum + row.input_tokens + row.cache_write_tokens + row.cache_read_tokens, 0)
                             .toLocaleString()}
                         </td>
                         <td className="py-1.5 pr-4">
@@ -4722,16 +6127,7 @@ export default async function RunPage({
                         </td>
                         <td className="py-1.5 pr-4">
                           $
-                          {estimateCostUsd(
-                            apiUsage.reduce(
-                              (sum, row) => sum + row.input_tokens,
-                              0,
-                            ),
-                            apiUsage.reduce(
-                              (sum, row) => sum + row.output_tokens,
-                              0,
-                            ),
-                          ).toFixed(3)}
+                          {apiUsage.reduce((sum, row) => sum + costOfUsage({ input: row.input_tokens, output: row.output_tokens, cacheWrite: row.cache_write_tokens, cacheRead: row.cache_read_tokens }), 0).toFixed(3)}
                         </td>
                       </tr>
                     </tbody>
@@ -4743,6 +6139,7 @@ export default async function RunPage({
         </div>
       </main>
     </RunSectionProvider>
+    </FigureChecksProvider>
   );
 }
 
@@ -4767,6 +6164,8 @@ const findingHistoryReasonLabel: Record<string, string> = {
   regenerate_unreviewed: "Regenerate rejected",
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
+  wave_recompare: "Wave comparison re-run",
+  source_removed: "Its file was removed",
 };
 
 const findingHistoryStatusLabel: Record<string, string> = {

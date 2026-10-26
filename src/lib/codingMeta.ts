@@ -5,6 +5,8 @@
 // rest of the app keeps working.
 import type { PoolClient } from "pg";
 import { withTenant } from "./db";
+import { findingProvenanceAvailable } from "./findingProvenance";
+import { lockOwnedTranscript } from "./codingTranscriptOwnership";
 
 export const codeKey = (name: string) =>
   name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -20,6 +22,26 @@ function dbLabel(): string {
 }
 
 export type CodeMeta = { theme: string; note: string; keywords: string };
+
+/**
+ * A row stored against this transcript by another tenant before COD500-F01 is invisible here but still
+ * holds the key, and the upsert's update is refused by row-level security (42501). Said plainly rather
+ * than as a database error; such a row needs removing by an administrator (see the batch21 handover).
+ */
+function foreignRowBlocks(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: string }).code === "42501";
+}
+const FOREIGN_ROW_MESSAGE =
+  "This could not be saved: the transcript holds a stored entry under the same name that this account cannot see. Ask an administrator to remove it, then save again.";
+
+async function upsertOrExplain<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (error) {
+    if (foreignRowBlocks(error)) throw new Error(FOREIGN_ROW_MESSAGE);
+    throw error;
+  }
+}
 
 export async function metaAvailable(client: PoolClient): Promise<boolean> {
   const r = await client.query(
@@ -93,6 +115,7 @@ export async function loadCodeMetaForDocuments(
  */
 export async function saveCodeMeta(
   tenantId: string,
+  runId: string,
   documentId: string,
   entries: { name: string; theme?: string; note?: string; keywords?: string }[],
 ): Promise<void> {
@@ -101,12 +124,13 @@ export async function saveCodeMeta(
       throw new Error(
         `Themes, notes and keywords need migration 0055 to be applied first (the app is connected to ${dbLabel()}).`,
       );
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "share");
     const val = (v: string | undefined, max: number) =>
       v === undefined ? null : v.trim().slice(0, max);
     for (const e of entries) {
       const key = codeKey(e.name);
       if (!key) continue;
-      await client.query(
+      await upsertOrExplain(() => client.query(
         `insert into coding_code_meta (tenant_id, document_id, code_key, theme, note, keywords)
          values ($1, $2, $3, coalesce($4::text, ''), coalesce($5::text, ''), coalesce($6::text, ''))
          on conflict (document_id, code_key) do update
@@ -122,7 +146,7 @@ export async function saveCodeMeta(
           val(e.note, 4000),
           val(e.keywords, 1000),
         ],
-      );
+      ));
     }
   });
 }
@@ -148,16 +172,19 @@ export async function loadTurnNotes(
 
 export async function saveTurnNote(
   tenantId: string,
+  runId: string,
   documentId: string,
   segmentIndex: number,
   note: string,
 ): Promise<void> {
+  if (!Number.isInteger(segmentIndex) || segmentIndex < 0) throw new Error("That turn is not in this transcript.");
   await withTenant(tenantId, async (client) => {
     const ok = await client.query(
       "select to_regclass('public.coding_turn_notes') is not null as ok",
     );
     if (ok.rows[0]?.ok !== true)
       throw new Error("Notes need migration 0055 to be applied first.");
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "share");
     const clean = note.trim().slice(0, 4000);
     if (!clean) {
       await client.query(
@@ -166,13 +193,13 @@ export async function saveTurnNote(
       );
       return;
     }
-    await client.query(
+    await upsertOrExplain(() => client.query(
       `insert into coding_turn_notes (tenant_id, document_id, segment_index, note)
        values ($1, $2, $3, $4)
        on conflict (document_id, segment_index) do update
          set note = excluded.note, updated_at = now()`,
       [tenantId, documentId, segmentIndex, clean],
-    );
+    ));
   });
 }
 
@@ -203,6 +230,9 @@ export async function syncFindingThemes(
 ): Promise<void> {
   await withTenant(tenantId, async (client) => {
     if (!(await metaAvailable(client))) return;
+    // REP-IN-002: a theme a researcher set by hand on a coded finding is not overwritten by the
+    // codebook. Before migration 0094 there is no edit record, so this cannot be checked.
+    const provenance = await findingProvenanceAvailable(client);
     await client.query(
       `update findings f
           set theme = coalesce(nullif(m.theme, ''), c.name)
@@ -215,7 +245,8 @@ export async function syncFindingThemes(
           and f.source_document_id = $1
           and f.origin = 'coded'
           and b.version = (select max(version) from coding_codebooks where document_id = $1)
-          and f.theme is distinct from coalesce(nullif(m.theme, ''), c.name)`,
+          and f.theme is distinct from coalesce(nullif(m.theme, ''), c.name)
+          ${provenance ? "and not (f.human_edited_fields @> array['theme'])" : ""}`,
       [documentId],
     );
   });

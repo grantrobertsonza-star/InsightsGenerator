@@ -20,6 +20,33 @@ if (process.env.NODE_ENV !== "production") {
   globalForDb.pgPool = pool;
 }
 
+const globalForClaims = globalThis as unknown as { pgClaimPool?: Pool };
+
+/**
+ * A small pool used only to hold Research assistant request claims (session advisory locks,
+ * researchAssistant.ts), kept apart from `pool` (Codex B8-F01). A claim is held for a whole
+ * answer while the answer's own reads and writes use `pool`; if both came from one pool, enough
+ * concurrent answers would hold every connection as claims and wait for one more for their work,
+ * and none could finish. With claims here, `pool` always has connections for the work, and this
+ * pool's size is how many answers run at once (3, or ASSISTANT_CLAIM_POOL_MAX; with `pool`'s 10 it
+ * stays under Supabase session mode's 15). A request that cannot get a claim connection in time is
+ * refused with a message, never left waiting without end.
+ */
+export const claimPool =
+  globalForClaims.pgClaimPool ??
+  new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.ASSISTANT_CLAIM_POOL_MAX) || 3,
+    // A wait for a free claim connection is bounded; the caller retries until its own deadline.
+    connectionTimeoutMillis: 2000,
+    idleTimeoutMillis: 30000,
+    allowExitOnIdle: true,
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForClaims.pgClaimPool = claimPool;
+}
+
 /**
  * Runs `callback` with a database client that has been scoped to a single
  * tenant for the duration of one transaction, per the engineering brief's
@@ -44,6 +71,45 @@ export async function withTenant<T>(
       );
     } else {
       await client.query("begin");
+      await client.query("select set_config('app.current_tenant_id', $1, true)", [tenantId]);
+    }
+    const result = await callback(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * OBJ-REV-009 (fourth pass): like withTenant, but opens the transaction at REPEATABLE READ
+ * instead of the default READ COMMITTED. Default READ COMMITTED gives each individual
+ * statement its own fresh snapshot, so two reads inside the same withTenant transaction can
+ * still see two different committed states if something else commits in between them -
+ * placing them in one transaction is not, by itself, "one snapshot." REPEATABLE READ takes
+ * its snapshot once, at the first statement after BEGIN, and holds that same snapshot for
+ * every later statement in the transaction, so multiple reads here are guaranteed to describe
+ * the exact same committed state, however much else commits concurrently while this
+ * transaction is open. Use this only for read-only work that genuinely needs that guarantee
+ * (objectiveEvidence.ts's loadObjectiveEvidenceWithCoverage is the first caller); a read-only
+ * REPEATABLE READ transaction cannot itself produce a Postgres serialization failure (those
+ * are a write-write conflict concern), so no caller needs a retry loop around this.
+ */
+export async function withTenantRepeatableRead<T>(
+  tenantId: string,
+  callback: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    if (UUID.test(tenantId)) {
+      await client.query(
+        `begin isolation level repeatable read; select set_config('app.current_tenant_id', '${tenantId}', true)`,
+      );
+    } else {
+      await client.query("begin isolation level repeatable read");
       await client.query("select set_config('app.current_tenant_id', $1, true)", [tenantId]);
     }
     const result = await callback(client);

@@ -1,0 +1,7 @@
+SYNTHETIC WEIGHTING-ONLY SURVEY, 2026 wave
+respondent_id: anonymous text ID. Preserve leading zeros.
+weight_group: calibration group L or H. weight: relative analysis weight, not frequency replication.
+purchase: Did you purchase? 0=No,1=Yes.
+rating10: Rate the experience from1 to10; higher is better. Numeric mean requested.
+Reasons (multiple response): MR_Convenience,MR_Price,MR_Service;1=selected,0=not selected. Four entirely missing MR response sets are missing,not unselected.
+pilot_group:1 denotes the eight-person pilot subgroup. No clustered/stratified design variables are supplied.

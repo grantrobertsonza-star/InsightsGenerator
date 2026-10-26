@@ -1,11 +1,17 @@
 "use client";
 
+import CodingProgressBar from "./CodingProgressBar";
+import { kappaBand } from "@/lib/qualAudit";
 import { useState, useTransition } from "react";
 import {
   addLinkAction,
   proposeLinksAction,
   resegmentTranscriptAction,
   resetCalibrationAction,
+  resolveStabilityTurnAction,
+  runStabilityCheckAction,
+  applyMajorityCodingAction,
+  saveBlindStabilityTurnAction,
   saveCalibrationTurnAction,
   searchNegativeCasesAction,
   setCaseMappingAction,
@@ -25,9 +31,17 @@ import type {
   CodeAnalysis,
   CodingAnalysisView,
   LinkView,
+  StabilityTurn,
 } from "@/lib/codingAnalysis";
 
-type Tab = "counts" | "crosstabs" | "quotes" | "calibration" | "respondents" | "negative";
+type Tab =
+  | "counts"
+  | "crosstabs"
+  | "quotes"
+  | "calibration"
+  | "stability"
+  | "respondents"
+  | "negative";
 
 const pill =
   "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide";
@@ -80,11 +94,46 @@ export default function CodingAnalysisPanel({
     { id: "crosstabs", label: "Cross-tabs" },
     { id: "quotes", label: "Quotes by theme" },
     { id: "calibration", label: "Agreement with you" },
+    { id: "stability", label: "Stability check" },
     { id: "respondents", label: "Respondents" },
     { id: "negative", label: "Negative cases" },
   ];
 
+  const cal = view.calibration;
+  const audited =
+    cal && cal.kind === "audit" && cal.drawn > 0 && cal.reviewed >= cal.drawn;
+  const auditStarted = cal && cal.kind === "audit" && cal.reviewed > 0;
   return (
+    <>
+    {!view.setupMissing && (
+      <div
+        className={`mb-2 rounded-lg border px-3 py-2 text-xs ${
+          audited
+            ? "border-success bg-success-light text-success"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+        }`}
+      >
+        {audited ? (
+          <>
+            Audited: you checked {cal!.reviewed} randomly drawn turns
+            {cal!.estimate
+              ? `; the model's themes matched yours exactly on about ${Math.round(cal!.estimate.accuracy * 100)}% (${Math.round(cal!.estimate.low * 100)}% to ${Math.round(cal!.estimate.high * 100)}%).`
+              : "."}
+          </>
+        ) : auditStarted ? (
+          <>
+            Audit in progress: {cal!.reviewed} of {cal!.drawn} turns judged.
+            Treat these themes as unchecked until it is finished.
+          </>
+        ) : (
+          <>
+            Not yet audited. These themes are the model&apos;s coding and no one
+            has checked a random sample of it. Open Coding checks, then
+            Agreement with you, and draw a random audit.
+          </>
+        )}
+      </div>
+    )}
     <details className="rounded-lg border border-border bg-slate-50 p-2 text-xs">
       <summary className="cursor-pointer select-none font-medium text-muted">
         Coding checks
@@ -165,6 +214,14 @@ export default function CodingAnalysisPanel({
             busy={isPending}
           />
         )}
+        {tab === "stability" && (
+          <StabilityTab
+            runId={runId}
+            view={view}
+            run={run}
+            busy={isPending}
+          />
+        )}
         {tab === "respondents" && (
           <RespondentsTab
             runId={runId}
@@ -195,6 +252,7 @@ export default function CodingAnalysisPanel({
         )}
       </div>
     </details>
+    </>
   );
 }
 
@@ -627,28 +685,96 @@ function CalibrationTab({
 }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const cal = view.calibration;
+  const [auditSize, setAuditSize] = useState<number>(view.suggestedAuditSize);
   if (!cal) {
+    const maxSize = Math.max(1, view.participantTurns);
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         <p className="text-[11px] text-muted">
           Code a sample of turns yourself, without seeing what the model
-          decided, and the two sets of coding are compared theme by theme. The
-          sample takes a few turns the model gave each theme, some it gave
-          nothing, and fills the rest by seeded order, so it is the same sample
-          if you draw it again.
+          decided, and the two sets of coding are compared theme by theme.
+          Choose how the sample is drawn.
         </p>
-        <button
-          type="button"
-          className={primaryButton}
-          disabled={busy || view.setupMissing}
-          onClick={() =>
-            run(() =>
-              startCalibrationAction(runId, view.documentId, view.codebookId),
-            )
-          }
-        >
-          Draw a sample of turns to code
-        </button>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2 rounded-lg border border-primary/40 bg-white p-3">
+            <div className="text-xs font-semibold text-foreground">
+              Random audit (recommended)
+            </div>
+            <p className="text-[11px] text-muted">
+              Turns are drawn at random within groups: turns the model gave no
+              theme, and turns grouped by their rarest theme, so small themes
+              are not lost. Because it is random, the result can be read as an
+              estimate for the whole transcript, with an interval. Sources on
+              double coding suggest checking roughly 10 to 25% of the units.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <label
+                className="text-[11px] font-medium text-muted"
+                htmlFor={`aud-${view.codebookId}`}
+              >
+                Turns to code
+              </label>
+              <input
+                id={`aud-${view.codebookId}`}
+                type="number"
+                min={1}
+                max={maxSize}
+                value={auditSize}
+                onChange={(e) =>
+                  setAuditSize(
+                    Math.min(maxSize, Math.max(1, Number(e.target.value) || 1)),
+                  )
+                }
+                className="w-20 rounded-lg border border-border bg-white px-2 py-1 text-xs"
+              />
+              <span className="text-[11px] text-muted">
+                of {view.participantTurns} participant turns (suggested{" "}
+                {view.suggestedAuditSize})
+              </span>
+            </div>
+            <button
+              type="button"
+              className={primaryButton}
+              disabled={busy || view.setupMissing || view.participantTurns === 0}
+              onClick={() =>
+                run(() =>
+                  startCalibrationAction(runId, view.documentId, view.codebookId, {
+                    kind: "audit",
+                    size: auditSize,
+                  }),
+                )
+              }
+            >
+              Draw a random audit
+            </button>
+          </div>
+          <div className="space-y-2 rounded-lg border border-border bg-white p-3">
+            <div className="text-xs font-semibold text-foreground">
+              Targeted check
+            </div>
+            <p className="text-[11px] text-muted">
+              A few turns the model gave each theme, some it gave nothing, and
+              the rest by seeded order. Good for testing whether each theme
+              definition is workable, but it leans towards turns the model
+              coded, so it says nothing about how often the model is right
+              across the transcript.
+            </p>
+            <button
+              type="button"
+              className={button}
+              disabled={busy || view.setupMissing}
+              onClick={() =>
+                run(() =>
+                  startCalibrationAction(runId, view.documentId, view.codebookId, {
+                    kind: "targeted",
+                  }),
+                )
+              }
+            >
+              Draw a targeted sample
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -695,6 +821,10 @@ function CalibrationTab({
         )}
       </div>
 
+      {cal.kind === "audit" && (
+        <AuditEstimateBox cal={cal} total={view.participantTurns} />
+      )}
+
       <div className="space-y-2">
         {cal.turns.map((t) => (
           <CalibrationCard
@@ -719,6 +849,7 @@ function CalibrationTab({
                   <th className={th}>Turns judged</th>
                   <th className={th}>Agree</th>
                   <th className={th}>Kappa</th>
+                  <th className={th}>Agree on yes</th>
                   <th className={th}>Model only</th>
                   <th className={th}>You only</th>
                 </tr>
@@ -744,6 +875,15 @@ function CalibrationTab({
                           : a.counts.kappa.toFixed(2)}
                         <span className="ml-1 text-muted">{a.band}</span>
                       </td>
+                      <td className={td}>
+                        {pct(a.extended.positiveAgreement)}
+                        {a.extended.skewed && (
+                          <div className="mt-0.5 text-amber-700">
+                            Rare or very common: kappa can read low even when
+                            agreement is high. Raw agreement {pct(a.counts.agreement)}.
+                          </div>
+                        )}
+                      </td>
                       <td className={td}>{a.counts.modelOnly}</td>
                       <td className={td}>{a.counts.researcherOnly}</td>
                     </tr>
@@ -753,13 +893,17 @@ function CalibrationTab({
             </table>
           </div>
           <p className="text-[11px] text-muted">
-            Kappa is agreement beyond what chance alone would give. The sample
-            leans towards turns the model coded, so read these as how the
-            codebook behaves on these turns, not as the model&apos;s hit rate
-            across the transcript. The bands are conventions, and one researcher
-            is not a gold standard: a low figure can mean a vague definition as
-            easily as a poor model call. Tighten the definition in the codebook
-            and re-apply it, then draw a new sample.
+            Kappa is agreement beyond what chance alone would give. It falls
+            when a theme is rare or very common even if the two of you almost
+            always agree, so read it beside the plain agreement and the
+            agreement on the turns where either of you applied the theme.{" "}
+            {cal.kind === "audit"
+              ? "This sample is random within groups, so the overall estimate above speaks for the transcript; the per-theme rows rest on few turns each."
+              : "This sample leans towards turns the model coded, so read these as how the codebook behaves on these turns, not as the model's hit rate across the transcript."}{" "}
+            The bands are conventions, and one researcher is not a gold
+            standard: a low figure can mean a vague definition as easily as a
+            poor model call. Tighten the definition in the codebook and
+            re-apply it, then draw a new sample.
           </p>
         </div>
       )}
@@ -854,6 +998,461 @@ function CalibrationCard({
       >
         {turn.reviewed ? "Update my coding" : "Save my coding"}
       </button>
+    </div>
+  );
+}
+
+function AuditEstimateBox({
+  cal,
+  total,
+}: {
+  cal: NonNullable<CodingAnalysisView["calibration"]>;
+  total: number;
+}) {
+  const e = cal.estimate;
+  if (!e) {
+    return (
+      <div className="rounded-lg border border-border bg-white px-3 py-2 text-[11px] text-muted">
+        Judge some of the {cal.drawn} sampled turns and an estimate for the
+        whole transcript appears here.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1 rounded-lg border border-border bg-white px-3 py-2">
+      <div className="text-xs text-foreground">
+        On about{" "}
+        <span className="font-semibold">{Math.round(e.accuracy * 100)}%</span>{" "}
+        of participant turns, the model&apos;s themes match yours exactly
+        (plausible range {Math.round(e.low * 100)}% to {Math.round(e.high * 100)}%
+        ), from {e.reviewed} of the {cal.drawn} sampled turns, out of {total}{" "}
+        in the transcript.
+      </div>
+      <p className="text-[11px] text-muted">
+        Exact means no theme missed and none added. {" "}
+        {e.reviewed < cal.drawn &&
+          `${cal.drawn - e.reviewed} sampled turns are still to judge, so this will move. `}
+        {e.missingStrata > 0 &&
+          `${e.missingStrata} group${e.missingStrata === 1 ? "" : "s"} of turns ha${e.missingStrata === 1 ? "s" : "ve"} no judged turn yet and ${e.missingStrata === 1 ? "is" : "are"} left out. `}
+        {e.wide &&
+          "The range is wide, so treat the figure as rough; judging more turns narrows it. "}
+        It is your coding against the model&apos;s, and yours is one reading,
+        not a gold standard.
+      </p>
+    </div>
+  );
+}
+
+function StabilityTab({
+  runId,
+  view,
+  run,
+  busy,
+}: {
+  runId: string;
+  view: CodingAnalysisView;
+  run: (fn: () => Promise<ActionResult>) => void;
+  busy: boolean;
+}) {
+  const [reruns, setReruns] = useState(2);
+  const st = view.stability;
+  const [showResolved, setShowResolved] = useState(false);
+  const controls = (
+    <div className="flex flex-wrap items-center gap-2">
+      <label
+        className="text-[11px] font-medium text-muted"
+        htmlFor={`rr-${view.codebookId}`}
+      >
+        Apply the codebook again
+      </label>
+      <select
+        id={`rr-${view.codebookId}`}
+        className={select}
+        value={reruns}
+        disabled={busy}
+        onChange={(e) => setReruns(Number(e.target.value))}
+      >
+        <option value={1}>1 more time</option>
+        <option value={2}>2 more times (recommended)</option>
+        <option value={3}>3 more times</option>
+      </select>
+      <button
+        type="button"
+        className={primaryButton}
+        disabled={busy || view.setupMissing}
+        onClick={() =>
+          run(() =>
+            runStabilityCheckAction(runId, view.documentId, view.codebookId, reruns),
+          )
+        }
+      >
+        {busy ? "Working..." : st ? "Run again" : "Run the check"}
+      </button>
+      <div className="basis-full">
+        <CodingProgressBar runId={runId} active={busy} />
+      </div>
+    </div>
+  );
+  if (!st) {
+    return (
+      <div className="space-y-2">
+        <p className="text-[11px] text-muted">
+          Applies the same codebook to the same turns again and shows which
+          turns came out differently. Where repeated runs disagree, the coding
+          is least trustworthy, so those turns go to you to settle. Each re-run
+          costs as much as the original application and changes nothing until
+          you decide on a turn.
+        </p>
+        {controls}
+      </div>
+    );
+  }
+  const open = st.queue.filter((q) => !q.resolved);
+  const done = st.queue.filter((q) => q.resolved);
+  const s = st.summary;
+  return (
+    <div className="space-y-3">
+      {controls}
+      <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs text-foreground">
+        <span className="font-semibold">
+          {st.codeAgreement === null ? "n/a" : pct(st.codeAgreement)}
+        </span>{" "}
+        average agreement per theme across {st.runs} runs. For each theme, that
+        is the share of the turns it came up in where every run gave it. Themes
+        that came up in fewer than 10 turns are left out of this figure.
+        {st.kappaAverage !== null && (
+          <p className="mt-1 text-[11px] text-muted">
+            Chance-corrected: average kappa {st.kappaAverage.toFixed(2)}. Kappa
+            discounts the agreement you would get by luck, so it is the figure
+            to compare with research benchmarks, where 0.80 or above is usually
+            read as strong. The percentage above is not on that scale.
+          </p>
+        )}
+        <p className="mt-1 text-[11px] text-muted">
+          Read this theme by theme. A low overall figure does not mean all of
+          the coding is unreliable: it is an average, and a few fuzzy themes
+          can pull it down while the rest are solid. Report strong themes with
+          confidence and weak ones as tentative. These figures show
+          consistency, not correctness; your audit sample is the check on that.
+        </p>
+        <p className="mt-1 text-[11px] text-muted">
+          Stricter whole-turn check: {s.share === null ? "n/a" : pct(s.share)}{" "}
+          of {s.turns} participant turns got exactly the same set of themes in
+          every run. {s.medium} came out differently in one run, {s.low} in
+          most.
+        </p>
+        {st.looser && (st.looser.themeShare !== null || st.looser.overlap !== null) && (
+          <p className="mt-1 text-[11px] text-muted">
+            Looser readings of the same runs.
+            {st.looser.themeShare !== null && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{pct(st.looser.themeShare)}</span> of turns got the same
+                broader themes (the groups your codes sit under) in every run.
+              </>
+            )}
+            {st.looser.overlap !== null && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{pct(st.looser.overlap)}</span> average overlap: on a turn,
+                two runs share this much of the codes they gave between them, so three of four shared counts as 75%, not
+                as a miss.
+              </>
+            )}{" "}
+            A gap between the strict figure and these two means the runs mostly disagree over neighbouring codes, not
+            over what a turn is about.
+          </p>
+        )}
+        <p className="mt-1 text-[11px] text-muted">
+          Agreement between runs flags turns worth a second look. It does not
+          show that a stable turn is right: runs share the same blind spots,
+          so a turn the model gets wrong the same way every time looks stable.
+          Your own audit above is the check on that.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-white px-3 py-2 text-xs">
+        <p className="font-medium text-foreground">Settle by majority of runs</p>
+        <p className="mt-0.5 text-[11px] text-muted">
+          A theme stays on a turn, or is added to it, when more than half of the runs gave it. This steadies the coding
+          without more checking from you and costs nothing extra, because the runs are already done. Turns you have settled
+          and themes you changed by hand are left alone.
+        </p>
+        {st.majority.available ? (
+          <button
+            type="button"
+            className={`${primaryButton} mt-1.5`}
+            disabled={busy}
+            onClick={() => run(() => applyMajorityCodingAction(runId, view.documentId, view.codebookId))}
+          >
+            {st.majority.applied ? "Settle by majority again" : "Settle by majority"}
+          </button>
+        ) : (
+          <p className="mt-1 text-[11px] text-amber-700">
+            {st.runs < 3
+              ? "Needs at least three runs: the original and two more. Run the check with 2 more times."
+              : "Run the check again so each run is kept (needs database migration 0074)."}
+          </p>
+        )}
+        {st.majority.applied && (
+          <p className="mt-1 text-[11px] text-emerald-700">
+            Majority coding has been applied. The list below now shows turns where the runs disagreed; reviewing them is
+            optional.
+          </p>
+        )}
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-border bg-white">
+        <table className="w-full min-w-[420px]">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className={th}>Theme</th>
+              <th className={th}>Turns it came up in</th>
+              <th className={th}>Same in every run</th>
+              <th className={th}>Kappa</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {st.perCode.map((c) => (
+              <tr key={c.codeId}>
+                <td className={`${td} font-medium`}>{c.name}</td>
+                <td className={td}>{c.usedTurns}</td>
+                <td className={td}>
+                  {c.usedTurns === 0
+                    ? "n/a"
+                    : `${c.consistent} (${pct(c.consistent / c.usedTurns)})`}
+                  {c.tooFew ? (
+                    <span className="ml-1 text-muted">
+                      Too few turns to judge.
+                    </span>
+                  ) : (
+                    c.usedTurns >= 5 &&
+                    c.consistent / c.usedTurns < 0.6 && (
+                      <span className="ml-1 text-amber-700">
+                        Read differently from run to run; the definition may
+                        need tightening.
+                      </span>
+                    )
+                  )}
+                </td>
+                <td className={td}>
+                  {c.kappa === null
+                    ? "n/a"
+                    : `${c.kappa.toFixed(2)}${c.tooFew ? "" : ` (${kappaBand(c.kappa, false).toLowerCase()})`}`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {st.attention && st.attention.flagged && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          Take a second look at how these are being settled:{" "}
+          {st.attention.reasons.length > 0
+            ? st.attention.reasons.join(", and ")
+            : `all ${st.attention.decisions} decisions so far left the model's themes as they were`}
+          . People shown a model&apos;s suggestions tend to accept most of
+          them. If that is not what is happening, carry on; if it is, slow
+          down on the next few.
+        </div>
+      )}
+      {st.attention && !st.attention.flagged && st.attention.decisions >= 8 && (
+        <p className="text-[11px] text-muted">
+          {st.attention.decisions} turns settled, and you changed the model on{" "}
+          {pct(st.attention.changeRate)} of them.
+        </p>
+      )}
+
+      <div className="text-xs font-medium text-foreground">
+        Turns to settle ({open.length})
+      </div>
+      {open.length === 0 && (
+        <p className="text-[11px] text-muted">
+          Nothing left to settle. Every turn the runs disagreed on has a
+          decision from you.
+        </p>
+      )}
+      <div className="space-y-2">
+        {open.map((t) => (
+          <StabilityCard
+            key={t.segmentId}
+            runId={runId}
+            view={view}
+            turn={t}
+            run={run}
+            busy={busy}
+          />
+        ))}
+      </div>
+      {done.length > 0 && (
+        <div>
+          <button
+            type="button"
+            className={button}
+            onClick={() => setShowResolved(!showResolved)}
+          >
+            {showResolved ? "Hide" : "Show"} {done.length} settled
+          </button>
+          {showResolved && (
+            <div className="mt-2 space-y-2">
+              {done.map((t) => (
+                <StabilityCard
+                  key={t.segmentId}
+                  runId={runId}
+                  view={view}
+                  turn={t}
+                  run={run}
+                  busy={busy}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StabilityCard({
+  runId,
+  view,
+  turn,
+  run,
+  busy,
+}: {
+  runId: string;
+  view: CodingAnalysisView;
+  turn: StabilityTurn;
+  run: (fn: () => Promise<ActionResult>) => void;
+  busy: boolean;
+}) {
+  // Until the researcher has saved their own coding, the model's themes and
+  // the other runs' stay hidden, so the first judgement is not anchored.
+  const revealed = turn.blindCodeIds !== null;
+  const [picked, setPicked] = useState<Set<string>>(
+    new Set(turn.blindCodeIds ?? []),
+  );
+  const current = new Set(turn.currentCodeIds);
+  const changes = [
+    ...[...picked]
+      .filter((id) => !current.has(id))
+      .map((codeId) => ({ codeId, action: "add" as const })),
+    ...[...current]
+      .filter((id) => !picked.has(id))
+      .map((codeId) => ({ codeId, action: "remove" as const })),
+  ];
+  const blind = new Set(turn.blindCodeIds ?? []);
+  const differs = view.codes.filter((c) => blind.has(c.id) !== current.has(c.id));
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-white p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-muted">
+          {turn.speaker ?? "Speaker unknown"} &middot; turn {turn.index + 1}
+        </span>
+        {revealed && (
+          <span
+            className={`${pill} ${turn.confidence === "low" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}
+          >
+            Same in {turn.agree} of {turn.runs} runs
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-foreground">{turn.text}</p>
+      {!revealed && (
+        <p className="text-[11px] text-muted">
+          Step 1 of 2. Tick the themes you think apply, before seeing what the
+          model did. Your answer is locked once saved.
+        </p>
+      )}
+      {revealed && (
+        <p className="text-[11px] text-muted">
+          Step 2 of 2.{" "}
+          {differs.length === 0
+            ? "Your coding matches the model's."
+            : `You and the model differ on ${differs.length} theme${differs.length === 1 ? "" : "s"}.`}{" "}
+          Settle it below: change your ticks if seeing the model&apos;s themes
+          changed your mind, and save.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {view.codes.map((c) => (
+          <label
+            key={c.id}
+            className="flex items-center gap-1.5 text-xs text-foreground"
+          >
+            <input
+              type="checkbox"
+              checked={picked.has(c.id)}
+              disabled={busy}
+              onChange={(e) => {
+                const next = new Set(picked);
+                if (e.target.checked) next.add(c.id);
+                else next.delete(c.id);
+                setPicked(next);
+              }}
+            />
+            {c.name}
+            {revealed && current.has(c.id) && (
+              <span className={`${pill} bg-slate-100 text-slate-600`}>
+                Model coded
+              </span>
+            )}
+            {revealed && turn.altCodeIds.includes(c.id) && (
+              <span className={`${pill} bg-amber-50 text-amber-700`}>
+                Another run added
+              </span>
+            )}
+            {revealed && turn.droppedCodeIds.includes(c.id) && (
+              <span className={`${pill} bg-amber-50 text-amber-700`}>
+                Another run left out
+              </span>
+            )}
+          </label>
+        ))}
+      </div>
+      {!revealed ? (
+        <button
+          type="button"
+          className={primaryButton}
+          disabled={busy}
+          onClick={() =>
+            run(() =>
+              saveBlindStabilityTurnAction(
+                runId,
+                view.codebookId,
+                turn.segmentId,
+                [...picked],
+              ),
+            )
+          }
+        >
+          Save my coding and show the model&apos;s
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={primaryButton}
+          disabled={busy}
+          onClick={() =>
+            run(() =>
+              resolveStabilityTurnAction(
+                runId,
+                view.documentId,
+                view.codebookId,
+                turn.segmentId,
+                changes,
+              ),
+            )
+          }
+        >
+          {turn.resolved
+            ? "Update my decision"
+            : changes.length === 0
+              ? "Settle: the model's themes stand"
+              : "Settle: save my changes"}
+        </button>
+      )}
     </div>
   );
 }

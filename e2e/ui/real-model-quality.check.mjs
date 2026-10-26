@@ -1,0 +1,248 @@
+// Real-model quality pass (authorised by Grant, 2026-10-17). Runs ONLY on a stack started with the
+// loopback budget gateway (target manifest modelMode "real-model"); on the usual replay stack it
+// skips, because replay answers say nothing about model quality.
+//
+// One synthetic project from golden-thread-1 through the native controls: the survey workbook and
+// the planted-claim report are uploaded, computed crosstabs (each claim variable by Gender) are
+// committed as evidence, a business decision is accepted, "Run analysis" runs the
+// pipeline (report extraction, claim checks against the data, verification, insights), then
+// "Run synthesis". The model's judgements are then compared with the fixture's independent answer
+// key (fixtures/golden-thread-1/history/answer-key.json):
+//   - the ten report claims C1 to C10: five correct, three wrong (C6 70%, C7 4.2, C8 the NearTie
+//     significance), two unsupported (C9 the 16-person subgroup, C10 advertising caused loyalty).
+//     A correct claim should pass verification (robust / use with caution); a wrong or unsupported
+//     one should not (not supported / insufficient information);
+//   - the omitted effect the report never mentions (Convenience 70% men vs 50% women): is it in the
+//     computed findings (matched on their saved statistics) and does an insight state it correctly
+//     (e2e/ui/omitted-effect-measure.mjs);
+//   - numerical traceability of the AI-written insights (figure checks);
+//   - cost and calls, from the gateway log.
+// This is a MEASUREMENT on one fixture and one run, not a pass threshold: the test fails only when
+// the pipeline itself does not complete. Results go to real-model-quality.json and stdout.
+import { expect, test } from "@playwright/test";
+import { crosstabWorkspace, openCrosstabs } from "./helpers/crosstabs.mjs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import pg from "pg";
+import { measureOmittedEffect } from "./omitted-effect-measure.mjs";
+
+const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
+const target = JSON.parse(readFileSync(manifestPath, "utf8"));
+const dbUrl = new URL(target.databaseUrlWithoutCredentials);
+if (target.disposable !== true || !/^\/ie_e2e_[a-f0-9]{10}$/.test(dbUrl.pathname)) throw new Error(`${manifestPath} does not describe a disposable stack; refusing to run.`);
+const FIXTURE = path.resolve("fixtures/golden-thread-1");
+const key = JSON.parse(readFileSync(path.join(FIXTURE, "history/answer-key.json"), "utf8"));
+
+// Each claim is recognised by the report's own "Cn:" label, or failing that by its distinctive
+// content (claims are extracted by the model, so wording can drift; identity is never position).
+const CLAIMS = [
+  { id: "C1", expect: "pass", markers: [/purchase intention is\s*50\s*%/i] },
+  { id: "C2", expect: "pass", markers: [/satisfaction is\s*3\.5/i] },
+  { id: "C3", expect: "pass", markers: [/NPS is\s*25\b/i] },
+  { id: "C4", expect: "pass", markers: [/Convenience is selected by\s*60\s*%/i] },
+  { id: "C5", expect: "pass", markers: [/60\s*%\s*among men.*40\s*%\s*among women/i] },
+  { id: "C6", expect: "fail", markers: [/purchase intention is\s*70\s*%/i] },
+  { id: "C7", expect: "fail", markers: [/satisfaction is\s*4\.2/i] },
+  { id: "C8", expect: "fail", markers: [/NearTie|51\s*%.*49\s*%/i] },
+  { id: "C9", expect: "fail", markers: [/16 respondents|small subgroup/i] },
+  { id: "C10", expect: "fail", markers: [/Advertising caused/i] },
+];
+const PASSING = new Set(["robust", "use_with_caution"]);
+// The survey variables the report's claims and the omitted effect rest on, each crossed by Gender.
+// "Reasons" is the codebook's multiple-response set (MR_Convenience, MR_Value, MR_Service).
+const COMPUTED_ROWS = ["Purchase", "Satisfaction", "Recommend", "Reasons", "NearTie", "SmallGroup"];
+// The omitted effect, in the identities the engine saves (answer key: "Convenience 70% male vs 50%
+// female ... not mentioned in report"): the Convenience option of the Reasons set, by Gender. The
+// group words are how an insight may name each Gender column in prose.
+const OMITTED_EFFECT = {
+  question: "Reasons",
+  answer: "Convenience",
+  banner: "Gender",
+  groups: [
+    { column: "Male", value: 70, words: ["male", "males", "men", "man"] },
+    { column: "Female", value: 50, words: ["female", "females", "women", "woman"] },
+  ],
+  higher: "Male",
+  tolerance: 0.5,
+};
+
+// A multiple-response SET (here "Reasons") offers "Row (all)" rather than the adapter's "Row"
+// button, so it is picked here with the workspace's own controls; everything else is the adapter's.
+async function buildSetTable(page, setName, column) {
+  await page.reload({ waitUntil: "networkidle" });
+  const dialog = (await crosstabWorkspace(page).isVisible()) ? crosstabWorkspace(page) : await openCrosstabs(page);
+  const search = dialog.getByPlaceholder("Search name or label");
+  const rowOf = (name) => dialog.locator(`div.grid:has(> span[title="${name}"])`).first();
+  await search.fill(column);
+  const col = rowOf(column).getByRole("button", { name: "Column", exact: true });
+  if ((await col.getAttribute("aria-pressed", { timeout: 60_000 })) !== "true") await col.click();
+  await search.fill(setName);
+  await dialog.locator("div.grid").filter({ hasText: setName }).getByRole("button", { name: /^Row \(all\)$/ }).first().click({ timeout: 60_000 });
+  await search.fill("");
+  await dialog.getByRole("button", { name: "Add table to set", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: /^Commit \d+ table/ })).toBeVisible({ timeout: 180_000 });
+  return { dialog };
+}
+
+test("real-model quality on golden-thread-1: claim verdicts, omitted effect, figure traceability, cost", async ({ page }, testInfo) => {
+  // REAL_MODEL_QUALITY_HARNESS_TEST=1 runs it on a replay stack to test the harness itself; its output
+  // is then marked as a harness test, never a quality result.
+  const harnessTest = process.env.REAL_MODEL_QUALITY_HARNESS_TEST === "1";
+  test.skip(target.modelMode !== "real-model" && !harnessTest, "Replay stack: model quality cannot be measured from replay answers.");
+  test.setTimeout(60 * 60_000);
+  const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
+  await db.connect();
+  const out = { fixture: "golden-thread-1", modelMode: target.modelMode, harnessTestOnly: target.modelMode !== "real-model", startedAt: new Date().toISOString(), steps: [] };
+  // Progress to stdout and the result file, so a long or stuck run shows where it is.
+  const step = (name) => {
+    out.steps.push({ name, at: new Date().toISOString() });
+    console.log(`[real-model-quality] ${new Date().toISOString()} ${name}`);
+  };
+  try {
+    const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+    const ui = await bind({ page, target, testInfo });
+    // A control that never appears fails the step after three minutes, instead of holding the
+    // whole run until the hour-long test timeout (what a missing "Row" button did once).
+    page.setDefaultTimeout(180_000);
+    const run = await ui.createRun({ name: `real-model-${Date.now()}` });
+    out.runId = run.id;
+    await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
+    await ui.upload(run, path.join(FIXTURE, "report.docx"), "report");
+    await ui.expectReadyOrActionableRecovery(run);
+
+    // Computed evidence from the survey data, built through the native crosstab controls, so the
+    // report's claims are verified against calculated tables and the omitted effect can surface.
+    // (The 2026-10-18 run skipped this step: the pipeline then had nothing but the report's own
+    // sentences to check claims against, so its verdicts measured internal consistency, not data
+    // agreement. That run is incomplete as a benchmark and is kept as such.)
+    step("uploaded workbook and report");
+    out.computedTables = [];
+    for (const row of COMPUTED_ROWS) {
+      const t = row === "Reasons" ? await buildSetTable(page, row, "Gender") : await ui.buildTable(run, { row, column: "Gender" });
+      await t.dialog.getByRole("button", { name: /^Commit \d+ table/ }).click();
+      await expect(t.dialog.getByText(/Committed \d+ table\(s\)\. \d+ finding\(s\) generated\./)).toBeVisible({ timeout: 300_000 });
+      out.computedTables.push(row);
+      step(`committed computed table ${row} by Gender`);
+    }
+    out.computedFindings = Number((await db.query("select count(*) from findings where run_id=$1 and origin='generated'", [run.id])).rows[0].count);
+    // Without computed findings the benchmark cannot measure data agreement: stop as incomplete
+    // here instead of spending model calls on a run that cannot answer the question.
+    expect(out.computedFindings, "computed findings from the survey tables (benchmark incomplete without them)").toBeGreaterThan(0);
+
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Business decisions/ }).first().click();
+    const form = page.locator("form", { has: page.getByRole("button", { name: "Add decision" }) });
+    const decision = "Choose whether to prioritize convenience improvements, and whether a gender-specific offer is justified";
+    await form.locator("textarea").fill(decision);
+    await form.getByRole("button", { name: "Add decision" }).click();
+    await expect.poll(async () => (await db.query("select decision_statement from runs where id=$1", [run.id])).rows[0].decision_statement, { timeout: 300_000 }).toBe(decision);
+    step("decision saved");
+
+    // Run analysis, then wait for the pipeline: the in-memory progress tracker reports "done".
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    // The "Run analysis" control sits in the Findings section's toolbar.
+    await page.getByRole("button", { name: /^Findings(\s*\d+)?$/ }).first().click();
+    await page.getByRole("button", { name: "Run analysis", exact: true }).first().click({ timeout: 120_000 });
+    const origin = new URL(run.url).origin;
+    const progress = async () => (await (await page.request.get(`${origin}/api/runs/${run.id}/process-progress`)).json()).progress;
+    // Started: the action stamps a process_run_batch trace row before any model call.
+    await expect.poll(async () => Number((await db.query("select count(*) from trace where run_id=$1 and event='process_run_batch'", [run.id])).rows[0].count), { timeout: 120_000, intervals: [2000] }).toBeGreaterThan(0);
+    // Finished: the in-memory tracker reads "done" (or has already been dropped after finishing).
+    await expect.poll(async () => (await progress())?.phase ?? "done", { timeout: 40 * 60_000, intervals: [10_000] }).toBe("done");
+    // Verification can settle just after the tracker: wait for two equal readings of findings and verdicts.
+    let last = "";
+    await expect.poll(async () => {
+      const r = (await db.query("select (select count(*) from findings where run_id=$1) as f, (select count(*) from verdicts v join findings f on f.id=v.finding_id where f.run_id=$1) as v", [run.id])).rows[0];
+      const now = `${r.f}/${r.v}`;
+      const stable = now === last;
+      last = now;
+      return stable;
+    }, { timeout: 15 * 60_000, intervals: [20_000] }).toBe(true);
+
+    step("analysis settled");
+    // Synthesis.
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Insights(\s*\d+)?$/ }).first().click();
+    { const t = page.getByTestId("insights-tab-review"); if (await t.count()) await t.click(); } // the review tab (the section opens on an overview)
+    const synth = page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).first();
+    // Synthesis needs insights; when none were drafted it produces nothing, which is recorded, not
+    // a harness failure, so the measurements below always run.
+    if (await synth.isVisible().catch(() => false)) {
+      await synth.click();
+      try {
+        await expect.poll(async () => Number((await db.query("select count(*) from synthesized_insights where run_id=$1", [run.id])).rows[0].count), { timeout: Number(process.env.REAL_MODEL_QUALITY_SYNTH_TIMEOUT_MS ?? 15 * 60_000), intervals: [10_000] }).toBeGreaterThan(0);
+      } catch {
+        out.synthesis = "no synthesized insight appeared within the wait";
+      }
+    } else {
+      out.synthesis = "Run synthesis was not offered";
+    }
+
+    // ---- measurements -------------------------------------------------------------------
+    const findings = (await db.query(
+      `select f.id, f.origin, f.finding_kind, f.finding_text, f.status, f.stated_stats, v.verdict_tier, v.rationale
+         from findings f
+         left join lateral (select verdict_tier, rationale from verdicts lv where lv.finding_id = f.id order by lv.created_at desc, lv.id desc limit 1) v on true
+        where f.run_id = $1 order by f.created_at`,
+      [run.id],
+    )).rows;
+    out.findingCounts = { total: findings.length, byOrigin: findings.reduce((m, f) => ((m[f.origin] = (m[f.origin] ?? 0) + 1), m), {}) };
+    const fromReport = findings.filter((f) => f.origin !== "generated");
+    out.claims = CLAIMS.map((c) => {
+      const label = new RegExp(`\\b${c.id}\\b\\s*[:.]`);
+      const matched = fromReport.filter((f) => label.test(f.finding_text) || c.markers.some((m) => m.test(f.finding_text)));
+      const verdicts = matched.map((f) => f.verdict_tier ?? "none");
+      const judged = verdicts.filter((v) => v !== "none");
+      const passed = judged.some((v) => PASSING.has(v));
+      const outcome = matched.length === 0 ? "not extracted" : judged.length === 0 ? "not verified" : (c.expect === "pass") === passed ? "agrees" : "disagrees";
+      return { id: c.id, expected: key.claims[c.id], expectedOutcome: c.expect, extracted: matched.length, verdicts, outcome, texts: matched.map((f) => f.finding_text.slice(0, 160)), rationale: matched[0]?.rationale?.slice(0, 300) ?? null };
+    });
+    out.claimSummary = out.claims.reduce((m, c) => ((m[c.outcome] = (m[c.outcome] ?? 0) + 1), m), {});
+    // Insights with the findings they rest on: a pre-insight is anchored on one finding; a
+    // synthesized insight on the pre-insights it was built from.
+    const insightRows = (await db.query(
+      `select 'insight' as kind, i.id, i.headline || ' ' || i.observation as text, array_remove(array[i.finding_id], null)::text[] as finding_ids
+         from insights i where i.run_id = $1
+       union all
+       select 'synthesized', si.id, si.headline || ' ' || si.observation, coalesce(array_agg(pi.finding_id) filter (where pi.finding_id is not null), '{}')::text[]
+         from synthesized_insights si
+         left join synthesized_insight_sources src on src.synthesized_insight_id = si.id
+         left join insights pi on pi.id = src.pre_insight_id
+        where si.run_id = $1 group by si.id`,
+      [run.id],
+    )).rows;
+    out.omittedEffect = {
+      expected: key.omitted_effect,
+      ...measureOmittedEffect(
+        { findings, insights: insightRows.map((r) => ({ kind: r.kind, id: r.id, text: r.text, findingIds: r.finding_ids })), computedTables: out.computedTables },
+        OMITTED_EFFECT,
+      ),
+    };
+    const figure = (await db.query(
+      `select 'synthesized' as kind, figure_check->>'status' as status, count(*)::int as n from synthesized_insights where run_id=$1 group by 2
+       union all select 'recommendation', figure_check->>'status', count(*)::int from recommendations where run_id=$1 group by 2`,
+      [run.id],
+    ).catch((e) => ({ rows: [{ error: String(e) }] }))).rows;
+    out.figureChecks = figure;
+    out.counts = {
+      insights: Number((await db.query("select count(*) from insights where run_id=$1", [run.id])).rows[0].count),
+      synthesized: Number((await db.query("select count(*) from synthesized_insights where run_id=$1", [run.id])).rows[0].count),
+      recommendations: Number((await db.query("select count(*) from recommendations where run_id=$1", [run.id])).rows[0].count),
+    };
+    const usage = (await db.query("select detail from trace where run_id=$1 and event='api_usage'", [run.id])).rows.map((r) => r.detail);
+    out.appUsage = { calls: usage.length, inputTokens: usage.reduce((s, u) => s + (u.input_tokens ?? 0), 0), outputTokens: usage.reduce((s, u) => s + (u.output_tokens ?? 0), 0) };
+    const gatewayLog = path.resolve("e2e-results/model-gateway-log.json");
+    if (existsSync(gatewayLog)) {
+      const g = JSON.parse(readFileSync(gatewayLog, "utf8"));
+      out.gateway = { budgetUsd: g.budgetUsd, spentUsd: g.spentUsd, calls: g.calls.length, refused: g.calls.filter((c) => c.status === 402).length, failed: g.calls.filter((c) => c.status !== 200 && c.status !== 402).length };
+    }
+    expect(out.findingCounts.total, "the pipeline produced findings").toBeGreaterThan(0);
+  } finally {
+    out.finishedAt = new Date().toISOString();
+    writeFileSync(testInfo.outputPath("real-model-quality.json"), JSON.stringify(out, null, 2));
+    writeFileSync(path.resolve("e2e-results/real-model-quality.json"), JSON.stringify(out, null, 2));
+    console.log("REAL_MODEL_QUALITY", JSON.stringify(out));
+    await db.end();
+  }
+});

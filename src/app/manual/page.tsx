@@ -66,6 +66,11 @@ export default function ManualOverviewPage() {
         trail. The last two pages, what this doesn&apos;t do and the glossary, are reference material you
         can jump to at any point.
       </P>
+      <P>
+        For more room on any screen, hide the main menu on the far left with the arrow beside the
+        Insights Elevator name; the arrow on the narrow strip that remains shows it again. Your browser
+        remembers the choice.
+      </P>
 
       <ManualPageFooter currentSlug="" />
     </div>

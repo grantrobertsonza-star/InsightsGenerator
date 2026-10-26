@@ -2,6 +2,10 @@ import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
+import { BASIS_LABEL, findingBasis } from "./findingBasis";
+import { figureCheck, type FigureCheck } from "./numberTrace";
+import { figureCheckAvailable } from "./figureChecks";
+import { preInsightSupportSnapshotAvailable } from "./supportStatus";
 
 const MAX_FINDINGS_FOR_INSIGHT = 60;
 
@@ -25,6 +29,11 @@ type VerifiedFinding = {
   theme: string | null;
   verdict_tier: "robust" | "use_with_caution";
   verdict_rationale: string;
+  origin?: "stated" | "generated" | "coded";
+  pattern_type?: string | null;
+  stated_stats?: Record<string, unknown> | null;
+  /** finding_support_parts() as this pass read the finding (0103 applied), else undefined. */
+  support_parts?: unknown;
 };
 
 type PreparedInsight = {
@@ -33,6 +42,9 @@ type PreparedInsight = {
   observation: string;
   tension: string;
   implication: string;
+  figureCheck: FigureCheck;
+  /** The finding's fingerprint as read for the prompt (0103); undefined when not recorded. */
+  supportParts?: unknown;
 };
 
 /**
@@ -61,7 +73,7 @@ type PreparedInsight = {
  * substitute the objective or problem in decision_context's place, since
  * that would blur the two modes rather than keep them distinct.
  */
-export async function generateInsights(tenantId: string, runId: string): Promise<void> {
+export async function generateInsights(tenantId: string, runId: string): Promise<boolean> {
   const run = await withTenant(tenantId, async (client) => {
     const result = await client.query<{
       entry_point: "generate" | "validate" | null;
@@ -75,7 +87,7 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     return result.rows[0];
   });
 
-  if (!run) return;
+  if (!run) return false;
 
   const decisionContext = run.decision_statement;
   if (run.entry_point === "validate" && !decisionContext) {
@@ -83,26 +95,44 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     // confirmed a decision on the Decision brief screen. This isn't an
     // error, insight generation will pick up again automatically (via the
     // same trigger acceptDecisionCandidate calls) once one is accepted.
-    return;
+    return false;
   }
 
   const eligible = await withTenant(tenantId, async (client) => {
+    // FND-001 for pre-insights (0103): the finding's fingerprint is read with the text the prompt
+    // uses, in the same statement, so the stored snapshot is what the model actually saw.
+    // Eligibility, the prompt's verdict and rationale, and the snapshot all use the one LATEST
+    // verdict per finding, in the order finding_support_parts() uses (created_at desc, id desc).
+    // Joining every verdict let an older robust verdict qualify a finding whose latest verdict
+    // refuses it (not_supported, insufficient_information), and could draft one finding twice when
+    // it had several qualifying verdicts (Codex review of ffa7adc, GT-006).
+    const recordSupport = await preInsightSupportSnapshotAvailable(client);
     const result = await client.query<VerifiedFinding>(
-      `select f.id, f.finding_text, f.theme, v.verdict_tier, v.rationale as verdict_rationale
+      `select f.id, f.finding_text, f.theme, v.verdict_tier, v.rationale as verdict_rationale,
+              f.origin, f.pattern_type, f.stated_stats${recordSupport ? ", finding_support_parts(f.id) as support_parts" : ""}
        from findings f
-       join verdicts v on v.finding_id = f.id
+       join lateral (
+         select lv.verdict_tier, lv.rationale
+         from verdicts lv
+         where lv.finding_id = f.id
+         order by lv.created_at desc, lv.id desc
+         limit 1
+       ) v on true
        where f.run_id = $1
          and f.status != 'rejected'
          and v.verdict_tier in ('robust', 'use_with_caution')
          and not exists (select 1 from insights i where i.finding_id = f.id)
        order by f.theme nulls last, f.created_at
        limit $2`,
-      [runId, MAX_FINDINGS_FOR_INSIGHT]
+      [runId, MAX_FINDINGS_FOR_INSIGHT + 1]
     );
     return result.rows;
   });
 
-  if (eligible.length === 0) return;
+  // More than one pass worth: write this pass's share and tell the caller to come back for the rest.
+  const hasMore = eligible.length > MAX_FINDINGS_FOR_INSIGHT;
+  if (hasMore) eligible.length = MAX_FINDINGS_FOR_INSIGHT;
+  if (eligible.length === 0) return false;
 
   const framingBlock =
     run.entry_point === "validate"
@@ -159,6 +189,19 @@ export async function generateInsights(tenantId: string, runId: string): Promise
     const detail = chunkFailures.length > 0 ? ` (${chunkFailures.join("; ")})` : "";
     throw new Error(`No usable insights came back this time${detail}. Nothing was changed, try again.`);
   }
+  if (chunkFailures.length > 0) {
+    // Some were written and some were not (a failed batch, or insights held back for unsupported
+    // figures): recorded, so the gap is observable. The findings left out stay eligible for the
+    // next pass.
+    await withTenant(tenantId, async (client) => {
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'insight_generator_partial', $3)`, [
+        tenantId,
+        runId,
+        JSON.stringify({ written: totalWritten, failures: chunkFailures }),
+      ]);
+    });
+  }
+  return hasMore;
 }
 
 async function generateInsightsForChunk(
@@ -172,7 +215,9 @@ async function generateInsightsForChunk(
   const findingsBlock = batch
       .map(
         (f, index) =>
-          `${index}. [${f.theme ?? "Uncategorized"} · verdict: ${f.verdict_tier}] ${f.finding_text}\n` +
+          `${index}. [${f.theme ?? "Uncategorized"} · verdict: ${f.verdict_tier}${
+            f.origin ? ` · basis: ${BASIS_LABEL[findingBasis({ origin: f.origin, pattern_type: f.pattern_type, stated_stats: f.stated_stats })]}` : ""
+          }] ${f.finding_text}\n` +
           `   Verification note: ${f.verdict_rationale}`
       )
       .join("\n");
@@ -190,6 +235,14 @@ async function generateInsightsForChunk(
         "rather than inventing a tension that isn't there.\n" +
         "- implication: what follows from this, stated as a consequence, not a restatement of the tension.\n\n" +
         framingBlock +
+        "Each finding carries a basis. Word the insight to match it: a 'Reading, with interval' states a level " +
+        "(a share, top-two box, NPS or average) and never a difference between groups; a 'Tested, no difference' " +
+        "means no reliable difference was found, so say the groups look alike on this measure without claiming " +
+        "they are equal, and treat that as a result worth acting on (for example, one approach will do for all " +
+        "groups); a 'Modelled, driver analysis' finding says what goes with the outcome in this survey and ranks " +
+        "questions by their share of the explained variation, never claims one question causes the outcome, and " +
+        "must respect any unstable rank or weak fit in the finding; a 'Tested, significant' finding may be described as a difference. Where a finding is routine " +
+        "and says little, say so in the tension rather than inventing drama.\n" +
         "Cover every finding listed below by its index. Keep each part to one or two sentences; this is a " +
         "component of a larger brief, not a standalone essay.",
       tool_choice: { type: "tool", name: "record_insights" },
@@ -240,6 +293,7 @@ async function generateInsightsForChunk(
     const prepared: PreparedInsight[] = [];
     let skippedIndex = 0;
     let skippedEmpty = 0;
+    const skippedFigures: string[] = [];
     for (const raw of rawInsights) {
       const index = typeof raw.index === "number" ? raw.index : null;
       const headline = typeof raw.headline === "string" ? raw.headline.trim() : "";
@@ -254,7 +308,24 @@ async function generateInsightsForChunk(
         skippedEmpty += 1;
         continue;
       }
-      prepared.push({ findingId: batch[index].id, headline, observation, tension, implication });
+      // Numerical traceability (numberTrace.ts): every figure must come from this finding, its
+      // verification note or the project's stated framing, in context. An unsupported figure keeps
+      // the pre-insight out (the finding stays eligible for the next pass); a figure whose context
+      // cannot be established is saved with a "needs review" mark.
+      const f = batch[index];
+      const sources = [f.finding_text, f.verdict_rationale, f.stated_stats ? JSON.stringify(f.stated_stats) : "", framingBlock];
+      const check = figureCheck(
+        (["headline", "observation", "tension", "implication"] as const).map((field) => ({
+          field,
+          text: { headline, observation, tension, implication }[field],
+          sources,
+        })),
+      );
+      if (check.status === "unsupported") {
+        skippedFigures.push(...check.figures.filter((x) => x.status === "unsupported").map((x) => `${x.text}: ${x.reason}`));
+        continue;
+      }
+      prepared.push({ findingId: f.id, headline, observation, tension, implication, figureCheck: check, supportParts: f.support_parts ?? undefined });
     }
 
     if (prepared.length === 0) {
@@ -263,11 +334,14 @@ async function generateInsightsForChunk(
         failure:
           `${batch.length} finding(s) starting at index ${chunkIndex * INSIGHT_CHUNK_SIZE} ` +
           `(stop reason: ${response.stop_reason ?? "unknown"}; items returned: ${rawInsights.length}, ` +
-          `bad index: ${skippedIndex}, empty field: ${skippedEmpty}, field type: ${Array.isArray(rawField) ? "array" : typeof rawField})`,
+          `bad index: ${skippedIndex}, empty field: ${skippedEmpty}, unsupported figures: ${skippedFigures.length}, ` +
+          `field type: ${Array.isArray(rawField) ? "array" : typeof rawField})` +
+          (skippedFigures.length > 0 ? `; ${skippedFigures.slice(0, 5).join("; ")}` : ""),
       };
     }
 
     await withTenant(tenantId, async (client) => {
+      const storeCheck = await figureCheckAvailable(client);
       for (const insight of prepared) {
         await client.query(
           // on conflict: a concurrent generation pass on the same run could
@@ -276,8 +350,8 @@ async function generateInsightsForChunk(
           // constraint (see 0022_dedupe_insights.sql) this silently keeps
           // whichever insert won instead of throwing, rather than failing
           // the whole chunk over a race neither side could see coming.
-          `insert into insights (tenant_id, run_id, finding_id, decision_context, headline, observation, tension, implication)
-           values ($1, $2, $3, $4, $5, $6, $7, $8)
+          `insert into insights (tenant_id, run_id, finding_id, decision_context, headline, observation, tension, implication${storeCheck ? ", figure_check" : ""}${insight.supportParts !== undefined ? ", support_snapshot" : ""})
+           values ($1, $2, $3, $4, $5, $6, $7, $8${storeCheck ? ", $9" : ""}${insight.supportParts !== undefined ? `, $${storeCheck ? 10 : 9}::jsonb` : ""})
            on conflict (finding_id) do nothing`,
           [
             tenantId,
@@ -288,30 +362,47 @@ async function generateInsightsForChunk(
             insight.observation,
             insight.tension,
             insight.implication,
+            ...(storeCheck ? [JSON.stringify(insight.figureCheck)] : []),
+            ...(insight.supportParts !== undefined ? [JSON.stringify(insight.supportParts)] : []),
           ]
         );
       }
     });
 
-  return { written: prepared.length };
+  return {
+    written: prepared.length,
+    ...(skippedFigures.length > 0
+      ? { failure: `${skippedFigures.length} figure(s) not supported by their finding, so those insights were not written: ${skippedFigures.slice(0, 5).join("; ")}` }
+      : {}),
+  };
 }
 
 /**
  * Safe wrapper for every automatic trigger point, same reasoning as
  * refreshVerdicts: an insight-generation failure never blocks whatever the
- * researcher actually clicked. Also the one this app calls from
+ * researcher actually clicked. Returns null on success or the failure's message. Also the one this app calls from
  * acceptDecisionCandidate, since for a "validate" run that's the moment
  * generateInsights stops being a no-op.
  */
-export async function refreshInsights(tenantId: string, runId: string): Promise<void> {
+export async function refreshInsights(tenantId: string, runId: string): Promise<string | null> {
   try {
-    await generateInsights(tenantId, runId);
+    // Wide findings can run past one pass; keep going until nothing is left (at most 8 passes).
+    for (let pass = 0; pass < 8; pass++) {
+      const more = await generateInsights(tenantId, runId);
+      if (!more) break;
+    }
+    return null;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     await withTenant(tenantId, async (client) => {
       await client.query(
         `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'insight_generator_error', $3)`,
-        [tenantId, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
+        [tenantId, runId, JSON.stringify({ message })]
       );
     });
+    // Still never thrown (automatic triggers must not fail what the researcher clicked), but
+    // returned, so a caller that must know whether insights are current can tell
+    // (decisionRefresh.ts: a decision change keeps its "refresh owed" marker on failure).
+    return message;
   }
 }

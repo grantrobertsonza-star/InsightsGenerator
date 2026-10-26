@@ -41,6 +41,16 @@ describe("classifyFindingDiscovery", () => {
     });
   });
 
+  it("does not call a finding read from an uploaded output raw-data mining", () => {
+    expect(
+      classifyFindingDiscovery({
+        origin: "generated",
+        corroboratesReportClaim: false,
+        readFromUploadedOutput: true,
+      }),
+    ).toEqual({ type: "net_new", source: "uploaded_output" });
+  });
+
   it("treats a computed finding that a report claim is grounded in as validated", () => {
     expect(
       classifyFindingDiscovery({

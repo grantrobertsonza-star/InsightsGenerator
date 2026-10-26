@@ -1,0 +1,4 @@
+
+const fs=require('fs'),path=require('path'),cp=require('child_process'),{Pool}=require('pg');
+const dir=path.resolve('scripts/repin002-final/runs/authorized'),meta=JSON.parse(fs.readFileSync(path.join(dir,'setup.json'))),proc=JSON.parse(fs.readFileSync(path.join(dir,'app-pre-start-process.json')));
+(async()=>{cp.execFileSync('taskkill',['/PID',String(proc.pid),'/T','/F']);const p=new Pool({connectionString:'postgres://postgres@127.0.0.1:55496/repin002_final_20261015_pre'});try{const migration=fs.readFileSync(path.join(meta.runtime,'supabase/migrations/0094_finding_review_provenance.sql'),'utf8');await p.query(migration);fs.writeFileSync(path.join(dir,'pre-migration-transition.json'),JSON.stringify({migration:'0094',unchanged:true,applied:true,stoppedProcess:proc.pid}));}finally{await p.end()}})();

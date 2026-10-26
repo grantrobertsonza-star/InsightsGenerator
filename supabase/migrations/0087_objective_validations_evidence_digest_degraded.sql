@@ -1,0 +1,16 @@
+-- OBJ-REV-012 (durable degraded-assessment status): evidenceDigest() already classifies a
+-- real connection/permission failure reading objective_evidence as `degraded: true` (as
+-- opposed to the harmless, expected "lane hasn't run yet" case), and the brief 28 fix passed
+-- that into the SAME validation call's own prompt so the model doesn't read a missing
+-- data-evidence line as "checked and found silent". But that flag only ever lived inside one
+-- in-flight call - nothing persisted recorded that a given generated conclusion was reached
+-- under degraded evidence retrieval, so a researcher (or export, or a later session) reading
+-- the saved objective_validations rows afterward had no way to tell a conclusion reached with
+-- full evidence access apart from one reached while that access was broken.
+--
+-- This column is written once per generateObjectiveValidation() run, the same value on every
+-- row from that batch (it is a property of the run that produced them, not of the individual
+-- item), so a reader of the persisted rows - not just the one LLM call that made them - can
+-- see and durably rely on whether evidence retrieval was degraded when they were generated.
+-- Run npm run backup before applying.
+alter table objective_validations add column if not exists evidence_digest_degraded boolean not null default false;

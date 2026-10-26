@@ -1,0 +1,33 @@
+
+const fs=require('fs'),path=require('path'),assert=require('assert/strict'),{Pool}=require('pg'),{connect}=require('./cdp.cjs');
+const dir=path.resolve('scripts/repin002-final/runs/authorized'),ids=JSON.parse(fs.readFileSync(path.join(dir,'browser-run.json'))),p=new Pool({connectionString:'postgres://postgres@127.0.0.1:55496/repin002_final_20261015_post'}),delay=ms=>new Promise(r=>setTimeout(r,ms));
+const mode=m=>fetch('http://127.0.0.1:55005/__fixture',{method:'POST',headers:{'x-repin002-token':'repin002-final-synthetic'},body:JSON.stringify({mode:m})});
+(async()=>{const c=await connect();try{
+const run=(await p.query("insert into runs(tenant_id,decision_statement,research_objective) values($1,'Synthetic clean downstream decision','1. Measure synthetic satisfaction') returning id",[ids.tenant])).rows[0].id;
+const d=(await p.query("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text,processing_status) values($1,$2,'report','synthetic-downstream.txt',$4,$3,'ready') returning id",[ids.tenant,run,fs.readFileSync(path.join(dir,'synthetic-complete.txt'),'utf8'),JSON.parse(fs.readFileSync(path.join(dir,'uploaded-document.json'))).storage_path])).rows[0].id;
+const facts=[];for(let i=0;i<3;i++)facts.push((await p.query("insert into findings(tenant_id,run_id,source_document_id,origin,finding_text,finding_kind,theme,status,human_reviewed_at,human_review_action) values($1,$2,$3,'stated',$4,'fact','Synthetic','accepted',now(),'accept') returning id",[ids.tenant,run,d,'Synthetic protected fact '+i])).rows[0].id);
+const insight=(await p.query("insert into findings(tenant_id,run_id,source_document_id,origin,finding_text,finding_kind,theme,status,human_reviewed_at,human_review_action,cited_support_finding_ids) values($1,$2,$3,'stated','Synthetic protected stated insight','stated_insight','Synthetic','accepted',now(),'accept',$4) returning id",[ids.tenant,run,d,JSON.stringify(facts)])).rows[0].id;
+const legacy=(await p.query("insert into findings(tenant_id,run_id,source_document_id,origin,finding_text,finding_kind,theme,status,provenance_tracked) values($1,$2,$3,'stated','Synthetic clean legacy','fact','Synthetic','accepted',false) returning id",[ids.tenant,run,d])).rows[0].id;
+fs.writeFileSync(path.join(dir,'downstream-fixture.json'),JSON.stringify({run,document:d,facts,insight,legacy},null,2));
+await mode('prompt-isolated');await c.call('Page.navigate',{url:'http://127.0.0.1:3106/runs/'+run});await delay(2200);await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Reports and decks')).click()");await delay(300);
+await c.eval("[...document.querySelectorAll('button')].find(b=>/^(Extract findings|Run again)$/.test(b.innerText)).closest('form').requestSubmit()");await delay(8500);
+assert((await c.eval('document.body.innerText')).includes('predates review tracking'));
+const count=async table=>(await p.query('select count(*)::int n from '+table+' where run_id=$1',[run])).rows[0].n;
+for(const table of ['insights','synthesized_insights','recommendations','objective_quality','decision_candidates'])assert.equal(await count(table),0,'Prompt prep unexpectedly populated '+table);
+const start=JSON.parse(fs.readFileSync(path.join(dir,'model-events.json'))).length;
+const traceStart=(await p.query('select coalesce(max(id),0)::text id from trace where run_id=$1',[run])).rows[0].id;
+await mode('complete');await c.eval("[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Re-read and replace')).closest('form').requestSubmit()");await delay(13000);
+const counts={};for(const table of ['insights','decision_candidates','synthesized_insights','recommendations','objective_quality'])counts[table]=await count(table);
+counts.verdicts=(await p.query('select count(*)::int n from verdicts v join findings f on f.id=v.finding_id where f.run_id=$1',[run])).rows[0].n;
+const events=JSON.parse(fs.readFileSync(path.join(dir,'model-events.json'))).slice(start),tools=[...new Set(events.map(e=>e.name))];
+const traces=(await p.query("select event,detail from trace where run_id=$1 and id>$2 and event like '%error%' order by id",[run,traceStart])).rows;
+const expected=['record_findings','record_verdicts','record_chain_verdict','record_insights','record_evidence_synthesis','record_decision_candidates','record_clusters','record_synthesized_insight','record_contradictions','record_scores','record_recommendations'];
+const record={id:'D1',status:'running',counts,tools,traces,run,traceStart};fs.writeFileSync(path.join(dir,'downstream-clean-results.json'),JSON.stringify(record,null,2));
+assert(Object.values(counts).every(n=>n>0),JSON.stringify(counts));assert(expected.every(t=>tools.includes(t)),'Missing tools '+expected.filter(t=>!tools.includes(t)));assert.equal(traces.length,0,JSON.stringify(traces));
+assert.equal((await p.query('select count(*)::int n from synthesized_insights where run_id=$1 and quality_score is not null',[run])).rows[0].n,1);
+assert((await p.query('select count(*)::int n from recommendations where run_id=$1 and rec_quality_score is not null',[run])).rows[0].n>0);
+assert.equal((await p.query('select id from findings where id=any($1)',[[...facts,insight]])).rowCount,4);
+assert.equal((await p.query('select id from findings where id=$1',[legacy])).rowCount,0);
+await c.call('Page.reload');await delay(2200);fs.writeFileSync(path.join(dir,'D1-reload.txt'),await c.eval('document.body.innerText'));await c.shot('D1-reload');
+record.status='passed';fs.writeFileSync(path.join(dir,'downstream-clean-results.json'),JSON.stringify(record,null,2));
+}catch(e){fs.writeFileSync(path.join(dir,'downstream-clean-error.txt'),e.stack);console.error(e.stack);process.exitCode=1}finally{c.close();await p.end()}})();

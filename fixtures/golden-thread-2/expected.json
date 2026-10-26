@@ -1,0 +1,717 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "golden-thread-2",
+  "datasetId": "gt2-weighted-respondents-v1",
+  "sourceProvenance": {
+    "supplementalZipSha256": "96b2fdb1778365daf83a3733e05e2fd8eeefdb5f0acb7742b9471548d36b76c8",
+    "component": "02_weighted/data.csv",
+    "componentSha256": "6e6b1680881e6adf7691f90ea84fe000228ef8f94de79c7984417a588a79da7d",
+    "unchangedColumns": [
+      "respondent_id",
+      "weight_group",
+      "weight",
+      "purchase",
+      "rating10"
+    ],
+    "addedColumns": [
+      "MR_Convenience",
+      "MR_Price",
+      "MR_Service",
+      "pilot_group"
+    ],
+    "identity": "All control/transposed files and source component share these120synthetic respondents;never count as independent corroboration. Independent of Task A200-row fixture."
+  },
+  "layout": {
+    "primary": "columns-as-cases.xlsx",
+    "selectedSheet": "Cases",
+    "choice": "columns_are_cases",
+    "codebookSheet": "Codebook",
+    "control": "data-control.csv",
+    "caseCount": 120,
+    "leadingZeroFirstId": "0001",
+    "leadingZeroLastId": "0120"
+  },
+  "weighting": {
+    "choice": "weighting_only",
+    "weightVariable": "weight",
+    "interpretation": "relative calibration weights; no frequency expansion or complete survey design",
+    "rescalingFactorControl": 7,
+    "rescaledWeightedTotal": 1680,
+    "invariants": [
+      "weighted_purchase",
+      "weighted_rating",
+      "Kish_effective_base"
+    ]
+  },
+  "missingValues": {
+    "MR": "Last4respondents all MR values blank;exclude from MR valid bases,do not turn into0",
+    "rating_and_purchase": "No missing values in primary reference"
+  },
+  "correctionWorkflow": {
+    "variable": "rating10",
+    "effectiveOverride": "continuous",
+    "expectedWeightedMean": 6.5,
+    "reproducibility": "If already inferred continuous,save discrete then continuous through the native controls;test saved correction/reload,not a claim inference was wrong. Clear must restore actual file inference visibly."
+  },
+  "smallBaseRule": "Pilot raw/effective base8 (<30):unqualified population conclusions must be refused or visibly qualified;warning/suppression is permitted under documented supported workflow. Do not invent an engine threshold as a product rule.",
+  "inference": {
+    "weightingOnly": true,
+    "intervalMethod": "Kish-effective-base Wald95,conditional explicit-method reference",
+    "significanceMethod": "Two-sided unpooled independent-group normal z on proportions with group Kish effective bases;conditional reference",
+    "groupDifference": 0.6000000000000001,
+    "z": 8.215838362577493,
+    "p": 2.1068709111518952e-16,
+    "alpha": 0.05,
+    "multiplicity": "none",
+    "unsupported": "Cluster-robust/stratified/design-based claims with no design information must not be invented. Different documented valid methods are not automatically defects."
+  },
+  "rounding": "Percent1decimal,means2decimals,bases exact except effective base absolute1e-9;compare unrounded reference with assertion tolerance.",
+  "assertions": [
+    {
+      "id": "raw-base",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "respondent_id",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "raw_count",
+      "unit": "respondents",
+      "base": {
+        "type": "raw",
+        "expected": 120,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 120,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "respondents"
+      },
+      "independentMethod": {
+        "formula": "count respondents",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "weighted-total",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "weight",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_total",
+      "unit": "relative_weight_units",
+      "base": {
+        "type": "weighted",
+        "expected": 240,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 240,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "relative_weight_units"
+      },
+      "independentMethod": {
+        "formula": "sum positive weights",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "effective-base",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "weight",
+      "rawCategoryCodes": [],
+      "segment": null,
+      "filters": [],
+      "statistic": "kish_effective_base",
+      "unit": "effective_respondents",
+      "base": {
+        "type": "raw",
+        "expected": 120,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 96.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "effective_respondents"
+      },
+      "independentMethod": {
+        "formula": "(sum w)^2 / sum(w^2)",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "weighted-purchase",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "purchase",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_percent",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 240,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 65.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(w \u00d7 I(purchase=1)) / sum(w)",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "raw-purchase",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "purchase",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "unweighted_percent",
+      "unit": "percent",
+      "base": {
+        "type": "raw",
+        "expected": 120,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 50.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(I(purchase=1))/n; raw control,not weighted result",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "weighted-rating",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "rating10",
+      "rawCategoryCodes": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_mean",
+      "unit": "scale_points",
+      "base": {
+        "type": "weighted",
+        "expected": 240,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 6.5,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.01,
+        "unit": "scale_points"
+      },
+      "independentMethod": {
+        "formula": "sum(w\u00d7rating10)/sum(w);1-10 higher is better",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "raw-rating",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "rating10",
+      "rawCategoryCodes": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "unweighted_mean",
+      "unit": "scale_points",
+      "base": {
+        "type": "raw",
+        "expected": 120,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 5.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.01,
+        "unit": "scale_points"
+      },
+      "independentMethod": {
+        "formula": "sum rating10/n",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-L",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "purchase",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": {
+        "variable": "weight_group",
+        "rawCode": "L"
+      },
+      "filters": [],
+      "statistic": "weighted_percent",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 60,
+        "components": {
+          "raw": 60,
+          "weighted": 60,
+          "effective": 60.0
+        }
+      },
+      "expectedValue": 20.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(w\u00d7purchase)/sum(w) within group",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-H",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "purchase",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": {
+        "variable": "weight_group",
+        "rawCode": "H"
+      },
+      "filters": [],
+      "statistic": "weighted_percent",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 180,
+        "components": {
+          "raw": 60,
+          "weighted": 180,
+          "effective": 60.0
+        }
+      },
+      "expectedValue": 80.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(w\u00d7purchase)/sum(w) within group",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Convenience",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "MR_Convenience",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_MR_selection_percent",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 228,
+        "components": {
+          "raw": 116,
+          "weighted": 228,
+          "effective": 92.17021276595744
+        }
+      },
+      "expectedValue": 67.54385964912281,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(w\u00d7I(option=1))/sum(w among observed MR respondents); not selection totals",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Price",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "MR_Price",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_MR_selection_percent",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 228,
+        "components": {
+          "raw": 116,
+          "weighted": 228,
+          "effective": 92.17021276595744
+        }
+      },
+      "expectedValue": 25.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(w\u00d7I(option=1))/sum(w among observed MR respondents); not selection totals",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "MR_Service",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "MR_Service",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_MR_selection_percent",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 228,
+        "components": {
+          "raw": 116,
+          "weighted": 228,
+          "effective": 92.17021276595744
+        }
+      },
+      "expectedValue": 0.0,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 sum(w\u00d7I(option=1))/sum(w among observed MR respondents); not selection totals",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "pilot-base",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "pilot_group",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": {
+        "variable": "pilot_group",
+        "rawCode": 1
+      },
+      "filters": [],
+      "statistic": "raw_count",
+      "unit": "respondents",
+      "base": {
+        "type": "raw",
+        "expected": 8,
+        "components": {
+          "raw": 8,
+          "weighted": 8,
+          "effective": 8.0
+        }
+      },
+      "expectedValue": 8,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "respondents"
+      },
+      "independentMethod": {
+        "formula": "count pilot_group=1",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "primary_point_reference"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "purchase-kish-wald95",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "purchase",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_interval",
+      "unit": "percent",
+      "base": {
+        "type": "weighted",
+        "expected": 240,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": [
+        55.45879614455068,
+        74.54120385544933
+      ],
+      "tolerance": {
+        "kind": "absolute",
+        "value": 0.1,
+        "unit": "percent"
+      },
+      "independentMethod": {
+        "formula": "100 \u00d7 [p \u00b1 z(.975) sqrt(p(1\u2212p)/Kish_n_eff)]",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "conditional_only_if_application_explicitly_uses_Kish_Wald;otherwise compare documented supported method separately"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    },
+    {
+      "id": "group-difference-kish-z",
+      "fixtureId": "golden-thread-2",
+      "datasetId": "gt2-weighted-respondents-v1",
+      "canonicalVariable": "purchase",
+      "rawCategoryCodes": [
+        1
+      ],
+      "segment": null,
+      "filters": [],
+      "statistic": "weighted_group_difference_z",
+      "unit": "z",
+      "base": {
+        "type": "weighted",
+        "expected": 240,
+        "components": {
+          "raw": 120,
+          "weighted": 240,
+          "effective": 96.0
+        }
+      },
+      "expectedValue": 8.215838362577493,
+      "tolerance": {
+        "kind": "absolute",
+        "value": 1e-09,
+        "unit": "z"
+      },
+      "independentMethod": {
+        "formula": "(pH\u2212pL)/sqrt(pH(1\u2212pH)/neffH+pL(1\u2212pL)/neffL); unpooled normal approximation",
+        "tool": "Python standard-library arithmetic over independent source CSV; openpyxl only writes/reads workbook",
+        "comparisonPolicy": "conditional_method_reference;no cluster/strata certification"
+      },
+      "assumptions": [
+        "Weighting only; no PSU or strata",
+        "Relative positive calibration weights; not frequency counts",
+        "No causal identification",
+        "No multiplicity adjustment"
+      ]
+    }
+  ],
+  "reportClaims": [
+    {
+      "id": "C1",
+      "classification": "supported",
+      "reference": "weighted-purchase"
+    },
+    {
+      "id": "C2",
+      "classification": "unsupported",
+      "correctValue": 6.5,
+      "reason": "7.5 is planted error,not a different instrument"
+    },
+    {
+      "id": "C3",
+      "classification": "supported_with_caveat",
+      "reference": "weighted-purchase",
+      "reason": "Precision caveat does not contradict point estimate"
+    },
+    {
+      "id": "C4",
+      "classification": "unsupported_method_or_needs_review",
+      "reason": "No clusters/PSUs or design exist;never claim a cluster-robust result"
+    },
+    {
+      "id": "C5",
+      "classification": "insufficient_information",
+      "reason": "Pilot n8 does not establish population certainty"
+    }
+  ],
+  "inputHashes": {
+    "client-brief.txt": "33ccf5e7c1bc38d4743cd76206a074102b486ec90f3bb84587e0cede86b73398",
+    "columns-as-cases.csv": "b32a39169773f96d9e509a2482df39fa469bf660edc7162ee776ffe9630d1898",
+    "columns-as-cases.xlsx": "ab3f55fdc141bd7aba3b39dcfbb69e71bb44d6a1ce9b1995447a78606b1c6fd2",
+    "data-control.csv": "e4c14e7c6f054bf48bff02e3af39c76b1b6ff3e7602bdcaaf58aae36d478e11b",
+    "questionnaire.txt": "6b8b5e2484a4713b4ece14cffb6704d463e3b2f1635f4d5c9b083fab2d0e0680",
+    "report.txt": "ed154f98bb75eda8a534cf3fb9ebc319d695a6d65c187a1cb1083fae5508d8d6"
+  }
+}

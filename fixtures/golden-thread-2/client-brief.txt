@@ -1,0 +1,2 @@
+SYNTHETIC CLIENT BRIEF
+Assess weighted purchase and rating levels,compare weighting groups descriptively,and identify multiple-response priorities. Decide whether evidence supports a pilot rather than a population-wide causal claim. Use relative calibration weights only; no PSU/strata or causal design. Preserve uncertainty and small-base qualifications. Rating is1-10,not NPS. Do not treat multiple tables or copies of this survey as independent corroboration.

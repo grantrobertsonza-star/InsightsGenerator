@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { archiveAndDeleteSynthesizedInsight } from "./synthesizedInsightArchive";
 import { checkRunStability } from "./insightSynthesizer";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { requireTenantId } from "./requestContext";
 
 /**
  * Synthesized insights come out of insightSynthesizer.ts already
@@ -16,6 +15,7 @@ const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
  * archived until it's actually deleted.
  */
 export async function acceptSynthesizedInsight(runId: string, synthesizedInsightId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
       "update synthesized_insights set review_status = 'accepted' where id = $1 and run_id = $2",
@@ -26,6 +26,7 @@ export async function acceptSynthesizedInsight(runId: string, synthesizedInsight
 }
 
 export async function rejectSynthesizedInsight(runId: string, synthesizedInsightId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
       "update synthesized_insights set review_status = 'rejected' where id = $1 and run_id = $2",
@@ -43,6 +44,7 @@ export async function rejectSynthesizedInsight(runId: string, synthesizedInsight
  * of what gets deleted here, not just of what gets rejected.
  */
 export async function deleteSynthesizedInsight(runId: string, synthesizedInsightId: string) {
+  const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await archiveAndDeleteSynthesizedInsight(client, { runId, synthesizedInsightId });
   });
@@ -57,6 +59,7 @@ export async function deleteSynthesizedInsight(runId: string, synthesizedInsight
  * in one pass, overwriting whatever an earlier check left there.
  */
 export async function checkStability(runId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
   try {
     await checkRunStability(TENANT_ID, runId);
     revalidatePath(`/runs/${runId}`);

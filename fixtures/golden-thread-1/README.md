@@ -1,0 +1,9 @@
+# Golden thread1: independent reference fixture
+
+The corrected synthetic workbook and DOCX questionnaire/report/brief are retained byte-for-byte from the completed walkthrough. history/ preserves the original workbook/key, metadata correction and independent arithmetic addendum. Both workbook versions contain identical respondent cells: they are one dataset. No application output supplies expected values.
+
+expected.json uses canonical raw column names/codes, explicit groups, raw bases and units. Absolute tolerances are explicit per assertion; there are no implicit relative tolerances. Percent means0–100; NPS points use-100..100; Satisfaction means use1–5 scale points. NPS interval is independent-respondent normal approximation. Two-proportion inference uses pooled null SE and two-sided normal p, no weights, survey design or multiplicity adjustment. Other supported SE methods may differ numerically; do not call a valid method difference a defect. Compare method and conclusion first. MR bases are eligible respondents, never selection totals.
+
+The Data sheet is authoritative; Notes is a decoy. Respondent IDs are strings0001..0200. Satisfaction's supported continuous override yields mean3.5. Unweighted numerical references and semantic downstream requirements protect existing scope. They cannot prove AI quality, causal inference, independent-sample corroboration, security, full native-format support or Office visual rendering. Original small-base/causal report claims remain qualification cases, not accepted calculations. Model-generated output must be checked semantically against cited evidence.
+
+Regenerate/check using scripts/golden-thread-hardening/build-reference-fixtures.py with installed Python/openpyxl. This is a reference check, not an application pass. New IDs in JSON are fixture assertion identities, not release issue IDs.

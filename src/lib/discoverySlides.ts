@@ -132,6 +132,10 @@ export function addDiscoverySlides(
             fontSize: 10.5,
             color: COLORS.body,
           },
+          // FND-001: changed or uncheckable support, said on the card it qualifies.
+          ...(insight.supportNote
+            ? [{ text: insight.supportNote, fontSize: 9.5, italic: true, color: COLORS.high }]
+            : []),
           {
             text: `“${insight.implication}”`,
             fontSize: 10,
@@ -156,7 +160,8 @@ export function addDiscoverySlides(
       label: "New findings from the data",
       body:
         shown
-          .map((f) => `• ${f.theme ? `${f.theme}: ` : ""}${f.text}`)
+          // Each finding names its own source, so attribution follows what this slide shows.
+          .map((f) => `• ${f.theme ? `${f.theme}: ` : ""}${f.text}${f.source ? ` (source: ${f.source})` : ""}`)
           .join("\n") +
         (more > 0 ? `\n…and ${more} more, in the full report.` : ""),
       labelColor: COLORS.teal,
@@ -191,7 +196,7 @@ export function addDiscoverySlides(
             color: COLORS.body,
           },
           {
-            text: c.rationale,
+            text: c.supportNote ? `${c.rationale} ${c.supportNote}` : c.rationale,
             fontSize: 10,
             italic: true,
             color: COLORS.muted,

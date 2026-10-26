@@ -46,3 +46,26 @@ supabase/.branches
 
 # Backups hold client data: never commit
 /backups/
+
+# timing log written by the report extraction step
+extract-timing.log
+
+# Local verification retains synthetic dumps/profiles and temporary service keys outside Git.
+**/__pycache__/
+*.pyc
+*.bak
+*.log
+/*.pptx
+/.chk.lint
+/_*.mts
+/_*.py
+/_to_delete/
+/supabase/snippets/
+/scripts/**/runs/
+/scripts/**/executed-harness/
+/scripts/**/*.zip
+/scripts/.obj_rev_009_tmp/
+/scripts/.imp_ship_trace_tmp*/
+
+# browser smoke output (scripts/e2e/local-stack.mjs, playwright.config.mjs)
+/e2e-results/

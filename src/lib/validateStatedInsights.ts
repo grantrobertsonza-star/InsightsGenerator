@@ -4,6 +4,7 @@ import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
 import { applyRecordedContradictions, recordContradiction } from "./contradictionDetector";
 import { verificationBasisFor, type VerificationBasis } from "./discoveryClassification";
+import { latestVerdictLateral } from "./latestVerdict";
 
 // How many of a claim's evidence pool get shown to the model at once. A
 // claim with dozens of theme-matching findings in a large run would blow
@@ -194,8 +195,11 @@ async function chainCheckOneClaim(
     const result = await client.query<EvidenceRow>(
       `select f.id, f.origin, f.finding_text, f.finding_kind, f.theme, v.verdict_tier
        from findings f
-       join verdicts v on v.finding_id = f.id
-       where f.run_id = $1 and f.finding_kind != 'stated_insight' and f.status != 'rejected'
+       join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
+       -- "is distinct from", not "!=": findings computed from data tables have no finding_kind
+       -- (null), and null != 'stated_insight' is null, which silently left every computed finding
+       -- out of the evidence a report's interpretive claim is checked against.
+       where f.run_id = $1 and f.finding_kind is distinct from 'stated_insight' and f.status != 'rejected'
        order by
          case when f.id = any($2::uuid[]) then 0 else 1 end,
          case when f.theme is not distinct from $3 then 0 else 1 end,
@@ -239,7 +243,11 @@ async function chainCheckOneClaim(
       "- supported: the evidence given actually backs the claim as stated, at the strength it's stated.\n" +
       "- overreach: real evidence exists and points the right direction, but the claim concludes more " +
       "than that evidence justifies (a broader generalization, a stronger causal claim, a ranking the " +
-      "evidence doesn't actually establish).\n" +
+      "evidence doesn't actually establish). Check this dimension by dimension against what the evidence " +
+      "actually shows: the population the claim is about, the metric, which groups are compared, the " +
+      "direction and magnitude of any difference, the time frame, and whether causal language (\"drives\", " +
+      "\"because\", \"leads to\") is used where the evidence only supports an association. A claim can be " +
+      "right on every other dimension and still be overreach on one, most often the causal wording.\n" +
       "- contradicted: something in the evidence conflicts with the claim.\n" +
       "- unsupported: nothing in the evidence given actually addresses this claim either way.\n\n" +
       "Give relied_indices: the indices of the evidence items you actually used to reach your judgment " +

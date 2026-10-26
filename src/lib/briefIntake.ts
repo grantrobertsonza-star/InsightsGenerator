@@ -1,5 +1,6 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
+import { finishedToolInput, requiredTextOrNullField } from "./modelToolResult";
 
 // Between them a brief and a proposal can run long once a literature review
 // or a detailed methodology section is attached; none of that is needed to
@@ -80,7 +81,11 @@ export async function extractBriefFields(
       "picking one document over the other outright.\n\n" +
       "Do not extract either document's methodology, timeline, budget, team, or literature review, those " +
       "aren't part of either field. If there's more than one distinct objective, number them (1., 2., " +
-      "...) rather than running them together into one sentence. Quote or closely paraphrase the " +
+      "...) rather than running them together into one sentence. Put each objective on its own line and make " +
+      "every line one complete, stand-alone objective (for example \"To identify...\"). Never output a section " +
+      "heading or group title as a line of its own, such as \"Primary objective:\" or \"Secondary objectives:\"; " +
+      "fold the objectives under it into the list instead. If the document labels an objective (main question, " +
+      "primary, secondary), keep the label as a short prefix on the same line, separated with a dash. Quote or closely paraphrase the " +
       "documents' own framing rather than writing a fresh summary. If neither document clearly states " +
       "one of these two things, return null for it rather than guessing or inventing one from context.",
     tool_choice: { type: "tool", name: "record_brief_fields" },
@@ -116,20 +121,17 @@ export async function extractBriefFields(
 
   await logApiUsage(tenantId, runId, "brief_intake", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    return { businessProblem: null, researchObjective: null };
-  }
-
-  const input = toolUse.input as { business_problem?: unknown; research_objective?: unknown };
-  const businessProblem =
-    typeof input.business_problem === "string" && input.business_problem.trim().length > 0
-      ? input.business_problem.trim()
-      : null;
-  const researchObjective =
-    typeof input.research_objective === "string" && input.research_objective.trim().length > 0
-      ? input.research_objective.trim()
-      : null;
+  // RR-F01: only a finished call is used. A cut-off one can carry a partial objective list that
+  // would be saved as accepted and mark the document as used; it fails here instead, so the save
+  // records a failed fill with its retry (runContextActions) and keeps what was typed. A finished
+  // call that returns both fields as null is a fill that found nothing, not a failure; a missing field
+  // is malformed.
+  const what = "The reading of the brief or proposal";
+  const input = finishedToolInput(response, "record_brief_fields", what);
+  // Both fields are required by the tool's schema: a missing one is a malformed result (Codex
+  // batch10), while a field present as null is a reading that found nothing for it.
+  const businessProblem = requiredTextOrNullField(input, "business_problem", what);
+  const researchObjective = requiredTextOrNullField(input, "research_objective", what);
 
   return { businessProblem, researchObjective };
 }

@@ -2,30 +2,23 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { withTenant, withTenantRead } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { deleteRun } from "@/lib/runActions";
+import { deleteRun, renameRun } from "@/lib/runActions";
 import DeleteRunButton from "./DeleteRunButton";
+import ProjectCleanupNotice from "./ProjectCleanupNotice";
+import { loadPendingProjectCleanups } from "@/lib/projectStorageCleanup";
+import RenameRunButton from "./RenameRunButton";
 import {
   BoltIcon,
   CheckIcon,
-  DocumentIcon,
-  ChartIcon,
-  GridIcon,
-  TranscriptIcon,
 } from "@/components/icons";
-import FileInput from "@/components/FileInput";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { extractDocumentText } from "@/lib/extractFindings";
-import { extractBriefFields } from "@/lib/briefIntake";
-import { storeUploadedDocument } from "@/lib/documentUpload";
 import SubmitButton from "@/components/SubmitButton";
 import { parseNumberedItems } from "@/lib/text";
-
-const BUCKET = "documents";
-
-// There's no login system yet, so every run on this page belongs to one
-// fixed tenant read from the environment. Once real auth exists, this will
-// come from whoever is logged in instead.
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { Pane, ThreePane } from "./runs/[id]/ThreePane";
+import { requireTenantId } from "@/lib/requestContext";
+import { loadTenantUsageOutsideProjects } from "@/lib/apiUsage";
+import { loadProjectOverviews, type ProjectOverview } from "@/lib/projectStageFacts";
+import { SECTIONS } from "@/lib/sectionStatus";
+import { StatePill, StateDisc, STATE_LOOK } from "@/components/StageLook";
 
 type Run = {
   id: string;
@@ -42,19 +35,18 @@ type Run = {
 };
 
 async function getRuns(): Promise<Run[]> {
+  const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
-    const runsResult = await client.query<
+    // Both queries are independent, so they go to the database together on
+    // the same connection (pg queues them) instead of one waiting on the other
+    // in code. The counts query only needs the findings table.
+    const runsPromise = client.query<
       Omit<Run, "findings_total" | "findings_rejected">
     >(
-      "select id, project_name, business_problem, research_objective, decision_statement, audience, status, entry_point, created_at from runs order by created_at desc",
+      // A project's bin is a run too (migration 0115); it is never listed. to_jsonb works before the column exists.
+      "select id, project_name, business_problem, research_objective, decision_statement, audience, status, entry_point, created_at from runs where (to_jsonb(runs)->>'bin_of') is null order by created_at desc",
     );
-    // Findings insert as 'accepted' by default now, so nothing here is
-    // waiting on a human to look at it before the rest of the pipeline can
-    // run; a researcher reviews by exception, rejecting the ones that are
-    // wrong. This tallies, per run, how many have been rejected out of the
-    // total, in one pass rather than a query per card, so a project card
-    // can show how much has actually been trimmed.
-    const countsResult = await client.query<{
+    const countsPromise = client.query<{
       run_id: string;
       total: string;
       rejected: string;
@@ -63,6 +55,7 @@ async function getRuns(): Promise<Run[]> {
        from findings
        group by run_id`,
     );
+    const [runsResult, countsResult] = await Promise.all([runsPromise, countsPromise]);
     const countsByRun = new Map(
       countsResult.rows.map((row) => [
         row.run_id,
@@ -79,580 +72,259 @@ async function getRuns(): Promise<Run[]> {
 
 async function createRun(formData: FormData) {
   "use server";
+  const TENANT_ID = await requireTenantId();
   const projectName = String(formData.get("projectName") ?? "");
-  // Both optional, and stored as null rather than "" when blank so "has the
-  // researcher given us anything to start from" stays a simple truthiness
-  // check everywhere else in the app reads these. Neither is a decision:
-  // the business problem is why this project exists, the objective is what
-  // it sets out to learn, and the decision framer (run once documents are
-  // processed) proposes actual candidate decisions from these plus the
-  // evidence, rather than asking the researcher to guess one upfront.
-  //
-  // Either can also come from an uploaded brief or proposal instead of
-  // being typed by hand: a brief is normally just these two things, a
-  // proposal restates both and adds a methodology or literature review on
-  // top of them. Manual text always wins if the researcher filled a field
-  // in themselves; the upload only fills in whichever of the two it left
-  // blank, it never overwrites something typed by hand.
-  const businessProblemRaw = String(
-    formData.get("businessProblem") ?? "",
-  ).trim();
-  const manualBusinessProblem =
-    businessProblemRaw.length > 0 ? businessProblemRaw : null;
-  const researchObjectiveRaw = String(
-    formData.get("researchObjective") ?? "",
-  ).trim();
-  const manualResearchObjective =
-    researchObjectiveRaw.length > 0 ? researchObjectiveRaw : null;
-  const audience = String(formData.get("audience") ?? "");
   const entryPoint = String(formData.get("entryPoint") ?? "");
 
-  const briefFileEntry = formData.get("briefFile");
-  const briefFile =
-    briefFileEntry instanceof File && briefFileEntry.size > 0
-      ? briefFileEntry
-      : null;
-  const proposalFileEntry = formData.get("proposalFile");
-  const proposalFile =
-    proposalFileEntry instanceof File && proposalFileEntry.size > 0
-      ? proposalFileEntry
-      : null;
-
-  // The actual material to analyze, same three kinds and the same storage
-  // helper as the run page's own upload form, just gathered here too so
-  // setting a project up is one page instead of "create it, then go find
-  // the upload section and bring your data in separately." Nothing here is
-  // processed yet, same as a document added later: the researcher still
-  // reviews what landed on the project page and clicks "Process this
-  // project" when ready, so a mis-tagged file is easy to catch and delete
-  // before it costs an API call.
-  const reportFiles = (formData.getAll("reportFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  // Aggregated and raw tables are now separate file inputs (see the import
-  // section's markup below) rather than one "Tables" input plus a radio
-  // button choosing which ingestion type applies to all of them, so each
-  // file's ingestion type is implicit in which box it was dropped into,
-  // never a shared setting that could silently apply to the wrong file.
-  const tableFiles = (formData.getAll("tableFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const rawTableFiles = (formData.getAll("rawTableFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-  const transcriptFiles = (formData.getAll("transcriptFiles") as File[]).filter(
-    (file) => file.size > 0,
-  );
-
+  // A project starts as just a name and a starting point. Context
+  // (business problem, objective, audience, brief or proposal) and the data
+  // files are added on the project page, once each, in that order.
   const runId = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{ id: string }>(
-      `insert into runs
-         (tenant_id, project_name, business_problem, research_objective, initial_research_objective,
-          audience, entry_point)
-       values ($1, $2, $3, $4, $4, $5, $6)
+      `insert into runs (tenant_id, project_name, entry_point)
+       values ($1, $2, $3)
        returning id`,
-      [
-        TENANT_ID,
-        projectName,
-        manualBusinessProblem,
-        manualResearchObjective,
-        audience,
-        entryPoint,
-      ],
+      [TENANT_ID, projectName, entryPoint],
     );
     return result.rows[0].id;
   });
 
-  if (briefFile || proposalFile) {
-    try {
-      // Each is stored as an "evidence" document, the one kind that isn't
-      // run through the findings extractors, since a brief or proposal is
-      // context for the project, not a source findings should be mined
-      // from. Both stay attached to the run either way, for provenance.
-      async function storeAndExtractText(file: File): Promise<string> {
-        const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-        const storagePath = `${TENANT_ID}/${runId}/${Date.now()}-${safeFileName}`;
-        const buffer = Buffer.from(await file.arrayBuffer());
-
-        const { error: uploadError } = await supabaseAdmin.storage
-          .from(BUCKET)
-          .upload(storagePath, buffer, { contentType: file.type || undefined });
-
-        if (uploadError) {
-          throw new Error(
-            `Upload of ${file.name} failed: ${uploadError.message}`,
-          );
-        }
-
-        const documentId = await withTenant(TENANT_ID, async (client) => {
-          const result = await client.query<{ id: string }>(
-            `insert into documents (tenant_id, run_id, kind, source_filename, storage_path)
-             values ($1, $2, 'evidence', $3, $4)
-             returning id`,
-            [TENANT_ID, runId, file.name, storagePath],
-          );
-          return result.rows[0].id;
-        });
-
-        const { fullText } = await extractDocumentText(
-          storagePath,
-          file.name,
-          documentId,
-        );
-        return fullText;
-      }
-
-      const [briefText, proposalText] = await Promise.all([
-        briefFile ? storeAndExtractText(briefFile) : Promise.resolve(null),
-        proposalFile
-          ? storeAndExtractText(proposalFile)
-          : Promise.resolve(null),
-      ]);
-
-      const extracted = await extractBriefFields(TENANT_ID, runId, {
-        briefText,
-        proposalText,
-      });
-
-      const finalBusinessProblem =
-        manualBusinessProblem ?? extracted.businessProblem;
-      const finalResearchObjective =
-        manualResearchObjective ?? extracted.researchObjective;
-
-      if (
-        finalBusinessProblem !== manualBusinessProblem ||
-        finalResearchObjective !== manualResearchObjective
-      ) {
-        await withTenant(TENANT_ID, async (client) => {
-          // initial_research_objective is updated here too, not just
-          // research_objective: this is still the project's starting point
-          // (nothing has been accepted yet), it just arrived from the
-          // brief/proposal instead of being typed in directly. Past this
-          // point, research_objective starts moving as candidates are
-          // accepted or rejected, but initial_research_objective stays
-          // fixed at whatever this project actually started from, which is
-          // what the objective framer needs for "the researcher's own
-          // starting objective" on every later run, not a snapshot that
-          // would otherwise be the pre-brief, often-empty, manual value.
-          await client.query(
-            `update runs
-             set business_problem = $1, research_objective = $2, initial_research_objective = $2,
-                 updated_at = now()
-             where id = $3`,
-            [finalBusinessProblem, finalResearchObjective, runId],
-          );
-        });
-      }
-    } catch (error) {
-      // A brief or proposal that fails to parse (a scanned image PDF, a
-      // corrupt file) shouldn't block the project from being created; the
-      // researcher can still fill the two fields in by hand from the
-      // project page.
-      await withTenant(TENANT_ID, async (client) => {
-        await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_error', $3)`,
-          [
-            TENANT_ID,
-            runId,
-            JSON.stringify({
-              message: error instanceof Error ? error.message : String(error),
-            }),
-          ],
-        );
-      }).catch(() => {});
-    }
-  }
-
-  if (
-    reportFiles.length +
-      tableFiles.length +
-      rawTableFiles.length +
-      transcriptFiles.length >
-    0
-  ) {
-    try {
-      await Promise.all([
-        ...reportFiles.map((file) =>
-          storeUploadedDocument(TENANT_ID, runId, "report", file),
-        ),
-        ...tableFiles.map((file) =>
-          storeUploadedDocument(TENANT_ID, runId, "table", file, "aggregated"),
-        ),
-        ...rawTableFiles.map((file) =>
-          storeUploadedDocument(TENANT_ID, runId, "table", file, "raw"),
-        ),
-        ...transcriptFiles.map((file) =>
-          storeUploadedDocument(TENANT_ID, runId, "transcript", file),
-        ),
-      ]);
-    } catch (error) {
-      // Same reasoning as the brief/proposal catch above: a single bad
-      // upload (one oversized file, a storage hiccup) shouldn't block the
-      // project from existing. Whatever did succeed is already listed on
-      // the project page, and a failed one is easy to re-add from there.
-      await withTenant(TENANT_ID, async (client) => {
-        await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'setup_upload_error', $3)`,
-          [
-            TENANT_ID,
-            runId,
-            JSON.stringify({
-              message: error instanceof Error ? error.message : String(error),
-            }),
-          ],
-        );
-      }).catch(() => {});
-    }
-  }
-
   revalidatePath("/");
-  // Importing a brief/proposal and the actual documents was the whole point
-  // of unifying this into one setup screen, so the natural next step is the
-  // project page itself, not back to the project list to go find the one
-  // just created. Processing still waits for an explicit "Process this
-  // project" click there, nothing here jumps ahead of that.
   redirect(`/runs/${runId}`);
 }
+
+/** How many projects, newest first, the dashboard reads the status of. */
+const STATUS_ROWS = 25;
 
 const entryPointLabel: Record<string, string> = {
   generate: "Generate from data",
   validate: "Validate existing insights",
 };
 
-const statusStyles: Record<string, string> = {
-  draft: "bg-slate-50 text-slate-600 ring-slate-200",
-  ready: "bg-primary-light text-primary ring-blue-200",
-  running: "bg-amber-50 text-amber-700 ring-amber-200",
-  awaiting_human_review: "bg-amber-50 text-amber-700 ring-amber-200",
-  complete: "bg-success-light text-success ring-green-200",
-  error: "bg-danger-light text-danger ring-red-200",
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
-        statusStyles[status] ?? "bg-slate-50 text-slate-600 ring-slate-200"
-      }`}
-    >
-      {status.replace(/_/g, " ")}
-    </span>
-  );
-}
-
 export default async function Home({
   searchParams,
 }: {
   searchParams: Promise<{ entry?: string }>;
 }) {
+  // G6: resolve the session first, so a signed-out visit redirects before any loader runs.
+  const tenantId = await requireTenantId();
   const { entry } = await searchParams;
-  const runs = await getRuns();
+  const [runs, assistantUsage, projectCleanups] = await Promise.all([getRuns(), loadTenantUsageOutsideProjects(tenantId, 30), loadPendingProjectCleanups(tenantId)]);
+  // Each project's four sections and next step (Grant, 2026-10-23), from the stored records.
+  // Read for the most recent projects only: each takes about 25 ms (measured 2026-10-23: 26 projects,
+  // home page 0.7 to 0.9 s on the disposable stack), so a long list stays bounded; older rows say
+  // to open the project for its status, and the summary counts say how many they cover.
+  const overviews = await loadProjectOverviews(tenantId, runs.slice(0, STATUS_ROWS).map((r) => r.id));
+
+  const states = runs.map((r) => overviews.get(r.id));
+  const needYou = states.filter((o) => o && (!o.ok || o.sections.some((x) => x.state === "needs_you" || x.state === "couldnt_check"))).length;
+  const working = states.filter((o) => o?.ok && o.sections.some((x) => x.state === "working") && !o.sections.some((x) => x.state === "needs_you" || x.state === "couldnt_check")).length;
+  const delivered = states.filter((o) => o?.ok && o.sections.find((x) => x.id === "deliver")?.state === "ready").length;
+  let totalFindings = 0;
+  let totalExcluded = 0;
+  for (const run of runs) {
+    totalFindings += run.findings_total;
+    totalExcluded += run.findings_rejected;
+  }
+  const starting = entry === "generate" || entry === "validate";
 
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-8 py-10">
-      <h1 className="mb-2 text-3xl font-bold tracking-tight text-foreground">
+    <main className="mx-auto w-full max-w-7xl flex-1 px-8 py-8">
+      <h1 className="text-3xl font-bold tracking-tight text-foreground">
         Insights, <span className="text-primary">elevated</span>.
       </h1>
-      <p className="mb-10 text-sm text-muted">
-        A project is one engagement: a decision to inform, using a client&apos;s
-        report and data.
-      </p>
+      <p className="mb-6 mt-1 text-sm text-muted">A project is one engagement: a decision to inform, using a client&apos;s report and data.</p>
 
-      {entry !== "generate" && entry !== "validate" ? (
-        <div className="mb-12 grid gap-4 sm:grid-cols-2">
-          <Link
-            href="/?entry=generate"
-            className="card-surface group rounded-xl border border-border bg-white p-6 hover:border-primary/50"
+      <ProjectCleanupNotice state={projectCleanups.ok ? { ok: true, items: projectCleanups.items, locations: projectCleanups.locations } : projectCleanups} />
+      {/* Start a project sits above the list as a foldable band, as on the section pages (Grant, 2026-10-23). */}
+      <ThreePane
+        leftOnTop
+        storageKey="home"
+        left={
+          <Pane side="left" title="Start a project">
+            {!starting ? (
+              <div className="col-span-full grid gap-3 md:grid-cols-2">
+                <StartCard href="/?entry=generate" icon={<BoltIcon />} title="Generate from data" text="Start from raw tables or a dataset. The app mines it for segment differences, trends, outliers and relationships." />
+                <StartCard href="/?entry=validate" icon={<CheckIcon />} title="Validate existing insights" text="Start from a report that already makes findings. The app checks each one and elevates what survives into a clear narrative." />
+              </div>
+            ) : (
+              <div className="card-surface col-span-full max-w-xl rounded-xl border border-border bg-white p-4">
+                <Link href="/" className="text-sm font-medium text-primary hover:underline">
+                  &larr; Choose a different starting point
+                </Link>
+                <div className="mb-4 mt-3">
+                  <span className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-blue-200">{entryPointLabel[entry]}</span>
+                </div>
+                <form action={createRun} className="flex flex-col gap-4">
+                  <input type="hidden" name="entryPoint" value={entry} />
+                  <label className="block">
+                    <span className="text-sm font-medium text-foreground">Project name</span>
+                    <input
+                      name="projectName"
+                      required
+                      placeholder="e.g. Acme Q3 member survey"
+                      className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </label>
+                  <SubmitButton pendingLabel="Creating project..." className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md">
+                    Create project
+                  </SubmitButton>
+                </form>
+              </div>
+            )}
+          </Pane>
+        }
+        middle={
+          <Pane
+            side="middle"
+            title="Projects"
+            badge={runs.length > 0 ? <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">{runs.length}</span> : undefined}
           >
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary-light text-primary">
-              <BoltIcon />
+            {runs.length === 0 ? (
+              <p className="text-sm text-muted">No projects yet. Start one above.</p>
+            ) : (
+              <>
+                <ul className="flex flex-col gap-3" data-testid="project-list">
+                  {runs.map((run) => (
+                    <ProjectRow key={run.id} run={run} overview={overviews.get(run.id)} />
+                  ))}
+                </ul>
+                <p className="mt-3 text-xs text-muted">
+                  Status from each project&apos;s stored records. Inside a project, its overviews also check previews, data quality, survey design and support.
+                </p>
+              </>
+            )}
+          </Pane>
+        }
+        right={
+          <Pane side="right" title="Overview">
+            <div className="flex flex-col gap-3" data-testid="dashboard-summary">
+              <SummaryTile label="Projects" value={runs.length} note={runs.length > STATUS_ROWS ? `Statuses below cover the ${STATUS_ROWS} newest` : undefined} />
+              <SummaryTile label="Need you" value={needYou} tone="needs_you" note="A stage needs you or could not be checked" />
+              <SummaryTile label="Working" value={working} tone="working" note="The app is still doing something" />
+              <SummaryTile label="Delivered" value={delivered} tone="ready" note="Deliver stage ready" />
+              {totalFindings > 0 && <p className="text-xs text-muted">{`${totalExcluded} of ${totalFindings} findings excluded across all projects.`}</p>}
+              <div data-testid="assistant-usage-outside-projects">
+                {/* The Research assistant outside a project (dashboard, Knowledge base, Manual): a
+                    project's own API usage page counts only that project's calls. */}
+                <div className="text-xs font-medium uppercase tracking-wide text-muted">
+                  Research assistant outside projects, last 30 days
+                </div>
+                {assistantUsage.ok ? (
+                  <div className="mt-1 text-foreground">
+                    {assistantUsage.summary.calls === 0
+                      ? "Not used"
+                      : `${assistantUsage.summary.calls} model calls, ${(
+                          assistantUsage.summary.inputTokens +
+                          assistantUsage.summary.cacheWriteTokens +
+                          assistantUsage.summary.cacheReadTokens
+                        ).toLocaleString("en-US")} input tokens (${assistantUsage.summary.cacheReadTokens.toLocaleString("en-US")} from cache), about $${assistantUsage.summary.costUsd.toFixed(2)}`}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-red-700">Could not be read: {assistantUsage.error}</div>
+                )}
+              </div>
             </div>
-            <div className="mb-2 text-base font-semibold text-foreground group-hover:text-primary">
-              Generate from data
-            </div>
-            <div className="text-sm text-muted">
-              Start from raw tables or a dataset. The app mines it directly for
-              undeclared patterns: segment differences, trends, outliers,
-              relationships.
-            </div>
-          </Link>
-          <Link
-            href="/?entry=validate"
-            className="card-surface group rounded-xl border border-border bg-white p-6 hover:border-primary/50"
-          >
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary-light text-primary">
-              <CheckIcon />
-            </div>
-            <div className="mb-2 text-base font-semibold text-foreground group-hover:text-primary">
-              Validate existing insights
-            </div>
-            <div className="text-sm text-muted">
-              Start from a report that already makes findings. The app checks
-              each one and elevates what survives into a clear narrative.
-            </div>
-          </Link>
+          </Pane>
+        }
+      />
+    </main>
+  );
+}
+
+function SummaryTile({ label, value, tone, note }: { label: string; value: number; tone?: "needs_you" | "working" | "ready"; note?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted">
+        {tone && <StateDisc state={tone} size="sm" />}
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
+      {note && <div className="text-[11px] text-muted">{note}</div>}
+    </div>
+  );
+}
+
+function StartCard({ href, icon, title, text }: { href: string; icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <Link href={href} className="card-surface group rounded-xl border border-border bg-white p-4 hover:border-primary/50">
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light text-primary">{icon}</span>
+        <span className="text-sm font-semibold text-foreground group-hover:text-primary">{title}</span>
+      </div>
+      <p className="mt-1.5 text-sm text-muted">{text}</p>
+    </Link>
+  );
+}
+
+function projectTitle(run: Run) {
+  return run.project_name ?? run.research_objective ?? run.business_problem ?? "Untitled project";
+}
+
+function objectivePreview(run: Run): string | null {
+  // decision_statement and research_objective are synced to a "1. ...\n2. ..." numbered block once
+  // more than one candidate is accepted (runSync.ts); a row has room for the first item and a count.
+  const decisionItems = parseNumberedItems(run.decision_statement);
+  const objectiveItems = parseNumberedItems(run.research_objective);
+  const items = decisionItems.length > 0 ? decisionItems : objectiveItems;
+  const first = items.length > 0 ? items[0] : run.business_problem;
+  if (!first) return null;
+  return items.length > 1 ? `${first} (+${items.length - 1} more)` : first;
+}
+
+function ProjectRow({ run, overview }: { run: Run; overview: ProjectOverview | undefined }) {
+  const deleteThisRun = deleteRun.bind(null, run.id);
+  const renameThisRun = renameRun.bind(null, run.id);
+  const preview = run.project_name ? objectivePreview(run) : null;
+  const worst = overview?.ok ? (["couldnt_check", "needs_you", "working", "ready"] as const).find((s) => overview.sections.some((x) => x.state === s)) ?? "not_used" : "couldnt_check";
+  return (
+    <li className={`card-surface rounded-xl border border-border border-l-4 bg-white p-4 hover:border-primary/30 ${STATE_LOOK[worst].rail}`} data-testid="project-row" data-state={worst}>
+      <div className="flex items-start justify-between gap-4">
+        <Link href={`/runs/${run.id}`} className="min-w-0 flex-1 no-underline">
+          <div className="font-semibold text-foreground">{projectTitle(run)}</div>
+          {preview && <div className="mt-0.5 line-clamp-1 text-sm text-muted">{preview}</div>}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+            <span>{run.entry_point ? entryPointLabel[run.entry_point] : "No starting point recorded"}</span>
+            <span className="text-border">&middot;</span>
+            <span>{new Date(run.created_at).toLocaleDateString("en-ZA", { year: "numeric", month: "short", day: "numeric" })}</span>
+            {run.findings_total > 0 && (
+              <>
+                <span className="text-border">&middot;</span>
+                <span>{`${run.findings_total} findings, ${run.findings_rejected} excluded`}</span>
+              </>
+            )}
+          </div>
+        </Link>
+        <div className="flex shrink-0 items-start gap-2">
+          <RenameRunButton name={run.project_name ?? run.research_objective ?? run.business_problem ?? ""} storedName={run.project_name} onRename={renameThisRun} />
+          <DeleteRunButton action={deleteThisRun} />
+        </div>
+      </div>
+      {overview === undefined ? (
+        <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-muted">Open the project to see its status (shown here for the {STATUS_ROWS} newest projects).</p>
+      ) : overview.ok ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-3">
+          <div className="flex flex-wrap gap-1.5" data-testid="project-sections">
+            {overview.sections.map((x) => (
+              <Link key={x.id} href={`/runs/${run.id}?section=${x.navId}`} className="no-underline" aria-label={`${x.label}: ${STATE_LOOK[x.state].label}, ${x.headline}`}>
+                <StatePill state={x.state} label={SECTIONS.find((s) => s.id === x.id)?.label ?? x.label} title={x.headline} />
+              </Link>
+            ))}
+          </div>
+          {overview.next ? (
+            <Link href={`/runs/${run.id}?section=${overview.next.moduleId}`} className="min-w-0 flex-1 text-sm text-primary hover:underline" data-testid="project-next">
+              <span className="font-medium">{`Next: ${overview.next.label}`}</span>
+              <span className="text-muted">{` · ${overview.next.text}`}</span>
+            </Link>
+          ) : (
+            <span className="text-sm text-muted">Nothing waiting for you.</span>
+          )}
         </div>
       ) : (
-        <div className="card-surface mb-12 rounded-xl border border-border bg-white p-6">
-          <Link
-            href="/"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            &larr; Choose a different starting point
-          </Link>
-          <div className="mt-3 mb-5">
-            <span className="inline-flex items-center rounded-full bg-primary-light px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-blue-200">
-              {entryPointLabel[entry]}
-            </span>
-          </div>
-          <form action={createRun} className="flex flex-col gap-4">
-            <input type="hidden" name="entryPoint" value={entry} />
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">
-                Project name
-              </span>
-              <input
-                name="projectName"
-                required
-                placeholder="e.g. Acme Q3 member survey"
-                className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </label>
-            <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
-              <span className="text-sm font-medium text-foreground">
-                Import from a brief and/or proposal
-              </span>
-              <span className="ml-1.5 text-xs font-normal text-muted">
-                (optional)
-              </span>
-              <p className="mt-1 text-xs text-muted">
-                The client&apos;s brief usually states the business problem and
-                objectives; a supplier&apos;s proposal reflects both back and
-                adds a methodology on top. Upload either or both and we&apos;ll
-                pull the business problem and objective(s) out of them below,
-                reconciling the two if you give us both. Fields you fill in
-                yourself always win over what the documents say.
-              </p>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <label className="block">
-                  <span className="text-xs font-medium text-foreground">
-                    Brief (from the client)
-                  </span>
-                  <input
-                    type="file"
-                    name="briefFile"
-                    accept=".pdf,.docx,.pptx,.txt"
-                    className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-foreground">
-                    Proposal (your response)
-                  </span>
-                  <input
-                    type="file"
-                    name="proposalFile"
-                    accept=".pdf,.docx,.pptx,.txt"
-                    className="mt-1 block w-full text-xs text-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary-light file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-blue-100"
-                  />
-                </label>
-              </div>
-            </div>
-            <div className="rounded-lg border border-dashed border-border bg-slate-50 p-3">
-              <span className="text-sm font-medium text-foreground">
-                Import the documents to analyze
-              </span>
-              <span className="ml-1.5 text-xs font-normal text-muted">
-                (optional, add more anytime)
-              </span>
-              <p className="mt-1 text-xs text-muted">
-                Bring your reports, raw data tables, and transcripts in now
-                instead of hunting for the upload section after the project is
-                created. Nothing is processed yet, you&apos;ll still review what
-                landed here and click &quot;Process this project&quot; once
-                you&apos;re happy with it.
-              </p>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <FileInput
-                  name="reportFiles"
-                  multiple
-                  icon={<DocumentIcon className="h-3.5 w-3.5 text-primary" />}
-                  label="Reports"
-                />
-                <FileInput
-                  name="tableFiles"
-                  multiple
-                  accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                  icon={<ChartIcon className="h-3.5 w-3.5 text-primary" />}
-                  label="Tables"
-                  caption="Already aggregated"
-                />
-                <FileInput
-                  name="rawTableFiles"
-                  multiple
-                  accept=".csv,.xlsx,.xls,.sav,.dta,.sas7bdat"
-                  icon={<GridIcon className="h-3.5 w-3.5 text-primary" />}
-                  label="Quant data"
-                  caption="One row per respondent"
-                />
-                <FileInput
-                  name="transcriptFiles"
-                  multiple
-                  icon={<TranscriptIcon className="h-3.5 w-3.5 text-primary" />}
-                  label="Qual data"
-                  caption="Coded or uncoded"
-                />
-              </div>
-            </div>
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">
-                Business problem
-              </span>
-              <span className="ml-1.5 text-xs font-normal text-muted">
-                (optional, why this project exists)
-              </span>
-              <textarea
-                name="businessProblem"
-                rows={2}
-                placeholder="e.g. Renewal among lapsed members has dropped 12% year on year and we don't know why."
-                className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">
-                Research objective or hypothesis
-              </span>
-              <span className="ml-1.5 text-xs font-normal text-muted">
-                (optional, what this project sets out to learn)
-              </span>
-              <textarea
-                name="researchObjective"
-                rows={2}
-                placeholder="e.g. Understand whether price or service is the bigger driver of lapsed renewals."
-                className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </label>
-            <p className="-mt-1 text-xs text-muted">
-              No decision field here on purpose. Once documents are processed,
-              we propose candidate research objectives and, once one is
-              confirmed, candidate decisions this evidence could inform. You
-              accept, edit, reject, or add your own for each on the project
-              page.
-            </p>
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">
-                Audience
-              </span>
-              <span className="ml-1.5 text-xs font-normal text-muted">
-                (optional)
-              </span>
-              <input
-                name="audience"
-                className="mt-1.5 block w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </label>
-            <SubmitButton
-              pendingLabel="Creating project..."
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover hover:shadow-md"
-            >
-              Create project
-            </SubmitButton>
-          </form>
-        </div>
+        <p className="mt-3 border-t border-slate-100 pt-3 text-sm text-red-700" data-testid="project-status-error">
+          {`Status could not be read: ${overview.error.replace(/\.$/, "")}.`}
+        </p>
       )}
-
-      <h2 className="mb-4 text-lg font-semibold text-foreground">Projects</h2>
-      {runs.length === 0 && (
-        <p className="text-sm text-muted">No projects yet.</p>
-      )}
-      <ul className="flex flex-col gap-3">
-        {runs.map((run) => {
-          const deleteThisRun = deleteRun.bind(null, run.id);
-          return (
-            <li
-              key={run.id}
-              className="card-surface flex items-start justify-between gap-4 rounded-xl border border-border bg-white p-4 hover:border-primary/30"
-            >
-              <Link href={`/runs/${run.id}`} className="flex-1 no-underline">
-                <div className="font-semibold text-foreground">
-                  {run.project_name ??
-                    run.research_objective ??
-                    run.business_problem ??
-                    "Untitled project"}
-                </div>
-                {run.project_name &&
-                  (() => {
-                    // decision_statement and research_objective are synced
-                    // to a "1. ...\n2. ..." numbered block once more than
-                    // one candidate is accepted (see runSync.ts); a list
-                    // card has room for one representative line, not the
-                    // whole block, so this shows the first item plus a
-                    // count of anything else accepted rather than dumping
-                    // the raw numbered text.
-                    const decisionItems = parseNumberedItems(
-                      run.decision_statement,
-                    );
-                    const objectiveItems = parseNumberedItems(
-                      run.research_objective,
-                    );
-                    const items =
-                      decisionItems.length > 0 ? decisionItems : objectiveItems;
-                    const preview =
-                      items.length > 0 ? items[0] : run.business_problem;
-                    if (!preview) return null;
-                    return (
-                      <div className="mt-0.5 line-clamp-2 text-sm text-muted">
-                        {preview}
-                        {items.length > 1 && (
-                          <span className="text-muted/70">
-                            {" "}
-                            (+{items.length - 1} more)
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-                  <span>
-                    {run.entry_point
-                      ? entryPointLabel[run.entry_point]
-                      : "No starting point recorded"}
-                  </span>
-                  <span className="text-border">&middot;</span>
-                  {run.audience && (
-                    <>
-                      <span>Audience: {run.audience}</span>
-                      <span className="text-border">&middot;</span>
-                    </>
-                  )}
-                  <StatusBadge status={run.status} />
-                  <span className="text-border">&middot;</span>
-                  <span>{new Date(run.created_at).toLocaleString()}</span>
-                </div>
-                {run.findings_total > 0 && run.findings_rejected > 0 && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-border">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{
-                          width: `${Math.round((run.findings_rejected / run.findings_total) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted">
-                      {run.findings_rejected} of {run.findings_total} findings
-                      excluded
-                    </span>
-                  </div>
-                )}
-              </Link>
-              <form action={deleteThisRun}>
-                <DeleteRunButton />
-              </form>
-            </li>
-          );
-        })}
-      </ul>
-    </main>
+    </li>
   );
 }

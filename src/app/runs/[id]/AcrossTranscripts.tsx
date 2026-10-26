@@ -51,7 +51,7 @@ export default function AcrossTranscripts({
         </button>
         <span className="text-muted">
           Puts similar codes from different transcripts under one main theme.
-          This replaces the themes now set on each transcript's codes.
+          This replaces the themes now set on each transcript&apos;s codes.
         </span>
         {message && <span className="text-success">{message}</span>}
         {error && <span className="text-red-600">{error}</span>}

@@ -128,3 +128,46 @@ describe("inferVariableType", () => {
     });
   });
 });
+
+describe("survey routing", () => {
+  // 200 respondents. "Has account" is the gate; "Account type" is asked only
+  // of those who have one. "Opinion" is empty at random, which is a real gap.
+  const rows = Array.from({ length: 200 }, (_, i) => {
+    const has = i % 2 === 0 ? "Yes" : "No";
+    return {
+      Gate: has,
+      Routed: has === "Yes" ? ["A", "B", "C"][i % 3] : null,
+      Opinion: i % 5 < 2 ? null : (i % 4) + 1,
+      Size: (i % 7) + 1,
+    };
+  });
+  const q = computeTableQuality(["Gate", "Routed", "Opinion", "Size"], rows, "raw");
+
+  it("names the gate question when empty answers follow a routing pattern", () => {
+    const routed = q.variableDetails.find((v) => v.name === "Routed")!;
+    expect(routed.missingPct).toBe(50);
+    expect(routed.routedBy).toBe("Gate");
+    expect(q.routedVariables).toBe(1);
+  });
+
+  it("still flags gaps that nothing explains", () => {
+    const opinion = q.variableDetails.find((v) => v.name === "Opinion")!;
+    expect(opinion.missingPct).toBe(40);
+    expect(opinion.routedBy).toBeFalsy();
+    const check = q.checks.find((c) => c.id === "missing_by_variable")!;
+    expect(check.status).toBe("warn");
+    expect(check.detail).toMatch(/by routing/);
+  });
+
+  it("does not turn a routed file into a problem", () => {
+    const onlyRouted = rows.map((r) => ({ Gate: r.Gate, Routed: r.Routed, Size: r.Size }));
+    const r = computeTableQuality(["Gate", "Routed", "Size"], onlyRouted, "raw");
+    expect(r.checks.find((c) => c.id === "missing_by_variable")!.status).toBe("pass");
+    expect(r.checks.find((c) => c.id === "missing_overall")!.status).toBe("pass");
+  });
+
+  it("does not look for routing in tiny tables", () => {
+    const small = computeTableQuality(["Gate", "Routed"], rows.slice(0, 20), "raw");
+    expect(small.routedVariables).toBe(0);
+  });
+});

@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
 import { crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
+import { kappaBand } from "@/lib/qualAudit";
+import { getTranscriptSetups } from "@/lib/transcriptSetup";
 import {
   cooccurrence,
   themesByAttribute,
   usableAttributes,
 } from "@/lib/qualCrosstab";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
 
 type Cell = string | number | boolean | null;
 
@@ -31,6 +32,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const data = await withTenant(TENANT_ID, async (client) => {
@@ -146,6 +150,49 @@ export async function GET(
   }
 
   const countRows: Cell[][] = [];
+  // Run-to-run reliability: the codebook applied again to the same turns, per theme. Needs no human coding.
+  const reliabilityRows: Cell[][] = [];
+  for (const b of data.books) {
+    const st = analysis.get(b.document_id)?.stability;
+    if (!st) continue;
+    const name = fileName.get(b.document_id) ?? b.document_id;
+    for (const c of st.perCode) {
+      reliabilityRows.push([
+        name,
+        c.name,
+        st.runs,
+        c.usedTurns,
+        c.usedTurns === 0 ? null : c.consistent,
+        c.usedTurns === 0 ? null : Number((c.consistent / c.usedTurns).toFixed(3)),
+        c.kappa === null ? null : Number(c.kappa.toFixed(3)),
+        kappaBand(c.kappa, c.tooFew),
+        c.tooFew ? "Came up in too few turns for the figures to mean much. Left out of the averages." : "",
+      ]);
+    }
+    reliabilityRows.push([
+      name,
+      "All themes (average, themes with 10 or more turns)",
+      st.runs,
+      null,
+      null,
+      st.codeAgreement === null ? null : Number(st.codeAgreement.toFixed(3)),
+      st.kappaAverage === null ? null : Number(st.kappaAverage.toFixed(3)),
+      kappaBand(st.kappaAverage, false),
+      "",
+    ]);
+  }
+  if (reliabilityRows.length > 0) {
+    reliabilityRows.push([null, null, null, null, null, null, null, null, null]);
+    for (const line of [
+      "How to read this table",
+      "Runs: how many times the codebook was applied to the same turns, the original included.",
+      "Same in every run: of the turns the theme came up in, how many had it in every run. This is a strict test and falls as runs are added.",
+      "Kappa: agreement between runs after removing what chance alone would give, averaged over every pair of runs. 0.80 or above is usually read as strong, 0.60 to 0.79 as moderate, below 0.60 as weak.",
+      "Read it theme by theme. A low overall figure does not mean all of the coding is unreliable: it is an average, and a few fuzzy themes can pull it down while the rest are solid. Report strong themes with confidence and weak ones as tentative.",
+      "These figures show consistency, not correctness. Runs share the model's blind spots, so a theme can be consistent and still wrong. Agreement with a human coder on an audit sample is the check on that.",
+    ])
+      reliabilityRows.push([line, null, null, null, null, null, null, null, null]);
+  }
   const agreementRows: Cell[][] = [];
   const calibrationRows: Cell[][] = [];
   const negativeRows: Cell[][] = [];
@@ -651,6 +698,25 @@ export async function GET(
       ),
     );
   }
+  if (reliabilityRows.length > 0)
+    add(
+      "Run reliability",
+      sheet(
+        [
+          "Transcript",
+          "Theme",
+          "Runs",
+          "Turns it came up in",
+          "Same in every run",
+          "Share same in every run",
+          "Kappa between runs",
+          "Band",
+          "Note",
+        ],
+        reliabilityRows,
+        [28, 44, 8, 14, 14, 14, 14, 22, 60],
+      ),
+    );
   add(
     "Agreement",
     sheet(
@@ -713,6 +779,23 @@ export async function GET(
     ),
   );
   add("Respondents by theme", sheet(matrixHeaders, matrixOut));
+  // Each coded transcript's wave as recorded on Import (migration 0107), so a reader of this file
+  // knows which round each transcript is. Blank when none was given. Themes are not compared
+  // across waves here, and this sheet says so rather than implying it.
+  const setups = await getTranscriptSetups(TENANT_ID, runId);
+  add(
+    "Transcripts",
+    sheet(
+      ["Transcript", "Wave", "Accepted for coding", "Note"],
+      data.books.map((b, i) => [
+        fileName.get(b.document_id) ?? b.document_id,
+        setups.get(b.document_id)?.wave ?? "",
+        setups.get(b.document_id)?.confirmed ? "Yes" : "No",
+        i === 0 ? "Waves are recorded for reference; themes are not yet compared across waves." : "",
+      ]),
+      [40, 16, 18, 60],
+    ),
+  );
   add(
     "Negative cases",
     sheet(

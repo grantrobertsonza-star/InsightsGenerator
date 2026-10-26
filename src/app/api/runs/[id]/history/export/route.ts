@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { routeRequestContext } from "@/lib/requestContext";
+import { csvField } from "@/lib/csvField";
 
 type ExportRow = {
   finding_text: string;
@@ -12,12 +12,15 @@ type ExportRow = {
   archived_at: string;
   insight_headline: string | null;
   insight_quality_tier: string | null;
+  researcher_note: string | null;
 };
 
 const reasonLabel: Record<string, string> = {
   regenerate_unreviewed: "Regenerate unreviewed",
   full_reprocess: "Reprocess all documents",
   manual_reextract: "Manual re-extract",
+  wave_recompare: "Wave comparison re-run",
+  source_removed: "Its file was removed",
 };
 
 const statusLabel: Record<string, string> = {
@@ -25,19 +28,6 @@ const statusLabel: Record<string, string> = {
   accepted: "Accepted",
   rejected: "Rejected",
 };
-
-/**
- * Escapes one CSV field per RFC 4180: wraps in quotes and doubles any
- * internal quote whenever the value contains a comma, quote, or newline,
- * so a finding's own text (which can contain any of those) can't break
- * the file's column structure for whoever opens it afterward.
- */
-function csvField(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
 
 /**
  * Hands back this run's finding_history audit trail as a CSV, the same
@@ -48,6 +38,9 @@ function csvField(value: string): string {
  * and scroll to a collapsed section.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const [run, rows] = await withTenant(TENANT_ID, async (client) => {
@@ -64,7 +57,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
          fh.archived_reason,
          fh.archived_at,
          ih.headline as insight_headline,
-         ih.quality_tier as insight_quality_tier
+         ih.quality_tier as insight_quality_tier,
+         -- Codex DI-F07 (migration 0114); read through to_jsonb so the export works before it.
+         to_jsonb(fh)->>'researcher_note' as researcher_note
        from finding_history fh
        left join insight_history ih on ih.original_finding_id = fh.original_finding_id
        where fh.run_id = $1
@@ -78,7 +73,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  const header = ["Finding", "Status when removed", "Insight it fed", "Removed by", "Archived"];
+  const header = ["Finding", "Status when removed", "Insight it fed", "Removed by", "Archived", "Researcher note"];
   const lines = [header.map(csvField).join(",")];
 
   for (const row of rows) {
@@ -92,6 +87,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         insight,
         reasonLabel[row.archived_reason] ?? row.archived_reason,
         new Date(row.archived_at).toLocaleString(),
+        // Last, so the earlier columns keep their places for existing readers (Codex DI-F07).
+        row.researcher_note ?? "",
       ]
         .map((value) => csvField(value))
         .join(",")

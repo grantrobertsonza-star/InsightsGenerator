@@ -3,6 +3,8 @@
 // the model to compute it inside a prompt.
 
 const Z_SCORES = { 90: 1.645, 95: 1.96, 99: 2.576 } as const;
+// Used only by the one-split stump, which is switched off in the pipeline. Welch comparisons use an exact t tail.
+const APPROX_T_THRESHOLDS = Z_SCORES;
 
 export function marginOfError(
   n: number,
@@ -107,6 +109,15 @@ export function flagOutlier(value: number, comparisonValues: number[]) {
     : empty;
 }
 
+// --- Student t tail probability (uses the incomplete beta helpers further down), so small groups are not judged on a normal curve.
+
+/** Two-sided p-value of a Student t statistic with `df` degrees of freedom (df may be fractional, as in Welch's test). */
+export function studentTTwoSidedP(t: number, df: number): number {
+  if (!Number.isFinite(t) || !(df > 0)) return NaN;
+  const p = regularizedIncompleteBeta(df / (df + t * t), df / 2, 0.5);
+  return Math.min(1, Math.max(0, p));
+}
+
 export function pearsonCorrelation(xs: number[], ys: number[]) {
   const n = xs.length;
   if (n !== ys.length || n < 3)
@@ -117,20 +128,19 @@ export function pearsonCorrelation(xs: number[], ys: number[]) {
   const sdX = Math.sqrt(xs.reduce((a, x) => a + (x - meanX) ** 2, 0));
   const sdY = Math.sqrt(ys.reduce((a, y) => a + (y - meanY) ** 2, 0));
   if (sdX === 0 || sdY === 0) return { r: null as number | null };
+  const rRaw = cov / (sdX * sdY);
+  // Test of r against zero: t = r * sqrt((n - 2) / (1 - r^2)) on n - 2 degrees of freedom.
+  const pValue =
+    n > 2 && Math.abs(rRaw) < 1
+      ? studentTTwoSidedP(rRaw * Math.sqrt((n - 2) / (1 - rRaw * rRaw)), n - 2)
+      : null;
   return {
-    r: Math.round((cov / (sdX * sdY)) * 100) / 100,
+    r: Math.round(rRaw * 100) / 100,
+    n,
+    pValue: pValue === null ? null : Math.round(pValue * 10000) / 10000,
     note: "descriptive association only; not evidence of causation",
   };
 }
-
-// Approximate thresholds for Welch's t, reused from the same Z_SCORES table
-// rather than a true t-distribution lookup. With the group sizes this
-// pipeline actually sees (rarely under a dozen per side, often far more),
-// the t and normal distributions are close enough that this stays a fair
-// descriptive heuristic, consistent with flagOutlier's and twoProportionGap's
-// own z-based thresholds elsewhere in this file -- not a claim of exact
-// statistical rigor.
-const APPROX_T_THRESHOLDS = Z_SCORES;
 
 /**
  * Compares the means of two numeric groups (Welch's t-test, unequal
@@ -150,6 +160,8 @@ export function compareGroupMeans(
       mean2: null as number | null,
       gap: null as number | null,
       tScore: null as number | null,
+      df: null as number | null,
+      pValue: null as number | null,
       significant: false,
     };
   }
@@ -170,15 +182,24 @@ export function compareGroupMeans(
       mean2,
       gap,
       tScore: null as number | null,
+      df: null as number | null,
+      pValue: null as number | null,
       significant: false,
     };
   const t = (m1 - m2) / se;
+  // Welch-Satterthwaite degrees of freedom and an exact t tail, so a small group is not judged on a normal curve.
+  const a1 = v1 / group1.length;
+  const a2 = v2 / group2.length;
+  const df = (a1 + a2) ** 2 / (a1 ** 2 / (group1.length - 1) + a2 ** 2 / (group2.length - 1));
+  const p = studentTTwoSidedP(t, df);
   return {
     mean1,
     mean2,
     gap,
     tScore: Math.round(t * 100) / 100,
-    significant: Math.abs(t) >= APPROX_T_THRESHOLDS[confidence],
+    df: Math.round(df * 10) / 10,
+    pValue: Number.isFinite(p) ? Math.round(p * 10000) / 10000 : null,
+    significant: Number.isFinite(p) && p < 1 - confidence / 100,
   };
 }
 

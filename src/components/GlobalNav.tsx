@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GridIcon, ChartIcon, BookIcon } from "./icons";
+import { GridIcon, ChartIcon, BookIcon, LibraryIcon } from "./icons";
 import type { ComponentType } from "react";
 
 type NavItem = {
@@ -26,6 +26,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Programs",
     icon: ChartIcon,
     isActive: (pathname) => pathname.startsWith("/programs"),
+  },
+  {
+    href: "/knowledge",
+    label: "Knowledge base",
+    icon: LibraryIcon,
+    isActive: (pathname) => pathname.startsWith("/knowledge"),
   },
   {
     href: "/manual",
@@ -63,6 +69,30 @@ export default function GlobalNav() {
               className={`h-4 w-4 ${active ? "text-primary" : "text-muted"}`}
             />
             {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** The same destinations as icons, for the main menu's collapsed strip (CollapsibleRail). */
+export function GlobalNavRail() {
+  const pathname = usePathname();
+  return (
+    <nav aria-label="Main" className="flex flex-col items-center gap-1">
+      {NAV_ITEMS.map(({ href, label, icon: Icon, isActive }) => {
+        const active = isActive(pathname);
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-label={label}
+            title={label}
+            aria-current={active ? "page" : undefined}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition focus-visible:outline-2 focus-visible:outline-primary ${active ? "bg-primary-light text-primary" : "text-slate-600 hover:bg-surface hover:text-primary"}`}
+          >
+            <Icon className="h-4 w-4" />
           </Link>
         );
       })}

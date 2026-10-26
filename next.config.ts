@@ -18,6 +18,12 @@ const nextConfig: NextConfig = {
       // brief's open items.
       bodySizeLimit: "100mb",
     },
+    // G6: the sign-in proxy (src/proxy.ts) runs on every request, and Next buffers a request body
+    // that passes through a proxy up to this size (default 10 MB), cutting longer bodies off. An
+    // upload over 10 MB then failed with "Unexpected end of form". It must match bodySizeLimit
+    // above, so the proxy never truncates an upload the action itself accepts. Cost: the body is
+    // held in memory twice while the proxy runs.
+    proxyClientMaxBodySize: "100mb",
   },
 };
 

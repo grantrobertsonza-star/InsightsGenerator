@@ -1,55 +1,91 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { withTenant } from "./db";
-import { supabaseAdmin } from "./supabaseAdmin";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
-const BUCKET = "documents";
+import { finishDocumentStorageCleanup } from "./documentStorageCleanup";
+import { requireRequestContext, requireTenantId } from "./requestContext";
+import { eraseRemovedDocument, listBin, removeDocumentToBin, restoreDocumentFromBin } from "./documentBin";
 
 /**
- * Deletes a single uploaded document from a run (e.g. a duplicate re-import,
- * or one you no longer want in the pool), rather than having to delete and
- * recreate the whole run. Findings that were extracted from it, or generated
- * from its data, have nothing meaningful left to point at once it's gone,
- * so they're removed alongside it rather than left dangling.
+ * Removes a file from the project into its bin (claude/document-deletion-contract.md): its findings
+ * are archived with the researcher's review decisions and notes, its own material is hidden with it,
+ * unreviewed objective and decision suggestions drawn only from it are removed, and it can be restored for
+ * BIN_DAYS days. The form's delete button calls this; documentBin.removeDocumentToBin does the work in
+ * one transaction. Nothing is erased here: the stored file stays until it is erased from the bin.
  */
 export async function deleteDocument(runId: string, documentId: string) {
-  const document = await withTenant(TENANT_ID, async (client) => {
-    const result = await client.query<{ storage_path: string; preview_storage_path: string | null }>(
-      "select storage_path, preview_storage_path from documents where id = $1 and run_id = $2",
-      [documentId, runId]
-    );
-    return result.rows[0];
-  });
-
-  if (!document) return;
-
-  // Storage files aren't known to Postgres, so they're cleaned up here
-  // before the document row (and its findings) are deleted, same as deleteRun.
-  const storagePaths = [document.storage_path, document.preview_storage_path].filter(
-    (path): path is string => Boolean(path)
-  );
-  if (storagePaths.length > 0) {
-    await supabaseAdmin.storage.from(BUCKET).remove(storagePaths);
-  }
-
-  await withTenant(TENANT_ID, async (client) => {
-    // source_table_id points at a document_tables row, not this document
-    // directly (see 0023_document_tables.sql, which repointed it away from
-    // documents.id), so a table-computed finding has to be reached through
-    // that join; matching source_table_id = $1 directly, as this used to,
-    // never matches post-0023 and silently left those findings behind to
-    // throw a foreign-key violation on the delete below once their
-    // document_tables row went with the document.
-    await client.query(
-      `delete from findings
-       where source_document_id = $1
-          or source_table_id in (select id from document_tables where document_id = $1)`,
-      [documentId]
-    );
-    await client.query("delete from documents where id = $1", [documentId]);
-  });
-
+  const context = await requireRequestContext();
+  await removeDocumentToBin(context.tenantId, runId, documentId, context.userId);
   revalidatePath(`/runs/${runId}`);
+}
+
+type BinResult = { ok: true; message: string } | { ok: false; error: string };
+
+/** Puts a removed file back, with its findings, review decisions and notes. */
+export async function restoreDocumentAction(runId: string, removalId: string): Promise<BinResult> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const { findings, linksWaiting, linksLost } = await restoreDocumentFromBin(TENANT_ID, runId, removalId);
+    revalidatePath(`/runs/${runId}`);
+    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+    let message = `Restored, with ${plural(findings, "finding", "findings")}.`;
+    if (linksWaiting > 0) {
+      message += ` ${plural(linksWaiting, "link", "links")} to findings of another removed file will come back when that file is restored.`;
+    }
+    if (linksLost > 0) {
+      message += ` ${plural(linksLost, "link", "links")} to findings that were erased could not be restored.`;
+    }
+    return { ok: true, message };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Erases a removed file for good (see documentBin.eraseRemovedDocument). */
+export async function eraseDocumentAction(runId: string, documentId: string): Promise<BinResult> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const { linksRemoved } = await eraseRemovedDocument(TENANT_ID, runId, documentId);
+    revalidatePath(`/runs/${runId}`);
+    return {
+      ok: true,
+      message:
+        linksRemoved > 0
+          ? `Erased. ${linksRemoved} ${linksRemoved === 1 ? "link" : "links"} between its findings and other files' findings went with it.`
+          : "Erased.",
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Erases every file in the project's bin, one file per transaction. A failure stops there and says
+ * how many were erased before it; the rest stay in the bin and the action can be run again.
+ */
+export async function emptyBinAction(runId: string): Promise<BinResult> {
+  const TENANT_ID = await requireTenantId();
+  let erased = 0;
+  try {
+    for (const item of await listBin(TENANT_ID, runId)) {
+      await eraseRemovedDocument(TENANT_ID, runId, item.documentId);
+      erased++;
+    }
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true, message: `Erased ${erased} file${erased === 1 ? "" : "s"}.` };
+  } catch (error) {
+    if (erased > 0) revalidatePath(`/runs/${runId}`);
+    const reason = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `${erased} file${erased === 1 ? " was" : "s were"} erased, then this stopped: ${reason} The rest are still in the bin.` };
+  }
+}
+
+export async function retryDocumentStorageCleanup(runId: string): Promise<{ ok: boolean; error?: string }> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    await finishDocumentStorageCleanup(TENANT_ID, runId);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }

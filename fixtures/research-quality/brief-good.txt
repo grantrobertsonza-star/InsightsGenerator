@@ -1,0 +1,25 @@
+Client brief: Loyalty programme research
+
+Background
+Our coffee chain has 120 stores. Repeat visits fell by 8% over the last two quarters while a competitor launched a points app. Our last customer survey was in 2024 and did not cover loyalty schemes.
+
+Business problem
+We are losing repeat customers to a competitor's app and do not know whether a loyalty scheme would win them back or only reward people who would come anyway.
+
+Decision
+The executive team will decide in March whether to launch a loyalty scheme and which reward type to offer.
+
+Objectives
+1. Measure the share of current customers who would join a points-based loyalty scheme.
+2. Identify which of three reward types (free drinks, discounts, early access) current customers prefer.
+3. Estimate how often members expect to visit compared with their current visits.
+4. Understand why lapsed customers stopped visiting.
+
+Methodology requirements
+Target population: adult customers who visited at least once in the last 12 months, in South Africa. We expect a quantitative survey of current customers and a small set of interviews with lapsed customers. Results are needed by region (Gauteng, Western Cape, KwaZulu-Natal).
+
+Deadline
+Final results are needed by 28 February 2027.
+
+Budget
+The budget is between R350,000 and R450,000 including fieldwork.

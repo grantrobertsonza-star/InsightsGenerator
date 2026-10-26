@@ -1,7 +1,10 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import { syncDecisionStatement } from "./runSync";
+import { lockRunForContextChange, syncDecisionStatement } from "./runSync";
+import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
+import { evidenceStatusLabel, NO_INVENTED_EXPLANATIONS_RULE } from "./groundingRules";
+import { candidateSourceColumnAvailable, FINDING_SOURCE_DOCUMENT_SQL, sourceDocumentsOf } from "./candidateSourceDocuments";
 
 const MAX_FINDINGS_FOR_PROMPT = 120;
 const MAX_INSIGHTS_FOR_PROMPT = 120;
@@ -79,6 +82,9 @@ export async function generateDecisionCandidates(
 
   let evidence: EvidenceItem[];
   let evidenceKindLabel: string;
+  // The files the evidence came from (candidateSourceDocuments.ts), recorded on each suggestion so
+  // removing the only one of them removes an unreviewed suggestion (documentBin).
+  let sourceDocuments: string[] | null;
 
   if (isGenerateMode) {
     const insights = await withTenant(tenantId, async (client) => {
@@ -88,11 +94,12 @@ export async function generateDecisionCandidates(
         tension: string;
         implication: string;
         theme: string | null;
+        source_document: string | null;
       }>(
-        `select i.headline, i.observation, i.tension, i.implication, f.theme
+        `select i.headline, i.observation, i.tension, i.implication, f.theme, ${FINDING_SOURCE_DOCUMENT_SQL("f")} as source_document
          from insights i
          join findings f on f.id = i.finding_id
-         where i.run_id = $1
+         where i.run_id = $1 and f.status != 'rejected'
          order by f.theme nulls last, i.created_at
          limit $2`,
         [runId, MAX_INSIGHTS_FOR_PROMPT]
@@ -109,14 +116,31 @@ export async function generateDecisionCandidates(
     }
 
     evidenceKindLabel = "insights";
+    sourceDocuments = sourceDocumentsOf(insights);
     evidence = insights.map((i) => ({
       theme: i.theme,
       text: `${i.headline}. Observation: ${i.observation} Tension: ${i.tension} Implication: ${i.implication}`,
     }));
   } else {
+    // Golden-thread repair: each finding goes to the model with its verification status, so a report
+    // claim already found not supported is never presented as evidence equal to a computed result.
     const findings = await withTenant(tenantId, async (client) => {
-      const result = await client.query<{ finding_text: string; theme: string | null }>(
-        "select finding_text, theme from findings where run_id = $1 order by theme nulls last limit $2",
+      const result = await client.query<{
+        finding_text: string;
+        theme: string | null;
+        origin: string | null;
+        verdict_tier: string | null;
+        verification_basis: string | null;
+        source_document: string | null;
+      }>(
+        `select f.finding_text, f.theme, f.origin, v.verdict_tier, v.verification_basis, ${FINDING_SOURCE_DOCUMENT_SQL("f")} as source_document
+         from findings f
+         left join lateral (
+           select verdict_tier, verification_basis from verdicts
+           where finding_id = f.id order by created_at desc, id desc limit 1
+         ) v on true
+         where f.run_id = $1 and f.status != 'rejected'
+         order by f.theme nulls last limit $2`,
         [runId, MAX_FINDINGS_FOR_PROMPT]
       );
       return result.rows;
@@ -130,7 +154,15 @@ export async function generateDecisionCandidates(
     }
 
     evidenceKindLabel = "findings";
-    evidence = findings.map((f) => ({ theme: f.theme, text: f.finding_text }));
+    sourceDocuments = sourceDocumentsOf(findings);
+    evidence = findings.map((f) => ({
+      theme: f.theme,
+      text: `${f.finding_text} [${evidenceStatusLabel({
+        origin: f.origin,
+        verdictTier: f.verdict_tier,
+        verificationBasis: f.verification_basis,
+      })}]`,
+    }));
   }
 
   const evidenceBlock = evidence.map((e) => `- [${e.theme ?? "Uncategorized"}] ${e.text}`).join("\n");
@@ -165,7 +197,12 @@ export async function generateDecisionCandidates(
       "findings, not a decision and not a restatement of any single finding: name the pattern across themes, " +
       "note where the evidence is thin or mixed if it is, and connect it to the business problem or " +
       "research objective when one was given. Hedge appropriately; do not overstate what a small or " +
-      "single-source set of findings can support.\n\n";
+      "single-source set of findings can support.\n\n" +
+      "Each finding ends with its verification status in brackets. A finding marked NOT SUPPORTED is a " +
+      "claim the data did not bear out: it is not evidence and must not be weighed against computed or " +
+      "verified findings as if the two were competing measurements.\n\n" +
+      NO_INVENTED_EXPLANATIONS_RULE +
+      "\n\n";
 
   // Pass 1: synthesize what the evidence shows, grounded in whatever
   // problem/objective context exists.
@@ -353,6 +390,9 @@ export async function generateDecisionCandidates(
     // of deleted with nothing to replace them.
     try {
       await client.query("begin");
+      // Codex OBJ500-F01: the run row first, as every candidate change does (runSync.ts), so a
+      // regeneration and a researcher's accept, reject or delete are serialized.
+      await lockRunForContextChange(client, runId, tenantId);
 
       // Re-running the framer replaces its previous AI-suggested
       // candidates rather than piling up duplicates. This has to catch
@@ -372,12 +412,28 @@ export async function generateDecisionCandidates(
         [runId]
       );
 
-      for (const candidate of validCandidates) {
+      // Suggestions land accepted, so one whose wording the researcher rejected (or already
+      // kept, edited or wrote) must not be inserted again: it would re-enter
+      // runs.decision_statement and undo that rejection, or duplicate a kept decision.
+      const newSuggestions = await suggestionsNotAlreadyOnRun(client, "decision_candidates", runId, validCandidates);
+      // Inside the transaction, so this rolls back the delete above: undecided suggestions stay
+      // rather than being replaced by nothing, as for an unusable model answer.
+      if (newSuggestions.length === 0) {
+        throw new Error(
+          "No new decision suggestions came back this time (every suggestion repeats wording already on this run). Nothing was changed, try again."
+        );
+      }
+      const sourceColumn = await candidateSourceColumnAvailable(client, "decision_candidates");
+      for (const candidate of newSuggestions) {
         const result = await client.query<{ id: string; candidate_text: string }>(
-          `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-           values ($1, $2, $3, $4, 'ai_suggested', 'accepted')
-           returning id, candidate_text`,
-          [tenantId, runId, candidate.candidate_text, candidate.rationale]
+          sourceColumn
+            ? `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status, source_document_ids)
+               values ($1, $2, $3, $4, 'ai_suggested', 'accepted', $5)
+               returning id, candidate_text`
+            : `insert into decision_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
+               values ($1, $2, $3, $4, 'ai_suggested', 'accepted')
+               returning id, candidate_text`,
+          [tenantId, runId, candidate.candidate_text, candidate.rationale, ...(sourceColumn ? [sourceDocuments] : [])]
         );
         rows.push(result.rows[0]);
       }

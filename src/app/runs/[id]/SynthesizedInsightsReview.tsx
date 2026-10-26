@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { createContext, useContext, useState, useTransition } from "react";
+import { Pane, ThreePane } from "./ThreePane";
 import {
   acceptSynthesizedInsight,
   rejectSynthesizedInsight,
@@ -8,6 +9,11 @@ import {
   checkStability,
 } from "@/lib/synthesizedInsightActions";
 import { TrashIcon } from "@/components/icons";
+import type { InsightSupport } from "@/lib/supportStatusShared";
+import { SupportStatusNotice } from "./SupportStatusNotice";
+import { FigureCheckFor } from "./FigureCheckNotice";
+import InfoDot from "@/components/InfoDot";
+import { insightMatches, type CorroborationState, type InsightFilter, type QualityState } from "@/lib/evidenceOverview";
 
 // Matches MIN_CLUSTER_SIZE in src/lib/insightSynthesizer.ts (not imported
 // directly -- that file pulls in server-only dependencies this client
@@ -38,6 +44,9 @@ export type SynthesizedInsightRow = {
   implication: string;
   action_plan_status: ActionPlanStatus;
   triangulation_count: number;
+  /** INS-001: distinct independent evidence sources (null = not checked, e.g. before migration
+   * 0097). The confidence tier is computed from this, not from triangulation_count. */
+  independent_source_count: number | null;
   source_theme_count: number;
   materiality_rationale: string | null;
   confidence_tier: ConfidenceTier | null;
@@ -61,6 +70,8 @@ export type SynthesizedInsightRow = {
   stability_reappeared_count: number | null;
   stability_checked_at: string | null;
   source_headlines: string[];
+  /** The findings behind source_headlines, by id (identity for review tools and browser checks). */
+  source_finding_ids?: string[];
   // Every synthesized insight is net-new by synthesis: the report never said
   // it. This says how much of it stands on claims the report itself made, so
   // the "new" label never hides what it is built on (see
@@ -69,7 +80,12 @@ export type SynthesizedInsightRow = {
   // Report claims this insight directly contradicts. Each is rated not
   // supported for that reason.
   contradicts: { original_text: string; rationale: string }[];
+  /** FND-001: whether the evidence this insight was drafted from is still what it was (see
+   * supportStatusShared.ts). Separate from review_status: accepting an insight does not make its
+   * sources current, and a changed source never edits or rejects the insight by itself. */
+  support: InsightSupport;
 };
+
 
 const confidenceTierLabel: Record<ConfidenceTier, string> = {
   strong: "Strong",
@@ -83,21 +99,22 @@ const confidenceTierClass: Record<ConfidenceTier, string> = {
   exploratory: "bg-slate-100 text-slate-600",
 };
 
-// Mirrors the strong/moderate/exploratory thresholds computed server-side in
-// insightSynthesizer.ts (sourceThemeCount >= 2 && triangulationCount >= 3 =
-// strong; either alone = moderate; neither = exploratory). Display copy
-// only, same reasoning as THIN_EVIDENCE_FLOOR and
-// STABILITY_RESAMPLE_COUNT_LABEL above: kept here rather than imported so
-// this client component doesn't pull in server-only code.
+// Describes the thresholds defined once in SQL, insight_confidence_tier() (migration 0097, INS-001;
+// sources are keyed per document since 0099, so tables from one data file are one source):
+// strong = 3+ independent sources across 2+ themes; moderate = 3+ independent sources, or 2+
+// independent sources across 2+ themes; otherwise exploratory. Display copy only, kept here
+// rather than imported so this client component doesn't pull in server-only code.
 const confidenceTierDefinition: Record<ConfidenceTier, string> = {
   strong:
-    "Strong confidence: at least 3 corroborating pre-insights spanning at least 2 distinct themes. " +
-    "Computed directly from the evidence count, not a judgment call the model makes.",
+    "Strong confidence: at least 3 independent evidence sources spanning at least 2 distinct themes. " +
+    "Several findings from the same data file (any number of its tables) or the same report count as " +
+    "one source. Computed from the " +
+    "evidence, not a judgment call the model makes.",
   moderate:
-    "Moderate confidence: either 3+ corroborating pre-insights or 2+ distinct themes, but not both.",
+    "Moderate confidence: 3+ independent evidence sources, or 2+ independent sources spanning 2+ themes.",
   exploratory:
-    "Exploratory confidence: fewer than 3 corroborating pre-insights and from a single theme. Worth " +
-    "watching, but not yet well-triangulated against independent evidence.",
+    "Exploratory confidence: fewer independent sources than that, for example several findings that all " +
+    "come from one data file or one report. Worth watching, but not yet triangulated against independent evidence.",
 };
 
 const qualityTierLabel: Record<QualityTier, string> = {
@@ -129,23 +146,10 @@ const qualityTierDefinition: Record<QualityTier, string> = {
     "insight -- no named mechanism, no clear action, or an unsupported leap from the evidence.",
 };
 
-/**
- * Small, discoverable hover target for a definition that doesn't fit in a
- * label. Plain title attribute underneath (same pattern already used on the
- * stability badges below), the visible "i" dot just signals there's
- * something to hover, since a bare label or count gives no such hint.
- */
-function InfoDot({ text }: { text: string }) {
-  return (
-    <span
-      title={text}
-      aria-label={text}
-      className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 cursor-help items-center justify-center rounded-full bg-slate-200 align-text-top text-[9px] font-bold leading-none text-slate-500"
-    >
-      i
-    </span>
-  );
-}
+const InsightSelection = createContext<{
+  selectedId: string | null;
+  select: (id: string) => void;
+}>({ selectedId: null, select: () => {} });
 
 /**
  * Shows the output of the findings->insights funnel (insightSynthesizer.ts):
@@ -183,23 +187,75 @@ function InfoDot({ text }: { text: string }) {
  * it's still visible in the Insights (pre-insights) section above, nothing
  * is hidden or deleted.
  */
+/**
+ * Where the Insights overview sent the researcher (InsightsWorkspace): the same filter the overview
+ * counted that figure with (lib/evidenceOverview.insightMatches), applied once, then editable here.
+ */
+export type InsightsReviewStart = InsightFilter & { selectedId?: string };
+
+const QUALITY_STATE_LABEL: Record<QualityState, string> = {
+  qualified: "Qualified",
+  partial: "Partial",
+  finding: "Finding only",
+  unscored: "Not scored",
+};
+const CORROBORATION_LABEL: Record<CorroborationState, string> = {
+  strong: "Strong, sources checked",
+  moderate: "Moderate, sources checked",
+  exploratory: "Exploratory, sources checked",
+  unrated: "Sources checked, no tier",
+  unchecked: "Sources not checked for independence",
+};
+type SupportFilter = "current" | "stale" | "invalid" | "unknown";
+const SUPPORT_FILTERS: [SupportFilter, string][] = [
+  ["current", "Current"],
+  ["stale", "Changed"],
+  ["invalid", "No longer valid"],
+  ["unknown", "Not checked"],
+];
+
 export default function SynthesizedInsightsReview({
   runId,
   insights,
+  request,
 }: {
   runId: string;
   insights: SynthesizedInsightRow[];
+  /**
+   * Where the overview sent the researcher. Each new request (a higher `n`) replaces the filters and
+   * the selection; between requests they are the researcher's own. Applied without remounting.
+   */
+  request?: { start: InsightsReviewStart; n: number };
 }) {
   const [confidenceFilter, setConfidenceFilter] = useState<
     "all" | ConfidenceTier
   >("all");
-  const [qualityFilter, setQualityFilter] = useState<"all" | QualityTier>(
+  // "unscored" is reached from the overview's Not scored figure; the buttons below set the tiers.
+  const [qualityFilter, setQualityFilter] = useState<"all" | QualityState>(
     "all",
   );
+  // Independent corroboration (OV-02) is set only from the overview and shown as a removable chip;
+  // the Triangulation buttons below stay a filter on the stored tier alone.
+  const [corroborationFilter, setCorroborationFilter] = useState<CorroborationState | null>(null);
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all");
+  // Support is its own filter (Grant, 2026-10-21, from the overview's evidence-health tile): which
+  // insights rest on support that changed or is no longer valid, separate from review and quality.
+  const [supportFilter, setSupportFilter] = useState<"all" | SupportFilter>("all");
   const [isCheckingStability, startStabilityCheck] = useTransition();
   const [stabilityError, setStabilityError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"insights" | "scores">("insights");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [appliedRequest, setAppliedRequest] = useState<number | null>(null);
+  if (request && request.n !== appliedRequest) {
+    setAppliedRequest(request.n);
+    const st = request.start;
+    setConfidenceFilter(st.confidence ?? "all");
+    setQualityFilter(st.quality ?? "all");
+    setReviewFilter(st.review ?? "all");
+    setSupportFilter(st.support ?? "all");
+    setCorroborationFilter(st.corroboration ?? null);
+    setSelectedId(st.selectedId ?? null);
+  }
 
   if (insights.length === 0) {
     return (
@@ -237,18 +293,15 @@ export default function SynthesizedInsightsReview({
   ).length;
   const rejectedCount = insights.length - acceptedCount;
 
-  const filtered = insights.filter((insight) => {
-    if (
-      confidenceFilter !== "all" &&
-      insight.confidence_tier !== confidenceFilter
-    )
-      return false;
-    if (qualityFilter !== "all" && insight.quality_tier !== qualityFilter)
-      return false;
-    if (reviewFilter !== "all" && insight.review_status !== reviewFilter)
-      return false;
-    return true;
-  });
+  // The same matcher the overview counts with, so a figure opened from there lists what it counted.
+  const activeFilter: InsightFilter = {
+    review: reviewFilter === "all" ? undefined : reviewFilter,
+    support: supportFilter === "all" ? undefined : supportFilter,
+    quality: qualityFilter === "all" ? undefined : qualityFilter,
+    confidence: confidenceFilter === "all" ? undefined : confidenceFilter,
+    corroboration: corroborationFilter ?? undefined,
+  };
+  const filtered = insights.filter((insight) => insightMatches(insight, activeFilter));
 
   function handleCheckStability() {
     setStabilityError(null);
@@ -262,9 +315,11 @@ export default function SynthesizedInsightsReview({
 
   const scoredCount = insights.filter((i) => i.quality_score !== null).length;
 
-  return (
-    <div className="space-y-4">
-      <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
+  const selected = insights.find((i) => i.id === selectedId) ?? null;
+
+  const tabsBar = (
+      // Wraps on a narrow column rather than widening the page (same treatment as UI-GT500-01).
+      <div className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-white p-0.5">
         {(
           [
             ["insights", "Insights", insights.length],
@@ -295,10 +350,27 @@ export default function SynthesizedInsightsReview({
         ))}
       </div>
 
-      {activeTab === "scores" && <QualityScoresTable insights={insights} />}
+  );
 
-      {activeTab === "insights" && (
-        <>
+  if (activeTab === "scores") {
+    return (
+      <div className="space-y-4">
+        {tabsBar}
+        <QualityScoresTable insights={insights} />
+      </div>
+    );
+  }
+
+  return (
+    <InsightSelection.Provider
+      value={{ selectedId, select: setSelectedId }}
+    >
+      <ThreePane
+        leftOnTop
+        // Its own key, so folding or resizing here leaves the other sections as they are (DESIGN-GTR-01).
+        storageKey="insights-review"
+        left={
+          <Pane side="left" title="Filters">
           {acceptedCount > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-slate-50 px-4 py-3">
               <p className="max-w-2xl text-xs text-muted">
@@ -354,7 +426,7 @@ export default function SynthesizedInsightsReview({
                 }
               />
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 title={confidenceTierDefinition.strong}
@@ -429,7 +501,7 @@ export default function SynthesizedInsightsReview({
                 }
               />
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 title={qualityTierDefinition.qualified}
@@ -486,6 +558,35 @@ export default function SynthesizedInsightsReview({
             </div>
           </div>
 
+          <div className="flex flex-col gap-1.5" role="group" aria-label="Support">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Support</div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSupportFilter("all")}
+                aria-pressed={supportFilter === "all"}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${supportFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                All
+              </button>
+              {SUPPORT_FILTERS.map(([value, label]) => {
+                const n = insights.filter((i) => i.support.status === value).length;
+                if (n === 0 && supportFilter !== value) return null;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSupportFilter((f) => (f === value ? "all" : value))}
+                    aria-pressed={supportFilter === value}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${supportFilter === value ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    {`${label} (${n})`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {rejectedCount > 0 && (
             <div className="flex flex-wrap gap-1.5">
               <button
@@ -532,6 +633,43 @@ export default function SynthesizedInsightsReview({
             </div>
           )}
 
+          </Pane>
+        }
+        middle={
+          <Pane
+            side="middle"
+            title="Insights"
+            badge={
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                {filtered.length} of {insights.length}
+              </span>
+            }
+          >
+            {tabsBar}
+          {(corroborationFilter || qualityFilter === "unscored") && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5" data-testid="insights-overview-filters">
+              {corroborationFilter && (
+                <button
+                  type="button"
+                  onClick={() => setCorroborationFilter(null)}
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                  aria-label={`Remove filter: ${CORROBORATION_LABEL[corroborationFilter]}`}
+                >
+                  {`${CORROBORATION_LABEL[corroborationFilter]} ×`}
+                </button>
+              )}
+              {qualityFilter === "unscored" && (
+                <button
+                  type="button"
+                  onClick={() => setQualityFilter("all")}
+                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                  aria-label={`Remove filter: ${QUALITY_STATE_LABEL.unscored}`}
+                >
+                  {`${QUALITY_STATE_LABEL.unscored} ×`}
+                </button>
+              )}
+            </div>
+          )}
           {filtered.length === 0 ? (
             <p className="text-sm text-muted">
               No synthesized insights match this filter.
@@ -547,9 +685,22 @@ export default function SynthesizedInsightsReview({
               ))}
             </div>
           )}
-        </>
-      )}
-    </div>
+          </Pane>
+        }
+        right={
+          <Pane side="right" title="Story and evidence">
+            {selected ? (
+              <InsightStory insight={selected} />
+            ) : (
+              <p className="text-sm text-muted">
+                Select an insight to read its observation, tension and
+                implication, and the chain of evidence behind it.
+              </p>
+            )}
+          </Pane>
+        }
+      />
+    </InsightSelection.Provider>
   );
 }
 
@@ -695,6 +846,9 @@ function SynthesizedInsightCard({
   insight: SynthesizedInsightRow;
 }) {
   const [isPending, startTransition] = useTransition();
+  // The story and evidence show in the right-hand pane for the selected insight.
+  const { selectedId, select } = useContext(InsightSelection);
+  const isSelected = selectedId === insight.id;
   const isRejected = insight.review_status === "rejected";
 
   function handleDelete() {
@@ -709,7 +863,13 @@ function SynthesizedInsightCard({
 
   return (
     <div
-      className={`card-surface flex flex-col gap-4 rounded-xl border border-border bg-white p-5 ${isRejected ? "opacity-50" : ""}`}
+      data-testid="synthesized-insight-card"
+      data-insight-id={insight.id}
+      data-review-status={insight.review_status}
+      data-support-status={insight.support.status}
+      data-source-finding-ids={(insight.source_finding_ids ?? []).join(" ")}
+      onClick={() => select(insight.id)}
+      className={`card-surface flex cursor-pointer flex-col gap-3 rounded-xl border bg-white p-4 ${isSelected ? "border-primary/50 ring-2 ring-primary/40" : "border-border"} ${isRejected ? "opacity-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -723,6 +883,13 @@ function SynthesizedInsightCard({
                 aria-hidden
               />
               {confidenceTierLabel[insight.confidence_tier]} confidence
+            </span>
+          ) : insight.independent_source_count === null ? (
+            <span
+              title="Confidence is only assigned once the insight's sources have been checked for independence (several findings from one data file or one report count as one source). Re-run synthesis to assess it."
+              className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600"
+            >
+              Confidence not assessed
             </span>
           ) : null}
           {insight.quality_tier ? (
@@ -744,19 +911,24 @@ function SynthesizedInsightCard({
           )}
           <span
             title={
-              `Built from ${insight.triangulation_count} corroborating pre-insight${insight.triangulation_count === 1 ? "" : "s"}` +
+              (insight.independent_source_count === null
+                ? "Its sources have not been checked for independence. "
+                : `Rests on ${insight.independent_source_count} independent evidence source${insight.independent_source_count === 1 ? "" : "s"} ` +
+                  "(findings from the same table, or claims from the same report, count as one). ") +
+              `Built from ${insight.triangulation_count} linked pre-insight${insight.triangulation_count === 1 ? "" : "s"}` +
               `${insight.source_theme_count > 1 ? ` across ${insight.source_theme_count} distinct themes` : " from a single theme"}. ` +
-              "This count is what the Strong/Moderate/Exploratory confidence tier above is computed from."
+              "The confidence tier is computed from the independent sources and themes, not from the number of pre-insights."
             }
             className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
           >
-            {insight.triangulation_count} corroborating pre-insight
-            {insight.triangulation_count === 1 ? "" : "s"}
+            {insight.independent_source_count === null
+              ? "Sources not checked for independence"
+              : `${insight.independent_source_count} independent source${insight.independent_source_count === 1 ? "" : "s"}`}
             {insight.source_theme_count > 1
               ? ` across ${insight.source_theme_count} themes`
               : ""}
           </span>
-          {insight.triangulation_count <= THIN_EVIDENCE_FLOOR && (
+          {(insight.independent_source_count ?? insight.triangulation_count) <= THIN_EVIDENCE_FLOOR && (
             <span
               title="This insight rests on the bare minimum of corroborating evidence; losing one supporting finding could undo it. A full reproducibility check (resampling the evidence and re-running synthesis) would confirm whether it holds up, but isn't run automatically."
               className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700"
@@ -815,8 +987,10 @@ function SynthesizedInsightCard({
           <TrashIcon className="h-3 w-3" />
         </button>
       </div>
+      <SupportStatusNotice support={insight.support} />
+      <FigureCheckFor kind="synthesizedInsights" id={insight.id} />
 
-      <div className="text-lg font-semibold leading-snug text-foreground">
+      <div className="text-base font-semibold leading-snug text-foreground">
         {insight.headline}
       </div>
       <p className="-mt-1 text-xs text-muted">{insight.provenance_caption}</p>
@@ -835,12 +1009,55 @@ function SynthesizedInsightCard({
         </div>
       )}
 
-      <div className="h-px bg-border" />
 
+      <div className="-mt-1 flex flex-wrap items-center justify-between gap-1.5">
+        <button
+          type="button"
+          onClick={() => select(insight.id)}
+          aria-pressed={isSelected}
+          className="rounded-lg px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/5"
+        >
+          {isSelected ? "Showing on the right" : "Show the story and evidence"}
+        </button>
+        <div className="flex flex-wrap gap-1.5">
+        {isRejected ? (
+          <button
+            disabled={isPending}
+            onClick={() =>
+              startTransition(() => acceptSynthesizedInsight(runId, insight.id))
+            }
+            className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
+          >
+            Accept
+          </button>
+        ) : (
+          <button
+            disabled={isPending}
+            onClick={() =>
+              startTransition(() => rejectSynthesizedInsight(runId, insight.id))
+            }
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
+          >
+            Reject
+          </button>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The right-hand pane for one insight: the observation, tension and implication, then why to trust it. */
+function InsightStory({ insight }: { insight: SynthesizedInsightRow }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="text-base font-semibold leading-snug text-foreground">
+        {insight.headline}
+      </div>
       {/* Laid out like a slide: the story on the left, why to trust it on
           the right. Stacks on narrow screens. */}
-      <div className="grid overflow-hidden rounded-2xl border border-border bg-white lg:grid-cols-[1.4fr_1fr]">
-        <div className="flex flex-col gap-5 p-5 lg:p-6">
+      <div className="grid overflow-hidden rounded-2xl border border-border bg-white ">
+        <div className="flex flex-col gap-5 p-4">
           {[
             {
               letter: "O",
@@ -890,7 +1107,7 @@ function SynthesizedInsightCard({
           ))}
         </div>
 
-        <div className="flex flex-col gap-5 border-t border-border bg-slate-50 p-5 lg:border-l lg:border-t-0 lg:p-6">
+        <div className="flex flex-col gap-5 border-t border-border bg-slate-50 p-5 ">
           {insight.quality_rationale && (
             <div>
               <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-teal-700">
@@ -945,30 +1162,6 @@ function SynthesizedInsightCard({
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="-mt-1 flex flex-wrap justify-end gap-1.5">
-        {isRejected ? (
-          <button
-            disabled={isPending}
-            onClick={() =>
-              startTransition(() => acceptSynthesizedInsight(runId, insight.id))
-            }
-            className="rounded-lg border border-success px-2.5 py-1 text-xs font-medium text-success transition hover:bg-success-light"
-          >
-            Accept
-          </button>
-        ) : (
-          <button
-            disabled={isPending}
-            onClick={() =>
-              startTransition(() => rejectSynthesizedInsight(runId, insight.id))
-            }
-            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted transition hover:border-danger hover:text-danger"
-          >
-            Reject
-          </button>
-        )}
       </div>
     </div>
   );

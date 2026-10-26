@@ -1,0 +1,190 @@
+import { PYTHON } from "./helpers/pythonEngine";
+import { randomUUID } from "node:crypto";
+// IMP-009: columns-as-cases workbooks (variables in rows, one column per case).
+// (a) The actual loadImportPreviewIdentities verifies a stored preview of such a file against the
+//     ACTUAL engine read under the saved layout (the one reader flips it; batch 26), instead of
+//     withholding every valid one. Mocked boundaries: the document read (db), storage (an in-memory
+//     CSV) and the saved layout setting (loadDataSetupWithStatus).
+// (b) End to end through the ACTUAL Python engine: the same data laid out both ways gives identical
+//     variables, case counts and category counts. Skipped, with the reason printed, without python3 +
+//     pandas/openpyxl/pyreadstat.
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+const PYTHON_READY = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], { encoding: "utf8" }).status === 0;
+const state = vi.hoisted(() => ({
+  layout: "columns_are_cases" as string,
+  setupOk: true,
+  ingestion: "raw" as string | null,
+  path: "",
+}));
+vi.mock("../db", () => ({
+  withTenantRead: async (_t: string, cb: (c: { query: () => Promise<{ rows: unknown[] }> }) => unknown) =>
+    cb({
+      query: async () => ({
+        rows: [{ id: "doc-1", source_filename: "wide.csv", storage_path: state.path, selected_sheet: null, kind: "table", ingestion_type: state.ingestion }],
+      }),
+    }),
+}));
+// Variables in rows, one column per case (3 cases).
+const WIDE_CSV = "Variable,Case 1,Case 2,Case 3\nGender,Male,Female,Female\nScore,4,5,3\n";
+vi.mock("../supabaseAdmin", () => ({
+  supabaseAdmin: { storage: { from: () => ({ download: async () => ({ data: { arrayBuffer: async () => new TextEncoder().encode(WIDE_CSV).buffer }, error: null }) }) } },
+}));
+vi.mock("../dataSetup", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../dataSetup")>();
+  return {
+    ...actual,
+    loadDataSetupWithStatus: vi.fn(async () =>
+      state.setupOk
+        ? { ok: true, setup: { ...((await import("../dataSetupShared")).DEFAULT_DATA_SETUP), layout: state.layout } }
+        : { ok: false, error: "permission denied", setup: (await import("../dataSetupShared")).DEFAULT_DATA_SETUP },
+    ),
+  };
+});
+
+/** What the engine's one reader stores for the file under a layout (the actual read). */
+async function engineRead(layout: "rows_are_cases" | "columns_are_cases") {
+  const { parseTableDocument } = await import("../parseTable");
+  const t = await parseTableDocument(state.path, "wide.csv", { layout });
+  return { headers: t.headers, rows: t.rows };
+}
+
+beforeEach(() => {
+  state.layout = "columns_are_cases";
+  state.setupOk = true;
+  state.ingestion = "raw";
+  // A path of its own per test: the local engine runner keeps a download by path for a few minutes.
+  state.path = `${randomUUID()}/${randomUUID()}/wide`;
+});
+
+describe.skipIf(!PYTHON_READY)("IMP-009 (a): cached-preview identity for columns-as-cases", () => {
+  const check = async (stored: { headers: string[]; rows: Record<string, string | number | boolean | null>[] }) => {
+    const { loadImportPreviewIdentities } = await import("../importPreviewIdentity");
+    const r = await loadImportPreviewIdentities("t", "run", [
+      { document_id: "doc-1", table_index: 0, headers: stored.headers, rows: stored.rows, row_count: stored.rows.length },
+    ]);
+    return r.get("doc-1")!;
+  };
+
+  it("the engine's flipped read is what import stores, and is verified", async () => {
+    const stored = await engineRead("columns_are_cases");
+    expect(stored.headers).toEqual(["Gender", "Score"]);
+    expect(stored.rows).toEqual([{ Gender: "Male", Score: 4 }, { Gender: "Female", Score: 5 }, { Gender: "Female", Score: 3 }]);
+    expect((await check(stored)).error).toBeNull();
+  });
+
+  it("an unflipped stored table under columns-as-cases is not verified (it differs from what import stores)", async () => {
+    expect((await check(await engineRead("rows_are_cases"))).error).toMatch(/cannot be verified/);
+  });
+
+  it("rows-as-cases is compared with the unflipped read", async () => {
+    state.layout = "rows_are_cases";
+    expect((await check(await engineRead("rows_are_cases"))).error).toBeNull();
+    expect((await check(await engineRead("columns_are_cases"))).error).toMatch(/cannot be verified/);
+  });
+
+  it("an unreadable layout setting fails closed with the reason", async () => {
+    state.setupOk = false;
+    expect((await check(await engineRead("columns_are_cases"))).error).toMatch(/layout setting could not be read \(permission denied\)/);
+  });
+});
+
+const ENGINE = path.join(process.cwd(), "api", "parse-stats-file.py");
+const probe = spawnSync(PYTHON, ["-c", "import pandas, openpyxl, pyreadstat"], { encoding: "utf8" });
+const PYTHON_OK = probe.status === 0;
+
+describe.skipIf(!PYTHON_OK)("IMP-009 (b): the actual engine reads both orientations identically", () => {
+  it("refuses flipped separate-Codebook weight/MR declarations before dictionary, categories or driver results; corrected re-export recovers", () => {
+    const source = String.raw`
+import importlib.util, io, json, sys
+from openpyxl import Workbook
+spec=importlib.util.spec_from_file_location("engine",sys.argv[1]); eng=importlib.util.module_from_spec(spec); spec.loader.exec_module(eng)
+def book(metadata, flipped=True):
+    wb=Workbook(); ws=wb.active; ws.title="Data"
+    rows=([["Variable","Case1","Case2"],["q",1,2],["wgt",1,2]] if flipped else [["q","wgt"],[1,1],[2,2]])
+    for row in rows: ws.append(row)
+    if metadata is not None:
+        cb=wb.create_sheet("Codebook")
+        for row in metadata: cb.append(row)
+    b=io.BytesIO(); wb.save(b); return b.getvalue()
+declarations=[
+ [["Variable","Multiple response set"],["q","Preferences"]],
+ [["Variable","Multiple-response set"],["q",0]],
+ [["Variable","Weight"],["q","wgt"]],
+ [["Variable","Role"],["wgt","case weight"]],
+ [["Variable","Variable label"],["wgt","Analysis weight"]],
+]
+errors=[]
+for metadata in declarations:
+    b=book(metadata)
+    calls=[lambda:eng.dictionary(b,"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data"}),
+           lambda:eng.categories(b,"guard.xlsx","q",layout="columns_are_cases",selected_sheet="Data"),
+           lambda:eng.driver_columns(b,"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data","outcome":"q","predictors":["wgt"]}),
+           lambda:eng.crosstab(b,"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data","columnVars":["wgt"],"rowItems":[{"key":"q","label":"Question","vars":["q"]}]})]
+    for call in calls:
+        try: call(); raise AssertionError("silently produced unsupported analytical output")
+        except ValueError as e: errors.append(str(e))
+# Empty declarations and label-only sheets do not claim weight/MR meaning.
+controls=[None, [["Variable","Multiple response set","Weight"],["q",None,None]], [["Variable","Variable label"],["q","Question"]]]
+counts=[eng.dictionary(book(m),"guard.xlsx",{"layout":"columns_are_cases","selectedSheet":"Data"})["nCases"] for m in controls]
+# Recovery uses the same filename: a refusal must not poison the parsed-data cache.
+recovered=eng.dictionary(book(declarations[0],False),"guard.xlsx",{"layout":"rows_are_cases","selectedSheet":"Data"})
+print(json.dumps({"errors":errors,"counts":counts,"recovered":recovered["nCases"]}))
+`;
+    const dir = mkdtempSync(path.join(tmpdir(), "imp009-guard-"));
+    const file = path.join(dir, "guard.py"); writeFileSync(file, source);
+    const result = spawnSync(PYTHON, ["-I", file, ENGINE], { encoding: "utf8", timeout: 120_000 });
+    if (result.status !== 0) throw new Error(result.stderr);
+    const output = JSON.parse(result.stdout.trim().split("\n").pop()!);
+    expect(output.errors).toHaveLength(20);
+    for (const message of output.errors) expect(message).toMatch(/Unsupported flipped workbook.*No analytical result.*Re-export as one row per respondent/);
+    expect(output.counts).toEqual([2, 2, 2]);
+    expect(output.recovered).toBe(2);
+  });
+
+  it("variables, case counts and category counts match", () => {
+    const driver = String.raw`
+import importlib.util, io, json, sys
+from openpyxl import Workbook
+spec = importlib.util.spec_from_file_location("engine", sys.argv[1]); eng = importlib.util.module_from_spec(spec); spec.loader.exec_module(eng)
+def book(rows):
+    wb = Workbook(); ws = wb.active; ws.title = "Data"
+    for r in rows: ws.append(r)
+    b = io.BytesIO(); wb.save(b); return b.getvalue()
+cases = [("Male", 4, 1), ("Female", 5, 2), ("Female", 3, 1), ("Male", 5, 2), ("Female", 4, 1)]
+long = book([["Gender", "Score", "Region"]] + [list(c) for c in cases])
+wide = book([["Variable"] + ["Case %d" % (i + 1) for i in range(len(cases))]] +
+            [["Gender"] + [c[0] for c in cases], ["Score"] + [c[1] for c in cases], ["Region"] + [c[2] for c in cases]])
+out = {}
+for name, b, layout in (("long", long, "rows_are_cases"), ("wide", wide, "columns_are_cases")):
+    d = eng.dictionary(b, "f.xlsx", {"layout": layout, "selectedSheet": "Data"})
+    out[name] = {
+        "vars": sorted((v["name"], v["nValid"], v["nDistinct"]) for v in d["variables"]),
+        "cases": d.get("nCases"),
+        "gender": sorted((c["label"], c["n"]) for c in eng.categories(b, "f.xlsx", "Gender", layout=layout, selected_sheet="Data")["categories"]),
+        "region": sorted((str(c["label"]), c["n"]) for c in eng.categories(b, "f.xlsx", "Region", layout=layout, selected_sheet="Data")["categories"]),
+        "driverInputs": eng.driver_columns(b, "f.xlsx", {"layout":layout,"selectedSheet":"Data","outcome":"Score","predictors":["Region"]}),
+    }
+print(json.dumps(out))
+`;
+    const dir = mkdtempSync(path.join(tmpdir(), "imp009-"));
+    const file = path.join(dir, "driver.py");
+    writeFileSync(file, driver);
+    const r = spawnSync(PYTHON, ["-I", file, ENGINE], { encoding: "utf8", timeout: 120_000 });
+    if (r.status !== 0) throw new Error(r.stderr);
+    const out = JSON.parse(r.stdout.trim().split("\n").pop()!);
+    expect(out.wide).toEqual(out.long);
+    expect(out.long.cases).toBe(5);
+    expect(out.long.gender).toEqual([["Female", 3], ["Male", 2]]);
+    expect(out.long.driverInputs.y).toEqual([4,5,3,5,4]);
+    expect(out.long.driverInputs.x).toEqual([[1],[2],[1],[2],[1]]);
+  });
+});
+
+describe.skipIf(PYTHON_OK)("IMP-009 (b): the actual engine reads both orientations identically", () => {
+  it.skip("python3 with pandas/openpyxl/pyreadstat unavailable: engine orientation check NOT RUN", () => {});
+});

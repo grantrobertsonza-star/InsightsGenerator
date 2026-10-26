@@ -1,9 +1,18 @@
 import { computeDataQuality, type DataQuality } from "./qualQuality";
+import { clearCodingLabel, relabelCodingWork } from "./codingProgress";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
+import { cachedSystem, cachedUserThen } from "./promptCache";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant, withTenantRead } from "./db";
-import { recordManifest } from "./extractThemes";
+import {
+  applyCodebook,
+  APPLY_PROMPT_HASH,
+  recordManifest,
+  recordTrace,
+  type CodeRow,
+  type StoredSegment,
+} from "./extractThemes";
 import { loadMeaningChecks, type MeaningCheck } from "./meaningCheck";
 import {
   buildApplyBatches,
@@ -36,6 +45,24 @@ import {
   sessionOfSpeaker,
 } from "./qualAnalysis";
 import type { CellValue } from "./dataQuality";
+import { changeTurnCode, codeKey } from "./codingOverrides";
+import {
+  attentionCheck,
+  auditSampleSize,
+  compareRuns,
+  codeKappas,
+  MIN_TURNS_TO_JUDGE,
+  estimateAudit,
+  extendedAgreement,
+  looserAgreement,
+  selectAuditSample,
+  summariseStability,
+  type AttentionCheck,
+  type AuditEstimate,
+  type ExtendedAgreement,
+  type StabilitySummary,
+  type TurnStability,
+} from "./qualAudit";
 import {
   countKeyword,
   loadCodeMetaForDocuments,
@@ -69,10 +96,63 @@ export type CalibrationTurn = {
   speaker: string | null;
   text: string;
   reviewed: boolean;
+  // Audit samples only: the stratum the turn was drawn from.
+  stratum?: string | null;
   // Only filled once the turn has been reviewed, so the researcher codes it
   // without seeing what the model decided.
   researcherCodeIds: string[];
   modelCodeIds: string[];
+};
+
+export type StabilityTurn = {
+  segmentId: string;
+  index: number;
+  speaker: string | null;
+  text: string;
+  runs: number;
+  agree: number;
+  confidence: "high" | "medium" | "low";
+  // The codes on the turn now, after any change you made by hand.
+  currentCodeIds: string[];
+  // Codes another run gave that the original did not.
+  altCodeIds: string[];
+  // Codes the original gave that another run left out.
+  droppedCodeIds: string[];
+  resolved: boolean;
+  // What the researcher coded before seeing the model's themes or the other
+  // runs'. null until saved; the model's side stays hidden until then.
+  blindCodeIds: string[] | null;
+};
+
+export type StabilityView = {
+  runs: number;
+  summary: StabilitySummary;
+  // Looser readings beside the strict whole-turn figure. themeShare: turns where every run gave the same
+  // broader themes (null when the codes are not grouped). overlap: average share of codes two runs have in
+  // common on a turn. Both null when the individual runs were not kept (checks made before migration 0074,
+  // with more than one re-run).
+  looser: { themeShare: number | null; overlap: number | null } | null;
+  perCode: {
+    codeId: string;
+    name: string;
+    usedTurns: number;
+    consistent: number;
+    // Average pairwise Cohen's kappa over the runs; null when it cannot be worked out (older checks that did not keep each run).
+    kappa: number | null;
+    // Came up in too few turns for its agreement figure to mean much.
+    tooFew: boolean;
+  }[];
+  // Average kappa over the themes that came up in enough turns; null when not available.
+  kappaAverage: number | null;
+  // Headline figure: the average, over themes that came up at all, of the share of their turns that
+  // every run agreed on. null when no theme came up.
+  codeAgreement: number | null;
+  // Settling by majority of runs: possible once the check kept each run (migration 0074) with 3 or more runs.
+  majority: { available: boolean; applied: boolean };
+  // Turns the runs did not agree on, least agreed first.
+  queue: StabilityTurn[];
+  // Pattern of the researcher's decisions, to catch rubber-stamping.
+  attention: AttentionCheck | null;
 };
 
 export type NegativeCaseView = {
@@ -120,6 +200,7 @@ export type CodeAnalysis = {
   groups: { with: number; total: number; names: string[] } | null;
   agreement: {
     counts: AgreementCounts;
+    extended: ExtendedAgreement;
     band: string;
     caveat: string | null;
   } | null;
@@ -197,10 +278,17 @@ export type CodingAnalysisView = {
   // has been given to any code.
   themes: ThemeRollup[];
   calibration: {
+    kind: "targeted" | "audit";
     drawn: number;
     reviewed: number;
     turns: CalibrationTurn[];
+    // Audit samples only: the estimate for the whole transcript.
+    estimate: AuditEstimate | null;
   } | null;
+  // Participant turns in the transcript and the size an audit would suggest.
+  participantTurns: number;
+  suggestedAuditSize: number;
+  stability: StabilityView | null;
   respondents: RespondentView[];
   surveyTables: SurveyTableOption[];
   caseTableId: string | null;
@@ -226,6 +314,9 @@ export type CodingAnalysisView = {
 };
 
 type TableRow = Record<string, string | number | null>;
+
+// Numeric column names per stored table, keyed by the table's row version.
+const numericCache = new Map<string, { version: string; numeric: string[] }>();
 
 function rowsToArrays(headers: string[], rows: TableRow[]): CellValue[][] {
   return rows.map((r) => headers.map((h) => r?.[h] ?? null));
@@ -346,6 +437,30 @@ export async function getCodingAnalysis(
   }[] = [];
   let readingMissing = false;
   const truncatedByDoc = new Map<string, boolean>();
+  // Migration 0064: audit samples and stability checks. Read separately so
+  // a missing 0064 leaves the rest of the view working.
+  const sampleExt = new Map<
+    string,
+    { kind: "targeted" | "audit"; stratum: string | null; stratumSize: number | null }
+  >();
+  // Migration 0065, read on its own for the same reason.
+  const reviewExt = new Map<
+    string,
+    { blind: string[] | null; changed: boolean | null; resolvedMs: number | null }
+  >();
+  let stabilityRows: {
+    codebook_id: string;
+    segment_id: string;
+    runs: number;
+    agree: number;
+    orig_codes: number[];
+    alt_codes: number[];
+    dropped_codes: number[];
+    resolved_at: string | null;
+  }[] = [];
+  // Migration 0074, read on its own for the same reason.
+  const majorityExt = new Map<string, { withRuns: number; applied: number }>();
+  const runCodesExt = new Map<string, number[][]>();
   const researcherPairs = new Set<string>();
   const researcherCodes = new Set<string>();
   let overrideRows: {
@@ -360,9 +475,14 @@ export async function getCodingAnalysis(
     (async () => {
     try {
       tables = await withTenantRead(tenantId, async (client) => {
+        // Rows are left out here: they can be huge. The few places that need
+        // them (numeric column names, a linked case table) get them below.
         const r = await client.query<TableRecord>(
-          `select id, document_id, table_index, label, headers, rows
-           from document_tables where run_id = $1 order by document_id, table_index`,
+          `select id, document_id, table_index, label, headers, '[]'::jsonb as rows,
+                  xmin::text as row_version
+           from document_tables
+           where run_id = $1 and coalesce(crosstab_status, 'committed') <> 'evidence'
+           order by document_id, table_index`,
           [runId],
         );
         return r.rows.filter(
@@ -497,6 +617,80 @@ export async function getCodingAnalysis(
       // migration 0050 not applied
     }
     })(),
+    (async () => {
+    try {
+      await withTenantRead(tenantId, async (client) => {
+        const bookIds = books.map((b) => b.id);
+        const ext = await client.query<{
+          codebook_id: string;
+          segment_id: string;
+          kind: "targeted" | "audit";
+          stratum: string | null;
+          stratum_size: number | null;
+        }>(
+          `select codebook_id, segment_id, kind, stratum, stratum_size
+           from coding_calibration_samples where codebook_id = any($1::uuid[])`,
+          [bookIds],
+        );
+        for (const r of ext.rows)
+          sampleExt.set(`${r.codebook_id}|${r.segment_id}`, {
+            kind: r.kind,
+            stratum: r.stratum,
+            stratumSize: r.stratum_size,
+          });
+        stabilityRows = (
+          await client.query(
+            `select codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes, resolved_at::text as resolved_at
+             from coding_turn_stability where codebook_id = any($1::uuid[])`,
+            [bookIds],
+          )
+        ).rows;
+        try {
+          const rv = await client.query<{
+            codebook_id: string;
+            segment_id: string;
+            blind_codes: string[] | null;
+            blind_at: string | null;
+            changed: boolean | null;
+            resolved_ms: string | null;
+          }>(
+            `select codebook_id, segment_id, blind_codes, blind_at::text as blind_at, changed,
+                    (extract(epoch from resolved_at) * 1000)::text as resolved_ms
+             from coding_turn_stability where codebook_id = any($1::uuid[])`,
+            [bookIds],
+          );
+          for (const r of rv.rows)
+            reviewExt.set(`${r.codebook_id}|${r.segment_id}`, {
+              blind: r.blind_at ? (r.blind_codes ?? []) : null,
+              changed: r.changed,
+              resolvedMs: r.resolved_ms ? Number(r.resolved_ms) : null,
+            });
+        } catch {
+          // migration 0065 not applied
+        }
+        try {
+          const mj = await client.query<{ codebook_id: string; with_runs: number; applied: number }>(
+            `select codebook_id,
+                    count(*) filter (where run_codes is not null)::int as with_runs,
+                    count(*) filter (where consensus_at is not null)::int as applied
+               from coding_turn_stability where codebook_id = any($1::uuid[]) group by codebook_id`,
+            [bookIds],
+          );
+          for (const r of mj.rows) majorityExt.set(r.codebook_id, { withRuns: r.with_runs, applied: r.applied });
+          const rc = await client.query<{ codebook_id: string; segment_id: string; run_codes: number[][] | null }>(
+            `select codebook_id, segment_id, run_codes from coding_turn_stability
+              where codebook_id = any($1::uuid[]) and run_codes is not null`,
+            [bookIds],
+          );
+          for (const r of rc.rows) if (r.run_codes) runCodesExt.set(`${r.codebook_id}|${r.segment_id}`, r.run_codes);
+        } catch {
+          // migration 0074 not applied
+        }
+      });
+    } catch {
+      // migration 0064 not applied
+    }
+    })(),
   ]);
 
   // Survey tables the respondents can be matched to.
@@ -507,16 +701,51 @@ export async function getCodingAnalysis(
     label: string | null;
     headers: string[];
     rows: TableRow[];
+    row_version?: string;
   };
+  // Which columns are numeric is worked out from the stored rows, which is
+  // slow for a large file. It only changes when the table is rewritten, so
+  // it is kept per table and the rows are fetched only when it is missing
+  // (and for a table the researcher linked as a case table).
+  const linkedTableIds = new Set(
+    settings.map((x) => x.case_table_id).filter((x): x is string => !!x),
+  );
+  const needRows = tables.filter(
+    (t) =>
+      linkedTableIds.has(t.id) ||
+      numericCache.get(t.id)?.version !== `${t.row_version}|${t.headers.length}`,
+  );
+  if (needRows.length > 0) {
+    try {
+      const fetched = await withTenantRead(tenantId, async (client) => {
+        const r = await client.query<{ id: string; rows: TableRow[] }>(
+          "select id, rows from document_tables where id = any($1::uuid[])",
+          [needRows.map((t) => t.id)],
+        );
+        return new Map(r.rows.map((x) => [x.id, x.rows] as const));
+      });
+      for (const t of needRows) {
+        const rows = fetched.get(t.id) ?? [];
+        const version = `${t.row_version}|${t.headers.length}`;
+        if (numericCache.get(t.id)?.version !== version) {
+          if (numericCache.size >= 200) numericCache.delete(numericCache.keys().next().value as string);
+          numericCache.set(t.id, {
+            version,
+            numeric: numericVariables(t.headers, rowsToArrays(t.headers, rows)).map((v) => v.name),
+          });
+        }
+        if (linkedTableIds.has(t.id)) t.rows = rows;
+      }
+    } catch {
+      // leave numeric lists empty rather than fail the whole view
+    }
+  }
   const tableById = new Map(tables.map((t) => [t.id, t]));
   const surveyTables: SurveyTableOption[] = tables.map((t) => ({
     id: t.id,
     label: `${docName.get(t.document_id) ?? "Table"}${t.label ? `, ${t.label}` : ` (table ${t.table_index + 1})`}`,
     headers: t.headers,
-    numeric: numericVariables(
-      t.headers,
-      rowsToArrays(t.headers, t.rows ?? []),
-    ).map((v) => v.name),
+    numeric: numericCache.get(t.id)?.numeric ?? [],
   }));
 
   // The researcher's own state (migration 0044).
@@ -642,14 +871,25 @@ export async function getCodingAnalysis(
     // migration 0055 not applied
   }
 
+  // Meaning checks and turn notes for every book at once, rather than two
+  // round trips per book one after another.
+  const perBook = new Map(
+    await Promise.all(
+      books.map(async (b) => {
+        const [mc, tn] = await Promise.all([
+          loadMeaningChecks(tenantId, b.document_id),
+          loadTurnNotes(tenantId, b.document_id).catch(
+            () => new Map<number, string>(), // migration 0055 not applied
+          ),
+        ]);
+        return [b.document_id, { mc, tn }] as const;
+      }),
+    ),
+  );
+
   for (const book of books) {
-    const meaningChecks = await loadMeaningChecks(tenantId, book.document_id);
-    let turnNotes = new Map<number, string>();
-    try {
-      turnNotes = await loadTurnNotes(tenantId, book.document_id);
-    } catch {
-      // migration 0055 not applied
-    }
+    const meaningChecks = perBook.get(book.document_id)?.mc ?? new Map();
+    const turnNotes = perBook.get(book.document_id)?.tn ?? new Map<number, string>();
     const docMeta = metaByDoc.get(book.document_id) ?? new Map<string, CodeMeta>();
     const metaOf = (name: string): CodeMeta | undefined =>
       docMeta.get(normName(name));
@@ -688,6 +928,7 @@ export async function getCodingAnalysis(
           speaker: seg.speaker,
           text: seg.text,
           reviewed,
+          stratum: sampleExt.get(`${book.id}|${s.segment_id}`)?.stratum ?? null,
           researcherCodeIds: reviewed
             ? bookCodes
                 .filter((c) => researcher?.get(c.id) === true)
@@ -707,6 +948,163 @@ export async function getCodingAnalysis(
       })
       .filter((t): t is CalibrationTurn => t !== null)
       .sort((a, b) => a.index - b.index);
+
+    // Audit samples (migration 0064): a random, stratified draw whose result
+    // can be read as an estimate for the whole transcript.
+    const bookSampleKinds = bookSamples
+      .map((smp) => sampleExt.get(`${book.id}|${smp.segment_id}`))
+      .filter((x): x is NonNullable<typeof x> => !!x);
+    const calibrationKind: "targeted" | "audit" =
+      bookSampleKinds[0]?.kind === "audit" ? "audit" : "targeted";
+    const participantCount = segments.filter((sg) => sg.role !== "moderator").length;
+    let auditEstimate: AuditEstimate | null = null;
+    if (calibrationKind === "audit") {
+      const rows = turns
+        .filter((t) => t.reviewed)
+        .map((t) => {
+          const ext = sampleExt.get(`${book.id}|${t.segmentId}`);
+          const a = new Set(t.modelCodeIds);
+          const b = new Set(t.researcherCodeIds);
+          return {
+            stratum: ext?.stratum ?? "none",
+            stratumSize: ext?.stratumSize ?? 1,
+            match: a.size === b.size && [...a].every((x) => b.has(x)),
+          };
+        });
+      const drawn = [
+        ...new Set(bookSampleKinds.map((k) => k.stratum ?? "none")),
+      ];
+      auditEstimate = estimateAudit(rows, drawn);
+    }
+
+    // Stability checks (migration 0064): the codebook applied again to the
+    // same turns, and which turns came out differently.
+    let stabilityView: StabilityView | null = null;
+    const bookStability = stabilityRows.filter((r) => r.codebook_id === book.id);
+    if (bookStability.length > 0) {
+      const idOfNumber = (n: number) => bookCodes[n - 1]?.id;
+      const toIds = (nums: number[]) =>
+        nums.map(idOfNumber).filter((x): x is string => !!x);
+      const queue: StabilityTurn[] = [];
+      const perCodeUse = bookCodes.map(() => ({ used: 0, consistent: 0 }));
+      for (const r of bookStability) {
+        const seg = segById.get(r.segment_id);
+        if (!seg) continue;
+        const current = assignBySeg.get(r.segment_id) ?? [];
+        const inOriginal = new Set(r.orig_codes);
+        const alt = new Set(r.alt_codes);
+        // Per code: used when the original or any other run gave it;
+        // consistent when all runs did.
+        for (let n = 1; n <= bookCodes.length; n++) {
+          const used = inOriginal.has(n) || alt.has(n);
+          if (!used) continue;
+          perCodeUse[n - 1].used += 1;
+          if (!alt.has(n) && !r.dropped_codes.includes(n))
+            perCodeUse[n - 1].consistent += 1;
+        }
+        const conf =
+          r.agree >= r.runs ? "high" : r.agree * 2 > r.runs ? "medium" : "low";
+        if (conf === "high") continue;
+        queue.push({
+          segmentId: r.segment_id,
+          index: seg.index,
+          speaker: seg.speaker,
+          text: seg.text,
+          runs: r.runs,
+          agree: r.agree,
+          confidence: conf,
+          currentCodeIds: toIds(current),
+          altCodeIds: toIds(r.alt_codes),
+          droppedCodeIds: toIds(r.dropped_codes),
+          resolved: !!r.resolved_at,
+          blindCodeIds:
+            reviewExt.get(`${book.id}|${r.segment_id}`)?.blind ?? null,
+        });
+      }
+      queue.sort(
+        (a, b) =>
+          Number(a.resolved) - Number(b.resolved) ||
+          a.agree / a.runs - b.agree / b.runs ||
+          a.index - b.index,
+      );
+      const kappaByCode: (number | null)[] = (() => {
+        const haveAll = bookStability.every((r) => runCodesExt.has(`${book.id}|${r.segment_id}`));
+        if (!haveAll) return [];
+        const perTurn = bookStability.map((r) => [
+          r.orig_codes,
+          ...(runCodesExt.get(`${book.id}|${r.segment_id}`) ?? []),
+        ]);
+        const ks = codeKappas(perTurn, bookCodes.length);
+        return ks.map((x) => x.kappa);
+      })();
+      const runsHere = Math.max(...bookStability.map((r) => r.runs));
+      // The code numbers each run gave, per turn. Exact when each run was kept; with a single re-run it can be
+      // rebuilt from what was added and dropped; otherwise it is unknown.
+      const perTurnRuns: number[][][] | null = (() => {
+        const kept = bookStability.every((r) => runCodesExt.has(`${book.id}|${r.segment_id}`));
+        if (kept)
+          return bookStability.map((r) => [r.orig_codes, ...(runCodesExt.get(`${book.id}|${r.segment_id}`) ?? [])]);
+        if (runsHere === 2)
+          return bookStability.map((r) => [
+            r.orig_codes,
+            [...r.orig_codes.filter((c) => !r.dropped_codes.includes(c)), ...r.alt_codes],
+          ]);
+        return null;
+      })();
+      const looser = (() => {
+        if (!perTurnRuns) return null;
+        const r = looserAgreement(perTurnRuns, (n) => {
+          const code = bookCodes[n - 1];
+          return code ? (metaOf(code.name)?.theme ?? null) : null;
+        });
+        return { themeShare: r.themeShare, overlap: r.overlap };
+      })();
+      stabilityView = {
+        runs: Math.max(...bookStability.map((r) => r.runs)),
+        looser,
+        summary: summariseStability(bookStability),
+        majority: (() => {
+          const m = majorityExt.get(book.id);
+          const runsHere = Math.max(...bookStability.map((r) => r.runs));
+          return {
+            available: !!m && m.withRuns === bookStability.length && runsHere >= 3,
+            applied: !!m && m.applied > 0,
+          };
+        })(),
+        codeAgreement: (() => {
+          const used = perCodeUse.filter((u) => u.used > 0);
+          const enough = used.filter((u) => u.used >= MIN_TURNS_TO_JUDGE);
+          // Themes with very few turns are left out of the headline; if that leaves nothing, use all.
+          const pool = enough.length > 0 ? enough : used;
+          return pool.length === 0 ? null : pool.reduce((a, u) => a + u.consistent / u.used, 0) / pool.length;
+        })(),
+        perCode: bookCodes.map((c, i) => ({
+          codeId: c.id,
+          name: c.name,
+          usedTurns: perCodeUse[i].used,
+          consistent: perCodeUse[i].consistent,
+          kappa: kappaByCode[i] ?? null,
+          tooFew: perCodeUse[i].used > 0 && perCodeUse[i].used < MIN_TURNS_TO_JUDGE,
+        })),
+        kappaAverage: (() => {
+          const ks = bookCodes
+            .map((_, i) => ({ k: kappaByCode[i] ?? null, used: perCodeUse[i].used }))
+            .filter((x) => x.k !== null && x.used >= MIN_TURNS_TO_JUDGE)
+            .map((x) => x.k as number);
+          return ks.length === 0 ? null : ks.reduce((a, b) => a + b, 0) / ks.length;
+        })(),
+        queue,
+        attention: attentionCheck(
+          bookStability
+            .map((r) => reviewExt.get(`${book.id}|${r.segment_id}`))
+            .filter(
+              (x): x is NonNullable<typeof x> =>
+                !!x && x.resolvedMs !== null && x.changed !== null,
+            )
+            .map((x) => ({ at: x.resolvedMs as number, changed: !!x.changed })),
+        ),
+      };
+    }
 
     // Respondents and the survey join.
     const respondents = buildRespondents(
@@ -829,6 +1227,7 @@ export async function getCodingAnalysis(
         agreement: counts
           ? {
               counts,
+              extended: extendedAgreement(counts),
               band: kappaBand(counts.kappa),
               caveat: kappaCaveat(counts),
             }
@@ -935,11 +1334,16 @@ export async function getCodingAnalysis(
       calibration:
         turns.length > 0
           ? {
+              kind: calibrationKind,
               drawn: turns.length,
               reviewed: turns.filter((t) => t.reviewed).length,
               turns,
+              estimate: auditEstimate,
             }
           : null,
+      participantTurns: participantCount,
+      suggestedAuditSize: auditSampleSize(participantCount),
+      stability: stabilityView,
       respondents: respondentViews,
       surveyTables,
       caseTableId: setting?.case_table_id ?? null,
@@ -1165,7 +1569,9 @@ export async function startCalibration(
   tenantId: string,
   documentId: string,
   codebookId: string,
+  options: { kind?: "targeted" | "audit"; size?: number } = {},
 ) {
+  const kind = options.kind ?? "targeted";
   await withTenant(tenantId, async (client) => {
     const existing = await client.query(
       "select 1 from coding_calibration_samples where codebook_id = $1 limit 1",
@@ -1199,13 +1605,50 @@ export async function startCalibration(
       if (!n) continue;
       bySeg.set(a.segment_id, [...(bySeg.get(a.segment_id) ?? []), n]);
     }
+    const pool = segs.rows.map((s) => ({
+      id: s.id,
+      index: s.segment_index,
+      role: s.role,
+      codes: bySeg.get(s.id) ?? [],
+    }));
+    if (kind === "audit") {
+      const participants = pool.filter((p) => p.role !== "moderator").length;
+      const size = Math.max(
+        1,
+        Math.min(
+          participants,
+          Math.round(options.size ?? auditSampleSize(participants)),
+        ),
+      );
+      const picks = selectAuditSample(pool, {
+        size,
+        seed: `${codebookId}:audit`,
+      });
+      if (picks.length === 0) return;
+      try {
+        await client.query(
+          `insert into coding_calibration_samples
+             (tenant_id, codebook_id, segment_id, kind, stratum, stratum_size)
+           select $1, $2, t.s, 'audit', t.k, t.z
+           from unnest($3::uuid[], $4::text[], $5::int[]) as t(s, k, z)
+           on conflict do nothing`,
+          [
+            tenantId,
+            codebookId,
+            picks.map((p) => p.id),
+            picks.map((p) => p.stratum),
+            picks.map((p) => p.stratumSize),
+          ],
+        );
+      } catch {
+        throw new Error(
+          "A random audit needs database migration 0064. Run it and try again.",
+        );
+      }
+      return;
+    }
     const ids = selectCalibrationSample(
-      segs.rows.map((s) => ({
-        id: s.id,
-        index: s.segment_index,
-        role: s.role,
-        codes: bySeg.get(s.id) ?? [],
-      })),
+      pool,
       codes.rows.length,
       { size: CALIBRATION_SAMPLE_SIZE, seed: codebookId },
     );
@@ -1274,6 +1717,425 @@ export async function saveCalibrationTurn(
       `update coding_calibration_samples set reviewed_at = now()
        where codebook_id = $1 and segment_id = $2`,
       [codebookId, segmentId],
+    );
+  });
+}
+
+// --- Stability of the coding -------------------------------------------------
+
+/**
+ * Stores the result of applying the codebook again. `original` is what the
+ * stored coding was; each entry of `reruns` is one fresh application. The
+ * original counts as one run. Replaces any earlier stability result for this
+ * codebook.
+ */
+export async function saveStability(
+  tenantId: string,
+  codebookId: string,
+  rows: { segmentId: string; stability: TurnStability; original: number[]; runCodes?: number[][] }[],
+) {
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      "delete from coding_turn_stability where codebook_id = $1",
+      [codebookId],
+    );
+    if (rows.length === 0) return;
+    const base = [
+      tenantId,
+      codebookId,
+      rows.map((r) => r.segmentId),
+      rows.map((r) => r.stability.runs),
+      rows.map((r) => r.stability.agree),
+      rows.map((r) => `{${r.original.join(",")}}`),
+      rows.map((r) => `{${r.stability.altCodes.join(",")}}`),
+      rows.map((r) => `{${r.stability.droppedCodes.join(",")}}`),
+    ];
+    // Migration 0074 keeps what each re-run gave, so the coding can be settled by majority.
+    const hasColumn = await client.query(
+      `select 1 from information_schema.columns
+        where table_name = 'coding_turn_stability' and column_name = 'run_codes'`,
+    );
+    if (hasColumn.rows.length > 0) {
+      await client.query(
+        `insert into coding_turn_stability
+           (tenant_id, codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes, run_codes)
+         select $1, $2, t.s, t.r, t.a, t.o::int[], t.al::int[], t.d::int[], t.rc::jsonb
+         from unnest($3::uuid[], $4::int[], $5::int[], $6::text[], $7::text[], $8::text[], $9::text[])
+           as t(s, r, a, o, al, d, rc)`,
+        [...base, rows.map((r) => JSON.stringify(r.runCodes ?? []))],
+      );
+      return;
+    }
+    await client.query(
+      `insert into coding_turn_stability
+         (tenant_id, codebook_id, segment_id, runs, agree, orig_codes, alt_codes, dropped_codes)
+       select $1, $2, t.s, t.r, t.a, t.o::int[], t.al::int[], t.d::int[]
+       from unnest($3::uuid[], $4::int[], $5::int[], $6::text[], $7::text[], $8::text[])
+         as t(s, r, a, o, al, d)`,
+      base,
+    );
+  });
+}
+
+/**
+ * Settles the coding by the majority of runs: a theme stays on a turn, or is added to it, when more than
+ * half of the runs (the original included) gave it. This uses runs already paid for, so it adds no cost, and
+ * it removes the one-run flips that make a single application unsteady. Turns the researcher has settled,
+ * and any theme the researcher added or removed by hand, are left as they are.
+ */
+export async function applyMajorityCoding(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  codebookId: string,
+): Promise<string> {
+  void runId;
+  void documentId;
+  return withTenant(tenantId, async (client) => {
+    const hasColumn = await client.query(
+      `select 1 from information_schema.columns
+        where table_name = 'coding_turn_stability' and column_name = 'run_codes'`,
+    );
+    if (hasColumn.rows.length === 0)
+      throw new Error("Settling by majority needs database migration 0074. Run it, then run the stability check again.");
+    const rows = (
+      await client.query<{
+        segment_id: string;
+        runs: number;
+        orig_codes: number[];
+        run_codes: number[][] | null;
+        resolved_at: string | null;
+      }>(
+        `select segment_id, runs, orig_codes, run_codes, resolved_at::text as resolved_at
+           from coding_turn_stability where codebook_id = $1`,
+        [codebookId],
+      )
+    ).rows;
+    if (rows.length === 0) throw new Error("Run the stability check first.");
+    if (rows.some((r) => !r.run_codes))
+      throw new Error("That check was run before each run was kept. Run it again with 2 more times, then settle by majority.");
+    const runs = rows[0].runs;
+    if (runs < 3)
+      throw new Error("A majority needs at least three runs: the original and two more. Run the check with 2 more times.");
+
+    const codes = (
+      await client.query<{ id: string; name: string }>(
+        "select id, name from coding_codes where codebook_id = $1 order by position",
+        [codebookId],
+      )
+    ).rows;
+    const current = await client.query<{ segment_id: string; code_id: string; source: string }>(
+      `select a.segment_id, a.code_id, a.source from coding_assignments a
+         join coding_codes cc on cc.id = a.code_id where cc.codebook_id = $1`,
+      [codebookId],
+    );
+    const have = new Map<string, Map<string, string>>();
+    for (const a of current.rows) {
+      const m = have.get(a.segment_id) ?? new Map<string, string>();
+      m.set(a.code_id, a.source);
+      have.set(a.segment_id, m);
+    }
+    // Themes the researcher added or removed by hand stay as they decided.
+    const decided = new Set<string>();
+    const overridesTable = await client.query("select to_regclass('coding_assignment_overrides') as t");
+    if (overridesTable.rows[0]?.t) {
+      const ov = await client.query<{ segment_id: string; code_key: string }>(
+        `select o.segment_id, o.code_key from coding_assignment_overrides o
+           join coding_segments sg on sg.id = o.segment_id where sg.document_id = $1`,
+        [documentId],
+      );
+      for (const o of ov.rows) decided.add(`${o.segment_id}|${o.code_key}`);
+    }
+
+    const addSeg: string[] = [];
+    const addCode: string[] = [];
+    const delSeg: string[] = [];
+    const delCode: string[] = [];
+    const changedTurns = new Set<string>();
+    for (const r of rows) {
+      if (r.resolved_at) continue;
+      const tally = new Map<number, number>();
+      for (const c of new Set(r.orig_codes)) tally.set(c, (tally.get(c) ?? 0) + 1);
+      for (const run of r.run_codes ?? []) for (const c of new Set(run)) tally.set(c, (tally.get(c) ?? 0) + 1);
+      const mine = have.get(r.segment_id) ?? new Map<string, string>();
+      for (let n = 1; n <= codes.length; n++) {
+        const code = codes[n - 1];
+        if (decided.has(`${r.segment_id}|${codeKey(code.name)}`)) continue;
+        const keep = (tally.get(n) ?? 0) * 2 > runs;
+        const has = mine.has(code.id);
+        if (keep && !has) {
+          addSeg.push(r.segment_id);
+          addCode.push(code.id);
+          changedTurns.add(r.segment_id);
+        } else if (!keep && has && mine.get(code.id) === "model") {
+          delSeg.push(r.segment_id);
+          delCode.push(code.id);
+          changedTurns.add(r.segment_id);
+        }
+      }
+    }
+    if (delSeg.length > 0)
+      await client.query(
+        `delete from coding_assignments
+          where (segment_id, code_id) in (select * from unnest($1::uuid[], $2::uuid[]))`,
+        [delSeg, delCode],
+      );
+    if (addSeg.length > 0)
+      await client.query(
+        `insert into coding_assignments (segment_id, code_id, tenant_id, source)
+         select s, c, $3, 'model' from unnest($1::uuid[], $2::uuid[]) as t(s, c)
+         on conflict do nothing`,
+        [addSeg, addCode, tenantId],
+      );
+    await client.query("update coding_turn_stability set consensus_at = now() where codebook_id = $1", [codebookId]);
+    return (
+      `Coding settled by the majority of ${runs} runs: ${addSeg.length} theme${addSeg.length === 1 ? "" : "s"} added ` +
+      `and ${delSeg.length} removed across ${changedTurns.size} turn${changedTurns.size === 1 ? "" : "s"}.`
+    );
+  });
+}
+
+/**
+ * Applies the stored codebook to the same turns again, `reruns` more times,
+ * and keeps which turns came out differently. The original coding counts as
+ * the first run. Each re-run is as long as the original application, so the
+ * cost grows with `reruns`. Nothing about the stored coding changes.
+ */
+export async function runStabilityCheck(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  codebookId: string,
+  reruns: number,
+): Promise<string> {
+  const count = Math.min(3, Math.max(1, Math.round(reruns)));
+  const { codes, segments, original } = await withTenant(
+    tenantId,
+    async (client) => {
+      const c = await client.query<{
+        id: string;
+        position: number;
+        name: string;
+        definition: string;
+        inclusion_criteria: string | null;
+        exclusion_criteria: string | null;
+        reproduced_runs: number | null;
+        total_runs: number | null;
+      }>(
+        `select id, position, name, definition, inclusion_criteria, exclusion_criteria, reproduced_runs, total_runs
+         from coding_codes where codebook_id = $1 order by position`,
+        [codebookId],
+      );
+      const sg = await client.query<{
+        id: string;
+        segment_index: number;
+        speaker: string | null;
+        role: SegmentRole;
+        page: number | null;
+        text: string;
+      }>(
+        `select id, segment_index, speaker, role, page, text
+         from coding_segments where document_id = $1 and run_id = $2 order by segment_index`,
+        [documentId, runId],
+      );
+      const a = await client.query<{ segment_id: string; code_id: string }>(
+        `select a.segment_id, a.code_id from coding_assignments a
+         join coding_codes cc on cc.id = a.code_id
+         where cc.codebook_id = $1 and a.source = 'model'`,
+        [codebookId],
+      );
+      return { codes: c.rows, segments: sg.rows, original: a.rows };
+    },
+  );
+  if (codes.length === 0 || segments.length === 0)
+    throw new Error("This transcript has no stored coding to check.");
+  // The stored coding is run 1. If it was made by an older version of the coding step, every difference
+  // the check finds would come from the update, not from the model's consistency.
+  const lastApply = await withTenant(tenantId, async (client) => {
+    const r = await client.query<{ prompt_hash: string }>(
+      `select prompt_hash from coding_run_manifest
+        where codebook_id = $1 and stage = 'apply' order by created_at desc limit 1`,
+      [codebookId],
+    );
+    return r.rows[0]?.prompt_hash ?? null;
+  }).catch(() => null);
+  if (lastApply && lastApply !== APPLY_PROMPT_HASH)
+    throw new Error(
+      "This coding was made by an earlier version of the coding step. Apply the codebook again first, then check stability, otherwise the differences found come from the update and not from the model.",
+    );
+  const codeRows: CodeRow[] = codes.map((c) => ({
+    id: c.id,
+    position: c.position,
+    name: c.name,
+    definition: c.definition,
+    inclusion: c.inclusion_criteria ?? "",
+    exclusion: c.exclusion_criteria ?? "",
+    reproducedRuns: c.reproduced_runs,
+    totalRuns: c.total_runs,
+  }));
+  const stored: StoredSegment[] = segments.map((s) => ({
+    id: s.id,
+    index: s.segment_index,
+    speaker: s.speaker,
+    role: s.role,
+    page: s.page,
+    text: s.text,
+  }));
+  const numberOf = new Map(codes.map((c, i) => [c.id, i + 1]));
+  const indexOfSeg = new Map(segments.map((s) => [s.id, s.segment_index]));
+  const originalByIndex = new Map<number, number[]>();
+  for (const a of original) {
+    const n = numberOf.get(a.code_id);
+    const idx = indexOfSeg.get(a.segment_id);
+    if (!n || idx === undefined) continue;
+    originalByIndex.set(idx, [...(originalByIndex.get(idx) ?? []), n]);
+  }
+
+  const results: Map<number, number[]>[] = [];
+  let failedAny = 0;
+  let creditStopAt = 0;
+  for (let i = 0; i < count; i++) {
+    relabelCodingWork(documentId, `Stability check, pass ${i + 1} of ${count}`);
+    let applied: Awaited<ReturnType<typeof applyCodebook>>;
+    try {
+      applied = await applyCodebook(
+        tenantId,
+        runId,
+        documentId,
+        codebookId,
+        codeRows,
+        stored,
+        "stability_rerun",
+      );
+    } catch (error) {
+      // Out of credit part-way: keep the passes that finished instead of throwing away the money already spent.
+      if (error instanceof Error && /run out of credit/i.test(error.message) && results.length > 0) {
+        creditStopAt = i + 1;
+        clearCodingLabel(documentId);
+        break;
+      }
+      throw error;
+    }
+    if (i === count - 1) clearCodingLabel(documentId);
+    // A re-run with failed batches would read as disagreement. Drop it.
+    if (applied.failedBatches > 0) {
+      failedAny += 1;
+      continue;
+    }
+    results.push(applied.assignments);
+  }
+  if (results.length === 0)
+    throw new Error(
+      "The codebook could not be applied again. Try again in a moment.",
+    );
+
+  const participants = stored.filter((s) => s.role !== "moderator");
+  const stability = compareRuns(
+    originalByIndex,
+    results,
+    participants.map((p) => p.index),
+  );
+  const idByIndex = new Map(stored.map((s) => [s.index, s.id]));
+  await saveStability(
+    tenantId,
+    codebookId,
+    stability.map((st) => ({
+      segmentId: idByIndex.get(st.index)!,
+      stability: st,
+      original: originalByIndex.get(st.index) ?? [],
+      runCodes: results.map((res) => res.get(st.index) ?? []),
+    })),
+  );
+  const summary = summariseStability(stability);
+  return (
+    `Applied the codebook ${results.length} more time${results.length === 1 ? "" : "s"}. ` +
+    `${summary.stable} of ${summary.turns} turns came out the same every time.` +
+    (failedAny > 0
+      ? ` ${failedAny} re-run${failedAny === 1 ? "" : "s"} failed and ${failedAny === 1 ? "was" : "were"} left out.`
+      : "") +
+    (creditStopAt > 0
+      ? ` The AI service ran out of credit during pass ${creditStopAt} of ${count}, so this uses the ${results.length} pass${results.length === 1 ? "" : "es"} that finished.`
+      : "")
+  );
+}
+
+/**
+ * Step one of settling a flagged turn: the researcher's own coding, saved
+ * before the model's themes or the other runs are shown. Once saved it is
+ * locked, so it cannot be rewritten after seeing the model's side.
+ */
+export async function saveBlindStabilityTurn(
+  tenantId: string,
+  codebookId: string,
+  segmentId: string,
+  codeIds: string[],
+) {
+  await withTenant(tenantId, async (client) => {
+    const valid = await client.query<{ id: string }>(
+      "select id from coding_codes where codebook_id = $1",
+      [codebookId],
+    );
+    const ok = new Set(valid.rows.map((c) => c.id));
+    const ids = codeIds.filter((id) => ok.has(id));
+    try {
+      await client.query(
+        `update coding_turn_stability set blind_codes = $3::uuid[], blind_at = now()
+         where codebook_id = $1 and segment_id = $2 and blind_at is null`,
+        [codebookId, segmentId, ids],
+      );
+    } catch {
+      throw new Error(
+        "Blind review needs database migration 0065. Run it and try again.",
+      );
+    }
+  });
+}
+
+/**
+ * Step two: the final decision. `changes` are the themes added or removed
+ * relative to what is on the turn now; an empty list means the model's themes
+ * stand. Either way the turn leaves the queue, and whether it changed is kept
+ * for the attention check.
+ */
+export async function resolveStabilityTurn(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  codebookId: string,
+  segmentId: string,
+  changes: { codeId: string; action: "add" | "remove" }[],
+) {
+  await withTenant(tenantId, async (client) => {
+    let blindAt: string | null | undefined;
+    try {
+      const r = await client.query<{ blind_at: string | null }>(
+        "select blind_at::text as blind_at from coding_turn_stability where codebook_id = $1 and segment_id = $2",
+        [codebookId, segmentId],
+      );
+      blindAt = r.rows[0]?.blind_at;
+    } catch {
+      throw new Error(
+        "Blind review needs database migration 0065. Run it and try again.",
+      );
+    }
+    if (!blindAt) throw new Error("Code the turn yourself first, then settle it.");
+  });
+  for (const c of changes)
+    await changeTurnCode(
+      tenantId,
+      runId,
+      documentId,
+      segmentId,
+      c.codeId,
+      c.action,
+    );
+  await withTenant(tenantId, async (client) => {
+    await client.query(
+      `update coding_turn_stability
+         set resolved_at = coalesce(resolved_at, now()),
+             changed = coalesce(changed, false) or $3
+       where codebook_id = $1 and segment_id = $2`,
+      [codebookId, segmentId, changes.length > 0],
     );
   });
 }
@@ -1581,14 +2443,19 @@ export async function searchNegativeCases(
               item.text,
           )
           .join("\n");
-        const user = `Codebook:\n${block}\n\nTurns:\n${turns}`;
+        // Every batch sends the same codebook: it comes first and is cached (promptCache.ts), with
+        // the instructions, so later batches read it at a tenth of the price. Same text as before,
+        // so the recorded input hash is unchanged.
+        const codebookPart = `Codebook:\n${block}`;
+        const turnsPart = `\n\nTurns:\n${turns}`;
+        const user = codebookPart + turnsPart;
         const response = await anthropic.messages.create({
           model: CLAUDE_MODEL,
           max_tokens: 4000,
-          system: NEGATIVE_SYSTEM,
+          system: cachedSystem(NEGATIVE_SYSTEM),
           tool_choice: { type: "tool", name: "record_negative_cases" },
           tools: NEGATIVE_TOOLS,
-          messages: [{ role: "user", content: user }],
+          messages: [cachedUserThen(codebookPart, turnsPart)],
         });
         await logApiUsage(
           tenantId,
@@ -1601,8 +2468,17 @@ export async function searchNegativeCases(
           !toolUse ||
           toolUse.type !== "tool_use" ||
           response.stop_reason === "max_tokens"
-        )
+        ) {
+          await recordTrace(tenantId, runId, "negative_case_batch_failed", {
+            document_id: documentId,
+            batch: batchIndex,
+            reason:
+              response.stop_reason === "max_tokens"
+                ? "max_tokens"
+                : "no_tool_use",
+          });
           return null;
+        }
         const parsed = parseNegativeCases(
           (toolUse.input as { cases?: unknown }).cases,
           new Set(batch.items.map((i) => i.index)),
@@ -1617,7 +2493,12 @@ export async function searchNegativeCases(
           detail: { turns: batch.items.length, reported: parsed.length },
         });
         return parsed;
-      } catch {
+      } catch (error) {
+        await recordTrace(tenantId, runId, "negative_case_batch_failed", {
+          document_id: documentId,
+          batch: batchIndex,
+          reason: error instanceof Error ? error.message.slice(0, 300) : "error",
+        });
         return null;
       }
     },

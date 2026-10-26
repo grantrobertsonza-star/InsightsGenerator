@@ -47,34 +47,41 @@ export default function RawDataPage() {
         you control, and <code>sampling_assumed_random</code>, for the reason explained below.
       </P>
 
-      <H2>SPSS, Stata, and SAS files</H2>
+      <H2>SPSS and Stata files</H2>
       <P>
-        If your raw data comes from labelled statistical software, a <code>.sav</code>, <code>.dta</code>,
-        or <code>.sas7bdat</code> file, the app reads it directly, including the variable labels (so a
+        Initial release scope excludes columns-as-cases workbooks that require a separate Codebook
+        to define weights or multiple-response sets, pending verification. Those definitions must
+        not be assumed absent or replaced with an unweighted calculation.
+        The app refuses analytical requests when that separate sheet declares those definitions.
+        Re-export with one row per respondent and retain the Codebook, then upload again and
+        verify the weight and multiple-response setup before calculating.
+      </P>
+      <P>
+        If your raw data comes from labelled statistical software, a <code>.sav</code> or <code>.dta</code> file (SAS is excluded pending verification), the app reads it directly, including the variable labels (so a
         column literally named <code>Q7a</code> shows up as &quot;Preferred channel&quot; if that&apos;s
         its label) and value labels (so a code like <code>1</code> shows up as &quot;Male&quot; rather
         than a bare number) wherever your file defines them.
       </P>
 
       <WhyBox>
-        The honest option, when a genuinely rigorous answer (a true stratified survey design, with
-        design weights) isn&apos;t built yet, is to say so plainly rather than quietly approximate it
-        and let a caveat tag do the disclosing on its own. That is exactly the situation here: a
-        stratified-design statistical path is scoped for later, not built yet, see{" "}
-        <em>What this doesn&apos;t do yet</em> for what that specifically means for your results today.
+        The banner plan does not model a survey design: its tests treat the sample as random, and
+        each result says so with a caveat rather than quietly approximating a design. Cross tabs and the
+        Net Promoter Score do model one, with Taylor series variance, when you name the PSU (cluster) and
+        strata variables for the data file, so use those for a stratified or clustered sample. See{" "}
+        <em>What this doesn&apos;t do yet</em> for what that means for your results today.
       </WhyBox>
 
       <DoesDoesNot
         does={[
           "Lets you name exactly which columns to compare, rather than scanning everything automatically",
           "Runs a real statistical test for every comparison it produces, not a guess or an estimate",
-          "Reads SPSS, Stata, and SAS files directly, labels and all",
+          "Reads SPSS and Stata files directly, labels and all",
           "Flags every banner-plan result as part of a multiple-comparisons batch, honestly, every time",
         ]}
         doesNot={[
           "Scan a raw table automatically the way it does an aggregated one: that is a deliberate choice, not a missing feature",
-          "Apply a statistical correction (like a Bonferroni adjustment) for the multiple comparisons it runs: the risk is disclosed, not adjusted away, for now",
-          "Account for a genuine stratified or weighted survey design yet: today's checks assume a simple random or quota sample",
+          "Apply a statistical correction (like a Bonferroni adjustment) for the multiple comparisons a banner plan runs: the risk is disclosed, not adjusted away (cross tabs built in the app do correct, with a false discovery rate correction by default)",
+          "Account for a survey design in a banner plan: it assumes a simple random or quota sample (cross tabs and NPS use the PSU and strata you name)",
         ]}
       />
 

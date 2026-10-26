@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "golden-thread-1",
+  "datasetId": "gt1-survey-respondents-v1",
+  "assertions": [
+    {
+      "id": "invalid-support",
+      "trigger": "Reject cited finding",
+      "expected": "Exclude invalid content from authoritative exports and disclose omission plus reason",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "stale-support",
+      "trigger": "Change variable correction",
+      "expected": "Affected downstream work/export visibly qualifies stale support; blocking optional under agreed policy",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "unknown-support",
+      "trigger": "Missing historical support snapshot",
+      "expected": "Qualify unknown; never assert observed change",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "unchanged-support",
+      "trigger": "No evidence mutation",
+      "expected": "Eligible unchanged support remains usable",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "human-work",
+      "trigger": "Edit recommendation; reload; change support",
+      "expected": "Human wording and review state remain stored; eligibility is separate",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "eligible-export",
+      "trigger": "Export eligible human-authored content",
+      "expected": "Eligible exported wording preserved",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "attribution",
+      "trigger": "Export spreadsheet/deck",
+      "expected": "Traceable source reference matches fixture dataset or report",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "independence",
+      "trigger": "Create several tables from same dataset",
+      "expected": "One dataset counts once; copies of this fixture are not independent corroboration",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    },
+    {
+      "id": "mixed-banner",
+      "trigger": "One invalid plus five unknown cited insights",
+      "expected": "Count distinct insights; report each status truthfully",
+      "evidenceRoles": [
+        "target_finding",
+        "dependent_insight",
+        "dependent_recommendation",
+        "narrative"
+      ],
+      "executionIds": "Resolve actual fixture-owned IDs at setup; never match solely by display position",
+      "comparison": "semantic",
+      "applicationDisposition": "not_run_by_reference_generation"
+    }
+  ]
+}

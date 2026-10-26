@@ -1,7 +1,9 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
-import { syncResearchObjective } from "./runSync";
+import { lockRunForContextChange, syncResearchObjective } from "./runSync";
+import { parseObjectiveLines } from "./objectiveLines";
+import { suggestionsNotAlreadyOnRun } from "./candidateSuggestionFilter";
 
 const MAX_FINDINGS_FOR_PROMPT = 120;
 
@@ -29,18 +31,41 @@ const MAX_FINDINGS_FOR_PROMPT = 120;
  */
 export async function generateObjectiveCandidates(
   tenantId: string,
-  runId: string
+  runId: string,
+  unmatchedInsightHeadlines?: string[]
 ): Promise<{ id: string; candidate_text: string }[]> {
   const run = await withTenant(tenantId, async (client) => {
-    const result = await client.query<{
-      business_problem: string | null;
-      research_objective: string | null;
-      initial_research_objective: string | null;
-    }>(
-      "select business_problem, research_objective, initial_research_objective from runs where id = $1",
-      [runId]
-    );
-    return result.rows[0];
+    await client.query("savepoint obj_framer_initial_read");
+    try {
+      const result = await client.query<{
+        business_problem: string | null;
+        research_objective: string | null;
+        initial_research_objective: string | null;
+        objective_candidates_seeded: boolean;
+      }>(
+        "select business_problem, research_objective, initial_research_objective, objective_candidates_seeded from runs where id = $1",
+        [runId]
+      );
+      await client.query("release savepoint obj_framer_initial_read");
+      return result.rows[0];
+    } catch (error) {
+      // Migration 0084 not applied yet: no such column. Roll back to the savepoint so this
+      // transaction isn't left aborted, then read without the new column and treat every
+      // run as unseeded, same as before this fix - the pre-existing (fragile) line-matching
+      // check further down still runs for everyone until the migration lands.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/objective_candidates_seeded/.test(message)) throw error;
+      await client.query("rollback to savepoint obj_framer_initial_read");
+      const result = await client.query<{
+        business_problem: string | null;
+        research_objective: string | null;
+        initial_research_objective: string | null;
+      }>(
+        "select business_problem, research_objective, initial_research_objective from runs where id = $1",
+        [runId]
+      );
+      return result.rows[0] ? { ...result.rows[0], objective_candidates_seeded: false } : undefined;
+    }
   });
 
   if (!run) {
@@ -66,13 +91,16 @@ export async function generateObjectiveCandidates(
 
   const hasProblem = Boolean(run.business_problem && run.business_problem.trim().length > 0);
 
-  // initial_research_objective, not research_objective, is "the researcher's
-  // own starting point": research_objective is a live value that gets
-  // overwritten the moment any objective candidate is accepted or rejected
-  // (it's kept in sync with whatever's currently accepted, joined and
-  // numbered once there's more than one), while initial_research_objective
-  // is a one-time snapshot taken at project creation and never touched
-  // again. Using the live value here would mean a second run of this
+  // initial_research_objective, not research_objective (and not
+  // stated_objectives_text, the current editable list the Setup UI reads
+  // and writes - see runContextActions.ts and OBJ-SET-M01), is "the
+  // researcher's own starting point": research_objective is a live value
+  // that gets overwritten the moment any objective candidate is accepted or
+  // rejected (it's kept in sync with whatever's currently accepted, joined
+  // and numbered once there's more than one), while initial_research_objective
+  // is write-once - set only on a run's first save (coalesce in
+  // saveRunContext) and never touched again by any later add, edit, or
+  // delete. Using the live value here would mean a second run of this
   // framer reads its own already-numbered prior output back as though it
   // were the researcher's unprocessed starting text, and re-proposes it as
   // a new candidate, the bug this distinction exists to avoid.
@@ -98,6 +126,14 @@ export async function generateObjectiveCandidates(
       "genuinely different objectives the evidence could also support.\n\n"
     : "";
 
+  const unmatchedBlock =
+    unmatchedInsightHeadlines && unmatchedInsightHeadlines.length > 0
+      ? "The accepted insights below are not covered by any objective this project has stated. Prioritise " +
+        "candidate objectives that these insights would answer, and name the insight in the rationale:\n" +
+        unmatchedInsightHeadlines.map((h) => `- ${h}`).join("\n") +
+        "\n\n"
+      : "";
+
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 4096,
@@ -118,6 +154,7 @@ export async function generateObjectiveCandidates(
       problemBlock +
       upfrontBlock +
       alreadyAcceptedBlock +
+      unmatchedBlock +
       "Propose three to five candidate objectives or hypotheses. For each, give a short rationale naming " +
       "which themes in the evidence support proposing it. Do not invent an objective the evidence has " +
       "nothing to do with, and do not propose two candidates that are really the same question worded " +
@@ -193,21 +230,33 @@ export async function generateObjectiveCandidates(
 
     try {
       await client.query("begin");
+      // Codex OBJ500-F01: the run row first, as every candidate change does (runSync.ts), so a
+      // regeneration and a researcher's accept, reject or delete are serialized.
+      await lockRunForContextChange(client, runId, tenantId);
 
       // Re-running the framer replaces its previous AI-suggested
-      // candidates rather than piling up duplicates. This now has to catch
-      // 'accepted' rows too, not just 'pending' ones: every ai_suggested
-      // candidate lands as accepted immediately (see generateObjectiveCandidates
-      // in refreshObjectiveCandidates), so a candidate the researcher never
-      // actually looked at is indistinguishable, by status alone, from one
-      // they deliberately kept. edited = false is what actually marks "never
-      // touched by a human": accepting with an edit, or any other explicit
-      // action, is the signal that this specific candidate should survive a
-      // regenerate. Rejected candidates are left alone either way, that's
-      // its own explicit decision, not something a regenerate should undo.
+      // candidates rather than piling up duplicates, but only the ones a
+      // human has not actually decided on. A suggestion's initial status
+      // here is conditional, not a fixed "everything starts accepted" (OBJ-REV-M01):
+      // it's 'accepted' when generated through refreshInferredObjectives's
+      // no-stated-objective path, the common case, but 'pending' whenever
+      // this is called with a stated objective already in place, which
+      // happens on a manual "regenerate suggestions" click
+      // (objectiveCandidateActions.ts's regenerateObjectiveCandidates) or
+      // from objectiveCoverageActions.ts. refreshObjectiveCandidates in
+      // page.tsx, despite its name, is a no-op and does not call this
+      // function at all. This used to also delete 'accepted' rows as long
+      // as their text was never edited, on the theory that only an edit
+      // proved a human had looked at it - but accepting a suggestion
+      // without changing its wording is itself a human decision to keep it
+      // exactly as suggested, and deleting it anyway on the next
+      // regeneration silently discarded that decision (OBJ-REV-004).
+      // 'pending' is the only status that still means "never actually
+      // decided" - 'accepted' and 'rejected' are both explicit outcomes a
+      // regenerate must not undo.
       await client.query(
         `delete from objective_candidates
-         where run_id = $1 and source = 'ai_suggested' and status != 'rejected' and edited = false`,
+         where run_id = $1 and source = 'ai_suggested' and status = 'pending' and edited = false`,
         [runId]
       );
 
@@ -215,13 +264,31 @@ export async function generateObjectiveCandidates(
       // same list as a candidate in its own right, matched on trimmed text
       // against any existing candidate so re-running this never duplicates
       // a card that already reads the same.
-      if (hasUpfrontObjective) {
-        const trimmedUpfront = run.initial_research_objective!.trim();
-        const existingOwn = await client.query(
-          "select id from objective_candidates where run_id = $1 and trim(candidate_text) = $2",
-          [runId, trimmedUpfront]
+      // OBJ-SET-001/003: whether the upfront text is "already represented" used to be
+      // re-derived every single regeneration by matching its individual lines, verbatim,
+      // against whatever researcher_authored candidates happen to exist RIGHT NOW. That is
+      // wrong in both directions once a researcher has actually interacted with the split
+      // candidates: an edit changes a line's text so it no longer matches the original
+      // (reinserting the stale blob alongside the edit), and a deletion removes the
+      // candidate entirely (reinserting text the researcher deliberately took out). Neither
+      // edited-but-present nor deleted-and-gone means "missing" - both are exactly the
+      // researcher having already dealt with that line. objective_candidates_seeded is a
+      // one-way marker set the moment this run's upfront text is first split into candidate
+      // rows at all (on Setup's own first save, or right here for a legacy run that predates
+      // that), and it is never reset by anything that happens to those rows afterward - so
+      // it is what "already represented" actually means, not a live re-check against
+      // current candidate text.
+      if (hasUpfrontObjective && !run.objective_candidates_seeded) {
+        const upfrontLines = parseObjectiveLines(run.initial_research_objective!.trim());
+        const existingOwn = await client.query<{ t: string }>(
+          "select trim(candidate_text) as t from objective_candidates where run_id = $1 and source = 'researcher_authored'",
+          [runId]
         );
-        if (existingOwn.rows.length === 0) {
+        const existingTexts = new Set(existingOwn.rows.map((r) => r.t));
+        const alreadyRepresented =
+          existingTexts.has(run.initial_research_objective!.trim()) ||
+          (upfrontLines.length > 0 && upfrontLines.every((line) => existingTexts.has(line)));
+        if (!alreadyRepresented) {
           const ownResult = await client.query<{ id: string; candidate_text: string }>(
             `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
              values ($1, $2, $3, $4, 'researcher_authored', 'accepted')
@@ -235,21 +302,67 @@ export async function generateObjectiveCandidates(
           );
           rows.push(ownResult.rows[0]);
         }
+        // Seeded now regardless of which branch ran above: either this run's candidates
+        // already represented the upfront text (nothing to carry over), or they do now
+        // (just inserted) - either way, this upfront text has had its one chance to be
+        // split into candidates, and no future edit or deletion of those candidates should
+        // make it reappear. Best effort: a pre-migration-0084 database has no such column
+        // to set, in which case this (fragile) check simply keeps running every time, same
+        // as before this fix.
+        // The plain .catch(() => {}) this had was not enough on its own: once this UPDATE fails
+        // (migration 0084 not applied, no such column), the whole surrounding transaction is
+        // marked aborted by Postgres, and every query still to come on this same client in this
+        // same transaction - the AI-suggestion insert loop and commit further down - fails with
+        // "current transaction is aborted", surfacing as an outright failure of this regenerate
+        // call rather than the documented "fragile check keeps running every time" degradation.
+        // A SAVEPOINT gives the missing-column case somewhere valid to roll back to.
+        await client.query("savepoint obj_candidates_seeded_update");
+        try {
+          await client.query("update runs set objective_candidates_seeded = true where id = $1", [runId]);
+          await client.query("release savepoint obj_candidates_seeded_update");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!/objective_candidates_seeded/.test(message)) throw error;
+          await client.query("rollback to savepoint obj_candidates_seeded_update");
+        }
       }
 
-      for (const candidate of validCandidates) {
+      // Inferred objectives are accepted automatically only when the
+      // researcher stated none (typed, or imported from a brief/proposal).
+      // Once a stated objective exists, suggestions stay pending: the
+      // researcher has already said what the project is for.
+      const stated = await client.query(
+        "select 1 from objective_candidates where run_id = $1 and source = 'researcher_authored' and status = 'accepted' limit 1",
+        [runId]
+      );
+      const suggestionStatus = stated.rows.length > 0 ? "pending" : "accepted";
+
+      // A suggestion whose wording is already on the run (rejected, accepted, edited or the
+      // researcher's own) is not inserted again: re-adding a rejected one would undo that
+      // rejection, re-adding a kept one would duplicate it (OBJ-REV-004).
+      const newSuggestions = await suggestionsNotAlreadyOnRun(client, "objective_candidates", runId, validCandidates);
+      // Inside the transaction, so this rolls back the delete above: undecided suggestions stay
+      // rather than being replaced by nothing, as for an unusable model answer.
+      if (newSuggestions.length === 0) {
+        throw new Error(
+          "No new objective suggestions came back this time (every suggestion repeats wording already on this run). Nothing was changed, try again."
+        );
+      }
+      for (const candidate of newSuggestions) {
         const result = await client.query<{ id: string; candidate_text: string }>(
           `insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status)
-           values ($1, $2, $3, $4, 'ai_suggested', 'accepted')
+           values ($1, $2, $3, $4, 'ai_suggested', $5)
            returning id, candidate_text`,
-          [tenantId, runId, candidate.candidate_text, candidate.rationale]
+          [tenantId, runId, candidate.candidate_text, candidate.rationale, suggestionStatus]
         );
         rows.push(result.rows[0]);
       }
 
-      // Everything above just landed already accepted (see the status
-      // literals), so runs.research_objective needs to pick that up now,
-      // not only on a later manual accept click. Still inside the same
+      // The researcher's own carried-over text lands accepted; AI
+      // suggestions now land pending and are never scored against until
+      // the researcher accepts one (an objective inferred from the same
+      // findings it would then judge is circular). This sync picks up the
+      // researcher's own text, not only on a later manual accept click. Still inside the same
       // transaction, so a rollback on failure undoes this with everything
       // else.
       await syncResearchObjective(client, runId);

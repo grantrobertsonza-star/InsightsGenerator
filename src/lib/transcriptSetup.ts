@@ -11,6 +11,10 @@ export type TranscriptSetup = {
   // The researcher has made the choice. False for a transcript nobody has
   // set up yet, whatever the stored defaults say.
   confirmed: boolean;
+  /** Which round of a repeated study this transcript is ("Wave 1"); null when not given. */
+  wave: string | null;
+  /** The researcher undid the acceptance (migration 0107): not accepted again automatically. */
+  withdrawn: boolean;
 };
 
 export type SetupSuggestion = {
@@ -30,6 +34,20 @@ async function hasColumn(
   return r.rows.length > 0;
 }
 
+/**
+ * Whether migration 0107 is applied, so a transcript's wave and Undo accept can be saved. Asked once
+ * per page rather than per transcript, because a transcript nobody has set up has no stored setup
+ * to carry the answer. Unknown (the check itself failed) is reported as unavailable, so the screen
+ * says the update is needed rather than offering a save that would fail.
+ */
+export async function transcriptWaveAvailable(tenantId: string): Promise<boolean> {
+  try {
+    return await withTenantRead(tenantId, (client) => hasColumn(client, "setup_withdrawn_at"));
+  } catch {
+    return false;
+  }
+}
+
 export async function getTranscriptSetups(
   tenantId: string,
   runId: string,
@@ -43,16 +61,19 @@ export async function getTranscriptSetups(
         segmentation_mode: SegmentMode | null;
         interview_style?: InterviewStyle | null;
         setup_confirmed_at?: string | null;
+        wave?: string | null;
+        setup_withdrawn_at?: string | null;
       };
       const styleAvailable = await hasColumn(client, "interview_style");
       const confirmAvailable = await hasColumn(client, "setup_confirmed_at");
+      const waveAvailable = await hasColumn(client, "setup_withdrawn_at");
       const rows = (
         await client.query<Row>(
           `select document_id, session_type, segmentation_mode${
             styleAvailable ? ", interview_style" : ""
           }${
             confirmAvailable ? ", setup_confirmed_at" : ""
-          } from coding_document_settings where run_id = $1`,
+          }${waveAvailable ? ", wave, setup_withdrawn_at" : ""} from coding_document_settings where run_id = $1`,
           [runId],
         )
       ).rows;
@@ -64,6 +85,8 @@ export async function getTranscriptSetups(
           styleAvailable,
           // Before migration 0051 nothing can be confirmed, so nothing blocks.
           confirmed: confirmAvailable ? r.setup_confirmed_at != null : true,
+          wave: r.wave ?? null,
+          withdrawn: r.setup_withdrawn_at != null,
         });
       }
     });
@@ -81,19 +104,29 @@ export async function saveTranscriptSetup(
     sessionType: "individual" | "focus_group";
     mode: SegmentMode;
     style: InterviewStyle | null;
+    /** Left out: the stored wave is kept. null or blank clears it. */
+    wave?: string | null;
   },
 ): Promise<void> {
+  const wave = setup.wave === undefined ? undefined : setup.wave?.trim() ? setup.wave.trim().slice(0, 80) : null;
+  // What could not be saved for want of a migration, reported only after the rest has committed:
+  // thrown inside the transaction it would roll the other choices back too, while saying they saved.
+  const missing: string[] = [];
   await withTenant(tenantId, async (client) => {
     const cols = await client.query<{ column_name: string }>(
       `select column_name from information_schema.columns
        where table_name = 'coding_document_settings'
-         and column_name in ('interview_style', 'setup_confirmed_at')`,
+         and column_name in ('interview_style', 'setup_confirmed_at', 'setup_withdrawn_at')`,
     );
     const have = new Set(cols.rows.map((c) => c.column_name));
     const styleColumn = have.has("interview_style");
+    const waveColumns = have.has("setup_withdrawn_at");
+    // Saving a setup is accepting it, so it also clears an earlier Undo accept (0107).
     const extraCols = [
       styleColumn ? "interview_style" : null,
       have.has("setup_confirmed_at") ? "setup_confirmed_at" : null,
+      waveColumns ? "setup_withdrawn_at" : null,
+      waveColumns && wave !== undefined ? "wave" : null,
     ].filter((c): c is string => c !== null);
     const values: unknown[] = [
       tenantId,
@@ -107,6 +140,11 @@ export async function saveTranscriptSetup(
         values.push(setup.style);
         return `$${values.length}`;
       }
+      if (c === "wave") {
+        values.push(wave);
+        return `$${values.length}`;
+      }
+      if (c === "setup_withdrawn_at") return "null";
       return "now()";
     });
     const updates = [
@@ -115,7 +153,9 @@ export async function saveTranscriptSetup(
       ...extraCols.map((c) =>
         c === "setup_confirmed_at"
           ? "setup_confirmed_at = coalesce(coding_document_settings.setup_confirmed_at, now())"
-          : `${c} = excluded.${c}`,
+          : c === "setup_withdrawn_at"
+            ? "setup_withdrawn_at = null"
+            : `${c} = excluded.${c}`,
       ),
       "updated_at = now()",
     ];
@@ -126,11 +166,31 @@ export async function saveTranscriptSetup(
        on conflict (document_id) do update set ${updates.join(", ")}`,
       values,
     );
-    if (!styleColumn && setup.style !== null) {
-      throw new Error(
-        "Interview style needs database migration 0048. The other choices were saved.",
-      );
+    if (!styleColumn && setup.style !== null) missing.push("Interview style needs database migration 0048.");
+    if (!waveColumns && wave) missing.push("The wave needs database migration 0107.");
+  });
+  if (missing.length > 0) throw new Error(`${missing.join(" ")} The other choices were saved.`);
+}
+
+/**
+ * Undo accept for a transcript (Grant, 2026-10-19). Its choices are kept, but it goes back to
+ * "Needs review": coding skips it until it is accepted again (findUnconfirmedTranscripts), and the
+ * Import card does not accept it again by itself (withdrawn). Scoped to this run and organisation;
+ * a transcript that was never accepted has nothing to undo and is refused, not silently ignored.
+ */
+export async function withdrawTranscriptSetup(tenantId: string, runId: string, documentId: string): Promise<void> {
+  await withTenant(tenantId, async (client) => {
+    if (!(await hasColumn(client, "setup_withdrawn_at"))) {
+      throw new Error("Undo accept needs database migration 0107. Nothing was changed.");
     }
+    const r = await client.query(
+      `update coding_document_settings
+          set setup_confirmed_at = null, setup_withdrawn_at = now(), updated_at = now()
+        where tenant_id = $1 and run_id = $2 and document_id = $3 and setup_confirmed_at is not null
+      returning document_id`,
+      [tenantId, runId, documentId],
+    );
+    if (r.rowCount === 0) throw new Error("This transcript is not accepted in this project, so there is nothing to undo.");
   });
 }
 

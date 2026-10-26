@@ -1,6 +1,7 @@
 // Backs up the database and the uploaded files into a dated folder.
 //
-//   npm run backup              backs up the CLOUD project (reads .env.local)
+//   npm run backup              backs up the CLOUD project (reads .env.local; uses
+//                               DATABASE_ADMIN_URL when set, see docs/database-roles.md)
 //   npm run backup -- --local   backs up the local Docker database instead
 //
 // Needs Docker running (the Supabase CLI runs pg_dump inside a container).
@@ -11,6 +12,7 @@ import { mkdirSync, readFileSync, existsSync, writeFileSync, statSync } from "no
 import path from "node:path";
 import pg from "pg";
 import { createClient } from "@supabase/supabase-js";
+import { resolveAdminUrl } from "./db/adminConnection.mjs";
 
 const BUCKET = "documents";
 const local = process.argv.includes("--local");
@@ -35,12 +37,19 @@ function run(args) {
 
 async function listAll(storage, prefix = "") {
   const out = [];
-  const { data, error } = await storage.list(prefix, { limit: 1000 });
-  if (error) throw error;
-  for (const item of data ?? []) {
-    const full = prefix ? `${prefix}/${item.name}` : item.name;
-    if (item.id === null) out.push(...(await listAll(storage, full)));
-    else out.push(full);
+  const limit = 1000;
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await storage.list(prefix, { limit, offset });
+    if (error) throw error;
+    const page = data ?? [];
+    for (const item of page) {
+      const full = prefix ? `${prefix}/${item.name}` : item.name;
+      if (item.id === null) out.push(...(await listAll(storage, full)));
+      else out.push(full);
+    }
+    if (page.length < limit) break;
+    offset += limit;
   }
   return out;
 }
@@ -52,12 +61,16 @@ async function main() {
   mkdirSync(path.join(dir, "files"), { recursive: true });
   console.log(`Backing up ${local ? "the LOCAL" : "the CLOUD"} project to ${dir}`);
 
-  const target = local ? ["--local"] : ["--db-url", `"${env.DATABASE_URL}"`];
+  // The app's own restricted role (docs/database-roles.md) is filtered by row-level security, so
+  // the dump and the row counts use the admin connection; resolveAdminUrl refuses a filtered one.
+  const db = await resolveAdminUrl(env);
+  console.log(`Database connection: ${db.source}`);
+  const target = local ? ["--local"] : ["--db-url", `"${db.url}"`];
   run(["supabase", "db", "dump", ...target, "-f", path.join(dir, "schema.sql")]);
   run(["supabase", "db", "dump", ...target, "--data-only", "--use-copy", "-f", path.join(dir, "data.sql")]);
 
   // Row counts per table, so a restore can prove it got everything back.
-  const client = new pg.Client({ connectionString: env.DATABASE_URL });
+  const client = new pg.Client({ connectionString: db.url });
   await client.connect();
   const tables = (
     await client.query(

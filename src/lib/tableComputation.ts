@@ -16,6 +16,7 @@
 // mis-propose in the first place.
 
 import { flagOutlier, pearsonCorrelation, compareGroupMeans } from "./stats";
+import { findingBasis } from "./findingBasis";
 import { withTenant } from "./db";
 
 // Every comparison this module reports comes from scanning more than one
@@ -58,6 +59,8 @@ const MAX_CATEGORY_CARDINALITY = 10;
 const MIN_GROUP_SIZE = 5;
 const MAX_PATTERNS_PER_TABLE = 25;
 const CORRELATION_THRESHOLD = 0.3;
+// Fewer pairs than this cannot support a correlation claim.
+const MIN_PAIRS_FOR_CORRELATION = 10;
 const MAX_SCATTER_POINTS = 300;
 
 // An evenly-spaced sample rather than the first N: the first N rows of a
@@ -129,9 +132,12 @@ export function computeTablePatterns(
         c.categories !== null,
     );
 
-  const patterns: ComputedPattern[] = [];
-  const pushPattern = (pattern: ComputedPattern) => {
-    if (patterns.length < MAX_PATTERNS_PER_TABLE) patterns.push(pattern);
+  // Everything found is kept with a strength, then the cap is applied across the three kinds
+  // (strongest of each, taking turns) so a table with many segment gaps still shows its
+  // relationships and outliers, and the strongest evidence of each kind survives.
+  const found: { pattern: ComputedPattern; strength: number }[] = [];
+  const pushPattern = (pattern: ComputedPattern, strength: number) => {
+    found.push({ pattern, strength });
   };
 
   // --- Segment differences: a categorical column's two largest groups,
@@ -192,7 +198,7 @@ export function computeTablePatterns(
             ...g1.values.map((v) => v.index),
             ...g2.values.map((v) => v.index),
           ],
-        });
+        }, Math.abs(comparison.tScore ?? 0));
       }
     }
   }
@@ -208,15 +214,21 @@ export function computeTablePatterns(
           (r): r is { a: number; b: number } =>
             typeof r.a === "number" && typeof r.b === "number",
         );
-      if (paired.length < 3) continue;
+      if (paired.length < MIN_PAIRS_FOR_CORRELATION) continue;
       const result = pearsonCorrelation(
         paired.map((p) => p.a),
         paired.map((p) => p.b),
       );
-      if (result.r !== null && Math.abs(result.r) >= CORRELATION_THRESHOLD) {
+      // A relationship is reported only when it is both sizeable and distinguishable from zero.
+      if (
+        result.r !== null &&
+        Math.abs(result.r) >= CORRELATION_THRESHOLD &&
+        typeof result.pValue === "number" &&
+        result.pValue < 0.05
+      ) {
         pushPattern({
           patternType: "relationship",
-          description: `${colA} and ${colB} move together across ${paired.length} rows (r=${result.r}). ${result.note}`,
+          description: `${colA} and ${colB} move together across ${paired.length} rows (r=${result.r}, p=${result.pValue}, not corrected for the number of pairs examined). ${result.note}`,
           theme: themeFor(colA, colB),
           statedStats: {
             ...result,
@@ -235,7 +247,7 @@ export function computeTablePatterns(
             caveats: [MULTIPLE_COMPARISONS_CAVEAT],
           },
           rowIndices: [],
-        });
+        }, Math.abs(result.r));
       }
     }
   }
@@ -260,9 +272,9 @@ export function computeTablePatterns(
           patternType: "outlier",
           description: `${header} value of ${value} at row ${index + 1}. ${result.flag}`,
           theme: themeFor(header),
-          statedStats: { ...result, column: header, value },
+          statedStats: { ...result, column: header, value, caveats: ["descriptive_heuristic"] },
           rowIndices: [index],
-        });
+        }, Math.abs(result.z ?? 0));
       }
     }
   }
@@ -283,6 +295,20 @@ export function computeTablePatterns(
   // left in stats.ts, since the disciplined replacement may still want the
   // same split-evaluation arithmetic once comparisons are pre-specified
   // rather than searched for.
+
+  const order: ComputedPattern["patternType"][] = ["segment_difference", "relationship", "outlier"];
+  const queues = order.map((t) => found.filter((f) => f.pattern.patternType === t).sort((a, b) => b.strength - a.strength));
+  const patterns: ComputedPattern[] = [];
+  for (let round = 0; patterns.length < MAX_PATTERNS_PER_TABLE; round++) {
+    let added = false;
+    for (const q of queues) {
+      if (round < q.length && patterns.length < MAX_PATTERNS_PER_TABLE) {
+        patterns.push(q[round].pattern);
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
 
   const digest = patterns
     .slice(0, 8)
@@ -314,22 +340,47 @@ export type TableGroundingDigestEntry = {
 export async function getTableGroundingDigest(
   tenantId: string,
   runId: string,
-  limit = 20,
+  limit = 40,
 ): Promise<TableGroundingDigestEntry[]> {
   const rows = await withTenant(tenantId, async (client) => {
-    const result = await client.query<{ id: string; finding_text: string }>(
-      `select id, finding_text from findings
+    const result = await client.query<{
+      id: string;
+      finding_text: string;
+      pattern_type: string | null;
+      stated_stats: Record<string, unknown> | null;
+    }>(
+      `select id, finding_text, pattern_type, stated_stats from findings
        where run_id = $1 and origin = 'generated' and status != 'rejected'
        order by created_at asc
-       limit $2`,
-      [runId, limit],
+       limit 600`,
+      [runId],
     );
     return result.rows;
   });
 
-  return rows.map((r: { id: string; finding_text: string }, i: number) => ({
+  // A claim should only be tied to a result that stands: leave out findings whose
+  // test did not pass or whose basis is unknown, then take the strongest first
+  // (smallest q, adjusted p or p) instead of whichever were created first.
+  const strength = (stats: Record<string, unknown> | null) => {
+    const n = (x: unknown) => (typeof x === "number" ? x : null);
+    return n(stats?.qValue) ?? n(stats?.pAdjusted) ?? n(stats?.pValue) ?? 1;
+  };
+  // Readings (shares, top-two box, NPS) carry no p. They rank after tested differences and before null results,
+  // so a report claim like "62% are satisfied" can still be tied to the reading that matches it.
+  const rank = (r: { pattern_type: string | null; stated_stats: Record<string, unknown> | null }) =>
+    r.pattern_type === "level" ? 0.5 : r.pattern_type === "no_difference" ? 0.9 : strength(r.stated_stats);
+  const usable = rows
+    .filter((r) => {
+      const b = findingBasis({ origin: "generated", pattern_type: r.pattern_type, stated_stats: r.stated_stats });
+      return b !== "tested_not_significant" && b !== "unknown";
+    })
+    .map((r, i) => ({ r, i, s: rank(r) }))
+    .sort((a, b) => a.s - b.s || a.i - b.i)
+    .slice(0, limit);
+
+  return usable.map((x, i) => ({
     index: i + 1,
-    findingId: r.id,
-    text: r.finding_text,
+    findingId: x.r.id,
+    text: x.r.finding_text,
   }));
 }

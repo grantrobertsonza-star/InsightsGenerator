@@ -1,0 +1,36 @@
+{
+  "head": "955a4eccef132956520b3e3c4ba78378d6748885",
+  "stableBeforeAfter": true,
+  "hashes": [
+    {
+      "Algorithm": "SHA256",
+      "Hash": "6E41DC3B9C98C4C6F426DFD9FE476CFD2A485C4A374C5296791A049F143325E6",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\extractFindings.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "4E43E560AFD47D6FEC656E4B6C0064578B24BDF7465D7D4E607C8C016525D4E6",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\findingArchive.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "37E0F0879340E0C799F7AE956BC3CE343513F0466F3078186DFC17C1BAB96911",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\app\\runs\\[id]\\page.tsx"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "710F6E81FF2F62C6AC732588DF50F4D2F0548C32443534725B8BA0D21E4E871C",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\documentUpload.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "D437AF5F469ADF8DBC362AB8E6FD2925D27A1A843CDD6334919CC00E610060F7",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\reportImportCompletion.test.ts"
+    },
+    {
+      "Algorithm": "SHA256",
+      "Hash": "3352D8D73885271CED021154484CB13548C1C7777443FD2D1224144737E78CE6",
+      "Path": "C:\\Personal\\InsighsAI\\app\\src\\lib\\__tests__\\findingArchive.test.ts"
+    }
+  ]
+}

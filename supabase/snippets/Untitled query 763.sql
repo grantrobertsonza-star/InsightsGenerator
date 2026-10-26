@@ -1,0 +1,1 @@
+elect event, detail from trace where run_id = '<this run id>' and event in ('process_run_errors','process_stage_error','banner_plan_computed','table_awaiting_statistical_path') order by created_at desc limit 10;

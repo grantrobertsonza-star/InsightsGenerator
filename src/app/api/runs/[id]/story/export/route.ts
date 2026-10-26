@@ -22,14 +22,22 @@ import {
   addArgumentMapSlide,
   addDeckRoadmapSlide,
   addVisualSCQASlide,
+  addQualificationBand,
 } from "@/lib/deckSlides";
+import { exportCaveatLabels } from "@/lib/caveatLabels";
+import { loadInsightSupportOrUnchecked } from "@/lib/supportStatus";
+import { loadSynthesizedInsightSources, sourceLine } from "@/lib/sourceAttribution";
+import { summariseSupport, type InsightSupport, type SupportStatus } from "@/lib/supportStatusShared";
+import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
+import { figureCheckNote } from "@/lib/numberTrace";
 import type { DeckPillar } from "@/lib/storyNarrative";
 import { addDiscoverySlides } from "@/lib/discoverySlides";
-import { loadDiscoveryReportData } from "@/lib/discoveryReport";
+import { applySupportToDiscovery, discoveryInsightIds, loadDiscoveryReportData } from "@/lib/discoveryReport";
+import { narrativeFramingQualification } from "@/lib/narrativeSupportSummary";
 import { buildChartImagesByTheme } from "@/lib/exportChartImages";
 import type { ChartableFinding } from "@/lib/findingsChartData";
-
-const TENANT_ID = process.env.DEFAULT_TENANT_ID!;
+import { latestVerdictLateral } from "@/lib/latestVerdict";
+import { routeRequestContext } from "@/lib/requestContext";
 
 type ConfidenceTier = "strong" | "moderate" | "exploratory" | null;
 type QualityTier = "finding" | "partial" | "qualified" | null;
@@ -42,6 +50,13 @@ type PillarInsight = {
   implication: string;
   confidence_tier: ConfidenceTier;
   quality_tier: QualityTier;
+  /** FND-001/REP-OUT-001 (second counter-review): raw caveat tags aggregated, live, from every
+   * still-eligible (non-rejected) finding this insight was built from - see caveatLabels.ts for
+   * why only a narrow allow-list is ever exported. Not rendered inline on the fixed-height
+   * evidence card (addEvidenceCard is tuned for exactly three lines - see INSIGHT_ROW's own
+   * comment on why a third line already needed a height increase); surfaced instead on a
+   * dedicated "EVIDENCE QUALIFICATIONS" slide below. */
+  caveat_tags: string[] | null;
 };
 
 type ExportRecommendation = {
@@ -50,12 +65,33 @@ type ExportRecommendation = {
   timeline: string;
   metric: string;
   priority: "high" | "medium" | "low";
+  /** Same meaning as PillarInsight['caveat_tags'] above, aggregated via the insight this
+   * recommendation is anchored to (recommendations.synthesized_insight_id). */
+  caveat_tags: string[] | null;
+  /** FND-001: the anchor insight, whose support status the recommendation inherits. */
+  synthesized_insight_id: string;
+  synthesized_insight_headline: string;
+  id: string;
 };
+
+/** FND-001: the support status shown, in words, on an evidence card's badge strip (never colour
+ * alone). A current insight's badge is unchanged. Invalid support never reaches a card - it is
+ * excluded and listed on the "Evidence status" slide. */
+const SUPPORT_BADGE_SUFFIX: Record<SupportStatus, string> = {
+  current: "",
+  stale: "SUPPORT CHANGED",
+  unknown: "SUPPORT NOT CHECKED",
+  invalid: "SUPPORT NO LONGER VALID",
+};
+function withSupportBadge<B extends { glyph: string; label: string; color: string }>(badge: B, status: SupportStatus): B {
+  const suffix = SUPPORT_BADGE_SUFFIX[status];
+  return suffix ? { ...badge, label: `${badge.label} · ${suffix}` } : badge;
+}
 
 type ExportObjectiveValidation = {
   item_kind: "objective" | "decision";
   item_text: string;
-  status: "resolved" | "partial" | "gap";
+  status: "resolved" | "partial" | "gap" | "inferred";
   conclusion: string;
   synthesized_insight_ids: string[];
 };
@@ -122,6 +158,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const context = await routeRequestContext();
+  if (context instanceof Response) return context;
+  const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
   const result = await withTenant(TENANT_ID, async (client) => {
@@ -158,47 +197,115 @@ export async function GET(
         )
       : [];
 
+    // FND-001 / REP-OUT-001: a synthesized insight (or any pre-insight it draws on) can be
+    // rejected, or its own finding rejected, AFTER this run's narrative was last generated -
+    // `deck_narratives.pillars[].insight_ids` is a point-in-time snapshot of ids, not a live
+    // reference. Without `si.review_status = 'accepted'` and `si.run_id = $2` here, a now-
+    // rejected insight (or one belonging to a different run entirely) still rendered in every
+    // export of a narrative that referenced it before the rejection. One layer further down (a
+    // source finding rejected, deleted, edited in place or recalculated since the insight was
+    // drafted) is decided by the shared support check applied after this transaction. Kept identical to, but
+    // not imported from, export-docx/route.ts's own copy - same reasoning as this file's own
+    // doc comment on why the two routes share a query by copy, not by import.
     const insightsResult =
       insightIds.length > 0
         ? await client.query<PillarInsight>(
-            `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier
+            `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier,
+                    (
+                      select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
+                      from synthesized_insight_sources s2
+                      join insights i2 on i2.id = s2.pre_insight_id
+                      join findings f2 on f2.id = i2.finding_id
+                      cross join lateral jsonb_array_elements_text(coalesce(f2.stated_stats->'caveats', '[]'::jsonb)) as tag
+                      where s2.synthesized_insight_id = si.id and f2.status <> 'rejected'
+                    ) as caveat_tags
              from synthesized_insights si
-             where si.id = any($1::uuid[])`,
-            [insightIds],
+             where si.id = any($1::uuid[])
+               and si.run_id = $2
+               and si.review_status = 'accepted'`,
+            // FND-001 (this repair): the Brief 35 live-count comparison that sat here is replaced by
+            // the shared support check (supportStatus.ts) applied after this transaction - same
+            // rejection/deletion coverage, plus in-place edits, recalculation and uncheckable support,
+            // with a visible reason instead of a silent drop.
+            [insightIds, runId],
           )
         : null;
 
+    // Same freshness contract as insightsResult above, applied to recommendations: a
+    // recommendation can stay "accepted" while the synthesized insight it is anchored to has
+    // since been rejected (or had a dependent finding rejected) - neither was checked before,
+    // only the recommendation's own status.
     const recommendationsResult = await client.query<ExportRecommendation>(
-      `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority
+      `select r.id, r.action_text, r.owner_role, r.timeline, r.metric, r.priority,
+              r.synthesized_insight_id, si.headline as synthesized_insight_headline,
+              (
+                select coalesce(jsonb_agg(distinct tag), '[]'::jsonb)
+                from synthesized_insight_sources s2
+                join insights i2 on i2.id = s2.pre_insight_id
+                join findings f2 on f2.id = i2.finding_id
+                cross join lateral jsonb_array_elements_text(coalesce(f2.stated_stats->'caveats', '[]'::jsonb)) as tag
+                where s2.synthesized_insight_id = si.id and f2.status <> 'rejected'
+              ) as caveat_tags
        from recommendations r
        join synthesized_insights si on si.id = r.synthesized_insight_id
        where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
+         and si.review_status = 'accepted'
+         -- FND-001: support status is applied after this transaction (see insightsResult).
        order by case r.priority when 'high' then 0 when 'medium' then 1 else 2 end, r.created_at`,
       [runId],
     );
 
-    const objectiveValidationsResult =
-      await client.query<ExportObjectiveValidation>(
-        `select item_kind, item_text, status, conclusion, synthesized_insight_ids
-       from objective_validations
-       where run_id = $1
-       order by item_kind, item_order`,
-        [runId],
-      );
+    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a catalog
+    // probe, same technique and same reasoning as page.tsx's own getObjectiveValidations - a
+    // failed SELECT on a pre-migration database would abort the rest of this transaction. Both
+    // export routes used to omit this column entirely, so a degraded conclusion (generated while
+    // direct data-evidence retrieval was failing) reached DOCX/PPTX with no qualification at all,
+    // even though the live app already flags it. Folded into the same `conclusion` string the
+    // existing "inferred" wrapper already builds, rather than a new field, so every renderer that
+    // already prints `conclusion` picks this up with no further change.
+    const evidenceDigestDegradedColExists = await client.query<{ exists: boolean }>(
+      `select exists (
+         select 1 from information_schema.columns
+         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
+       ) as "exists"`,
+    );
+    const objectiveValidationsResult = evidenceDigestDegradedColExists.rows[0]?.exists === true
+      ? await client.query<ExportObjectiveValidation>(
+          `select item_kind, item_text,
+                case when inferred then 'inferred' else status end as status,
+                (case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end)
+                  || (case when evidence_digest_degraded then ' (Evidence check degraded: generated while data-evidence retrieval was failing - may be missing evidence a working check would have cited.)' else '' end) as conclusion,
+                synthesized_insight_ids
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+          [runId],
+        )
+      : await client.query<ExportObjectiveValidation>(
+          `select item_kind, item_text,
+                case when inferred then 'inferred' else status end as status,
+                case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion,
+                synthesized_insight_ids
+         from objective_validations
+         where run_id = $1
+         order by item_kind, item_order`,
+          [runId],
+        );
 
     // An accepted synthesized insight that no objective/decision item's
     // array references at all -- evidence the project turned up that
     // nothing it originally asked about was pointing toward. Worth naming
     // on the deck rather than letting it disappear into a pillar as though
     // it always belonged there (see objectiveValidator.ts's doc comment).
-    const unmappedInsightsResult = await client.query<{ headline: string }>(
-      `select si.headline
+    const unmappedInsightsResult = await client.query<{ id: string; headline: string }>(
+      `select si.id, si.headline
        from synthesized_insights si
        where si.run_id = $1 and si.review_status = 'accepted'
          and not exists (
            select 1 from objective_validations ov
-           where ov.run_id = $1 and si.id = any(ov.synthesized_insight_ids)
-         )`,
+           where ov.run_id = $1 and ov.inferred = false and si.id = any(ov.synthesized_insight_ids)
+         )
+         and exists (select 1 from objective_validations x where x.run_id = $1 and x.inferred = false)`,
       [runId],
     );
 
@@ -210,7 +317,7 @@ export async function GET(
     const findingsResult = await client.query<ChartableFinding>(
       `select f.id, f.origin, f.pattern_type, f.status, f.stated_stats, f.theme
        from findings f
-       join verdicts v on v.finding_id = f.id
+       join ${latestVerdictLateral("f.id", ["verdict_tier"])} v on true
        where f.run_id = $1 and f.status = 'accepted' and v.verdict_tier in ('robust', 'use_with_caution')
        order by f.theme nulls last, f.created_at`,
       [runId],
@@ -223,14 +330,12 @@ export async function GET(
     return {
       run: runResult.rows[0],
       narrative,
-      insightsById: new Map(
+      acceptedInsightsById: new Map(
         (insightsResult?.rows ?? []).map((row) => [row.id, row]),
       ),
-      recommendations: recommendationsResult.rows,
+      acceptedRecommendations: recommendationsResult.rows,
       objectiveValidations: objectiveValidationsResult.rows,
-      unmappedInsightHeadlines: unmappedInsightsResult.rows.map(
-        (row) => row.headline,
-      ),
+      unmappedInsights: unmappedInsightsResult.rows,
       findings: findingsResult.rows,
       discovery,
     };
@@ -239,10 +344,10 @@ export async function GET(
   const {
     run,
     narrative,
-    insightsById,
-    recommendations,
+    acceptedInsightsById,
+    acceptedRecommendations,
     objectiveValidations,
-    unmappedInsightHeadlines,
+    unmappedInsights,
     findings,
     discovery,
   } = result;
@@ -259,6 +364,88 @@ export async function GET(
       { status: 404 },
     );
   }
+
+  // FND-001 / REP-OUT-001: one support check for every insight this deck can show. Invalid support
+  // (a source rejected or deleted) is left out and listed on the "Evidence status" slide; changed
+  // or uncheckable support stays, with the status in words on the card's badge and its reason on
+  // that slide. A failed check marks everything "not checked" (qualified), never current. Read-only:
+  // wording and review decisions are untouched.
+  const support = await loadInsightSupportOrUnchecked(
+    TENANT_ID,
+    runId,
+    Array.from(
+      new Set([
+        ...acceptedInsightsById.keys(),
+        ...acceptedRecommendations.map((r) => r.synthesized_insight_id),
+        ...unmappedInsights.map((u) => u.id),
+        ...discoveryInsightIds(discovery),
+      ]),
+    ),
+  );
+  const supportOf = (id: string): InsightSupport => support.statusOf(id);
+  // Golden-thread repair: each insight card names the sources its evidence came from.
+  const sourcesByInsight = await withTenant(TENANT_ID, (client) =>
+    loadSynthesizedInsightSources(client, Array.from(acceptedInsightsById.keys())),
+  );
+  const insightsById = new Map(
+    Array.from(acceptedInsightsById).filter(([id]) => supportOf(id).status !== "invalid"),
+  );
+  const excludedLines: string[] = [];
+  const qualifiedLines = new Map<string, string[]>();
+  const noteQualified = (headline: string, s: InsightSupport) => {
+    if (s.status !== "stale" && s.status !== "unknown") return;
+    const summary = summariseSupport(s);
+    const list = qualifiedLines.get(summary) ?? [];
+    list.push(headline);
+    qualifiedLines.set(summary, list);
+  };
+  const excludedInsightIds = new Set<string>();
+  for (const [id, insight] of acceptedInsightsById) {
+    const s = supportOf(id);
+    if (s.status === "invalid") {
+      excludedInsightIds.add(id);
+      excludedLines.push(`Insight left out: ${insight.headline}. ${summariseSupport(s)}`);
+    } else noteQualified(insight.headline, s);
+  }
+  // The "new beyond the report" slides follow the same rule: an insight left out above cannot come
+  // back there as an ordinary new insight. One the narrative does not cite is listed here too.
+  const discoveryApplied = applySupportToDiscovery(discovery, supportOf);
+  for (const e of discoveryApplied.excluded) {
+    if (e.kind === "contradiction") {
+      excludedLines.push(`Contradiction left out: ${e.headline}; ${e.reason}.`);
+      continue;
+    }
+    if (!e.insightId || excludedInsightIds.has(e.insightId)) continue;
+    excludedInsightIds.add(e.insightId);
+    excludedLines.push(`Insight left out: ${e.headline}. ${e.reason}`);
+  }
+  // Saved framing (executive summary, governing thought, SCQA answer, argument map) is shown as it
+  // was generated, with this qualification on each of those slides whenever any insight it was
+  // written from no longer has current support. Same counting rule as the app's support line.
+  const citedInsightIds = narrative.pillars.flatMap((pillar) => pillar.insight_ids);
+  const framingNote = narrativeFramingQualification(
+    citedInsightIds,
+    Object.fromEntries(citedInsightIds.filter((id) => acceptedInsightsById.has(id)).map((id) => [id, supportOf(id)])),
+  );
+  const recommendations = acceptedRecommendations.filter((rec) => {
+    const s = supportOf(rec.synthesized_insight_id);
+    if (s.status === "invalid") {
+      excludedLines.push(
+        `Recommendation left out: ${rec.action_text}. Its insight "${rec.synthesized_insight_headline}" is no longer supported.`,
+      );
+      return false;
+    }
+    noteQualified(rec.action_text, s);
+    return true;
+  });
+  const unmappedInsightHeadlines = unmappedInsights
+    .filter((u) => supportOf(u.id).status !== "invalid")
+    .map((u) => u.headline);
+  // An id the narrative referenced that is no longer accepted (or no longer exists) has no
+  // headline left to report; it is still counted per pillar below.
+  const unresolvedReferenceCount = narrative.pillars
+    .flatMap((pillar) => pillar.insight_ids)
+    .filter((id) => !acceptedInsightsById.has(id)).length;
 
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
@@ -297,6 +484,7 @@ export async function GET(
       label: "Executive summary",
       body: narrative.executive_summary,
     });
+    if (framingNote) addQualificationBand(summarySlide, framingNote);
     addFooter(summarySlide, deckTitle, "Executive summary");
   }
 
@@ -311,6 +499,7 @@ export async function GET(
     question: narrative.question,
     answer: narrative.governing_thought,
   });
+  if (framingNote) addQualificationBand(scqaSlide, framingNote);
   addFooter(scqaSlide, deckTitle, "SCQA");
 
   const situationSlide = addLabeledTextSlide(pptx, {
@@ -331,6 +520,7 @@ export async function GET(
     statement: narrative.governing_thought,
     subtext: narrative.question,
   });
+  if (framingNote) addQualificationBand(apexSlide, framingNote, "top");
   addFooter(apexSlide, deckTitle, "Governing thought");
 
   // Standard market-research reporting practice: every research objective
@@ -453,7 +643,7 @@ export async function GET(
   // New beyond the report: the net-new half of the validated / net-new
   // split, on its own pages so a reader can tell what the original report
   // said from what this analysis added (and where it corrects the report).
-  addDiscoverySlides(pptx, discovery, deckTitle);
+  addDiscoverySlides(pptx, discoveryApplied.discovery, deckTitle);
 
   // The last thing the reader sees before the pillars themselves: a map of
   // how many there are and how each relates to the governing thought just
@@ -465,6 +655,7 @@ export async function GET(
         headline: pillar.headline,
       })),
     });
+    if (framingNote) addQualificationBand(mapSlide, framingNote);
     addFooter(mapSlide, deckTitle, "The shape of this argument");
   }
 
@@ -472,6 +663,10 @@ export async function GET(
     const insights = pillar.insight_ids
       .map((id) => insightsById.get(id))
       .filter((insight): insight is PillarInsight => Boolean(insight));
+    // REP-OUT-001 / FND-001: an id that didn't resolve is no longer accepted, or its support is no
+    // longer valid (see the support check above). Tracked here, not silently dropped, so page 0
+    // of this pillar can say so, and the "Evidence status" slide says which and why.
+    const omittedInsightCount = pillar.insight_ids.length - insights.length;
     const pageCount = Math.max(
       1,
       Math.ceil(insights.length / INSIGHT_ROW.PER_SLIDE),
@@ -533,11 +728,33 @@ export async function GET(
           color: COLORS.muted,
         });
       }
+      if (page === 0 && omittedInsightCount > 0) {
+        // REP-OUT-001: placed below so_what (whether or not so_what itself rendered) rather
+        // than inventing a new row - same reasoning as docxReport.ts's equivalent note, kept to
+        // one short italic line so it doesn't compete with the pillar's own fixed layout.
+        const staleNote = `${omittedInsightCount} insight${omittedInsightCount === 1 ? "" : "s"} referenced here ${omittedInsightCount === 1 ? "is" : "are"} no longer current and ${omittedInsightCount === 1 ? "has" : "have"} been left out.`;
+        const fittedStale = fitParagraph(staleNote, {
+          fontSize: 11,
+          widthIn: 8.8,
+          heightIn: 0.35,
+          minFontScale: 0.7,
+        });
+        slide.addText(fittedStale.text, {
+          x: 0.6,
+          y: pillar.so_what ? 1.72 : 1.3,
+          w: 8.8,
+          h: 0.35,
+          fontSize: fittedStale.fontSize,
+          italic: true,
+          fontFace: FONT.body,
+          color: COLORS.muted,
+        });
+      }
 
       pageInsights.forEach((insight, rowIndex) => {
         const y =
           INSIGHT_ROW.GRID_Y + rowIndex * (INSIGHT_ROW.H + INSIGHT_ROW.GAP);
-        const badge = confidenceBadgeFor(insight.confidence_tier);
+        const badge = withSupportBadge(confidenceBadgeFor(insight.confidence_tier), supportOf(insight.id).status);
 
         addEvidenceCard(slide, {
           x: INSIGHT_ROW.GRID_X,
@@ -554,6 +771,7 @@ export async function GET(
               italic: true,
               color: COLORS.muted,
             },
+            { text: sourceLine(sourcesByInsight.get(insight.id) ?? []), fontSize: 8, color: COLORS.muted },
           ],
         });
       });
@@ -629,7 +847,7 @@ export async function GET(
       const row = Math.floor(index / CARDS_PER_ROW);
       const x = GRID_X + col * (CARD_W + CARD_GAP_X);
       const y = GRID_Y + row * (CARD_H + CARD_GAP_Y);
-      const badge = PRIORITY_BADGES[rec.priority];
+      const badge = withSupportBadge(PRIORITY_BADGES[rec.priority], supportOf(rec.synthesized_insight_id).status);
 
       addEvidenceCard(slide, {
         x,
@@ -735,6 +953,147 @@ export async function GET(
       color: COLORS.mutedOnDark,
     });
     addFooter(slide, deckTitle, "Caveats & scope");
+  }
+
+  // FND-001/REP-OUT-001 (second counter-review): a second, independent qualification surface
+  // from the model-authored "CAVEATS & SCOPE" slide above (narrative.caveats is free text the
+  // narrative generator wrote, never verified evidence numbers - see deck_narratives' own
+  // migration comment). This slide instead lists, per still-exported insight and recommendation,
+  // the export-worthy caveat tags aggregated live from that claim's own still-eligible
+  // contributing findings. Gated on its own non-empty condition so a deck with no qualifying
+  // findings renders no extra slide, and never merged into the prose above - a reader must not
+  // mistake "this insight is stale" (the per-pillar note above) for "this insight is current but
+  // qualified" (this slide).
+  // GT-009: a line here restates an insight (or a recommendation on one), so it carries that
+  // insight's support status in the same words as its evidence card ("SUPPORT CHANGED", "SUPPORT
+  // NOT CHECKED"); before, a stale insight appeared here with only its design caveat.
+  const supportTagFor = (insightId: string) => {
+    const tag = SUPPORT_BADGE_SUFFIX[supportOf(insightId).status];
+    return tag ? ` [${tag}]` : "";
+  };
+  const insightQualifications = Array.from(insightsById.entries())
+    .map(([id, insight]) => ({
+      headline: `${insight.headline}${supportTagFor(id)}`,
+      caveats: exportCaveatLabels(insight.caveat_tags),
+    }))
+    .filter((entry) => entry.caveats.length > 0);
+  const recommendationQualifications = recommendations
+    .map((rec) => ({
+      headline: `${rec.action_text}${supportTagFor(rec.synthesized_insight_id)}`,
+      caveats: exportCaveatLabels(rec.caveat_tags),
+    }))
+    .filter((entry) => entry.caveats.length > 0);
+
+  if (insightQualifications.length > 0 || recommendationQualifications.length > 0) {
+    const slide = pptx.addSlide();
+    slide.background = { color: COLORS.ink };
+    slide.addText("EVIDENCE QUALIFICATIONS", {
+      x: 0.6,
+      y: 0.55,
+      w: 8.6,
+      h: 0.4,
+      fontSize: 13,
+      bold: true,
+      fontFace: FONT.body,
+      color: COLORS.accentOnDark,
+      charSpacing: 2,
+    });
+    const qualificationLines = [
+      ...insightQualifications,
+      ...recommendationQualifications,
+    ].map((entry) => `${entry.headline} — ${entry.caveats.join("; ")}.`);
+    const fittedQualifications = fitBulletList(qualificationLines, {
+      fontSize: 13,
+      widthIn: 8.4,
+      heightIn: 3.6,
+      minFontScale: 0.6,
+    });
+    slide.addText(
+      fittedQualifications.items.map((line) => ({
+        text: line,
+        options: { bullet: { code: "25AA" }, breakLine: true, color: "FFFFFF" },
+      })),
+      {
+        x: 0.7,
+        y: 1.15,
+        w: 8.4,
+        h: 3.6,
+        fontSize: fittedQualifications.fontSize,
+        fontFace: FONT.body,
+        valign: "top",
+      },
+    );
+    addFooter(slide, deckTitle, "Evidence qualifications");
+  }
+
+  // FND-001 / REP-OUT-001: what was left out, and what is shown with changed or uncheckable
+  // support, with the reason - separate from the caveats slide, because a caveat qualifies current
+  // evidence while this says the evidence itself moved. Identical reasons are said once with the
+  // items they apply to, so a legacy project ("drafted before support tracking") gets one line,
+  // not one per insight.
+  // Numerical traceability (0101): AI-written text whose figures need review is listed here too,
+  // with the figures and why; a failed read of the checks is said, never read as "all traced".
+  const figures = await loadRunFigureChecksForExport((fn) => withTenant(TENANT_ID, fn), runId);
+  const figureLines = [
+    figureCheckLoadErrorNote(figures),
+    figureCheckNote(figures.narrative) ? `Report narrative. ${figureCheckNote(figures.narrative)}` : null,
+    ...Array.from(insightsById).map(([id, insight]) => {
+      const note = figureCheckNote(figures.synthesizedInsights[id]);
+      return note ? `${insight.headline}. ${note}` : null;
+    }),
+    ...recommendations.map((rec) => {
+      const note = figureCheckNote(figures.recommendations[rec.id]);
+      return note ? `${rec.action_text}. ${note}` : null;
+    }),
+  ].filter((line): line is string => line !== null);
+  const statusLines = [
+    ...excludedLines,
+    ...figureLines,
+    ...(unresolvedReferenceCount > 0
+      ? [
+          `${unresolvedReferenceCount} insight reference${unresolvedReferenceCount === 1 ? "" : "s"} in this narrative ${unresolvedReferenceCount === 1 ? "is" : "are"} no longer accepted or no longer exist${unresolvedReferenceCount === 1 ? "s" : ""}, and ${unresolvedReferenceCount === 1 ? "was" : "were"} left out.`,
+        ]
+      : []),
+    ...Array.from(qualifiedLines).map(([summary, headlines]) =>
+      headlines.length === 1 ? `${headlines[0]}. ${summary}` : `${headlines.length} items (${headlines.join("; ")}). ${summary}`,
+    ),
+  ];
+  if (statusLines.length > 0) {
+    const slide = pptx.addSlide();
+    slide.background = { color: COLORS.ink };
+    slide.addText("EVIDENCE STATUS: NEEDS REVIEW", {
+      x: 0.6,
+      y: 0.55,
+      w: 8.6,
+      h: 0.4,
+      fontSize: 13,
+      bold: true,
+      fontFace: FONT.body,
+      color: COLORS.accentOnDark,
+      charSpacing: 2,
+    });
+    const fittedStatus = fitBulletList(statusLines, {
+      fontSize: 13,
+      widthIn: 8.4,
+      heightIn: 3.6,
+      minFontScale: 0.6,
+    });
+    slide.addText(
+      fittedStatus.items.map((line) => ({
+        text: line,
+        options: { bullet: { code: "25AA" }, breakLine: true, color: "FFFFFF" },
+      })),
+      {
+        x: 0.7,
+        y: 1.15,
+        w: 8.4,
+        h: 3.6,
+        fontSize: fittedStatus.fontSize,
+        fontFace: FONT.body,
+        valign: "top",
+      },
+    );
+    addFooter(slide, deckTitle, "Evidence status");
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
