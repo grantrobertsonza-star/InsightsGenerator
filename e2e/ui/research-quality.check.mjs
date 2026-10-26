@@ -156,6 +156,7 @@ test("research quality: brief, proposal and comparison reviews, dashboard, detai
     if ((await words.count()) > 0) {
       expect(await words.evaluate((e) => e.open)).toBe(false);
       await expect(words.locator("li").first()).toBeHidden();
+      await expect(words.locator("summary")).toHaveText(/^Evidence \(\d+\)$/);
       await words.locator("summary").click();
       await expect(words.locator("li").first()).toBeVisible();
     }

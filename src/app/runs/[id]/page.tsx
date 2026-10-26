@@ -76,6 +76,7 @@ import ObjectiveCoverage, { SelectedObjectiveCoverage } from "./ObjectiveCoverag
 import ObjectiveEvidence from "./ObjectiveEvidence";
 import { ObjectiveSelectionProvider } from "./ObjectiveSelection";
 import { ObjectiveBadges, ObjectiveList, ObjectiveMiddle } from "./ObjectivesWorkspace";
+import { objectiveListPositions } from "./objectiveAccents";
 import ClaimTableChecks from "./ClaimTableChecks";
 import RecommendationsReview from "./RecommendationsReview";
 import RecommendationsWorkspace from "./RecommendationsWorkspace";
@@ -4382,12 +4383,17 @@ export default async function RunPage({
               : null,
         };
   });
+  // One colour per objective across the left list, the scores table and the detail (objectiveAccents).
+  const statedObjectiveLines = parseObjectiveLines(run.stated_objectives_text);
+  const statedObjectiveIds = setupLineCandidateIds(statedObjectiveLines, objectiveCandidates);
+  const objectivePositions = objectiveListPositions(statedObjectiveIds, objectiveRows);
   const objectiveReviewList = (
     <ObjectiveReviewTable
       runId={id}
       hasFindings={findings.length > 0}
       missingMigration={objectiveQuality.missing}
       rows={objectiveRows}
+      positions={objectivePositions}
     />
   );
 
@@ -5691,8 +5697,8 @@ export default async function RunPage({
                 left={
                   <Pane side="plain" title="Objectives">
                     {(() => {
-                      const statedLines = parseObjectiveLines(run.stated_objectives_text);
-                      const statedIds = setupLineCandidateIds(statedLines, objectiveCandidates);
+                      const statedLines = statedObjectiveLines;
+                      const statedIds = statedObjectiveIds;
                       const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred }));
                       const statedIdSet = new Set(statedIds.filter((x): x is string => !!x));
                       const others = objectiveRows.filter((r) => !statedIdSet.has(r.id));
@@ -5726,8 +5732,13 @@ export default async function RunPage({
                 middle={
                   <Pane side="plain" title="Objective detail">
                     <div data-stage-anchor="objective-detail" />
-                    <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} />
+                    <ObjectiveMiddle runId={id} rows={objectiveRows} overview={objectiveReviewList} positions={objectivePositions} />
                     <SelectedObjectiveCoverage
+                      runId={id}
+                      hasObjectiveOrDecision={Boolean(
+                        (run.research_objective && run.research_objective.trim()) ||
+                          (run.decision_statement && run.decision_statement.trim()),
+                      )}
                       validations={objectiveValidations}
                       insights={synthesizedInsights.map((i) => ({ id: i.id, headline: i.headline, review_status: i.review_status }))}
                     />

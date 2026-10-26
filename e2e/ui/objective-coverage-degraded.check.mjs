@@ -82,10 +82,14 @@ test("a degraded coverage conclusion is qualified in Review Objectives, survives
     const middle = page.getByTestId("selected-objective-coverage");
     await expect(middle.getByText("Evidence check degraded", { exact: true })).toBeVisible();
     await expect(middle.getByText(CONCLUSION, { exact: true })).toBeVisible();
-    await expect(coverage().getByTestId("coverage-selected-note")).toBeVisible();
-    await expect(coverage().getByText(CONCLUSION, { exact: true })).toHaveCount(0);
+    // The right pane's coverage card steps aside while an objective is selected (2026-10-26): the
+    // middle tile carries the conclusion and the button that updates coverage, so neither is shown twice.
+    await expect(page.getByRole("heading", { name: "Coverage of your objectives" })).toHaveCount(0);
+    await expect(page.getByText(CONCLUSION, { exact: true })).toHaveCount(1);
+    await expect(middle.getByRole("button", { name: "Update coverage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Check (now|again)$/ })).toHaveCount(0);
     if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-coverage-selected.png"), fullPage: true });
-    await coverage().getByRole("button", { name: "Show all" }).click();
+    await page.getByRole("button", { name: "All objectives" }).click();
     await expect(middle).toHaveCount(0);
     await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
 

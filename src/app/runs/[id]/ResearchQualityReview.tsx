@@ -1068,7 +1068,7 @@ function CriterionDetail({ view, criterionId, improvementFirst = false }: { view
         // rating and its reason come first. Keyed by criterion so switching criteria closes it again.
         <details key={criterionId} className="group mt-2" data-testid="rq-document-words">
           <summary className="cursor-pointer select-none font-medium marker:text-muted">
-            {`In the document's words (${statementCount})`}
+            {`Evidence (${statementCount})`}
           </summary>
           <ul className="mt-1 flex flex-col gap-1">
             {obs

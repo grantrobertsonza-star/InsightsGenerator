@@ -2,7 +2,7 @@
 // for a conclusion generated while data-evidence retrieval was failing, and nothing extra for one
 // that was not. The conclusion, status and full wording are unchanged either way, and the
 // qualification stays when one objective is selected (shown under its detail in the middle pane on the
-// one-page Objectives prototype, not repeated in the coverage pane). Static render of the actual component; its
+// one-page Objectives prototype, with the Update coverage button; the coverage pane steps aside). Static render of the actual component; its
 // server actions and the selection hook are controlled. Reload and reassessment are covered by the
 // native check e2e/ui/objective-coverage-degraded.check.mjs.
 import { describe, expect, it, vi } from "vitest";
@@ -24,7 +24,7 @@ const validation = (order: number, text: string, degraded: boolean) => ({
   conclusion: `${longConclusion} (${text})`, synthesized_insight_ids: ["i1"], inferred: false, evidence_digest_degraded: degraded,
 });
 const renderSelected = (validations: ReturnType<typeof validation>[]) =>
-  renderToStaticMarkup(<SelectedObjectiveCoverage validations={validations} insights={[{ id: "i1", headline: "Speed beats price", review_status: "accepted" }]} />);
+  renderToStaticMarkup(<SelectedObjectiveCoverage runId="r1" hasObjectiveOrDecision validations={validations} insights={[{ id: "i1", headline: "Speed beats price", review_status: "accepted" }]} />);
 const render = (validations: ReturnType<typeof validation>[]) =>
   renderToStaticMarkup(
     <ObjectiveCoverage runId="r1" validations={validations} insights={[{ id: "i1", headline: "Speed beats price", review_status: "accepted" }]} hasObjectiveOrDecision />,
@@ -50,10 +50,10 @@ describe("Review Objectives coverage degraded qualification (OBJ-REV-012)", () =
     selection.selected = { id: null, text: "Degraded objective" };
     expect(text(renderSelected(both))).toContain("Evidence check degraded");
     expect(text(renderSelected(both))).not.toContain("(Current objective)");
-    // The coverage pane points to the middle rather than repeating the card.
-    const pane = text(render(both));
-    expect(pane).toContain("The selected objective's coverage is shown under its detail.");
-    expect(pane).not.toContain(longConclusion);
+    // The coverage pane steps aside (2026-10-26): the middle tile has the verdict and the one button
+    // that updates coverage, so neither appears twice.
+    expect(render(both)).toBe("");
+    expect(text(renderSelected(both))).toContain("Update coverage");
     selection.selected = { id: null, text: "Current objective" };
     const t = text(renderSelected(both));
     expect(t).not.toContain("Evidence check degraded");

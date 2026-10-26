@@ -27,6 +27,20 @@ const statusStyle = {
 const btn =
   "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-60";
 
+/** The coverage check, shared by the right pane and the selected objective's Coverage tile. It always re-checks every stated objective and decision and refreshes "Evidence without an objective". */
+function useCoverageCheck(runId: string) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  function run(fn: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>) {
+    setError(null);
+    start(async () => {
+      const r = await fn(runId);
+      if (!r.ok) setError(r.error);
+    });
+  }
+  return { pending, error, run };
+}
+
 export default function ObjectiveCoverage({
   runId,
   validations,
@@ -38,9 +52,8 @@ export default function ObjectiveCoverage({
   insights: InsightLite[];
   hasObjectiveOrDecision: boolean;
 }) {
-  const { selected, select } = useObjectiveSelection();
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const { selected } = useObjectiveSelection();
+  const { pending, error, run } = useCoverageCheck(runId);
   const accepted = insights.filter((i) => i.review_status === "accepted");
   const byId = new Map(insights.map((i) => [i.id, i.headline]));
   const statedExists = validations.some((v) => !v.inferred);
@@ -53,13 +66,10 @@ export default function ObjectiveCoverage({
   const covered = new Set(validations.filter((v) => !v.inferred).flatMap((v) => v.synthesized_insight_ids));
   const unmatched = accepted.filter((i) => !covered.has(i.id));
 
-  function run(fn: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>) {
-    setError(null);
-    start(async () => {
-      const r = await fn(runId);
-      if (!r.ok) setError(r.error);
-    });
-  }
+  // With an objective selected its coverage, and the button that updates coverage, sit under its
+  // detail in the middle pane (SelectedObjectiveCoverage); this card would only repeat that button
+  // (Grant, 2026-10-26), so it steps aside until "All objectives" clears the selection.
+  if (selected) return null;
 
   if (accepted.length === 0 && validations.length === 0) {
     return (
@@ -87,14 +97,7 @@ export default function ObjectiveCoverage({
         )}
       </div>
 
-      {/* One-page Objectives (Grant, 2026-10-22): the selected objective's coverage is shown under
-          its detail in the middle pane (SelectedObjectiveCoverage), not repeated here. */}
-      {selected ? (
-        <p className="flex flex-wrap items-center gap-2 text-xs text-muted" data-testid="coverage-selected-note">
-          The selected objective&apos;s coverage is shown under its detail.
-          <button className="underline" onClick={() => select(selected)}>Show all</button>
-        </p>
-      ) : validations.length > 0 ? (
+      {validations.length > 0 ? (
         <ul className="space-y-3">
           {ordered.map((v) => (
             <CoverageCard key={`${v.item_kind}-${v.item_order}`} v={v} byId={byId} />
@@ -108,7 +111,7 @@ export default function ObjectiveCoverage({
         </p>
       )}
 
-      {selected ? null : statedExists || (validations.length === 0 && !hasObjectiveOrDecision) ? (
+      {statedExists || (validations.length === 0 && !hasObjectiveOrDecision) ? (
       <div className="border-t border-border pt-4">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -204,18 +207,45 @@ function CoverageCard({ v, byId }: { v: Validation; byId: Map<string, string> })
 
 /**
  * The selected objective's coverage, shown under its detail on the one-page Objectives prototype
- * (Grant, 2026-10-22), so the middle pane's free space is used and the right pane holds the check
- * itself and the evidence. Matched by the same objective identity as the rest of the page
- * (sameObjective). With nothing selected it renders nothing: the right pane lists every verdict.
+ * (Grant, 2026-10-22), with the button that updates coverage (2026-10-26; the right pane's card steps
+ * aside while an objective is selected, so the button is not shown twice). The update re-checks every
+ * objective and decision, as the right pane's does. Matched by the same objective identity as the
+ * rest of the page (sameObjective). With nothing selected it renders nothing: the right pane lists
+ * every verdict.
  */
-export function SelectedObjectiveCoverage({ validations, insights }: { validations: Validation[]; insights: InsightLite[] }) {
+export function SelectedObjectiveCoverage({
+  runId,
+  validations,
+  insights,
+  hasObjectiveOrDecision,
+}: {
+  runId: string;
+  validations: Validation[];
+  insights: InsightLite[];
+  hasObjectiveOrDecision: boolean;
+}) {
   const { selected } = useObjectiveSelection();
+  const { pending, error, run } = useCoverageCheck(runId);
   if (!selected) return null;
   const byId = new Map(insights.map((i) => [i.id, i.headline]));
   const matching = validations.filter((v) => sameObjective(selected, { text: v.item_text }));
+  // The same condition as the right pane's button: there is something to check against.
+  const canCheck = hasObjectiveOrDecision && (validations.length > 0 || insights.some((i) => i.review_status === "accepted"));
   return (
     <section className="mt-4" data-testid="selected-objective-coverage">
-      <h3 className="mb-2 text-sm font-semibold text-foreground">Coverage</h3>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Coverage</h3>
+        {canCheck && (
+          <button
+            className={btn}
+            disabled={pending}
+            onClick={() => run(checkObjectiveCoverage)}
+            title="Checks every stated objective and decision against the accepted insights, not only this one"
+          >
+            {pending ? "Working..." : "Update coverage"}
+          </button>
+        )}
+      </div>
       {matching.length > 0 ? (
         <ul className="space-y-3">
           {matching.map((v) => (
@@ -225,10 +255,13 @@ export function SelectedObjectiveCoverage({ validations, insights }: { validatio
       ) : (
         <p className="text-xs text-muted">
           {validations.length > 0
-            ? "This objective was not in the last coverage check. Use Check again under Objective review."
-            : "Not checked against the insights yet. Coverage is checked under Objective review."}
+            ? "This objective was not in the last coverage check. Update coverage to include it."
+            : canCheck
+              ? "Not checked against the insights yet. Update coverage to check it."
+              : "Coverage is checked once there are accepted insights."}
         </p>
       )}
+      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </section>
   );
 }

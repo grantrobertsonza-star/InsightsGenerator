@@ -15,6 +15,7 @@ import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useObjectiveRowActions } from "./useObjectiveRowActions";
 import ObjectiveEditConflict from "./ObjectiveEditConflict";
 import { isRereadSuggestion } from "@/lib/briefFillText";
+import { objectiveAccent, orderedObjectives, splitObjectiveLabel } from "./objectiveAccents";
 
 export type ObjectiveScores = {
   specific: number;
@@ -81,9 +82,13 @@ export function tagFor(row: ObjectiveRow) {
   return { label: "Suggested", cls: "bg-amber-50 text-amber-700" };
 }
 
-function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
+function Row({ runId, row, position }: { runId: string; row: ObjectiveRow; position?: number }) {
   const a = useObjectiveRowActions(runId, row);
   const tag = tagFor(row);
+  // Rolled up, the row shows only scores, so it carries the objective's colour from the left list and
+  // its short name (the label before a colon, or the opening words) to say which objective it is.
+  const accent = position === undefined ? null : objectiveAccent(position);
+  const { label, body } = splitObjectiveLabel(row.text);
   const { selected, select } = useObjectiveSelection();
   // Rolled up by default (Grant, 2026-10-20): only the scores row shows; rolling down shows the full
   // wording, "To sharpen it" and any rationale across the row. Editing always shows it. The wording
@@ -101,7 +106,7 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
       className={`border-b border-border last:border-0 ${a.accepted ? "cursor-pointer" : ""} ${sameObjective(selected, { id: row.id, text: row.text }) ? "bg-primary-light/40" : ""} ${a.rejected ? "opacity-50" : ""}`}
     >
     <tr className="align-top">
-      <td className="whitespace-nowrap px-3 py-2 text-foreground">
+      <td className={`whitespace-nowrap px-3 py-2 text-foreground ${accent ? `border-l-4 ${accent.bar}` : ""}`} data-objective-accent={position ?? undefined}>
         <button
           type="button"
           aria-expanded={full}
@@ -135,6 +140,15 @@ function Row({ runId, row }: { runId: string; row: ObjectiveRow }) {
             data-testid="objective-similar-chip"
           >
             Looks like one you have
+          </span>
+        )}
+        {!full && (
+          <span
+            className={`mt-1 block max-w-[15rem] truncate rounded px-1.5 py-0.5 text-[11px] font-medium ${accent ? accent.chip : "bg-slate-100 text-slate-700"}`}
+            title={row.text}
+            data-testid="objective-row-name"
+          >
+            {label ?? body}
           </span>
         )}
       </td>
@@ -258,11 +272,14 @@ export default function ObjectiveReviewTable({
   rows,
   hasFindings,
   missingMigration,
+  positions,
 }: {
   runId: string;
   rows: ObjectiveRow[];
   hasFindings: boolean;
   missingMigration: boolean;
+  /** Each objective's place in the left list (objectiveListPositions), for its colour. */
+  positions?: Record<string, number>;
 }) {
   const [isPending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -270,8 +287,7 @@ export default function ObjectiveReviewTable({
   const [addText, setAddText] = useState("");
   const [rejectedOpen, setRejectedOpen] = useState(false);
 
-  const order = (r: ObjectiveRow) => (r.status === "accepted" ? 0 : 1) * 2 + (r.source === "ai_suggested" ? 1 : 0);
-  const active = rows.filter((r) => r.status !== "rejected").sort((a, b) => order(a) - order(b));
+  const active = orderedObjectives(rows);
   const rejected = rows.filter((r) => r.status === "rejected");
   const pendingCount = rows.filter((r) => r.status === "pending").length;
   const hasAi = rows.some((r) => r.source === "ai_suggested");
@@ -382,7 +398,7 @@ export default function ObjectiveReviewTable({
               </tr>
             </thead>
             {active.map((row) => (
-              <Row key={row.id} runId={runId} row={row} />
+              <Row key={row.id} runId={runId} row={row} position={positions?.[row.id]} />
             ))}
           </table>
         </div>
@@ -428,7 +444,7 @@ export default function ObjectiveReviewTable({
             <div className="mt-3 overflow-x-auto rounded-xl border border-border bg-white">
               <table className="w-full min-w-[640px] text-left text-[11px]">
                 {rejected.map((row) => (
-                  <Row key={row.id} runId={runId} row={row} />
+                  <Row key={row.id} runId={runId} row={row} position={positions?.[row.id]} />
                 ))}
               </table>
             </div>

@@ -3,25 +3,10 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { saveStatedObjectiveEdit } from "@/lib/runContextActions";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
+import { objectiveAccent, splitObjectiveLabel } from "./objectiveAccents";
 
 const miniBtn =
   "rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted transition hover:border-slate-400 hover:text-foreground disabled:opacity-50";
-
-const ACCENTS = [
-  { border: "border-l-indigo-400", tint: "bg-indigo-50/40", chip: "bg-indigo-100 text-indigo-800" },
-  { border: "border-l-emerald-400", tint: "bg-emerald-50/40", chip: "bg-emerald-100 text-emerald-800" },
-  { border: "border-l-amber-400", tint: "bg-amber-50/40", chip: "bg-amber-100 text-amber-800" },
-  { border: "border-l-sky-400", tint: "bg-sky-50/40", chip: "bg-sky-100 text-sky-800" },
-  { border: "border-l-rose-400", tint: "bg-rose-50/40", chip: "bg-rose-100 text-rose-800" },
-  { border: "border-l-violet-400", tint: "bg-violet-50/40", chip: "bg-violet-100 text-violet-800" },
-];
-
-/** Splits "Label: text" or "Label - text" into a short label and the rest. No label if the line has none. */
-function splitLabel(text: string): { label: string | null; body: string } {
-  const m = text.match(/^(.{3,48}?)\s*(?::|\s[-\u2013\u2014]\s)\s*([\s\S]+)$/);
-  if (m && m[1].split(/\s+/).length <= 6) return { label: m[1].trim(), body: m[2].trim() };
-  return { label: null, body: text };
-}
 
 function Item({ runId, text, index, source, candidateId, badges }: { runId: string; text: string; index: number; source: string | null; candidateId: string | null; badges: ReactNode }) {
   const [pending, start] = useTransition();
@@ -30,15 +15,15 @@ function Item({ runId, text, index, source, candidateId, badges }: { runId: stri
   // A failed save keeps the editor (and the draft) open and says why; nothing is shown as saved
   // until the server confirms it.
   const [error, setError] = useState<string | null>(null);
-  const accent = ACCENTS[index % ACCENTS.length];
-  const { label, body } = splitLabel(text);
+  const accent = objectiveAccent(index);
+  const { label, body } = splitObjectiveLabel(text);
   const { selected, select } = useObjectiveSelection();
   const isHeading = text.trim().endsWith(":");
   const isSel = sameObjective(selected, { text });
 
   return (
     <li
-      className={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-l-4 border-border px-3 py-2.5 shadow-sm ${isSel ? "ring-2 ring-primary/60" : ""} ${accent.tint} ${accent.border}`}
+      className={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-l-4 border-border px-3 py-2.5 shadow-sm ${isSel ? "ring-2 ring-primary/60" : ""} ${accent.softTint} ${accent.bar}`}
     >
       {editing ? (
         <textarea
