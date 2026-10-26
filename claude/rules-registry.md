@@ -28,6 +28,8 @@ in the change that moves it.
 | Missing values (blank, declared tokens) | engine `_is_missing_cell`, `_NA_STRING_TOKENS`. Mirror: `src/lib/dataQuality.ts` `isMissing` (Data quality counts on stored previews) | `claude/one-reader-import.md` | `dataQuality.test.ts`; no test yet compares the two token lists (gap) |
 | Answer domain: which codes are answers ("don't know", user-missing, unchosen scale points) | engine `_non_answer_codes` with `_DK_RE`; rows via `_ordered_categories_raw` | `claude/answer-domain.md` | `answerDomainScores.db.test.ts`, `scripts/crosstab_selftest.py` |
 | Category identity is the raw code, not the label | engine `_raw_key`, `_ordered_categories_raw` | IMP-003 / ANA-BRAND-002 comments in the engine | `engineCodeIdentity.test.ts`, `engineLabelConflicts.test.ts` |
+| Codebooks and spreadsheet questionnaires (reading, by variable name) | engine `codebook_items`, `instrument_sheet`; `src/lib/instruments.ts` `readClaimedInstrument` | `claude/codebook-import.md` | `codebookImport.db.test.ts`, `codebook.check.mjs` |
+| Which document labels a variable, and one confirmation per variable per document (LBL-01, IR-04) | `src/lib/labelOverlay.ts` `buildLabelOverlay`, `LABEL_SOURCE_ORDER`; `src/lib/instruments.ts` `variableTakenBy`, `getConfirmedItemsForData` | `claude/codebook-import.md` | `labelOverlay.test.ts`, `instrumentTwoSources.db.test.ts`, `instrumentConfirmCollision.db.test.ts` |
 | Default weight variable | `src/lib/starterTables.ts` `defaultWeight` | `claude/starter-tables.md` | `starterTables.test.ts` |
 | Effective base (Kish) | engine, computed inline in two places (row tables and descriptives) | engine comments | `goldenReferenceFixtures.test.ts`; the duplication is a known risk |
 | Suppression of small bases | engine `MIN_BASE_SUPPRESS`, `MIN_EFFECTIVE_BASE` | table notes | `goldenReferenceFixtures.test.ts` |
@@ -35,6 +37,7 @@ in the change that moves it.
 | Whether a design was applied (labels and caveats) | engine `notes.designApplied`; read by `crosstabs.crosstabFindings`, `npsActions`, `descriptiveFindings` | ANA-NPS-003 comments | `crosstabDesignLabel.test.ts` |
 | Multiple-comparison correction | engine `_adjust_p` | table notes | `scripts/crosstab_selftest.py` |
 | NPS | `src/lib/descriptiveFindings.ts` `computeNps` | descriptive findings comments | `goldenReferenceFixtures.test.ts` |
+| Respondent-level quality (straightlining, non-answers, speeders, interviewers) | engine `respondent_quality`, `_rq_grids`; loaded by `src/lib/respondentQuality.ts` | `claude/respondent-quality.md` | `respondentQuality.db.test.ts`, `respondent-quality.check.mjs` |
 | CSM top box and mean | `src/lib/csmMetrics.ts` `summarizeSeries` | `claude/answer-domain.md` | `answerDomainScores.db.test.ts` |
 
 ## Findings, insights and trust

@@ -6,7 +6,7 @@ const toc = [
   { id: "kinds", title: "What you can bring, and what each kind gets" },
   { id: "accept", title: "Reading and accepting data files" },
   { id: "quality", title: "What the quality panels check" },
-  { id: "instruments", title: "Questionnaires and guides" },
+  { id: "instruments", title: "Questionnaires, codebooks and guides" },
   { id: "output", title: "Statistical output sets" },
   { id: "checks", title: "The checks on an output set" },
   { id: "findings", title: "From output to findings" },
@@ -88,9 +88,10 @@ export default function ImportGuide() {
         rows={[
           ["Kind", "What it is", "What Import does with it"],
           ["Report", "A narrative document, deck or PDF that makes claims", "Reads it and extracts atomic claims for verification (see the findings guide)."],
-          ["Data file", "Case-level data (.sav, .dta, .csv, .xlsx; SAS excluded pending verification) or an already summarised table", "Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings."],
+          ["Data file", "Case-level data (.sav, .dta, SAS .sas7bdat or .xpt, R .rds or .RData, Parquet, .csv, tab-delimited .txt, .xlsx) or an already summarised table", "Case-level files are read, checked and held for the cross tab tool. Summarised tables get their own table checks and can generate findings."],
           ["Transcript", "An interview or group discussion", "Checks it before coding: who speaks, how much, how the moderator behaves, and whether it is long enough to code."],
           ["Questionnaire or guide", "The instrument behind the data or the discussion", "Attached to a data file or to transcripts, read automatically, and matched. See below."],
+          ["Codebook", "The data file's variables with their labels and answer codes (Excel, CSV, text, JSON, Word or PDF)", "Read automatically and matched to the data file by variable name. See below."],
           ["Statistical output", "A zip or several files of model results, cluster profiles, diagnostics and logs", "Sorted into a set, classified, checked as a set, and turned into findings. See below."],
           ["Technical document", "How the study was done: methodology, fieldwork, sampling, weighting or analysis documentation (a survey's technical report, for example)", "Reads its text, shows it in the preview, and gives it to the Research assistant to search and quote. It is not mined for findings, and what it describes is not checked against the data."],
         ]}
@@ -217,7 +218,29 @@ export default function ImportGuide() {
         A questionnaire sits inside the data file card, and a guide inside the transcript card, rolled up. They are
         read automatically when they arrive, and the wrong one can be removed with the delete button beside it.
       </P>
+      <H3>Codebook</H3>
+      <P>
+        A codebook lists each variable with its label and answer codes, as survey archives such as the Berkeley IGS Poll
+        or the World Bank publish them. In Excel, CSV, text or JSON it is read directly, without the AI: the app finds the
+        column of variable names, the labels and answer lists written like &quot;1=Democrat, 2=Republican&quot;, or a
+        layout with one row per answer code. In Word or PDF it is read by the AI. Each variable is then matched to the
+        data file&apos;s variable of the same name; confirm the same-code matches and tables show the codebook&apos;s
+        labels. A data workbook with its own Codebook sheet is still read with the data, without a separate file.
+      </P>
+      <H3>Labels and documentation</H3>
+      <P>
+        A data file&apos;s Labels and documentation tab sets each variable beside its codebook entry and questionnaire
+        question, and says where the labels in tables come from: the data file&apos;s own labels first, then the
+        codebook&apos;s, then the questionnaire&apos;s. A codebook and a questionnaire can both be confirmed for the same
+        variable. Where they give different answer labels, tables use the codebook&apos;s and the tab lists the
+        difference, so you can check it. The tab also counts the variables documented and not documented, and lists
+        codebook entries with no confirmed column in the file.
+      </P>
       <H3>Questionnaire</H3>
+      <P>
+        A questionnaire can be Word, PDF, Excel or CSV. An XLSForm (the survey and choices sheets used by ODK,
+        KoboToolbox and SurveyCTO) is read directly; any other spreadsheet is read by the AI, as a Word file is.
+      </P>
       <P>
         The read produces a list of items: code, wording, answer options and any printed skip instruction. Matching to
         the data then proceeds from the most to the least reliable signal: same code, same code stem (Q12 to Q12_1; Q1

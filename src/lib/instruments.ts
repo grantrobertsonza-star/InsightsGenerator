@@ -9,13 +9,14 @@ import { codeFamily, matchItems } from "./instrumentMatch";
 import { parseRouting, type Routing } from "./routingParse";
 import { deriveGotoRouting } from "./gotoRouting";
 import { buildLabelOverlay, type LabelOverlay } from "./labelOverlay";
+import { isPlainTableFileName } from "./parseTable";
 
 // Questionnaires and interview guides: reading their items out, linking
 // questionnaire items to a dataset's variables, and exposing the confirmed
 // links to the rest of the app. Everything the model produces here is stored
 // as a suggestion for the researcher to check.
 
-export type InstrumentType = "questionnaire" | "interview_guide" | "focus_group_guide";
+export type InstrumentType = "questionnaire" | "interview_guide" | "focus_group_guide" | "codebook";
 export type ItemOption = { code: string; label: string; goto?: string | null };
 export type InstrumentItem = {
   id: string;
@@ -50,6 +51,14 @@ type RawItem = {
   routing_text?: unknown;
   section?: unknown;
 };
+
+const CODEBOOK_SYSTEM =
+  "You read part of a survey codebook (a data dictionary) and list its variables in the order they appear. " +
+  "For each variable return: its variable name exactly as printed (for example Q12, party_reg, B3a_1) as the code; its label or question text as printed as the text; " +
+  "its answer codes and their labels as code and label pairs (empty when it has none, for example a weight or an identifier); " +
+  "routing_text null; and the section heading it sits under, or null. " +
+  "When one entry names several variables (for example 'white, black, latino'), list each variable separately with the same text and options. " +
+  "Do not invent variables, codes or labels.";
 
 const SYSTEM =
   "You read part of a survey questionnaire, or an interview or focus group guide, and list the question items in the order they appear. " +
@@ -151,10 +160,10 @@ async function claimInstrumentRead(
   tenantId: string,
   runId: string,
   documentId: string,
-): Promise<{ claimId: string; storage_path: string; source_filename: string }> {
+): Promise<{ claimId: string; storage_path: string; source_filename: string; instrument_type: string | null }> {
   return withTenant(tenantId, async (client) => {
-    const doc = await client.query<{ storage_path: string; source_filename: string; content_sha256: string | null }>(
-      "select storage_path, source_filename, content_sha256 from documents where id = $1 and run_id = $2 and kind = 'instrument' for update",
+    const doc = await client.query<{ storage_path: string; source_filename: string; content_sha256: string | null; instrument_type: string | null }>(
+      "select storage_path, source_filename, content_sha256, instrument_type from documents where id = $1 and run_id = $2 and kind = 'instrument' for update",
       [documentId, runId],
     );
     if (doc.rowCount !== 1) throw new Error("Questionnaire or guide not found for this run");
@@ -165,7 +174,7 @@ async function claimInstrumentRead(
       "insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_started',$3) returning id::text",
       [tenantId, runId, JSON.stringify({ documentId, contentSha256: doc.rows[0].content_sha256 })],
     );
-    return { claimId: claim.rows[0].id, storage_path: doc.rows[0].storage_path, source_filename: doc.rows[0].source_filename };
+    return { claimId: claim.rows[0].id, storage_path: doc.rows[0].storage_path, source_filename: doc.rows[0].source_filename, instrument_type: doc.rows[0].instrument_type };
   });
 }
 
@@ -232,9 +241,100 @@ async function readClaimedInstrument(
   tenantId: string,
   runId: string,
   documentId: string,
-  doc: { claimId: string; storage_path: string; source_filename: string },
+  doc: { claimId: string; storage_path: string; source_filename: string; instrument_type: string | null },
 ): Promise<InstrumentReadResult> {
-  const extracted = await extractDocumentText(doc.storage_path, doc.source_filename, documentId);
+  // Codebooks and questionnaires come in tables too (Grant, 2026-10-26). A codebook table or JSON file
+  // is read by the engine without the model; a spreadsheet questionnaire is read without it when it is
+  // an XLSForm, and otherwise its sheets' text goes to the same model read as a Word or PDF file.
+  const spreadsheet = isPlainTableFileName(doc.source_filename);
+  let read: ReadRows;
+  if (doc.instrument_type === "codebook" && (spreadsheet || /\.json$/i.test(doc.source_filename))) {
+    read = await readCodebookTable(doc);
+  } else if (spreadsheet) {
+    const { runStatsTool } = await import("./parseStatsFile");
+    const sheet = await runStatsTool<{ items?: EngineItem[]; text?: string }>("instrument_sheet", doc.storage_path, doc.source_filename, {});
+    read = sheet.items ? rowsFromEngineItems(sheet.items) : await readItemsWithModel(tenantId, runId, documentId, doc, sheet.text ?? "");
+  } else {
+    read = await readItemsWithModel(tenantId, runId, documentId, doc);
+  }
+  const { rows } = read;
+  if (rows.length === 0) throw new Error(doc.instrument_type === "codebook" ? "No variables were found in this codebook." : "No question items were found in this file.");
+  // An invalid item or a truncated option list means something the model actually reported
+  // was lost or cut short, not that the document legitimately has no more to give - the same
+  // "better a stale item than a silently destroyed confirmed link" reasoning the chunk-level
+  // failure already gets, so it folds into the same `complete` flag the deletion below relies on.
+  const complete = read.failedChunks === 0 && read.invalidItems === 0 && read.truncatedOptionItems === 0;
+  const failedChunks = read.failedChunks;
+  const invalidItems = read.invalidItems;
+  const truncatedOptionItems = read.truncatedOptionItems;
+  return storeInstrumentRows(tenantId, runId, documentId, doc, rows, { complete, failedChunks, invalidItems, truncatedOptionItems });
+}
+
+type ReadRow = {
+  section: string | null;
+  code: string | null;
+  text: string;
+  options: ItemOption[];
+  routingText: string | null;
+  routing: Routing | null;
+  page: number | null;
+  /** IMP-012: this row's own options list was truncated - see the write loop below, which
+   * uses it to avoid overwriting an existing, previously-complete item with this partial one. */
+  truncated: boolean;
+};
+type ReadRows = { rows: ReadRow[]; failedChunks: number; invalidItems: number; truncatedOptionItems: number };
+
+/**
+ * A codebook laid out as a table (CSV, text or Excel), read by the engine without the model
+ * (codebook_items in api/parse-stats-file.py): each variable becomes an item whose code is the
+ * variable name, so it links to the data file's variable of that name. Its text is the codebook's
+ * label (or the name when it has none); its options are the answer codes and labels.
+ */
+type EngineItem = { variable: string; label: string; options: { code: string; label: string }[]; section: string | null; routing?: string | null };
+
+/** Engine-read items as rows: the code is the variable name, so each links to the data column of that name. */
+function rowsFromEngineItems(items: EngineItem[]): ReadRows {
+  let truncatedOptionItems = 0;
+  const rows: ReadRow[] = items.map((it) => {
+    const { options, truncated } = cleanOptions(it.options);
+    if (truncated) truncatedOptionItems += 1;
+    return {
+      section: it.section,
+      code: it.variable,
+      text: it.label?.trim() || it.variable,
+      options,
+      // An XLSForm "relevant" expression is kept as written; it is not in the skip-instruction
+      // language parseRouting reads, so no routing is derived from it.
+      routingText: it.routing ?? null,
+      routing: null,
+      page: null,
+      truncated,
+    };
+  });
+  return { rows, failedChunks: 0, invalidItems: 0, truncatedOptionItems };
+}
+
+/**
+ * A codebook laid out as a table (CSV, text, Excel) or written as JSON, read by the engine without the
+ * model (codebook_items in api/parse-stats-file.py): each variable becomes an item whose code is the
+ * variable name, its text the codebook's label (the name when it has none), its options the answer
+ * codes and labels.
+ */
+async function readCodebookTable(doc: { storage_path: string; source_filename: string }): Promise<ReadRows> {
+  const { runStatsTool } = await import("./parseStatsFile");
+  const result = await runStatsTool<{ items: EngineItem[] }>("codebook", doc.storage_path, doc.source_filename, {});
+  return rowsFromEngineItems(result.items);
+}
+
+async function readItemsWithModel(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  doc: { storage_path: string; source_filename: string; instrument_type: string | null },
+  /** Text already read from the file (a spreadsheet's sheets); otherwise the document is read here. */
+  givenText?: string,
+): Promise<ReadRows> {
+  const extracted = givenText !== undefined ? { pages: [], fullText: givenText } : await extractDocumentText(doc.storage_path, doc.source_filename, documentId);
   const pages = extracted.pages.length > 0 ? extracted.pages : splitText(extracted.fullText);
   const allChunks = chunkPages(pages);
   const chunks = allChunks.slice(0, MAX_CHUNKS);
@@ -250,7 +350,7 @@ async function readClaimedInstrument(
       const response = await anthropic.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 8000,
-        system: SYSTEM,
+        system: doc.instrument_type === "codebook" ? CODEBOOK_SYSTEM : SYSTEM,
         tool_choice: { type: "tool", name: "record_items" },
         tools: [
           {
@@ -327,18 +427,7 @@ async function readClaimedInstrument(
   // exists to surface, so it is tracked the same way a failed chunk is.
   let invalidItems = 0;
   let truncatedOptionItems = 0;
-  const rows: {
-    section: string | null;
-    code: string | null;
-    text: string;
-    options: ItemOption[];
-    routingText: string | null;
-    routing: Routing | null;
-    page: number;
-    /** IMP-012: this row's own options list was truncated - see the write loop below, which
-     * uses it to avoid overwriting an existing, previously-complete item with this partial one. */
-    truncated: boolean;
-  }[] = [];
+  const rows: ReadRow[] = [];
   for (const chunk of found) {
     for (const i of chunk) {
       const text = typeof i.text === "string" ? i.text.replace(/\s+/g, " ").trim() : "";
@@ -365,13 +454,18 @@ async function readClaimedInstrument(
       });
     }
   }
-  if (rows.length === 0) throw new Error("No question items were found in this file.");
-  // An invalid item or a truncated option list means something the model actually reported
-  // was lost or cut short, not that the document legitimately has no more to give - the same
-  // "better a stale item than a silently destroyed confirmed link" reasoning the chunk-level
-  // failure already gets, so it folds into the same `complete` flag the deletion below relies on.
-  const complete = failedChunks === 0 && invalidItems === 0 && truncatedOptionItems === 0;
+  return { rows, failedChunks, invalidItems, truncatedOptionItems };
+}
 
+/** Writes a read's items, keeping the identity (and so the links) of every item that is still there. */
+async function storeInstrumentRows(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  doc: { claimId: string },
+  rows: ReadRow[],
+  { complete, failedChunks, invalidItems, truncatedOptionItems }: { complete: boolean; failedChunks: number; invalidItems: number; truncatedOptionItems: number },
+): Promise<InstrumentReadResult> {
   // Jumps printed on answer options ("No: GO TO Q10") skip the items between.
   const derived = deriveGotoRouting(rows.map((r) => ({ code: r.code, routing: r.routing, options: r.options })));
   rows.forEach((r, i) => {
@@ -477,14 +571,17 @@ export async function suggestInstrumentLinks(
          and item_id in (select id from instrument_items where document_id = $1)`,
       [instrumentId, dataDocumentId],
     );
-    // A variable the researcher has already confirmed for a question (by hand or by confirming a
-    // suggestion) is not suggested again for a different question: matching again must not put a
-    // second claim on a decision already made (Grant, 2026-10-20, with manual matching).
+    // A variable the researcher has already confirmed for a question of THIS document (by hand or by
+    // confirming a suggestion) is not suggested again for a different question of it: matching again
+    // must not put a second claim on a decision already made (Grant, 2026-10-20, with manual
+    // matching). A confirmation from another document (a codebook beside a questionnaire) is that
+    // document's own decision and does not stop this one being suggested (LBL-01, 2026-10-26).
     const taken = new Map(
       (
         await client.query<{ variable: string; item_id: string }>(
-          "select variable, item_id from instrument_links where data_document_id = $1 and status = 'confirmed'",
-          [dataDocumentId],
+          `select l.variable, l.item_id from instrument_links l join instrument_items i on i.id = l.item_id
+           where l.data_document_id = $1 and l.status = 'confirmed' and i.document_id = $2`,
+          [dataDocumentId, instrumentId],
         )
       ).rows.map((r) => [r.variable, r.item_id]),
     );
@@ -646,18 +743,27 @@ export type ConfirmedItem = {
   routingText: string | null;
   /** False for a high-confidence same-code suggestion, which is used only as a gate, never as a target. */
   confirmed: boolean;
+  /** The codebook or questionnaire the item comes from, so labels can follow LABEL_SOURCE_ORDER. */
+  documentId: string;
+  instrumentType: string | null;
 };
 export async function getConfirmedItemsForData(tenantId: string, runId: string, dataDocumentId: string): Promise<ConfirmedItem[]> {
   try {
     return await withTenantRead(tenantId, async (client) => {
-      const r = await client.query<{ variable: string; item_id: string; code: string | null; item_text: string; response_options: ItemOption[]; routing: Routing | null; routing_text: string | null; status: string }>(
-        `select l.variable, i.id as item_id, i.code, i.item_text, i.response_options, i.routing, i.routing_text, l.status
-         from instrument_links l join instrument_items i on i.id = l.item_id
+      // Ordered so every reader that takes the first item per variable or code takes it from the
+      // strongest source: confirmed before suggested, then a codebook before a questionnaire
+      // (labelSourceRank), then the earlier document, then the question's order in it.
+      const r = await client.query<{ variable: string; item_id: string; code: string | null; item_text: string; response_options: ItemOption[]; routing: Routing | null; routing_text: string | null; status: string; document_id: string; instrument_type: string | null }>(
+        `select l.variable, i.id as item_id, i.code, i.item_text, i.response_options, i.routing, i.routing_text, l.status,
+                i.document_id, d.instrument_type
+         from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
          where l.run_id = $1 and l.data_document_id = $2
-           and (l.status = 'confirmed' or (l.status = 'suggested' and l.method = 'code' and l.confidence >= 0.9))`,
+           and (l.status = 'confirmed' or (l.status = 'suggested' and l.method = 'code' and l.confidence >= 0.9))
+         order by (l.status = 'confirmed') desc, case d.instrument_type when 'codebook' then 0 when 'questionnaire' then 1 else 2 end,
+                  d.uploaded_at, d.id, i.item_order, l.variable`,
         [runId, dataDocumentId],
       );
-      return r.rows.map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed" }));
+      return r.rows.map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed", documentId: x.document_id, instrumentType: x.instrument_type }));
     });
   } catch (e) {
     // GTR-01: an undefined table or column alone does not show that this database has no
@@ -712,19 +818,23 @@ function isMissingInstrumentSchema(e: unknown): boolean {
 export async function getLabelOverlay(tenantId: string, runId: string, dataDocumentId: string): Promise<LabelOverlay | null> {
   const items = (await getConfirmedItemsForData(tenantId, runId, dataDocumentId)).filter((i) => i.confirmed);
   if (items.length === 0) return null;
-  return buildLabelOverlay(items.map((i) => ({ itemId: i.itemId, variable: i.variable, code: i.code, text: i.text, options: i.options })));
+  return buildLabelOverlay(items.map((i) => ({ itemId: i.itemId, variable: i.variable, code: i.code, text: i.text, options: i.options, source: { documentId: i.documentId, instrumentType: i.instrumentType } })));
 }
 
 
-/** Raised when a variable is already confirmed for another question of the same data file. */
+/** Raised when a variable is already confirmed for another question of the same document and data file. */
 export class InstrumentLinkTakenError extends Error {}
 
 
 /**
  * IR-04: the one rule every confirmation path follows (a hand-chosen variable, Confirm on a
- * suggestion, and Confirm on all strong same-code matches). A variable of a data file means one
- * question: it may be confirmed for a question only when no OTHER question of the same data file
- * already has it confirmed. Callers lock the data file's row first (lockDataDocuments), so two
+ * suggestion, and Confirm on all strong same-code matches). Within one document, a variable of a
+ * data file means one question: it may be confirmed for a question only when no OTHER question of
+ * the same document already has it confirmed for that data file. Different documents decide
+ * separately (LBL-01, 2026-10-26): a codebook entry and a questionnaire question both describe a
+ * variable, and refusing the second document's confirmation would leave either its wording or the
+ * codebook's labels unusable. Which document's labels apply is decided when the labels are built
+ * (labelOverlay.ts, codebook before questionnaire), not here. Callers lock the data file's row first (lockDataDocuments), so two
  * confirmations for the same file are decided one after the other and cannot both pass this check.
  * Returns the message naming the question that already has the variable, or null when it is free.
  */
@@ -732,6 +842,7 @@ async function variableTakenBy(client: PoolClient, dataDocumentId: string, varia
   const other = await client.query<{ code: string | null; item_text: string }>(
     `select i.code, i.item_text from instrument_links l join instrument_items i on i.id = l.item_id
      where l.data_document_id = $1 and l.variable = $2 and l.status = 'confirmed' and l.item_id <> $3
+       and i.document_id = (select document_id from instrument_items where id = $3)
      order by i.item_order limit 1`,
     [dataDocumentId, variable, itemId],
   );

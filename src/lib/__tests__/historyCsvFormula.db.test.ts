@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import * as XLSX from "xlsx";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 import { csvField } from "../csvField";
@@ -65,7 +66,7 @@ describe.skipIf(!TEST_DATABASE_URL)("history CSV in a real spreadsheet (real dat
     try {
       const csvPath = path.join(dir, "history.csv");
       writeFileSync(csvPath, Buffer.from(await res.arrayBuffer()));
-      execFileSync(SOFFICE, ["--headless", `-env:UserInstallation=file://${dir}/profile`, "--convert-to", "xlsx", "--outdir", dir, csvPath], { timeout: 120000 });
+      execFileSync(SOFFICE, ["--headless", `-env:UserInstallation=${pathToFileURL(path.join(dir, "profile")).href}`, "--convert-to", "xlsx", "--outdir", dir, csvPath], { timeout: 120000 });
       const wb = XLSX.read(readFileSync(path.join(dir, "history.xlsx")), { type: "buffer", cellFormula: true });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const cell = (ref: string) => sheet[ref] as XLSX.CellObject | undefined;

@@ -18,6 +18,8 @@ describe("upload purposes", () => {
       ["Report", "reportFiles"],
       // Three types, three fields (Grant, 2026-10-20): no separate step to say which it is.
       ["Questionnaire", "questionnaireFiles"],
+      // Its own type (Grant, 2026-10-26): the data file's variables, labels and codes.
+      ["Codebook", "codebookFiles"],
       ["Interview guide", "interviewGuideFiles"],
       ["Focus group guide", "focusGroupGuideFiles"],
     ]);
@@ -49,7 +51,6 @@ describe("upload purposes", () => {
     expect(suggested("tabulation.xls")).toEqual({ id: "tables" });
     // No hint: a spreadsheet is raw data, a document a report, a text file qualitative data.
     expect(suggested("golden-survey-documented.xlsx")).toEqual({ id: "raw" });
-    expect(suggested("codebook.xlsx")).toEqual({ id: "raw" });
     expect(suggested("notes.docx")).toEqual({ id: "report" });
     expect(suggested("slides.pptx")).toEqual({ id: "report" });
     expect(suggested("notes.txt")).toEqual({ id: "transcript" });
@@ -57,6 +58,13 @@ describe("upload purposes", () => {
     // A guide named as such is not taken for a transcript; a questionnaire in a spreadsheet is data.
     expect(suggested("Interview guide.docx")).toEqual(guideOf("interview_guide"));
     expect(suggested("questionnaire responses.xlsx")).toEqual({ id: "raw" });
+    // Named as a codebook or a form, a spreadsheet is that (Grant, 2026-10-26); a JSON file is a codebook.
+    expect(suggested("codebook.xlsx")).toEqual({ id: "codebook" });
+    expect(suggested("May26_codebook.xlsx")).toEqual({ id: "codebook" });
+    expect(suggested("Data Dictionary.csv")).toEqual({ id: "codebook" });
+    expect(suggested("variables.json")).toEqual({ id: "codebook" });
+    expect(suggested("household_questionnaire.xlsx")).toEqual(guideOf("questionnaire"));
+    expect(suggested("survey_form.xls")).toEqual(guideOf("questionnaire"));
   });
 
   it("reads a CSV's first lines: totals, bases or many percentages are tables, respondent rows raw data", () => {

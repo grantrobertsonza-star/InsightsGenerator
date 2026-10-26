@@ -101,6 +101,9 @@ export default function InstrumentCard({
   }
 
   const isGuide = summary.type === "interview_guide" || summary.type === "focus_group_guide";
+  // A codebook is read and matched like a questionnaire (Grant, 2026-10-26); only its words differ.
+  const isCodebook = summary.type === "codebook";
+  const noun = isCodebook ? "codebook" : "questionnaire";
   const read = summary.items > 0;
 
   // Read, then match (questionnaires), once, without a click: the same rule the one-line entry in a
@@ -163,6 +166,8 @@ export default function InstrumentCard({
               ? `The last read failed: ${summary.readFailure} Read it again to try once more.`
               : isGuide
               ? "Read the guide to list its questions and probes. They will be matched to the questions asked in your transcripts."
+              : isCodebook
+              ? "Read the codebook to list its variables, labels and answer codes. They are then matched to your data file's variables by name."
               : "Read the questionnaire to list its questions, answer options and skip instructions. They are then matched to your data file's variables."}
           </p>
           <button
@@ -189,13 +194,13 @@ export default function InstrumentCard({
               )
             }
           >
-            {pending ? "Reading, this can take a minute..." : isGuide ? "Read guide" : "Read questionnaire"}
+            {pending ? "Reading, this can take a minute..." : isGuide ? "Read guide" : isCodebook ? "Read codebook" : "Read questionnaire"}
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Stat value={summary.items} label={isGuide ? "Questions and probes" : "Items read"} />
-          {!isGuide && <Stat value={`${summary.withRouting} of ${summary.statedRoutingText}`} label={summary.fromJumps > 0 ? `Skip instructions understood (+${summary.fromJumps} from GO TO jumps)` : "Skip instructions understood"} />}
+          <Stat value={summary.items} label={isGuide ? "Questions and probes" : isCodebook ? "Variables read" : "Items read"} />
+          {!isGuide && !isCodebook && <Stat value={`${summary.withRouting} of ${summary.statedRoutingText}`} label={summary.fromJumps > 0 ? `Skip instructions understood (+${summary.fromJumps} from GO TO jumps)` : "Skip instructions understood"} />}
           {!isGuide && <Stat value={summary.links.confirmed} label="Question and variable links confirmed" />}
           {!isGuide && (
             <Stat
@@ -209,7 +214,7 @@ export default function InstrumentCard({
       {read && !isGuide && (
         <div className="flex flex-wrap items-center gap-2">
           {dataDocs.length === 0 ? (
-            <span className="text-muted">Add the data file this questionnaire belongs to, then match.</span>
+            <span className="text-muted">Add the data file this {noun} belongs to, then match.</span>
           ) : (
             <>
               {!fixedTarget && <label className="text-muted" htmlFor={`target-${documentId}`}>Data file</label>}

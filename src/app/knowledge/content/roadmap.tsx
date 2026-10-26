@@ -2,7 +2,7 @@ import { Article, H2, H3, P, UL, Limit } from "../kbBlocks";
 
 const toc = [
   { id: "what", title: "What this page is" },
-  { id: "sas", title: "SAS files" },
+  { id: "sas", title: "SAS value labels" },
   { id: "flipped", title: "Variables-in-rows workbooks with a separate Codebook" },
   { id: "design", title: "Weights and survey design from a separate file" },
   { id: "technical", title: "More uses of technical documents" },
@@ -22,11 +22,13 @@ export default function RoadmapGuide() {
         workaround rather than a guess. The engineering record is in the repository&apos;s docs/later-additions.md.
       </P>
 
-      <H2 id="sas">SAS files</H2>
+      <H2 id="sas">SAS value labels</H2>
       <P>
-        SAS data files are recognised by name and refused with a message. Export them to SPSS (.sav), Stata (.dta), CSV or
-        Excel instead. Supporting them needs a reader with the same identity, label, missing-value and weight rules as
-        SPSS and Stata, checked on valid and damaged reference files.
+        SAS data files (.sas7bdat, and .xpt transport files) are read, with their variable names, variable labels,
+        dates and missing values, checked against published reference files (26 October 2026). What SAS keeps in a
+        separate format catalog (.sas7bcat), the labels for coded answers, is not read yet, so coded answers show as
+        their numbers. To see them as words, export the file to SPSS (.sav) or Stata (.dta) with its formats applied,
+        or upload the questionnaire so its answer lists can be matched.
       </P>
 
       <H2 id="flipped">Variables-in-rows workbooks with a separate Codebook</H2>

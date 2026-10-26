@@ -7,7 +7,7 @@
 //   truncated .sav / .dta: "Could not read this file:" is shown and still shown after reload, no
 //     table is stored, the file can be deleted, and the valid file uploaded instead calculates
 //     with no error shown after reload.
-// SAS is excluded by owner decision and not tested. processing_status is not used as a readiness
+// SAS is covered by data-file-formats.check.mjs. processing_status is not used as a readiness
 // signal (it stays null for raw files).
 import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";

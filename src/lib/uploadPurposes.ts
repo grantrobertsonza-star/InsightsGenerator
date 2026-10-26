@@ -3,9 +3,9 @@
 // panel and its tests. Each file is sent under its type's form field in the server action
 // (documentUploadActions.ts), where the limits and checks for that kind apply; technical documents
 // (2026-10-24) have their own field, `technicalFiles`.
-import { LIMITS_CAPTION } from "./importLimits";
+import { LIMITS_CAPTION, REFUSED_DATA_FILE } from "./importLimits";
 
-export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide" | "technical";
+export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide" | "technical" | "codebook";
 
 export type UploadPurpose = {
   id: UploadPurposeId;
@@ -26,12 +26,13 @@ export const UPLOAD_PURPOSES: UploadPurpose[] = [
   { id: "brief", label: "Brief", field: "briefFiles", extensions: [".pdf", ".docx", ".txt"], hint: "The research brief: context, and checked in Research quality review." },
   { id: "proposal", label: "Proposal", field: "proposalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "A research proposal: context, and checked in Research quality review." },
   { id: "technical", label: "Technical document", field: "technicalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "Methodology, fieldwork, sampling, weighting or analysis notes: read by the Research assistant." },
-  { id: "raw", label: "Raw data", field: "rawTableFiles", extensions: [".csv", ".xlsx", ".xls", ".sav", ".dta"], hint: `One row per respondent. CSV/Excel, SPSS or Stata. ${LIMITS_CAPTION}.` },
-  { id: "tables", label: "Tables", field: "tableFiles", extensions: [".csv", ".xlsx", ".xls", ".sav", ".dta"], hint: "Already aggregated: totals or percentages." },
+  { id: "raw", label: "Raw data", field: "rawTableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: `One row per respondent. CSV, tab-delimited text, Excel, SPSS, Stata, SAS, R or Parquet. ${LIMITS_CAPTION}.` },
+  { id: "tables", label: "Tables", field: "tableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: "Already aggregated: totals or percentages." },
   { id: "output", label: "Statistical output", field: "outputFiles", extensions: [".zip", ".csv", ".tsv", ".xlsx", ".xls", ".txt", ".md", ".docx"], hint: "A zip of models, clusters and logs." },
   { id: "transcript", label: "Qual data", field: "transcriptFiles", extensions: null, hint: "Transcripts, coded or uncoded." },
   { id: "report", label: "Report", field: "reportFiles", extensions: null, hint: "PDF, Word or PowerPoint, read for the findings it states." },
-  { id: "questionnaire", label: "Questionnaire", field: "questionnaireFiles", extensions: [".pdf", ".docx"], hint: "A survey questionnaire: read, then matched to your raw data file's variables." },
+  { id: "questionnaire", label: "Questionnaire", field: "questionnaireFiles", extensions: [".pdf", ".docx", ".xlsx", ".xls", ".csv"], hint: "A survey questionnaire: read, then matched to your raw data file's variables." },
+  { id: "codebook", label: "Codebook", field: "codebookFiles", extensions: [".xlsx", ".xls", ".csv", ".tsv", ".txt", ".json", ".pdf", ".docx"], hint: "The data file's variables with their labels and answer codes: matched to it by variable name." },
   { id: "interview_guide", label: "Interview guide", field: "interviewGuideFiles", extensions: [".pdf", ".docx"], hint: "Read, then checked against your interview transcripts." },
   { id: "focus_group_guide", label: "Focus group guide", field: "focusGroupGuideFiles", extensions: [".pdf", ".docx"], hint: "Read, then checked against your focus group transcripts." },
 ];
@@ -51,7 +52,10 @@ export function purposeMismatch(filename: string, id: UploadPurposeId): string |
   const p = purposeById(id);
   if (!p.extensions) return null;
   const ext = extensionOf(filename);
-  return p.extensions.includes(ext) ? null : `${p.label} takes ${p.extensions.join(", ")} files, not ${ext || "a file with no extension"}.`;
+  if (p.extensions.includes(ext)) return null;
+  // A refused data file says why and what to upload instead, not only which types the slot takes.
+  if (REFUSED_DATA_FILE[ext]) return REFUSED_DATA_FILE[ext];
+  return `${p.label} takes ${p.extensions.join(", ")} files, not ${ext || "a file with no extension"}.`;
 }
 
 /**
@@ -101,6 +105,22 @@ export function csvLooksLikeTables(sample: string): boolean {
   return cells.length > 0 && percent / cells.length >= 0.2;
 }
 
+/**
+ * True when a .txt file's first lines read like a delimited data table: a header and rows with the
+ * same number of tab-, comma-, semicolon- or pipe-separated values, at least three per line. Prose and
+ * transcripts rarely keep one count of separators across lines, so they stay text.
+ */
+export function textLooksLikeDataTable(sample: string): boolean {
+  const lines = sample.split(/\r?\n/).slice(0, 20).filter((l) => l.trim().length > 0);
+  // The sample may end part-way through a line.
+  const complete = lines.length > 2 ? lines.slice(0, -1) : lines;
+  if (complete.length < 2) return false;
+  return ["\t", ",", ";", "|"].some((sep) => {
+    const counts = complete.map((l) => l.split(sep).length);
+    return counts[0] >= 3 && counts.every((n) => n === counts[0]);
+  });
+}
+
 export function suggestPurposeFor(filename: string, csvSample?: string | null): PurposeSuggestion {
   const ext = extensionOf(filename);
   const dot = filename.lastIndexOf(".");
@@ -109,8 +129,17 @@ export function suggestPurposeFor(filename: string, csvSample?: string | null): 
   const fits = (s: PurposeSuggestion): PurposeSuggestion =>
     purposeMismatch(filename, s.id) === null ? s : { id: "report", reason: "Suggested: a report takes any file" };
 
-  if (ext === ".sav" || ext === ".dta") return { id: "raw", reason: "Suggested: SPSS and Stata files are one row per respondent" };
+  if ([".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"].includes(ext)) return { id: "raw", reason: "Suggested: SPSS, Stata, SAS, R and Parquet files are one row per respondent" };
   if (ext === ".zip") return { id: "output", reason: "Suggested: a zip is statistical output" };
+  // Codebooks and spreadsheet questionnaires are named as such far more often than not (Grant, 2026-10-26).
+  if (/codebook|code book|data dictionary|datadictionary|variable list|variable labels|\bdictionary\b/.test(name) && purposeMismatch(filename, "codebook") === null) {
+    return { id: "codebook", reason: fromName };
+  }
+  if (ext === ".json") return { id: "codebook", reason: "Suggested: a JSON file is read as a codebook" };
+  // "questionnaire responses.xlsx" is the answers, not the form: a name that says so stays data.
+  if ([".xlsx", ".xls", ".csv"].includes(ext) && /questionnaire|survey instrument|xlsform|\bform\b/.test(name) && !/respons|answers|\bdata\b|results|export/.test(name)) {
+    return fits(instrumentSuggestion("questionnaire", fromName));
+  }
   if (DOCUMENT.includes(ext)) {
     if (/focus group guide|fgd guide/.test(name)) return fits(instrumentSuggestion("focus_group_guide", fromName));
     if (/interview guide|discussion guide|topic guide|idi guide/.test(name)) return fits(instrumentSuggestion("interview_guide", fromName));
@@ -130,6 +159,11 @@ export function suggestPurposeFor(filename: string, csvSample?: string | null): 
     return { id: "raw", reason: "Suggested: most spreadsheets are raw data, one row per respondent" };
   }
   if (ext === ".tsv") return { id: "output", reason: "Suggested: a TSV file is read as statistical output" };
+  if (ext === ".txt" && csvSample && textLooksLikeDataTable(csvSample)) {
+    return csvLooksLikeTables(csvSample)
+      ? { id: "tables", reason: "Suggested: its first lines read like totals or percentages" }
+      : { id: "raw", reason: "Suggested: its first lines read like a data table, one row per respondent" };
+  }
   if (ext === ".txt" || ext === ".md") return { id: "transcript", reason: "Suggested: a text file is read as qualitative data" };
   return fits({ id: "report", reason: "Suggested: read as a report" });
 }

@@ -17,7 +17,19 @@ export function assertImportCaseCount(cases: number) {
   if (cases > limits.maxCases) throw new Error(CASE_LIMIT_MESSAGE);
 }
 
+/**
+ * Python data files that are not read, and why. A pickle can run code when it is opened, so a pickle
+ * from anyone else is never opened here; Feather needs a reader too large for the deployed engine.
+ * Both say how to save the same data in a form that is read.
+ */
+export const REFUSED_DATA_FILE: Record<string, string> = {
+  ".pkl": "Python pickle files can run code when they are opened, so they are not read. Save the data frame as Parquet (df.to_parquet(\"data.parquet\")) or CSV and upload that instead.",
+  ".pickle": "Python pickle files can run code when they are opened, so they are not read. Save the data frame as Parquet (df.to_parquet(\"data.parquet\")) or CSV and upload that instead.",
+  ".feather": "Feather files are not read yet. Save the data as Parquet (df.to_parquet(\"data.parquet\"), or write_parquet in R) and upload that instead.",
+};
+
 export function assertImportFileSupported(fileName: string, size: number) {
+  const ext = /\.[^.]+$/.exec(fileName.toLowerCase())?.[0] ?? "";
+  if (REFUSED_DATA_FILE[ext]) throw new Error(REFUSED_DATA_FILE[ext]);
   if (size > limits.maxFileBytes) throw new Error(FILE_LIMIT_MESSAGE);
-  if (/\.sas7bdat$/i.test(fileName)) throw new Error("SAS imports are excluded from the supported release scope pending verification. Export this file as CSV or XLSX, then retry.");
 }

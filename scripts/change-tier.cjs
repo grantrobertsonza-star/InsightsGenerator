@@ -100,11 +100,23 @@ const REQUIRES = {
   C: ["Every gate; screenshot for any visible change", "No independent review needed"],
 };
 
-/** `contentOf(file)` returns the file's text, or null when it cannot be read. */
+const ORDER = { C: 0, B: 1, A: 2 };
+const highest = (tiers) => tiers.reduce((t, x) => (ORDER[x] > ORDER[t] ? x : t), "C");
+
+/**
+ * `contentOf(file)` returns the file's text, null when it cannot be read, or a list of its versions
+ * (as changed and as it was before). M-B35-01 (Codex): a file is classified by every version and takes
+ * the highest tier, so removing server or data behaviour (a server page turned client-only, a database
+ * write taken out of a component) is reviewed as seriously as adding it. An empty list is unreadable.
+ */
 function classify(files, contentOf = () => null) {
-  const order = { C: 0, B: 1, A: 2 };
-  const per = files.filter(Boolean).map((f) => ({ file: f, tier: tierOf(f, contentOf(f)) }));
-  const tier = per.reduce((t, x) => (order[x.tier] > order[t] ? x.tier : t), "C");
+  const tierOfVersions = (f) => {
+    const c = contentOf(f);
+    const versions = Array.isArray(c) ? c : [c];
+    return versions.length === 0 ? tierOf(f, null) : highest(versions.map((v) => tierOf(f, v)));
+  };
+  const per = files.filter(Boolean).map((f) => ({ file: f, tier: tierOfVersions(f) }));
+  const tier = highest(per.map((x) => x.tier));
   return { tier, files: per, requires: REQUIRES[tier] };
 }
 
@@ -116,16 +128,25 @@ function main(argv) {
     // --no-renames lists a rename as its old and its new path, so both are classified.
     files = execFileSync("git", ["diff", "--name-only", "--no-renames", "--diff-filter=ACMRD", `${base}...HEAD`], { encoding: "utf8" }).split("\n").filter(Boolean);
   }
+  // The "before" side is the merge base, the same point `base...HEAD` lists the changes from.
+  const mergeBase = base ? execFileSync("git", ["merge-base", base, "HEAD"], { encoding: "utf8" }).trim() : null;
   const fromGit = (ref, f) => {
     try {
-      return execFileSync("git", ["show", `${ref}:${f}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      // cat-file, not show: `git show REF:path` for a path deleted at REF can print nothing and exit 0,
+      // which read a deleted file as empty instead of absent (found with M-B35-01's repro).
+      return execFileSync("git", ["cat-file", "blob", `${ref}:${f}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     } catch {
       return null;
     }
   };
-  // The file as committed at HEAD when comparing with a base (what the pull request merges), the
-  // working copy otherwise; a file deleted by the change is read as it was at the base.
-  const contentOf = (f) => (base ? fromGit("HEAD", f) : existsSync(f) ? readFileSync(f, "utf8") : null) ?? (base ? fromGit(base, f) : null);
+  // Both sides of the change: with a base, the file at HEAD (what the pull request merges) and at the
+  // base; without one, the working copy and the file at HEAD. A side where the file does not exist
+  // (added, or deleted) is left out; neither side readable is unreadable, so A.
+  const contentOf = (f) => {
+    const after = base ? fromGit("HEAD", f) : existsSync(f) ? readFileSync(f, "utf8") : null;
+    const before = fromGit(base ? mergeBase : "HEAD", f);
+    return [after, before].filter((v) => v !== null);
+  };
   const result = classify(files, contentOf);
   const lines = [
     `Change tier: ${result.tier} (${files.length} file${files.length === 1 ? "" : "s"})`,

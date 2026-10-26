@@ -124,6 +124,8 @@ import { loadImportPreviewIdentities } from "@/lib/importPreviewIdentity";
 import ImportVariablesPanel from "./ImportVariablesPanel";
 import DocumentPicker from "./DocumentPicker";
 import DataAuditPanel from "./DataAuditPanel";
+import RespondentQualityPanel from "./RespondentQualityPanel";
+import LabelDocumentationPanel from "./LabelDocumentationPanel";
 import { TranscriptImportQualityPanel, AggregatedQualityPanel } from "./ImportQualityChecks";
 import { getTranscriptImportQuality } from "@/lib/transcriptImportQuality";
 import { computeAggregatedQuality } from "@/lib/aggregatedQuality";
@@ -3654,6 +3656,8 @@ export default async function RunPage({
           text:
             type === "interview_guide" || type === "focus_group_guide"
               ? `${type === "interview_guide" ? "Interview guide" : "Focus group guide"}. Read once it is added, then checked against your transcripts: which of its questions each session raised.`
+              : type === "codebook"
+              ? "Codebook. Read once it is added, then matched to your raw data file's variables by name, so tables show its labels and answer codes once you confirm the links."
               : "Questionnaire. Read once it is added, then matched to your raw data file's variables, so answers carry its wording and codes once you confirm the links.",
           nextStep: null,
         };
@@ -5109,7 +5113,7 @@ export default async function RunPage({
 
   // The Import screen's sources (TranscriptSetup.tsx): every document, then each statistical output
   // set, with the tabs its type has after Preview and Setup. Grant, 2026-10-20, from his prototype:
-  // raw data has Variables, Data quality and Questionnaire links; qualitative data Data quality and
+  // raw data has Variables, Data quality, Weights and Labels and documentation; qualitative data Data quality and
   // Guide; aggregated tables Data quality; a questionnaire or guide its questions and links; a
   // brief, proposal or report its document details; an output set its overview and related sets.
   const importRows: SourceRow[] = [
@@ -5158,7 +5162,10 @@ export default async function RunPage({
               label: "Data quality",
               badge: flagQuality(tableFlags),
               node: (
-                <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource />
+                <div key="panel" className="flex flex-col gap-4">
+                  <ImportQualityPanel tables={ownTables} hasReportOnly={false} withinSource />
+                  <RespondentQualityPanel runId={id} documentId={d.id} />
+                </div>
               ),
             });
             // Its own tab (Grant, 2026-10-20), read from the whole file when the tab is first shown.
@@ -5177,10 +5184,13 @@ export default async function RunPage({
         if (d.kind === "transcript" && transcriptQuality.has(d.id)) {
           panels.push({ id: "quality", label: "Data quality", badge: flagQuality(flaggedChecks(transcriptQuality.get(d.id)!.checks)), node: <TranscriptImportQualityPanel key="panel" q={transcriptQuality.get(d.id)!} /> });
         }
+        // A raw data file's links tab is "Labels and documentation" (LBL-01, Grant, 2026-10-26): its own
+        // labels, codebook and questionnaire side by side, with the links to confirm below them.
+        const linksLabel = d.kind === "transcript" ? "Guide" : isRaw ? "Labels and documentation" : "Questionnaire links";
         if (attached)
           panels.push({
             id: "links",
-            label: d.kind === "transcript" ? "Guide" : "Questionnaire links",
+            label: linksLabel,
             // Counted for the stage status on the questionnaire's own row only, so one set of links is one item.
             badge: linksBadge(hostedBy(d).reduce((n, x) => n + (instrumentSummaries.get(x.id)?.itemsToCheck ?? 0), 0)),
             node:
@@ -5188,6 +5198,7 @@ export default async function RunPage({
                 attached
               ) : (
                 <div key="panel" className="flex flex-col gap-3">
+                  {isRaw && <LabelDocumentationPanel key={d.id} runId={id} documentId={d.id} />}
                   <QuestionnaireLinkingNote />
                   {attached}
                 </div>
@@ -5196,11 +5207,12 @@ export default async function RunPage({
         else if (isRaw)
           panels.push({
             id: "links",
-            label: "Questionnaire links",
+            label: linksLabel,
             node: (
               <div key="panel" className="flex flex-col gap-3">
+                <LabelDocumentationPanel key={d.id} runId={id} documentId={d.id} />
                 <QuestionnaireLinkingNote />
-                <p className="text-xs text-muted">No questionnaire is linked to this file. Add one with Add files, as a questionnaire or guide; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p>
+                <p className="text-xs text-muted">No codebook or questionnaire is linked to this file. Add one with Add files, as a codebook or a questionnaire; it is read and matched to this file&apos;s variables, and nothing is applied until you confirm the links.</p>
               </div>
             ),
           });
@@ -5218,7 +5230,7 @@ export default async function RunPage({
                 summary={instrument}
                 autoStart
                 dataDocs={
-                  instrument.type === "questionnaire" || instrument.type === null
+                  instrument.type === "questionnaire" || instrument.type === "codebook" || instrument.type === null
                     ? documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => ({ id: x.id, name: x.source_filename }))
                     : []
                 }

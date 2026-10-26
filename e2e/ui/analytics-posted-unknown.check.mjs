@@ -1,8 +1,8 @@
 // UI-GT1000-01 (Codex, 2026-10-21): a chart card whose posted-state read fails says so and offers
 // neither Post nor Remove until a read succeeds. In a real browser on the disposable stack:
 //   1. A bar chart is built and posted: the card offers Remove.
-//   2. Leaving the workspace, SELECT on findings is revoked from the restricted application role
-//      only. Reopening rebuilds the remembered card: the chart is drawn, the card shows the posted
+//   2. Leaving the workspace and choosing the file again, SELECT on findings is revoked from the
+//      restricted application role only, just before Charts opens. Opening rebuilds the remembered card: the chart is drawn, the card shows the posted
 //      state could not be checked, with Retry, and has no Post and no Remove control.
 //   3. With the grant restored, Retry shows Remove again; reopening shows Remove too. The posted
 //      finding's id, wording and status are unchanged throughout.
@@ -38,10 +38,17 @@ test("a chart card whose posted state cannot be read offers neither Post nor Rem
     await ui.upload(run, file, "table");
 
     const section = () => page.getByTestId("analytics-section").filter({ visible: true });
-    const openCharts = async () => {
+    // Choosing the file can refresh the project page, which reads findings as well; `beforeCharts`
+    // runs after that refresh has settled and before the Charts workspace opens, so a fault injected
+    // there reaches the card's posted-state read and not the page (Codex V-B35-01).
+    const openCharts = async (beforeCharts = async () => {}) => {
       await page.getByRole("button", { name: /^Analytics/ }).first().click();
       await expect(section().getByRole("list", { name: "Analyses" })).toBeVisible({ timeout: 60_000 });
       await section().getByTestId("analytics-file-select").selectOption({ label: "posted-unknown.csv" });
+      await page.waitForLoadState("networkidle");
+      await expect(section().getByTestId("analytics-file-select")).toHaveValue(/.+/);
+      await expect(section().getByRole("list", { name: "Analyses" }).getByRole("button", { name: /^Charts/ })).toBeEnabled({ timeout: 60_000 });
+      await beforeCharts();
       await section().getByRole("list", { name: "Analyses" }).getByRole("button", { name: /^Charts/ }).click({ timeout: 60_000 });
       const ws = page.getByRole("dialog", { name: "Analytics workspace" });
       await expect(ws).toBeVisible();
@@ -72,9 +79,10 @@ test("a chart card whose posted state cannot be read offers neither Post nor Rem
     await page.waitForLoadState("networkidle");
 
     // 2. The posted-state read fails: not known, no Post, no Remove.
-    await db.query(`revoke select on public.findings from "${role}"`);
-    expect(await canSelect()).toBe(false);
-    ws = await openCharts();
+    ws = await openCharts(async () => {
+      await db.query(`revoke select on public.findings from "${role}"`);
+      expect(await canSelect()).toBe(false);
+    });
     await expect(card(ws)).toBeVisible({ timeout: 60_000 });
     await expect(card(ws).getByTestId("chart-post-unknown")).toBeVisible({ timeout: 60_000 });
     // The fault reached only the posted-state read: the project page is still rendered.

@@ -7,7 +7,9 @@
 //   - a success the old panel already showed is still shown by the remount that follows it;
 //   - a reload (a new page load) before the reply says the outcome is unknown, never Saved, and puts
 //     the draft back; a success from a much earlier visit is not shown again;
-//   - an ordinary refusal keeps the draft and a retry then saves; another document's panel is untouched.
+//   - an ordinary refusal keeps the draft and a retry then saves; another document's panel is untouched;
+//   - B35-F01: wording typed in the remounted panel while the earlier save is out is never replaced by
+//     that save's drafts when it is refused late, and a late success does not touch it either.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement, type ComponentType } from "react";
 import { parseHTML } from "linkedom";
@@ -175,6 +177,40 @@ describe("Codebook save confirmation (R2P-F01)", () => {
     await mountPanel(Panel, "other", "doc-2");
     expect(savedShown()).toBe(false);
   });
+  // B35-F01 (Codex, batch 35 review): the remounted panel stays editable while the earlier save is out.
+  it("a late refusal after newer edits keeps the newer edits, says so, and the newer edits then save", async () => {
+    const Panel = await load();
+    const answer = deferred<unknown>();
+    saveMeta.mockReturnValueOnce(answer.promise).mockResolvedValueOnce({ ok: true, message: "Saved." });
+    await mountPanel(Panel, "a");
+    await typeTheme("FIRST_SUBMITTED");
+    await clickSave();
+    await mountPanel(Panel, "b");
+    await typeTheme("NEW_UNSAVED_EDIT");
+    await act(async () => answer.resolve({ ok: false, error: "The codebook changed since you opened it." }));
+    expect(text()).toContain("The codebook changed since you opened it.");
+    expect(text()).toContain("edits you have made since are kept");
+    expect(themeInput().value).toBe("NEW_UNSAVED_EDIT");
+    expect(savedShown()).toBe(false);
+    await clickSave();
+    expect(saveMeta.mock.calls[1][2][0]).toMatchObject({ name: "Trust", theme: "NEW_UNSAVED_EDIT" });
+    expect(savedShown()).toBe(true);
+  });
+
+  it("a late success after newer edits shows Saved for the earlier save and keeps the newer edits unsaved", async () => {
+    const Panel = await load();
+    const answer = deferred<unknown>();
+    saveMeta.mockReturnValue(answer.promise);
+    await mountPanel(Panel, "a");
+    await typeTheme("FIRST_SUBMITTED");
+    await clickSave();
+    await mountPanel(Panel, "b");
+    await typeTheme("NEW_UNSAVED_EDIT");
+    await act(async () => answer.resolve({ ok: true, message: "Saved." }));
+    expect(savedShown()).toBe(true);
+    expect(themeInput().value).toBe("NEW_UNSAVED_EDIT");
+  });
+
   it("a reload before the reply says the outcome is unknown, never Saved, and puts the draft back", async () => {
     const Panel = await load();
     saveMeta.mockReturnValue(new Promise(() => {}));

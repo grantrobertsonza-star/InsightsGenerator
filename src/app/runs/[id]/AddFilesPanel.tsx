@@ -56,11 +56,12 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  // A CSV's first lines can show it is aggregated tables; read in the background, and applied only
-  // while its type is still the panel's own suggestion, so a choice made meanwhile is never undone.
+  // A CSV's first lines can show it is aggregated tables, and a .txt file's that it is a delimited data
+  // table rather than a transcript; read in the background, and applied only while its type is still
+  // the panel's own suggestion, so a choice made meanwhile is never undone.
   function sniffCsvs(added: Picked[]) {
     for (const p of added) {
-      if (!p.file.name.toLowerCase().endsWith(".csv")) continue;
+      if (!/\.(csv|txt)$/i.test(p.file.name)) continue;
       p.file
         .slice(0, 8192)
         .text()

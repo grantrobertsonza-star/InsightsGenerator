@@ -57,7 +57,7 @@ export default function RawDataPage() {
         verify the weight and multiple-response setup before calculating.
       </P>
       <P>
-        If your raw data comes from labelled statistical software, a <code>.sav</code> or <code>.dta</code> file (SAS is excluded pending verification), the app reads it directly, including the variable labels (so a
+        If your raw data comes from labelled statistical software, a <code>.sav</code>, <code>.dta</code>, <code>.sas7bdat</code> or <code>.xpt</code> file (or an R <code>.rds</code> or <code>.RData</code> file, whose factors come through as answer labels, or a Parquet file), the app reads it directly, including the variable labels (so a
         column literally named <code>Q7a</code> shows up as &quot;Preferred channel&quot; if that&apos;s
         its label) and value labels (so a code like <code>1</code> shows up as &quot;Male&quot; rather
         than a bare number) wherever your file defines them.

@@ -99,11 +99,11 @@ async function loadSetFiles(tenantId: string, runId: string, setId: string): Pro
   return { files, unreadable };
 }
 
-/** Items of every questionnaire attached to the run, for suggesting wording behind term labels. Empty before migration 0060. */
+/** Items of every questionnaire and codebook attached to the run, for suggesting wording behind term labels. Empty before migration 0060. */
 async function loadQuestionnaireItems(tenantId: string, runId: string): Promise<ItemLike[]> {
   try {
     const ids = await withTenant(tenantId, async (client) => {
-      const r = await client.query<{ id: string }>("select id from documents where run_id = $1 and kind = 'instrument' and instrument_type = 'questionnaire'", [runId]);
+      const r = await client.query<{ id: string }>("select id from documents where run_id = $1 and kind = 'instrument' and instrument_type in ('questionnaire', 'codebook')", [runId]);
       return r.rows.map((x) => x.id);
     });
     const out: ItemLike[] = [];

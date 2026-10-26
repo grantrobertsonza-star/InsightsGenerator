@@ -5,13 +5,17 @@ supported, what the app does instead, and what an implementation would need. The
 defects; a review should not count them as such, and the app must keep saying plainly when a
 request falls outside them.
 
-## 1. SAS files (owner-approved exclusion, 2026-10-16)
+## 1. SAS value labels (SAS files themselves supported since 2026-10-26)
 
-- **Not supported:** reading `.sas7bdat` / `.xpt` uploads. The file name is recognised and refused
-  with a message; SAS is not offered in the upload type list or the knowledge base.
-- **Instead:** export to SPSS (`.sav`), Stata (`.dta`), CSV or Excel.
-- **Would need:** a reader in `api/parse-stats-file.py` with the same identity, label, missing-value
-  and weight contracts as SAV/DTA, and valid/truncated reference files (IMP-018's pattern).
+- **Supported now:** `.sas7bdat` and `.xpt` uploads: names, variable labels, dates and missing values
+  (a blank text value is missing, as SAS defines it), verified against the published reference files in
+  `fixtures/sas` (`dataFileFormats.db.test.ts`, `e2e/ui/data-file-formats.check.mjs`).
+- **Not supported:** value labels kept in a separate SAS format catalog (`.sas7bcat`); coded answers
+  show as their numbers.
+- **Instead:** export to SPSS (`.sav`) or Stata (`.dta`) with formats applied, or upload the
+  questionnaire so its answer lists can be matched.
+- **Would need:** reading the catalog (pyreadstat `read_sas7bcat`) and applying it as value labels,
+  with a reference file pair.
 
 ## 2. A columns-as-cases workbook with a separate Codebook (owner-approved exclusion, 2026-10-16)
 
@@ -57,6 +61,17 @@ and the design's variance strata combine five variables (FOREIGN, metro, NLI gro
      but only with the FOREIGN flag merged from the workbook and the R run's initial-to-final strata map
      applied outside the app, by `scripts/finscope_verify.py`. That script and the synthetic self-test
      (`scripts/crosstab_selftest.py`) are run by hand, not by the automated suites.
+
+## 4. Visuals for coded qualitative data (Grant, 2026-10-26)
+
+- **Idea:** a word cloud of the codes and themes, sized by how many turns or participants each
+  covers, beside the codebook; possibly key phrases with sample passages and a map of which codes
+  occur together (Inspirient's semantic analysis shows key phrases with excerpts and a semantic
+  network).
+- **Care needed:** size by coded counts the app already holds (turns, speakers, transcripts), never
+  by raw word frequency alone, and keep every shape clickable to the passages behind it, so the
+  picture can be checked. Word clouds are poor for comparison, so a ranked bar view sits beside it.
+- **Order:** after the codebook and stability work in `claude/coding-module-learnings-2026-10-26.md`.
 
 ## Related open fix (not a later addition)
 

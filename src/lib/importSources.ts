@@ -158,14 +158,14 @@ export function flaggedChecks(checks: readonly { status: string }[]): number {
   return checks.filter((c) => c.status === "warn" || c.status === "fail").length;
 }
 
-const INSTRUMENT_LABEL: Record<string, string> = { questionnaire: "Questionnaire", interview_guide: "Interview guide", focus_group_guide: "Focus group guide" };
+const INSTRUMENT_LABEL: Record<string, string> = { questionnaire: "Questionnaire", interview_guide: "Interview guide", focus_group_guide: "Focus group guide", codebook: "Codebook" };
 
 // ---------------------------------------------------------------- type groups and sorting
 
 /**
  * Which side of the study a source belongs to, for the type filter's "All quantitative files" and
  * "All qualitative files" (Grant, 2026-10-20). Quantitative: data files, aggregated tables,
- * statistical output and survey questionnaires. Qualitative: transcripts and interview or focus
+ * statistical output, survey questionnaires and codebooks. Qualitative: transcripts and interview or focus
  * group guides. Briefs, proposals and reports are context for either, so they are in neither group.
  * A questionnaire or guide with no recorded type is in neither, rather than guessed.
  */
@@ -173,7 +173,7 @@ export type SourceGroup = "quant" | "qual" | "context";
 export function sourceGroup(kind: string, instrumentType?: string | null): SourceGroup {
   if (kind === "table" || kind === "output") return "quant";
   if (kind === "transcript") return "qual";
-  if (kind === "instrument") return instrumentType === "questionnaire" ? "quant" : instrumentType === "interview_guide" || instrumentType === "focus_group_guide" ? "qual" : "context";
+  if (kind === "instrument") return instrumentType === "questionnaire" || instrumentType === "codebook" ? "quant" : instrumentType === "interview_guide" || instrumentType === "focus_group_guide" ? "qual" : "context";
   return "context";
 }
 

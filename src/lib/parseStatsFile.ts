@@ -165,11 +165,13 @@ type LocalWorker = {
  * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
  * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
  */
-const WORKER_PROTOCOL = 2;
+const WORKER_PROTOCOL = 4; // 3: the respondent_quality action; 4: codebook and instrument_sheet
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
-const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean; __statsWorkerLive?: LocalWorker };
+// __statsWorkerStarts counts workers that reached "ready" in this process, so a test can show that
+// simultaneous callers share one replacement (B35-F02) on any platform, without listing processes.
+const workerHolder = globalThis as unknown as { __statsWorker?: Promise<LocalWorker | null>; __statsWorkerOff?: boolean; __statsWorkerLive?: LocalWorker; __statsWorkerStarts?: number };
 /** Forgets this worker, unless a newer one has replaced it (an old worker exiting must not orphan the new one). */
 function forgetWorker(worker: LocalWorker) {
   if (workerHolder.__statsWorkerLive !== worker) return;
@@ -223,6 +225,7 @@ function startWorker(): Promise<LocalWorker | null> {
             if (!settled) {
               settled = true;
               clearTimeout(startupTimer);
+              workerHolder.__statsWorkerStarts = (workerHolder.__statsWorkerStarts ?? 0) + 1;
               resolve(worker);
             }
             continue;
@@ -275,14 +278,22 @@ async function callWorker<T>(srcPath: string, sourceFilename: string, action: st
 async function callWorkerOnce<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
   if (workerHolder.__statsWorkerOff) return { ok: false, unavailable: true };
   if (!workerHolder.__statsWorker) workerHolder.__statsWorker = startWorker();
-  let worker = await workerHolder.__statsWorker;
+  const awaited = workerHolder.__statsWorker;
+  let worker = await awaited;
   if (worker && worker.protocol !== WORKER_PROTOCOL) {
     // Started by older code: stop it (its pending requests fail as a stopped worker) and use a fresh one.
-    workerHolder.__statsWorkerLive = worker;
-    forgetWorker(worker);
-    worker.proc.kill();
-    workerHolder.__statsWorker = startWorker();
-    worker = await workerHolder.__statsWorker;
+    // B35-F02: single flight. Every caller that waited on the old worker reaches this point; only the
+    // first, finding the holder still on the promise it awaited, stops the old worker and starts the
+    // replacement. The others find the holder already moved on and share that replacement, so no
+    // second worker is started and left running without an owner.
+    if (workerHolder.__statsWorker === awaited) {
+      workerHolder.__statsWorkerLive = worker;
+      forgetWorker(worker);
+      worker.proc.kill();
+      workerHolder.__statsWorker = startWorker();
+    }
+    // undefined when the replacement could not start and the caller that started it gave up on it.
+    worker = (await workerHolder.__statsWorker) ?? null;
   }
   if (worker) workerHolder.__statsWorkerLive = worker;
   if (!worker) {
@@ -353,7 +364,7 @@ export async function sweepStatsCache(dir: string = tmpdir(), now: number = Date
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
-  action: "convert" | "table" | "dictionary" | "crosstab" | "categories" | "columns",
+  action: "convert" | "table" | "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet",
   args: unknown = {},
 ): Promise<T> {
   // The same data file is read many times in a session (every table built,
@@ -412,7 +423,11 @@ async function runLocalStatsPython<T>(
         if (err.code === "ENOENT") continue; // this interpreter name isn't installed
         lastError = (err.stderr || err.message || "").trim().split("\n").slice(-3).join(" ");
         if (/No module named ['"]?pyreadstat/.test(lastError)) {
-          throw new Error("Reading SPSS/Stata/SAS files locally needs the Python package pyreadstat. Run: pip install pyreadstat");
+          throw new Error("Reading SPSS/Stata/SAS files locally needs the Python package pyreadstat. Run: pip install -r requirements.txt");
+        }
+        // R (.rds, .RData) and Parquet files need two more packages (26 October 2026).
+        if (/No module named ['"]?(pyreadr|fastparquet)/.test(lastError)) {
+          throw new Error("Reading R and Parquet files locally needs the Python packages pyreadr and fastparquet. Run: pip install -r requirements.txt");
         }
         ran = true;
         break;
@@ -812,7 +827,7 @@ export type CrosstabResult = {
  * the Python function; otherwise it runs the same code with local Python.
  */
 export async function runStatsTool<T>(
-  action: "dictionary" | "crosstab" | "categories" | "columns",
+  action: "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet",
   storagePath: string,
   sourceFilename: string,
   args: unknown = {},

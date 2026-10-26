@@ -35,7 +35,9 @@ export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evi
 /** Said when a technical document is refused because migration 0112 is not applied. */
 export const TECHNICAL_MIGRATION_MESSAGE =
   "Technical documents need the database update 0112_technical_documents.sql. Nothing was stored; apply it and add the file again.";
-export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide"] as const;
+// "codebook" (Grant, 2026-10-26; migration 0118): a data file's variable list with labels and answer
+// codes, read and linked like a questionnaire.
+export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide", "codebook"] as const;
 export type InstrumentTypeChoice = (typeof INSTRUMENT_TYPES)[number];
 export type UploadKind = (typeof UPLOAD_KINDS)[number];
 

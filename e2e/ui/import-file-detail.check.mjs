@@ -92,9 +92,9 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await expect(page.getByTestId("file-purpose-text")).toContainText(/^Questionnaire\. /);
   await selectSource(page, "golden-survey-documented.xlsx");
   await expect(page.getByTestId("file-purpose-text")).toContainText(/Case-level data/);
-  // 6. The data file's Questionnaire links tab names its questionnaire on one line, not a second copy
+  // 6. The data file's Labels and documentation tab names its questionnaire on one line, not a second copy
   //    of its card; the first read still starts from here, and "Show" selects the questionnaire.
-  const links = await openSourceTab(page, "Questionnaire links");
+  const links = await openSourceTab(page, "Labels and documentation");
   const line = links.getByTestId("attached-instrument");
   await expect(line).toHaveCount(1);
   await expect(line).toContainText("Questionnaire: questionnaire.docx");

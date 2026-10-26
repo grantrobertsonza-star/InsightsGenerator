@@ -57,7 +57,7 @@ export default function UploadingPage() {
 
       <DoesDoesNot
         does={[
-          "Reads CSV, Excel (.xlsx/.xls), SPSS (.sav) and Stata (.dta) files for tables; SAS is excluded pending verification",
+          "Reads CSV, delimited text (.txt, tab, comma, semicolon or pipe), Excel (.xlsx/.xls), SPSS (.sav), Stata (.dta), SAS (.sas7bdat, .xpt), R (.rds, .RData) and Parquet files for tables; SAS value labels kept in a separate format catalog are not read yet, and Python pickle files are refused because opening one can run code",
           "Keeps every tenant's documents and data completely separate from every other tenant's",
           "Lets you re-upload or re-tag a document if you set the wrong kind or ingestion type the first time",
         ]}

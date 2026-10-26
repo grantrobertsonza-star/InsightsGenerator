@@ -69,6 +69,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     ...files("questionnaireFiles").map((f): [File, InstrumentTypeChoice] => [f, "questionnaire"]),
     ...files("interviewGuideFiles").map((f): [File, InstrumentTypeChoice] => [f, "interview_guide"]),
     ...files("focusGroupGuideFiles").map((f): [File, InstrumentTypeChoice] => [f, "focus_group_guide"]),
+    ...files("codebookFiles").map((f): [File, InstrumentTypeChoice] => [f, "codebook"]),
   ];
   const outputs = files("outputFiles");
   const briefs = files("briefFiles");

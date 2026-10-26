@@ -20,6 +20,7 @@ import {
   AUTO_CONFIRM_MIN,
 } from "./instruments";
 import { getGuideCoverage, type GuideReport } from "./guides";
+import { loadLabelDocumentation, type LabelDocumentation } from "./labelDocumentation";
 import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
@@ -81,6 +82,16 @@ export async function setInstrumentTargetAction(
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, dataDocumentId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: explain(e) };
+  }
+}
+
+/** The Labels and documentation tab of a raw data file (LBL-01). Read only. */
+export async function loadLabelDocumentationAction(runId: string, dataDocumentId: string): Promise<Ok<{ documentation: LabelDocumentation }> | Fail> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return { ok: true, documentation: await loadLabelDocumentation(TENANT_ID, runId, dataDocumentId) };
   } catch (e) {
     return { ok: false, error: explain(e) };
   }

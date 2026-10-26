@@ -12,8 +12,9 @@ export default function LimitsPage() {
 
       <H2>Initial import exclusions</H2>
       <P>
-        SAS files and columns-as-cases workbooks with a separate Codebook declaring weights or
-        multiple-response sets are excluded pending verification. The latter combination is refused
+        Columns-as-cases workbooks with a separate Codebook declaring weights or multiple-response
+        sets are excluded pending verification; SAS value labels kept in a separate format catalog
+        (.sas7bcat) are not read, so SAS coded answers show as numbers. The workbook combination is refused
         before analytical results are produced. Re-export with one row per respondent, retain the
         Codebook definitions, upload again and verify the weight and multiple-response setup.
         Removing those definitions to bypass the check is not a supported recovery.

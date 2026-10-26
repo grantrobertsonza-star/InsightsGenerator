@@ -3,13 +3,15 @@
 // page, an inline server action or a data import makes one A (B32-M01).
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const { tierOf, classify } = require("../../../scripts/change-tier.cjs") as {
   tierOf: (f: string, content?: string | null) => "A" | "B" | "C";
-  classify: (files: string[], contentOf?: (f: string) => string | null) => { tier: "A" | "B" | "C"; requires: string[] };
+  classify: (files: string[], contentOf?: (f: string) => string | null | (string | null)[]) => { tier: "A" | "B" | "C"; requires: string[] };
 };
 const CLIENT = '"use client";\n\nexport default function X() { return null; }\n';
 
@@ -54,5 +56,53 @@ describe("change tiers", () => {
     expect(tierOf("src/app/runs/[id]/Gone.tsx", null)).toBe("A");
     expect(tierOf("src/app/runs/[id]/Gone.tsx")).toBe("A");
     expect(tierOf("lib/elsewhere.ts")).toBe("A");
+  });
+});
+
+// M-B35-01 (Codex, batch 35 review): both sides of a change count. Real git repositories in a temporary
+// folder and the actual CLI, as the review's repros: a server page turned client-only, and a data
+// import and write removed from a component, are A; a display-only client edit stays B; a deleted
+// server page is A and a deleted display-only component B.
+describe("change-tier reads both sides of a changed file", () => {
+  const cli = path.resolve("scripts/change-tier.cjs");
+  const SERVER_PAGE = 'export default async function Page() {\n  async function save() {\n    "use server";\n  }\n  return null;\n}\n';
+  const DATA_CLIENT = '"use client";\nimport { pool } from "@/lib/db";\nexport default function P() { void pool; return null; }\n';
+  const CLIENT_ONLY = '"use client";\nexport default function P() { return null; }\n';
+  const CLIENT_EDITED = '"use client";\nexport default function P() { return "changed"; }\n';
+  function repoTier(file: string, before: string | null, after: string | null): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "tier-repo-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    writeFileSync(path.join(dir, "README.md"), "x\n");
+    if (before !== null) {
+      mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      writeFileSync(path.join(dir, file), before);
+    }
+    git("add", "-A");
+    git("commit", "-qm", "base");
+    git("checkout", "-qb", "change");
+    if (after === null) rmSync(path.join(dir, file));
+    else {
+      mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      writeFileSync(path.join(dir, file), after);
+    }
+    git("add", "-A");
+    git("commit", "-qm", "change");
+    const out = execFileSync(process.execPath, [cli, "--base", "main"], { cwd: dir, encoding: "utf8" });
+    return /Change tier: ([ABC])/.exec(out)![1];
+  }
+  it("is A when server or data behaviour is removed, and B for a display-only edit", () => {
+    expect(repoTier("src/app/runs/[id]/page.tsx", SERVER_PAGE, CLIENT_ONLY)).toBe("A");
+    expect(repoTier("src/app/runs/[id]/Panel.tsx", DATA_CLIENT, CLIENT_ONLY)).toBe("A");
+    expect(repoTier("src/app/runs/[id]/Panel.tsx", CLIENT_ONLY, CLIENT_EDITED)).toBe("B");
+    expect(repoTier("src/app/runs/[id]/page.tsx", SERVER_PAGE, null)).toBe("A");
+    expect(repoTier("src/app/runs/[id]/Panel.tsx", CLIENT_ONLY, null)).toBe("B");
+    expect(repoTier("src/app/runs/[id]/Panel.tsx", null, CLIENT_ONLY)).toBe("B");
+  });
+  it("classifies a file by its highest version when given several", () => {
+    expect(classify(["src/app/runs/[id]/Panel.tsx"], () => [CLIENT_ONLY, DATA_CLIENT]).tier).toBe("A");
+    expect(classify(["src/app/runs/[id]/Panel.tsx"], () => []).tier).toBe("A");
   });
 });

@@ -22,6 +22,7 @@ import { ASK_MEMORY_REQUESTS } from "./crosstabAskShared";
 import type { CategoryList, CrosstabRequest, CrosstabResult, VariableDictionary } from "./parseStatsFile";
 import { summarizeCrosstabTable, type CrosstabInsights } from "./crosstabInsights";
 import { requireTenantId } from "./requestContext";
+import { loadRespondentQuality, type RespondentQuality } from "./respondentQuality";
 
 type Fail = { ok: false; error: string };
 
@@ -40,6 +41,18 @@ export async function loadVariablesAction(
   const TENANT_ID = await requireTenantId();
   try {
     return { ok: true, dictionary: await loadVariableDictionary(TENANT_ID, runId, documentId) };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+export async function loadRespondentQualityAction(
+  runId: string,
+  documentId: string,
+): Promise<{ ok: true; quality: RespondentQuality } | Fail> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return { ok: true, quality: await loadRespondentQuality(TENANT_ID, runId, documentId) };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }

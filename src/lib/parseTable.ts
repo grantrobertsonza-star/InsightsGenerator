@@ -46,9 +46,13 @@ export class SheetSelectionLostError extends Error {
   }
 }
 
-/** CSV, TSV and Excel: the files the engine's one plain-table reader reads. */
+/**
+ * CSV, TSV, delimited text (.txt) and Excel: the files the engine's one plain-table reader reads
+ * (TABLE_EXTS in api/parse-stats-file.py). Asked only of table documents, so a .txt transcript or
+ * brief never reaches it.
+ */
 export function isPlainTableFileName(filename: string): boolean {
-  return /\.(csv|tsv|xlsx|xls)$/i.test(filename);
+  return /\.(csv|tsv|txt|xlsx|xls)$/i.test(filename);
 }
 
 type EngineTable = Partial<ParsedTable> & {

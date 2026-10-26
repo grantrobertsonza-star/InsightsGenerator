@@ -144,7 +144,7 @@ export async function bind({ page, target, testInfo }) {
   // its Preview tab, which holds the recovery notice when the stored preview cannot be verified.
   async function selectTableDocument() {
     await openSection("Import data");
-    await page.getByRole("button", { name: /^Select .*\.(xlsx|xls|csv|sav)$/i }).first().click();
+    await page.getByRole("button", { name: /^Select .*\.(xlsx|xls|csv|tsv|txt|sav|dta|sas7bdat|xpt|rds|rdata|rda|parquet)$/i }).first().click();
   }
 
   /** The selected data file's Data quality tab panel. */

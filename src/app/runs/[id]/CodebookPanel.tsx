@@ -146,6 +146,14 @@ export default function CodebookPanel({
     keywords: c.keywords ?? "",
   }));
   const [drafts, setDrafts] = useState<Draft[]>(initial);
+  // B35-F01: true once the researcher has changed a code in this mount of the panel. A late refusal
+  // of an earlier save (made before a remount) must not put that save's drafts back over newer
+  // wording typed since, so the submitted drafts are restored only onto an untouched panel.
+  const editedSinceMount = useRef(false);
+  const editDrafts = (update: (list: Draft[]) => Draft[]) => {
+    editedSinceMount.current = true;
+    setDrafts(update);
+  };
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [viewVersion, setViewVersion] = useState<string>("");
@@ -207,13 +215,15 @@ export default function CodebookPanel({
         setSaved(state.message);
         return;
       }
-      // Drafts are put back only onto the codebook version they were written against.
-      if (state.restore.version === codebook.version) setDrafts(state.restore.drafts);
-      setError(
+      // Drafts are put back only onto the codebook version they were written against, and only
+      // when nothing has been typed here since: newer wording is never replaced by older.
+      const keepNewer = editedSinceMount.current;
+      if (state.restore.version === codebook.version && !keepNewer) setDrafts(state.restore.drafts);
+      const why =
         state.kind === "failed"
           ? state.error
-          : "The page reloaded before your last change was confirmed, so it may not have been saved. Check the codes below and save again if it is missing.",
-      );
+          : "The page reloaded before your last change was confirmed, so it may not have been saved. Check the codes below and save again if it is missing.";
+      setError(keepNewer ? `${why} Your earlier change was not put back, so the edits you have made since are kept; save them when ready.` : why);
     };
     const state = takeMountState<Restore>(reopenKey);
     let unsubscribe = () => {};
@@ -292,7 +302,7 @@ export default function CodebookPanel({
     drafts.every((d) => d.name.trim() && d.definition.trim());
 
   function update(key: string, patch: Partial<Draft>) {
-    setDrafts((list) =>
+    editDrafts((list) =>
       list.map((d) => (d.key === key ? { ...d, ...patch } : d)),
     );
   }
@@ -444,7 +454,7 @@ export default function CodebookPanel({
                   type="button"
                   disabled={isPending}
                   onClick={() =>
-                    setDrafts((list) => list.filter((x) => x.key !== d.key))
+                    editDrafts((list) => list.filter((x) => x.key !== d.key))
                   }
                   className="rounded-md px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-danger-light hover:text-danger"
                 >
@@ -610,7 +620,7 @@ export default function CodebookPanel({
             type="button"
             disabled={isPending}
             onClick={() =>
-              setDrafts((list) => [
+              editDrafts((list) => [
                 ...list,
                 {
                   key: `new-${Date.now()}-${list.length}`,

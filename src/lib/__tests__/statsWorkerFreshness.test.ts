@@ -4,6 +4,7 @@
 //   - the worker refuses an action it does not know, instead of running another one;
 //   - when its own script changes on disk it answers {"restart": true} and exits, and
 //     parseStatsFile.ts sends the request to a fresh worker, which answers it;
+//   - several requests waiting on an old worker together start one replacement between them (B35-F02);
 //   - the one-shot runner refuses an unknown action too.
 // The real worker script and engine run (python3 + pandas); storage is an in-memory stand-in.
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -136,6 +137,34 @@ describe.skipIf(!PYTHON_OK)("the local statistics worker answers only with the c
     // The fresh worker keeps answering.
     const again = await runEngineConversion<{ headers: string[] }>("table", "t/r/legacy.csv", "legacy.csv", {});
     expect(again.headers).toEqual(["q", "r"]);
+  });
+
+  it("through the app: callers waiting together on an old worker share one replacement (B35-F02)", async () => {
+    const { runEngineConversion } = await import("../parseStatsFile");
+    const legacy = path.join(mkdtempSync(path.join(tmpdir(), "legacy-worker-")), "old_worker.py");
+    writeFileSync(legacy, ["import json, sys", "print(json.dumps({'ready': True}), flush=True)", "for line in sys.stdin:", "    pass"].join("\n"));
+    const proc = spawn(PYTHON, ["-u", legacy], { stdio: ["pipe", "pipe", "ignore"] });
+    const exited = new Promise<void>((r) => proc.on("exit", () => r()));
+    await new Promise<void>((r) => proc.stdout!.once("data", () => r()));
+    const holder = globalThis as { __statsWorker?: unknown; __statsWorkerStarts?: number; __statsWorkerLive?: { proc: { pid?: number; kill: () => void; exitCode: number | null } } };
+    holder.__statsWorkerLive?.proc.kill();
+    // The old worker's startup is held open until every caller is waiting on it.
+    let release!: () => void;
+    const old = { proc, pending: new Map(), nextId: 1 };
+    holder.__statsWorker = new Promise((r) => (release = () => r(old)));
+    holder.__statsWorkerLive = undefined;
+    const startsBefore = holder.__statsWorkerStarts ?? 0;
+    storage.objects.set("t/r/race.csv", Buffer.from("m,n\n1,2\n"));
+    const calls = Array.from({ length: 4 }, () => runEngineConversion<{ headers: string[] }>("table", "t/r/race.csv", "race.csv", {}));
+    await new Promise((r) => setTimeout(r, 200));
+    release();
+    const results = await Promise.all(calls);
+    expect(results.map((x) => x.headers)).toEqual(Array(4).fill(["m", "n"]));
+    // One replacement started, and it is the one the holder owns; the old one was stopped.
+    expect((holder.__statsWorkerStarts ?? 0) - startsBefore).toBe(1);
+    const live = (holder as { __statsWorkerLive?: { proc: { exitCode: number | null } } }).__statsWorkerLive;
+    expect(live?.proc.exitCode).toBeNull();
+    await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error("the old worker is still running")), 15_000))]);
   });
 
   it("the one-shot runner refuses an unknown action", () => {

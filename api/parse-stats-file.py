@@ -69,10 +69,80 @@ def _check_import_limits(file_bytes, cases=None):
     if cases is not None and cases > IMPORT_LIMITS["maxCases"]:
         raise ValueError(CASE_LIMIT_MESSAGE)
 
+def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
+    """A data frame from R or Parquet as the readers' (data, meta) pair. An R factor (a pandas
+    Categorical of text levels) becomes its R codes 1, 2, ... with each level as the code's label, as
+    an SPSS variable with value labels is read, so a factor's identity is its code and its wording a
+    label. A Parquet categorical keeps its own values (numbers stay numbers, text stays text): its codes
+    are pandas' storage, not the data's. Columns keep their names; R and Parquet carry no variable
+    labels."""
+    import pandas as pd
+
+    value_labels = {}
+    out = {}
+    for col in df.columns:
+        series = df[col]
+        if isinstance(series.dtype, pd.CategoricalDtype):
+            if factor_codes:
+                codes = series.cat.codes.astype("float64").where(series.cat.codes >= 0) + 1
+                value_labels[str(col)] = {float(i + 1): str(level) for i, level in enumerate(series.cat.categories)}
+                out[str(col)] = codes
+                continue
+            series = series.astype(object).where(series.notna(), None)
+        elif pd.api.types.is_extension_array_dtype(series.dtype) and pd.api.types.is_numeric_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype):
+            # A nullable integer (R integer with NA, pandas Int64) as the plain float column every
+            # numeric variable is read as, with NA as NaN, so it stays numeric.
+            series = series.astype("float64")
+        elif pd.api.types.is_extension_array_dtype(series.dtype):
+            series = series.astype(object).where(series.notna(), None)
+        elif series.dtype == object:
+            present = [v for v in series if v is not None and not (isinstance(v, float) and v != v)]
+            if present and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in present):
+                # pyreadr returns an R integer column with NA as objects; it is a number column.
+                series = pd.to_numeric(series, errors="coerce").astype("float64")
+        out[str(col)] = series
+    frame = pd.DataFrame(out)
+    if usecols:
+        frame = frame[[c for c in usecols if c in frame.columns]]
+    return frame, _PlainMeta(value_labels=value_labels, data_sheet=data_sheet)
+
+
+def read_r_file(path, usecols=None, **_ignored):
+    """An R data file: .rds (one object) or .RData/.rda (named objects), read by pyreadr, which reads R's
+    serialisation format without running R code. The data frame with the most rows is used (as the
+    worksheet with the most data rows is, for a workbook) and named as the read's sheet; a file holding
+    no data frame is refused."""
+    import pyreadr
+    import pandas as pd
+
+    objects = pyreadr.read_r(path)
+    frames = {(name or "data"): obj for name, obj in objects.items() if isinstance(obj, pd.DataFrame)}
+    if not frames:
+        raise ValueError("This R file holds no data frame. Save the data with saveRDS(data_frame, \"file.rds\") and upload it again.")
+    name = max(frames, key=lambda n: len(frames[n]))
+    return _r_and_parquet_frame(frames[name], data_sheet=name if len(frames) > 1 or name != "data" else None, usecols=usecols, factor_codes=True)
+
+
+def read_parquet_file(path, usecols=None, **_ignored):
+    """A Parquet file (pandas, Polars, Spark, R arrow), read with fastparquet, which is far smaller than
+    pyarrow and fits the deployed reader."""
+    import pandas as pd
+
+    df = pd.read_parquet(path, engine="fastparquet")
+    return _r_and_parquet_frame(df, usecols=usecols)
+
+
 READERS = {
     ".sav": pyreadstat.read_sav,
     ".dta": pyreadstat.read_dta,
     ".sas7bdat": pyreadstat.read_sas7bdat,
+    # SAS transport (XPORT), the format SAS datasets are usually exchanged and archived in.
+    ".xpt": pyreadstat.read_xport,
+    # R and Python (Grant, 26 October 2026).
+    ".rds": read_r_file,
+    ".rdata": read_r_file,
+    ".rda": read_r_file,
+    ".parquet": read_parquet_file,
 }
 
 DEFAULT_BUCKET = "documents"
@@ -236,6 +306,22 @@ def _remove_quietly(path: str) -> None:
         pass
 
 
+def _sas_blanks_missing(ext, data):
+    """SAS has no separate missing value for a character variable: a blank is missing (SAS's own
+    definition of a missing character value). pyreadstat returns it as "", which would otherwise be
+    counted as an answer of its own. Applied in place, by both readers of a statistics file (convert,
+    for the stored preview, and _read_raw_uncached, for every calculation), so they agree."""
+    if ext not in (".sas7bdat", ".xpt"):
+        return
+    import pandas as pd
+
+    for col in data.columns:
+        # Object or pandas' string dtype (the default for text from pandas 3); kept as object so a
+        # missing cell is None, as in every other column the readers hand on.
+        if pd.api.types.is_object_dtype(data[col]) or pd.api.types.is_string_dtype(data[col]):
+            data[col] = data[col].astype(object).map(lambda v: None if isinstance(v, str) and v.strip() == "" else v)
+
+
 def convert(file_bytes: bytes, source_filename: str) -> dict:
     _check_import_limits(file_bytes)
     ext = os.path.splitext(source_filename.lower())[1]
@@ -251,6 +337,7 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
         df, meta = reader(tmp_path)
     finally:
         _remove_quietly(tmp_path)
+    _sas_blanks_missing(ext, df)
 
     variable_labels = meta.column_names_to_labels or {}
     _check_import_limits(file_bytes, len(df))
@@ -305,7 +392,7 @@ def read_table(file_bytes: bytes, source_filename: str, args=None) -> dict:
     args = args or {}
     ext = os.path.splitext(source_filename.lower())[1]
     if ext not in TABLE_EXTS:
-        raise ValueError(f"Only CSV, TSV and Excel files are read as plain tables, not {ext or '(none)'} files.")
+        raise ValueError(f"Only CSV, TSV, delimited text (.txt) and Excel files are read as plain tables, not {ext or '(none)'} files.")
     layout = args.get("layout")
     if layout not in (None, "rows_are_cases", "columns_are_cases"):
         raise ValueError(f"Unknown data layout {layout!r}.")
@@ -404,7 +491,11 @@ class _PlainMeta:
         self.date_columns = date_columns or []
 
 
-TABLE_EXTS = (".csv", ".tsv", ".xlsx", ".xls")
+# Delimited text files: CSV, TSV, and .txt exports (survey archives such as the Berkeley IGS Poll ship
+# their data as tab-delimited .txt). A .txt file is read only when it is uploaded as a data or table
+# file, and its delimiter is sniffed like a CSV's.
+DELIMITED_EXTS = (".csv", ".tsv", ".txt")
+TABLE_EXTS = DELIMITED_EXTS + (".xlsx", ".xls")
 
 _DICT_SHEET_RE = re.compile(r"variable|dictionary|codebook|label|metadata|legend|value|code|lookup|readme|notes|schema", re.I)
 _VAR_COL_RE = re.compile(r"^(variable( name)?|var( name)?|name|column( name)?|field( name)?|item|question ?id|qid|var ?id|code ?name)$", re.I)
@@ -1379,11 +1470,19 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
     data_sheet = None
     encoding = None
     sheets = []
-    if ext in (".csv", ".tsv"):
+    if ext in DELIMITED_EXTS:
         with open(path, "rb") as fh:
             text, encoding = _decode_plain_text(fh.read())
         sep = "\t" if ext == ".tsv" else _sniff_delimiter(text)
         grid = _csv_grid(text, sep)
+        if ext == ".txt" and (not grid or max(len(r) for r in grid) < 2):
+            # A CSV with one column is a table with one variable; a .txt with no delimiter is far more
+            # likely prose or a fixed-width export, which would be read as one column of whole lines.
+            raise ValueError(
+                "This text file has no tab, comma, semicolon or pipe between its values, so it was not read as "
+                "a data table. If it is a fixed-width export, save it as CSV or tab-delimited text and upload "
+                "it again; if it is a transcript or document, upload it as that type instead."
+            )
     else:
         try:
             xl = pd.ExcelFile(path)
@@ -1593,7 +1692,7 @@ def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, la
         # the safer gap until this format's own flip (with proper label re-targeting) is built.
         raise ValueError(
             "This file's layout is set to \"columns_are_cases\", but that flip is only supported "
-            "for plain CSV/TSV/Excel files, not SPSS (.sav), Stata (.dta) or SAS (.sas7bdat) files, "
+            "for plain CSV/TSV/text/Excel files, not SPSS (.sav), Stata (.dta), SAS (.sas7bdat, .xpt), R or Parquet files, "
             "which already declare their own case/variable structure. Set the layout back to "
             "\"rows_are_cases\" for this file, or re-export it as CSV/Excel first if it genuinely "
             "needs flipping."
@@ -1610,6 +1709,7 @@ def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, la
             # change every denominator and statistic, whereas only the audit needs the ranges.
             _, declared = reader(tmp_path, metadataonly=True, user_missing=True)
             meta.missing_ranges = declared.missing_ranges
+        _sas_blanks_missing(ext, data)
         return data, meta
     finally:
         _remove_quietly(tmp_path)
@@ -2218,6 +2318,565 @@ def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=N
         "variable": variable,
         "label": (meta.column_names_to_labels or {}).get(variable) or variable,
         "categories": [{"label": str(c), "n": int(counts.get(c, 0))} for c in cats][:200],
+    }
+
+
+# Codebook files (Grant, 26 October 2026): a data file's codebook as a table, read without the model.
+# Organisations lay them out differently, so columns are found by what they hold, not by their header
+# text alone (the Berkeley IGS Poll codebook heads its name column "VARIABLE LABEL" and its label
+# column "VARIABLE NAME"). Two layouts are read:
+#   - one row per variable: a name column, a label column and, optionally, a values column written
+#     "1=Democrat, 2=No Party Preference" (commas inside a label are kept: a value starts only at
+#     "<code>=" at the start or after a comma);
+#   - one row per value: variable (repeated or left blank under its first row), code, value label, with
+#     the usual header names (_classify_header).
+# A row with one filled cell is a section heading. A name cell listing several names ("white, black,
+# latino") gives each the row's label and values. Values written another way ("as is", "1 thru 58",
+# "0-7") give no answer list; the text is kept as the variable's note.
+_CB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.$#@]{0,63}$")
+_CB_PAIR_RE = re.compile(r"(?:^|,)\s*(-?\d+(?:\.\d+)?)\s*=\s*")
+
+
+def _cb_text(v):
+    if v is None or (isinstance(v, float) and v != v):
+        return ""
+    return _literal_text(v).strip()
+
+
+def _cb_pairs(text):
+    """"1=Yes, 2=No, 9=Don't know" as [(code, label)], or [] when the text is not written that way."""
+    marks = list(_CB_PAIR_RE.finditer(text))
+    if not marks or marks[0].start() != 0:
+        return []
+    out = []
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        label = text[m.end():end].strip().rstrip(",").strip()
+        out.append((_format_code(float(m.group(1))) if "." not in m.group(1) else m.group(1), label))
+    return out
+
+
+def _cb_names(cell):
+    """The variable names a name cell holds: one name, or several separated by commas."""
+    parts = [p.strip() for p in cell.split(",")] if "," in cell else [cell]
+    return parts if parts and all(_CB_NAME_RE.match(p) for p in parts) else []
+
+
+def _cb_sheet_items(grid, sheet):
+    """Items from one sheet's grid, or [] when the sheet is not a codebook table."""
+    rows = [[_cb_text(c) for c in r] for r in grid]
+    rows = [r for r in rows if any(r)]
+    if len(rows) < 2:
+        return []
+    width = max(len(r) for r in rows)
+    rows = [r + [""] * (width - len(r)) for r in rows]
+    # One row per value, by header names.
+    for h in range(min(6, len(rows))):
+        pos = _classify_header([c.lower() for c in rows[h]])
+        if pos["var"] is not None and pos["value"] is not None and (pos["vlabel"] is not None or pos["label"] is not None):
+            items, order, last = {}, [], None
+            vl = pos["vlabel"] if pos["vlabel"] is not None else pos["label"]
+            for r in rows[h + 1:]:
+                name = r[pos["var"]] or last
+                if not name or not _CB_NAME_RE.match(name):
+                    continue
+                last = name
+                if name not in items:
+                    items[name] = {"variable": name, "label": "", "options": [], "note": None, "section": None, "sheet": sheet}
+                    order.append(name)
+                if pos["label"] is not None and pos["vlabel"] is not None and r[pos["label"]] and not items[name]["label"]:
+                    items[name]["label"] = r[pos["label"]]
+                code = r[pos["value"]]
+                if code != "":
+                    items[name]["options"].append({"code": _format_code(float(code)) if _STRICT_NUMBER.match(code) else code, "label": r[vl]})
+            return [items[n] for n in order]
+    # One row per variable, by content: the name column holds name-like cells, the values column
+    # "<code>=" lists, the label column the longest text of the rest.
+    body = [r for r in rows if sum(1 for c in r if c) >= 2]
+    if len(body) < 3:
+        return []
+
+    def share(col, test):
+        cells = [r[col] for r in body if r[col]]
+        return (sum(1 for c in cells if test(c)) / len(cells)) if cells else 0.0
+
+    name_col = max(range(width), key=lambda c: share(c, lambda x: bool(_cb_names(x))))
+    if share(name_col, lambda x: bool(_cb_names(x))) < 0.6:
+        return []
+    others = [c for c in range(width) if c != name_col]
+    values_col = max(others, key=lambda c: share(c, lambda x: bool(_cb_pairs(x))), default=None)
+    if values_col is not None and share(values_col, lambda x: bool(_cb_pairs(x))) < 0.2:
+        values_col = None
+    label_candidates = [c for c in others if c != values_col]
+    if not label_candidates:
+        return []
+    label_col = max(label_candidates, key=lambda c: sum(len(r[c]) for r in body))
+    items, section = [], None
+    for r in rows:
+        filled = [c for c in r if c]
+        if len(filled) == 1 and not _cb_names(filled[0]):
+            section = filled[0]
+            continue
+        names = _cb_names(r[name_col])
+        if not names or (r[name_col].lower() in ("variable", "variable name", "name", "variable label")):
+            continue
+        values = r[values_col] if values_col is not None else ""
+        pairs = _cb_pairs(values) if values else []
+        for name in names:
+            items.append({
+                "variable": name,
+                "label": r[label_col],
+                "options": [{"code": c, "label": l} for c, l in pairs],
+                "note": None if pairs or not values else values,
+                "section": section,
+                "sheet": sheet,
+            })
+    return items
+
+
+_CB_NAME_KEYS = ("name", "variable", "var", "variable_name", "varname", "id", "field", "column")
+_CB_LABEL_KEYS = ("label", "title", "description", "question", "text", "variable_label", "varlabel", "wording")
+_CB_VALUES_KEYS = ("values", "value_labels", "valuelabels", "categories", "codes", "options", "answers", "labels")
+
+
+def _cb_first(obj, keys):
+    lower = {str(k).lower(): v for k, v in obj.items()}
+    for k in keys:
+        if k in lower and lower[k] not in (None, ""):
+            return lower[k]
+    return None
+
+
+def _cb_json_options(values):
+    """Answer codes from the usual JSON spellings: {"1": "Yes"}, [{"value": 1, "label": "Yes"}],
+    [["1", "Yes"]], or a Frictionless "categories" list. A plain list of codes has no labels and gives
+    none."""
+    out = []
+    if isinstance(values, dict):
+        for code, label in values.items():
+            out.append({"code": _cb_code(code), "label": _cb_text(label)})
+    elif isinstance(values, list):
+        for v in values:
+            if isinstance(v, dict):
+                code = _cb_first(v, ("value", "code", "key", "id"))
+                label = _cb_first(v, ("label", "value_label", "text", "description", "name"))
+                if code is not None and label is not None:
+                    out.append({"code": _cb_code(code), "label": _cb_text(label)})
+            elif isinstance(v, (list, tuple)) and len(v) == 2:
+                out.append({"code": _cb_code(v[0]), "label": _cb_text(v[1])})
+    return out
+
+
+def _cb_code(code):
+    t = _cb_text(code)
+    return _format_code(float(t)) if _STRICT_NUMBER.match(t) else t
+
+
+def _codebook_from_json(file_bytes: bytes) -> dict:
+    """A codebook written as JSON. Organisations use different shapes, so these are read:
+      - a list of variable objects ({"name", "label", "values"} with the usual key spellings);
+      - an object of such lists under "variables", "fields" (a Frictionless Table Schema), "items",
+        "columns" or "codebook";
+      - an object keyed by variable name whose values are objects ({"label", "values"}) or a label.
+    Anything else is refused with what was expected."""
+    try:
+        data = json.loads(_decode_plain_text(file_bytes)[0])
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"This JSON codebook could not be read ({exc}).") from exc
+    entries = None
+    if isinstance(data, list):
+        entries = data
+    elif isinstance(data, dict):
+        for key in ("variables", "fields", "items", "columns", "codebook"):
+            inner = data.get(key)
+            if isinstance(inner, list):
+                entries = inner
+                break
+            if isinstance(inner, dict):
+                data = inner
+                break
+        if entries is None and isinstance(data, dict):
+            entries = []
+            for name, spec in data.items():
+                if isinstance(spec, dict):
+                    entries.append({"name": name, **spec})
+                elif isinstance(spec, str):
+                    entries.append({"name": name, "label": spec})
+    items, seen = [], set()
+    for e in entries or []:
+        if not isinstance(e, dict):
+            continue
+        name = _cb_first(e, _CB_NAME_KEYS)
+        name = _cb_text(name) if name is not None else ""
+        if not _CB_NAME_RE.match(name) or name in seen:
+            continue
+        seen.add(name)
+        values = _cb_first(e, _CB_VALUES_KEYS)
+        label = _cb_first(e, _CB_LABEL_KEYS)
+        items.append({
+            "variable": name,
+            "label": _cb_text(label) if isinstance(label, (str, int, float)) else "",
+            "options": _cb_json_options(values) if values is not None else [],
+            "note": None,
+            "section": _cb_text(_cb_first(e, ("section", "group", "module"))) or None,
+            "sheet": None,
+        })
+    if not items:
+        raise ValueError(
+            "No variables were found in this JSON codebook. Expected a list of variables (each with a name, a "
+            "label and optionally its values), or an object keyed by variable name."
+        )
+    return {"items": items, "sheets": [], "skippedSheets": []}
+
+
+def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
+    """The variables a codebook table describes: name, label, answer codes and labels, section. Every
+    sheet of a workbook is read; sheets that are not codebook tables are named in skippedSheets."""
+    ext = os.path.splitext(source_filename.lower())[1]
+    if ext == ".json":
+        return _codebook_from_json(file_bytes)
+    if ext not in TABLE_EXTS:
+        raise ValueError(f"A codebook is read as a table from CSV, text, Excel or JSON files, not {ext or '(none)'} files.")
+    sheets = _sheet_grids(file_bytes, source_filename)
+    items, used, skipped, seen = [], [], [], set()
+    for name, grid in sheets:
+        found = _cb_sheet_items(grid, name)
+        if not found:
+            if name is not None:
+                skipped.append(name)
+            continue
+        used.append(name)
+        for it in found:
+            if it["variable"] in seen:
+                continue  # first description of a variable wins; a repeat is not a second item
+            seen.add(it["variable"])
+            items.append(it)
+    if not items:
+        raise ValueError(
+            "No codebook table was found in this file: a column of variable names with their labels (and "
+            "optionally their answer codes, such as 1=Yes, 2=No), or one row per answer code. If it is a "
+            "questionnaire or a document, upload it as that type, or as a Word or PDF codebook."
+        )
+    return {"items": items, "sheets": used, "skippedSheets": skipped}
+
+
+def _sheet_grids(file_bytes: bytes, source_filename: str):
+    """[(sheet name or None, grid of cell text)] for a CSV, text or Excel file, every sheet."""
+    import pandas as pd
+
+    ext = os.path.splitext(source_filename.lower())[1]
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(file_bytes)
+        path = tmp.name
+    try:
+        if ext in DELIMITED_EXTS:
+            with open(path, "rb") as fh:
+                text, _enc = _decode_plain_text(fh.read())
+            sep = "\t" if ext == ".tsv" else _sniff_delimiter(text)
+            # Read leniently, cell by cell: a document row can be shorter or longer than the first.
+            return [(None, [[c for c in r] for r in csv.reader(io.StringIO(text, newline=""), delimiter=sep)])]
+        xl = pd.ExcelFile(path)
+        try:
+            return [(name, [[_cb_text(c) for c in r] for r in _excel_sheet_grid(xl, name)]) for name in xl.sheet_names]
+        finally:
+            xl.close()
+    finally:
+        _remove_quietly(path)
+
+
+def _xlsform_items(grids):
+    """Items from an XLSForm questionnaire (ODK, KoboToolbox, SurveyCTO: a "survey" sheet with type,
+    name and label columns, and a "choices" sheet with list_name, name and label), or None when the file
+    is not one. A question's code is its name (the data column it produces), its options are its choice
+    list, "relevant" is kept as its routing text, and groups are sections. Notes, calculations and
+    metadata fields (start, end, deviceid ...) produce no item."""
+    by_name = {str(n).strip().lower(): g for n, g in grids if n is not None}
+    survey, choices = by_name.get("survey"), by_name.get("choices")
+    if not survey:
+        return None
+
+    def header(grid):
+        head = [c.strip().lower() for c in grid[0]] if grid else []
+        def col(*names):
+            for want in names:
+                for i, h in enumerate(head):
+                    if h == want or h.startswith(want + "::"):
+                        return i
+            return None
+        return col
+
+    col = header(survey)
+    t, n, l, rel = col("type"), col("name"), col("label"), col("relevant")
+    if t is None or n is None or l is None:
+        return None
+    lists = {}
+    if choices:
+        ccol = header(choices)
+        ln, cn, cl = ccol("list_name", "list name"), ccol("name"), ccol("label")
+        if ln is not None and cn is not None and cl is not None:
+            for r in choices[1:]:
+                r = r + [""] * (max(ln, cn, cl) + 1 - len(r))
+                if r[ln].strip() and r[cn].strip():
+                    lists.setdefault(r[ln].strip(), []).append({"code": _cb_code(r[cn]), "label": r[cl].strip()})
+    skip = {"note", "calculate", "start", "end", "today", "deviceid", "subscriberid", "simserial", "phonenumber", "username", "audit", "hidden", "begin_repeat", "end_repeat"}
+    items, sections = [], []
+    for r in survey[1:]:
+        r = r + [""] * (max(x for x in (t, n, l, rel) if x is not None) + 1 - len(r))
+        kind = r[t].strip()
+        if not kind:
+            continue
+        words = kind.replace("_", " ").split()
+        if words[:2] == ["begin", "group"]:
+            sections.append(r[l].strip() or r[n].strip() or None)
+            continue
+        if words[:2] == ["end", "group"]:
+            if sections:
+                sections.pop()
+            continue
+        if kind.replace(" ", "_") in skip or words[0] in skip:
+            continue
+        name = r[n].strip()
+        if not _CB_NAME_RE.match(name):
+            continue
+        parts = kind.split()
+        options = lists.get(parts[-1], []) if parts[0] in ("select_one", "select_multiple") and len(parts) > 1 else []
+        items.append({
+            "variable": name,
+            "label": r[l].strip() or name,
+            "options": options,
+            "routing": r[rel].strip() if rel is not None and r[rel].strip() else None,
+            "section": next((s for s in reversed(sections) if s), None),
+        })
+    return items or None
+
+
+def instrument_sheet(file_bytes: bytes, source_filename: str, args=None) -> dict:
+    """A questionnaire in a spreadsheet: its items when it is an XLSForm ({"items": [...]}), otherwise
+    the text of every sheet, row by row with cells separated by " | ", for the questionnaire reader to read
+    as it reads a Word or PDF questionnaire ({"text": ...})."""
+    grids = _sheet_grids(file_bytes, source_filename)
+    items = _xlsform_items(grids)
+    if items:
+        return {"items": items, "format": "xlsform"}
+    parts = []
+    for name, grid in grids:
+        lines = [" | ".join(c.strip() for c in r if c and c.strip()) for r in grid]
+        lines = [x for x in lines if x]
+        if lines:
+            parts.append((f"Sheet: {name}\n" if name else "") + "\n".join(lines))
+    if not parts:
+        raise ValueError("This spreadsheet has no text to read as a questionnaire.")
+    return {"text": "\n\n".join(parts), "format": "sheet_text"}
+
+
+# Respondent-level quality (Grant, 26 October 2026, after Inspirient's survey quality assessment). Case
+# diagnostics over the whole file, unweighted, that flag respondents for the researcher to look at;
+# nothing here removes a case or changes any table. Each check states the rule it used and the
+# variables it found, and says when it could not be measured rather than reporting zero.
+RQ_GRID_MIN_ITEMS = 5          # a battery needs this many items before identical answers say much
+RQ_STRAIGHTLINED_BATTERIES = 2 # a case is flagged when it gives one answer throughout at least this many
+                               # batteries and at least half of those it answered: one battery alone
+                               # can be answered the same way honestly
+RQ_GRID_MAX_POINTS = 11        # answer scales of up to 11 points (0-10)
+RQ_NEAR_STRAIGHTLINE = 0.9     # share of a battery's answers equal to the respondent's most common one
+RQ_NON_ANSWER_SHARE = 0.5      # half or more of a respondent's labelled answers are non-answers
+RQ_NON_ANSWER_MIN = 10         # ... out of at least this many labelled answers
+RQ_SPEEDER = 0.5               # interview under half the median length (Inspirient's default)
+RQ_SUPER_SPEEDER = 0.3         # under 30% of the median
+RQ_LONG = 3.0                  # over three times the median: noted, not flagged
+RQ_INTERVIEWER_MIN_CASES = 10
+RQ_TOP_CASES = 100
+_RQ_GRID_RE = re.compile(r"^(.*?[A-Za-z][A-Za-z0-9]*?)(?:[_.]?)(\d{1,2}|[a-z])$")
+_RQ_DURATION_RE = re.compile(r"duration|length of interview|\bloi\b|interview ?time|time ?taken|elapsed|seconds|minutes|\bsecs?\b|\bmins?\b", re.IGNORECASE)
+_RQ_INTERVIEWER_RE = re.compile(r"interviewer|\bintvw|\bint_?id\b|enumerator|field ?worker|\bagent\b", re.IGNORECASE)
+
+
+def _rq_grids(df, labels_of):
+    """Batteries: five or more variables sharing a stem with a numbered or lettered suffix (Q13_1 to
+    Q13_14, Q11a to Q11g; the stem carries a question number or a separator), every one numeric with whole-number answers on one scale of 3 to 11 points.
+    Sets of 0/1 items are left out: they are usually "tick all that apply" lists, where identical answers
+    are expected. A "_summary" companion variable is not an item."""
+    import numpy as np
+
+    groups = {}
+    for name in df.columns:
+        n = str(name)
+        if n.lower().endswith("summary") or _is_id_like_header(n) or _WEIGHT_RE.search(n):
+            continue
+        m = _RQ_GRID_RE.match(n)
+        # The stem must carry a question number (Q13_1, Q11a) or be separated from the item number
+        # (trust_1): "F12" to "F20" are numbered questions of their own, not items of a battery "F".
+        if m and (re.search(r"\d", m.group(1)) or n[len(m.group(1)) : len(m.group(1)) + 1] in ("_", ".")):
+            groups.setdefault(m.group(1).rstrip("_."), []).append(name)
+    grids = []
+    for stem, cols in groups.items():
+        if len(cols) < RQ_GRID_MIN_ITEMS:
+            continue
+        sub = df[cols].apply(lambda c: __import__("pandas").to_numeric(c, errors="coerce"))
+        if any(df[c].notna().sum() > 0 and sub[c].notna().sum() < df[c].notna().sum() for c in cols):
+            continue  # a text value in an item: not a rating battery
+        values = sub.to_numpy(dtype=float)
+        seen = values[~np.isnan(values)]
+        if seen.size == 0 or not np.all(np.mod(seen, 1) == 0):
+            continue
+        codes = sorted(set(seen.tolist()))
+        # Non-answer codes (don't know, refused) are not scale points.
+        non_answers = set()
+        for c in cols:
+            non_answers |= {float(k) for k in _non_answer_codes(labels_of(c), None, True) if _num_or_none(k) is not None}
+        points = [v for v in codes if v not in non_answers]
+        if len(points) < 3 or len(points) > RQ_GRID_MAX_POINTS:
+            continue
+        def item_order(c):
+            tail = _RQ_GRID_RE.match(str(c)).group(2)
+            return (0, int(tail), "") if tail.isdigit() else (1, 0, tail)
+
+        cols = sorted(cols, key=item_order)
+        grids.append({"stem": stem, "items": [str(c) for c in cols], "points": points, "nonAnswers": sorted(non_answers)})
+    return grids
+
+
+def _num_or_none(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> dict:
+    """Respondent-level checks over every case: straightlining in batteries, the share of non-answers,
+    speeders (when a duration variable is found) and interviewer differences (when an interviewer
+    variable is found), and the cases with the most flags. Unweighted counts of cases. args: layout,
+    selectedSheet."""
+    import numpy as np
+    import pandas as pd
+
+    args = args or {}
+    layout = args.get("layout")
+    df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None)
+    n = len(df)
+    value_labels = getattr(meta, "variable_value_labels", None) or {}
+    labels_of = lambda c: value_labels.get(c) or {}
+    flags = [[] for _ in range(n)]
+    notes = []
+
+    id_col = next((c for c in df.columns if _is_id_like_header(str(c))), None)
+
+    # Straightlining.
+    grids = _rq_grids(df, labels_of)
+    straight_cases = np.zeros(n, dtype=int)
+    eligible_cases = np.zeros(n, dtype=int)
+    grid_out = []
+    for g in grids:
+        sub = df[g["items"]].apply(lambda c: pd.to_numeric(c, errors="coerce")).to_numpy(dtype=float)
+        valid = ~np.isnan(sub)
+        for na in g["nonAnswers"]:
+            valid &= sub != na
+        answered = valid.sum(axis=1)
+        top = np.zeros(n)
+        for v in g["points"]:
+            top = np.maximum(top, ((sub == v) & valid).sum(axis=1))
+        eligible = answered >= RQ_GRID_MIN_ITEMS
+        with np.errstate(divide="ignore", invalid="ignore"):
+            score = np.where(eligible, top / np.maximum(answered, 1), np.nan)
+        full = eligible & (score == 1.0)
+        near = eligible & (score >= RQ_NEAR_STRAIGHTLINE) & ~full
+        straight_cases += full
+        eligible_cases += eligible
+        grid_out.append({
+            "stem": g["stem"], "items": g["items"], "points": [int(p) for p in g["points"]],
+            "eligible": int(eligible.sum()), "straightliners": int(full.sum()), "nearStraightliners": int(near.sum()),
+        })
+    straight_flag = (straight_cases >= RQ_STRAIGHTLINED_BATTERIES) & (straight_cases * 2 >= eligible_cases)
+    for i in np.flatnonzero(straight_flag):
+        flags[i].append(f"straightlined {int(straight_cases[i])} of {int(eligible_cases[i])} batteries")
+
+    # Non-answers, where the file labels its codes.
+    labelled = [c for c in df.columns if labels_of(c) and _non_answer_codes(labels_of(c), None, True)]
+    non_answer = {"measured": bool(labelled), "variables": len(labelled), "flagged": 0, "threshold": RQ_NON_ANSWER_SHARE, "minAnswers": RQ_NON_ANSWER_MIN}
+    if labelled:
+        na_count = np.zeros(n)
+        answered = np.zeros(n)
+        for c in labelled:
+            codes = {float(k) for k in _non_answer_codes(labels_of(c), None, True) if _num_or_none(k) is not None}
+            vals = pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float)
+            present = ~np.isnan(vals)
+            answered += present
+            na_count += present & np.isin(vals, list(codes))
+        share = np.where(answered > 0, na_count / np.maximum(answered, 1), 0)
+        bad = (answered >= RQ_NON_ANSWER_MIN) & (share >= RQ_NON_ANSWER_SHARE)
+        non_answer["flagged"] = int(bad.sum())
+        non_answer["medianShare"] = float(np.median(share[answered >= RQ_NON_ANSWER_MIN])) if (answered >= RQ_NON_ANSWER_MIN).any() else None
+        for i in np.flatnonzero(bad):
+            flags[i].append(f"{round(100 * share[i])}% of {int(answered[i])} labelled answers were non-answers")
+    else:
+        notes.append("Non-answers could not be measured: the file has no value labels marking codes such as \"Don't know\" or \"Refused\".")
+
+    # Speeders.
+    variable_labels = getattr(meta, "column_names_to_labels", None) or {}
+    duration_col = next(
+        (c for c in df.columns
+         if _RQ_DURATION_RE.search(f"{c} {variable_labels.get(c) or ''}") and pd.to_numeric(df[c], errors="coerce").notna().sum() > 0),
+        None,
+    )
+    duration = {"variable": None if duration_col is None else str(duration_col)}
+    dur = None
+    if duration_col is not None:
+        dur = pd.to_numeric(df[duration_col], errors="coerce").to_numpy(dtype=float)
+        positive = dur[(~np.isnan(dur)) & (dur > 0)]
+        med = float(np.median(positive)) if positive.size else None
+        duration["median"] = med
+        if med:
+            speed = (~np.isnan(dur)) & (dur > 0) & (dur < RQ_SPEEDER * med)
+            sup = speed & (dur < RQ_SUPER_SPEEDER * med)
+            duration.update({"speeders": int(speed.sum()), "superSpeeders": int(sup.sum()), "long": int(((dur > RQ_LONG * med)).sum()), "speederBelow": RQ_SPEEDER * med, "superSpeederBelow": RQ_SUPER_SPEEDER * med})
+            for i in np.flatnonzero(speed):
+                flags[i].append(f"{'super-speeder' if sup[i] else 'speeder'}: {dur[i]:g} against a median of {med:g}")
+    else:
+        notes.append("Speeders could not be checked: no interview length variable was found (a name such as duration, LOI or interview time).")
+
+    # Interviewers.
+    interviewer_col = next((c for c in df.columns if _RQ_INTERVIEWER_RE.search(str(c)) and 2 <= df[c].nunique(dropna=True) <= 1000), None)
+    interviewers = {"variable": None if interviewer_col is None else str(interviewer_col), "rows": []}
+    if interviewer_col is not None:
+        overall_straight = float(straight_flag.mean()) if n else 0.0
+        overall_med = duration.get("median")
+        for who, idx in df.groupby(df[interviewer_col].astype(str)).indices.items():
+            if len(idx) < RQ_INTERVIEWER_MIN_CASES or who in ("nan", "None", ""):
+                continue
+            rate = float(straight_flag[idx].mean())
+            row = {"interviewer": who, "cases": int(len(idx)), "straightlinerRate": rate}
+            reasons = []
+            if rate >= max(2 * overall_straight, overall_straight + 0.1) and rate > 0:
+                reasons.append("more straightlining than other interviewers")
+            if dur is not None and overall_med:
+                their = dur[idx]
+                their = their[(~np.isnan(their)) & (their > 0)]
+                if their.size:
+                    row["medianDuration"] = float(np.median(their))
+                    if row["medianDuration"] < RQ_SPEEDER * overall_med:
+                        reasons.append("interviews much shorter than other interviewers'")
+            row["check"] = reasons
+            interviewers["rows"].append(row)
+        interviewers["rows"].sort(key=lambda r: (-len(r["check"]), -r["straightlinerRate"]))
+    else:
+        notes.append("Interviewer differences could not be checked: no interviewer variable was found.")
+
+    ranked = sorted((i for i in range(n) if flags[i]), key=lambda i: -len(flags[i]))
+    top = []
+    for i in ranked[:RQ_TOP_CASES]:
+        ident = None if id_col is None else _json_cell(df.iloc[i][id_col])
+        top.append({"row": i + 1, "id": None if ident is None else _code_text(ident), "reasons": flags[i]})
+    return {
+        "cases": n,
+        "idVariable": None if id_col is None else str(id_col),
+        "straightlining": {"grids": grid_out, "flagged": int(straight_flag.sum()), "nearThreshold": RQ_NEAR_STRAIGHTLINE, "minItems": RQ_GRID_MIN_ITEMS, "minBatteries": RQ_STRAIGHTLINED_BATTERIES},
+        "nonAnswer": non_answer,
+        "duration": duration,
+        "interviewers": interviewers,
+        "flaggedCases": len(ranked),
+        "topCases": top,
+        "notes": notes,
     }
 
 
@@ -3850,7 +4509,7 @@ _SIGNED_PATH = re.compile(
     re.IGNORECASE,
 )
 _SIGNATURE_LIFETIME_SECONDS = 300
-_SIGNED_ACTIONS = {"convert", "table", "dictionary", "categories", "columns", "crosstab"}
+_SIGNED_ACTIONS = {"convert", "table", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet"}
 
 
 def verify_parse_request(secret, header, action, bucket, storage_path, now=None):
@@ -3921,6 +4580,15 @@ class handler(BaseHTTPRequestHandler):
                 return
             if action == "columns":
                 self._send_json(200, {"result": driver_columns(file_bytes, source_filename, body.get("args") or {})})
+                return
+            if action == "instrument_sheet":
+                self._send_json(200, {"result": instrument_sheet(file_bytes, source_filename, body.get("args") or {})})
+                return
+            if action == "codebook":
+                self._send_json(200, {"result": codebook_items(file_bytes, source_filename, body.get("args") or {})})
+                return
+            if action == "respondent_quality":
+                self._send_json(200, {"result": respondent_quality(file_bytes, source_filename, body.get("args") or {})})
                 return
             if action == "crosstab":
                 self._send_json(200, {"result": crosstab(file_bytes, source_filename, body.get("args") or {})})

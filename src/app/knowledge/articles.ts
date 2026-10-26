@@ -113,7 +113,7 @@ export const articles: ArticleMeta[] = [
   {
     slug: "roadmap",
     title: "Planned, and not yet supported",
-    blurb: "SAS files, variables-in-rows workbooks with a separate Codebook, weights and survey design from a separate file, and more uses of technical documents: what to do today and what building each would take",
+    blurb: "SAS value labels, variables-in-rows workbooks with a separate Codebook, weights and survey design from a separate file, and more uses of technical documents: what to do today and what building each would take",
     category: "Method guides",
     updated: "2026-10-24",
     minutes: 4,

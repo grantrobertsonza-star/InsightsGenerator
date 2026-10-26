@@ -188,6 +188,17 @@ export async function loadVariableDictionaryWithStatus(
   return { ok: true, dictionary };
 }
 
+/**
+ * The data file's own dictionary: no codebook or questionnaire labels, no researcher corrections.
+ * The Labels and documentation tab (labelDocumentation.ts) compares it with each linked document,
+ * so it must not already carry their labels. A failed setup read refuses rather than defaulting.
+ */
+export async function loadFileOwnVariableDictionary(tenantId: string, runId: string, documentId: string): Promise<VariableDictionary> {
+  const status = await loadDataSetupWithStatus(tenantId, documentId);
+  if (!status.ok) throw new Error(status.error);
+  return buildVariableDictionaryForSetup(tenantId, runId, documentId, status.setup, false, false);
+}
+
 // Import must know the underlying definition when a researcher clears a correction. Reading an
 // already-corrected dictionary here would make the old correction look like the imported default.
 export async function loadImportedVariableDictionary(tenantId: string, runId: string, documentId: string): Promise<VariableDictionary> {
@@ -216,7 +227,7 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
   if (/\.(?:xlsx|xls)$/i.test(sourceFilename)) return 14;
-  if (/\.(?:csv|tsv)$/i.test(sourceFilename)) return 13;
+  if (/\.(?:csv|tsv|txt)$/i.test(sourceFilename)) return 13;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }
@@ -227,6 +238,7 @@ async function buildVariableDictionaryForSetup(
   documentId: string,
   setup: DataSetup,
   applyCorrections = true,
+  applyLabelOverlay = true,
 ): Promise<VariableDictionary> {
   // Hoisted ahead of the cache check (previously loaded only on a cache miss): IMP-SHIP-001
   // (Codex round 2, "bind dictionary caches ... to selected-sheet identity") needs the
@@ -319,6 +331,7 @@ async function buildVariableDictionaryForSetup(
       // allowed to fail silently (see resolveAuthoritativeSheet's own comment).
     }
   }
+  if (!applyLabelOverlay) return dictionary;
   const overlay = await overlayFor(tenantId, runId, documentId);
   const withOverlay = overlay ? enrichDictionary(dictionary, overlay) : dictionary;
   if (!applyCorrections) return withOverlay;

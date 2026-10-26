@@ -104,6 +104,12 @@ def main() -> int:
                 result = mod.categories(data, name, args["variable"], args.get("overlay"), args.get("layout"), args.get("selectedSheet"))
             elif action == "columns":
                 result = mod.driver_columns(data, name, args)
+            elif action == "instrument_sheet":
+                result = mod.instrument_sheet(data, name, args)
+            elif action == "codebook":
+                result = mod.codebook_items(data, name, args)
+            elif action == "respondent_quality":
+                result = mod.respondent_quality(data, name, args)
             elif action == "crosstab":
                 result = mod.crosstab(data, name, args)
             elif action == "table":
