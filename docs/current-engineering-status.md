@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-25. State: **READY_FOR_CODEX** (batch29 on top of batch28, on top of afc1b39): batch28 repairs B26-F01, B26-F02, B27-F01 and V-B27-01; batch29 clears the lint errors (lint exit 0). Both implemented, ready for independent review; no migration (Grant confirms 0116 and 0117 applied). **NOT READY for release.**
+Updated: 2026-10-26. State: **READY_FOR_CODEX** (batch30 on top of batch29 51863f3): Codex's Phase 0 stop findings RP0-F01 (programme S1), RP0-V01 and RP0-M01 repaired, plus the cross-tab design label; implemented, ready for independent review; no migration. **NOT READY for release.** Phase 0 to be resumed on the batch30 head.
+
+## Claude: batch30 (RP0-F01, RP0-V01, RP0-M01, cross-tab design label), main copy (2026-10-26)
+
+Implemented, ready for review: the batch30 repair commit and its docs commit, on top of batch29. No migration. Details in `docs/batch30-handover-2026-10-26.md`; contracts `claude/answer-domain.md` (new) and `claude/one-reader-import.md`. RP0-F01: the engine keeps declared non-answer codes (user-missing, and "don't know"-type labels when excluded) out of a variable's answer domain (`_non_answer_codes`), so Codex's source scores top two box 40 with base 100; substantive unchosen codes stay (IMP-004). RP0-V01: the self-test uses an independent design t reference. RP0-M01: one typing policy beyond 2^53 for every text spelling; reader `engine-plain-2026.10.26b`, dictionary version 13. Cross-tab findings name the design treatment applied (`notes.designApplied`). Self-test all passed. Full library 1,759 passed / 72 skipped / 0 failed. Full browser 107 passed / 1 skipped / 0 failed; smoke 1 passed; lint 0 errors. **READY_FOR_CODEX.**
 
 ## Claude: batch29 (lint to zero errors), main copy (2026-10-25)
 
