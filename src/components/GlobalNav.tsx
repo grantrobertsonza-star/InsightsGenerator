@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GridIcon, ChartIcon, BookIcon, LibraryIcon } from "./icons";
+import { HomeIcon, GridIcon, ChartIcon, BookIcon, LibraryIcon } from "./icons";
 import type { ComponentType } from "react";
 
 type NavItem = {
@@ -12,9 +12,15 @@ type NavItem = {
   // Matches the dashboard itself and any run detail page -- both are part
   // of the same "your projects" area from the sidebar's point of view.
   isActive: (pathname: string) => boolean;
+  // A static page outside the Next app (served from public/). It must be a plain link: a client-side
+  // <Link> navigation would ask for an app route that does not exist.
+  outsideApp?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
+  // The public landing page (public/home.html). It has no app shell, so following it leaves the
+  // app; its "Sign in" button returns to the dashboard.
+  { href: "/home", label: "Home", icon: HomeIcon, isActive: (pathname) => pathname === "/home", outsideApp: true },
   {
     href: "/",
     label: "Dashboard",
@@ -53,10 +59,11 @@ export default function GlobalNav() {
 
   return (
     <nav className="flex flex-col gap-0.5 px-3">
-      {NAV_ITEMS.map(({ href, label, icon: Icon, isActive }) => {
+      {NAV_ITEMS.map(({ href, label, icon: Icon, isActive, outsideApp }) => {
         const active = isActive(pathname);
+        const NavLink = outsideApp ? "a" : Link;
         return (
-          <Link
+          <NavLink
             key={href}
             href={href}
             className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
@@ -69,7 +76,7 @@ export default function GlobalNav() {
               className={`h-4 w-4 ${active ? "text-primary" : "text-muted"}`}
             />
             {label}
-          </Link>
+          </NavLink>
         );
       })}
     </nav>
@@ -81,10 +88,11 @@ export function GlobalNavRail() {
   const pathname = usePathname();
   return (
     <nav aria-label="Main" className="flex flex-col items-center gap-1">
-      {NAV_ITEMS.map(({ href, label, icon: Icon, isActive }) => {
+      {NAV_ITEMS.map(({ href, label, icon: Icon, isActive, outsideApp }) => {
         const active = isActive(pathname);
+        const NavLink = outsideApp ? "a" : Link;
         return (
-          <Link
+          <NavLink
             key={href}
             href={href}
             aria-label={label}
@@ -93,7 +101,7 @@ export function GlobalNavRail() {
             className={`flex h-8 w-8 items-center justify-center rounded-lg transition focus-visible:outline-2 focus-visible:outline-primary ${active ? "bg-primary-light text-primary" : "text-slate-600 hover:bg-surface hover:text-primary"}`}
           >
             <Icon className="h-4 w-4" />
-          </Link>
+          </NavLink>
         );
       })}
     </nav>

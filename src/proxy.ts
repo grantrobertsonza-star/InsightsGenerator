@@ -69,5 +69,5 @@ export const config = {
   // Everything except the sign-in page, Next's own assets and static files. The Python
   // conversion function (/api/parse-stats-file) is a separate deployment target with its own
   // signed-request check and never passes through Next.
-  matcher: ["/((?!login|_next/static|_next/image|favicon\\.ico|api/parse-stats-file|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?)$).*)"],
+  matcher: ["/((?!login|home(?:\\.html)?$|_next/static|_next/image|favicon\\.ico|api/parse-stats-file|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?)$).*)"],
 };

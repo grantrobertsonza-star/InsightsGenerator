@@ -25,6 +25,12 @@ const nextConfig: NextConfig = {
     // held in memory twice while the proxy runs.
     proxyClientMaxBodySize: "100mb",
   },
+  // The public landing page is a self-contained HTML file in public/ (inline styles and logo), served
+  // at /home without the app shell. src/proxy.ts excludes /home and /home.html from the sign-in
+  // redirect so a signed-out visitor can see it; its "Sign in" button links to "/".
+  async rewrites() {
+    return [{ source: "/home", destination: "/home.html" }];
+  },
 };
 
 export default nextConfig;
