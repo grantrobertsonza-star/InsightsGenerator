@@ -347,6 +347,8 @@ def _ratio_z(mask, sel):
     pj = w_[mask & sel].sum() / sw_
     return pj, np.where(mask, w_ * ((sel.astype(float)) - pj) / sw_, 0.0)
 
+from scipy.stats import t as _scipy_t
+_design_df = len(set(zip(strata_, psu_))) - len(set(strata_))
 ok_se = True
 for row in data_rows(rd["questions"][0]):
     cat = int(row["label"])
@@ -356,7 +358,9 @@ for row in data_rows(rd["questions"][0]):
     pb, zb = _ratio_z(~ka, sel)
     se_ = math.sqrt(_svy_var(za - zb, strata_, psu_))
     z_ = (pa - pb) / se_
-    p_exp = math.erfc(abs(z_) / math.sqrt(2))
+    # Design-based tests use a Student t reference with the design degrees of freedom (PSUs minus
+    # strata), as R's survey package and Stata's svy do; computed here from the data, not the engine.
+    p_exp = 2 * _scipy_t.sf(abs(z_), _design_df)
     got_p = row["p"][0]
     if got_p is None or abs(got_p - p_exp) > 6e-5:
         ok_se = False
@@ -370,8 +374,19 @@ r0 = data_rows(ro["questions"][0])[0]
 ya = (one["y"][one["grp"] == "A"] == 1).mean(); yb = (one["y"][one["grp"] == "B"] == 1).mean()
 N_ = 600
 va = N_ / (N_ - 1) * ya * (1 - ya) / 300; vb = N_ / (N_ - 1) * yb * (1 - yb) / 300
-p_closed = math.erfc(abs((ya - yb) / math.sqrt(va + vb)) / math.sqrt(2))
-check("one case per PSU reduces to the simple random sample formula", r0["p"][0] is not None and abs(r0["p"][0] - p_closed) < 6e-5, f"{r0['p'][0]} vs {p_closed}")
+# The standard error reduces to the simple random sample one; the reference distribution stays the
+# design t with 600 PSUs - 1 stratum = 599 degrees of freedom (Codex RP0-V01: this check used the normal
+# tail, 0.55657, while the engine correctly reports the t tail, 0.55680).
+z_closed = (ya - yb) / math.sqrt(va + vb)
+p_closed = 2 * _scipy_t.sf(abs(z_closed), 600 - 1)
+p_normal = math.erfc(abs(z_closed) / math.sqrt(2))
+check("one case per PSU reduces to the simple random sample formula (design t reference, 599 df)", r0["p"][0] is not None and abs(r0["p"][0] - p_closed) < 6e-5, f"{r0['p'][0]} vs {p_closed}")
+check("the check tells the t reference from the normal one (they differ by more than its tolerance)", abs(p_closed - p_normal) > 6e-5, f"{p_closed} vs {p_normal}")
+# Without a design the reference is the normal: same data, no design.
+ro_n = psf.crosstab(one.to_csv(index=False).encode(), "o.csv", {"columnVars": ["grp"], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}], "weightVar": None, "correction": "none"})
+r0n = data_rows(ro_n["questions"][0])[0]
+z_srs = (ya - yb) / math.sqrt(ya * (1 - ya) / 300 + yb * (1 - yb) / 300)
+check("without a design the test uses the normal reference", r0n["p"][0] is not None and abs(r0n["p"][0] - math.erfc(abs(z_srs) / math.sqrt(2))) < 1e-3, f"{r0n['p'][0]} vs {math.erfc(abs(z_srs) / math.sqrt(2))}")
 
 # clustering must not make the test more certain than ignoring it, on clustered data
 rn = psf.crosstab(dbytes, "d.csv", {"columnVars": ["grp"], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}], "weightVar": "w", "correction": "none"})

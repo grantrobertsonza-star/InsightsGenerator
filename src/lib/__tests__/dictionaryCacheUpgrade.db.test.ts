@@ -74,7 +74,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     run = (await db.pool.query(`insert into runs (tenant_id, project_name) values ($1, 'P') returning id`, [tenant])).rows[0].id;
 
     const fresh = realDictionary(WIDE, "columns_are_cases") as { version: number; variables: Variable[]; layout?: string };
-    expect(fresh.version).toBe(12);
+    expect(fresh.version).toBe(13);
     expect(variable(fresh, "RespID")).toMatchObject({ numeric: false, text: true });
     // What the old engine cached for this file: version 7, the identifier typed as a number.
     const stale = structuredClone(fresh) as typeof fresh;
@@ -118,7 +118,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     expect(variable(first as unknown as { variables: Variable[] }, "RespID")).toMatchObject({ numeric: false, text: true });
 
     const stored = (await db.pool.query(`select variable_dictionary, variable_overrides from documents where id = $1`, [flippedDoc])).rows[0];
-    expect(stored.variable_dictionary.version).toBe(12);
+    expect(stored.variable_dictionary.version).toBe(13);
     expect(stored.variable_overrides).toEqual(correction);
 
     // As after a reload: the cache is now current, so no engine call, and the correction reads back.
@@ -133,12 +133,12 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     const before = engineCalls.length;
     const d = await loadVariableDictionary(tenant, run, rowsDoc);
     expect(engineCalls.length).toBe(before + 1);
-    expect((d as unknown as { version: number }).version).toBe(12);
+    expect((d as unknown as { version: number }).version).toBe(13);
     // Rebuilt once, then reused.
     await loadVariableDictionary(tenant, run, rowsDoc);
     expect(engineCalls.length).toBe(before + 1);
-    expect(minimumDictionaryVersion("rows_are_cases", "ordinary.csv")).toBe(12);
-    expect(minimumDictionaryVersion("columns_are_cases", "wide.xlsx")).toBe(12);
+    expect(minimumDictionaryVersion("rows_are_cases", "ordinary.csv")).toBe(13);
+    expect(minimumDictionaryVersion("columns_are_cases", "wide.xlsx")).toBe(13);
     expect(minimumDictionaryVersion("rows_are_cases", "declared.sav")).toBe(9);
     expect(minimumDictionaryVersion("rows_are_cases", "survey.dta")).toBe(7);
   });
@@ -158,7 +158,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("old dictionary caches after t
     engineOutput.set(file, fresh);
     await loadVariableDictionary(tenant, run, flippedDoc);
     const retried = (await db.pool.query("select variable_dictionary, variable_overrides from documents where id = $1", [flippedDoc])).rows[0];
-    expect(retried.variable_dictionary.version).toBe(12);
+    expect(retried.variable_dictionary.version).toBe(13);
     expect(retried.variable_overrides).toEqual(correction);
   });
   it("Import retains the original group definition while corrected calculations and clear/retry use one authoritative dictionary", async () => {

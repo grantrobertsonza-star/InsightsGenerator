@@ -74,12 +74,15 @@ older cached dictionary of a CSV/TSV/Excel file, in either layout, is rebuilt on
   text, so a correction saved under the old name no longer applies to that variable; the variable shows
   without the correction until it is made again.
 - Zero-padded and signed codes in a non-identifier column are text, not numbers; CSV `TRUE`/`FALSE` are
-  text; a number a double cannot hold exactly makes its variable text, in any spelling: a whole number
-  beyond 2^53 (`9007199254740993`, `9007199254740993.0`, `9.007199254740993e15`) and a decimal with more
-  significant digits than a double holds. The test is a round trip (`_exact_decimal`): the double's
-  shortest text must be the number written. Distinct written values therefore never merge (Codex
-  B26-F01). Tables stored by reader `engine-plain-2026.10.25` are compared with a fresh read and withheld
-  with "Read the file again" when they differ. Tables and findings calculated before this
+  text. One typing policy for numbers written as text, in any spelling (`_exact_decimal` and the
+  integer branch, Codex B26-F01 and RP0-M01): a magnitude beyond 2^53 makes the variable text
+  (`9007199254740993`, `9007199254740994.0`, `9.007199254740993e15`, `1e16`, `1e30`), even when the
+  value happens to be a representable double; below that, a decimal or exponent spelling must round-trip
+  (the double's shortest text must be the number written), so a spelling with more significant digits
+  than a double holds is text too. 2^53 itself, `0.1`, `2.50` and `1e3` are numbers. Distinct written
+  values therefore never merge. Excel number cells are doubles in the file and are not put through this
+  rule. Tables stored by readers `engine-plain-2026.10.25` and `engine-plain-2026.10.26` are compared
+  with a fresh read and withheld with "Read the file again" when they differ. Tables and findings calculated before this
   change keep their figures until recalculated.
 - A CSV with malformed quoting, too many values on a row, or bytes that are not UTF-8/Windows-1252 text
   is refused where it used to be read with guesses.

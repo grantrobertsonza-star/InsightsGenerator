@@ -282,7 +282,7 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 # The reader that produced a stored preview table (documents' document_tables.read_provenance). A stored
 # table from any other reader (the retired TypeScript preview reader, or an older engine read) is checked
 # against a fresh read before it is shown (importPreviewIdentity.ts).
-TABLE_READER = "engine-plain-2026.10.26"
+TABLE_READER = "engine-plain-2026.10.26b"
 
 
 def _json_cell(v):
@@ -349,8 +349,10 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 12: decimal and exponent spellings a double cannot hold exactly keep their variable as text
 #     (_exact_decimal, Codex B26-F01). Every cached copy of a CSV/TSV/Excel file is rebuilt again, so a
 #     version-11 dictionary that merged such values is not reused (minimumDictionaryVersion asks for 12).
-DICTIONARY_VERSION = 12
-ENGINE_VERSION = "2026.10.26-1"  # exact-number rule for decimal and exponent spellings
+# 13: a decimal or exponent spelling beyond 2^53 is text like a bare whole number (one typing policy,
+#     Codex RP0-M01); cached CSV/TSV/Excel dictionaries are rebuilt again (minimumDictionaryVersion 13).
+DICTIONARY_VERSION = 13
+ENGINE_VERSION = "2026.10.26-2"  # one typing policy beyond 2^53; non-answer codes outside the answer domain
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -1044,18 +1046,23 @@ def _literal_text(v) -> str:
 
 
 def _exact_decimal(t: str):
-    """The double a decimal or exponent spelling holds, or None when that double is not the number
-    written. The stored preview holds numbers as doubles (JSON read by the app), so a spelling the double
-    cannot hold exactly would be stored as a different, rounded number, and two distinct values could
-    merge ("9007199254740992.0" and "9007199254740993.0" both become 9007199254740992; Codex B26-F01).
-    The test is a round trip: the shortest text that reads back as the double (repr) must be the same
-    number as the text written. "0.1", "2.50" and "1e3" pass; a whole number beyond 2^53, a spelling
-    with more significant digits than a double holds, and one that overflows or underflows do not. This
-    is the same rule as the integer branch (_MAX_EXACT_WHOLE), applied to every spelling."""
+    """The double a decimal or exponent spelling in a text cell holds, or None when the variable must stay
+    text. One typing policy for every spelling of a number written as text (Codex B26-F01, RP0-M01):
+      - magnitude beyond 2^53 (_MAX_EXACT_WHOLE): text, whatever the spelling. "9007199254740994.0",
+        "1e16" and "1e30" are text exactly like the bare whole number "9007199254740994" (the integer
+        branch below). Beyond 2^53 neighbouring whole numbers are no longer all distinct doubles, so such
+        values are treated as identifiers and kept as written rather than typed by whether one spelling
+        happens to land on a representable double;
+      - otherwise the round trip: the shortest text that reads back as the double (repr) must be the same
+        number as the text written. "0.1", "2.50", "1e3" and "9007199254740992.0" (2^53 itself) pass; a
+        spelling with more significant digits than a double holds, and an underflow, do not.
+    The stored preview holds numbers as doubles (JSON read by the app), so either failure would store a
+    different, rounded number and could merge distinct values. Excel number cells are doubles already
+    and are not put through this rule."""
     from decimal import Decimal, InvalidOperation
 
     f = float(t)
-    if f in (float("inf"), float("-inf")):
+    if f in (float("inf"), float("-inf")) or abs(f) > _MAX_EXACT_WHOLE:
         return None
     try:
         return f if Decimal(repr(f)) == Decimal(t) else None
@@ -2008,6 +2015,33 @@ def _ordered_categories_raw(ident_valid, labels, include_unobserved=False):
         return sorted(present)
     except TypeError:
         return sorted(present, key=str)
+
+
+def _non_answer_codes(labels, missing_ranges, exclude_dk):
+    """The declared codes of one variable that are not answers, so they are never part of its answer
+    domain: codes the file declares user-missing (SPSS missing values; pyreadstat already reads their
+    cases as missing) and, when non-answers are excluded (the default), codes whose label means no usable
+    answer (_DK_RE: don't know, refused, not applicable ...). _ordered_categories_raw adds every declared
+    code with zero observed cases to a table (IMP-004), which is right for a substantive scale point and
+    wrong for these: a "Don't know" (99) row of 0% reached the chart series and, ranked by numeric code
+    above the scale, took a top-two-box slot from a real answer (Codex RP0-F01: 20% instead of 40%).
+    Substantive declared codes with no cases stay in the domain. Codes compare as numbers when they are
+    numbers, so a label key 99 and a declared range 99.0 are the same code."""
+    def num(c):
+        try:
+            return float(c)
+        except (TypeError, ValueError):
+            return None
+
+    ranges = [(num(r.get("lo")), num(r.get("hi"))) for r in (missing_ranges or []) if isinstance(r, dict)]
+    out = set()
+    for code, label in (labels or {}).items():
+        n = num(code)
+        if n is not None and any(lo is not None and hi is not None and lo <= n <= hi for lo, hi in ranges):
+            out.add(code)
+        elif exclude_dk and _DK_RE.match(str(label).strip()):
+            out.add(code)
+    return out
 
 
 def _p_two_sided(z: float) -> float:
@@ -3317,7 +3351,8 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             # feature's own stored-config format is a separate, out-of-scope concern from the
             # identity bug this fixes.
             ident = raw.map(lambda v: _raw_key(v, r_labels or {}))
-            cats = _ordered_categories_raw(ident[r_valid], r_labels, include_unobserved=True)
+            non_answers = _non_answer_codes(r_labels, (getattr(meta, "missing_ranges", None) or {}).get(rv), exclude_dk)
+            cats = [c for c in _ordered_categories_raw(ident[r_valid], r_labels, include_unobserved=True) if c not in non_answers]
             if len(cats) < 2:
                 skipped.append({"variable": rv, "reason": "Fewer than two answer categories among valid cases."})
                 continue

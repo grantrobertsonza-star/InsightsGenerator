@@ -213,7 +213,7 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
-  if (/\.(?:csv|tsv|xlsx|xls)$/i.test(sourceFilename)) return 12;
+  if (/\.(?:csv|tsv|xlsx|xls)$/i.test(sourceFilename)) return 13;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }
@@ -420,6 +420,11 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
   // false discovery rate correction (5%) become findings.
   const fdr = result.starter ? fdrQValues(result) : null;
   const weighted = result.weightVar ? "weighted" : "unweighted";
+  // The test and its caveat follow the design the engine APPLIED (notes.designApplied), not the one
+  // requested: designUsed is also filled when a design was asked for but every case lacked design data,
+  // and then the standard errors are plain Kish ones tested against the normal (ANA-NPS-003 did the same
+  // for NPS). stats.design below still records the request, with casesMissingDesign.
+  const designApplied = result.notes?.designApplied === true;
   for (const q of result.questions) {
     const candidates: (CrosstabFinding & { gap: number })[] = [];
     for (const row of q.rows) {
@@ -445,7 +450,7 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
                 ? `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${row.isMean ? "" : " points"}) than overall (${total}${row.isMean ? "" : " points"})`
                 : `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${unit}) than overall (${total}${unit})`;
         candidates.push({
-          text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); ${result.notes?.designUsed ? "t-test with design degrees of freedom, Taylor series variance" : "z-test"} of this group against all other cases in the same banner variable (not against the overall figure), ${row.pAdj?.[k] != null || qv !== null ? "unadjusted " : ""}p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])} (corrected across the banner columns of this row)` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)} (across every cell tested in this table; inclusion was decided on q, not on p)` : ""}.`,
+          text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); ${designApplied ? "t-test with design degrees of freedom, Taylor series variance" : "z-test"} of this group against all other cases in the same banner variable (not against the overall figure), ${row.pAdj?.[k] != null || qv !== null ? "unadjusted " : ""}p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])} (corrected across the banner columns of this row)` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)} (across every cell tested in this table; inclusion was decided on q, not on p)` : ""}.`,
           theme: `${q.label} by ${col.blockLabel}`,
           gap: Math.abs(value - total),
           stats: {
@@ -476,7 +481,7 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
                     ? []
                     : ["uncorrected_multiple_comparisons"]),
               "weighted_effective_base",
-              ...(result.notes?.designUsed ? ["survey_design_modelled"] : ["survey_design_not_modelled", "sampling_assumed_random"]),
+              ...(designApplied ? ["survey_design_modelled"] : ["survey_design_not_modelled", "sampling_assumed_random"]),
             ],
           },
         });

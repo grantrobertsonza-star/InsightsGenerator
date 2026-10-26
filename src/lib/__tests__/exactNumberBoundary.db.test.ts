@@ -11,6 +11,8 @@
 //   - a table stored by the earlier reader with the rounded values, and a version-11 dictionary that
 //     merged them, are not reused: the preview is withheld, the dictionary is rebuilt
 //   - a failed re-read keeps the earlier table (still withheld); a valid re-read recovers
+//   - one typing policy beyond 2^53 (Codex RP0-M01): decimal and exponent spellings are text like a bare
+//     whole number, even when the double would be exact; 2^53 itself and safe values stay numbers
 // Skipped, with the reason, without a test database or python3 + pandas/openpyxl/pyreadstat.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -139,6 +141,17 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     expect(edge.rows.map((r) => r.y)).toEqual(["9007199254740992.0", "9007199254740993"]);
   });
 
+  it("one typing policy beyond 2^53 (Codex RP0-M01): every spelling is text, even a representable double; 2^53 itself and safe decimals stay numbers", async () => {
+    // Each column holds one spelling and a plain 1, so the column's type follows that spelling alone.
+    const spellings = ["9007199254740994", "9007199254740994.0", "1e16", "1e30", "-1e16", "9007199254740992", "9007199254740992.0", "1e15", "0.5"];
+    const header = spellings.map((_, i) => `c${i}`).join(",");
+    const doc = await file("boundary.csv", Buffer.from(`${header}\n${spellings.join(",")}\n${spellings.map(() => "1").join(",")}\n`, "utf-8"));
+    const t = await imported(doc);
+    const first = spellings.map((_, i) => t.rows[0][`c${i}`]);
+    expect(first).toEqual(["9007199254740994", "9007199254740994.0", "1e16", "1e30", "-1e16", 9007199254740992, 9007199254740992, 1e15, 0.5]);
+    for (const [i, v] of spellings.entries()) expect(await numericFlag(doc, `c${i}`), v).toBe(typeof first[i] === "number");
+  });
+
   it("a table and dictionary from the earlier reader are not reused; a failed re-read keeps the old table withheld; a valid re-read recovers", async () => {
     const bytes = Buffer.from(`id,big\n${big.map((v, i) => `r${i + 1},${v}`).join("\n")}\n`, "utf-8");
     const doc = await file("legacy-big.csv", bytes);
@@ -162,7 +175,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     // The dictionary is rebuilt at version 12 with four distinct values.
     expect(await numericFlag(doc, "big")).toBe(false);
     expect(await categories(doc, "big")).toEqual(counts);
-    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("12");
+    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("13");
     // Reading the file again while it is unreadable fails and keeps the earlier table, still withheld.
     const { extractAndStoreDocumentTables } = await import("../documentTables");
     const original = (await q("select storage_path from documents where id = $1", [doc]))[0].storage_path;
@@ -175,7 +188,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     await q("update documents set storage_path = $2 where id = $1", [doc, original]);
     const t = await imported(doc);
     expect(t.rows.map((r) => r.big)).toEqual(big);
-    expect(t.provenance).toMatchObject({ reader: "engine-plain-2026.10.26" });
+    expect(t.provenance).toMatchObject({ reader: "engine-plain-2026.10.26b" });
     expect(await identity()).toBeNull();
   });
 });

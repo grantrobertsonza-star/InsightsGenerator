@@ -1,0 +1,23 @@
+# Answer domain of a categorical variable (engine contract)
+
+Owner: `api/parse-stats-file.py` (`_non_answer_codes`, used by `crosstab` for row variables). Every
+consumer of a cross-tab's answer rows (distributions and charts, CSM box and mean scores in
+`csmMetrics.summarizeSeries`, NPS, findings, exports) takes the domain from the engine's table and does
+not re-derive it from labels.
+
+A variable's answer domain is the codes that are answers:
+
+- **In:** every observed valid code, and every declared code with no cases in this sample (IMP-004: a
+  scale point nobody chose is a 0% row, so a top box is never filled by the next code down and a sparse
+  0-10 scale is still recognised as NPS).
+- **Out:** declared user-missing codes (SPSS missing values; their cases are already missing), and, when
+  non-answers are excluded (the default, `excludeDk`), codes whose label means no usable answer
+  (`_DK_RE`: don't know, refused, not applicable, no answer ...). Their cases leave the base; since batch
+  30 their declared code no longer comes back as a 0% row either (Codex RP0-F01: a 0% "Don't know" row,
+  code 99, ranked above the scale took a top-two-box slot, giving 20% instead of 40%).
+- **Included non-answers** (`excludeDk: false`): the codes are answers for that table and appear with
+  their cases.
+
+Changed behaviour: a cross-tab with non-answers excluded no longer shows a 0% row for an unchosen
+declared non-answer code. Tables stored before keep their rows until rebuilt; CSM and NPS scores are
+computed when asked, so they use the new domain at once.

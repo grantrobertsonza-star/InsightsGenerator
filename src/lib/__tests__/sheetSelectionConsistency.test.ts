@@ -576,7 +576,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
         source_filename: "fixture.xlsx",
         selected_sheet: null,
         // Version 11 is the oldest valid for a CSV/Excel file (the one reader; crosstabs.minimumDictionaryVersion).
-        variable_dictionary: { version: 12, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        variable_dictionary: { version: 13, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
@@ -621,7 +621,7 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
         source_filename: "fixture.xlsx",
         selected_sheet: null,
         // Version 11 is the oldest valid for a CSV/Excel file (the one reader; crosstabs.minimumDictionaryVersion).
-        variable_dictionary: { version: 12, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        variable_dictionary: { version: 13, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     // Another reader already published "Beta" as authoritative for this document moments

@@ -5,7 +5,7 @@ import { cellValue, type TableCell } from "./rowCells";
 
 /** The engine reader whose stored tables are shown without a fresh read (TABLE_READER in
  * api/parse-stats-file.py; engineTableReader.test.ts keeps the two equal). */
-export const ENGINE_TABLE_READER = "engine-plain-2026.10.26";
+export const ENGINE_TABLE_READER = "engine-plain-2026.10.26b";
 
 type StoredPreview = {
   document_id: string;
