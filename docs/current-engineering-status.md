@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-26. State: **READY_FOR_CODEX** (batch30 on top of batch29 51863f3): Codex's Phase 0 stop findings RP0-F01 (programme S1), RP0-V01 and RP0-M01 repaired, plus the cross-tab design label; implemented, ready for independent review; no migration. **NOT READY for release.** Phase 0 to be resumed on the batch30 head.
+Updated: 2026-10-26. State: **READY_FOR_CODEX** (batch31 on top of batch30 d744997, Codex-verified): overview tiles, module status roll-up and local worker freshness; implemented, ready for independent review; no migration. **NOT READY for release.**
+
+## Claude: batch31 (overview tiles, module roll-up, worker freshness), main copy (2026-10-26)
+
+Implemented, ready for review: the batch31 repair commit and its docs commit, on top of batch30. No migration. Details in `docs/batch31-handover-2026-10-26.md`. Module pages roll up the rest of a module's items in place (Grant 07:05); overviews are tiles (07:06); the local statistics worker refuses unknown actions and restarts when its own script changes (the .xlsx refusal Grant hit at 06:57). Full library 1,763 passed / 72 skipped / 0 failed. Full browser 108 passed / 1 skipped / 0 failed; smoke 1 passed; self-test passed; lint 0 errors. **READY_FOR_CODEX.**
 
 ## Claude: batch30 (RP0-F01, RP0-V01, RP0-M01, cross-tab design label), main copy (2026-10-26)
 
