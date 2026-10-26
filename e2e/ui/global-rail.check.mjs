@@ -50,7 +50,9 @@ test("the main menu hides to a strip, keeps a run's section list, and is remembe
   const icons = page.getByTestId("global-rail-icons");
   await expect(icons.getByRole("link", { name: "Dashboard" })).toBeVisible();
   await expect(icons.getByRole("button", { name: "Research quality" })).toBeVisible();
-  await expect(icons.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+  // Inside a project no main-menu destination is marked current (Dashboard only on the dashboard);
+  // the project's own section is.
+  await expect(icons.getByRole("navigation", { name: "Main" }).locator('[aria-current="page"]')).toHaveCount(0);
   await expect(page.getByTestId("run-nav-rail").locator('button[aria-current="page"]')).toHaveCount(1);
 
   // Remembered across a reload and across pages.

@@ -42,7 +42,8 @@ test("signed in, Home sits above Dashboard and opens the landing page", async ({
   const menu = page.locator("#global-rail-content nav").first();
   const names = await menu.getByRole("link").allInnerTexts();
   expect(names.map((n) => n.trim()).slice(0, 2)).toEqual(["Home", "Dashboard"]);
-  await expect(menu.getByRole("link", { name: "Dashboard" })).toHaveClass(/bg-primary-light/);
+  await expect(menu.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+  await expect(menu.locator('[aria-current="page"]')).toHaveCount(1);
   if (shot) await page.screenshot({ path: shot.replace(/\.png$/, "-menu.png"), clip: { x: 0, y: 0, width: 520, height: 420 } });
 
   // The collapsed strip carries the same item, also first.
@@ -57,4 +58,29 @@ test("signed in, Home sits above Dashboard and opens the landing page", async ({
   await page.getByRole("link", { name: "Sign in" }).first().click();
   await page.waitForURL((url) => url.pathname === "/");
   await expect(page.locator("#global-rail-content").getByRole("link", { name: "Dashboard" })).toBeVisible();
+});
+
+test("moving between menu items marks only the page you are on, and nothing inside a project", async ({ page }, testInfo) => {
+  test.setTimeout(3 * 60_000);
+  const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
+  const ui = await bind({ page, target, testInfo });
+  const run = await ui.createRun({ name: `menu-current-${Date.now()}` });
+  const menu = page.locator("#global-rail-content nav").first();
+  const current = menu.locator('[aria-current="page"]');
+  await page.goto(at("/"), { waitUntil: "networkidle" });
+  for (const name of ["Programs", "Knowledge base", "Manual", "Dashboard"]) {
+    await menu.getByRole("link", { name }).click();
+    await expect(current).toHaveCount(1);
+    await expect(current).toHaveText(name);
+  }
+  // Inside a project: Dashboard is not marked; the project section shows where you are.
+  await page.goto(run.url, { waitUntil: "networkidle" });
+  await expect(menu.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(current).toHaveCount(0);
+  // Away from the menu, so a hover colour is not mistaken for the current-page colour.
+  await page.mouse.move(900, 600);
+  await expect(menu.getByRole("link", { name: "Dashboard" })).not.toHaveClass(/bg-primary-light/);
+  // The hover colour fades out over 150 ms; let it finish so the picture shows the resting state.
+  if (shot) await page.waitForTimeout(400);
+  if (shot) await page.screenshot({ path: shot.replace(/\.png$/, "-in-project.png"), clip: { x: 0, y: 0, width: 520, height: 520 } });
 });
