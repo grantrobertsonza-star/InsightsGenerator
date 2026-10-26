@@ -163,6 +163,16 @@ vi.mock("../anthropic", () => ({
   },
 }));
 
+/**
+ * The two cases that make the most database round trips (a project document deleted with its review
+ * history kept; an interrupted run continued) get their own budget (Codex RP0-V02). Measured: the
+ * deletion case takes about 1.6 s here alone, and 7.2 s in Codex's run with four CPU workers and a SQL
+ * worker beside it, over the 5 s default, while every assertion held (54/54 with a 15 s budget). A
+ * loaded host slows them without changing what they check, so the budget is sized to the measured
+ * loaded time with headroom; a hang still fails, at 20 s.
+ */
+const LOADED_HOST_BUDGET_MS = 20_000;
+
 describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, real database, non-owner role)", () => {
   let db: DisposableDb;
   let runA: string;
@@ -907,7 +917,7 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       await m.actions.retryResearchQualityReviewAction(runA, id);
       await settle();
       expect(model.calls).toEqual([]);
-    });
+    }, LOADED_HOST_BUDGET_MS);
 
     it("an unexpected failure outside a single step does not leave the review marked running", async () => {
       const id = await start([{ documentId: await freshDoc("crash"), roles: ["brief"] }]);
@@ -1462,6 +1472,6 @@ describe.skipIf(!TEST_DATABASE_URL)("research quality review (actual actions, re
       for (const f of v.review!.sourceFreshness) expect(f.status).not.toBe("current");
     }
     expect((await q(`select count(*)::int n from research_quality_reviews where run_id = $1`, [runA])).rows[0].n).toBe(reviews.length);
-  });
+  }, LOADED_HOST_BUDGET_MS);
 
 });

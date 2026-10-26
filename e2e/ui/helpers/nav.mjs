@@ -23,3 +23,24 @@ export async function openSection(page, name) {
     if (await tab.count()) await tab.first().click();
   }
 }
+
+/**
+ * The visible sidebar button for a project section, at any window width. On a narrow window the main
+ * menu starts hidden and only the icon strip shows; a button that exists but is hidden is never
+ * clicked (Codex B31-V02: picking the first match by name could pick a hidden one and wait for it
+ * forever). When no button for the section is visible, the main menu is opened, the section chosen,
+ * and the menu hidden again, as a researcher on a phone would.
+ */
+export async function clickSectionButton(page, name) {
+  const pattern = name instanceof RegExp ? name : new RegExp(`^${name}(\\s*\\d+)?$`);
+  const visible = page.getByRole("button", { name: pattern }).filter({ visible: true });
+  if ((await visible.count()) > 0) {
+    await visible.first().click();
+    return;
+  }
+  await page.getByRole("button", { name: "Show main menu" }).click();
+  await expect(visible.first()).toBeVisible();
+  await visible.first().click();
+  const hide = page.getByRole("button", { name: "Hide main menu" }).filter({ visible: true });
+  if ((await hide.count()) > 0) await hide.first().click();
+}

@@ -156,7 +156,16 @@ type LocalWorker = {
   proc: ChildProcess;
   pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>;
   nextId: number;
+  /** WORKER_PROTOCOL of the code that started it. Absent on a worker started before the tag existed. */
+  protocol?: number;
 };
+/**
+ * The worker conversation this code speaks: refuses unknown actions, asks to restart when its script
+ * changes (batch 31). A worker kept on globalThis from before that (a dev server running since an
+ * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
+ * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
+ */
+const WORKER_PROTOCOL = 2;
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
@@ -179,7 +188,7 @@ function startWorker(): Promise<LocalWorker | null> {
         stdio: ["pipe", "pipe", "ignore"],
         env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       });
-      const worker: LocalWorker = { proc, pending: new Map(), nextId: 1 };
+      const worker: LocalWorker = { proc, pending: new Map(), nextId: 1, protocol: WORKER_PROTOCOL };
       proc.stdin!.on("error", () => {}); // a dead worker is reported through "exit"
       const fail = (message: string) => {
         for (const p of worker.pending.values()) {
@@ -266,7 +275,15 @@ async function callWorker<T>(srcPath: string, sourceFilename: string, action: st
 async function callWorkerOnce<T>(srcPath: string, sourceFilename: string, action: string, args: unknown): Promise<{ ok: true; value: T } | { ok: false; unavailable: true }> {
   if (workerHolder.__statsWorkerOff) return { ok: false, unavailable: true };
   if (!workerHolder.__statsWorker) workerHolder.__statsWorker = startWorker();
-  const worker = await workerHolder.__statsWorker;
+  let worker = await workerHolder.__statsWorker;
+  if (worker && worker.protocol !== WORKER_PROTOCOL) {
+    // Started by older code: stop it (its pending requests fail as a stopped worker) and use a fresh one.
+    workerHolder.__statsWorkerLive = worker;
+    forgetWorker(worker);
+    worker.proc.kill();
+    workerHolder.__statsWorker = startWorker();
+    worker = await workerHolder.__statsWorker;
+  }
   if (worker) workerHolder.__statsWorkerLive = worker;
   if (!worker) {
     workerHolder.__statsWorker = undefined;

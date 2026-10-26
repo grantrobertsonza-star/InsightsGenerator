@@ -207,13 +207,16 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * so an older dictionary cannot bypass the refusal by serving already-cached variable metadata.
  * Version 11 is the one reader for CSV, TSV and Excel (Codex TP500/IP1000): names and codes are read
  * as written, dates as ISO dates, and repeated names allocated by one rule, so every older cache of
- * such a file, in either layout, may name or type variables differently and is rebuilt.
+ * such a file, in either layout, may name or type variables differently and is rebuilt. Versions 12 and
+ * 13 changed which decimal spellings stay text; version 14 reads Excel logical cells apart from 1 and 0
+ * (CAL-R1-F03), so an Excel file needs 14 and a CSV/TSV file 13.
  * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
-  if (/\.(?:csv|tsv|xlsx|xls)$/i.test(sourceFilename)) return 13;
+  if (/\.(?:xlsx|xls)$/i.test(sourceFilename)) return 14;
+  if (/\.(?:csv|tsv)$/i.test(sourceFilename)) return 13;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }

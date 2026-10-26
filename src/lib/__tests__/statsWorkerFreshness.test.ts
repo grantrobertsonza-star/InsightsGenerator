@@ -27,7 +27,9 @@ function workerCopy() {
   const dir = mkdtempSync(path.join(tmpdir(), "worker-copy-"));
   mkdirSync(path.join(dir, "scripts"));
   cpSync(path.join(ROOT, "scripts", "parse_stats_worker.py"), path.join(dir, "scripts", "parse_stats_worker.py"));
-  symlinkSync(path.join(ROOT, "api"), path.join(dir, "api"));
+  // "junction" makes this a directory link Windows creates without admin rights (Codex B31-V01); other
+  // systems ignore the type.
+  symlinkSync(path.join(ROOT, "api"), path.join(dir, "api"), "junction");
   return path.join(dir, "scripts", "parse_stats_worker.py");
 }
 function talk(script: string) {
@@ -99,6 +101,41 @@ describe.skipIf(!PYTHON_OK)("the local statistics worker answers only with the c
     } finally {
       utimesSync(script, st.atime, st.mtime);
     }
+  });
+
+  it("through the app: a worker left running by older code is replaced before it answers (B31-F01)", async () => {
+    const { runEngineConversion } = await import("../parseStatsFile");
+    // A stand-in for a worker started before batch 31: it reads every request as a "convert", as the
+    // old worker did, and has no protocol tag on its holder.
+    const legacy = path.join(mkdtempSync(path.join(tmpdir(), "legacy-worker-")), "old_worker.py");
+    writeFileSync(
+      legacy,
+      [
+        "import json, sys",
+        "print(json.dumps({'ready': True}), flush=True)",
+        "for line in sys.stdin:",
+        "    req = json.loads(line)",
+        "    print(json.dumps({'id': req['id'], 'error': 'Unsupported stats file extension: .csv'}), flush=True)",
+      ].join("\n"),
+    );
+    const proc = spawn(PYTHON, ["-u", legacy], { stdio: ["pipe", "pipe", "ignore"] });
+    const exited = new Promise<void>((r) => proc.on("exit", () => r()));
+    await new Promise<void>((r) => proc.stdout!.once("data", () => r()));
+    const holder = globalThis as { __statsWorker?: unknown; __statsWorkerLive?: { proc: { pid?: number; kill: () => void } } };
+    holder.__statsWorkerLive?.proc.kill();
+    const old = { proc, pending: new Map(), nextId: 1 };
+    holder.__statsWorker = Promise.resolve(old);
+    holder.__statsWorkerLive = old as unknown as typeof holder.__statsWorkerLive;
+    storage.objects.set("t/r/legacy.csv", Buffer.from("q,r\n5,6\n7,8\n"));
+    const result = await runEngineConversion<{ headers: string[]; rows: unknown[][] }>("table", "t/r/legacy.csv", "legacy.csv", {});
+    expect(result.headers).toEqual(["q", "r"]);
+    expect(result.rows).toHaveLength(2);
+    // The old process was stopped (not left running beside the new one).
+    await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error("the old worker is still running")), 15_000))]);
+    expect(holder.__statsWorkerLive?.proc.pid).not.toBe(proc.pid);
+    // The fresh worker keeps answering.
+    const again = await runEngineConversion<{ headers: string[] }>("table", "t/r/legacy.csv", "legacy.csv", {});
+    expect(again.headers).toEqual(["q", "r"]);
   });
 
   it("the one-shot runner refuses an unknown action", () => {

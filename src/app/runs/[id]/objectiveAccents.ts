@@ -41,6 +41,18 @@ export function objectiveListPositions(statedIds: (string | null)[], rows: Objec
   return positions;
 }
 
+/**
+ * Rows in the left list's order (Grant, 2026-10-26: the scores table listed stated objectives in the
+ * order they were stored, so its colours ran out of step with the cards). Rows with a position come by
+ * position; any without one (rejected suggestions) follow in orderedObjectives order.
+ */
+export function inListOrder(rows: ObjectiveRow[], positions: Record<string, number> | undefined): ObjectiveRow[] {
+  const ordered = orderedObjectives(rows);
+  if (!positions) return ordered;
+  const at = (r: ObjectiveRow) => positions[r.id] ?? Number.POSITIVE_INFINITY;
+  return ordered.map((r, i) => ({ r, i })).sort((a, b) => at(a.r) - at(b.r) || a.i - b.i).map((x) => x.r);
+}
+
 /** Splits "Label: text" or "Label - text" into a short label and the rest. No label if the line has none. */
 export function splitObjectiveLabel(text: string): { label: string | null; body: string } {
   const m = text.match(/^(.{3,48}?)\s*(?::|\s[-\u2013\u2014]\s)\s*([\s\S]+)$/);

@@ -2,7 +2,7 @@
 // (objectiveAccents.objectiveListPositions): stated lines by their own order, then the rest as the
 // left list orders them; a rejected suggestion has none.
 import { describe, expect, it } from "vitest";
-import { objectiveAccent, objectiveListPositions, splitObjectiveLabel } from "../../app/runs/[id]/objectiveAccents";
+import { inListOrder, objectiveAccent, objectiveListPositions, splitObjectiveLabel } from "../../app/runs/[id]/objectiveAccents";
 import type { ObjectiveRow } from "../../app/runs/[id]/ObjectiveReviewTable";
 
 const row = (id: string, source: ObjectiveRow["source"], status: ObjectiveRow["status"]): ObjectiveRow => ({
@@ -23,5 +23,12 @@ describe("objective list positions", () => {
     expect(splitObjectiveLabel("Main question: Which segments use it")).toEqual({ label: "Main question", body: "Which segments use it" });
     expect(splitObjectiveLabel("Structural profiling – To analyse how")).toEqual({ label: "Structural profiling", body: "To analyse how" });
     expect(splitObjectiveLabel("To identify the determinants of usage")).toEqual({ label: null, body: "To identify the determinants of usage" });
+  });
+  it("the scores table follows the left list's order, not the order rows were stored in", () => {
+    const rows = [row("s3", "researcher_authored", "accepted"), row("s1", "researcher_authored", "accepted"), row("sugg", "ai_suggested", "pending"), row("s2", "researcher_authored", "accepted")];
+    const positions = objectiveListPositions(["s1", "s2", "s3"], rows);
+    expect(inListOrder(rows, positions).map((r) => r.id)).toEqual(["s1", "s2", "s3", "sugg"]);
+    // Without positions: the left list's rule for unlisted objectives (accepted, then suggested).
+    expect(inListOrder(rows, undefined).map((r) => r.id)).toEqual(["s3", "s1", "s2", "sugg"]);
   });
 });

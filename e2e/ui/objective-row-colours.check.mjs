@@ -3,16 +3,19 @@
 //   - each row carries the colour of its card in the left list and the objective's short name (the
 //     label before a colon, or its opening words), while rolled up;
 //   - rolling a row down shows the full wording and hides the short name;
-//   - selecting an objective shows its detail with the same colour and number as its card.
+//   - the table lists the objectives in the cards' order, even when they were stored in another order
+//     (Grant, 2026-10-26: the rows followed the order the candidates were created in).
 import { expect, test } from "@playwright/test";
 import { openSection } from "./helpers/nav.mjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import pg from "pg";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
-if (target.disposable !== true) throw new Error(`${manifestPath} does not describe a disposable stack; refusing to run.`);
+const dbUrl = new URL(target.databaseUrlWithoutCredentials);
+if (target.disposable !== true || !/^\/ie_e2e_[a-f0-9]{10}$/.test(dbUrl.pathname)) throw new Error(`${manifestPath} does not describe a disposable stack; refusing to run.`);
 const shot = process.env.SHOT;
 const LINES = [
   "Main question: Which segments use the colour-check service most",
@@ -35,6 +38,20 @@ test("rolled-up objective rows carry their card's colour and short name", async 
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(LINES[2], { exact: true }).first()).toBeVisible({ timeout: 60_000 });
 
+  // Stored in the reverse of the written order, as happens when objectives are edited or re-added.
+  const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
+  await db.connect();
+  try {
+    await db.query(
+      "update objective_candidates set created_at = now() - (array_position($2::text[], candidate_text) || ' min')::interval where run_id = $1",
+      [run.id, LINES],
+    );
+    const stored = (await db.query("select candidate_text from objective_candidates where run_id = $1 order by created_at", [run.id])).rows.map((r) => r.candidate_text);
+    expect(stored.length).toBe(3);
+    expect(stored[0]).toContain("Colour-check objective without a label");
+  } finally {
+    await db.end();
+  }
   await page.goto(run.url, { waitUntil: "networkidle" });
   await openSection(page, "Review Objectives");
   const cards = page.getByTestId("stated-objectives").locator("li");
@@ -51,6 +68,9 @@ test("rolled-up objective rows carry their card's colour and short name", async 
     await expect(name).toBeVisible();
     await expect(name).toHaveText(i < 2 ? line.split(": ")[0] : line);
   }
+  // The rows are in the cards' order.
+  const order = await page.locator("tbody[data-objective-row] td[data-objective-accent]").evaluateAll((cells) => cells.map((c) => c.getAttribute("data-objective-accent")));
+  expect(order).toEqual(["0", "1", "2"]);
   if (shot) await page.screenshot({ path: shot.replace(/\.png$/, "-objective-rows.png"), fullPage: false });
 
   // Rolled down, the full wording replaces the short name.

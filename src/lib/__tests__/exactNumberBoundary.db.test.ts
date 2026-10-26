@@ -172,10 +172,10 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     const stored = async () => (await q("select document_id, table_index, headers, rows, jsonb_array_length(rows) as row_count, read_provenance from document_tables where document_id = $1", [doc]));
     const identity = async () => (await loadImportPreviewIdentities(tenant, run, await stored())).get(doc)?.error ?? null;
     expect(await identity()).toMatch(/differs from what the file holds now/);
-    // The dictionary is rebuilt at version 12 with four distinct values.
+    // The dictionary is rebuilt at the current version (DICTIONARY_VERSION) with four distinct values.
     expect(await numericFlag(doc, "big")).toBe(false);
     expect(await categories(doc, "big")).toEqual(counts);
-    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("13");
+    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("14");
     // Reading the file again while it is unreadable fails and keeps the earlier table, still withheld.
     const { extractAndStoreDocumentTables } = await import("../documentTables");
     const original = (await q("select storage_path from documents where id = $1", [doc]))[0].storage_path;
@@ -188,7 +188,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     await q("update documents set storage_path = $2 where id = $1", [doc, original]);
     const t = await imported(doc);
     expect(t.rows.map((r) => r.big)).toEqual(big);
-    expect(t.provenance).toMatchObject({ reader: "engine-plain-2026.10.26b" });
+    expect(t.provenance).toMatchObject({ reader: (await import("../importPreviewIdentity")).ENGINE_TABLE_READER });
     expect(await identity()).toBeNull();
   });
 });

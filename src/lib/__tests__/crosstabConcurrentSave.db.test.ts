@@ -14,7 +14,7 @@ import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./help
 
 const { DICTIONARY, RESULT } = vi.hoisted(() => ({
   DICTIONARY: {
-    version: 13,
+    version: 14,
     layout: "rows_are_cases",
     nCases: 4,
     sets: [],

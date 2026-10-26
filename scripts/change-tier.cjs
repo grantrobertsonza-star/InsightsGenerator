@@ -12,12 +12,20 @@
 // The highest tier of any touched file is the change's tier. Unknown paths count as A, so a new area
 // is reviewed until someone places it here deliberately.
 //
+// Screen paths are also read, because a path alone cannot say whether a file only shows things
+// (Codex B32-M01: src/app/runs/[id]/page.tsx is a server page whose inline server actions extract
+// findings and write processing status, and was rated B). A file under src/app or src/components is A
+// when it defines server actions ("use server"), when it is under src/app and is not a client
+// component (a server page or layout can read and write data directly), or when it imports the
+// database or storage clients. When its content cannot be read (a deleted file not found at the
+// base, or no content given), it is A.
+//
 //   node scripts/change-tier.cjs <file>...              prints the tier and what it requires
 //   node scripts/change-tier.cjs --base origin/main      classifies the files changed since <base>
 // In CI it writes the result to the job summary ($GITHUB_STEP_SUMMARY) when that is set.
 
 const { execFileSync } = require("node:child_process");
-const { appendFileSync } = require("node:fs");
+const { appendFileSync, existsSync, readFileSync } = require("node:fs");
 
 const A = [
   /^api\//,
@@ -47,11 +55,30 @@ const C = [
   /^package(-lock)?\.json$/,
 ];
 
-function tierOf(file) {
+/** A leading "use client" directive (after comments and blank lines) makes the file a client component. */
+function isClientComponent(content) {
+  const body = content.replace(/^(\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*/, "");
+  return /^["']use client["']/.test(body);
+}
+const DATA_IMPORT = /from\s+["'](@\/lib\/(db|supabaseAdmin|supabaseServer)|pg)["']/;
+
+/** Whether a screen file's content shows it can change stored data or research meaning. */
+function screenFileWrites(f, content) {
+  if (typeof content !== "string") return true;
+  if (/["']use server["']/.test(content)) return true;
+  if (/^src\/app\//.test(f) && !isClientComponent(content)) return true;
+  return DATA_IMPORT.test(content);
+}
+
+/**
+ * The tier of one file. `content` is the file's text, needed for screen paths (src/app, src/components);
+ * without it such a file is A, because a path cannot tell a display-only screen from a server page.
+ */
+function tierOf(file, content) {
   const f = file.replace(/\\/g, "/").replace(/^\.\//, "");
   if (B_LIB.some((r) => r.test(f))) return "B";
   if (A.some((r) => r.test(f))) return "A";
-  if (B.some((r) => r.test(f))) return "B";
+  if (B.some((r) => r.test(f))) return screenFileWrites(f, content) ? "A" : "B";
   if (C.some((r) => r.test(f))) return "C";
   return "A";
 }
@@ -73,9 +100,10 @@ const REQUIRES = {
   C: ["Every gate; screenshot for any visible change", "No independent review needed"],
 };
 
-function classify(files) {
+/** `contentOf(file)` returns the file's text, or null when it cannot be read. */
+function classify(files, contentOf = () => null) {
   const order = { C: 0, B: 1, A: 2 };
-  const per = files.filter(Boolean).map((f) => ({ file: f, tier: tierOf(f) }));
+  const per = files.filter(Boolean).map((f) => ({ file: f, tier: tierOf(f, contentOf(f)) }));
   const tier = per.reduce((t, x) => (order[x.tier] > order[t] ? x.tier : t), "C");
   return { tier, files: per, requires: REQUIRES[tier] };
 }
@@ -83,11 +111,22 @@ function classify(files) {
 function main(argv) {
   let files = argv;
   const b = argv.indexOf("--base");
-  if (b >= 0) {
-    const base = argv[b + 1];
-    files = execFileSync("git", ["diff", "--name-only", "--diff-filter=ACMRD", `${base}...HEAD`], { encoding: "utf8" }).split("\n").filter(Boolean);
+  const base = b >= 0 ? argv[b + 1] : null;
+  if (base) {
+    // --no-renames lists a rename as its old and its new path, so both are classified.
+    files = execFileSync("git", ["diff", "--name-only", "--no-renames", "--diff-filter=ACMRD", `${base}...HEAD`], { encoding: "utf8" }).split("\n").filter(Boolean);
   }
-  const result = classify(files);
+  const fromGit = (ref, f) => {
+    try {
+      return execFileSync("git", ["show", `${ref}:${f}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    } catch {
+      return null;
+    }
+  };
+  // The file as committed at HEAD when comparing with a base (what the pull request merges), the
+  // working copy otherwise; a file deleted by the change is read as it was at the base.
+  const contentOf = (f) => (base ? fromGit("HEAD", f) : existsSync(f) ? readFileSync(f, "utf8") : null) ?? (base ? fromGit(base, f) : null);
+  const result = classify(files, contentOf);
   const lines = [
     `Change tier: ${result.tier} (${files.length} file${files.length === 1 ? "" : "s"})`,
     ...result.requires.map((r) => `- ${r}`),

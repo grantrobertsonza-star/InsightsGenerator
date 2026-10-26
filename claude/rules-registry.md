@@ -13,7 +13,7 @@ in the change that moves it.
 
 | Rule | Owner | Contract | Pinned by |
 |---|---|---|---|
-| How a CSV/TSV/Excel file is read (cells as written, one typing rule, both layouts) | `api/parse-stats-file.py` `_read_plain`, `_typed_series`, `read_table` | `claude/one-reader-import.md` | `oneReaderImport.db.test.ts`, `engineTableReader.test.ts` |
+| How a CSV/TSV/Excel file is read (cells as written, one typing rule, both layouts) | `api/parse-stats-file.py` `_read_plain`, `_excel_sheet_grid`, `_typed_series`, `read_table` | `claude/one-reader-import.md` | `oneReaderImport.db.test.ts` (incl. CAL-R1-F03), `engineTableReader.test.ts` |
 | Which text is a number (strict decimal, codes stay text, one policy beyond 2^53) | `_STRICT_NUMBER`, `_as_numbers`, `_exact_decimal` | `claude/one-reader-import.md` | `exactNumberBoundary.db.test.ts` |
 | Text encoding of plain files | `_decode_plain_text` | `claude/one-reader-import.md` | `oneReaderImport.db.test.ts` (IP1000-F03) |
 | Variable names and duplicates | `_dedupe_header_names`, `_literal_text`. Mirror: `src/lib/dataSetup.ts` `allocateVariableNames` (tables found in Word/PDF text) | `claude/column-names-and-preview-identity.md` | `oneReaderImport.db.test.ts` (TP500-F02) |
@@ -58,7 +58,8 @@ in the change that moves it.
 | "Source document removed" marker | `src/lib/candidateSourceDocuments.ts` `ALL_SOURCES_ACTIVE` | `claude/document-deletion-contract.md` | `documentBinIntegrity.db.test.ts` |
 | Tenant and project isolation | `src/lib/db.ts` `withTenant`/`withTenantRead`, row-level security in migrations, app role | `docs/database-roles.md` | `tenantIsolation.db.test.ts`, `scripts/check-tenant-isolation.mjs` |
 | Stage and module status | `src/lib/sectionStatus.ts` | `claude/stage-status.md` | `stage-status.check.mjs` |
-| Which engine code answers a request locally | `scripts/parse_stats_worker.py` (restarts when changed, refuses unknown actions) | the worker's docstring | `statsWorkerFreshness.test.ts` |
+| Which engine code answers a request locally | `scripts/parse_stats_worker.py` (restarts when changed, refuses unknown actions); `src/lib/parseStatsFile.ts` `WORKER_PROTOCOL` replaces a worker started by older code (B31-F01) | the worker's docstring | `statsWorkerFreshness.test.ts` |
+| "Saved" after a save that remounts its panel | `src/app/runs/[id]/remountConfirmation.ts` (Codebook) | its header comment | `codebookSaveConfirmation.test.tsx` |
 
 ## Standing benchmarks (trust that the app does what it says)
 

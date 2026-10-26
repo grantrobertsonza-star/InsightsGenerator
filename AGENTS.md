@@ -66,7 +66,8 @@ prints a change's tier from the files it touches (CI writes it on every pull req
 
 - **A, research meaning or stored data** (engine and readers, calculations, persistence and
   migrations, AI prompts and grounding, findings, insights, recommendations, freshness, exports,
-  tenancy): rule owner named from `claude/rules-registry.md`, regression test shown failing without
+  tenancy, and any server page or inline server action, which the script finds by reading the
+  file): rule owner named from `claude/rules-registry.md`, regression test shown failing without
   the fix, every gate, independent review before merge.
 - **B, screen behaviour** (client components, navigation, display-only helpers): a mounted or browser
   test, every gate, a screenshot; independent review batched.

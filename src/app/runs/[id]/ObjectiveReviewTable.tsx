@@ -15,7 +15,7 @@ import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { useObjectiveRowActions } from "./useObjectiveRowActions";
 import ObjectiveEditConflict from "./ObjectiveEditConflict";
 import { isRereadSuggestion } from "@/lib/briefFillText";
-import { objectiveAccent, orderedObjectives, splitObjectiveLabel } from "./objectiveAccents";
+import { inListOrder, objectiveAccent, splitObjectiveLabel } from "./objectiveAccents";
 
 export type ObjectiveScores = {
   specific: number;
@@ -287,7 +287,7 @@ export default function ObjectiveReviewTable({
   const [addText, setAddText] = useState("");
   const [rejectedOpen, setRejectedOpen] = useState(false);
 
-  const active = orderedObjectives(rows);
+  const active = inListOrder(rows, positions);
   const rejected = rows.filter((r) => r.status === "rejected");
   const pendingCount = rows.filter((r) => r.status === "pending").length;
   const hasAi = rows.some((r) => r.source === "ai_suggested");

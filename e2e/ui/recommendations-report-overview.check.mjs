@@ -10,6 +10,7 @@
 //      changed, and its narrative tab still holds the generator and the exports.
 //   4. At 375 and 768 px both overviews fit their workspace without widening the page.
 //   5. Opening the sections calls no model.
+import { clickSectionButton } from "./helpers/nav.mjs";
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -129,7 +130,7 @@ test("Recommendations and Insights report overviews count the records and open t
     for (const width of [375, 768]) {
       await page.setViewportSize({ width, height: 900 });
       for (const [section, tab, root] of [["Recommendations", "rec-tab-overview", "recommendations-overview"], ["Insights report", "report-tab-overview", "insights-report-overview"]]) {
-        await openSectionButton(section).click();
+        await clickSectionButton(page, section);
         await page.getByTestId(tab).click();
         const box = page.getByTestId(root);
         await expect(box).toBeVisible();

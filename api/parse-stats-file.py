@@ -282,7 +282,8 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 # The reader that produced a stored preview table (documents' document_tables.read_provenance). A stored
 # table from any other reader (the retired TypeScript preview reader, or an older engine read) is checked
 # against a fresh read before it is shown (importPreviewIdentity.ts).
-TABLE_READER = "engine-plain-2026.10.26b"
+# c: Excel cells read without merging TRUE with 1 or FALSE with 0 (CAL-R1-F03).
+TABLE_READER = "engine-plain-2026.10.26c"
 
 
 def _json_cell(v):
@@ -351,8 +352,11 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 #     version-11 dictionary that merged such values is not reused (minimumDictionaryVersion asks for 12).
 # 13: a decimal or exponent spelling beyond 2^53 is text like a bare whole number (one typing policy,
 #     Codex RP0-M01); cached CSV/TSV/Excel dictionaries are rebuilt again (minimumDictionaryVersion 13).
-DICTIONARY_VERSION = 13
-ENGINE_VERSION = "2026.10.26-2"  # one typing policy beyond 2^53; non-answer codes outside the answer domain
+# 14: Excel cells are read without merging logical TRUE/FALSE with 1/0 in a column holding both
+#     (_excel_sheet_grid, CAL-R1-F03); cached Excel dictionaries are rebuilt (minimumDictionaryVersion
+#     14 for .xlsx/.xls; CSV/TSV reading did not change and their version-13 copies stay valid).
+DICTIONARY_VERSION = 14
+ENGINE_VERSION = "2026.10.26-3"  # Excel logical cells kept apart from numbers
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -1057,8 +1061,9 @@ def _exact_decimal(t: str):
         number as the text written. "0.1", "2.50", "1e3" and "9007199254740992.0" (2^53 itself) pass; a
         spelling with more significant digits than a double holds, and an underflow, do not.
     The stored preview holds numbers as doubles (JSON read by the app), so either failure would store a
-    different, rounded number and could merge distinct values. Excel number cells are doubles already
-    and are not put through this rule."""
+    different, rounded number and could merge distinct values. Excel number cells are doubles already,
+    so the round trip does not apply to them; a whole-number Excel cell arrives as an int and is held to
+    the same 2^53 magnitude rule by _as_numbers (a fractional double cannot exceed 2^53)."""
     from decimal import Decimal, InvalidOperation
 
     f = float(t)
@@ -1113,7 +1118,8 @@ def _typed_series(name, values, date_columns):
       - otherwise the variable is numeric when every value is a number by _as_numbers (int64 when
         whole with no gaps, else float with missing as NaN), and text exactly as written when not;
       - a variable with no values at all is numeric and empty, as before.
-    Excel text and number cells in one mixed variable keep their own types, as the file has them."""
+    Excel text and number cells in one mixed variable keep their own types, as the file has them; logical
+    cells mixed with other values become their text, TRUE or FALSE, so they are never counted as 1 or 0."""
     import pandas as pd
 
     cells = []
@@ -1135,6 +1141,12 @@ def _typed_series(name, values, date_columns):
     present = [v for v in cells if v is not None]
     if not present:
         return pd.Series([float("nan")] * len(cells), dtype="float64")
+    # A logical cell beside other values is its Excel text, TRUE or FALSE (CAL-R1-F03): Python and pandas
+    # treat True as equal to 1 and False to 0, so kept as bool it would be counted as the same answer as
+    # a 1 or 0 in the same variable. A variable of logical cells only keeps them as they are.
+    if any(isinstance(v, bool) for v in present) and not all(isinstance(v, bool) for v in present):
+        cells = [_literal_text(v) if isinstance(v, bool) else v for v in cells]
+        present = [v for v in cells if v is not None]
     numbers = None if has_date else _as_numbers(present)
     if numbers is None:
         return pd.Series(cells, dtype=object)
@@ -1241,6 +1253,82 @@ def _excel_cell(v):
     return v
 
 
+def _excel_sheet_grid(xl, sheet_name):
+    """The worksheet's cells as Excel holds them, one list per row (CAL-R1-F03).
+
+    Not xl.parse(header=None, dtype=object): building that DataFrame merges True with 1 and False with
+    0 in a column that holds both (a logical cell read as 1, or a 1 read as True), so a mixed column's
+    answers changed. The cells are converted exactly as pandas' own Excel readers convert them before
+    that step, so nothing else about the read changes:
+      - openpyxl (.xlsx/.xlsm): OpenpyxlReader._convert_cell and get_sheet_data: an empty cell is "",
+        an error cell NaN, a whole number int, other numbers float; trailing empty cells and rows are
+        trimmed and rows padded with "" to the widest;
+      - xlrd (.xls): XlrdReader.get_sheet_data: dates become datetime (a date on the epoch day a time),
+        errors NaN, logical cells bool, whole finite numbers int.
+    Blank rows inside the sheet are kept, as xl.parse keeps them. Another engine is read through
+    xl.parse as before, which has no mixed logical columns to merge in the formats offered here."""
+    import math
+    from datetime import time as _time
+
+    engine = getattr(xl, "engine", None)
+    if engine == "openpyxl":
+        from openpyxl.cell.cell import TYPE_ERROR, TYPE_NUMERIC
+
+        sheet = xl.book[sheet_name]
+        if getattr(xl.book, "read_only", False):
+            sheet.reset_dimensions()
+
+        def convert(cell):
+            if cell.value is None:
+                return ""
+            if cell.data_type == TYPE_ERROR:
+                return float("nan")
+            if cell.data_type == TYPE_NUMERIC and not isinstance(cell.value, bool):
+                whole = int(cell.value)
+                return whole if whole == cell.value else float(cell.value)
+            return cell.value
+
+        data, last = [], -1
+        for n, row in enumerate(sheet.rows):
+            values = [convert(c) for c in row]
+            while values and values[-1] == "":
+                values.pop()
+            if values:
+                last = n
+            data.append(values)
+        data = data[: last + 1]
+    elif engine == "xlrd":
+        from xlrd import XL_CELL_BOOLEAN, XL_CELL_DATE, XL_CELL_ERROR, XL_CELL_NUMBER, xldate
+
+        sheet = xl.book.sheet_by_name(sheet_name)
+        epoch1904 = xl.book.datemode
+
+        def convert(value, kind):
+            if kind == XL_CELL_DATE:
+                try:
+                    value = xldate.xldate_as_datetime(value, epoch1904)
+                except OverflowError:
+                    return value
+                if (not epoch1904 and value.timetuple()[0:3] == (1899, 12, 31)) or (epoch1904 and value.timetuple()[0:3] == (1904, 1, 1)):
+                    return _time(value.hour, value.minute, value.second, value.microsecond)
+                return value
+            if kind == XL_CELL_ERROR:
+                return float("nan")
+            if kind == XL_CELL_BOOLEAN:
+                return bool(value)
+            if kind == XL_CELL_NUMBER and math.isfinite(value):
+                whole = int(value)
+                return whole if whole == value else value
+            return value
+
+        data = [[convert(v, t) for v, t in zip(sheet.row_values(i), sheet.row_types(i))] for i in range(sheet.nrows)]
+    else:
+        raw = xl.parse(sheet_name, header=None, dtype=object, na_filter=False)
+        return [[_excel_cell(v) for v in row] for row in raw.values.tolist()]
+    width = max((len(r) for r in data), default=0)
+    return [r + [""] * (width - len(r)) for r in data]
+
+
 def _typed_frame(headers, body, date_columns):
     """Rows-as-cases: one variable per column."""
     import pandas as pd
@@ -1322,11 +1410,9 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
                 data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
             if layout == "columns_are_cases":
                 _refuse_flipped_codebook_metadata(xl, [n for n in sheets if n != data_sheet])
-            # header=None so pandas never names (or de-duplicates) a column itself; dtype=object and
-            # na_filter=False so it infers no type and treats no text as missing: every cell arrives as
-            # Excel holds it (text, number, logical or calendar value) and is typed by _typed_series.
-            raw = xl.parse(data_sheet, header=None, dtype=object, na_filter=False)
-            grid = [[_excel_cell(v) for v in row] for row in raw.values.tolist()]
+            # Every cell arrives as Excel holds it (text, number, logical or calendar value), unnamed and
+            # untyped, and is typed by _typed_series (_excel_sheet_grid says why not through xl.parse).
+            grid = _excel_sheet_grid(xl, data_sheet)
         except BaseException:
             xl.close()
             raise

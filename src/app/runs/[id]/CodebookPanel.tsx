@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { beginConfirmation, clearConfirmation, onConfirmationSettled, settleConfirmation, takeMountState, type MountState } from "./remountConfirmation";
 import {
   restoreCodebookVersionAction,
   saveCodeMetaAction,
@@ -191,71 +192,101 @@ export default function CodebookPanel({
   ];
   const [saved, setSaved] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  // Saving changes the panel's key, which remounts it. Keep it open and keep
-  // the confirmation message across that remount.
+  // A successful save revalidates the page, which can remount this panel before the save's own
+  // await returns here; remountConfirmation carries the outcome across that remount without ever
+  // showing "Saved" for a save that is pending, refused or abandoned by a reload (R2P-F01).
   const reopenKey = `codebook-reopen-${codebook.documentId}`;
+  type Restore = { version: number; drafts: Draft[] };
+  const mounted = useRef(false);
   useEffect(() => {
-    try {
-      const m = window.sessionStorage.getItem(reopenKey);
-      if (m) {
-        window.sessionStorage.removeItem(reopenKey);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setOpen(true);
-        setSaved(m);
+    mounted.current = true;
+    const apply = (state: MountState<Restore>) => {
+      if (state.kind === "none" || state.kind === "waiting") return;
+      setOpen(true);
+      if (state.kind === "succeeded") {
+        setSaved(state.message);
+        return;
       }
-    } catch {
-      /* storage unavailable */
-    }
+      // Drafts are put back only onto the codebook version they were written against.
+      if (state.restore.version === codebook.version) setDrafts(state.restore.drafts);
+      setError(
+        state.kind === "failed"
+          ? state.error
+          : "The page reloaded before your last change was confirmed, so it may not have been saved. Check the codes below and save again if it is missing.",
+      );
+    };
+    const state = takeMountState<Restore>(reopenKey);
+    let unsubscribe = () => {};
+    if (state.kind === "waiting") {
+      // Still in flight in this page: show the panel open, and the outcome once it is known.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpen(true);
+      unsubscribe = onConfirmationSettled(reopenKey, state.token, () => apply(takeMountState<Restore>(reopenKey)));
+    } else apply(state);
+    return () => {
+      mounted.current = false;
+      unsubscribe();
+    };
+    // Read once per mount of this document's panel; the version check reads the props of that mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenKey]);
-  function rememberReopen(message: string) {
-    try {
-      window.sessionStorage.setItem(reopenKey, message);
-    } catch {
-      /* storage unavailable */
-    }
-  }
-  function forgetReopen() {
-    try {
-      window.sessionStorage.removeItem(reopenKey);
-    } catch {
-      /* storage unavailable */
-    }
+  /** Runs a codebook action, showing its outcome here, or in the panel that replaced this one. */
+  function confirmedAction(
+    run: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>,
+    success: string,
+    { useServerMessage }: { useServerMessage: boolean },
+  ) {
+    setError(null);
+    setSaved(null);
+    const token = beginConfirmation<Restore>(reopenKey, { version: codebook.version, drafts });
+    startTransition(async () => {
+      let r: { ok: true; message?: string } | { ok: false; error: string };
+      try {
+        r = await run();
+      } catch (e) {
+        r = { ok: false, error: e instanceof Error ? e.message : "The change could not be sent. Try again." };
+      }
+      if (r.ok) {
+        // Recorded even when shown here: the remount a success causes may still be to come.
+        const message = (useServerMessage && r.message) || success;
+        settleConfirmation<Restore>(reopenKey, token, { ok: true, message });
+        if (mounted.current) setSaved(message);
+      } else if (mounted.current) {
+        // A refusal does not remount: this panel keeps the drafts and says why.
+        clearConfirmation(reopenKey, token);
+        setError(r.error);
+      } else {
+        settleConfirmation<Restore>(reopenKey, token, { ok: false, error: r.error });
+      }
+    });
   }
   function saveMeta() {
-    setError(null);
-    setSaved(null);
-    rememberReopen("Saved");
-    startTransition(async () => {
-      const r = await saveCodeMetaAction(
-        codebook.runId,
-        codebook.documentId,
-        drafts
-          .filter((d) => d.name.trim())
-          .map((d) => ({
-            name: d.name,
-            theme: d.theme,
-            note: d.note,
-            keywords: d.keywords,
-          })),
-      );
-      if (!r.ok) {
-        forgetReopen();
-        setError(r.error);
-      } else setSaved("Saved");
-    });
+    confirmedAction(
+      () =>
+        saveCodeMetaAction(
+          codebook.runId,
+          codebook.documentId,
+          drafts
+            .filter((d) => d.name.trim())
+            .map((d) => ({
+              name: d.name,
+              theme: d.theme,
+              note: d.note,
+              keywords: d.keywords,
+            })),
+        ),
+      "Saved",
+      { useServerMessage: false },
+    );
   }
   function suggest() {
-    setError(null);
-    setSaved(null);
-    rememberReopen("Themes suggested. Check the Theme box on each code below.");
-    startTransition(async () => {
-      const r = await suggestThemesAction(codebook.runId, codebook.documentId);
-      if (!r.ok) {
-        forgetReopen();
-        setError(r.error);
-      } else setSaved(r.message ?? "Themes suggested");
-    });
+    confirmedAction(
+      () => suggestThemesAction(codebook.runId, codebook.documentId),
+      "Themes suggested. Check the Theme box on each code below.",
+      { useServerMessage: true },
+    );
   }
+
   const valid =
     drafts.length > 0 &&
     drafts.every((d) => d.name.trim() && d.definition.trim());

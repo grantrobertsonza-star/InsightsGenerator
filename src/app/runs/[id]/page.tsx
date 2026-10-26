@@ -3608,34 +3608,6 @@ export default async function RunPage({
   const synthesizeInsightsWithId = synthesizeInsightsAction.bind(null, id);
   const updateProgramLinkWithId = updateProgramLinkAction.bind(null, id);
 
-  // Each section below opens itself automatically the one time it first
-  // becomes relevant, then is left exactly as the researcher leaves it from
-  // then on, no matter what else changes elsewhere on the page. That's done
-  // with a `reached`/`done` pair per section rather than one shared
-  // "current stage": `reached` flips true once evidence exists for this
-  // section to act on, `done` flips true once its own step is finished, and
-  // the section's key is built from its own two flags, not from a single
-  // global stage. Accepting a decision, say, only changes the flags for
-  // Decision and whatever becomes newly reached by it (Recommendations,
-  // and Insights in validate mode); it can no longer force every other
-  // section on the page to remount and re-collapse along with it, which is
-  // what made the page feel like it "rolled up" on every accept.
-  //
-  // The objective is always settled before anything else downstream, since
-  // both the decision framer and the insight generator read whichever
-  // objective is accepted as their own strongest signal of what this
-  // project is trying to learn. Past that, the two entry points genuinely
-  // diverge: "generate" runs the ordinary pyramid (insight leads to
-  // decision), so Insights is reached as soon as the objective is set, and
-  // Decision only once there are insights to reason from. "validate" keeps
-  // a decision-first order, so Decision is reached as soon as the
-  // objective is set, and Insights only once a decision is confirmed.
-  // Findings is deliberately never gated this way: it's the raw evidence,
-  // always available to browse, never the thing you're being steered
-  // toward, and neither is Insights once reached, since insights stay
-  // worth glancing back at the same way findings do.
-  const generateMode = run.entry_point === "generate";
-
   // Questionnaires and guides sit inside the card of the file they belong to,
   // above its data quality. One with nowhere to go yet keeps its own card.
   const rawDataDocs = documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw");
@@ -3730,21 +3702,17 @@ export default async function RunPage({
         />
     );
   };
-  const objectiveDone = Boolean(run.research_objective);
-  const decisionReached = generateMode ? insights.length > 0 : objectiveDone;
-  const decisionDone = Boolean(run.decision_statement);
-  const recommendationsReached = Boolean(run.decision_statement);
 
   const startingPointLabel =
     run.entry_point === "generate"
       ? "Generate from data"
       : "Validate existing insights";
 
+  // No key that follows progress: a key that changed when the first decision was accepted remounted
+  // the section and closed every other decision's open editor, losing its draft (Codex R2P-F02). The
+  // cards are keyed by candidate id inside, so each editor keeps its draft through other cards' changes.
   const decisionSection = (
-    <div
-      key={`decision-${decisionReached}-${decisionDone}`}
-      className="flex flex-col gap-4"
-    >
+    <div className="flex flex-col gap-4">
       <DecisionBriefReview
         runId={id}
         candidates={decisionCandidates}
@@ -3918,11 +3886,9 @@ export default async function RunPage({
       </div>
     ) : null;
 
+  // Not keyed on whether a decision is set, for the reason given at decisionSection (R2P-F02).
   const recommendationsSection = (
-    <div
-      key={`recommendations-${recommendationsReached}`}
-      className="flex flex-col gap-4"
-    >
+    <div className="flex flex-col gap-4">
       <RecommendationsWorkspace
         toolbar={mainRecommendationExportControls ? <div key="recommendations-toolbar" className="flex justify-end">{mainRecommendationExportControls}</div> : null}
         runId={id}

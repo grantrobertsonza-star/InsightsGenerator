@@ -59,7 +59,7 @@ type Row = Record<string, string | number | null>;
 type Cell = string | number | boolean | null | { date: number };
 
 /** An .xlsx built cell by cell. { date: serial } is a number cell formatted yyyy-mm-dd. */
-function xlsx(aoa: Cell[][]): Buffer {
+function xlsx(aoa: Cell[][], bookType: "xlsx" | "biff8" = "xlsx"): Buffer {
   const ws: XLSX.WorkSheet = {};
   aoa.forEach((row, r) => row.forEach((v, c) => {
     if (v === null) return;
@@ -72,7 +72,7 @@ function xlsx(aoa: Cell[][]): Buffer {
   ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: Math.max(...aoa.map((r) => r.length)) - 1 } });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Data");
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  return XLSX.write(wb, { type: "buffer", bookType }) as Buffer;
 }
 
 describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("one reader for CSV, TSV and Excel (real database, actual engine)", () => {
@@ -276,5 +276,30 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("one reader for CSV, TSV and E
     loaded = await loadVariableOverrides(tenant, run, doc);
     expect(Object.hasOwn(loaded, "__proto__")).toBe(false);
     expect(await stored()).toEqual({ Age: { type: "continuous" } });
+  });
+
+  it("CAL-R1-F03: an Excel column holding both logical values and 1/0 keeps them apart, in .xlsx and .xls and both layouts", async () => {
+    // Case by case: TRUE, 1, FALSE, 0, 2. pandas' DataFrame step used to turn the 1 into TRUE (or the
+    // TRUE into 1), so a category's count moved to another answer.
+    const mixed: Cell[] = [true, 1, false, 0, 2];
+    for (const bookType of ["xlsx", "biff8"] as const) {
+      const ext = bookType === "xlsx" ? "xlsx" : "xls";
+      const rows = await file(`mixed-${ext}.${ext}`, xlsx([["id", "flag"], ...mixed.map((v, i) => [i + 1, v])], bookType));
+      const preview = await imported(rows);
+      // Logical cells beside numbers are their Excel text; the numbers stay numbers.
+      expect(preview.rows.map((r) => r.flag), ext).toEqual(["TRUE", 1, "FALSE", 0, 2]);
+      const counts = await categories(rows, "flag");
+      expect(counts, `${ext}: each answer counted once`).toEqual({ TRUE: 1, "1": 1, FALSE: 1, "0": 1, "2": 1 });
+      // Columns as cases: the same values along one row.
+      const flipped = await file(`mixed-flipped-${ext}.${ext}`, xlsx([["Variable", ...mixed.map((_, i) => `C${i + 1}`)], ["flag", ...mixed]], bookType), "columns_are_cases");
+      const fc = await categories(flipped, "flag");
+      expect(fc, `${ext} flipped`).toEqual({ TRUE: 1, "1": 1, FALSE: 1, "0": 1, "2": 1 });
+    }
+    // Boundary: a variable of logical cells only keeps them as logical values, counted as before.
+    {
+      const only = await file("logical-only.xlsx", xlsx([["id", "flag"], [1, true], [2, false], [3, true]]));
+      expect((await imported(only)).rows.map((r) => r.flag)).toEqual([true, false, true]);
+      expect(Object.values(await categories(only, "flag")).sort()).toEqual([1, 2]);
+    }
   });
 });
