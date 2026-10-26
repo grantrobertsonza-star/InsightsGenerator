@@ -1,6 +1,10 @@
 # Current engineering status
 
-Updated: 2026-10-26. State: **READY_FOR_CODEX** (batch31 on top of batch30 d744997, Codex-verified): overview tiles, module status roll-up and local worker freshness; implemented, ready for independent review; no migration. **NOT READY for release.**
+Updated: 2026-10-26. State: **READY_FOR_CODEX** (batches 31 and 32 on top of batch30 d744997): batch31 overview tiles, module roll-up and worker freshness; batch32 change tiers, rules registry and CI gates (no application code); implemented, ready for independent review; no migration. **NOT READY for release.**
+
+## Claude: batch32 (change tiers, rules registry, CI gates), main copy (2026-10-26)
+
+Implemented, ready for review: the batch32 commit and its docs commit, on top of batch31. No application code, no migration. Details in `docs/batch32-handover-2026-10-26.md`. `AGENTS.md` change tiers and impact checklist; `scripts/change-tier.cjs`; `claude/rules-registry.md`; pull-request template; CI: whole-repo lint, engine self-test, tier summary, and a new browser workflow (not yet run on GitHub). **READY_FOR_CODEX.**
 
 ## Claude: batch31 (overview tiles, module roll-up, worker freshness), main copy (2026-10-26)
 
