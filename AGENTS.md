@@ -30,9 +30,9 @@ defects.
    existence, run/tenant ownership) rather than trusted from the client.
 3. **Correctness.** A corrected defect gets a focused regression check covering its repro, a
    boundary case, and a failure-recovery case - an automated test where the harness reaches it,
-   a documented manual verification where it doesn't (this codebase has no test runner wired up
-   yet; `npx tsc --noEmit` and `python3 -c "import ast; ast.parse(...)"` catch type and syntax
-   errors, not behaviour). A statistic with an independently knowable answer (survey-design SE,
+   a documented manual verification where it doesn't (the gates are `npm run validate`, lint,
+   `python3 scripts/crosstab_selftest.py` and the browser suites; `tsc` and a Python parse catch
+   type and syntax errors, not behaviour). A statistic with an independently knowable answer (survey-design SE,
    FDR correction, a weighted mean) is checked against a hand-computed or reference value at
    least once when it's introduced or changed.
 4. **Reliability.** A failed operation surfaces an error the researcher can see and act on -
@@ -57,6 +57,36 @@ defects.
    external constraint (a Vercel payload limit, a pyreadstat quirk), or why an edge case is
    handled the way it is - not what the next line obviously does. A comment is corrected in the
    same change that makes it wrong.
+
+## Change tiers and the impact checklist
+
+Agreed with the project owner 2026-10-26: move fast where a change cannot alter research meaning,
+and put the full weight of checking where it can. `node scripts/change-tier.cjs --base <branch>`
+prints a change's tier from the files it touches (CI writes it on every pull request).
+
+- **A, research meaning or stored data** (engine and readers, calculations, persistence and
+  migrations, AI prompts and grounding, findings, insights, recommendations, freshness, exports,
+  tenancy): rule owner named from `claude/rules-registry.md`, regression test shown failing without
+  the fix, every gate, independent review before merge.
+- **B, screen behaviour** (client components, navigation, display-only helpers): a mounted or browser
+  test, every gate, a screenshot; independent review batched.
+- **C, presentation, docs, tests and tooling:** every gate, a screenshot for visible changes.
+
+Before writing a tier A or B change, answer in its handover or pull request:
+
+1. **Rule:** which rule in `claude/rules-registry.md` does it touch, and is the owning
+   implementation used (never a second version)? A new rule gets a registry row and a contract.
+2. **Inputs:** what happens on missing, invalid, partial, stale or unavailable input? Unknown is
+   never silently false, zero, empty or a default.
+3. **Persistence:** transaction boundary, ownership check on the write, lock or revision check,
+   retry without duplicates, recovery after partial failure.
+4. **Freshness:** which derived results (findings, insights, recommendations, narratives, exports)
+   change meaning, how they are marked stale, and which human wording or decisions must survive.
+5. **Screens:** late responses, document switching, reload; "saved" only after it is saved.
+6. **Proof:** the test that fails without the change, and the gates run with their counts.
+
+A bug that gets through is fixed with its regression test and one line in the handover on why the
+tests missed it, and the test family that should have caught it is strengthened.
 
 ## Standing instruction to Claude
 

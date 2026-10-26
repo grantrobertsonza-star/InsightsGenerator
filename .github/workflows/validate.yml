@@ -45,11 +45,15 @@ jobs:
       # pyreadstat; requirements.txt pins them (pandas arrives with pyreadstat).
       - run: python -m pip install -r requirements.txt pandas
       - run: npm ci
-      # Lint only the files this change touches: the repository still has pre-existing findings in
-      # untouched files, which this gate does not claim to have fixed.
-      - name: Lint changed files
+      # The change's tier (AGENTS.md, "Change tiers"): written to the job summary so the review step
+      # it needs is visible on the pull request.
+      - name: Change tier
         if: github.event_name == 'pull_request'
-        run: |
-          files=$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- '*.ts' '*.tsx' '*.mjs' '*.cjs' | tr '\n' ' ')
-          if [ -n "$files" ]; then npx eslint $files; else echo "No lintable files changed."; fi
+        run: node scripts/change-tier.cjs --base "origin/${{ github.base_ref }}"
+      # The whole repository lints clean since batch 29 (0 errors), so the gate is the whole tree.
+      - name: Lint
+        run: npx eslint .
+      # The statistics engine's own reference checks (design variance, t reference, NETs, don't know).
+      - name: Engine self-test
+        run: python scripts/crosstab_selftest.py
       - run: npm run validate
