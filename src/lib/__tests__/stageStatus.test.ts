@@ -105,6 +105,17 @@ const objectives = (over: Partial<ObjectiveStageInput> = {}): ObjectiveStageInpu
 });
 
 describe("objectiveStageStatus", () => {
+  it("CE-1: out-of-date coverage needs the researcher, and its gaps say they come from that check and point at the objective", () => {
+    const s = objectiveStageStatus(
+      objectives({ coverage: [{ id: "o1", text: "Understand why members lapse", status: "gap", degraded: false }], coverageStale: "Out of date: the accepted insights changed after this evidence check." }),
+    );
+    expect(s.state).toBe("needs_you");
+    expect(s.issues.map((i) => i.text)).toContain("Out of date: the accepted insights changed after this evidence check.");
+    const gap = s.caveats.find((c) => c.key.startsWith("gap:"))!;
+    expect(gap.text).toMatch(/\(from an out-of-date check\)$/);
+    expect(gap.target).toEqual({ kind: "objective", id: "o1", text: "Understand why members lapse" });
+  });
+
   it("is ready when every objective is accepted and scored", () => {
     const s = objectiveStageStatus(objectives());
     expect(s.state).toBe("ready");

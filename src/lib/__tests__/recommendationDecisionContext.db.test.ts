@@ -36,7 +36,8 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { messages: { content: string }[] }) => {
         const content = req.messages[0].content;
-        const decision = /this project has confirmed: \\?"([^"\\]*)\\?"/.exec(JSON.stringify(req))?.[1] ?? "(none)";
+        // CE-2: the decisions are listed numbered; the first is the one these runs have.
+        const decision = /this project has confirmed, numbered:\\n0\. (.*?)\\n/.exec(JSON.stringify(req))?.[1] ?? "(none)";
         const count = (content.match(/^\d+\. (\[[^\]]*\] )?Headline:/gm) ?? []).length;
         if (model.duringCall) { const f = model.duringCall; model.duringCall = null; await f(); }
         const recommendations = Array.from({ length: count }, (_, index) => ({

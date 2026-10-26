@@ -1,6 +1,8 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { finishedToolInput, requiredTextOrNullField } from "./modelToolResult";
+import { quoteAppearsIn } from "./quoteMatch";
+import { parseObjectiveLines } from "./objectiveLines";
 
 // Between them a brief and a proposal can run long once a literature review
 // or a detailed methodology section is attached; none of that is needed to
@@ -10,10 +12,22 @@ import { finishedToolInput, requiredTextOrNullField } from "./modelToolResult";
 // evenly when both are present, without sending the whole thing.
 const MAX_CHARS_PER_DOCUMENT = 40000;
 
+export type BriefPassage = {
+  document: "brief" | "proposal";
+  quote: string;
+  /** The quote appears in that document's text (quoteMatch.ts); false is shown, never hidden. */
+  verified: boolean;
+};
+
 export type ExtractedBriefFields = {
   businessProblem: string | null;
   researchObjective: string | null;
+  /** CE-4: the passage behind each objective, by its 1-based position in researchObjective's lines. */
+  objectivePassages: { objectiveNumber: number; passage: BriefPassage }[];
+  businessProblemPassage: BriefPassage | null;
 };
+
+const MAX_QUOTE_CHARS = 600;
 
 /**
  * Pulls a business problem (with whatever background context the client
@@ -49,7 +63,7 @@ export async function extractBriefFields(
   const proposalText = documents.proposalText?.trim() || null;
 
   if (!briefText && !proposalText) {
-    return { businessProblem: null, researchObjective: null };
+    return { businessProblem: null, researchObjective: null, objectivePassages: [], businessProblemPassage: null };
   }
 
   const documentBlocks = [
@@ -87,7 +101,11 @@ export async function extractBriefFields(
       "fold the objectives under it into the list instead. If the document labels an objective (main question, " +
       "primary, secondary), keep the label as a short prefix on the same line, separated with a dash. Quote or closely paraphrase the " +
       "documents' own framing rather than writing a fresh summary. If neither document clearly states " +
-      "one of these two things, return null for it rather than guessing or inventing one from context.",
+      "one of these two things, return null for it rather than guessing or inventing one from context.\n\n" +
+      "Also say where each came from: for each numbered objective, the document (brief or proposal) and the " +
+      "passage that states it, copied word for word from that document (a sentence or two, no ellipses, no " +
+      "rewording); and the same for the business problem. Where an objective draws on both documents, give " +
+      "the passage from the one it mainly follows.",
     tool_choice: { type: "tool", name: "record_brief_fields" },
     tools: [
       {
@@ -106,7 +124,31 @@ export async function extractBriefFields(
               description:
                 "The research objective(s)/aim(s), numbered if there's more than one, or null if neither document states any.",
             },
+            objective_sources: {
+              type: "array",
+              description: "For each objective, by its number (1 for the first line), the document and the verbatim passage that states it.",
+              items: {
+                type: "object",
+                properties: {
+                  objective_number: { type: "integer" },
+                  document: { type: "string", enum: ["brief", "proposal"] },
+                  quote: { type: "string" },
+                },
+                required: ["objective_number", "document", "quote"],
+              },
+            },
+            business_problem_source: {
+              type: ["object", "null"],
+              description: "The document and verbatim passage that states the business problem, or null.",
+              properties: {
+                document: { type: "string", enum: ["brief", "proposal"] },
+                quote: { type: "string" },
+              },
+              required: ["document", "quote"],
+            },
           },
+          // Not required: a reading that names no passage still fills the fields, and the objective then
+          // shows its passage as not recorded (CE-4).
           required: ["business_problem", "research_objective"],
         },
       },
@@ -133,5 +175,27 @@ export async function extractBriefFields(
   const businessProblem = requiredTextOrNullField(input, "business_problem", what);
   const researchObjective = requiredTextOrNullField(input, "research_objective", what);
 
-  return { businessProblem, researchObjective };
+  // CE-4: each passage is checked against the full text of the document it names (not only the part
+  // sent to the model), with the shared quote rule; a passage the model named for a document not given,
+  // an empty one, or one for an objective number that does not exist is dropped.
+  const textOf = { brief: briefText, proposal: proposalText };
+  const passage = (raw: unknown): BriefPassage | null => {
+    const r = raw as { document?: unknown; quote?: unknown } | null;
+    if (!r || (r.document !== "brief" && r.document !== "proposal") || typeof r.quote !== "string") return null;
+    const quote = r.quote.trim().slice(0, MAX_QUOTE_CHARS);
+    const text = textOf[r.document];
+    if (!quote || !text) return null;
+    return { document: r.document, quote, verified: quoteAppearsIn(quote, text) };
+  };
+  const lineCount = parseObjectiveLines(researchObjective).length;
+  const objectivePassages: ExtractedBriefFields["objectivePassages"] = [];
+  for (const raw of Array.isArray(input.objective_sources) ? input.objective_sources : []) {
+    const n = (raw as { objective_number?: unknown }).objective_number;
+    const p = passage(raw);
+    if (typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= lineCount && p && !objectivePassages.some((x) => x.objectiveNumber === n)) {
+      objectivePassages.push({ objectiveNumber: n, passage: p });
+    }
+  }
+  const businessProblemPassage = businessProblem ? passage(input.business_problem_source) : null;
+  return { businessProblem, researchObjective, objectivePassages, businessProblemPassage };
 }

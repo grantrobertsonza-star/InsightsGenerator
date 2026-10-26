@@ -1,5 +1,8 @@
+import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
+import { insightsNoItemCites, loadObjectiveCoverage, qualifiedConclusion } from "@/lib/objectiveCoverage";
 import { NextResponse } from "next/server";
-import { withTenant } from "@/lib/db";
+import { withTenant, withTenantRead } from "@/lib/db";
+import { loadEvidenceTrail, unreadableTrail, type EvidenceTrail } from "@/lib/evidenceTrail";
 import {
   buildNarrativeReportDocx,
   humanizeTitle,
@@ -167,52 +170,26 @@ export async function GET(
         [runId],
       );
 
-    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a catalog
-    // probe, same technique and same reasoning as page.tsx's own getObjectiveValidations - a
-    // failed SELECT on a pre-migration database would abort the rest of this transaction. Both
-    // export routes used to omit this column entirely, so a degraded conclusion (generated while
-    // direct data-evidence retrieval was failing) reached DOCX/PPTX with no qualification at all,
-    // even though the live app already flags it. Folded into the same `conclusion` string the
-    // existing "inferred" wrapper already builds, rather than a new field, so every renderer that
-    // already prints `conclusion` picks this up with no further change.
-    const evidenceDigestDegradedColExists = await client.query<{ exists: boolean }>(
-      `select exists (
-         select 1 from information_schema.columns
-         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
-       ) as "exists"`,
-    );
-    const objectiveValidationsResult = evidenceDigestDegradedColExists.rows[0]?.exists === true
-      ? await client.query<NarrativeReportObjectiveItem>(
-          `select item_kind, item_text,
-                case when inferred then 'inferred' else status end as status,
-                (case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end)
-                  || (case when evidence_digest_degraded then ' (Evidence check degraded: generated while data-evidence retrieval was failing - may be missing evidence a working check would have cited.)' else '' end) as conclusion
-         from objective_validations
-         where run_id = $1
-         order by item_kind, item_order`,
-          [runId],
-        )
-      : await client.query<NarrativeReportObjectiveItem>(
-          `select item_kind, item_text,
-                case when inferred then 'inferred' else status end as status,
-                case when inferred then 'Inferred from this project''s own evidence, not an independent test. ' || conclusion else conclusion end as conclusion
-         from objective_validations
-         where run_id = $1
-         order by item_kind, item_order`,
-          [runId],
-        );
-
-    const unmappedInsightsResult = await client.query<{ id: string; headline: string }>(
-      `select si.id, si.headline
-       from synthesized_insights si
-       where si.run_id = $1 and si.review_status = 'accepted'
-         and not exists (
-           select 1 from objective_validations ov
-           where ov.run_id = $1 and ov.inferred = false and si.id = any(ov.synthesized_insight_ids)
-         )
-         and exists (select 1 from objective_validations x where x.run_id = $1 and x.inferred = false)`,
+    // Coverage is read through its one owner (objectiveCoverage.ts). The inferred and degraded
+    // (OBJ-REV-012) qualifications and, CE-1, an out-of-date or unknown check are folded into the
+    // `conclusion` string every renderer already prints, so none of them is dropped on export.
+    const coverage = await loadObjectiveCoverage(client, runId);
+    const objectiveValidationsResult = {
+      rows: coverage.rows.map((r): NarrativeReportObjectiveItem => ({
+        item_kind: r.item_kind,
+        item_text: r.item_text,
+        status: r.inferred ? "inferred" : r.status,
+        conclusion: qualifiedConclusion(r, coverage.freshness),
+        
+      })),
+    };
+    // An accepted synthesized insight that no stated objective or decision cites: evidence the
+    // project turned up that nothing it asked about points to (see objectiveValidator.ts).
+    const acceptedForCoverage = await client.query<{ id: string; headline: string }>(
+      "select id, headline from synthesized_insights where run_id = $1 and review_status = 'accepted' order by created_at, id",
       [runId],
     );
+    const unmappedInsightsResult = { rows: insightsNoItemCites(coverage.rows, acceptedForCoverage.rows) };
 
     // Methodology section: the source documents this project actually
     // processed, kind by kind, so the report states what it draws on
@@ -249,10 +226,13 @@ export async function GET(
     // The validated / net-new split: what this analysis added beyond what
     // the original report said, listed separately (see discoveryReport.ts).
     const discovery = await loadDiscoveryReportData(client, runId);
+    // CE-3: a narrative written for an earlier version of the project is qualified in the file too.
+    const narrativeFreshness = narrative ? await narrativeFreshnessNote(client, runId) : null;
 
     return {
       run: runResult.rows[0],
       narrative,
+      narrativeFreshness,
       insightsById: new Map(
         (insightsResult?.rows ?? []).map((row) => [row.id, row]),
       ),
@@ -268,6 +248,7 @@ export async function GET(
   const {
     run,
     narrative,
+    narrativeFreshness,
     insightsById,
     rawRecommendations,
     objectiveValidations,
@@ -377,6 +358,18 @@ export async function GET(
       ...(supportNote ? { supportNote } : {}),
     });
   }
+  // CE-5: the evidence trail of each recommendation in the report, for its appendix. Read after the
+  // report's own transaction, one recommendation at a time, so one unreadable trail is stated in the
+  // appendix rather than failing the whole report or silently leaving that trail out.
+  const evidenceTrails: EvidenceTrail[] = [];
+  for (const r of rawRecommendations) {
+    if (support.statusOf(r.synthesized_insight_id).status === "invalid") continue;
+    try {
+      evidenceTrails.push(await withTenantRead(TENANT_ID, (client) => loadEvidenceTrail(client, TENANT_ID, runId, r.id)));
+    } catch (e) {
+      evidenceTrails.push(unreadableTrail(r.action_text, e instanceof Error ? e.message : String(e)));
+    }
+  }
   // The "New insights beyond the report" section follows the same rule: an insight left out above
   // cannot come back there as an ordinary new insight. One the narrative does not cite is listed
   // in "Excluded from this report" too, so its omission is still disclosed.
@@ -393,10 +386,11 @@ export async function GET(
   // Saved framing is printed as generated, with this qualification beside it whenever any insight
   // it was written from no longer has current support (same counting rule as the app's line).
   const citedInsightIds = narrative.pillars.flatMap((pillar) => pillar.insight_ids);
-  const framingNote = narrativeFramingQualification(
+  const supportFramingNote = narrativeFramingQualification(
     citedInsightIds,
     Object.fromEntries(citedInsightIds.filter((id) => insightsById.has(id)).map((id) => [id, support.statusOf(id)])),
   );
+  const framingNote = joinNotes(narrativeFreshness, supportFramingNote) ?? null;
 
   // An insight whose support is no longer valid is not offered as further evidence either.
   const unmappedInsightHeadlines = unmappedInsights
@@ -420,6 +414,7 @@ export async function GET(
     ...(framingNote ? { framingNote } : {}),
     figureNote: joinNotes(figureCheckNote(figures.narrative), figureCheckLoadErrorNote(figures)),
     excludedFromReport,
+    evidenceTrails,
     decisionStatement: narrative.question || run.decision_statement,
     audience: run.audience,
     businessProblem: run.business_problem,

@@ -1,3 +1,4 @@
+import { trailOutline, type EvidenceTrail } from "./evidenceTrail";
 import {
   Document,
   Packer,
@@ -242,6 +243,8 @@ export type NarrativeReportInput = {
    * withdrawn conclusion is visible rather than silently missing. Omitted or [] when nothing was
    * excluded. */
   excludedFromReport?: { kind: "insight" | "recommendation" | "contradiction"; headline: string; reason: string }[];
+  /** CE-5: the evidence trail of each recommendation in the report, printed as an appendix. */
+  evidenceTrails?: EvidenceTrail[];
   decisionStatement: string | null;
   audience: string | null;
   businessProblem: string | null;
@@ -896,6 +899,30 @@ export async function buildNarrativeReportDocx(
       children.push(
         body(`${item.kind === "insight" ? "Insight" : item.kind === "contradiction" ? "Contradiction" : "Recommendation"}: ${item.headline} (${item.reason})`),
       );
+    }
+  }
+
+  // --- CE-5: the evidence trail of each recommendation, from stored links, breaks stated --------
+  if (input.evidenceTrails && input.evidenceTrails.length > 0) {
+    children.push(rule());
+    children.push(heading("Appendix: evidence trails", HeadingLevel.HEADING_1));
+    children.push(
+      body(
+        "For each recommendation in this report: the decisions it serves and the objectives it answers, then the insight, findings, data points and source files beneath it. Every step is a stored link; a break in the trail is stated where it occurs.",
+        { italic: true },
+      ),
+    );
+    for (const trail of input.evidenceTrails) {
+      children.push(label(`Recommendation: ${trail.root.label}`));
+      for (const l of trailOutline(trail)) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: l.text, font: BODY_FONT, size: 19, color: l.state === "current" ? INK : QUALIFY })],
+            indent: { left: 360 * l.depth },
+            spacing: { after: 60 },
+          }),
+        );
+      }
     }
   }
 

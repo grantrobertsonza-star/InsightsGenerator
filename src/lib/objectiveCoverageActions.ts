@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { generateObjectiveValidation, refreshObjectiveValidationQuietly } from "./objectiveValidator";
 import { generateObjectiveCandidates } from "./objectiveFramer";
+import { coverageFreshnessNote, insightsNoItemCites, loadObjectiveCoverage } from "./objectiveCoverage";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
 import { requireTenantId } from "./requestContext";
 
@@ -41,21 +42,19 @@ export async function checkObjectiveCoverage(runId: string): Promise<Result> {
 export async function suggestObjectivesFromUnmatched(runId: string): Promise<Result> {
   const TENANT_ID = await requireTenantId();
   try {
-    const headlines = await withTenant(TENANT_ID, async (client) => {
-      const r = await client.query<{ headline: string }>(
-        `select si.headline
-         from synthesized_insights si
-         where si.run_id = $1 and si.review_status = 'accepted'
-           and exists (select 1 from objective_validations x where x.run_id = $1 and x.inferred = false)
-           and not exists (
-             select 1 from objective_validations ov
-             where ov.run_id = $1 and ov.inferred = false and si.id = any(ov.synthesized_insight_ids)
-           )
-         order by si.created_at`,
+    // "Not cited by any objective" is only known from coverage that is current (CE-1): an out-of-date
+    // check may miss an insight accepted since, or cite one since rejected.
+    const read = await withTenant(TENANT_ID, async (client) => {
+      const coverage = await loadObjectiveCoverage(client, runId);
+      if (coverage.freshness.state !== "current") return { stale: coverageFreshnessNote(coverage.freshness) ?? "Check coverage first.", headlines: [] };
+      const accepted = await client.query<{ id: string; headline: string }>(
+        "select id, headline from synthesized_insights where run_id = $1 and review_status = 'accepted' order by created_at, id",
         [runId],
       );
-      return r.rows.map((x) => x.headline);
+      return { stale: null, headlines: insightsNoItemCites(coverage.rows, accepted.rows).map((x) => x.headline) };
     });
+    if (read.stale) return { ok: false, error: read.stale };
+    const headlines = read.headlines;
     if (headlines.length === 0) {
       return { ok: false, error: "Every accepted insight is already covered by an objective." };
     }

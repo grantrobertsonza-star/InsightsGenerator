@@ -14,6 +14,9 @@ import * as XLSX from "xlsx";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 import { csvField } from "../csvField";
 
+vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
+vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/csvField", async () => await import("../csvField"));
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());

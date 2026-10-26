@@ -30,6 +30,8 @@ vi.mock("../db", () => {
       if (/insert into synthesized_insight_sources/.test(sql)) return { rows: [] };
       // Numerical traceability (0101) column check: this fake predates it, so it reads as not applied.
       if (/column_name = 'figure_check'/.test(sql)) return { rows: [{ n: 0 }] };
+      // CE-2: the accepted objectives the synthesis prompt is given; none here, so the run's text stands.
+      if (/from objective_candidates where run_id = \$1 and status = 'accepted'/.test(sql)) return { rows: [] };
       throw new Error(`unexpected query: ${sql}`);
     },
   };

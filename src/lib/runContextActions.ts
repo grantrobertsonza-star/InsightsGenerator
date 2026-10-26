@@ -4,7 +4,8 @@ import { candidateSourceColumnAvailable } from "./candidateSourceDocuments";
 import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { readContextDocument } from "./extractFindings";
-import { extractBriefFields } from "./briefIntake";
+import { extractBriefFields, type BriefPassage } from "./briefIntake";
+import { storeBriefPassage } from "./briefPassages";
 import { syncResearchObjective } from "./runSync";
 import { parseObjectiveLines, normalizeObjectiveLine, objectiveIdentityKey } from "./objectiveLines";
 import { refreshObjectiveQuality } from "./objectiveQualityScorer";
@@ -229,6 +230,9 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     proposal: { id: string; filename: string } | null;
     filledBusinessProblem: boolean;
     objectivesFromDocument: boolean;
+    /** CE-4: the passage behind each extracted objective line, by objectiveIdentityKey, and the business problem's. */
+    passagesByKey: Map<string, BriefPassage>;
+    businessProblemPassage: BriefPassage | null;
   } | null = null;
   let failedFill: Extract<RunContextSaveResult["fill"], { status: "failed" }> | null = null;
   // IR-03: objectives the document gave that typed text took priority over; counted, not used.
@@ -261,6 +265,10 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
         proposal: proposal && proposalId ? { id: proposalId, filename: proposal.filename } : null,
         filledBusinessProblem: businessProblem === null && !!extracted.businessProblem,
         objectivesFromDocument: objective === null && !!extracted.researchObjective,
+        passagesByKey: new Map(
+          (extracted.objectivePassages ?? []).map((p) => [objectiveIdentityKey(parseObjectiveLines(extracted.researchObjective)[p.objectiveNumber - 1]), p.passage]),
+        ),
+        businessProblemPassage: extracted.businessProblemPassage ?? null,
       };
       if (objective !== null && extracted.researchObjective) extractedButTyped = extracted.researchObjective;
       businessProblem = businessProblem ?? extracted.businessProblem;
@@ -432,6 +440,8 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     // A deliberate re-read (Read it again) puts its new document lines on Review as pending
     // suggestions, not in the stated list: the researcher accepts, edits or rejects each one.
     const suggestionLines = fromDocument && reread ? newLines.splice(0) : [];
+    // The stated lines in the order their candidates are inserted below (addedIds follows the same order).
+    const newLinesForPassages = [...newLines];
     const merged = [...prevLines, ...newLines].join("\n") || null;
 
     // OBJ-SET-003: this is "Setup's own first save" the objectiveFramer.ts carry-over comment
@@ -500,6 +510,18 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
         [TENANT_ID, runId, line, suggestionRationale, ...(sourceColumn ? [readFrom.length ? readFrom : null] : [])],
       );
       addedIds.push(inserted.rows[0].id);
+    }
+    // CE-4: the passage behind each objective this save added from the document, and behind the
+    // business problem it filled, in the same transaction as the rows they describe.
+    if (fill && fromDocument) {
+      const lines = [...newLinesForPassages, ...suggestionLines];
+      for (const [i, line] of lines.entries()) {
+        const passage = fill.passagesByKey.get(objectiveIdentityKey(line));
+        if (passage) await storeBriefPassage(client, TENANT_ID, runId, { field: "objective", candidateId: addedIds[i], passage, brief: fill.brief, proposal: fill.proposal });
+      }
+    }
+    if (fill?.filledBusinessProblem && fill.businessProblemPassage) {
+      await storeBriefPassage(client, TENANT_ID, runId, { field: "business_problem", candidateId: null, passage: fill.businessProblemPassage, brief: fill.brief, proposal: fill.proposal });
     }
     if (fill) {
       // The record Set objectives shows as "Last filled from ..." (briefFillRecord.loadLastBriefFill),

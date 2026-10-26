@@ -18,7 +18,8 @@ import { useObjectiveRowActions } from "./useObjectiveRowActions";
 import ObjectiveEditConflict from "./ObjectiveEditConflict";
 import { isRereadSuggestion } from "@/lib/briefFillText";
 
-type Verdict = { item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean };
+/** `candidateId` (CE-1) matches the verdict to its objective by id; `stale` marks coverage not known to be current. */
+type Verdict = { item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean; candidateId?: string | null; stale?: boolean };
 
 const verdictLabel = { resolved: "Answered", partial: "Partly answered", gap: "Gap" } as const;
 const verdictStyle = {
@@ -31,8 +32,8 @@ const verdictStyle = {
 export function ObjectiveBadges({ row, verdicts, withTag = true }: { row: ObjectiveRow; verdicts: Verdict[]; withTag?: boolean }) {
   const tag = tagFor(row);
   const v =
-    verdicts.find((x) => !x.inferred && sameObjective({ id: row.id, text: row.text }, { text: x.item_text })) ??
-    verdicts.find((x) => sameObjective({ id: row.id, text: row.text }, { text: x.item_text }));
+    verdicts.find((x) => !x.inferred && sameObjective({ id: row.id, text: row.text }, { id: x.candidateId ?? null, text: x.item_text })) ??
+    verdicts.find((x) => sameObjective({ id: row.id, text: row.text }, { id: x.candidateId ?? null, text: x.item_text }));
   return (
     <span className="mt-1.5 flex flex-wrap items-center gap-1" data-testid="objective-badges">
       {withTag && <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${tag.cls}`}>{tag.label}</span>}
@@ -41,7 +42,16 @@ export function ObjectiveBadges({ row, verdicts, withTag = true }: { row: Object
           {tierLabel[row.scores.tier]} {row.scores.total}/20
         </span>
       )}
-      {v && !v.inferred && <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${verdictStyle[v.status]}`}>{verdictLabel[v.status]}</span>}
+      {v && !v.inferred && (
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${verdictStyle[v.status]}${v.stale ? " opacity-70 ring-1 ring-dashed ring-amber-400" : ""}`}
+          title={v.stale ? "From an evidence check that is out of date; update coverage" : undefined}
+          data-stale={v.stale ? "true" : undefined}
+        >
+          {verdictLabel[v.status]}
+          {v.stale ? " (out of date)" : ""}
+        </span>
+      )}
     </span>
   );
 }
@@ -138,6 +148,12 @@ function Detail({ runId, row, index }: { runId: string; row: ObjectiveRow; index
         <p className="text-sm font-medium text-foreground">{row.text}</p>
       )}
       {(row.source === "ai_suggested" || isRereadSuggestion(row.rationale)) && row.rationale && !a.editing && <p className="text-xs text-muted">{row.rationale}</p>}
+      {(row.passages ?? []).map((p, i) => (
+        <figure key={i} data-testid="objective-passage" data-verified={p.verified ? "true" : "false"} className={`rounded-lg border-l-2 bg-white/70 px-3 py-2 ${p.verified ? "border-fuchsia-400" : "border-amber-400"}`}>
+          <blockquote className="text-xs italic text-foreground">&ldquo;{p.quote}&rdquo;</blockquote>
+          <figcaption className={`mt-1 text-[11px] ${p.verified ? "text-muted" : "text-amber-800"}`}>{p.source}</figcaption>
+        </figure>
+      ))}
       {row.similarTo && !a.editing && (
         <p className="text-xs text-amber-800" data-testid="objective-similar-to">
           Looks like an objective you already have: <span className="font-medium">{row.similarTo}</span>. Accept this one, or reject it to keep yours.

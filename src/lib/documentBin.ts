@@ -58,9 +58,10 @@ export const MOVED_WITH_DOCUMENT = [
 /**
  * Tables with document_id and run_id that stay in the project: Research quality keeps its reviews
  * and source snapshots by design (erasing a file purges their text); the removal record is the bin's
- * own.
+ * own; brief_passages (CE-4) stay with the objectives they describe, which a binned brief marks rather
+ * than removes, and are deleted when the file is erased, as the file's quoted text.
  */
-export const NOT_MOVED_WITH_DOCUMENT = ["research_quality_sources", "document_removals"] as const;
+export const NOT_MOVED_WITH_DOCUMENT = ["research_quality_sources", "document_removals", "brief_passages"] as const;
 
 export type RemovalCounts = {
   findings: number;
@@ -579,6 +580,10 @@ export async function eraseRemovedDocument(tenantId: string, runId: string, docu
     // fails rolls the whole erase back, so the file stays in the bin and Erase can be tried again.
     const sources = (await client.query<{ id: string }>("select id from research_quality_sources where run_id = $1 and document_id = $2 order by id", [runId, documentId])).rows.map((r) => r.id);
     for (const source of sources) await purgeSourceTextInTransaction(client, tenantId, runId, source);
+    // CE-4: passages quoted from this file go with it (before 0122 there is no such table).
+    if ((await client.query<{ ok: boolean }>("select to_regclass('public.brief_passages') is not null as ok")).rows[0]?.ok) {
+      await client.query("delete from brief_passages where run_id = $1 and document_id = $2", [runId, documentId]);
+    }
     const paths = [doc.storage_path, doc.preview_storage_path, convertedCopyPath(doc.storage_path)].filter((p): p is string => Boolean(p));
     const cleanupId = paths.length ? await queueDocumentStorageCleanup(client, tenantId, runId, documentId, paths) : null;
     await client.query("delete from document_removals where document_id = $1 and run_id = $2", [documentId, runId]);

@@ -1,3 +1,4 @@
+import { loadObjectiveLines, objectivesFramingLine, OBJECTIVES_ARE_CONTEXT } from "./projectObjectives";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -134,15 +135,18 @@ export async function generateInsights(tenantId: string, runId: string): Promise
   if (hasMore) eligible.length = MAX_FINDINGS_FOR_INSIGHT;
   if (eligible.length === 0) return false;
 
+  // CE-2: the accepted objectives (or the free text), in both modes, as context only.
+  const objectiveLines = await withTenant(tenantId, (client) => loadObjectiveLines(client, runId, run.research_objective));
   const framingBlock =
     run.entry_point === "validate"
       ? `This project's confirmed decision(s): "${decisionContext}". Judge each finding's tension and ` +
         "implication against these specific decision(s): does it push toward one option, complicate a " +
         "choice, or narrow which option looks safer. Where more than one decision is listed, note which " +
-        "one(s) a given finding actually bears on rather than assuming it speaks to all of them.\n\n"
+        "one(s) a given finding actually bears on rather than assuming it speaks to all of them.\n\n" +
+        (objectivesFramingLine(objectiveLines) ? `${objectivesFramingLine(objectiveLines)} ${OBJECTIVES_ARE_CONTEXT}\n\n` : "")
       : [
           run.business_problem ? `Business problem: "${run.business_problem}"` : null,
-          run.research_objective ? `Research objective: "${run.research_objective}"` : null,
+          objectivesFramingLine(objectiveLines),
           "No decision has been made yet for this project, that comes after this step. Judge each " +
             "finding's tension and implication against the problem/objective above (or, if neither was " +
             "given, against what a stakeholder in this space would plausibly care about): what does it " +

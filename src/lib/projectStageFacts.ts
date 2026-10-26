@@ -1,3 +1,4 @@
+import { coverageFreshnessNote, loadObjectiveCoverage } from "./objectiveCoverage";
 import { withTenantRead } from "./db";
 import { processingState, type AcceptanceState, type StoredProcessingStatus } from "./importSources";
 import { crosstabDatasetState } from "./crosstabEntry";
@@ -36,8 +37,10 @@ export function objectiveStageInputOf(input: {
   qualityStatus: ObjectiveQualityStatus | { error: string };
   failedFill: { documents: string; reason: string } | null | { error: string };
   lastFill: unknown;
-  coverage: { item_kind: string; item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean; evidence_digest_degraded?: boolean }[];
+  coverage: { item_kind: string; item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean; evidence_digest_degraded?: boolean; objective_candidate_id?: string | null }[];
   coverageError: string | null;
+  /** CE-1: why the stored coverage is not known to be current, or null. */
+  coverageStale: string | null;
 }): ObjectiveStageInput {
   const lines = parseObjectiveLines(input.statedText);
   const ids = setupLineCandidateIds(lines, input.candidates);
@@ -64,8 +67,9 @@ export function objectiveStageInputOf(input: {
     fillRecordFailed: fillFailed(input.failedFill) || fillFailed(input.lastFill),
     coverage: input.coverage
       .filter((v) => v.item_kind === "objective" && !v.inferred)
-      .map((v) => ({ text: v.item_text, status: v.status, degraded: v.evidence_digest_degraded === true })),
+      .map((v) => ({ id: v.objective_candidate_id ?? null, text: v.item_text, status: v.status, degraded: v.evidence_digest_degraded === true })),
     coverageError: input.coverageError,
+    coverageStale: input.coverageStale,
   };
 }
 
@@ -98,10 +102,10 @@ export async function loadProjectStageFacts(tenantId: string, runId: string): Pr
       );
       const qualityMissing = !(await has("objective_quality"));
       const quality = qualityMissing ? [] : await q<{ item_text: string; quality_tier: "strong" | "workable" | "weak" | null }>("select item_text, quality_tier from objective_quality where run_id = $1 order by item_order");
-      const degradedColumn = (await q<{ ok: boolean }>("select exists (select 1 from information_schema.columns where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded') as ok", []))[0].ok;
-      const coverage = await q<{ item_kind: string; item_text: string; status: "resolved" | "partial" | "gap"; inferred: boolean; evidence_digest_degraded?: boolean }>(
-        `select item_kind, item_text, status, inferred${degradedColumn ? ", evidence_digest_degraded" : ""} from objective_validations where run_id = $1 order by item_kind, item_order`,
-      );
+      // Through the coverage owner (CE-1), with whether it is still current.
+      const coverageRead = await loadObjectiveCoverage(client, runId);
+      const coverage = coverageRead.rows;
+      const coverageStale = coverageFreshnessNote(coverageRead.freshness);
       const coverageError =
         coverage.length === 0
           ? ((await q<{ message: string | null }>("select detail->>'message' as message from trace where run_id = $1 and event = 'objective_validation_error' order by occurred_at desc limit 1"))[0]?.message ?? null)
@@ -134,7 +138,7 @@ export async function loadProjectStageFacts(tenantId: string, runId: string): Pr
           where run_id = $1 and event = 'process_run_errors' and occurred_at >= coalesce((select occurred_at from latest_batch), '-infinity'::timestamptz)
           order by occurred_at desc limit 1`,
       );
-      return { run, docs, tables, outputSets, candidates, quality, qualityMissing, coverage, coverageError, decisions, rq, codebooks, claims, findings, insights, recs, narrative, narrativeError, processErrors };
+      return { run, docs, tables, outputSets, candidates, quality, qualityMissing, coverage, coverageError, coverageStale, decisions, rq, codebooks, claims, findings, insights, recs, narrative, narrativeError, processErrors };
     }),
     getTranscriptSetups(tenantId, runId),
     getInstrumentSummaries(tenantId, runId),
@@ -177,6 +181,7 @@ export async function loadProjectStageFacts(tenantId: string, runId: string): Pr
       lastFill,
       coverage: db.coverage,
       coverageError: db.coverageError,
+      coverageStale: db.coverageStale,
     }),
     // A queued review ('pending') is counted as running: it starts by itself. No reviews table yet
     // (before 0105) means the module is not in use.

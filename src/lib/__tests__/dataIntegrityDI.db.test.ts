@@ -24,6 +24,9 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: vi.fn() }));
 vi.mock("../verifyAfterGenerate", () => ({ verifyAfterGenerate: vi.fn(async () => {}) }));
+vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
+vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/csvField", async () => await import("../csvField"));
 const store = vi.hoisted(() => ({ files: new Map<string, string>() }));

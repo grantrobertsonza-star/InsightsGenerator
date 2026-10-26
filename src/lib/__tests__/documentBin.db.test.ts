@@ -227,6 +227,17 @@ describe.skipIf(!TEST_DATABASE_URL)("the document bin (real database)", () => {
     expect(await one("select headline from synthesized_insights where id = $1", [p.si])).toEqual({ headline: "Synth" });
   });
 
+  it("CE-4: a brief passage stays while its file is in the bin and is erased with the file", async () => {
+    const p = await project();
+    const objective = (await one("insert into objective_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Grow share','r','researcher_authored','accepted') returning id", [A, run])).id;
+    await db.pool.query("insert into brief_passages(tenant_id,run_id,field,objective_candidate_id,document_id,document_role,quote,verified) values($1,$2,'objective',$3,$4,'brief','We want to grow share.',true)", [A, run, objective, p.doc]);
+    const { removeDocumentToBin, eraseRemovedDocument } = await bin();
+    await removeDocumentToBin(A, run, p.doc, null);
+    expect(await n("select count(*) as n from brief_passages where document_id = $1", [p.doc])).toBe(1);
+    await eraseRemovedDocument(A, run, p.doc);
+    expect(await n("select count(*) as n from brief_passages where objective_candidate_id = $1", [objective])).toBe(0);
+  });
+
   it("an item older than 30 days is erased when the bin is checked; a newer one stays", async () => {
     const p = await project();
     const q = await project();

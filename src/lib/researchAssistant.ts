@@ -1,3 +1,5 @@
+import { narrativeFreshnessNote } from "./narrativeFreshness";
+import { loadObjectiveCoverage, qualifiedConclusion } from "./objectiveCoverage";
 import type Anthropic from "@anthropic-ai/sdk";
 import { cachedSystemThen } from "./promptCache";
 import { DATA_TOOLS, HELP_TOOLS, SAMPLE_SIZE_TOOL, TECHNICAL_DOCUMENT_TOOLS, runAssistantTool } from "./researchAssistantTools";
@@ -48,6 +50,8 @@ type NarrativeRow = {
   recommendations_intro: string;
   caveats: string[];
   generated_at: string;
+  /** CE-3: why it may be written for an earlier version of the project (narrativeFreshness.ts), or null. */
+  freshness_note?: string | null;
 } | null;
 
 /**
@@ -76,7 +80,10 @@ async function loadContext(tenantId: string, runId: string) {
        from deck_narratives where run_id = $1`,
       [runId]
     );
-    const narrative: NarrativeRow = narrativeResult.rows[0] ?? null;
+    // CE-3: a narrative written for an earlier version of the project reaches the assistant qualified.
+    const narrative: NarrativeRow = narrativeResult.rows[0]
+      ? { ...narrativeResult.rows[0], freshness_note: await narrativeFreshnessNote(client, runId) }
+      : null;
 
     // synthesized_insights has no theme column of its own (it's a
     // cross-theme triangulation, see migration 0027's doc comment on
@@ -112,18 +119,17 @@ async function loadContext(tenantId: string, runId: string) {
       [runId, MAX_RECOMMENDATIONS_FOR_CONTEXT]
     );
 
-    const objectiveValidationsResult = await client.query<{
-      item_kind: "objective" | "decision";
-      item_text: string;
-      status: "resolved" | "partial" | "gap";
-      conclusion: string;
-    }>(
-      `select item_kind, item_text,
-              case when inferred then 'inferred' else status end as status,
-              conclusion
-       from objective_validations where run_id = $1 order by item_kind, item_order`,
-      [runId]
-    );
+    // Through the coverage owner (CE-1): an out-of-date check reaches the assistant qualified, so it
+    // is not quoted as a current verdict.
+    const coverage = await loadObjectiveCoverage(client, runId);
+    const objectiveValidationsResult = {
+      rows: coverage.rows.map((r) => ({
+        item_kind: r.item_kind,
+        item_text: r.item_text,
+        status: r.inferred ? ("inferred" as const) : r.status,
+        conclusion: qualifiedConclusion(r, coverage.freshness),
+      })),
+    };
 
     // Same accepted-evidence boundary the Insights Report exports use
     // (status = 'accepted' and verdict_tier in robust/use_with_caution --
@@ -194,6 +200,7 @@ function buildContextBlock(context: Awaited<ReturnType<typeof loadContext>>): st
       .join("\n");
     parts.push(
       "Generated Insights Report narrative (the live, exported report; pillar indexes below match this order):\n" +
+        (narrative.freshness_note ? `Note: ${narrative.freshness_note}\n` : "") +
         `Executive summary: ${narrative.executive_summary}\n` +
         `Situation: ${narrative.situation}\n` +
         `Complication: ${narrative.complication}\n` +

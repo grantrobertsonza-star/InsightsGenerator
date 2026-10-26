@@ -152,6 +152,8 @@ const handlers = {
       priority: "medium",
       assumptions_and_risks: "Assumes the evidence holds.",
       alternatives_considered: "Wait for more evidence.",
+      // CE-2: the first numbered decision, so replayed recommendations record a decision served.
+      decision_indices: [0],
     })),
   }),
   record_narrative: (_content, system) => {

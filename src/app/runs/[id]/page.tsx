@@ -46,7 +46,6 @@ import { FigureChecksProvider, FigureCheckNotice } from "./FigureCheckNotice";
 import type { WordingEdits } from "./FindingsTable";
 import {
   generateObjectiveValidation,
-  type ObjectiveValidation,
 } from "@/lib/objectiveValidator";
 import { generateMethodologySummary } from "@/lib/methodologyExtractor";
 import { latestMethodologyFailure } from "@/lib/methodologyStatus";
@@ -133,6 +132,10 @@ import { isRereadSuggestion } from "@/lib/briefFillText";
 import { likelyRestates } from "@/lib/objectiveSimilarity";
 import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources";
 import { getDocumentRoles } from "@/lib/researchQualityRepository";
+import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
+import { loadBriefPassages, passageSourceText } from "@/lib/briefPassages";
+import { loadRecommendationDecisions, type ServedDecision } from "@/lib/recommendationDecisions";
+import { loadObjectiveCoverage, coverageFreshnessNote, type StoredCoverageRow, type CoverageFreshness } from "@/lib/objectiveCoverage";
 import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
 import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
@@ -1641,6 +1644,8 @@ type SynthesizedRecommendation = {
   /** GT-007: the decisions it was written for, and whether they are earlier or unrecorded. */
   decision_context: string | null;
   decision_state: "earlier" | "unknown" | null;
+  /** CE-2: the decisions it serves; undefined before migration 0120. */
+  served_decisions?: ServedDecision[];
 };
 
 type RecommendationQuality = {
@@ -1744,7 +1749,8 @@ async function getSynthesizedRecommendations(
        order by si.quality_score desc nulls last, r.created_at, r.id`,
       [runId],
     );
-    return result.rows;
+    const served = await loadRecommendationDecisions(client, runId, result.rows.map((r) => r.id));
+    return result.rows.map((r) => (served ? { ...r, served_decisions: served.get(r.id) ?? [] } : r));
   });
   const support = await supportPromise;
   return rows.map((row) => ({ ...row, support: support.statusOf(row.synthesized_insight_id) }));
@@ -1804,6 +1810,8 @@ type StoryNarrative = {
   recommendations_intro: string;
   caveats: string[];
   generated_at: string;
+  /** CE-3: why the narrative may not be written for the project as it now stands (narrativeFreshness.ts), or null. */
+  freshness_note: string | null;
 };
 
 /**
@@ -1817,13 +1825,14 @@ async function getStoryNarrative(
 ): Promise<StoryNarrative | null> {
   const TENANT_ID = await requireTenantId();
   return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<StoryNarrative>(
+    const result = await client.query<Omit<StoryNarrative, "freshness_note">>(
       `select executive_summary, situation, complication, question, governing_thought, pillars,
               recommendations_intro, caveats, generated_at
        from deck_narratives where run_id = $1`,
       [runId],
     );
-    return result.rows[0] ?? null;
+    if (!result.rows[0]) return null;
+    return { ...result.rows[0], freshness_note: await narrativeFreshnessNote(client, runId) };
   });
 }
 
@@ -1842,39 +1851,10 @@ async function getAssistantMessages(runId: string): Promise<AssistantChatMessage
  */
 async function getObjectiveValidations(
   runId: string,
-): Promise<ObjectiveValidation[]> {
+): Promise<{ rows: StoredCoverageRow[]; freshness: CoverageFreshness }> {
   const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    // OBJ-REV-012: evidence_digest_degraded (migration 0087) is migration-guarded with a
-    // catalog probe rather than try/catch - a failed SELECT (the column doesn't exist
-    // pre-migration) would abort the rest of this transaction, taking a plain fallback query
-    // down with it, the same failure mode this fix's own package (OBJ-REV-007) had to correct
-    // elsewhere. The catalog check below cannot itself fail the transaction.
-    const colCheck = await client.query<{ exists: boolean }>(
-      `select exists (
-         select 1 from information_schema.columns
-         where table_name = 'objective_validations' and column_name = 'evidence_digest_degraded'
-       ) as "exists"`,
-    );
-    if (colCheck.rows[0]?.exists === true) {
-      const result = await client.query<ObjectiveValidation>(
-        `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, evidence_digest_degraded
-         from objective_validations
-         where run_id = $1
-         order by item_kind, item_order`,
-        [runId],
-      );
-      return result.rows;
-    }
-    const result = await client.query<Omit<ObjectiveValidation, "evidence_digest_degraded">>(
-      `select item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred
-       from objective_validations
-       where run_id = $1
-       order by item_kind, item_order`,
-      [runId],
-    );
-    return result.rows.map((row) => ({ ...row, evidence_digest_degraded: false }));
-  });
+  // One owner for reading coverage and whether it is still current (objectiveCoverage.ts, CE-1).
+  return withTenantRead(TENANT_ID, (client) => loadObjectiveCoverage(client, runId));
 }
 
 type ApiUsageRow = {
@@ -3203,7 +3183,8 @@ export default async function RunPage({
     apiUsage,
     findingHistory,
     storyNarrative,
-    objectiveValidations,
+    objectiveCoverage,
+    briefPassages,
     assistantMessages,
     programs,
     apiUsageBatches,
@@ -3250,6 +3231,7 @@ export default async function RunPage({
     timing("findingHistory", getFindingHistory(id)),
     timing("storyNarrative", getStoryNarrative(id)),
     timing("objectiveValidations", getObjectiveValidations(id)),
+    timing("briefPassages", requireTenantId().then((t) => withTenantRead(t, (client) => loadBriefPassages(client, id)))),
     timing("assistantMessages", getAssistantMessages(id)),
     timing("programs", getPrograms()),
     timing("apiUsageBatches", getApiUsageBatches(id)),
@@ -3278,6 +3260,8 @@ export default async function RunPage({
       ),
     ),
   ]);
+  const objectiveValidations = objectiveCoverage.rows;
+  const objectiveCoverageNote = coverageFreshnessNote(objectiveCoverage.freshness);
   if (!run) {
     notFound();
   }
@@ -4083,6 +4067,11 @@ export default async function RunPage({
             {/* FND-001 / REP-OUT-001: counts each support status separately; unknown is never
                 reported as changed or removed. Placed above the executive summary and governing
                 thought, which it qualifies, so the saved framing never reads unqualified. */}
+            {storyNarrative.freshness_note && (
+              <p role="status" data-testid="narrative-freshness" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {storyNarrative.freshness_note}
+              </p>
+            )}
             <NarrativeSupportBanner
               insightIds={storyNarrative.pillars.flatMap((pillar) => pillar.insight_ids)}
               supportById={Object.fromEntries(
@@ -4162,6 +4151,11 @@ export default async function RunPage({
               Objectives &amp; decisions, checked against the evidence (
               {objectiveValidations.length})
             </p>
+            {objectiveCoverageNote && (
+              <p role="status" data-testid="report-coverage-stale" className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                {objectiveCoverageNote}
+              </p>
+            )}
             <ul className="space-y-2">
               {objectiveValidations.map((item, index) => {
                 const badge =
@@ -4337,6 +4331,7 @@ export default async function RunPage({
           status: c.status,
           edited: c.edited,
           sourceRemovedAt: c.source_removed_at,
+          passages: (briefPassages?.objectives.get(c.id) ?? []).map((p) => ({ quote: p.quote, source: passageSourceText(p), verified: p.verified })),
           similarTo: similarToOf(c),
           scores:
             q && c.status === "accepted"
@@ -5677,7 +5672,7 @@ export default async function RunPage({
                     {(() => {
                       const statedLines = statedObjectiveLines;
                       const statedIds = statedObjectiveIds;
-                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred }));
+                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred, candidateId: v.objective_candidate_id, stale: objectiveCoverageNote !== null }));
                       const statedIdSet = new Set(statedIds.filter((x): x is string => !!x));
                       const others = objectiveRows.filter((r) => !statedIdSet.has(r.id));
                       return (
@@ -5718,6 +5713,7 @@ export default async function RunPage({
                           (run.decision_statement && run.decision_statement.trim()),
                       )}
                       validations={objectiveValidations}
+                      staleNote={objectiveCoverageNote}
                       insights={synthesizedInsights.map((i) => ({ id: i.id, headline: i.headline, review_status: i.review_status }))}
                     />
                   </Pane>
@@ -5727,6 +5723,7 @@ export default async function RunPage({
                     <ObjectiveCoverage
                       runId={id}
                       validations={objectiveValidations}
+                      staleNote={objectiveCoverageNote}
                       insights={synthesizedInsights.map((i) => ({
                         id: i.id,
                         headline: i.headline,

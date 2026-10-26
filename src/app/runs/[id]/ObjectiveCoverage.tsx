@@ -14,6 +14,9 @@ type Validation = {
   inferred: boolean;
   /** OBJ-REV-012: the conclusion was generated while direct data-evidence retrieval was failing. */
   evidence_digest_degraded: boolean;
+  /** CE-1: the accepted candidate this row judged (null for an item from the project's own text, or before migration 0119). */
+  objective_candidate_id?: string | null;
+  decision_candidate_id?: string | null;
 };
 type InsightLite = { id: string; headline: string; review_status: string };
 
@@ -46,11 +49,14 @@ export default function ObjectiveCoverage({
   validations,
   insights,
   hasObjectiveOrDecision,
+  staleNote = null,
 }: {
   runId: string;
   validations: Validation[];
   insights: InsightLite[];
   hasObjectiveOrDecision: boolean;
+  /** CE-1: why these verdicts are not known to be current (objectiveCoverage.ts), or null. */
+  staleNote?: string | null;
 }) {
   const { selected } = useObjectiveSelection();
   const { pending, error, run } = useCoverageCheck(runId);
@@ -86,10 +92,11 @@ export default function ObjectiveCoverage({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">Coverage of your objectives</h3>
           <p className="mt-1 text-xs text-muted">
-            Each stated objective and decision is checked against the accepted insights. This updates
-            after each analysis run.
+            Each stated objective and decision is checked against the accepted insights. It updates after
+            each analysis run and when objectives change; after you accept or reject insights, update it.
           </p>
         </div>
+        <StaleNote note={validations.length > 0 ? staleNote : null} />
         {hasObjectiveOrDecision && (
           <button className={btn} disabled={pending} onClick={() => run(checkObjectiveCoverage)}>
             {pending ? "Working..." : validations.length > 0 ? "Check again" : "Check now"}
@@ -218,17 +225,20 @@ export function SelectedObjectiveCoverage({
   validations,
   insights,
   hasObjectiveOrDecision,
+  staleNote = null,
 }: {
   runId: string;
   validations: Validation[];
   insights: InsightLite[];
   hasObjectiveOrDecision: boolean;
+  staleNote?: string | null;
 }) {
   const { selected } = useObjectiveSelection();
   const { pending, error, run } = useCoverageCheck(runId);
   if (!selected) return null;
   const byId = new Map(insights.map((i) => [i.id, i.headline]));
-  const matching = validations.filter((v) => sameObjective(selected, { text: v.item_text }));
+  // By the candidate's id where the row records it (CE-1), by its wording otherwise.
+  const matching = validations.filter((v) => sameObjective(selected, { id: v.objective_candidate_id ?? v.decision_candidate_id ?? null, text: v.item_text }));
   // The same condition as the right pane's button: there is something to check against.
   const canCheck = hasObjectiveOrDecision && (validations.length > 0 || insights.some((i) => i.review_status === "accepted"));
   return (
@@ -246,6 +256,7 @@ export function SelectedObjectiveCoverage({
           </button>
         )}
       </div>
+      <StaleNote note={matching.length > 0 ? staleNote : null} />
       {matching.length > 0 ? (
         <ul className="space-y-3">
           {matching.map((v) => (
@@ -263,5 +274,15 @@ export function SelectedObjectiveCoverage({
       )}
       {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </section>
+  );
+}
+
+/** CE-1: coverage that is not known to be current says so beside its verdicts, never silently. */
+function StaleNote({ note }: { note: string | null }) {
+  if (!note) return null;
+  return (
+    <p role="status" data-testid="coverage-stale" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      {note}
+    </p>
   );
 }

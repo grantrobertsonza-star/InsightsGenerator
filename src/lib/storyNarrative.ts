@@ -1,3 +1,4 @@
+import { narrativeFingerprint, recordNarrativeInputs } from "./narrativeFreshness";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -201,6 +202,10 @@ export async function generateStoryNarrative(
   tenantId: string,
   runId: string,
 ): Promise<DeckNarrative> {
+  // CE-3: what this narrative is written against, read before the model is asked. A change made while it
+  // is being written leaves the saved fingerprint older than the project, so the narrative reads as
+  // written for an earlier version (narrativeFreshness.ts), never as current.
+  const writtenFor = await withTenant(tenantId, (client) => narrativeFingerprint(client, runId));
   const { run, insights: acceptedInsights, recommendations: acceptedRecommendations } = await withTenant(
     tenantId,
     async (client) => {
@@ -688,6 +693,7 @@ export async function generateStoryNarrative(
     if (storeCheck) {
       await client.query("update deck_narratives set figure_check = $2 where run_id = $1", [runId, JSON.stringify(finalCheck)]);
     }
+    await recordNarrativeInputs(client, runId, writtenFor);
   });
 
   return narrative;

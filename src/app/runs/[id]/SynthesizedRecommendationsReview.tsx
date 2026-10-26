@@ -1,5 +1,7 @@
 "use client";
 
+import { servedDecisionsText, type ServedDecision } from "@/lib/recommendationDecisions";
+import EvidenceTrailDialog from "./EvidenceTrailDialog";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { actionFailureMessage, attempt, CONNECTION_LOST_MESSAGE } from "./actionFailure";
 import { useRecommendationEdit } from "./recommendationEditing";
@@ -57,6 +59,8 @@ type Recommendation = {
   /** GT-007: decisions it was written for (decisionContext.ts rule), as the main-list exports say it. */
   decision_context?: string | null;
   decision_state?: "earlier" | "unknown" | null;
+  /** CE-2: the decisions it serves (recommendationDecisions.ts); undefined before migration 0120. */
+  served_decisions?: ServedDecision[];
   // The recommendation's own quality scores (migration 0045). Impact is
   // shown beside the total, not in it.
   rec_actionability_score?: number | null;
@@ -498,6 +502,7 @@ function RecommendationCard({
       else after?.();
     });
 
+  const [tracing, setTracing] = useState(false);
   const isAccepted = recommendation.status === "accepted";
   const isRejected = recommendation.status === "rejected";
 
@@ -586,6 +591,19 @@ function RecommendationCard({
           <p className="-mt-2 text-xs text-muted">
             From insight: <span className="font-medium text-foreground">{recommendation.synthesized_insight_headline}</span>
           </p>
+          <div className="-mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted" data-testid="recommendation-serves">
+              Serves: <span className="font-medium text-foreground">{servedDecisionsText(recommendation.served_decisions, recommendation.served_decisions !== undefined)}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setTracing(true)}
+              className="rounded-md border border-primary/40 bg-primary-light/40 px-2 py-1 text-xs font-medium text-primary hover:bg-primary-light"
+            >
+              Trace the evidence
+            </button>
+          </div>
+          {tracing && <EvidenceTrailDialog runId={runId} recommendationId={recommendation.id} onClose={() => setTracing(false)} />}
           {recommendation.support && <SupportStatusNotice support={recommendation.support} subject="recommendation" />}
           {recommendation.decision_state && (
             <p data-testid="recommendation-decision-note" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">

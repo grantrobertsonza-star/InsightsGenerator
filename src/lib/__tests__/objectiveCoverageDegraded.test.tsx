@@ -68,3 +68,25 @@ describe("Review Objectives coverage degraded qualification (OBJ-REV-012)", () =
     expect(renderSelected([validation(0, "Degraded objective", true)])).toBe("");
   });
 });
+
+// CE-1: coverage not known to be current says so in the pane and with the selected objective, and the
+// selected objective's verdict is found by its candidate id even when its wording has changed since.
+describe("Review Objectives coverage freshness (CE-1)", () => {
+  const note = "Out of date: the accepted insights changed after this evidence check, so its verdicts may no longer hold. Update coverage to check again.";
+  it("shows the out-of-date note in the pane and under the selected objective, and nothing when current", () => {
+    selection.selected = null;
+    const v = [validation(0, "Degraded objective", false)];
+    const pane = renderToStaticMarkup(<ObjectiveCoverage runId="r1" validations={v} insights={[{ id: "i1", headline: "Speed beats price", review_status: "accepted" }]} hasObjectiveOrDecision staleNote={note} />);
+    expect(pane).toContain('data-testid="coverage-stale"');
+    expect(text(pane)).toContain(note);
+    expect(render(v)).not.toContain("coverage-stale");
+    selection.selected = { id: null, text: "Degraded objective" };
+    const tile = renderToStaticMarkup(<SelectedObjectiveCoverage runId="r1" hasObjectiveOrDecision validations={v} insights={[]} staleNote={note} />);
+    expect(text(tile)).toContain(note);
+  });
+  it("matches the selected objective to its verdict by candidate id", () => {
+    selection.selected = { id: "cand-1", text: "Reworded since the check" };
+    const v = [{ ...validation(0, "Original wording", false), objective_candidate_id: "cand-1" }];
+    expect(text(renderSelected(v))).toContain(`${longConclusion} (Original wording)`);
+  });
+});

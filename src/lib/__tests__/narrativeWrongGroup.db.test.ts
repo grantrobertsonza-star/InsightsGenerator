@@ -245,5 +245,34 @@ describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding, generator 
     expect(await summary()).toBe("Leaders give an NPS of 25.");
     expect(await latestNarrativeFailure(TENANT, run)).toBeNull();
   });
+
+  // CE-3 (evidence chain): the saved narrative records what it was written for. Editing the business
+  // problem, accepting a new objective, or a new accepted insight qualifies it wherever it is read
+  // (before, the narrative read as current after any of them); regenerating clears it; a narrative saved
+  // before its inputs were recorded reads as not known to be current.
+  it("CE-3: a narrative written before the business problem, objectives or insights changed says so, and regenerating clears it", async () => {
+    model.soWhat = "Leadership NPS is 25.";
+    const run = await runWithInsight("Leadership NPS is 25 (95% interval 14.4 to 35.6, base 200).");
+    const { generateStoryNarrative } = await import("../storyNarrative");
+    const { narrativeFreshnessNote } = await import("../narrativeFreshness");
+    const note = async () => {
+      const client = await db.pool.connect();
+      try {
+        return await narrativeFreshnessNote(client, run);
+      } finally {
+        client.release();
+      }
+    };
+    await generateStoryNarrative(TENANT, run);
+    expect(await note()).toBeNull();
+    await q("update runs set business_problem = 'Members are leaving' where id = $1", [run]);
+    expect(await note()).toMatch(/^Written for an earlier version of the project: the business problem changed after this report narrative was generated/);
+    await q("insert into objective_candidates (tenant_id, run_id, candidate_text, rationale, source, status) values ($1, $2, 'Understand advocacy', 'r', 'researcher_authored', 'accepted')", [TENANT, run]);
+    expect(await note()).toMatch(/the business problem and the objectives changed/);
+    await generateStoryNarrative(TENANT, run);
+    expect(await note()).toBeNull();
+    await q("update deck_narratives set inputs = null where run_id = $1", [run]);
+    expect(await note()).toMatch(/^Not known to be current/);
+  });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("narrative wrong-group grounding, generator retry, rounding and invented ranges (real database)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

@@ -45,6 +45,8 @@ export type ObjectiveRow = {
   similarTo?: string | null;
   /** When a file this objective was drawn from was removed to the bin (migration 0115). */
   sourceRemovedAt?: string | null;
+  /** CE-4: the brief or proposal passage it came from, with where and whether it was found (briefPassages.ts). */
+  passages?: { quote: string; source: string; verified: boolean }[];
 };
 
 export const scoreCellClass: Record<number, string> = {

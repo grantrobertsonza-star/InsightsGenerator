@@ -4,6 +4,7 @@ import { withTenant } from "./db";
 import { capWords, parseNumberedItems } from "./text";
 import type { ConfidenceTier, QualityTier } from "./tiers";
 import { currentItemKey, evidenceDigest } from "./objectiveEvidence";
+import { coverageFingerprint, coverageIdentitySchema, readCoverageInputs } from "./objectiveCoverage";
 
 type EvidenceInsight = {
   id: string;
@@ -16,6 +17,9 @@ type EvidenceInsight = {
 };
 
 export type ValidationStatus = "resolved" | "partial" | "gap";
+
+/** The inputs changed between reading them and saving the result (CE-1); nothing was written. */
+export class CoverageInputsChangedError extends Error {}
 
 export type ObjectiveValidation = {
   item_kind: "objective" | "decision";
@@ -85,37 +89,14 @@ export async function clearObjectiveValidations(tenantId: string, runId: string)
  * conclusion rather than one blended verdict standing in for all of them.
  */
 export async function generateObjectiveValidation(tenantId: string, runId: string): Promise<ObjectiveValidation[]> {
-  const { run, insights, candidates, decisionCandidates } = await withTenant(tenantId, async (client) => {
-    const runResult = await client.query<{
-      research_objective: string | null;
-      decision_statement: string | null;
-    }>("select research_objective, decision_statement from runs where id = $1", [runId]);
-
-    const insightsResult = await client.query<EvidenceInsight>(
-      `select si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier
-       from synthesized_insights si
-       where si.run_id = $1 and si.review_status = 'accepted'
-       order by si.quality_score desc nulls last, si.created_at`,
-      [runId]
-    );
-
-    const candidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from objective_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
-      [runId]
-    );
-
-    const decisionCandidatesResult = await client.query<{ id: string; candidate_text: string; source: string }>(
-      "select id, candidate_text, source from decision_candidates where run_id = $1 and status = 'accepted' order by created_at, id",
-      [runId]
-    );
-
-    return {
-      run: runResult.rows[0],
-      insights: insightsResult.rows,
-      candidates: candidatesResult.rows,
-      decisionCandidates: decisionCandidatesResult.rows,
-    };
-  });
+  // The inputs and their fingerprints come from one read, so the coverage records exactly what it was
+  // assessed against (objectiveCoverage.ts, CE-1).
+  const inputs = await withTenant(tenantId, (client) =>
+    readCoverageInputs<EvidenceInsight>(client, runId, "si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier"),
+  );
+  const run = inputs.runFound ? inputs.run : undefined;
+  const { insights, objectives: candidates, decisions: decisionCandidates } = inputs;
+  const assessedAgainst = coverageFingerprint(inputs);
 
   if (!run) {
     throw new Error("Project not found");
@@ -367,7 +348,22 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   // would need a savepoint around every single insert. Instead the column's existence is
   // checked ONCE, with a catalog query that cannot itself fail the transaction, and that one
   // answer picks which insert shape the whole loop uses.
+  // CE-1: written only if nothing it was assessed against changed while the model was answering.
+  // Saving takes a transaction-scoped lock per project (an advisory lock: it needs no write privilege
+  // on runs, and every coverage save takes the same one), then reads the inputs again under it, so two
+  // checks that overlap are saved one after the other and the older one's verdicts can never replace
+  // the newer one's. A change committed after this save makes the stored fingerprints differ, so
+  // readers show the coverage as out of date (objectiveCoverage.ts).
   await withTenant(tenantId, async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended('objective_coverage:' || $1::text, 0))", [runId]);
+    const found = await client.query("select 1 from runs where id = $1", [runId]);
+    if (found.rowCount !== 1) throw new Error("Project not found");
+    const now = coverageFingerprint(await readCoverageInputs(client, runId));
+    if (JSON.stringify(now) !== JSON.stringify(assessedAgainst)) {
+      throw new CoverageInputsChangedError(
+        "The insights, objectives or decisions changed while the evidence check was running, so its result was not saved. Update coverage to check again.",
+      );
+    }
     const colCheck = await client.query<{ exists: boolean }>(
       `select exists (
          select 1 from information_schema.columns
@@ -375,9 +371,40 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
        ) as "exists"`,
     );
     const hasDegradedColumn = colCheck.rows[0]?.exists === true;
+    const identity = await coverageIdentitySchema(client);
     await client.query("delete from objective_validations where run_id = $1", [runId]);
-    for (const validation of validations) {
-      if (hasDegradedColumn) {
+    for (const [index, validation] of validations.entries()) {
+      if (identity) {
+        const item = items[index];
+        const row = await client.query<{ id: string }>(
+          `insert into objective_validations
+             (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at,
+              evidence_digest_degraded, objective_candidate_id, decision_candidate_id, inputs)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), $10, $11, $12, $13)
+           returning id`,
+          [
+            tenantId,
+            runId,
+            validation.item_kind,
+            validation.item_order,
+            validation.item_text,
+            validation.status,
+            validation.conclusion,
+            validation.synthesized_insight_ids,
+            validation.inferred,
+            evidenceDigestDegraded,
+            item.kind === "objective" ? item.candidateId : null,
+            item.kind === "decision" ? item.candidateId : null,
+            JSON.stringify(assessedAgainst),
+          ]
+        );
+        for (const [position, insightId] of validation.synthesized_insight_ids.entries()) {
+          await client.query(
+            "insert into objective_validation_insights (validation_id, synthesized_insight_id, tenant_id, position) values ($1, $2, $3, $4)",
+            [row.rows[0].id, insightId, tenantId, position],
+          );
+        }
+      } else if (hasDegradedColumn) {
         await client.query(
           `insert into objective_validations
              (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inferred, generated_at, evidence_digest_degraded)
@@ -429,8 +456,13 @@ export async function refreshObjectiveValidationQuietly(tenantId: string, runId:
   try {
     const ready = await withTenant(tenantId, async (client) => {
       const r = await client.query<{ ok: boolean }>(
+        // The same items generateObjectiveValidation judges: accepted candidates, or the project's own
+        // text when none is accepted. Checking the text alone (as before CE-1) cleared the coverage of a
+        // project whose objectives exist only as accepted candidates.
         `select (
-           (coalesce(trim(r.research_objective), '') <> '' or coalesce(trim(r.decision_statement), '') <> '')
+           (coalesce(trim(r.research_objective), '') <> '' or coalesce(trim(r.decision_statement), '') <> ''
+            or exists (select 1 from objective_candidates c where c.run_id = r.id and c.status = 'accepted')
+            or exists (select 1 from decision_candidates d where d.run_id = r.id and d.status = 'accepted'))
            and exists (select 1 from synthesized_insights si where si.run_id = r.id and si.review_status = 'accepted')
          ) as ok
          from runs r where r.id = $1`,

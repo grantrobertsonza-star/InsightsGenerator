@@ -1,3 +1,4 @@
+import { loadObjectiveLines, objectivesFramingLine, OBJECTIVES_ARE_CONTEXT } from "./projectObjectives";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -246,15 +247,18 @@ export async function synthesizeInsights(tenantId: string, runId: string): Promi
 
   if (eligible.length < MIN_CLUSTER_SIZE) return;
 
+  // CE-2: the accepted objectives (or the free text), in both modes, as context only.
+  const objectiveLines = await withTenant(tenantId, (client) => loadObjectiveLines(client, runId, run.research_objective));
   const framingBlock =
     run.entry_point === "validate"
       ? `This project's confirmed decision(s): "${run.decision_statement}". Favor clusters that bear on ` +
         "these decision(s), but relevance is a tiebreaker, not a strict filter: a pre-insight that clusters " +
         "well with others but whose decision-relevance is unclear can still be grouped, the researcher " +
-        "reviews what comes out of this, don't pre-reject it here.\n\n"
+        "reviews what comes out of this, don't pre-reject it here.\n\n" +
+        (objectivesFramingLine(objectiveLines) ? `${objectivesFramingLine(objectiveLines)} ${OBJECTIVES_ARE_CONTEXT}\n\n` : "")
       : [
           run.business_problem ? `Business problem: "${run.business_problem}"` : null,
-          run.research_objective ? `Research objective: "${run.research_objective}"` : null,
+          objectivesFramingLine(objectiveLines),
           "No decision exists yet for this project. Favor clusters that bear on the problem/objective " +
             "above (or, if neither was given, on what a stakeholder in this space would plausibly act on), " +
             "but relevance is a tiebreaker, not a strict filter: don't pre-reject a pre-insight from " +

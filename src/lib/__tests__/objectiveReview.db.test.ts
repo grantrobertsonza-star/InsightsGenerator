@@ -18,6 +18,9 @@ vi.mock("@/lib/methodologyStatus", async () => await import("../methodologyStatu
 
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/docxReport", async () => await import("../docxReport"));
+vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
+vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/caveatLabels", async () => await import("../caveatLabels"));
 vi.mock("@/lib/supportStatus", async () => await import("../supportStatus"));
 vi.mock("@/lib/supportStatusShared", async () => await import("../supportStatusShared"));

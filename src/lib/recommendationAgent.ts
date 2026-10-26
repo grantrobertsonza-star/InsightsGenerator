@@ -9,6 +9,7 @@ import { mapWithConcurrency } from "./concurrency";
 import { figureCheck, type FigureCheck } from "./numberTrace";
 import { recommendationDecisionContextAvailable } from "./decisionContext";
 import { figureCheckAvailable } from "./figureChecks";
+import { DECISION_INDICES_FIELD, decisionsPromptBlock, loadDecisionItems, parseDecisionIndices, storeRecommendationDecisions, type DecisionItem } from "./recommendationDecisions";
 
 const MAX_INSIGHTS_FOR_PROMPT = 60;
 
@@ -117,6 +118,8 @@ type RecommendationFields = {
   priority: Priority;
   assumptions_and_risks: string;
   alternatives_considered: string;
+  /** CE-2: indices into the numbered decisions the prompt listed; empty when the model named none. */
+  decisionIndices: number[];
 };
 
 /**
@@ -141,6 +144,7 @@ async function insertOncePerAnchor(
   runId: string,
   rows: { anchorId: string; fields: RecommendationFields }[],
   decisionContext: string,
+  decisions: DecisionItem[],
 ): Promise<string[]> {
   const covered: string[] = [];
   const seen = new Set<string>();
@@ -153,12 +157,13 @@ async function insertOncePerAnchor(
     seen.add(anchorId);
     const locked = await client.query(`select id from ${anchorTable} where id = $1 and run_id = $2 for update`, [anchorId, runId]);
     if (locked.rows.length === 0) continue;
-    await client.query(
+    const inserted = await client.query<{ id: string }>(
       `insert into recommendations
          (tenant_id, run_id, ${anchorColumn}, action_text, owner_role, owner_feasibility_note, timeline,
           metric, priority, assumptions_and_risks, alternatives_considered, source, status${storeCheck ? ", figure_check" : ""}${storeContext ? ", decision_context" : ""})
        select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ai_suggested', 'accepted'${storeCheck ? ", $12::jsonb" : ""}${storeContext ? `, $${storeCheck ? 13 : 12}::text` : ""}
-       where not exists (select 1 from recommendations r where r.${anchorColumn} = $3)`,
+       where not exists (select 1 from recommendations r where r.${anchorColumn} = $3)
+       returning id`,
       [
         tenantId,
         runId,
@@ -175,6 +180,11 @@ async function insertOncePerAnchor(
         ...(storeContext ? [decisionContext] : []),
       ]
     );
+    // CE-2: in the same transaction, the decisions this action serves (none when a retry found it written).
+    const recommendationId = inserted.rows[0]?.id;
+    if (recommendationId) {
+      await storeRecommendationDecisions(client, tenantId, recommendationId, fields.decisionIndices.map((i) => decisions[i]), "model");
+    }
     covered.push(anchorId);
   }
   return covered;
@@ -240,6 +250,8 @@ export async function generateRecommendations(tenantId: string, runId: string): 
   }
   // The decisions this prompt is built from; stored with each recommendation written below.
   const decisionStatement = run.decision_statement;
+  // CE-2: the same decisions, numbered, so the model can name the ones each action serves.
+  const decisions = await withTenant(tenantId, (client) => loadDecisionItems(client, runId));
 
   const eligible = await withTenant(tenantId, async (client) => {
     const result = await client.query<EligibleInsight>(
@@ -270,6 +282,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
     priority: Priority;
     assumptions_and_risks: string;
     alternatives_considered: string;
+    decisionIndices: number[];
   };
 
   const chunks: EligibleInsight[][] = [];
@@ -302,10 +315,10 @@ export async function generateRecommendations(tenantId: string, runId: string): 
         // comfortable headroom; claude-sonnet-5 supports far more than this.
         max_tokens: 8192,
         system:
-          "You turn a market research insight into a specific, ownable recommendation, given the decision(s) " +
-          `this project has confirmed: "${run.decision_statement}". Where more than one decision is listed, ` +
-          "tie each recommendation to whichever one it actually serves rather than treating them as " +
-          "interchangeable. Every recommendation must be concrete " +
+          "You turn a market research insight into a specific, ownable recommendation, given the decisions " +
+          `this project has confirmed, numbered:\n${decisionsPromptBlock(decisions)}\n\nTie each recommendation ` +
+          "to whichever decision(s) it actually serves rather than treating them as interchangeable, and " +
+          "name them by index in decision_indices. Every recommendation must be concrete " +
           "enough to put on a task board as it stands: a named owner role, not a department; a real " +
           "timeline, not \"soon\"; a metric that would actually show whether it worked, not a restated " +
           "goal.\n\n" +
@@ -351,6 +364,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
                       priority: { type: "string", enum: ["high", "medium", "low"] },
                       assumptions_and_risks: { type: "string" },
                       alternatives_considered: { type: "string" },
+                      decision_indices: DECISION_INDICES_FIELD,
                     },
                     required: [
                       "index",
@@ -362,6 +376,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
                       "priority",
                       "assumptions_and_risks",
                       "alternatives_considered",
+                      "decision_indices",
                     ],
                   },
                 },
@@ -400,6 +415,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
           typeof raw.assumptions_and_risks === "string" ? raw.assumptions_and_risks.trim() : "";
         const alternatives_considered =
           typeof raw.alternatives_considered === "string" ? raw.alternatives_considered.trim() : "";
+        const decisionIndices = parseDecisionIndices(raw.decision_indices, decisions.length);
 
         if (index === null || !Number.isInteger(index) || index < 0 || index >= batch.length) continue;
         if (
@@ -439,6 +455,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
           priority,
           assumptions_and_risks,
           alternatives_considered,
+          decisionIndices,
         });
       }
 
@@ -453,7 +470,7 @@ export async function generateRecommendations(tenantId: string, runId: string): 
       }
 
       const coveredIds = await withTenant(tenantId, (client) =>
-        insertOncePerAnchor(client, "insights", "insight_id", tenantId, runId, prepared.map((p) => ({ anchorId: p.insightId, fields: p })), decisionStatement)
+        insertOncePerAnchor(client, "insights", "insight_id", tenantId, runId, prepared.map((p) => ({ anchorId: p.insightId, fields: p })), decisionStatement, decisions)
       );
 
       return figureRefusals.length > 0
@@ -515,6 +532,8 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
   if (!run.decision_statement) return;
   // The decisions this prompt is built from; stored with each recommendation written below.
   const decisionStatement = run.decision_statement;
+  // CE-2: the same decisions, numbered, so the model can name the ones each action serves.
+  const decisions = await withTenant(tenantId, (client) => loadDecisionItems(client, runId));
 
   const acceptedEligible = await withTenant(tenantId, async (client) => {
     const result = await client.query<EligibleSynthesizedInsight>(
@@ -561,6 +580,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
     priority: Priority;
     assumptions_and_risks: string;
     alternatives_considered: string;
+    decisionIndices: number[];
   };
 
   const chunks: EligibleSynthesizedInsight[][] = [];
@@ -592,10 +612,10 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
         // so far, not because the per-item cost is any smaller.
         max_tokens: 8192,
         system:
-          "You turn a market research insight into a specific, ownable recommendation, given the decision(s) " +
-          `this project has confirmed: "${run.decision_statement}". Where more than one decision is listed, ` +
-          "tie each recommendation to whichever one it actually serves rather than treating them as " +
-          "interchangeable. Each insight below was already built by clustering several corroborating " +
+          "You turn a market research insight into a specific, ownable recommendation, given the decisions " +
+          `this project has confirmed, numbered:\n${decisionsPromptBlock(decisions)}\n\nTie each recommendation ` +
+          "to whichever decision(s) it actually serves rather than treating them as interchangeable, and " +
+          "name them by index in decision_indices. Each insight below was already built by clustering several corroborating " +
           "pre-insights, so one recommendation should cover the whole cluster, not restate a single member " +
           "of it. Every recommendation must be concrete " +
           "enough to put on a task board as it stands: a named owner role, not a department; a real " +
@@ -643,6 +663,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
                       priority: { type: "string", enum: ["high", "medium", "low"] },
                       assumptions_and_risks: { type: "string" },
                       alternatives_considered: { type: "string" },
+                      decision_indices: DECISION_INDICES_FIELD,
                     },
                     required: [
                       "index",
@@ -654,6 +675,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
                       "priority",
                       "assumptions_and_risks",
                       "alternatives_considered",
+                      "decision_indices",
                     ],
                   },
                 },
@@ -692,6 +714,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
           typeof raw.assumptions_and_risks === "string" ? raw.assumptions_and_risks.trim() : "";
         const alternatives_considered =
           typeof raw.alternatives_considered === "string" ? raw.alternatives_considered.trim() : "";
+        const decisionIndices = parseDecisionIndices(raw.decision_indices, decisions.length);
 
         if (index === null || !Number.isInteger(index) || index < 0 || index >= batch.length) continue;
         if (
@@ -731,6 +754,7 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
           priority,
           assumptions_and_risks,
           alternatives_considered,
+          decisionIndices,
         });
       }
 
@@ -752,7 +776,8 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
           tenantId,
           runId,
           prepared.map((p) => ({ anchorId: p.synthesizedInsightId, fields: p })),
-          decisionStatement
+          decisionStatement,
+          decisions,
         )
       );
 

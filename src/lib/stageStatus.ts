@@ -179,9 +179,11 @@ export type ObjectiveStageInput = {
   /** The record of fills could not be read. */
   fillRecordFailed: boolean;
   /** The evidence check of objectives against findings. */
-  coverage: { text: string; status: "resolved" | "partial" | "gap"; degraded: boolean }[];
+  coverage: { id?: string | null; text: string; status: "resolved" | "partial" | "gap"; degraded: boolean }[];
   /** The last evidence check failed and left no result. */
   coverageError: string | null;
+  /** CE-1: the stored evidence check is not known to be current; its verdicts are not reported as gaps. */
+  coverageStale?: string | null;
 };
 
 export function objectiveStageStatus(input: ObjectiveStageInput): StageStatus {
@@ -207,9 +209,10 @@ export function objectiveStageStatus(input: ObjectiveStageInput): StageStatus {
   if (live.length === 0) items.push({ subject: "", key: "none", state: "needs_you", text: "Add the business problem and your objectives, or fill them in from a brief or proposal.", target: { kind: "context_form" } });
 
   if (input.coverageError) items.push({ subject: "", key: "coverage-error", state: "couldnt_check", text: `The evidence check did not finish: ${input.coverageError.replace(/\.$/, "")}`, target: { kind: "none" } });
+  if (input.coverageStale) items.push({ subject: "", key: "coverage-stale", state: "needs_you", text: input.coverageStale, target: { kind: "none" } });
   const gaps = input.coverage.filter((c) => c.status === "gap");
   const partial = input.coverage.filter((c) => c.status === "partial");
-  for (const c of gaps) items.push({ subject: "", key: `gap:${c.text}`, state: "caveat", text: `The evidence does not yet answer ${short(c.text)}`, target: { kind: "objective", id: null, text: c.text } });
+  for (const c of gaps) items.push({ subject: "", key: `gap:${c.text}`, state: "caveat", text: `The evidence does not yet answer ${short(c.text)}${input.coverageStale ? " (from an out-of-date check)" : ""}`, target: { kind: "objective", id: c.id ?? null, text: c.text } });
   if (partial.length > 0) items.push({ subject: "", key: "partial", state: "caveat", text: `${plural(partial.length, "objective is", "objectives are")} only partly answered by the evidence`, target: { kind: "none" } });
   if (input.coverage.some((c) => c.degraded)) items.push({ subject: "", key: "degraded", state: "caveat", text: "The evidence check ran while some evidence could not be read; its conclusions may be incomplete.", target: { kind: "none" } });
 
