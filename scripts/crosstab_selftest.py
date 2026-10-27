@@ -741,5 +741,36 @@ rkeep = psf.crosstab(dk_bytes, "dk.sav", dict(dk_args, excludeDk=False))
 check("with non-answers included, 'DontKnow' and 'Not_applicable' stay", "DontKnow" in [c["name"] for c in rkeep["columns"]] and "Not_applicable" in [r["label"] for r in data_rows(rkeep["questions"][0])])
 check("ordinary words that start like a non-answer are still answers", not any(psf._DK_RE.match(x) for x in ("Donations", "Nature", "Domestic", "Noise", "Yes", "No")))
 
+# Batch 48: the Mean tick adds a mean row above each rating-scale question, and names the others.
+rk48 = np.random.default_rng(48)
+n48 = 500
+sat48 = rk48.integers(0, 11, n48).astype(float)
+sat48[rk48.random(n48) < 0.08] = 99.0  # don't know
+d48 = pd.DataFrame({"seg": rk48.choice([1, 2], n48).astype(float), "sat": sat48, "region": rk48.choice([1, 2, 3], n48).astype(float), "w": np.exp(rk48.normal(0, 0.4, n48))})
+p48 = os.path.join(tempfile.mkdtemp(), "m48.sav")
+sat_labels = {float(k): str(k) for k in range(11)}; sat_labels[99.0] = "Don't know"
+pyreadstat.write_sav(d48, p48, variable_value_labels={"seg": {1: "Seg A", 2: "Seg B"}, "sat": sat_labels, "region": {1: "North", 2: "South", 3: "East"}})
+b48 = open(p48, "rb").read()
+a48 = {"columnVars": ["seg"], "rowItems": [{"key": "sat", "label": "Satisfaction", "vars": ["sat"]}, {"key": "region", "label": "Region", "vars": ["region"]}], "weightVar": "w", "correction": "none"}
+r48 = psf.crosstab(b48, "m48.sav", dict(a48, meanRows=True))
+qs48 = {q["key"]: q for q in r48["questions"]}
+sat_rows = [r for r in qs48["sat"]["rows"] if not r.get("isBase")]
+check("Mean tick: the first row after the bases is the mean", sat_rows[0].get("autoMean") is True and sat_rows[0]["label"] == "Mean" and sat_rows[0].get("isMean") is True, str([r["label"] for r in sat_rows][:3]))
+for ci, code in enumerate([1.0, 2.0]):
+    mk = (d48["seg"] == code) & (d48["sat"] != 99)
+    exp48 = float((d48["w"][mk] * d48["sat"][mk]).sum() / d48["w"][mk].sum())
+    check(f"Mean tick: weighted mean of the codes, don't know left out (column {ci})", abs(sat_rows[0]["pct"][ci] - exp48) < 0.006, f"{sat_rows[0]['pct'][ci]} vs {exp48}")
+mkT = d48["sat"] != 99
+check("Mean tick: total mean", abs(sat_rows[0]["total"]["pct"] - float((d48["w"][mkT] * d48["sat"][mkT]).sum() / d48["w"][mkT].sum())) < 0.006)
+check("Mean tick: a mean is tested like any mean (p-values present)", any(p is not None for p in sat_rows[0]["p"]))
+check("Mean tick: no mean for codes that are not a scale", not any(r.get("autoMean") for r in qs48["region"]["rows"]))
+check("Mean tick: the question without a mean is named", "Region" in (r48["notes"].get("meanNotAdded") or "") and "Satisfaction" not in (r48["notes"].get("meanNotAdded") or ""))
+r48off = psf.crosstab(b48, "m48.sav", a48)
+check("no Mean tick (or a request saved before it): no mean row, nothing named", not any(r.get("autoMean") for q in r48off["questions"] for r in q["rows"]) and r48off["notes"].get("meanNotAdded") is None and r48off["notes"].get("meanRows") is False)
+own = dict(a48, meanRows=True, rowItems=[{"key": "sat", "label": "Satisfaction", "vars": ["sat"], "groups": [{"label": "Satisfaction", "kind": "mean", "place": "end", "cats": [str(k) for k in range(11)]}]}])
+r48own = psf.crosstab(b48, "m48.sav", own)
+means48 = [r for r in r48own["questions"][0]["rows"] if r.get("isMean")]
+check("a question with its own mean group gets no second mean", len(means48) == 1 and not means48[0].get("autoMean"), str([r["label"] for r in means48]))
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

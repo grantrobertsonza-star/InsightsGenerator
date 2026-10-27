@@ -595,6 +595,9 @@ export type CrosstabRequest = {
   design?: { psu: string | null; strata: string | null };
   /** Leave don't know, refused and not applicable out of percentage bases. Defaults to true. */
   excludeDk?: boolean;
+  /** Batch 48, the "Mean" tick: a mean row above each single choice question whose codes form a rating
+   * scale. Only true asks; absent (a request saved before the tick) builds without. */
+  meanRows?: boolean;
   /** Restrict the whole table to one category of a filter variable. */
   filters?: CrosstabFilter[];
   /** Extra percentiles (0 to 100) to report for averages. */
@@ -668,6 +671,8 @@ export type CrosstabRow = {
   /** A net score or mean score row: shown as points or an average, not a percentage. */
   isScore?: boolean;
   isMean?: boolean;
+  /** Batch 48: a mean row added by the Mean tick (label "Mean"), not a group the researcher defined. */
+  autoMean?: boolean;
   /** A requested mean whose codes the engine does not judge an ordered scale (CrosstabGroup.qualifyCodes); its label says so. */
   codesMayBeUnordered?: boolean;
   /** Descriptive statistics of an average or grid row. */
@@ -701,6 +706,8 @@ export type CrosstabRow = {
 };
 /** What produced a table, kept so any number can be traced and reproduced. */
 export type CrosstabProvenance = {
+  /** Batch 48: the Mean tick as it was when this table was built. */
+  meanRows?: boolean;
   builtAt: string;
   engine: string | null;
   sourceFile: string;
@@ -800,6 +807,10 @@ export type CrosstabResult = {
     /** The version of the rules this table's figures and flags came from (engine TABLE_METHOD); absent on a
      * table built before it was recorded. Compared with CURRENT_TABLE_METHOD by tableMethodStatus. */
     methodVersion?: string;
+    /** Batch 48: whether the Mean tick was on when the table was built, and the questions it gave no mean
+     * (codes not a rating scale), in words; null when none. */
+    meanRows?: boolean;
+    meanNotAdded?: string | null;
     /** Under a survey design, cells or column pairs at 0% or 100% left untested, with the count; null when none. */
     degenerateUntested?: string | null;
     designUsed?: { psu: string; strata: string | null; nPsu: number; nStrata: number; pooledPsus: number; casesMissingDesign: number } | null;

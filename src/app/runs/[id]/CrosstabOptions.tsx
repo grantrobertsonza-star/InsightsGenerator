@@ -4,8 +4,10 @@ import type { CrosstabFilter, VariableDictionary } from "@/lib/parseStatsFile";
 import FilterBuilder from "./CrosstabFilters";
 
 /** What each cell of a table can show. Mirrors the "Show in each cell" ticks on a table. */
-export type CellPrefs = { col: boolean; row: boolean; n: boolean; count: boolean; letters: boolean; residual: boolean };
-export const DEFAULT_CELLS: CellPrefs = { col: true, row: false, n: true, count: false, letters: true, residual: false };
+/** mean (batch 48): a mean row above each rating-scale question. On by default; when building it is sent as
+ * the request's meanRows, and on a built table it shows or hides those rows on screen and in exports. */
+export type CellPrefs = { col: boolean; row: boolean; n: boolean; count: boolean; letters: boolean; residual: boolean; mean: boolean };
+export const DEFAULT_CELLS: CellPrefs = { col: true, row: false, n: true, count: false, letters: true, residual: false, mean: true };
 
 /** Association measures that can be shown beside the whole-table test. The chi-square is always shown. */
 export type StatPrefs = { v: boolean; c: boolean; lambda: boolean; gamma: boolean; tauB: boolean; tauC: boolean; somersD: boolean; eta: boolean };
@@ -92,6 +94,7 @@ export default function CrosstabOptions({
           {tickBox("letters", "Column comparisons", "Letters of the columns a cell is significantly higher than")}
           {tickBox("row", "Row %", "Percentage within each row")}
           {tickBox("residual", "Standardized residual", "How far the cell's count sits from what independence would predict, in SPSS's (observed minus expected) over square root of expected. Needs a banner variable.")}
+          {tickBox("mean", "Mean", "A mean row above each rating-scale question (codes in order, don't know left out), tested like any mean. Questions whose codes are not a scale get none, and are named under the table.")}
           <label className="flex items-center gap-2 py-0.5 text-xs" title="Adds a NET column after each banner variable">
             <input type="checkbox" checked={net} onChange={(e) => setNet(e.target.checked)} />
             NET column per banner

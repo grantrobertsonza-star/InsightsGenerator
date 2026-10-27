@@ -473,6 +473,8 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
             ? `${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (average ${value}) than overall (${total})`
             : q.kind === "grid"
               ? `"${row.label}" on ${q.label} averages ${dir} for ${col.blockLabel} "${col.name}" (${value}) than overall (${total})`
+              : row.autoMean
+                ? `The mean of ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}) than overall (${total})`
               : isScore
                 ? `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${row.isMean ? "" : " points"}) than overall (${total}${row.isMean ? "" : " points"})`
                 : `"${row.label}" on ${q.label} is ${dir} for ${col.blockLabel} "${col.name}" (${value}${unit}) than overall (${total}${unit})`;
@@ -514,7 +516,15 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
         });
       });
     }
-    candidates.sort((a, b) => b.gap - a.gap);
+    // A mean or score row summarises the whole question, and its gap is in points of the scale while an
+    // answer's is in percentage points, so the two gaps cannot be ranked against each other (batch 48: a
+    // tested 2-point mean difference lost every place to 5-point share gaps and never became a finding).
+    // Summary rows come first, then answers; each by its own gap.
+    const isSummary = (c: CrosstabFinding) => {
+      const t = (c.stats as { testType?: string }).testType;
+      return t === "column_mean_vs_rest" || t === "column_score_vs_rest";
+    };
+    candidates.sort((a, b) => Number(isSummary(b)) - Number(isSummary(a)) || b.gap - a.gap);
     out.push(...candidates.slice(0, MAX_FINDINGS_PER_QUESTION));
   }
   if (out.length <= MAX_FINDINGS_PER_TABLE) return out;
@@ -548,6 +558,7 @@ export async function buildCrosstab(
 ): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
   if (request.rowItems.length === 0) throw new Error("Choose at least one row variable.");
+  if (request.meanRows !== undefined && typeof request.meanRows !== "boolean") throw new Error("The Mean setting must be on or off.");
   // ANA-NPS-003 (Brief 38 repair): this was the exact remaining gap Codex found after Brief 37
   // fixed every CALLER's own lookups - buildCrosstab itself still independently called the
   // tolerant loadDataSetup() to read `layout` for the engine request, so a lookup failure here
@@ -684,6 +695,7 @@ export async function buildCrosstab(
     rowKeys: request.rowItems.map((i) => i.key),
     rowItems: request.rowItems.map((i) => ({ key: i.key, label: i.label ?? null, kind: i.kind, vars: i.vars })),
     excludeDk: request.excludeDk !== false,
+    meanRows: request.meanRows === true,
     filters: request.filters ?? [],
     columnGroups: Object.fromEntries(Object.entries(request.columnGroups ?? {}).map(([k, g]) => [k, g.map((x) => x.label)])),
     questionnaireLabels: Boolean(overlay),

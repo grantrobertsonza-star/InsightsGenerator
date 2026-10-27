@@ -180,7 +180,7 @@ export async function replicateCrosstabsToWaveAction(
 export async function buildStarterTablesAction(
   runId: string,
   documentId: string,
-  settings?: Pick<CrosstabRequest, "weightVar" | "correction" | "excludeDk" | "design">,
+  settings?: Pick<CrosstabRequest, "weightVar" | "correction" | "excludeDk" | "design" | "meanRows">,
   /** The researcher's columns to split by; omitted for the recognised ones. Checked against the file here. */
   banners?: unknown,
 ): Promise<{ ok: true; tables: number; questions: number; banners: string[] } | Fail> {

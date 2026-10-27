@@ -1,6 +1,6 @@
 "use client";
 
-import { EARLIER_METHOD_TEXT } from "@/lib/tableMethod";
+import { EARLIER_METHOD_TEXT, tableMethodStatus } from "@/lib/tableMethod";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ThreePane } from "./ThreePane";
@@ -672,6 +672,7 @@ export default function CrosstabWorkspace({
         weightVar: weightVar || null,
         correction,
         excludeDk,
+        meanRows: cellPrefs.mean,
         ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
         columnGroups: Object.fromEntries(Object.entries(colGroups).filter(([k, g]) => cv.includes(k) && g.length)),
       };
@@ -747,6 +748,7 @@ export default function CrosstabWorkspace({
           weightVar: weightVar || null,
           correction,
           excludeDk,
+          meanRows: cellPrefs.mean,
           ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
         },
         starterBanners ?? undefined,
@@ -2137,6 +2139,14 @@ function CrosstabView({
   const [copied, setCopied] = useState(false);
   const { sel: cellSelected, select: selectCell } = useContext(CellSelectContext);
   const hasResp = result.questions.some((qq) => qq.rows.some((r) => r.respPct !== undefined));
+  // Batch 48: the Mean tick shows or hides the mean rows the Mean setting added when this table was built.
+  const hasAutoMean = result.questions.some((qq) => qq.rows.some((r) => r.autoMean));
+  const meanTick = hasAutoMean ? (
+    <label className="flex items-center gap-1" title="The mean row above each rating-scale question, added when this table was built with Mean on">
+      <input type="checkbox" checked={measures.mean !== false} onChange={(e) => setMeasures((m) => ({ ...m, mean: e.target.checked }))} data-testid="crosstab-mean-tick" />
+      Mean
+    </label>
+  ) : null;
   const stack = stat === "stack";
   const weighted = !!result.weightVar;
   const cols = result.columns.map((c, j) => ({ c, j })).filter(({ j }) => !hiddenCols.has(j));
@@ -2225,8 +2235,10 @@ function CrosstabView({
                 {label}
               </label>
             ))}
+            {meanTick}
           </span>
         )}
+        {!stack && meanTick}
         {hasResp && (
           <label className="flex items-center gap-1" title="Divide each option by all mentions in the column, so the options add to 100%. Percent of cases is the default.">
             <input type="checkbox" checked={showResp} onChange={(e) => setShowResp(e.target.checked)} />
@@ -2305,7 +2317,11 @@ function CrosstabView({
             <>
               {" "}
               <span className="text-emerald-700">▲</span>/<span className="text-rose-700">▼</span> differs from all
-              other cases in the same banner variable at 95% ({result.notes?.designUsed ? "t-test with design degrees of freedom, Taylor series variance" : "z-test on effective base, weights only"}; {correctionText(result.notes?.correction)}). Figures in grey italics rest on fewer than {reliableBase} cases: indicative only, not tested. A dash means fewer than {result.notes?.minBase ?? 10} cases, so no figure is shown.
+              other cases in the same banner variable at 95% ({result.notes?.designUsed
+                ? "t-test with design degrees of freedom, Taylor series variance"
+                : tableMethodStatus(result.notes?.methodVersion) === "current"
+                  ? "z-test on effective base, shares pooled, weights only"
+                  : "z-test on effective base, shares not pooled (built with an earlier method), weights only"}; {correctionText(result.notes?.correction)}). Figures in grey italics rest on fewer than {reliableBase} cases: indicative only, not tested. A dash means fewer than {result.notes?.minBase ?? 10} cases, so no figure is shown.
               {result.notes?.designUsed && result.notes.designUsed.casesMissingDesign > 0 && (
                 <span className="text-amber-700">
                   {" "}Warning: {result.notes.designUsed.casesMissingDesign} cases have no value for the survey design variables and were treated as unclustered, which can understate the standard errors.
@@ -2316,13 +2332,13 @@ function CrosstabView({
         </span>
         {exportHref && (
           <>
-            <a href={`${exportHref}&measures=${(stack ? (["col", "row", "n", "count", "letters", "residual"] as const).filter((k) => measures[k]).concat(showResp && hasResp ? (["resp"] as never[]) : []) : stat === "count" ? ["count"] : stat === "row" ? ["row"] : ["col", "letters"]).join(",") || "col"}&net=${showNet ? 1 : 0}`} className="font-medium text-primary hover:underline">
+            <a href={`${exportHref}&measures=${(stack ? (["col", "row", "n", "count", "letters", "residual"] as const).filter((k) => measures[k]).concat(showResp && hasResp ? (["resp"] as never[]) : []) : stat === "count" ? ["count"] : stat === "row" ? ["row"] : ["col", "letters"]).join(",") || "col"}&net=${showNet ? 1 : 0}${hasAutoMean && measures.mean === false ? "&mean=0" : ""}`} className="font-medium text-primary hover:underline">
               Download Excel
             </a>
-            <a href={`${exportHref}&format=pptx`} className="font-medium text-primary hover:underline">
+            <a href={`${exportHref}&format=pptx${hasAutoMean && measures.mean === false ? "&mean=0" : ""}`} className="font-medium text-primary hover:underline">
               PowerPoint
             </a>
-            <a href={`${exportHref}&format=pdf`} className="font-medium text-primary hover:underline" title="Needs LibreOffice installed on this computer">
+            <a href={`${exportHref}&format=pdf${hasAutoMean && measures.mean === false ? "&mean=0" : ""}`} className="font-medium text-primary hover:underline" title="Needs LibreOffice installed on this computer">
               PDF
             </a>
           </>
@@ -2333,6 +2349,9 @@ function CrosstabView({
           </button>
         )}
       </div>
+      {result.notes?.meanNotAdded && (
+        <p className="text-[11px] text-muted" data-testid="crosstab-mean-not-added">{result.notes.meanNotAdded}</p>
+      )}
       {(result.notes?.dkNote || result.notes?.filterNote) && (
         <p className="text-[11px] text-muted">
           {result.notes?.filterNote && <>{result.notes.filterNote} </>}
@@ -2428,7 +2447,9 @@ function CrosstabView({
           </thead>
           <tbody>
             {result.questions.map((q, qi) => {
-              let rows = q.rows.map((r, ri) => ({ r, key: `${qi}:${ri}` })).filter(({ key }) => !hiddenRows.has(key));
+              let rows = q.rows
+                .map((r, ri) => ({ r, key: `${qi}:${ri}` }))
+                .filter(({ r, key }) => !hiddenRows.has(key) && (measures.mean !== false || !r.autoMean));
               if (q.kind === "single") {
                 const isAns = (r: { isBase?: boolean; isNet?: boolean }) => !r.isBase && !r.isNet;
                 if (sortBy === "order") {
@@ -2439,7 +2460,8 @@ function CrosstabView({
                   if (hideEmpty) ans = ans.filter(({ r }) => (r.total.count ?? 0) > 0);
                   if (sortBy === "label") ans = [...ans].sort((a, b) => a.r.label.localeCompare(b.r.label));
                   if (sortBy === "size") ans = [...ans].sort((a, b) => (b.r.total.count ?? 0) - (a.r.total.count ?? 0));
-                  rows = [...rows.filter(({ r }) => r.isBase), ...ans, ...rows.filter(({ r }) => r.isNet)];
+                  // The Mean tick's row stays at the top of its question whatever the sort.
+                  rows = [...rows.filter(({ r }) => r.isBase), ...rows.filter(({ r }) => r.autoMean), ...ans, ...rows.filter(({ r }) => r.isNet && !r.autoMean)];
                 }
               } else if (hideEmpty && q.kind === "multi") {
                 rows = rows.filter(({ r }) => r.isBase || (r.total.count ?? 0) > 0);
@@ -2494,7 +2516,9 @@ function CrosstabView({
                               </span>
                             </td>
                           )}
-                          {stack && <td className="px-2 py-1 text-[11px] font-normal not-italic text-muted">{MEASURE_LABEL[mk]}</td>}
+                          {/* A mean or score row's figure is not a percentage, so its measure is named for what it is
+                              (as the Excel export names it). */}
+                          {stack && <td className="px-2 py-1 text-[11px] font-normal not-italic text-muted">{r.isScore && mk === "col" ? (r.isMean ? "Mean" : "Net score (points)") : MEASURE_LABEL[mk]}</td>}
                           {layout.map((e) => {
                             const cell = cellOf(r, e);
                             const isNetCol = e.kind === "net";

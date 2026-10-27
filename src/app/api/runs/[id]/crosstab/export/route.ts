@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withoutMeanTickRows } from "@/lib/crosstabMeanRows";
 import * as XLSX from "xlsx";
 import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
@@ -261,7 +262,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return { name: run.rows[0].project_name, tables: tables.rows };
   });
   if (!data) return NextResponse.json({ error: "Run not found" }, { status: 404 });
-  const usable = data.tables.filter((t) => t.crosstab?.version === 2);
+  // Batch 48: mean=0 when the researcher unticked Mean on the table; its Mean-tick rows are left out of
+  // every format, as on screen. Defined mean groups are kept.
+  const hideMeanTickRows = sp.get("mean") === "0";
+  const usable = data.tables
+    .filter((t) => t.crosstab?.version === 2)
+    .map((t) => (hideMeanTickRows && t.crosstab ? { ...t, crosstab: { ...withoutMeanTickRows(t.crosstab), version: t.crosstab.version } } : t));
   if (usable.length === 0) return NextResponse.json({ error: "No saved crosstabs to export." }, { status: 404 });
   const stem = (data.name ?? "project").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
   const format = (sp.get("format") ?? "xlsx").toLowerCase();

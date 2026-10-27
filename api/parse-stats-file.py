@@ -3828,6 +3828,14 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     psu_var = design_arg.get("psu") or None
     strata_var = design_arg.get("strata") or None
     exclude_dk = args.get("excludeDk", True) is not False
+    # Batch 48 (Grant, 27 October 2026): the "Mean" tick in "Show in each cell". When the request asks
+    # for it, every single choice question whose codes form a rating scale (numeric codes judged an
+    # ordered scale by _is_ordered_scale, the same rule that decides a question's own mean and spread)
+    # gets a mean row above its answers, tested like any mean. Questions whose codes are not a scale
+    # (regions, brands) get none, and are named in notes.meanNotAdded rather than left out silently.
+    # Only an explicit true asks: a request saved before the tick existed builds as it always did.
+    mean_rows = args.get("meanRows") is True
+    mean_not_added: list = []
     # Filters: all conditions must hold (AND). op "in" / "notIn" take answer labels; "between" takes
     # numeric min and/or max (inclusive). The older single `layer` is read as one "in" filter.
     filters_arg = [dict(f) for f in (args.get("filters") or []) if f.get("variable")]
@@ -4648,7 +4656,14 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 return resolved
 
             group_rows = []
-            for g in it.get("groups") or []:
+            item_groups = list(it.get("groups") or [])
+            if mean_rows and not any((g.get("kind") or "net") == "mean" for g in item_groups):
+                if raw.dtype.kind in "fiu" and _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None), raw):
+                    # Above the first answer; anchored on every answer, so it never lands inside the list.
+                    item_groups.insert(0, {"label": it["label"], "kind": "mean", "place": "above", "cats": [_label_of_code(c) for c in cats], "autoMean": True})
+                else:
+                    mean_not_added.append(it["label"])
+            for g in item_groups:
                 kind = g.get("kind") or "net"
                 plus_labels = set(g.get("cats", []))
                 minus_labels = set(g.get("minus", []))
@@ -4708,6 +4723,11 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     row["isNet"] = True
                     row["isScore"] = True
                     row["isMean"] = True
+                    if g.get("autoMean"):
+                        # Added by the Mean tick, not a group the researcher defined: the screen and
+                        # exports can show or hide these rows without touching defined groups.
+                        row["label"] = "Mean"
+                        row["autoMean"] = True
                     anchor = set(_label_of_code(c) for c in cats)
                 else:
                     continue
@@ -4933,6 +4953,11 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             "correction": correction,
             # The rules this table's figures and flags came from, so a table built before a change is known.
             "methodVersion": TABLE_METHOD,
+            "meanRows": mean_rows,
+            "meanNotAdded": (
+                "No mean row for " + "; ".join(mean_not_added) + ": their answer codes are not a rating scale, so a mean of them would not mean anything."
+                if mean_not_added else None
+            ),
             "degenerateUntested": (
                 f"{degenerate_untested[0]} cell(s) or column pair(s) at 0% or 100% were not tested: under a survey design such a share has no variance, so a test would overstate the difference."
                 if degenerate_untested[0] else None
