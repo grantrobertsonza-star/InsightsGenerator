@@ -248,20 +248,35 @@ export async function promoteEvidenceTable(client: PoolClient, runId: string, ta
 /**
  * Every approved line's table for one data file, moved into Cross tabs as drafts with their line
  * recorded; committing them there makes planned findings. Only lines approved at their current
- * wording and not excluded. A line with no table for this file (not answered yet, the data is silent,
- * or the answer failed) is counted, not moved. Safe to repeat: a table already moved is left alone.
+ * wording, not excluded, and belonging to a current objective or decision. A line with no table for
+ * this file (not answered yet, the data is silent, or the answer failed) is counted, not moved. Safe to
+ * repeat: a table already moved is left alone, with the plan line it was moved with.
+ *
+ * Codex B41-F01: "current" is the plan's own rule, the one the screen counts with (planCounts, rollUp):
+ * the line's identity (evidenceIdentity) must match a current item (readCurrentEvidenceItems,
+ * currentItemKey). A line whose objective was unaccepted or deleted, or whose origin is unknown or
+ * conflicting, is not part of the plan: it is counted as notCurrent and its table is not touched. The
+ * run and its accepted objectives and decisions are locked (for share) before they are read, so they
+ * cannot change between the check and the move; the whole call is one transaction.
  */
 export async function promoteApprovedPlanTables(
   tenantId: string,
   runId: string,
   documentId: string,
-): Promise<{ moved: number; alreadyInCrossTabs: number; withoutTable: number; approved: number }> {
+): Promise<{ moved: number; alreadyInCrossTabs: number; withoutTable: number; approved: number; notCurrent: number }> {
   return withTenant(tenantId, async (client) => {
     await assertPlanAvailable(client);
     const owner = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3", [documentId, runId, tenantId]);
     if (owner.rows.length === 0) throw new Error("That data file was not found in this project.");
-    const lines = await client.query<LineRow & { table_id: string | null; crosstab_status: string | null }>(
-      `select e.id, e.question_revision, e.approved_revision, e.question, e.item_kind, e.item_text, e.objective_candidate_id, e.decision_candidate_id,
+    const { readCurrentEvidenceItems, currentItemKey, evidenceIdentity } = await import("./objectiveEvidence");
+    const run = await client.query("select id from runs where id = $1 and tenant_id = $2 for share", [runId, tenantId]);
+    if (run.rows.length === 0) throw new Error("Project not found");
+    await client.query("select id from objective_candidates where run_id = $1 and status = 'accepted' for share", [runId]);
+    await client.query("select id from decision_candidates where run_id = $1 and status = 'accepted' for share", [runId]);
+    const currentKeys = new Set((await readCurrentEvidenceItems(client, runId)).map(currentItemKey));
+    const lines = await client.query<LineRow & { item_order: number; origin_candidate_id: string | null; origin_recorded: boolean | null; table_id: string | null; crosstab_status: string | null }>(
+      `select e.id, e.question_revision, e.approved_revision, e.question, e.item_kind, e.item_order, e.item_text, e.objective_candidate_id, e.decision_candidate_id,
+              e.origin_candidate_id, e.origin_recorded,
               r.table_id, dt.crosstab_status
          from objective_evidence e
          left join objective_evidence_results r on r.evidence_id = e.id and r.document_id = $2
@@ -271,8 +286,13 @@ export async function promoteApprovedPlanTables(
         for update of e`,
       [runId, documentId],
     );
-    let moved = 0, alreadyInCrossTabs = 0, withoutTable = 0;
-    for (const l of lines.rows) {
+    let moved = 0, alreadyInCrossTabs = 0, withoutTable = 0, notCurrent = 0;
+    const current = lines.rows.filter((l) => {
+      if (currentKeys.has(evidenceIdentity(l).key)) return true;
+      notCurrent++;
+      return false;
+    });
+    for (const l of current) {
       if (!l.table_id) { withoutTable++; continue; }
       if (l.crosstab_status !== "evidence") { alreadyInCrossTabs++; continue; }
       const r = await client.query(
@@ -282,7 +302,7 @@ export async function promoteApprovedPlanTables(
       );
       if (r.rows.length > 0) moved++; else alreadyInCrossTabs++;
     }
-    return { moved, alreadyInCrossTabs, withoutTable, approved: lines.rows.length };
+    return { moved, alreadyInCrossTabs, withoutTable, approved: current.length, notCurrent };
   });
 }
 

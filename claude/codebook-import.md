@@ -93,7 +93,17 @@ XLSForm `relevant` expressions are kept as text only.
    set). Stored on the variable's corrections with the evidence and time; undo removes it. If the derived
    variable can no longer be built (the file was replaced and now has its own column of that name, or the
    item now has text answers), using it fails with the reason, and the file's own column keeps its name in
-   the variable list (b49). Tables that used
+   the variable list (b49).
+   **Scales that cannot be mirrored (Codex B42-F01, batch 46R):** a reversal is refused at confirmation,
+   with the reason and nothing saved, when the battery's usable points are not every whole number from its
+   lowest to its highest (1, 3, 4, 5) or when a non-answer code (declared missing, or labelled don't know,
+   refused, not applicable) lies inside that range: reversing over the range would move valid answers onto
+   that code and drop them from the base (every 4 became 2, "Refused": base 35 instead of 47). The engine
+   gives the reason per battery (`reversalProblem`, `_reversal_problem`) and the Data quality panel shows
+   it instead of the Reverse button. Non-answer codes outside the range (9, 99) and blanks are kept as they
+   were. A stored reversal is checked again on every read (`_reversal_collisions`): if the file's labels or
+   missing declarations have changed so a non-answer now lies inside the scale, the derived variable is not
+   built and any use of it fails with the reason; undo recovers. Tables that used
    the derived variable depend on the source's corrections (`correctionsFor`), so a change or undo marks
    them changed. The respondent check flags a respondent giving the same answer across items worded in
    opposite directions. Not yet: the always-shown preview and the single Variables editor.

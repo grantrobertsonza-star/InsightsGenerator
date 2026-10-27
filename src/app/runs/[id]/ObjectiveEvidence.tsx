@@ -460,6 +460,7 @@ export default function ObjectiveEvidence({
       const parts = [`${r.moved} table${r.moved === 1 ? "" : "s"} from ${file.name} added to Cross tabs as drafts; commit them there to make planned findings.`];
       if (r.alreadyInCrossTabs > 0) parts.push(`${r.alreadyInCrossTabs} already there.`);
       if (r.withoutTable > 0) parts.push(`${r.withoutTable} approved line${r.withoutTable === 1 ? " has" : "s have"} no table for this file yet (not read, silent or failed).`);
+      if (r.notCurrent > 0) parts.push(`${r.notCurrent} approved line${r.notCurrent === 1 ? " belongs" : "s belong"} to an objective or decision no longer in the plan, so ${r.notCurrent === 1 ? "its table was" : "their tables were"} not added.`);
       setNote(parts.join(" "));
     }
     await refresh();

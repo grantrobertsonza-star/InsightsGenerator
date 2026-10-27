@@ -1845,6 +1845,54 @@ def _reversals_of(overlay):
     return out
 
 
+def _reversal_collisions(lo, hi, value_labels, missing_ranges):
+    """The codes inside a scale's range lo..hi that are non-answers: declared user-missing (SPSS missing
+    values or ranges) or labelled as no usable answer (_DK_RE). Reversing turns code v into lo + hi - v
+    over the whole range, so a valid answer would land on such a code and then be dropped as missing
+    (Codex B42-F01: with 2 declared "Refused" on 1..5, every valid 4 became 2 and left the base). A scale
+    with such a code inside it cannot be reversed faithfully. Returns [(code, why)], one per code."""
+    def num(v):
+        try:
+            x = float(v)
+            return x if math.isfinite(x) else None
+        except (TypeError, ValueError):
+            return None
+
+    out = {}
+    for code, label in (value_labels or {}).items():
+        n = num(code)
+        if n is not None and lo <= n <= hi and _DK_RE.match(str(label).strip()):
+            out[n] = f'labelled "{str(label).strip()}"'
+    for r in missing_ranges or []:
+        if not isinstance(r, dict):
+            continue
+        a, b = num(r.get("lo")), num(r.get("hi"))
+        if a is None or b is None:
+            continue
+        for k in range(int(math.ceil(max(a, lo))), int(math.floor(min(b, hi))) + 1):
+            out.setdefault(float(k), "declared missing")
+    return sorted(out.items())
+
+
+def _reversal_problem(points, value_labels_by_item, missing_by_item, items):
+    """Why a battery's scale cannot be reversed faithfully, or None. Its usable points must be every whole
+    number from the lowest to the highest (a scale with a gap, 1, 3, 4, 5, has no single mirror), and no
+    non-answer code may sit inside that range (_reversal_collisions). Checked when an item is confirmed
+    (the respondent check reports it per battery) and, through _reversal_collisions, again whenever a
+    stored reversal is applied, in case the file's declarations changed since."""
+    pts = sorted(int(p) for p in points)
+    lo, hi = pts[0], pts[-1]
+    for item in items:
+        clashes = _reversal_collisions(lo, hi, value_labels_by_item.get(item), missing_by_item.get(item))
+        if clashes:
+            code, why = clashes[0]
+            return (f"code {int(code)} ({why}) lies inside the scale {lo} to {hi}, so turning the scale around would move valid "
+                    f"answers onto a non-answer code")
+    if pts != list(range(lo, hi + 1)):
+        return f"its answers ({', '.join(str(p) for p in pts)}) are not every whole number from {lo} to {hi}, so the scale has no single mirror"
+    return None
+
+
 def _apply_reversals(df, meta, reversals):
     """Adds each confirmed reversed item as a new derived column; the original column is never changed.
     A value on the scale's declared points (whole numbers from min to max) becomes (min + max) - value,
@@ -1852,8 +1900,10 @@ def _apply_reversals(df, meta, reversals):
     kept as it is, so non-answer handling treats it exactly as on the original. The derived column takes
     the original's value labels for the same codes (the scale reads in the battery's direction, as an
     SPSS RECODE INTO with the labels applied), its missing declarations, and the original's label with
-    "(reversed)". A source column that is missing or not numeric on its scale points is not derived, and
-    the reason is recorded (meta.reversal_problems), never silently skipped."""
+    "(reversed)". A source column that is missing or not numeric on its scale points, or whose scale has a
+    non-answer code inside it (_reversal_collisions; so the missing declarations copied across never fall
+    on a code valid answers are turned into), is not derived, and the reason is recorded
+    (meta.reversal_problems), never silently skipped."""
     import numpy as np
     import pandas as pd
 
@@ -1881,6 +1931,16 @@ def _apply_reversals(df, meta, reversals):
             problems.append({"derived": derived, "variable": src, "reason": f"The file already has a column named {derived}."})
             continue
         lo, hi = r["min"], r["max"]
+        # Checked on every read, not only at confirmation: the file's value labels or missing declarations
+        # can change after a reversal was confirmed (a corrected codebook), and a reversal that now moves
+        # valid answers onto a non-answer code must not be built (Codex B42-F01).
+        clashes = _reversal_collisions(lo, hi, vlabels.get(src), missing.get(src) if isinstance(missing, dict) else None)
+        if clashes:
+            code, why = clashes[0]
+            problems.append({"derived": derived, "variable": src, "reason": (
+                f"Code {int(code)} ({why}) lies inside its scale {int(lo)} to {int(hi)}, so reversing would turn valid answers into it. "
+                "Undo the reversal, or correct what that code means, and confirm it again.")})
+            continue
         num = pd.to_numeric(df[src], errors="coerce")
         present = df[src].notna() & (df[src].astype(str).str.strip() != "")
         if (present & num.isna()).any():
@@ -3155,6 +3215,8 @@ def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> di
             "reversedItems": reversed_items,
             "reversedStraightliners": int(contradictory.sum()) if reversed_items and len(reversed_items) < len(g["items"]) else None,
             "reversalSuggestions": _reversal_suggestions(sub, valid, g, getattr(meta, "column_names_to_labels", None) or {}),
+            # Why this battery's items cannot be reversed (gap in the scale, a non-answer code inside it), or null.
+            "reversalProblem": _reversal_problem(g["points"], getattr(meta, "variable_value_labels", None) or {}, getattr(meta, "missing_ranges", None) or {}, g["items"]),
         })
     straight_flag = (straight_cases >= RQ_STRAIGHTLINED_BATTERIES) & (straight_cases * 2 >= eligible_cases)
     for i in np.flatnonzero(straight_flag):

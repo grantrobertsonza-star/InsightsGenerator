@@ -71,7 +71,14 @@ export function applyReversals(dict: VariableDictionary, reversals: Reversal[]):
   return { ...dict, variables, sets };
 }
 
-type GridForReversal = { stem: string; items: string[]; points: number[]; reversalSuggestions?: { variable: string; wording: string | null; itemRest: number | null; cases: number }[] };
+type GridForReversal = {
+  stem: string;
+  items: string[];
+  points: number[];
+  reversalSuggestions?: { variable: string; wording: string | null; itemRest: number | null; cases: number }[];
+  /** The engine's reason this battery's scale cannot be reversed faithfully (_reversal_problem), or null. */
+  reversalProblem?: string | null;
+};
 
 /**
  * Confirms one item as reversed. The battery and its scale come from the engine's own reading of the
@@ -87,6 +94,11 @@ export async function confirmReversal(tenantId: string, runId: string, documentI
   if (!grid) throw new Error(`"${variable}" is not in a battery this file was read as having, so it cannot be reversed against one. Nothing was saved.`);
   const points = grid.points.filter(isFiniteNumber);
   if (points.length < 3) throw new Error(`The battery ${grid.stem} has no usable answer scale, so "${variable}" was not reversed. Nothing was saved.`);
+  // Codex B42-F01: a scale with a gap, or a non-answer code inside its range, has no faithful mirror; a
+  // reversal across it would move valid answers onto a missing code. The engine says why. A battery read
+  // without the check (field absent) is not assumed safe.
+  if (grid.reversalProblem === undefined) throw new Error(`Whether the scale of ${grid.stem} can be reversed could not be checked, so "${variable}" was not reversed. Nothing was saved.`);
+  if (grid.reversalProblem) throw new Error(`"${variable}" cannot be reversed: ${grid.reversalProblem}. Nothing was saved.`);
   const min = Math.min(...points);
   const max = Math.max(...points);
   const suggestion = grid.reversalSuggestions?.find((s) => s.variable === variable);

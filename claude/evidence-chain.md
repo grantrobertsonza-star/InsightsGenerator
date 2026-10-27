@@ -121,7 +121,13 @@ and the brief was text or a model-filled id array.
   - Planned tables: "Add approved tables to Cross tabs" moves each approved line's evidence table for a
     data file into the Cross tabs drafts, recording the line on the table (`plan_evidence_id` and a
     `plan_line` snapshot: id, revision, approved revision, question, objective or decision). Safe to repeat;
-    unapproved lines' tables stay. Committing there gives findings as for any table.
+    unapproved lines' tables stay. Committing there gives findings as for any table. Only lines of a
+    current objective or decision move (Codex B41-F01, batch 46R): the plan's own identity rule
+    (`evidenceIdentity` against `readCurrentEvidenceItems`, as `planCounts` and `rollUp` use it), read in the
+    promotion's transaction after the run and its accepted objectives and decisions are locked, so an
+    objective change in progress is waited for. A line of an unaccepted or deleted objective, or with an
+    unknown or conflicting origin, is counted ("not in the plan") and its table untouched; a table already
+    moved keeps the plan line it was moved with.
   - Routes: every finding is planned (computed from a table carrying a plan line), discovered (computed or
     coded outside the plan) or stated (a report's or transcript's own claim); unknown when the plan record
     cannot be read, never discovered by default (`findingRoute`, `readFindingRoutes`). Shown on findings

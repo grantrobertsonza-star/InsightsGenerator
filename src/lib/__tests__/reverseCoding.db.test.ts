@@ -85,6 +85,53 @@ print(json.dumps({"n": n, "original": count(cols["Q1_3"]), "reversed": count([6 
   return { bytes: readFileSync(out), expected: JSON.parse(r.stdout) };
 }
 
+
+/**
+ * Codex B42-F01: the same battery with a non-answer code INSIDE the scale. "declared": code 2 labelled
+ * "Refused" and declared user-missing (Codex's repro); "labelled": code 2 labelled "Refused" only; "gap":
+ * no code 2 at all (answers 1, 3, 4, 5), so the scale has no single mirror. Items answer 1..5 as in
+ * designed(); in the first two, every 2 is a refusal. Returns the base, sum and mean of the valid answers
+ * of Q1_3 by plain arithmetic, so the original variable can be checked to stay intact.
+ */
+function internalNonAnswer(variant: "declared" | "labelled" | "gap"): { bytes: Buffer; base: number; sum: number } {
+  const dir = mkdtempSync(path.join(tmpdir(), "reverse-internal-"));
+  const out = path.join(dir, "battery.sav");
+  const script = String.raw`
+import sys, json, pandas as pd, pyreadstat
+variant = sys.argv[2]
+n = 60
+cols = {"ID": [float(i + 1) for i in range(n)]}
+for j in range(1, 6):
+    col = []
+    for i in range(n):
+        base = (i % 5) + 1
+        v = min(5, max(1, base + ((i + j) % 3) - 1))
+        if j == 3:
+            v = 6 - v
+        if variant == "gap" and v == 2:
+            v = 3
+        col.append(float(v))
+    cols[f"Q1_{j}"] = col
+cols["Q1_3"][0] = 9.0
+if variant == "gap":
+    scale = {1.0: "Strongly disagree", 3.0: "Neither", 4.0: "Agree", 5.0: "Strongly agree", 9.0: "Don't know"}
+else:
+    scale = {1.0: "Strongly disagree", 2.0: "Refused", 3.0: "Neither", 4.0: "Agree", 5.0: "Strongly agree", 9.0: "Don't know"}
+names = ["ID"] + [f"Q1_{j}" for j in range(1, 6)]
+texts = {"ID": "ID", "Q1_1": "Brand statements: I trust the brand", "Q1_2": "Brand statements: The brand is good value", "Q1_3": "Brand statements: I would not recommend the brand",
+         "Q1_4": "Brand statements: The brand is reliable", "Q1_5": "Brand statements: I like the brand"}
+kw = {}
+if variant == "declared":
+    kw["missing_ranges"] = {f"Q1_{j}": [2.0] for j in range(1, 6)}
+pyreadstat.write_sav(pd.DataFrame(cols)[names], sys.argv[1], column_labels=[texts[c] for c in names], variable_value_labels={f"Q1_{j}": scale for j in range(1, 6)}, **kw)
+valid = [v for v in cols["Q1_3"] if v not in (9.0, 2.0)]
+print(json.dumps({"base": len(valid), "sum": sum(valid)}))
+`;
+  const r = spawnSync(PYTHON, ["-I", "-c", script, out, variant], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(r.stderr);
+  return { bytes: readFileSync(out), ...JSON.parse(r.stdout) };
+}
+
 describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("import step 3: reverse-coded battery items (real database, actual engine)", () => {
   let db: DisposableDb;
   const tenant = process.env.DEFAULT_TENANT_ID ?? randomUUID();
@@ -203,5 +250,53 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("import step 3: reverse-coded 
     const { loadCategories } = await import("../crosstabs");
     expect((await loadCategories(tenant, run, doc, "Q1_3_r")).categories.map((c) => c.label)).toEqual(["0.0"]); // the file's own column, untouched
     expect((await loadCategories(tenant, run, doc, "Q1_3_r2")).categories.length).toBeGreaterThan(2);
+  });
+
+  // Codex B42-F01 (S1): a reversal across a scale with a non-answer code inside it moved valid answers onto
+  // that code (every 4 became 2, "Refused"), so they left the base: 35 instead of 47, with no error.
+  it("B42-F01: a scale with a declared or labelled non-answer inside it is refused with the reason, and nothing is saved", async () => {
+    for (const variant of ["declared", "labelled"] as const) {
+      const fx = internalNonAnswer(variant);
+      const doc = await file(fx.bytes);
+      const grid = (await quality(doc)).straightlining.grids.find((g) => g.stem === "Q1")!;
+      expect(grid.reversalProblem).toMatch(/^code 2 \((declared missing|labelled "Refused")\) lies inside the scale 1 to 5/);
+      const r = await (await actions()).confirmReversalAction(run, doc, "Q1_3");
+      expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/^"Q1_3" cannot be reversed: code 2 .* lies inside the scale 1 to 5.*Nothing was saved\.$/) });
+      expect(await stored(doc)).toEqual({});
+      // The original keeps every valid respondent (the independent base).
+      const { loadCategories } = await import("../crosstabs");
+      const cats = (await loadCategories(tenant, run, doc, "Q1_3")).categories;
+      const valid = cats.filter((c) => !["Refused", "Don't know"].includes(c.label)).reduce((t, c) => t + c.n, 0);
+      expect(valid).toBe(fx.base);
+    }
+  });
+
+  it("B42-F01: a scale with a gap (1, 3, 4, 5) has no single mirror and is refused", async () => {
+    const doc = await file(internalNonAnswer("gap").bytes);
+    const grid = (await quality(doc)).straightlining.grids.find((g) => g.stem === "Q1")!;
+    expect(grid.reversalProblem).toBe("its answers (1, 3, 4, 5) are not every whole number from 1 to 5, so the scale has no single mirror");
+    expect(await (await actions()).confirmReversalAction(run, doc, "Q1_3")).toMatchObject({ ok: false, error: expect.stringMatching(/no single mirror\. Nothing was saved\.$/) });
+    expect(await stored(doc)).toEqual({});
+  });
+
+  it("B42-F01: a stored reversal whose scale now has a non-answer inside it is not built, says why when used, and undo recovers", async () => {
+    const doc = await file(designed(false).bytes);
+    expect((await quality(doc)).straightlining.grids.find((g) => g.stem === "Q1")!.reversalProblem).toBeNull();
+    expect(await (await actions()).confirmReversalAction(run, doc, "Q1_3")).toEqual({ ok: true, derived: "Q1_3_r" });
+    // The file is replaced by one where 2 is declared "Refused" (a corrected codebook).
+    const key = `${tenant}/${run}/${randomUUID()}-recoded.sav`;
+    storage.objects.set(key, internalNonAnswer("declared").bytes);
+    await q("update documents set storage_path = $2 where id = $1", [doc, key]);
+    const { loadCategories, buildCrosstab } = await import("../crosstabs");
+    await expect(loadCategories(tenant, run, doc, "Q1_3_r")).rejects.toThrow(
+      /Q1_3_r \(from Q1_3\) could not be built: Code 2 \(labelled "Refused"\) lies inside its scale 1 to 5, so reversing would turn valid answers into it/,
+    );
+    const before = (await q("select count(*)::int as n from document_tables where document_id = $1", [doc]))[0].n;
+    await expect(buildCrosstab(tenant, run, doc, { columnVars: [], rowItems: [{ key: "Q1_3_r", label: "r", vars: ["Q1_3_r"] }], weightVar: null } as never)).rejects.toThrow(/could not be built/);
+    expect((await q("select count(*)::int as n from document_tables where document_id = $1", [doc]))[0].n).toBe(before);
+    // Recovery: undo, and the original is read with all its valid respondents.
+    expect(await (await actions()).removeReversalAction(run, doc, "Q1_3")).toMatchObject({ ok: true, removed: true });
+    await expect(loadCategories(tenant, run, doc, "Q1_3_r")).rejects.toThrow();
+    expect((await loadCategories(tenant, run, doc, "Q1_3")).categories.length).toBeGreaterThan(2);
   });
 });

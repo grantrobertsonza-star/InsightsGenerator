@@ -225,8 +225,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("CE-6 analysis plan (real data
     expect(lines.map((x) => [x.stance, x.basis, x.error])).toEqual([["supports", "computed", null], ["supports", "computed", null]]);
     const [approved, proposed] = lines;
     await a.setPlanLineApprovalAction(run, [{ id: approved.id, expectedRevision: approved.question_revision }], true);
-    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toEqual({ ok: true, moved: 1, alreadyInCrossTabs: 0, withoutTable: 0, approved: 1 });
-    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toEqual({ ok: true, moved: 0, alreadyInCrossTabs: 1, withoutTable: 0, approved: 1 });
+    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toEqual({ ok: true, moved: 1, alreadyInCrossTabs: 0, withoutTable: 0, approved: 1, notCurrent: 0 });
+    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toEqual({ ok: true, moved: 0, alreadyInCrossTabs: 1, withoutTable: 0, approved: 1, notCurrent: 0 });
     const tables = await q("select id, crosstab_status, plan_evidence_id, plan_line from document_tables where run_id = $1 and crosstab is not null order by table_index", [run]);
     const moved = tables.find((t) => t.plan_evidence_id === approved.id)!;
     expect(moved).toMatchObject({ crosstab_status: "draft", plan_line: { evidenceId: approved.id, revision: approved.question_revision, approvedRevision: approved.question_revision, itemKind: "objective", itemText: approved.item_text, objectiveCandidateId: approved.objective_candidate_id } });
@@ -275,6 +275,73 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("CE-6 analysis plan (real data
     expect(new Set(rows.map((x) => x.Route))).toEqual(new Set(["Planned", "Discovered", "Stated"]));
     expect(rows.filter((x) => x.Route === "Planned").every((x) => x["Plan line"].startsWith(`Planned: "${approved.question}" (approved), for the objective`))).toBe(true);
     expect(rows.filter((x) => x.Route !== "Planned").every((x) => !x["Plan line"])).toBe(true);
+  });
+
+  // Codex B41-F01 (S2): promotion moved an approved line whose objective had been unaccepted, though the
+  // screen no longer counts it as part of the plan. It now uses the plan's own current-item rule.
+  it("B41-F01: an approved line whose objective is no longer current is not moved; re-accepting brings it back", async () => {
+    const { run, doc, objectives } = await project("Compare women and men.");
+    const a = await actions();
+    await a.generateObjectiveEvidenceAction(run);
+    await readAll(run);
+    const lines = (await load(run)).questions;
+    expect(new Set(lines.map((l) => l.objective_candidate_id))).toEqual(new Set(objectives));
+    await a.setPlanLineApprovalAction(run, lines.map((l) => ({ id: l.id, expectedRevision: l.question_revision })), true);
+    const [stays, orphan] = lines;
+    const { unacceptObjectiveCandidate, acceptObjectiveCandidate, deleteObjectiveCandidate } = await import("../objectiveCandidateActions");
+    await unacceptObjectiveCandidate(run, orphan.objective_candidate_id!);
+    // The screen's own rule: that line's group is orphaned and not counted in the plan.
+    const listed = await load(run);
+    expect(listed.items.find((g) => g.questions.some((x) => x.id === orphan.id))!.orphaned).toBe(true);
+    expect(listed.items.find((g) => g.questions.some((x) => x.id === stays.id))!.orphaned).toBe(false);
+
+    // Mixed plan: only the current line's table moves; the orphan's table and plan record are untouched.
+    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toEqual({ ok: true, moved: 1, alreadyInCrossTabs: 0, withoutTable: 0, approved: 1, notCurrent: 1 });
+    const tableOf = async (line: { results: { table_id: string | null }[] }) =>
+      (await q("select crosstab_status, plan_evidence_id, plan_line from document_tables where id = $1", [line.results[0].table_id]))[0];
+    expect(await tableOf(orphan)).toEqual({ crosstab_status: "evidence", plan_evidence_id: null, plan_line: null });
+    const movedBefore = await tableOf(stays);
+    expect(movedBefore).toMatchObject({ crosstab_status: "draft", plan_evidence_id: stays.id });
+
+    // Recovery: the objective accepted again is current again, and its line's table moves; the earlier
+    // move keeps the plan line it was moved with.
+    const back = await acceptObjectiveCandidate(run, orphan.objective_candidate_id!);
+    expect(back).toMatchObject({ ok: true });
+    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toEqual({ ok: true, moved: 1, alreadyInCrossTabs: 1, withoutTable: 0, approved: 2, notCurrent: 0 });
+    expect(await tableOf(orphan)).toMatchObject({ crosstab_status: "draft", plan_evidence_id: orphan.id });
+    expect(await tableOf(stays)).toEqual(movedBefore);
+
+    // A deleted objective: its line (origin recorded, link gone) is never current.
+    await deleteObjectiveCandidate(run, stays.objective_candidate_id!);
+    expect(await a.promoteApprovedPlanTablesAction(run, doc)).toMatchObject({ ok: true, moved: 0, notCurrent: 1, approved: 1 });
+    expect(await tableOf(stays)).toEqual(movedBefore);
+  });
+
+  it("B41-F01: a promotion waits for an objective change in progress and acts on its outcome", async () => {
+    const { run, doc } = await project("Compare women and men.");
+    const a = await actions();
+    await a.generateObjectiveEvidenceAction(run);
+    await readAll(run);
+    const lines = (await load(run)).questions;
+    await a.setPlanLineApprovalAction(run, lines.map((l) => ({ id: l.id, expectedRevision: l.question_revision })), true);
+    const [, orphan] = lines;
+    // An unaccept in progress, as unacceptObjectiveCandidate does it: the run locked for the change.
+    const other = await db.pool.connect();
+    try {
+      await other.query("begin");
+      await other.query("select id from runs where id = $1 for update", [run]);
+      await other.query("update objective_candidates set status = 'pending' where id = $1", [orphan.objective_candidate_id]);
+      let settled = false;
+      const promotion = a.promoteApprovedPlanTablesAction(run, doc).finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(settled).toBe(false); // waiting on the run lock, not reading the plan as it was
+      await other.query("commit");
+      expect(await promotion).toEqual({ ok: true, moved: 1, alreadyInCrossTabs: 0, withoutTable: 0, approved: 1, notCurrent: 1 });
+    } finally {
+      other.release();
+    }
+    const t = await q("select crosstab_status from document_tables where id = $1", [orphan.results[0].table_id]);
+    expect(t).toEqual([{ crosstab_status: "evidence" }]);
   });
 
   it("refuses a file of another project, and a table that is not an evidence table", async () => {

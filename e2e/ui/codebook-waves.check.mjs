@@ -67,6 +67,9 @@ test("a codebook shared by two waves is not matched to either by default, and ca
   for (const name of ["may2026.txt", "jun2026.txt"]) {
     await picker.selectOption({ label: name });
     await card.getByRole("button", { name: /^Match/ }).click();
+    // Wait for THIS file's link to be saved (its option is marked linked), not for the message, which the
+    // previous match already shows: reloading before the second match finished left only the first link.
+    await expect(picker.locator("option", { hasText: `${name} (linked)` })).toHaveCount(1, { timeout: 60_000 });
     await expect(card).toContainText("links suggested", { timeout: 60_000 });
   }
   await page.reload({ waitUntil: "networkidle" });

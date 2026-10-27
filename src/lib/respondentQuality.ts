@@ -19,6 +19,8 @@ export type RespondentQuality = {
       reversedStraightliners?: number | null;
       /** Items that may be worded the other way: wording, a negative item-rest correlation, or both. */
       reversalSuggestions?: ReversalSuggestion[];
+      /** Why the battery's scale cannot be reversed faithfully (engine _reversal_problem), or null. */
+      reversalProblem?: string | null;
     }[];
     flagged: number;
     nearThreshold: number;

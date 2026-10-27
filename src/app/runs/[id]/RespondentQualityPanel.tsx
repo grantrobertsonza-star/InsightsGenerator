@@ -298,14 +298,20 @@ function ReversedItems({ q, reversal }: { q: RespondentQuality; reversal: Revers
                       {s?.label && <span>{s.label}</span>}
                       {s && <span className="text-muted">({evidence(s)})</span>}
                       {done && <span className="rounded bg-green-50 px-1 text-[11px] text-green-800">Reversed</span>}
-                      <button
-                        type="button"
-                        className="underline disabled:opacity-60"
-                        disabled={reversal.busy !== null}
-                        onClick={() => reversal.set(v, !done)}
-                      >
-                        {reversal.busy === v ? "Saving..." : done ? "Undo" : "Reverse this item"}
-                      </button>
+                      {/* Codex B42-F01: a scale that cannot be mirrored says why, instead of offering a reversal the
+                          engine would refuse; an existing reversal can always be undone. */}
+                      {!done && g.reversalProblem ? (
+                        <span className="text-muted" data-testid="rq-reversal-problem">Cannot be reversed: {g.reversalProblem}.</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="underline disabled:opacity-60"
+                          disabled={reversal.busy !== null}
+                          onClick={() => reversal.set(v, !done)}
+                        >
+                          {reversal.busy === v ? "Saving..." : done ? "Undo" : "Reverse this item"}
+                        </button>
+                      )}
                     </li>
                   );
                 })}

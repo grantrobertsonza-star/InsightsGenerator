@@ -217,7 +217,7 @@ export async function setPlanLineApprovalAction(runId: string, lines: unknown, a
 export async function promoteApprovedPlanTablesAction(
   runId: string,
   documentId: string,
-): Promise<{ ok: true; moved: number; alreadyInCrossTabs: number; withoutTable: number; approved: number } | Fail> {
+): Promise<{ ok: true; moved: number; alreadyInCrossTabs: number; withoutTable: number; approved: number; notCurrent: number } | Fail> {
   const TENANT_ID = await requireTenantId();
   if (typeof documentId !== "string" || !documentId) return { ok: false, error: "Choose a data file." };
   try {
