@@ -11,6 +11,7 @@
 // travel in its system prompt). This tests the qualification's path, not model interpretation.
 import { expect, test } from "@playwright/test";
 import { openSection } from "./helpers/nav.mjs";
+import { insertSupportedInsight } from "./helpers/supportedInsight.mjs";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -43,10 +44,7 @@ test("a degraded coverage conclusion is qualified in Review Objectives, survives
     await form.locator('textarea[name="researchObjective"]').fill(OBJECTIVE);
     await form.getByRole("button", { name: "Save", exact: true }).click();
     await expect.poll(async () => Number((await db.query("select count(*) from objective_candidates where run_id=$1", [run.id])).rows[0].count), { timeout: 60_000 }).toBe(1);
-    await db.query(
-      "insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,review_status) values($1,$2,'Synthetic accepted insight','Observed','Uncertain','Review','accepted')",
-      [target.tenantId, run.id],
-    );
+    await insertSupportedInsight(db, target.tenantId, run.id, "Synthetic accepted insight");
     writeFileSync(fixtureFile, JSON.stringify({ tools: { record_validations: [{ match: "Validate the insights against the objectives and decisions now", input: { validations: [{ item_index: 0, status: "resolved", conclusion: CONCLUSION, insight_indices: [0] }] } }] } }));
 
     // The coverage panel (the bordered card holding the heading, the check button and the list).

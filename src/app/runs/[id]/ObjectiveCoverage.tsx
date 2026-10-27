@@ -17,6 +17,10 @@ type Validation = {
   /** CE-1: the accepted candidate this row judged (null for an item from the project's own text, or before migration 0119). */
   objective_candidate_id?: string | null;
   decision_candidate_id?: string | null;
+  /** B37-F01: why the insights this conclusion cites do not support it as current (objectiveCoverage.ts coverageSupportNote); null when they do. */
+  support_note?: string | null;
+  /** The cited support's status label, beside the verdict (same label as the insight cards). */
+  support_label?: string | null;
 };
 type InsightLite = { id: string; headline: string; review_status: string };
 
@@ -173,6 +177,11 @@ function CoverageCard({ v, byId }: { v: Validation; byId: Map<string, string> })
         >
           {v.inferred ? "Inferred" : statusLabel[v.status]}
         </span>
+        {v.support_note && v.support_label && (
+          <span data-testid="coverage-support-chip" className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
+            {v.support_label}
+          </span>
+        )}
         {v.evidence_digest_degraded && (
           <span className="whitespace-nowrap rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-inset ring-orange-200">
             Evidence check degraded
@@ -188,6 +197,12 @@ function CoverageCard({ v, byId }: { v: Validation; byId: Map<string, string> })
         </p>
       )}
       <p className="mt-1 text-sm text-muted">{v.conclusion}</p>
+      {/* B37-F01: the saved conclusion is kept as written; whether what it cites still supports it is said here. */}
+      {v.support_note && (
+        <p data-testid="coverage-support" className="mt-1 text-xs text-amber-800">
+          {v.support_note}
+        </p>
+      )}
       {/* Same qualification the report section and both story exports carry. Shown as text,
           not only a tooltip, so it is readable on touch screens; the conclusion and status
           above are unchanged. "Check again" re-runs the check and clears it once retrieval

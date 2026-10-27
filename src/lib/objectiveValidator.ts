@@ -1,3 +1,4 @@
+import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -95,13 +96,13 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
     readCoverageInputs<EvidenceInsight>(client, runId, "si.id, si.headline, si.observation, si.tension, si.implication, si.confidence_tier, si.quality_tier"),
   );
   const run = inputs.runFound ? inputs.run : undefined;
-  const { insights, objectives: candidates, decisions: decisionCandidates } = inputs;
+  const { insights: accepted, objectives: candidates, decisions: decisionCandidates } = inputs;
   const assessedAgainst = coverageFingerprint(inputs);
 
   if (!run) {
     throw new Error("Project not found");
   }
-  if (insights.length === 0) {
+  if (accepted.length === 0) {
     // The prerequisite this lane assesses against is genuinely gone (every insight was
     // un-accepted, or none ever existed), not a transient failure - so the coverage from a
     // past, now-stale prerequisite must not keep being shown as if it were still current
@@ -114,6 +115,25 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
         "before validating against the project's objectives and decisions."
     );
   }
+
+  // B37-F01: a re-check never cites an insight whose support is no longer valid (its only finding was
+  // rejected, say), so it cannot certify such an insight as an answer. Support comes from the one reader
+  // (supportStatus.ts), as on the insight cards. Changed or unchecked support is still offered, marked,
+  // and the coverage reader qualifies any conclusion that cites it (objectiveCoverage.ts). The fingerprint
+  // above still records every accepted insight: that is what the check was made against.
+  const support = await loadInsightSupportOrUnchecked(tenantId, runId, accepted.map((i) => i.id));
+  const insights = accepted.filter((i) => support.statusOf(i.id).status !== "invalid");
+  if (insights.length === 0) {
+    // Not cleared: the last check is kept, and the reader shows it as resting on support that is no longer valid.
+    throw new Error(
+      "No accepted insight has valid support now (the findings behind them were rejected or are no longer usable), " +
+        "so coverage was not checked again. The last check is kept and marked as not supported. Review the findings or insights, then check again.",
+    );
+  }
+  const supportMark = (id: string) => {
+    const st = support.statusOf(id).status;
+    return st === "stale" ? " (support changed since it was drafted)" : st === "unknown" ? " (support not checked)" : "";
+  };
 
   // Per accepted candidate when there are any, so inferred objectives can be
   // told apart from stated ones; otherwise fall back to the run's own text.
@@ -164,7 +184,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
   const insightsBlock = insights
     .map(
       (insight, index) =>
-        `${index}. (confidence: ${insight.confidence_tier ?? "not yet triangulated"}) Headline: ${insight.headline}\n` +
+        `${index}. (confidence: ${insight.confidence_tier ?? "not yet triangulated"})${supportMark(insight.id)} Headline: ${insight.headline}\n` +
         `   Observation: ${insight.observation}\n   Implication: ${insight.implication}`
     )
     .join("\n");
@@ -191,6 +211,7 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
       "Some items carry a line of direct data evidence (supports / against / mixed / inconclusive / silent). Cite it in the conclusion when present; 'judged' stances are the model's reading, say so. An item with direct evidence but no insight is partial at most. " +
       (evidenceDigestDegraded
         ? "Direct data-evidence retrieval failed for this run (a connection or permission error, not a migration gap), so no item below carries a data-evidence line even where one might otherwise exist. Do not read that absence as 'the data was checked and found silent' -- treat it as unknown, and do not let it push an item toward gap on its own. " : "") +
+      "An insight marked 'support changed' or 'support not checked' cannot on its own make an item resolved: partial at most. " +
       "Judge only against the items and insights given below; don't invent evidence or items beyond what's " +
       "listed.\n\n" +
       `Objectives and decisions:\n${itemsBlock}\n\n` +

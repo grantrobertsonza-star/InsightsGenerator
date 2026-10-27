@@ -10,6 +10,7 @@
 // Skipped, with a printed reason, when TEST_DATABASE_URL is not set.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
+import { insertSupportedInsight } from "./helpers/supportedInsight";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 // G6: actions and routes take the tenant from the signed-in request; tests supply the seeded one.
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -17,6 +18,10 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 vi.mock("@/lib/methodologyStatus", async () => await import("../methodologyStatus"));
 
 vi.mock("@/lib/db", async () => await import("../db"));
+vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
+vi.mock("@/lib/discoverySlides", async () => await import("../discoverySlides"));
+vi.mock("@/lib/findingsChartData", async () => await import("../findingsChartData"));
+vi.mock("@/lib/storyNarrative", async () => await import("../storyNarrative"));
 vi.mock("@/lib/docxReport", async () => await import("../docxReport"));
 vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
 vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
@@ -148,6 +153,46 @@ describe.skipIf(!TEST_DATABASE_URL)("objective review persistence (real database
     const text = xml.replace(/<[^>]+>/g, "");
     expect(text).toContain("Purchase appears higher among women.");
     expect(text).toContain("Evidence check degraded");
+  });
+
+  // B37-F01 (Codex): a conclusion whose only cited insight lost its support (its finding was rejected)
+  // reached both story exports as plain "Answered" text. Coverage current by its inputs, so the only
+  // qualification is the cited support's.
+  it("B37-F01: both story exports qualify a conclusion whose cited insight is no longer supported", async () => {
+    const r2 = await one(`insert into runs (tenant_id, project_name, research_objective) values ($1, 'Support', 'Explain churn') returning id`, [TENANT]);
+    const { insightId, findingId } = await insertSupportedInsight(db.pool, TENANT, r2, "Fees drive churn");
+    await db.pool.query(
+      `insert into deck_narratives (tenant_id, run_id, situation, complication, question, governing_thought, pillars, executive_summary)
+       values ($1, $2, 's', 'c', 'q', 'g', $3, 'summary')`,
+      [TENANT, r2, JSON.stringify([{ theme: "T", headline: "Pillar", so_what: "w", insight_ids: [insightId] }])],
+    );
+    const { withTenantRead } = await import("../db");
+    const { coverageFingerprint, readCoverageInputs } = await import("../objectiveCoverage");
+    const inputs = await withTenantRead(TENANT, async (client) => coverageFingerprint(await readCoverageInputs(client, r2)));
+    const validation = await one(
+      `insert into objective_validations (tenant_id, run_id, item_kind, item_order, item_text, status, conclusion, synthesized_insight_ids, inputs)
+       values ($1, $2, 'objective', 0, 'Explain churn', 'resolved', 'Answered.', $3, $4) returning id`,
+      [TENANT, r2, [insightId], JSON.stringify(inputs)],
+    );
+    await db.pool.query(`insert into objective_validation_insights (tenant_id, validation_id, synthesized_insight_id, position) values ($1, $2, $3, 0)`, [TENANT, validation, insightId]);
+    const exported = async (route: "export-docx" | "export") => {
+      const { GET } = route === "export-docx" ? await import("../../app/api/runs/[id]/story/export-docx/route") : await import("../../app/api/runs/[id]/story/export/route");
+      const res = await GET(new Request("http://x/"), { params: Promise.resolve({ id: r2 }) });
+      expect(res.status, route).toBe(200);
+      const zip = await JSZip.loadAsync(await res.arrayBuffer());
+      const parts = Object.keys(zip.files).filter((f) => /^(word\/document|ppt\/slides\/slide\d+)\.xml$/.test(f));
+      return (await Promise.all(parts.map((f) => zip.file(f)!.async("string")))).join(" ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+    };
+    // Healthy control: the conclusion as written, no qualification.
+    for (const route of ["export-docx", "export"] as const) {
+      const text = await exported(route);
+      expect(text, route).toContain("Answered.");
+      expect(text, route).not.toContain("Not supported now");
+    }
+    await db.pool.query(`update findings set status = 'rejected' where id = $1`, [findingId]);
+    for (const route of ["export-docx", "export"] as const) {
+      expect(await exported(route), route).toMatch(/Answered\. \(Not supported now: an insight this conclusion cites no longer has valid support/);
+    }
   });
 });
 

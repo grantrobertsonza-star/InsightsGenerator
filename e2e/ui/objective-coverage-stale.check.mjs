@@ -7,6 +7,7 @@
 // model interpretation.
 import { expect, test } from "@playwright/test";
 import { openSection } from "./helpers/nav.mjs";
+import { insertSupportedInsight } from "./helpers/supportedInsight.mjs";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,12 +39,8 @@ test("coverage made before an insight was accepted says it is out of date, and U
     await form.locator('textarea[name="researchObjective"]').fill(OBJECTIVE);
     await form.getByRole("button", { name: "Save", exact: true }).click();
     await expect.poll(async () => Number((await db.query("select count(*) from objective_candidates where run_id=$1", [run.id])).rows[0].count), { timeout: 60_000 }).toBe(1);
-    const insert = (headline) =>
-      db.query(
-        "insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,review_status) values($1,$2,$3,'Observed','Uncertain','Review','accepted')",
-        [target.tenantId, run.id, headline],
-      );
-    await insert("First accepted insight");
+    const insert = (headline) => insertSupportedInsight(db, target.tenantId, run.id, headline);
+    const first = await insert("First accepted insight");
     writeFileSync(fixtureFile, JSON.stringify({ tools: { record_validations: [{ match: "Validate the insights against the objectives and decisions now", input: { validations: [{ item_index: 0, status: "resolved", conclusion: CONCLUSION, insight_indices: [0] }] } }] } }));
 
     const coverage = () => page.locator("div.rounded-xl", { has: page.getByRole("heading", { name: "Coverage of your objectives" }) }).last();
@@ -71,7 +68,7 @@ test("coverage made before an insight was accepted says it is out of date, and U
     await expect(stale()).toBeVisible();
     await expect(stale()).toContainText("Out of date: the accepted insights changed after this evidence check");
     await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
-    await expect(page.getByTestId("stated-objectives").locator('[data-stale="true"]')).toContainText("(out of date)");
+    await expect(page.getByTestId("stated-objectives").locator('[data-stale="true"]')).toContainText("(not current)");
     await page.getByTestId("stated-objectives").getByRole("button", { name: new RegExp(OBJECTIVE) }).click();
     const middle = page.getByTestId("selected-objective-coverage");
     await expect(middle.getByTestId("coverage-stale")).toBeVisible();
@@ -83,6 +80,21 @@ test("coverage made before an insight was accepted says it is out of date, and U
     await openReview();
     await expect(stale()).toHaveCount(0);
     await expect(page.getByTestId("stated-objectives").locator('[data-stale="true"]')).toHaveCount(0);
+
+    // 4. B37-F01: the only finding behind the cited insight is rejected (as on the Findings page). The
+    // inputs are unchanged, but the conclusion is not supported now: said beside the kept verdict, on
+    // the pane, the selected objective and the chip; after a reload too.
+    const cited = (await db.query("select l.synthesized_insight_id from objective_validation_insights l join objective_validations v on v.id = l.validation_id where v.run_id=$1", [run.id])).rows.map((r) => r.synthesized_insight_id);
+    const citedFinding = cited.includes(first.insightId) ? first.findingId : (await db.query("select f.id from findings f join insights i on i.finding_id = f.id join synthesized_insight_sources s on s.pre_insight_id = i.id where s.synthesized_insight_id = $1", [cited[0]])).rows[0].id;
+    await db.query("update findings set status='rejected' where id=$1", [citedFinding]);
+    await openReview();
+    await expect(page.getByTestId("coverage-support").first()).toContainText("Not supported now: an insight this conclusion cites no longer has valid support");
+    await expect(page.getByTestId("coverage-support-chip").first()).toHaveText("Support no longer valid");
+    await expect(coverage().getByText(CONCLUSION, { exact: true })).toBeVisible();
+    await expect(page.getByTestId("stated-objectives").locator('[data-stale="true"]')).toContainText("(not current)");
+    await page.getByTestId("stated-objectives").getByRole("button", { name: new RegExp(OBJECTIVE) }).click();
+    await expect(middle.getByTestId("coverage-support")).toContainText("Not supported now");
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(/\.png$/, "-unsupported.png"), fullPage: true });
   } finally {
     await db.end();
   }

@@ -1,4 +1,4 @@
-import { coverageFreshnessNote, loadObjectiveCoverage } from "./objectiveCoverage";
+import { coverageNote, loadObjectiveCoverage } from "./objectiveCoverage";
 import { withTenantRead } from "./db";
 import { processingState, type AcceptanceState, type StoredProcessingStatus } from "./importSources";
 import { crosstabDatasetState } from "./crosstabEntry";
@@ -103,9 +103,10 @@ export async function loadProjectStageFacts(tenantId: string, runId: string): Pr
       const qualityMissing = !(await has("objective_quality"));
       const quality = qualityMissing ? [] : await q<{ item_text: string; quality_tier: "strong" | "workable" | "weak" | null }>("select item_text, quality_tier from objective_quality where run_id = $1 order by item_order");
       // Through the coverage owner (CE-1), with whether it is still current.
-      const coverageRead = await loadObjectiveCoverage(client, runId);
+      const coverageRead = await loadObjectiveCoverage(client, runId, tenantId);
       const coverage = coverageRead.rows;
-      const coverageStale = coverageFreshnessNote(coverageRead.freshness);
+      // B37-F01: out-of-date inputs, or conclusions resting on support that is no longer current.
+      const coverageStale = coverageNote(coverageRead);
       const coverageError =
         coverage.length === 0
           ? ((await q<{ message: string | null }>("select detail->>'message' as message from trace where run_id = $1 and event = 'objective_validation_error' order by occurred_at desc limit 1"))[0]?.message ?? null)

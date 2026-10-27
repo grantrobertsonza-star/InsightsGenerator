@@ -38,7 +38,7 @@ import { refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
 import { generateStoryNarrative, latestNarrativeFailure, type DeckPillar } from "@/lib/storyNarrative";
 import { loadInsightSupportOrUnchecked, loadPreInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
-import { summariseSupport } from "@/lib/supportStatusShared";
+import { SUPPORT_STATUS_LABEL, summariseSupport } from "@/lib/supportStatusShared";
 import { NarrativeSupportBanner } from "./NarrativeSupportBanner";
 import { loadWordingEdits } from "@/lib/findingWording";
 import { loadRunFigureChecks, type RunFigureChecks } from "@/lib/figureChecks";
@@ -135,7 +135,7 @@ import { getDocumentRoles } from "@/lib/researchQualityRepository";
 import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
 import { loadBriefPassages, passageSourceText } from "@/lib/briefPassages";
 import { loadRecommendationDecisions, type ServedDecision } from "@/lib/recommendationDecisions";
-import { loadObjectiveCoverage, coverageFreshnessNote, type StoredCoverageRow, type CoverageFreshness } from "@/lib/objectiveCoverage";
+import { loadObjectiveCoverage, coverageNote, coverageRowCurrent, coverageSupportNote, type ObjectiveCoverage as LoadedObjectiveCoverage } from "@/lib/objectiveCoverage";
 import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
 import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
@@ -1851,10 +1851,10 @@ async function getAssistantMessages(runId: string): Promise<AssistantChatMessage
  */
 async function getObjectiveValidations(
   runId: string,
-): Promise<{ rows: StoredCoverageRow[]; freshness: CoverageFreshness }> {
+): Promise<LoadedObjectiveCoverage> {
   const TENANT_ID = await requireTenantId();
   // One owner for reading coverage and whether it is still current (objectiveCoverage.ts, CE-1).
-  return withTenantRead(TENANT_ID, (client) => loadObjectiveCoverage(client, runId));
+  return withTenantRead(TENANT_ID, (client) => loadObjectiveCoverage(client, runId, TENANT_ID));
 }
 
 type ApiUsageRow = {
@@ -3260,8 +3260,13 @@ export default async function RunPage({
       ),
     ),
   ]);
-  const objectiveValidations = objectiveCoverage.rows;
-  const objectiveCoverageNote = coverageFreshnessNote(objectiveCoverage.freshness);
+  // B37-F01: each conclusion carries whether the insights it cites still support it.
+  const objectiveValidations = objectiveCoverage.rows.map((v) => ({
+    ...v,
+    support_note: coverageSupportNote(v.support),
+    support_label: v.support && v.support.status !== "current" ? SUPPORT_STATUS_LABEL[v.support.status] : null,
+  }));
+  const objectiveCoverageNote = coverageNote(objectiveCoverage);
   if (!run) {
     notFound();
   }
@@ -5672,7 +5677,7 @@ export default async function RunPage({
                     {(() => {
                       const statedLines = statedObjectiveLines;
                       const statedIds = statedObjectiveIds;
-                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred, candidateId: v.objective_candidate_id, stale: objectiveCoverageNote !== null }));
+                      const verdicts = objectiveValidations.map((v) => ({ item_text: v.item_text, status: v.status, inferred: v.inferred, candidateId: v.objective_candidate_id, stale: !coverageRowCurrent(v, objectiveCoverage.freshness) }));
                       const statedIdSet = new Set(statedIds.filter((x): x is string => !!x));
                       const others = objectiveRows.filter((r) => !statedIdSet.has(r.id));
                       return (

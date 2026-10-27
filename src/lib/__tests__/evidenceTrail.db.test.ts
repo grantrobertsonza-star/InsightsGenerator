@@ -15,6 +15,8 @@ vi.mock("../anthropic", () => ({
   anthropic: { messages: { create: async () => ({ content: [{ type: "tool_use", input: { validations: [{ item_index: 0, status: "resolved", conclusion: "Answered.", insight_indices: [0] }, { item_index: 1, status: "partial", conclusion: "Partly.", insight_indices: [0] }] } }], usage: {} }) } },
 }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/server", async (orig) => ({ ...(await orig<object>()), after: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.setConfig({ testTimeout: 60000 });
@@ -39,7 +41,8 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
     const run = await id("insert into runs(tenant_id,project_name,decision_statement) values($1,'R','Whether to cut fees') returning id", [tenant]);
     const decision = await id("insert into decision_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Whether to cut fees','r','researcher_authored','accepted') returning id", [tenant, run]);
     await q("insert into objective_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Understand why members leave','r','researcher_authored','accepted')", [tenant, run]);
-    const doc = withSource ? await id("insert into documents(tenant_id,run_id,kind,source_filename,storage_path) values($1,$2,'report','exit-interviews.pdf','x') returning id", [tenant, run]) : null;
+    // The report's text holds the finding's quote, so the quote can be checked and the insight's support reads current.
+    const doc = withSource ? await id("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'report','exit-interviews.pdf','x',$3) returning id", [tenant, run, `Exit interviews. ${quote} Other reasons were rare.`]) : null;
     const finding = await id(
       "insert into findings(tenant_id,run_id,origin,finding_text,status,source_document_id,source_page,source_quote,stated_stats) values($1,$2,'stated','Fees drive leaving','accepted',$3,4,$4,$5) returning id",
       [tenant, run, doc, quote, JSON.stringify({ base: 200, share_pct: 41 })],
@@ -47,7 +50,8 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
     await q("insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks, verification_method, corroboration_level) values ($1,$2,'robust','ok','{}','single_pass','single_source')", [tenant, finding]);
     const pre = await id("insert into insights(tenant_id,run_id,finding_id,headline,observation,tension,implication) values($1,$2,$3,'Fees push members out','o','t','i') returning id", [tenant, run, finding]);
     const si = await id("insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,review_status,action_plan_status) values($1,$2,'Fees are the exit trigger','o','t','i','accepted','has_action') returning id", [tenant, run]);
-    await q("insert into synthesized_insight_sources(synthesized_insight_id,pre_insight_id,tenant_id) values($1,$2,$3)", [si, pre, tenant]);
+    // Its support recorded when drafted, as synthesis records it, so the insight's support can be checked.
+    await q("insert into synthesized_insight_sources(synthesized_insight_id,pre_insight_id,tenant_id,support_snapshot) values($1,$2,$3,finding_support_parts($4))", [si, pre, tenant, finding]);
     const rec = await id("insert into recommendations(tenant_id,run_id,synthesized_insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status) values($1,$2,$3,'Cut the monthly fee for at-risk members','Head of Retention','n','Q1','m','high','a','b','ai_suggested','accepted') returning id", [tenant, run, si]);
     return { run, decision, finding, si, rec };
   }
@@ -69,14 +73,31 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
       ["objective", "Understand why members leave", "current"],
     ]);
     expect(flat(t.root).map((n) => [n.kind, n.state])).toEqual([
-      // Inserted directly, the insight has no support snapshot, so its support reads "not checked": a caution, said so.
-      ["recommendation", "current"], ["insight", "caution"], ["pre_insight", "current"], ["finding", "current"], ["data", "current"], ["source", "current"],
+      ["recommendation", "current"], ["insight", "current"], ["pre_insight", "current"], ["finding", "current"], ["data", "current"], ["source", "current"],
     ]);
-    expect(flat(t.root).find((n) => n.kind === "insight")!.details).toContain("Support not checked");
+    expect(flat(t.root).find((n) => n.kind === "insight")!.details).toContain("Support current");
     const nodes = flat(t.root);
     expect(nodes.find((n) => n.kind === "data")).toMatchObject({ label: '"Fees were the main reason I left."', details: ["base: 200", "share pct: 41"] });
     expect(nodes.find((n) => n.kind === "source")!.label).toBe("exit-interviews.pdf, p. 4");
     expect(nodes.find((n) => n.kind === "finding")!.details).toEqual(["Origin: stated", "Verdict: robust"]);
+  });
+
+  // B37-F01 (Codex): rejecting the only finding broke the insight and finding in the trail, but its
+  // objective still read "Coverage: answered", current, with no note.
+  it("B37-F01: rejecting the sole finding makes the objective it answered not current in the trail, saying why", async () => {
+    const p = await project();
+    await decide(p.rec, p.decision);
+    await (await import("../objectiveValidator")).generateObjectiveValidation(tenant, p.run);
+    const { setFindingStatus } = await import("../findingActions");
+    expect(await setFindingStatus(p.run, p.finding, "rejected")).toEqual({ ok: true });
+    const t = await trail(p.run, p.rec);
+    const objective = t.purpose.find((n) => n.kind === "objective")!;
+    expect(objective).toMatchObject({ label: "Understand why members leave", state: "broken", details: expect.arrayContaining(["Coverage: answered"]) });
+    expect(objective.note).toMatch(/^Not supported now: an insight this conclusion cites no longer has valid support/);
+    expect(flat(t.root).find((n) => n.kind === "insight")!.state).toBe("broken");
+    // Checking again cites nothing unsupported: no accepted insight has valid support, so it refuses and the trail keeps saying so.
+    await expect((await import("../objectiveValidator")).generateObjectiveValidation(tenant, p.run)).rejects.toThrow(/No accepted insight has valid support now/);
+    expect((await trail(p.run, p.rec)).purpose.find((n) => n.kind === "objective")!.state).toBe("broken");
   });
 
   it("shows each break: out-of-date coverage, a decision no longer current, a finding deleted from beneath it, no source, unchecked coverage, no decision", async () => {

@@ -8,9 +8,15 @@
 //   - an automatic re-check that fails leaves it out of date, never current;
 //   - inputs that change while the model is answering: nothing is saved and the earlier rows stand;
 //   - rows from before migration 0119 read as unknown; "suggest objectives from unmatched insights"
-//     refuses on coverage that is not current.
+//     refuses on coverage that is not current;
+//   - B37-F01 (Codex): rejecting the only finding behind a cited insight (through the actual
+//     setFindingStatus action) leaves the inputs unchanged, but every conclusion citing it is qualified
+//     as not supported now, on the pane's note, the export text and the stage status; changed and
+//     unchecked support are qualified too; a healthy control stays unqualified; a re-check never cites
+//     the invalid insight, and with no supported insight left it refuses and keeps the last check.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { insertSupportedInsight } from "./helpers/supportedInsight";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 
 const model = vi.hoisted(() => ({ answer: null as null | (() => Promise<unknown>) }));
@@ -22,6 +28,7 @@ vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/server", async (orig) => ({ ...(await orig<object>()), after: vi.fn() }));
 vi.mock("../objectiveFramer", () => ({ generateObjectiveCandidates: vi.fn() }));
 vi.mock("../objectiveQualityScorer", () => ({ refreshObjectiveQuality: vi.fn() }));
 
@@ -29,6 +36,7 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-1 objective coverage identity and freshn
   let db: DisposableDb;
   const tenant = randomUUID();
   let run: string, objA: string, objB: string, decision: string, si1: string, si2: string;
+  const findingOf: Record<string, string> = {};
   const q = async (sql: string, args: unknown[] = []) => (await db.pool.query(sql, args)).rows;
   beforeAll(async () => {
     db = await createDisposableDb();
@@ -47,7 +55,13 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-1 objective coverage identity and freshn
     objA = await cand("objective_candidates", "Understand why members leave");
     objB = await cand("objective_candidates", "Size the switching intent");
     decision = await cand("decision_candidates", "Whether to fund retention or acquisition");
-    const ins = async (h: string) => (await q("insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,review_status) values($1,$2,$3,'o','t','i','accepted') returning id", [tenant, run, h]))[0].id;
+    // Each insight rests on one accepted finding with its support recorded (helpers/supportedInsight.ts),
+    // so its support reads current until something changes.
+    const ins = async (h: string) => {
+      const { insightId, findingId } = await insertSupportedInsight(db.pool, tenant, run, h);
+      findingOf[insightId] = findingId;
+      return insightId;
+    };
     si1 = await ins("Fees drive leaving");
     si2 = await ins("Switching intent is low");
     model.answer = async () => ({
@@ -61,7 +75,7 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-1 objective coverage identity and freshn
   const coverage = async () => {
     const { withTenantRead } = await import("../db");
     const { loadObjectiveCoverage } = await import("../objectiveCoverage");
-    return withTenantRead(tenant, (client) => loadObjectiveCoverage(client, run));
+    return withTenantRead(tenant, (client) => loadObjectiveCoverage(client, run, tenant));
   };
   const check = async () => (await import("../objectiveValidator")).generateObjectiveValidation(tenant, run);
 
@@ -139,7 +153,100 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-1 objective coverage identity and freshn
     const { generateObjectiveCandidates } = await import("../objectiveFramer");
     expect(generateObjectiveCandidates).not.toHaveBeenCalled();
   });
+  // ---- B37-F01 ----
+  const objectiveRow = (c: Awaited<ReturnType<typeof coverage>>, text: string) => c.rows.find((r) => r.item_text === text)!;
+  const reject = async (finding: string) => {
+    const { setFindingStatus } = await import("../findingActions");
+    expect(await setFindingStatus(run, finding, "rejected")).toEqual({ ok: true });
+  };
+
+  it("B37-F01: rejecting the sole finding behind a cited insight qualifies every conclusion citing it, everywhere it is read", async () => {
+    await check();
+    const { coverageNote, coverageRowCurrent, qualifiedConclusion } = await import("../objectiveCoverage");
+    // Healthy control first: current, cited support current, the conclusion unqualified.
+    let c = await coverage();
+    expect(objectiveRow(c, "Understand why members leave").support).toEqual({ status: "current", summary: "" });
+    expect(qualifiedConclusion(objectiveRow(c, "Understand why members leave"), c.freshness)).toBe("Fees explain it.");
+    expect(coverageNote(c)).toBeNull();
+
+    await reject(findingOf[si1]);
+    c = await coverage();
+    // The inputs did not change (same accepted insights), which is why this used to read as current.
+    expect(c.freshness).toEqual({ state: "current" });
+    const a = objectiveRow(c, "Understand why members leave");
+    const b = objectiveRow(c, "Size the switching intent");
+    const d = objectiveRow(c, "Whether to fund retention or acquisition");
+    expect(a.support).toMatchObject({ status: "invalid" });
+    expect(b.support).toMatchObject({ status: "invalid" }); // cites si2 and si1: the worst stands
+    expect(d.support).toBeNull(); // a gap cites nothing
+    expect(a.status).toBe("resolved"); // the saved verdict and wording are kept
+    expect(a.conclusion).toBe("Fees explain it.");
+    expect(coverageRowCurrent(a, c.freshness)).toBe(false);
+    expect(coverageRowCurrent(d, c.freshness)).toBe(true);
+    expect(qualifiedConclusion(a, c.freshness)).toMatch(/^Fees explain it\. \(Not supported now: an insight this conclusion cites no longer has valid support \(.*rejected.*\)\. Update coverage to check again\.\)$/);
+    expect(qualifiedConclusion(d, c.freshness)).toBe("Nothing yet.");
+    expect(coverageNote(c)).toBe("2 conclusions cite an insight whose support is no longer valid, so they do not stand as answered. Update coverage to check again.");
+    const { loadProjectStageFacts } = await import("../projectStageFacts");
+    expect((await loadProjectStageFacts(tenant, run)).objectives.coverageStale).toMatch(/no longer valid/);
+  });
+
+  it("B37-F01: changed support and support that cannot be checked are qualified too, and recover", async () => {
+    await check();
+    const { qualifiedConclusion } = await import("../objectiveCoverage");
+    // Changed: the finding's wording changed after the insight was drafted.
+    await q("update findings set finding_text = 'Fees and service drive leaving' where id = $1", [findingOf[si1]]);
+    let c = await coverage();
+    expect(objectiveRow(c, "Understand why members leave").support).toMatchObject({ status: "stale" });
+    expect(qualifiedConclusion(objectiveRow(c, "Understand why members leave"), c.freshness)).toMatch(/\(Support changed: an insight this conclusion cites has changed support since it was written/);
+    await q("update findings set finding_text = 'Fees drive leaving (finding)' where id = $1", [findingOf[si1]]);
+    expect(objectiveRow(await coverage(), "Understand why members leave").support).toMatchObject({ status: "current" });
+    // Unchecked: the support reader fails; never current.
+    await q("alter function finding_support_parts(uuid) rename to finding_support_parts_moved");
+    try {
+      c = await coverage();
+      expect(objectiveRow(c, "Understand why members leave").support).toMatchObject({ status: "unknown" });
+      expect(qualifiedConclusion(objectiveRow(c, "Understand why members leave"), c.freshness)).toMatch(/\(Support not checked: whether the insights this conclusion cites are still supported could not be checked/);
+    } finally {
+      await q("alter function finding_support_parts_moved(uuid) rename to finding_support_parts");
+    }
+    expect(objectiveRow(await coverage(), "Understand why members leave").support).toMatchObject({ status: "current" });
+  });
+
+  it("B37-F01: a re-check never cites an insight whose support is invalid; with none supported it refuses and keeps the last check", async () => {
+    await check();
+    await reject(findingOf[si1]);
+    const prompts: string[] = [];
+    const { anthropic } = await import("../anthropic");
+    const create = anthropic.messages.create;
+    (anthropic.messages as { create: unknown }).create = async (req: { system: string }) => {
+      prompts.push(req.system);
+      return create(req as never);
+    };
+    try {
+      // The model is offered only si2 now, as index 0; it cites index 0 for every item.
+      model.answer = async () => ({
+        validations: [0, 1, 2].map((i) => ({ item_index: i, status: i === 2 ? "gap" : "resolved", conclusion: `Recheck ${i}.`, insight_indices: i === 2 ? [] : [0] })),
+      });
+      await check();
+      expect(prompts[0]).toContain("Switching intent is low");
+      expect(prompts[0]).not.toContain("Fees drive leaving");
+      const c = await coverage();
+      expect(c.rows.flatMap((r) => r.synthesized_insight_ids)).toEqual([si2, si2]);
+      expect(objectiveRow(c, "Understand why members leave").support).toMatchObject({ status: "current" });
+      const { coverageNote } = await import("../objectiveCoverage");
+      expect(coverageNote(c)).toBeNull();
+      // Every finding rejected: nothing supported is left to check against. Refused, the last check kept and still qualified.
+      await reject(findingOf[si2]);
+      const before = await q("select id, conclusion from objective_validations where run_id = $1 order by item_kind, item_order", [run]);
+      await expect(check()).rejects.toThrow(/No accepted insight has valid support now.*The last check is kept/);
+      expect(await q("select id, conclusion from objective_validations where run_id = $1 order by item_kind, item_order", [run])).toEqual(before);
+      expect(objectiveRow(await coverage(), "Understand why members leave").support).toMatchObject({ status: "invalid" });
+    } finally {
+      (anthropic.messages as { create: unknown }).create = create;
+    }
+  });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("CE-1 objective coverage identity and freshness", () => {
   it.skip(DISPOSABLE_DB_SKIP_REASON, () => {});
+
 });

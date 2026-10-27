@@ -90,3 +90,29 @@ describe("Review Objectives coverage freshness (CE-1)", () => {
     expect(text(renderSelected(v))).toContain(`${longConclusion} (Original wording)`);
   });
 });
+
+// B37-F01: a conclusion whose cited insight is no longer supported keeps its verdict and wording and
+// says so beside them, in the pane and with the selected objective; a supported one shows nothing.
+describe("Review Objectives coverage cited support (B37-F01)", () => {
+  const note = "Not supported now: an insight this conclusion cites no longer has valid support (a supporting finding was rejected). Update coverage to check again.";
+  const unsupported = { ...validation(0, "Unsupported objective", false), support_note: note, support_label: "Support no longer valid" };
+  const supported = { ...validation(1, "Supported objective", false), support_note: null, support_label: null };
+  it("shows the note and the support label beside the kept verdict, only on the conclusion it concerns", () => {
+    selection.selected = null;
+    const html = render([unsupported, supported]);
+    expect(html.match(/data-testid="coverage-support"/g)).toHaveLength(1);
+    expect(html.match(/data-testid="coverage-support-chip"/g)).toHaveLength(1);
+    const t = text(html);
+    expect(t).toContain(note);
+    expect(t).toContain("Support no longer valid");
+    expect(t.match(/Answered/g)).toHaveLength(2);
+    expect(t).toContain(`${longConclusion} (Unsupported objective)`);
+    expect(t.indexOf(note)).toBeLessThan(t.indexOf("Supported objective"));
+  });
+  it("keeps it with the selected objective, and shows none for a supported one", () => {
+    selection.selected = { id: null, text: "Unsupported objective" };
+    expect(text(renderSelected([unsupported, supported]))).toContain(note);
+    selection.selected = { id: null, text: "Supported objective" };
+    expect(text(renderSelected([unsupported, supported]))).not.toContain("Not supported now");
+  });
+});

@@ -121,7 +121,7 @@ async function loadContext(tenantId: string, runId: string) {
 
     // Through the coverage owner (CE-1): an out-of-date check reaches the assistant qualified, so it
     // is not quoted as a current verdict.
-    const coverage = await loadObjectiveCoverage(client, runId);
+    const coverage = await loadObjectiveCoverage(client, runId, tenantId);
     const objectiveValidationsResult = {
       rows: coverage.rows.map((r) => ({
         item_kind: r.item_kind,

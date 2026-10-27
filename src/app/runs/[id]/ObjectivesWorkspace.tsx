@@ -45,11 +45,11 @@ export function ObjectiveBadges({ row, verdicts, withTag = true }: { row: Object
       {v && !v.inferred && (
         <span
           className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${verdictStyle[v.status]}${v.stale ? " opacity-70 ring-1 ring-dashed ring-amber-400" : ""}`}
-          title={v.stale ? "From an evidence check that is out of date; update coverage" : undefined}
+          title={v.stale ? "Not current: the evidence check is out of date, or what it cites is no longer supported (B37-F01). See the coverage note; update coverage." : undefined}
           data-stale={v.stale ? "true" : undefined}
         >
           {verdictLabel[v.status]}
-          {v.stale ? " (out of date)" : ""}
+          {v.stale ? " (not current)" : ""}
         </span>
       )}
     </span>

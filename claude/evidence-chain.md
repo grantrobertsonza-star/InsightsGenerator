@@ -24,6 +24,12 @@ and the brief was text or a model-filled id array.
     Readers compare them with the current inputs, so any change (insight accepted, rejected, deleted or
     re-synthesised; objective edited; an automatic re-check that failed) shows the coverage as out of date.
     Rows from before 0119 read as "not known to be current".
+  - B37-F01 (Codex, repaired b47): the fingerprint says which insights are accepted, not whether they are
+    still supported. Each conclusion also carries the support of the insights it cites (worst status, read
+    live from `supportStatus.ts`, the same reader as the insight cards); invalid, changed or unchecked
+    support qualifies the conclusion everywhere it is read (`coverageRowNote`, `coverageNote`,
+    `qualifiedConclusion`), keeping the saved verdict and wording. A re-check never offers an insight
+    whose support is invalid; with none left it refuses and keeps the last check.
   - Saving takes a per-project advisory lock and re-reads the inputs; if they changed while the model was
     answering nothing is saved (`CoverageInputsChangedError`) and the earlier rows stand.
   - The qualification reaches the coverage pane, the selected objective's tile, the verdict chip, the

@@ -14,7 +14,7 @@
 // out: a break in the trail is part of the evidence. Nothing is inferred from wording.
 import type { PoolClient } from "pg";
 import { findingSourceSql, formatFindingSource, SOURCE_NOT_RECORDED, type FindingSource } from "./sourceAttribution";
-import { coverageFreshnessNote, loadObjectiveCoverage } from "./objectiveCoverage";
+import { coverageFreshnessNote, coverageRowCurrent, coverageRowNote, loadObjectiveCoverage } from "./objectiveCoverage";
 import { loadRecommendationDecisions } from "./recommendationDecisions";
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { SUPPORT_STATUS_LABEL } from "./supportStatusShared";
@@ -77,8 +77,10 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
     purpose.push(node("decision", d.candidateId, d.text, { state: d.current ? "current" : "caution", note: d.current ? null : "No longer a current decision.", details: [d.origin === "model" ? "Named when the recommendation was written" : "Chosen by the researcher"] }));
   }
   if (r.synthesized_insight_id) {
-    const coverage = await loadObjectiveCoverage(client, runId);
+    const coverage = await loadObjectiveCoverage(client, runId, tenantId);
     const freshness = coverageFreshnessNote(coverage.freshness);
+    // B37-F01: whether each answering conclusion stands is its own note: out-of-date inputs, or cited support
+    // that is no longer current (the same note the coverage pane and exports show).
     const answering = coverage.rows.filter((row) => row.item_kind === "objective" && !row.inferred && row.synthesized_insight_ids.includes(r.synthesized_insight_id!));
     if (answering.length === 0) {
       purpose.push(
@@ -92,8 +94,8 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
     for (const o of answering) {
       const objective = node("objective", o.objective_candidate_id, o.item_text, {
         details: [`Coverage: ${o.status === "resolved" ? "answered" : o.status === "partial" ? "partly answered" : "gap"}`],
-        state: freshness ? "caution" : "current",
-        note: freshness,
+        state: coverageRowCurrent(o, coverage.freshness) ? "current" : o.support?.status === "invalid" ? "broken" : "caution",
+        note: coverageRowNote(o, coverage.freshness),
       });
       // CE-4: the brief or proposal passage it came from; a typed objective has none, and says so.
       const found = o.objective_candidate_id ? passages?.objectives.get(o.objective_candidate_id) : undefined;

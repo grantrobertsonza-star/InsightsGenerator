@@ -14,9 +14,20 @@
 //
 // Not in the fingerprint: the objective evidence lane's results. A conclusion may cite them, but they are
 // recomputed by their own lane; a change there is not yet detected here (stated in claude/evidence-chain.md).
+//
+// The support of what a conclusion cites (B37-F01, Codex): the fingerprint says the same insights are
+// accepted, but not that they are still supported. A researcher can reject the only finding behind an
+// insight, or its data file's settings can change, and the insight is then invalid or stale while its id
+// and review status are unchanged. So each conclusion also carries the support of the insights it cites,
+// from the one support reader (supportStatus.ts loadInsightSupportOrUnchecked, the same status the insight
+// cards and exports show), read live on every load. A conclusion citing an insight whose support is not
+// current is qualified wherever it is shown (coverageRowNote, qualifiedConclusion, coverageNote); the
+// saved conclusion and its verdict are kept as they were, never rewritten.
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { ObjectiveValidation } from "./objectiveValidator";
+import { loadInsightSupportOrUnchecked } from "./supportStatus";
+import { summariseSupport, worstSupportStatus, type InsightSupport, type SupportStatus } from "./supportStatusShared";
 
 export type CoverageInputs = {
   run: { research_objective: string | null; decision_statement: string | null };
@@ -119,11 +130,66 @@ export function coverageFreshnessNote(f: CoverageFreshness): string | null {
   return null;
 }
 
+/**
+ * The support of the insights a conclusion cites, at the time it is read: the worst status among them
+ * (current, stale, invalid, unknown) and what made it so. Null when the conclusion cites no insight.
+ */
+export type CoverageRowSupport = { status: SupportStatus; summary: string } | null;
+
 export type StoredCoverageRow = ObjectiveValidation & {
   id: string;
   objective_candidate_id: string | null;
   decision_candidate_id: string | null;
+  support: CoverageRowSupport;
 };
+
+export type ObjectiveCoverage = { rows: StoredCoverageRow[]; freshness: CoverageFreshness };
+
+/** The support of one conclusion from its cited insights' support (one status rule: worstSupportStatus). */
+export function coverageRowSupport(citedIds: string[], statusOf: (id: string) => InsightSupport): CoverageRowSupport {
+  if (citedIds.length === 0) return null;
+  const supports = citedIds.map(statusOf);
+  const status = worstSupportStatus(supports.map((x) => x.status));
+  const worst = supports.find((x) => x.status === status);
+  return { status, summary: status === "current" || !worst ? "" : summariseSupport(worst) };
+}
+
+/** Why a conclusion's cited support keeps it from standing as current; null when it does not (or cites nothing). */
+export function coverageSupportNote(support: CoverageRowSupport): string | null {
+  if (!support || support.status === "current") return null;
+  const why = support.summary ? ` (${support.summary})` : "";
+  if (support.status === "invalid")
+    return `Not supported now: an insight this conclusion cites no longer has valid support${why}. Update coverage to check again.`;
+  if (support.status === "stale")
+    return `Support changed: an insight this conclusion cites has changed support since it was written${why}. Update coverage to check again.`;
+  return `Support not checked: whether the insights this conclusion cites are still supported could not be checked${why}.`;
+}
+
+/** Everything that keeps one conclusion from standing as current: out-of-date inputs, then its cited support. */
+export function coverageRowNote(row: StoredCoverageRow, freshness: CoverageFreshness): string | null {
+  return coverageFreshnessNote(freshness) ?? coverageSupportNote(row.support);
+}
+
+/** True only when the coverage is current and this conclusion's cited support is current (or it cites none). */
+export function coverageRowCurrent(row: StoredCoverageRow, freshness: CoverageFreshness): boolean {
+  return freshness.state === "current" && coverageSupportNote(row.support) === null;
+}
+
+/**
+ * One line for the whole coverage, for the pane, the stage status and the selected-objective chip: the
+ * freshness note, or how many conclusions rest on support that is not current. Null when all stands.
+ */
+export function coverageNote(coverage: ObjectiveCoverage): string | null {
+  const freshness = coverageFreshnessNote(coverage.freshness);
+  if (freshness) return freshness;
+  const qualified = coverage.rows.filter((r) => coverageSupportNote(r.support) !== null);
+  if (qualified.length === 0) return null;
+  const invalid = qualified.filter((r) => r.support?.status === "invalid").length;
+  const n = qualified.length;
+  const which = n === 1 ? "One conclusion cites" : `${n} conclusions cite`;
+  if (invalid === n) return `${which} an insight whose support is no longer valid, so ${n === 1 ? "it does" : "they do"} not stand as answered. Update coverage to check again.`;
+  return `${which} an insight whose support has changed or could not be checked. Each is marked below; update coverage to check again.`;
+}
 
 async function columnExists(client: PoolClient, table: string, column: string): Promise<boolean> {
   const r = await client.query<{ exists: boolean }>(
@@ -143,10 +209,10 @@ export async function coverageIdentitySchema(client: PoolClient): Promise<boolea
  * objective_validation_insights link table (foreign keys, so a deleted insight is gone rather than a
  * dangling id); before migration 0119, from the legacy uuid[] column.
  */
-export async function loadObjectiveCoverage(client: PoolClient, runId: string): Promise<{ rows: StoredCoverageRow[]; freshness: CoverageFreshness }> {
+export async function loadObjectiveCoverage(client: PoolClient, runId: string, tenantId: string): Promise<ObjectiveCoverage> {
   const degraded = await columnExists(client, "objective_validations", "evidence_digest_degraded");
   const identity = await coverageIdentitySchema(client);
-  const r = await client.query<StoredCoverageRow & { inputs?: unknown }>(
+  const r = await client.query<Omit<StoredCoverageRow, "support"> & { inputs?: unknown }>(
     `select ov.id, ov.item_kind, ov.item_order, ov.item_text, ov.status, ov.conclusion, ov.inferred,
             ${degraded ? "ov.evidence_digest_degraded" : "false as evidence_digest_degraded"},
             ${
@@ -162,7 +228,15 @@ export async function loadObjectiveCoverage(client: PoolClient, runId: string): 
   );
   const current = coverageFingerprint(await readCoverageInputs(client, runId));
   const freshness = coverageFreshness(r.rows.map((x) => x.inputs ?? null), current);
-  return { rows: r.rows.map((row) => { delete row.inputs; return row; }), freshness };
+  // B37-F01: the cited insights' support, from the one support reader. A failed check makes every
+  // citing conclusion "Support not checked", never current. Its own snapshot (the reader opens one),
+  // so a review committed between the two reads is seen on the next load.
+  const cited = [...new Set(r.rows.flatMap((x) => x.synthesized_insight_ids))];
+  const support = cited.length > 0 ? await loadInsightSupportOrUnchecked(tenantId, runId, cited) : null;
+  return {
+    rows: r.rows.map(({ inputs: _inputs, ...row }) => ({ ...row, support: support ? coverageRowSupport(row.synthesized_insight_ids, support.statusOf) : null })),
+    freshness,
+  };
 }
 
 /** Accepted insights no stated (non-inferred) objective or decision cites; empty when there is no coverage. */
@@ -175,14 +249,15 @@ export function insightsNoItemCites<T extends { id: string }>(rows: StoredCovera
 
 /**
  * The conclusion as it travels without the coverage panel (exports, the assistant): the inferred and
- * degraded qualifications the panel shows, in the wording the exports have used (OBJ-REV-005/012), and
- * an out-of-date or unknown freshness (CE-1), so no export presents a stale verdict as current.
+ * degraded qualifications the panel shows, in the wording the exports have used (OBJ-REV-005/012), an
+ * out-of-date or unknown freshness (CE-1), and cited support that is not current (B37-F01), so no export
+ * presents a stale or unsupported verdict as current.
  */
 export function qualifiedConclusion(row: StoredCoverageRow, freshness: CoverageFreshness): string {
   const inferred = row.inferred ? "Inferred from this project's own evidence, not an independent test. " : "";
   const degraded = row.evidence_digest_degraded
     ? " (Evidence check degraded: generated while data-evidence retrieval was failing - may be missing evidence a working check would have cited.)"
     : "";
-  const note = coverageFreshnessNote(freshness);
+  const note = coverageRowNote(row, freshness);
   return `${inferred}${row.conclusion}${degraded}${note ? ` (${note})` : ""}`;
 }

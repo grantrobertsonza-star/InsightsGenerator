@@ -40,7 +40,8 @@ test("a recommendation's evidence trail runs from its decision and objective dow
       "insert into brief_passages(tenant_id,run_id,field,objective_candidate_id,document_id,document_role,quote,verified) values($1,$2,'objective',$3,$4,'brief','We need to understand why members leave.',true)",
       [t, run.id, objective, brief],
     );
-    const doc = await one("insert into documents(tenant_id,run_id,kind,source_filename,storage_path) values($1,$2,'report','exit-interviews.pdf','seed/exit.pdf') returning id", [t, run.id]);
+    // The report's text holds the finding's quote, so the insight's support can be checked (B37-F01).
+    const doc = await one("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'report','exit-interviews.pdf','seed/exit.pdf','Exit interviews. Fees were the main reason I left. Other reasons were rare.') returning id", [t, run.id]);
     const finding = await one(
       "insert into findings(tenant_id,run_id,origin,finding_text,status,source_document_id,source_page,source_quote) values($1,$2,'stated','Fees drive leaving','accepted',$3,4,'Fees were the main reason I left.') returning id",
       [t, run.id, doc],
@@ -48,7 +49,7 @@ test("a recommendation's evidence trail runs from its decision and objective dow
     await db.query("insert into verdicts (tenant_id, finding_id, verdict_tier, rationale, statistical_checks, verification_method, corroboration_level) values ($1,$2,'robust','ok','{}','single_pass','single_source')", [t, finding]);
     const pre = await one("insert into insights(tenant_id,run_id,finding_id,headline,observation,tension,implication) values($1,$2,$3,'Fees push members out','o','t','i') returning id", [t, run.id, finding]);
     const si = await one("insert into synthesized_insights(tenant_id,run_id,headline,observation,tension,implication,triangulation_count,source_theme_count,review_status,action_plan_status) values($1,$2,'Fees are the exit trigger','o','t','i',1,1,'accepted','has_action') returning id", [t, run.id]);
-    await db.query("insert into synthesized_insight_sources(synthesized_insight_id,pre_insight_id,tenant_id) values($1,$2,$3)", [si, pre, t]);
+    await db.query("insert into synthesized_insight_sources(synthesized_insight_id,pre_insight_id,tenant_id,support_snapshot) values($1,$2,$3,finding_support_parts($4))", [si, pre, t, finding]);
     const rec = await one("insert into recommendations(tenant_id,run_id,synthesized_insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status) values($1,$2,$3,'Cut the monthly fee for at-risk members','Head of Retention','n','Q1','m','high','a','b','ai_suggested','accepted') returning id", [t, run.id, si]);
     await db.query("insert into recommendation_decisions(recommendation_id,decision_candidate_id,decision_text,position,origin,tenant_id) values($1,$2,'Whether to cut fees',0,'model',$3)", [rec, decision, t]);
     writeFileSync(fixtureFile, JSON.stringify({ tools: { record_validations: [{ match: "Validate the insights against the objectives and decisions now", input: { validations: [{ item_index: 0, status: "resolved", conclusion: "Fees explain leaving.", insight_indices: [0] }, { item_index: 1, status: "resolved", conclusion: "Supports cutting fees.", insight_indices: [0] }] } }] } }));
