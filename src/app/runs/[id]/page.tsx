@@ -141,6 +141,7 @@ import { loadObjectiveCoverage, coverageNote, coverageRowCurrent, coverageSuppor
 import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
 import { computeTableQuality, computeFullTableQuality, type TableQuality } from "@/lib/dataQuality";
+import { tableMethodStatus, type TableMethodStatus } from "@/lib/tableMethod";
 import { loadVariableDictionary, resolveCurrentDesignSnapshotStatus, designFreshnessStatus, type DesignFreshness, type CurrentDesignSnapshotStatus } from "@/lib/crosstabs";
 import { loadVariableOverrides, type QuestionType } from "@/lib/variableOverrides";
 import type { VariableDictionary } from "@/lib/parseStatsFile";
@@ -344,6 +345,9 @@ type Finding = {
   // any human wording - purely an additional, read-only signal. Null for a finding with no
   // source table at all (nothing to compare, a different thing from "couldn't compare").
   designFreshness: DesignFreshness | null;
+  /** Batch 47: for a finding from a calculated table, whether that table was built with the current table
+   * method (tableMethod.ts); null when the finding has no calculated table behind it. */
+  methodFreshness: TableMethodStatus | null;
   /** CE-6: planned, discovered or stated, and for a planned finding the plan line and its objective. */
   route: FindingRoute;
   routeText: string;
@@ -908,8 +912,11 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
   return out;
 }
 
-type FindingRow = Omit<Finding, "designFreshness" | "route" | "routeText"> & {
+type FindingRow = Omit<Finding, "designFreshness" | "methodFreshness" | "route" | "routeText"> & {
   source_table_document_id: string | null;
+  /** Set only when the source table is a calculated table (crosstab not null). */
+  from_calculated_table: boolean | null;
+  table_method: string | null;
   design_snapshot: { design: { psu: string | null; strata: string | null } | null } | null;
 };
 
@@ -963,7 +970,8 @@ async function getFindings(runId: string): Promise<Finding[]> {
                 exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
                 exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
                 exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
-                dt2.document_id as source_table_document_id, dt2.design_snapshot
+                dt2.document_id as source_table_document_id, dt2.design_snapshot,
+                dt2.crosstab is not null as from_calculated_table, dt2.crosstab->'notes'->>'methodVersion' as table_method
          from findings c
          left join documents d1 on d1.id = c.source_document_id
          left join document_tables dt2 on dt2.id = c.source_table_id
@@ -998,7 +1006,8 @@ async function getFindings(runId: string): Promise<Finding[]> {
                 exists (select 1 from findings g where g.grounded_by_finding_id = c.id) as corroborates_report_claim,
                 exists (select 1 from finding_contradictions fc where fc.original_finding_id = c.id) as is_contradicted,
                 exists (select 1 from finding_contradictions fc where fc.contradicting_finding_id = c.id) as contradicts_report,
-                dt2.document_id as source_table_document_id
+                dt2.document_id as source_table_document_id,
+                dt2.crosstab is not null as from_calculated_table, dt2.crosstab->'notes'->>'methodVersion' as table_method
          from findings c
          left join documents d1 on d1.id = c.source_document_id
          left join document_tables dt2 on dt2.id = c.source_table_id
@@ -1043,8 +1052,8 @@ async function getFindings(runId: string): Promise<Finding[]> {
     return { route: info.route, routeText: routeText(info) };
   };
   return rows.map((r) => {
-    const { source_table_document_id, design_snapshot, ...rest } = r;
-    const finding = { ...rest, ...routeOf(rest.id) };
+    const { source_table_document_id, design_snapshot, from_calculated_table, table_method, ...rest } = r;
+    const finding = { ...rest, ...routeOf(rest.id), methodFreshness: from_calculated_table ? tableMethodStatus(table_method) : null };
     if (!source_table_document_id) {
       // No source table at all - there is nothing to compare, a different thing from having
       // tried to compare and failed. Unchanged from before this repair.

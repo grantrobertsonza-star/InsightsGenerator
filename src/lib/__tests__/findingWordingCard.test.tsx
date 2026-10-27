@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/lib/findingActions", () => ({}));
+vi.mock("@/lib/tableMethod", async () => await import("../tableMethod"));
 vi.mock("@/lib/previewActions", () => ({}));
 vi.mock("@/components/icons", async () => await import("../../components/icons"));
 vi.mock("@/lib/findingsChartData", async () => await import("../findingsChartData"));

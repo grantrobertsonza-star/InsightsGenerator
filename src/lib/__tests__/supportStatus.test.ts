@@ -72,6 +72,8 @@ import {
   type SupportParts,
 } from "../supportStatusShared";
 
+import { CURRENT_TABLE_METHOD } from "../tableMethod";
+
 vi.setConfig({ testTimeout: 20000 });
 
 const parts = (over: Partial<SupportParts> = {}): SupportParts => ({
@@ -183,7 +185,7 @@ describe("classifyInsightSupport (pure rule)", () => {
       new Map<string, DocumentSettingsCheck>([
         ["doc-1", { design: () => design, corrections: () => corrections, ...(error ? { error } : {}) }],
       ]);
-    const rows = two({ calculatedTableDocumentId: "doc-1" });
+    const rows = two({ calculatedTableDocumentId: "doc-1", tableMethod: CURRENT_TABLE_METHOD });
     expect(classifyInsightSupport(rows, calc("current", "current"), true).status).toBe("current");
     const design = classifyInsightSupport(rows, calc("stale", "current"), true);
     expect(design.status).toBe("stale");
@@ -195,6 +197,24 @@ describe("classifyInsightSupport (pure rule)", () => {
     expect(summariseSupport(failed)).toMatch(/could not be checked \(permission denied\)/);
     // A settings lookup that never resolved is a failed check, not a pass.
     expect(classifyInsightSupport(rows, none, true).status).toBe("unknown");
+  });
+
+  it("batch 47: a source table built with an earlier method (or with none recorded) is changed, with the reason in words", () => {
+    const ok = new Map<string, DocumentSettingsCheck>([["doc-1", { design: () => "current", corrections: () => "current" }]]);
+    const current = classifyInsightSupport(two({ calculatedTableDocumentId: "doc-1", tableMethod: CURRENT_TABLE_METHOD }), ok, true);
+    expect(current.status).toBe("current");
+    for (const tableMethod of [null, undefined, "pooled-2026.10.26"]) {
+      const earlier = classifyInsightSupport(two({ calculatedTableDocumentId: "doc-1", tableMethod }), ok, true);
+      expect(earlier.status).toBe("stale");
+      expect(earlier.reasons.map((r) => r.kind)).toContain("method_changed");
+      expect(summariseSupport(earlier)).toMatch(/significance test and the don't know rules were updated/);
+    }
+    // A finding with no calculated table behind it (report text) is never judged on table method.
+    expect(classifyInsightSupport(two({ tableMethod: null }), none, true).status).toBe("current");
+    // Read from the table itself: still reported when the data file's settings could not be resolved.
+    const unresolved = classifyInsightSupport(two({ calculatedTableDocumentId: "doc-1", tableMethod: null }), none, true);
+    expect(unresolved.status).toBe("stale");
+    expect(unresolved.reasons.map((r) => r.kind)).toEqual(expect.arrayContaining(["method_changed", "check_failed"]));
   });
 
   it("inheritance: a recommendation or narrative takes the worst status of what it rests on", () => {
@@ -228,6 +248,8 @@ describe("loadInsightSupport (actual loader, fake database client)", () => {
     calculated_table_document_id: null,
     design_snapshot: null,
     overrides_snapshot: null,
+    // Tables in these fixtures were built with the current method, unless a test says otherwise.
+    table_method: CURRENT_TABLE_METHOD,
     ...over,
   });
 
@@ -333,6 +355,11 @@ describe("loadInsightSupport (actual loader, fake database client)", () => {
     const result = await loadInsightSupport("t", "run-1");
     expect(result.statusOf("si-1").status).toBe("unknown");
     expect(summariseSupport(result.statusOf("si-1"))).toMatch(/stored file unreachable/);
+    // Batch 47: the loader reads the table's recorded method; an earlier one is changed even here.
+    db.rows = [raw({ triangulation_count: "1", calculated_table_document_id: "doc-1", design_snapshot: { design: { psu: null, strata: null } }, overrides_snapshot: {}, table_method: null })];
+    const earlier = (await loadInsightSupport("t", "run-1")).statusOf("si-1");
+    expect(earlier.status).toBe("stale");
+    expect(earlier.reasons.map((r) => r.kind)).toContain("method_changed");
     expect(result.statusOf("si-2").status).toBe("invalid");
     settings.designThrows = null;
   });

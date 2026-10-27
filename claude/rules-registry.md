@@ -26,7 +26,9 @@ in the change that moves it.
 | Rule | Owner | Contract | Pinned by |
 |---|---|---|---|
 | Missing values (blank, declared tokens) | engine `_is_missing_cell`, `_NA_STRING_TOKENS`. Mirror: `src/lib/dataQuality.ts` `isMissing` (Data quality counts on stored previews) | `claude/one-reader-import.md` | `dataQuality.test.ts`; no test yet compares the two token lists (gap) |
-| Answer domain: which codes are answers ("don't know", user-missing, unchosen scale points) | engine `_non_answer_codes` with `_DK_RE`; rows via `_ordered_categories_raw` | `claude/answer-domain.md` | `answerDomainScores.db.test.ts`, `scripts/crosstab_selftest.py` |
+| Answer domain: which codes are answers ("don't know", user-missing, unchosen scale points) | engine `_non_answer_codes` with `_DK_RE`; rows via `_ordered_categories_raw`. Drifting copy: `src/lib/descriptiveFindings.ts` `DK` (wording of level findings; does not recognise run-together labels, gap) | `claude/answer-domain.md` | `answerDomainScores.db.test.ts`, `scripts/crosstab_selftest.py` |
+| Column tests and letters (pooled shares; design cells at 0%/100% untested) | engine `_pooled_prop_se` in `crosstab` | `claude/table-method.md` | `scripts/crosstab_selftest.py` (batch 47 cases) |
+| Table method version and its freshness | engine `TABLE_METHOD`; `src/lib/tableMethod.ts`; support reason `method_changed` in `supportStatusShared.ts` | `claude/table-method.md` | `tableMethod.test.ts`, `supportStatus.test.ts` |
 | Category identity is the raw code, not the label | engine `_raw_key`, `_ordered_categories_raw` | IMP-003 / ANA-BRAND-002 comments in the engine | `engineCodeIdentity.test.ts`, `engineLabelConflicts.test.ts` |
 | Which waves of a tracker are in the analysis, and their order | `src/lib/waves.ts` `projectWaves`; `src/lib/dataSetupShared.ts` `normaliseWaveDate` | `claude/waves.md` | `projectWaves.test.ts`, `projectWaves.db.test.ts`, `waves-in-project.check.mjs` |
 | Waves of one tracker are one independent source (0124) | SQL `finding_evidence_key` | `claude/waves.md` | `waveStudyIndependence.db.test.ts` |

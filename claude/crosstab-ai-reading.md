@@ -45,6 +45,22 @@ with `partial`; empty answer, blank cut-off, and a cut-off answer with a headlin
 refused; a healthy retry after a refusal. Native: Codex's continuation exercised an empty reading
 and recovery in the browser.
 
+## Batch 47 (27 October 2026)
+
+Grant asked why a table read as "No clear pattern". Two causes, both repaired:
+
+- The reading saw only the cell flags. A question whose answers differ across a banner variable as a
+  whole, but thinly in every cell, had no flag to lead with. Each question now carries its whole-table
+  test against every banner variable (chi-square p, Cramer's V, and a plain 95% verdict) and, for a coded
+  single choice question, the mean, standard deviation and base of its codes. The prompt says a question
+  can differ overall when no cell is marked, and that no single cell is to be called significant for it.
+- A reading with a headline and no cards was shown as complete. It is now refused like an empty one
+  ("The AI reading came back without any patterns described. Try again.").
+
+The cell flags themselves changed too (pooled test, `claude/table-method.md`), which removed the false
+"lower" on a 0% cell that the reading had been led by. Tests: `crosstabInsights.test.ts` batch 47 cases
+(both fail on the old code).
+
 ## Limits
 
 The hosted model's judgment is not tested. The correction note covers only the table's own tests.

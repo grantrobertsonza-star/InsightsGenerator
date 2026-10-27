@@ -21,3 +21,15 @@ A variable's answer domain is the codes that are answers:
 Changed behaviour: a cross-tab with non-answers excluded no longer shows a 0% row for an unchosen
 declared non-answer code. Tables stored before keep their rows until rebuilt; CSM and NPS scores are
 computed when asked, so they use the new domain at once.
+
+## Run-together and joined labels (batch 47, 27 October 2026)
+
+`_DK_RE` allows the words of a non-answer label to be run together or joined by "_" or "-" as well as
+spaced, and recognises "prefer not to say" and "prefer not to answer". Before, "DontKnow",
+"Not_applicable" and "NoAnswer" stayed in as answers and banner columns with non-answers excluded
+(Grant: a "DontKnow" column in a UsedIVR banner, and its cases in every base). Words that only start
+alike ("Donations", "Nature", "Domestic") are still answers. Tables built before carry an earlier
+`methodVersion` and are marked "earlier method" until rebuilt (`claude/table-method.md`). Pinned by the
+selftest's batch 47 cases (banner, row, base, included, ordinary words); the first three fail on the old
+pattern.
+

@@ -5,6 +5,7 @@
 // data file's dictionary (saveVariableOverride checks the variable exists in it) and the survey
 // design check (no design on either side), which both need the stored file; neither is under test.
 // Skipped, with a printed reason, when TEST_DATABASE_URL is not set.
+import { CURRENT_TABLE_METHOD } from "../tableMethod";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 
@@ -34,7 +35,8 @@ describe.skipIf(!TEST_DATABASE_URL)("NET members are calculation inputs for supp
     const table = await one(
       `insert into document_tables (tenant_id, run_id, document_id, table_index, label, ingestion_type, crosstab, overrides_snapshot, design_snapshot)
        values ($1, $2, $3, $4, 'Saved table', 'raw', $5, '{}', '{"design": null}') returning id`,
-      [tenant, run, doc, index, JSON.stringify({ savedRequest })],
+      // Built with the current table method (batch 47), so only the corrections decide its freshness here.
+      [tenant, run, doc, index, JSON.stringify({ savedRequest, notes: { methodVersion: CURRENT_TABLE_METHOD } })],
     );
     const finding = await one(
       `insert into findings (tenant_id, run_id, origin, finding_text, status, stated_stats, source_table_id)

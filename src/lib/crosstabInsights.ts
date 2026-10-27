@@ -37,6 +37,12 @@ const MAX_TABLE_CHARS = 30_000;
  * cut the text at 9,000 characters, which on a large table dropped most questions silently.
  * A cell the engine flagged as differing from the rest of its banner variable carries "(higher)" or
  * "(lower)"; the correction applied is stated once at the top.
+ *
+ * Batch 47 (Grant, 27 October 2026: "No clear pattern" on a table with a clear overall difference): each
+ * question also carries its whole-table test against every banner variable (chi-square p and Cramer's V,
+ * with its 95% verdict) and, for a coded single choice question, the average and spread of its answer
+ * codes. Cell flags alone miss a difference spread thinly across several answers, which the whole-table
+ * test still finds.
  */
 export function insightTableText(result: CrosstabResult): { text: string; questionsShown: number; questionsTotal: number } {
   const cols = result.columns.map((c) => c.name);
@@ -46,6 +52,7 @@ export function insightTableText(result: CrosstabResult): { text: string; questi
     `Weight: ${result.provenance?.weightVar ?? "none"}. Tests: a cell marked (higher) or (lower) differs from the other columns of its banner variable at 95%${correction === "fdr" ? ", after a false discovery rate correction" : correction === "bonferroni" ? ", after a Bonferroni correction" : ", uncorrected"}. Unmarked cells were not found to differ. Figures are column percentages unless the row is a mean.`,
   ];
   const fmt = (x: number | null | undefined) => (x === null || x === undefined ? "-" : String(Math.round(x * 10) / 10));
+  const fmtP = (p: number) => (p < 0.001 ? "<0.001" : p.toFixed(3));
   const blocks: string[] = [];
   for (const q of result.questions) {
     const lines = [`Question: ${q.label}`];
@@ -55,7 +62,15 @@ export function insightTableText(result: CrosstabResult): { text: string; questi
         continue;
       }
       const cells = r.pct.map((x, j) => `${fmt(x)}${r.sig?.[j] > 0 ? " (higher)" : r.sig?.[j] < 0 ? " (lower)" : ""}`);
-      lines.push(`  ${r.isMean ? `${r.label} [mean]` : r.label}: ${[...cells, fmt(r.total.pct)].join(" | ")}`);
+      const spread = r.desc?.sd != null ? ` (standard deviation ${fmt(r.desc.sd)})` : "";
+      lines.push(`  ${r.isMean ? `${r.label} [mean]` : r.label}: ${[...cells, fmt(r.total.pct)].join(" | ")}${spread}`);
+    }
+    for (const t of q.tableTests ?? []) {
+      const verdict = t.p < 0.05 ? "the answers differ across these columns at 95%" : "no difference across these columns at 95%";
+      lines.push(`  Whole-table test by ${t.label}: chi-square p=${fmtP(t.p)}${t.cramersV != null ? `, Cramer's V=${t.cramersV.toFixed(2)}` : ""} (${verdict})`);
+    }
+    if (q.desc && q.desc.mean != null) {
+      lines.push(`  Average answer code, all respondents: mean ${fmt(q.desc.mean)}${q.desc.sd != null ? `, standard deviation ${fmt(q.desc.sd)}` : ""}, n=${q.desc.n}`);
     }
     blocks.push(lines.join("\n"));
   }
@@ -118,6 +133,10 @@ export async function summarizeCrosstabTable(
       "a surprising gap. Reference actual percentages or counts from the table.\n" +
       "- Cells marked (higher) or (lower) passed the table's own significance test; lead with those. Call a difference " +
       "significant only when it is marked. Unmarked gaps may be noise: describe them as such, or not at all.\n" +
+      "- A 'Whole-table test' line says whether a question's answers differ across a banner variable as a whole. A " +
+      "question can differ overall even when no single cell is marked; say so when it does, and name where the gap is " +
+      "largest without calling that one cell significant.\n" +
+      "- An 'Average answer code' line gives the mean and spread of a coded question; use it to describe where answers sit.\n" +
       "- A table with many questions: name the few clearest patterns across it, not one question at a time.\n" +
       "- No em dashes, ever. Use a comma, a period, or parentheses instead.\n" +
       "- Write one headline: the single clearest pattern, stated plainly. Then one to four short cards, each on a " +
@@ -150,5 +169,8 @@ export async function summarizeCrosstabTable(
         .slice(0, 4)
         .map((c) => ({ title: String(c!.title), stat: c!.stat ? String(c!.stat) : undefined, body: String(c!.body) }))
     : [];
+  // A reading with a headline and no cards gave the person nothing to check the headline against
+  // (batch 47): refused like an empty one, never shown as a complete reading.
+  if (cards.length === 0) throw new Error("The AI reading came back without any patterns described. Try again.");
   return { headline, cards, partial };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { EARLIER_METHOD_TEXT } from "@/lib/tableMethod";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ThreePane } from "./ThreePane";
@@ -20,7 +21,7 @@ import {
 } from "@/lib/crosstabActions";
 import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import type { CrosstabInsights } from "@/lib/crosstabInsights";
-import { QuickChart, Histogram, buildRCode } from "./CrosstabExtras";
+import { QuickCharts, Histogram, buildRCode } from "./CrosstabExtras";
 import FilterBuilder from "./CrosstabFilters";
 import CrosstabAsk, { type AskHistory } from "./CrosstabAsk";
 import { planStarterTables } from "@/lib/starterTables";
@@ -1934,6 +1935,15 @@ function TableCard({
               may be outdated
             </span>
           )}
+          {item.methodFreshness === "earlier" && (
+            <span
+              data-testid="table-method-earlier"
+              className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-800"
+              title={`This table was ${EARLIER_METHOD_TEXT}. Its findings and anything built on them are marked until then.`}
+            >
+              earlier method
+            </span>
+          )}
           {item.designFreshness === "stale" && (
             <span
               className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-800"
@@ -2123,6 +2133,7 @@ function CrosstabView({
   const [sortBy, setSortBy] = useState<"order" | "label" | "size">("order");
   const [hideEmpty, setHideEmpty] = useState(false);
   const [showChart, setShowChart] = useState(false);
+  const [chartsOnly, setChartsOnly] = useState(false);
   const [copied, setCopied] = useState(false);
   const { sel: cellSelected, select: selectCell } = useContext(CellSelectContext);
   const hasResp = result.questions.some((qq) => qq.rows.some((r) => r.respPct !== undefined));
@@ -2240,9 +2251,15 @@ function CrosstabView({
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
           Hide empty answers
         </label>
-        <button type="button" onClick={() => setShowChart((v) => !v)} className="font-medium text-primary hover:underline">
-          {showChart ? "Hide chart" : "Quick chart"}
+        <button type="button" onClick={() => setShowChart((v) => !v)} className="font-medium text-primary hover:underline" data-testid="crosstab-chart-toggle">
+          {showChart ? "Hide charts" : "Quick charts"}
         </button>
+        {showChart && (
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={chartsOnly} onChange={(e) => setChartsOnly(e.target.checked)} data-testid="crosstab-charts-only" />
+            Charts only
+          </label>
+        )}
         <button
           type="button"
           onClick={async () => {
@@ -2322,7 +2339,7 @@ function CrosstabView({
           {result.notes?.dkNote}
         </p>
       )}
-      {showChart && <QuickChart result={result} hiddenCols={hiddenCols} />}
+      {showChart && <QuickCharts result={result} hiddenCols={hiddenCols} />}
       {result.notes?.design && (
         <details className="text-[11px] text-muted">
           <summary className="cursor-pointer font-medium text-foreground">About these tests</summary>
@@ -2331,6 +2348,7 @@ function CrosstabView({
             <li>{result.notes.design}</li>
             {result.notes.overlap && <li>{result.notes.overlap}</li>}
             {result.notes.tableTest && <li>{result.notes.tableTest}</li>}
+            {result.notes.degenerateUntested && <li data-testid="crosstab-degenerate-untested">{result.notes.degenerateUntested}</li>}
             <li>Letters beside a figure name the columns it is significantly higher than within the same banner variable (column-pair test, 95%).</li>
             <li>{result.notes.means}</li>
             {result.provenance && (
@@ -2343,7 +2361,7 @@ function CrosstabView({
           </ul>
         </details>
       )}
-      <div className="overflow-auto rounded-lg border border-border">
+      <div className={`overflow-auto rounded-lg border border-border${showChart && chartsOnly ? " hidden" : ""}`}>
         {/* data-*: stable identity for reading a table (tests, the browser adapter): this is the
             result table, for these row questions; the nested descriptive-statistics table is not. */}
         <table

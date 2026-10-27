@@ -487,14 +487,30 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 #     (_excel_sheet_grid, CAL-R1-F03); cached Excel dictionaries are rebuilt (minimumDictionaryVersion
 #     14 for .xlsx/.xls; CSV/TSV reading did not change and their version-13 copies stay valid).
 DICTIONARY_VERSION = 14
-ENGINE_VERSION = "2026.10.26-3"  # Excel logical cells kept apart from numbers
+ENGINE_VERSION = "2026.10.27-1"  # shares tested with the pooled two-proportion z-test
+# The version of the rules that decide a table's figures and flags, recorded in every table's notes as
+# methodVersion. A table recorded with a different version (or none: built before this was recorded) was
+# built under rules that can give different figures or flags, and is reported as built with an earlier
+# method (src/lib/tableMethod.ts, CURRENT_TABLE_METHOD, which must equal this value; a test checks).
+# "2026.10.27" (batch 47): shares tested pooled under the null hypothesis (before: unpooled, which flagged
+# a 0% or 100% cell against a small gap), and non-answer labels recognised when their words run together
+# ("DontKnow", "Not_applicable"), so those codes leave the bases and banners.
+TABLE_METHOD = "2026.10.27"
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
 LOW_BASE_FLAG = 100      # kept for compatibility
 SIG_LEVEL = 0.05
 # Value labels that mean "no usable answer"; such codes never enter a mean.
-_DK_RE = re.compile(r"^(don['\u2019\u2018`]?t know|do not know|dk\b|refus|no response|no answer|not applicable|n/?a\b|not stated|unknown|missing)", re.IGNORECASE)
+# Words may be run together or joined by "_" or "-" as well as spaced: data exports often label a code
+# "DontKnow", "Not_applicable" or "NoAnswer", and before batch 47 those stayed in as answers and banner
+# columns even with non-answers excluded (Grant, 27 October 2026: a "DontKnow" column in the UsedIVR banner).
+_SEP = r"[\s_-]*"
+_DK_RE = re.compile(
+    rf"^(don['\u2019\u2018`]?t{_SEP}know|do{_SEP}not{_SEP}know|dk\b|refus|prefer{_SEP}not{_SEP}to{_SEP}(say|answer)|no{_SEP}response|no{_SEP}answer"
+    rf"|not{_SEP}applicable|n/?a\b|not{_SEP}stated|unknown|missing)",
+    re.IGNORECASE,
+)
 _WEIGHT_RE = re.compile(r"weight|wgt|\bwt\b", re.IGNORECASE)
 
 
@@ -2508,6 +2524,18 @@ def _p_two_sided_t(t: float, df: float) -> float:
     return _betai(df / 2.0, 0.5, x)
 
 
+def _pooled_prop_se(p1: float, n1: float, p2: float, n2: float) -> float:
+    """Standard error of the difference of two shares under the null hypothesis that they are equal:
+    the shares pooled over both groups, on effective bases. This is the usual two-proportion z-test.
+    The unpooled form (each group's own p(1-p)/n) belongs to a confidence interval, not a test: with a
+    share of 0% or 100% its variance is zero, so a tiny gap looks significant (0 of 53 against 11 of
+    947 gave p = 0.0008 unpooled; pooled p = 0.43; Fisher's exact p = 1.0; 27 October 2026)."""
+    if n1 <= 0 or n2 <= 0:
+        return 0.0
+    p0 = (p1 * n1 + p2 * n2) / (n1 + n2)
+    return math.sqrt(max(p0 * (1 - p0), 0.0) * (1 / n1 + 1 / n2))
+
+
 def _p_two_sided_design(z: float, dsg) -> float:
     """ANA-XTAB-002: a linearised design-based standard error (Taylor series over PSUs,
     optionally within strata) does not make a z-statistic asymptotically normal the way an
@@ -3987,6 +4015,9 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         b = block_of_col[k]
         block_any[b] = block_any.get(b, np.zeros(n_rows, dtype=bool)) | col_masks[k]
 
+    # Cells (or column pairs) not tested because a share was 0% or 100% under a survey design (see prop_row).
+    degenerate_untested = [0]
+
     def base_stats(mask):
         m = mask & w_ok
         wi = w[m]
@@ -4031,11 +4062,18 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             if (n >= MIN_BASE_RELIABLE and not math.isnan(pj) and not math.isnan(pc)
                     and n_eff >= MIN_EFFECTIVE_BASE and c_eff >= MIN_EFFECTIVE_BASE):
                 if dsg is not None:
-                    yc = (sel_mask & cm).astype(float)
-                    tc = dsg.totals(np.where(cm, wv * (yc - pc) / csw, 0.0))
-                    se = math.sqrt(dsg.var_totals(tk - tc))
+                    # A share of exactly 0% or 100% has no variance under the design, so the
+                    # linearised standard error of the difference collapses to the other side's
+                    # alone and the smallest gap looks significant. Such a cell is not tested.
+                    if pj * (1 - pj) == 0 or pc * (1 - pc) == 0:
+                        se = 0.0
+                        degenerate_untested[0] += 1
+                    else:
+                        yc = (sel_mask & cm).astype(float)
+                        tc = dsg.totals(np.where(cm, wv * (yc - pc) / csw, 0.0))
+                        se = math.sqrt(dsg.var_totals(tk - tc))
                 else:
-                    se = math.sqrt(pj * (1 - pj) / n_eff + pc * (1 - pc) / c_eff)
+                    se = _pooled_prop_se(pj, n_eff, pc, c_eff)
                 if se > 0:
                     z = (pj - pc) / se
                     p = _p_two_sided_design(z, dsg)
@@ -4044,7 +4082,9 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             ps.append(None if p is None else round(p, 4))
             sigs.append(sg)
             ok_pair = n >= MIN_BASE_RELIABLE and not math.isnan(pj) and n_eff >= MIN_EFFECTIVE_BASE
-            ests.append(((pj, pj * (1 - pj) / n_eff, None if tk is None else tk.astype(np.float32)) if ok_pair else None))
+            # The fourth element marks a share (with its effective base): its letters use the pooled
+            # test below. A mean's estimate has none and keeps its Welch-type comparison.
+            ests.append(((pj, pj * (1 - pj) / n_eff, None if tk is None else tk.astype(np.float32), n_eff) if ok_pair else None))
         # NET column of each banner variable: everyone with a valid answer to the
         # question and to that banner variable. Never tested, so no p, flag or letter.
         nets = []
@@ -4293,7 +4333,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             if mj is None or n < MIN_BASE_SUPPRESS:
                 means.append(None); sigs.append(0); ps.append(None); ests.append(None); continue
             tk = dsg.totals(np.where(m, wv * (np.nan_to_num(x) - mj) / sw, 0.0)) if dsg is not None and sw > 0 else None
-            ests.append((mj, var / n_eff, None if tk is None else tk.astype(np.float32)) if (n >= MIN_BASE_RELIABLE and var is not None and n_eff >= MIN_EFFECTIVE_BASE) else None)
+            ests.append((mj, var / n_eff, None if tk is None else tk.astype(np.float32), None) if (n >= MIN_BASE_RELIABLE and var is not None and n_eff >= MIN_EFFECTIVE_BASE) else None)
             p, sg = None, 0
             cmask = valid & block_any[block_of_col[k]] & ~col_masks[k]
             cn, csw, c_eff, mc, cvar = mv(cmask)
@@ -4779,8 +4819,15 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 for a_i in range(len(idx)):
                     for b_i in range(a_i + 1, len(idx)):
                         ja, jb = idx[a_i], idx[b_i]
+                        share = est[ja][3] is not None and est[jb][3] is not None
                         if dsg is not None and est[ja][2] is not None and est[jb][2] is not None:
+                            # As the column test: a share at 0% or 100% is not compared under a design.
+                            if share and (est[ja][0] * (1 - est[ja][0]) == 0 or est[jb][0] * (1 - est[jb][0]) == 0):
+                                degenerate_untested[0] += 1
+                                continue
                             se = math.sqrt(dsg.var_totals(est[ja][2].astype(float) - est[jb][2].astype(float)))
+                        elif share:
+                            se = _pooled_prop_se(est[ja][0], est[ja][3], est[jb][0], est[jb][3])
                         else:
                             se = math.sqrt(est[ja][1] + est[jb][1])
                         if se > 0:
@@ -4847,7 +4894,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         "skipped": skipped,
         "notes": {
             "test": "No banner variable was chosen, so this table describes all respondents and has no comparison tests." if overall else "Each column is compared with all other cases in the same banner variable ("
-            + ("t-test (design degrees of freedom) on the linearised difference of two domain estimates" if dsg is not None else "two-proportion z-test with unpooled standard errors on effective bases")
+            + ("t-test (design degrees of freedom) on the linearised difference of two domain estimates" if dsg is not None else "two-proportion z-test, shares pooled under the null hypothesis, on effective bases")
             + "; difference of means for averages), 95% level, "
             + {
                 "none": "not corrected for multiple comparisons.",
@@ -4855,6 +4902,12 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 "fdr": "with a Benjamini-Hochberg false discovery rate correction across the columns of each banner variable, for each row.",
             }[correction],
             "correction": correction,
+            # The rules this table's figures and flags came from, so a table built before a change is known.
+            "methodVersion": TABLE_METHOD,
+            "degenerateUntested": (
+                f"{degenerate_untested[0]} cell(s) or column pair(s) at 0% or 100% were not tested: under a survey design such a share has no variance, so a test would overstate the difference."
+                if degenerate_untested[0] else None
+            ),
             "design": (
                 (
                     f"Standard errors use Taylor series linearisation for a stratified cluster sample: primary sampling units {dsg.info['psu']}"

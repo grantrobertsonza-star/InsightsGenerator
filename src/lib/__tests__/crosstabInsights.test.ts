@@ -53,6 +53,27 @@ describe("insightTableText", () => {
   });
 });
 
+describe("insightTableText: whole-table tests and spread (batch 47)", () => {
+  it("names each question's whole-table test with its verdict, and the average and spread of a coded question", () => {
+    const t = table(1);
+    const q = t.questions[0] as unknown as Record<string, unknown>;
+    q.tableTests = [
+      { block: 0, label: "Segment", chi2: 14.2, df: 2, p: 0.0008, nEff: 100, deff: null, cramersV: 0.27 },
+      { block: 1, label: "Region", chi2: 1.1, df: 2, p: 0.58, nEff: 100, deff: null },
+    ];
+    q.desc = { n: 100, nEff: 100, mean: 6.62, sd: 2.18, variance: 4.75, sem: 0.22, min: 0, max: 10, range: 10, p25: 5, median: 7, p75: 8 };
+    const text = insightTableText(t).text;
+    expect(text).toContain("Whole-table test by Segment: chi-square p=<0.001, Cramer's V=0.27 (the answers differ across these columns at 95%)");
+    expect(text).toContain("Whole-table test by Region: chi-square p=0.580 (no difference across these columns at 95%)");
+    expect(text).toContain("Average answer code, all respondents: mean 6.6, standard deviation 2.2, n=100");
+  });
+  it("a question with no whole-table test or codes gets no such lines (nothing invented)", () => {
+    const text = insightTableText(table(1)).text;
+    expect(text).not.toContain("Whole-table test");
+    expect(text).not.toContain("Average answer code");
+  });
+});
+
 describe("summarizeCrosstabTable", () => {
   const tool = (input: unknown, stop = "tool_use") => ({ content: [{ type: "tool_use", id: "t", name: "record_insights", input }], stop_reason: stop, usage: { input_tokens: 1, output_tokens: 1 } });
   it("returns the reading, and says how much of the table it read", async () => {
@@ -63,6 +84,15 @@ describe("summarizeCrosstabTable", () => {
     expect(r.partial?.questionsTotal).toBe(40);
     expect(state.requests[0].messages[0].content).toMatch(/^Table \(the first \d+ of its 40 questions; the rest did not fit\):/);
     expect(state.requests[0].system).toContain("Call a difference significant only when it is marked");
+  });
+  it("batch 47: a headline with no cards is refused, and the next healthy read succeeds", async () => {
+    state.response = tool({ headline: "No clear pattern.", cards: [] });
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("came back without any patterns described");
+    state.response = tool({ headline: "No clear pattern.", cards: [{ title: "", body: "" }] });
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("came back without any patterns described");
+    state.response = tool({ headline: "Segment1 says yes more often.", cards: [{ title: "Gap", body: "60% against 40%." }] });
+    expect((await summarizeCrosstabTable("t", "r", table(1))).cards).toHaveLength(1);
+    expect(state.requests.at(-1)!.system).toContain("Whole-table test");
   });
   it("an empty or cut-off answer is an error, not a 'no pattern' reading", async () => {
     state.response = tool({});

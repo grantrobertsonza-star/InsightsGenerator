@@ -79,6 +79,7 @@ type RawRow = {
   design_snapshot: SupportLinkRow["designSnapshot"];
   overrides_snapshot: unknown;
   saved_request: unknown;
+  table_method: string | null;
   /** Set for a quoted report finding (see withQuoteGrounding); absent otherwise. */
   quote_document_id: string | null;
   source_quote: string | null;
@@ -243,6 +244,7 @@ export async function loadInsightSupport(
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
               dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
+              dt.crosstab->'notes'->>'methodVersion' as table_method,
               ${QUOTE_COLUMNS},
               ${driver.columns}
        from synthesized_insights si
@@ -278,6 +280,7 @@ async function classifyRows(tenantId: string, runId: string, rows: RawRow[], sna
       calculatedTableDocumentId: r.calculated_table_document_id,
       designSnapshot: r.design_snapshot ?? null,
       overridesSnapshot: r.overrides_snapshot ?? null,
+      tableMethod: r.table_method ?? null,
       tableVariables: tableVariablesFromSavedRequest(r.saved_request),
       driver: r.is_driver
         ? {
@@ -376,6 +379,7 @@ export async function loadPreInsightSupport(tenantId: string, runId: string, ins
               ${snapshotColumns},
               case when dt.crosstab is not null then dt.document_id else null end as calculated_table_document_id,
               dt.design_snapshot, dt.overrides_snapshot, dt.crosstab->'savedRequest' as saved_request,
+              dt.crosstab->'notes'->>'methodVersion' as table_method,
               ${QUOTE_COLUMNS},
               ${driver.columns}
        from insights i

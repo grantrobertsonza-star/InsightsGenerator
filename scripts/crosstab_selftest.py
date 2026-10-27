@@ -137,7 +137,9 @@ sel = q1 == 1
 def stats(mask):
     ww = w[mask]; n_eff = ww.sum() ** 2 / (ww ** 2).sum(); return (w[mask & sel].sum() / ww.sum()), n_eff
 p1, e1 = stats(m); p2, e2 = stats(c)
-z = (p1 - p2) / math.sqrt(p1 * (1 - p1) / e1 + p2 * (1 - p2) / e2)
+# Pooled under the null hypothesis on effective bases (batch 47): the two groups' shares combined.
+p0 = (p1 * e1 + p2 * e2) / (e1 + e2)
+z = (p1 - p2) / math.sqrt(p0 * (1 - p0) * (1 / e1 + 1 / e2))
 pv = math.erfc(abs(z) / math.sqrt(2))
 got_p = row["p"][cols[rc]]
 check("complement z-test p-value", got_p is not None and abs(got_p - pv) < 0.0006, f"{got_p} vs {pv:.4f}")
@@ -272,7 +274,7 @@ for method, word in (("bonferroni", "Bonferroni"), ("fdr", "Benjamini-Hochberg")
 check("engine default is uncorrected and says so", "not corrected" in psf.crosstab(data, "t.sav", base_args)["notes"]["test"])
 check("notes carry the design and overlap statements", all(k in raw_res["notes"] for k in ("design", "overlap")))
 
-# column-pair letters against an independent pairwise z test (no correction)
+# column-pair letters against an independent pooled pairwise z test (no correction)
 lt = psf.crosstab(data, "t.sav", dict(base_args, correction="none"))
 lcols = {c["name"]: i for i, c in enumerate(lt["columns"])}
 check("columns carry letters", [c["letter"] for c in lt["columns"]][:3] == ["A", "B", "C"])
@@ -290,14 +292,16 @@ for row in data_rows(lt["questions"][0]):
                 continue
             ma, mb = reg == codes[a], reg == codes[b]
             pa = w[ma & (q1 == cat)].sum() / w[ma].sum(); pb = w[mb & (q1 == cat)].sum() / w[mb].sum()
-            se = math.sqrt(pa * (1 - pa) / _ne(w[ma]) + pb * (1 - pb) / _ne(w[mb]))
+            na_, nb_ = _ne(w[ma]), _ne(w[mb])
+            p0_ = (pa * na_ + pb * nb_) / (na_ + nb_)
+            se = math.sqrt(p0_ * (1 - p0_) * (1 / na_ + 1 / nb_))
             z = (pa - pb) / se
             if math.erfc(abs(z) / math.sqrt(2)) < 0.05 and z > 0:
                 exp += lt["columns"][lcols[b]]["letter"]
         got = row["letters"][lcols[a]]
         if sorted(got) != sorted(exp):
             ok_letters = False
-check("column-pair letters equal an independent pairwise z test", ok_letters)
+check("column-pair letters equal an independent pooled pairwise z test", ok_letters)
 
 # first-order Rao-Scott whole-table test against an independent calculation
 tt = lt["questions"][0].get("tableTests") or []
@@ -689,6 +693,53 @@ bad = _grp([{"label": "bad", "cats": ["A"], "minus": ["A"], "kind": "score"}])
 check("net score with overlapping answers is skipped with a reason", any("overlap" in x["reason"] for x in bad["skipped"]))
 tb_ = [r for r in rg["questions"][0]["rows"] if not r.get("isBase") and not r.get("isNet")]
 check("total row ignores subtotals and scores", len(tb_) == 3)
+
+# Batch 47 regression (Grant, 27 October 2026): a 0% cell against a small share. 0 of 53 in column A,
+# 11 of 947 in column B, unweighted. The unpooled test gives a zero variance for A and p = 0.0008, so it
+# flagged A as significantly lower. Pooled under the null hypothesis: p0 = 11/1000,
+# se = sqrt(p0 (1 - p0) (1/53 + 1/947)), z = -0.789, p = 0.430 (Fisher's exact test gives p = 1.0).
+zr = pd.DataFrame({"grp": ["A"] * 53 + ["B"] * 947, "y": [2] * 53 + [1] * 11 + [2] * 936, "psu": np.arange(1000)})
+zr_args = {"columnVars": ["grp"], "rowItems": [{"key": "y", "label": "Y", "vars": ["y"]}], "weightVar": None, "correction": "none"}
+rz = psf.crosstab(zr.to_csv(index=False).encode(), "z.csv", zr_args)
+zrow = next(r for r in data_rows(rz["questions"][0]) if r["label"] == "1")
+p0r = 11 / 1000
+z_ref = (0 - 11 / 947) / math.sqrt(p0r * (1 - p0r) * (1 / 53 + 1 / 947))
+p_ref = math.erfc(abs(z_ref) / math.sqrt(2))
+check("0 of 53 vs 11 of 947: pooled p-value (0.430, not 0.0008)", zrow["p"][0] is not None and abs(zrow["p"][0] - p_ref) < 1e-3 and abs(p_ref - 0.4302) < 1e-3, f"{zrow['p'][0]} vs {p_ref}")
+check("0 of 53 vs 11 of 947: the 0% cell is not flagged lower", zrow["sig"][0] == 0, str(zrow["sig"]))
+check("0 of 53 vs 11 of 947: no column letters either way", not any(zrow.get("letters") or []), str(zrow.get("letters")))
+check("the notes name the pooled test and its method version", "pooled" in rz["notes"]["test"] and rz["notes"].get("methodVersion") == psf.TABLE_METHOD)
+check("no design: nothing reported as untested", rz["notes"].get("degenerateUntested") is None)
+# Boundary: a real difference is still found by the pooled test (0 of 200 vs 60 of 800).
+big = pd.DataFrame({"grp": ["A"] * 200 + ["B"] * 800, "y": [2] * 200 + [1] * 60 + [2] * 740})
+rb = psf.crosstab(big.to_csv(index=False).encode(), "b.csv", zr_args)
+brow = next(r for r in data_rows(rb["questions"][0]) if r["label"] == "1")
+check("pooled test still flags a clear difference at 0% (0 of 200 vs 60 of 800)", brow["sig"][0] == -1 and brow["p"][0] < 0.001, f"{brow['sig']} {brow['p']}")
+# Under a design a 0% share has no linearised variance: the cell is left untested and the notes say so.
+rzd = psf.crosstab(zr.to_csv(index=False).encode(), "z.csv", dict(zr_args, design={"psu": "psu", "strata": None}))
+zdrow = next(r for r in data_rows(rzd["questions"][0]) if r["label"] == "1")
+check("design: the 0% cell is untested (no p, no flag)", zdrow["p"][0] is None and zdrow["sig"][0] == 0, f"{zdrow['p']} {zdrow['sig']}")
+check("design: the notes count the untested cells", bool(rzd["notes"].get("degenerateUntested")) and "0% or 100%" in rzd["notes"]["degenerateUntested"])
+
+# Batch 47 regression: run-together non-answer labels ("DontKnow", "Not_applicable") are non-answers too,
+# in the banner and in the rows, when non-answers are excluded; kept when the researcher includes them.
+rk_ = np.random.default_rng(47)
+dkn = pd.DataFrame({"ivr": rk_.choice([1, 2, 3], 600), "sat": rk_.choice([1, 2, 3, 4], 600)})
+dk_path = os.path.join(tempfile.mkdtemp(), "dk.sav")
+pyreadstat.write_sav(dkn, dk_path, variable_value_labels={"ivr": {1: "Yes", 2: "No", 3: "DontKnow"}, "sat": {1: "Good", 2: "Fair", 3: "Poor", 4: "Not_applicable"}})
+dk_bytes = open(dk_path, "rb").read()
+dk_args = {"columnVars": ["ivr"], "rowItems": [{"key": "sat", "label": "Sat", "vars": ["sat"]}], "weightVar": None, "correction": "none"}
+rdk = psf.crosstab(dk_bytes, "dk.sav", dk_args)
+check("run-together 'DontKnow' is not a banner column when non-answers are excluded", [c["name"] for c in rdk["columns"]] == ["Yes", "No"], str([c["name"] for c in rdk["columns"]]))
+dk_rows = [r["label"] for r in data_rows(rdk["questions"][0])]
+check("'Not_applicable' is not an answer row when non-answers are excluded", "Not_applicable" not in dk_rows and {"Good", "Fair", "Poor"} <= set(dk_rows), str(dk_rows))
+sub_ = dkn[(dkn["ivr"] == 1) & (dkn["sat"] != 4)]
+exp_good = (sub_["sat"] == 1).mean() * 100
+got_good = next(r for r in data_rows(rdk["questions"][0]) if r["label"] == "Good")["pct"][0]
+check("the base excludes the non-answers (Good among Yes, answering)", abs(got_good - exp_good) < 0.06, f"{got_good} vs {exp_good}")
+rkeep = psf.crosstab(dk_bytes, "dk.sav", dict(dk_args, excludeDk=False))
+check("with non-answers included, 'DontKnow' and 'Not_applicable' stay", "DontKnow" in [c["name"] for c in rkeep["columns"]] and "Not_applicable" in [r["label"] for r in data_rows(rkeep["questions"][0])])
+check("ordinary words that start like a non-answer are still answers", not any(psf._DK_RE.match(x) for x in ("Donations", "Nature", "Domestic", "Noise", "Yes", "No")))
 
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

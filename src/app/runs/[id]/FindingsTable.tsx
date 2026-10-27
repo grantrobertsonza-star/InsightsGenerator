@@ -1,5 +1,6 @@
 "use client";
 
+import { EARLIER_METHOD_TEXT } from "@/lib/tableMethod";
 import type { FindingCodingCounts } from "@/lib/codingAnalysis";
 import {
   Fragment,
@@ -98,6 +99,9 @@ type Finding = {
   // no source table at all. Never touches finding_text - a visibility signal only, rendered in
   // SourceInfo below.
   designFreshness: "current" | "stale" | "unknown" | null;
+  /** Batch 47: "earlier" when this finding's calculated table was built with an earlier table method
+   * (tableMethod.ts); null when there is no calculated table behind it or the page did not read it. */
+  methodFreshness?: "current" | "earlier" | null;
   /** CE-6 route (analysisPlan.ts): planned, discovered or stated; absent where the page did not read it. */
   route?: "planned" | "discovered" | "stated" | "unknown";
   routeText?: string;
@@ -710,6 +714,11 @@ function SourceInfo({
           <EyeIcon className="h-3 w-3" />
           {viewerLoadingId === finding.id ? "Opening..." : "View source"}
         </button>
+      )}
+      {finding.methodFreshness === "earlier" && (
+        <div data-testid="finding-method-earlier" title={`This finding's table was ${EARLIER_METHOD_TEXT}. The finding's wording and review are unchanged.`} className="mt-1 flex items-center gap-1 text-amber-700">
+          <span className="font-medium">Table built with an earlier method</span>
+        </div>
       )}
       {finding.designFreshness === "stale" && (
         <div

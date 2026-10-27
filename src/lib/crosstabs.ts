@@ -1,4 +1,5 @@
 import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
+import { tableMethodStatus, type TableMethodStatus } from "./tableMethod";
 import { withTenant, withTenantRead } from "./db";
 import { hasRepeatedSetKeys } from "./variableSetKeys";
 import { assertImportCaseCount } from "./importLimits";
@@ -70,6 +71,8 @@ export type CrosstabListItem = {
    * swallowed lookup failure can produce designStale: false... the actual findings loader also
    * returned false for a legacy null snapshot"). */
   designFreshness: DesignFreshness;
+  /** Batch 47: whether this table was built with the current table method (tableMethod.ts). */
+  methodFreshness: TableMethodStatus;
 };
 
 /** Brief 37 repair: distinct current/stale/unknown states for a table's or finding's design
@@ -854,6 +857,7 @@ type CrosstabListRow = {
   layer_group: string | null;
   layer_category: string | null;
   layer_label: string | null;
+  method_version: string | null;
   overrides_snapshot?: VariableOverrides | null;
   design_snapshot?: { design: { psu: string | null; strata: string | null } | null } | null;
 };
@@ -872,7 +876,8 @@ async function queryCrosstabList(
               dt.crosstab->>'source' as source,
               dt.crosstab->>'layerGroup' as layer_group,
               dt.crosstab->>'layerCategory' as layer_category,
-              dt.crosstab->>'layerLabel' as layer_label
+              dt.crosstab->>'layerLabel' as layer_label,
+              dt.crosstab->'notes'->>'methodVersion' as method_version
               ${includeSnapshot ? ", dt.overrides_snapshot, dt.design_snapshot" : ""}
        from document_tables dt
        where dt.run_id = $1 and dt.document_id = $2 and dt.table_index >= $3 and dt.crosstab is not null
@@ -1007,6 +1012,7 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
         ? canonicalJson(row.overrides_snapshot) !== currentSnapshot
         : false,
     designFreshness: designFreshnessStatus(row.design_snapshot, currentDesignSnapshotStatus),
+    methodFreshness: tableMethodStatus(row.method_version),
   }));
 }
 

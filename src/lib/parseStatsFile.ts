@@ -797,6 +797,11 @@ export type CrosstabResult = {
     design?: string;
     overlap?: string;
     tableTest?: string;
+    /** The version of the rules this table's figures and flags came from (engine TABLE_METHOD); absent on a
+     * table built before it was recorded. Compared with CURRENT_TABLE_METHOD by tableMethodStatus. */
+    methodVersion?: string;
+    /** Under a survey design, cells or column pairs at 0% or 100% left untested, with the count; null when none. */
+    degenerateUntested?: string | null;
     designUsed?: { psu: string; strata: string | null; nPsu: number; nStrata: number; pooledPsus: number; casesMissingDesign: number } | null;
     /** ANA-NPS-003 (second counter-review): true only when a sampling design was actually applied
      * to compute this table's design-aware figures (server-side dsg is not None) - as opposed to

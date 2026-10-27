@@ -10,6 +10,7 @@
 // agreed with it; it does not make its sources current. Nothing here writes, deletes or rewrites
 // anything: an insight whose support changed keeps its wording and review decision, and is only
 // shown (and exported) with the change made visible.
+import { EARLIER_METHOD_TEXT, tableMethodStatus } from "./tableMethod";
 
 export type SupportStatus = "current" | "stale" | "invalid" | "unknown";
 
@@ -39,6 +40,9 @@ export type SupportReasonKind =
   /** The variable corrections now saved for that data file differ from the ones the table was
    * calculated with. */
   | "corrections_changed"
+  /** Batch 47: that table was built with an earlier table method (tableMethod.ts), so its figures or
+   * flags can differ from a rebuild's. */
+  | "method_changed"
   /** The source was linked before support tracking existed (or the migration is not applied), so
    * a change cannot be detected. Never treated as current. */
   | "not_recorded"
@@ -80,6 +84,9 @@ export type SupportLinkRow = {
   calculatedTableDocumentId: string | null;
   designSnapshot: { design: { psu: string | null; strata: string | null } | null } | null;
   overridesSnapshot: unknown;
+  /** The calculated table's recorded methodVersion (engine notes); null when not recorded. Only read
+   * when calculatedTableDocumentId is set. */
+  tableMethod?: string | null;
   /**
    * For a finding read from a report (origin 'stated') with a recorded quote: whether that quote
    * appears in the report's CURRENT stored text (quoteMatch.quoteGroundingChecker). "unreadable"
@@ -214,6 +221,7 @@ const REASON_STATUS: Record<SupportReasonKind, SupportStatus> = {
   calculation: "stale",
   design_changed: "stale",
   corrections_changed: "stale",
+  method_changed: "stale",
   not_recorded: "unknown",
   check_failed: "unknown",
 };
@@ -316,6 +324,8 @@ export function classifyInsightSupport(
       continue;
     }
     if (link.calculatedTableDocumentId) {
+      // Read from the table itself, so it needs no settings lookup and is reported even when that fails.
+      if (tableMethodStatus(link.tableMethod) === "earlier") reasons.push({ kind: "method_changed", ...base });
       const check = settingsByDocument.get(link.calculatedTableDocumentId);
       if (!check) {
         reasons.push({ kind: "check_failed", ...base, detail: "current survey settings were not resolved" });
@@ -380,6 +390,8 @@ export function describeSupportReason(reason: SupportReason): string {
       return `the survey design for the data behind ${f} changed after it was calculated`;
     case "corrections_changed":
       return `variable corrections for the data behind ${f} changed after it was calculated`;
+    case "method_changed":
+      return `the table behind ${f} was ${EARLIER_METHOD_TEXT}`;
     case "not_recorded":
       return "it was drafted before support tracking, so later changes cannot be detected";
     case "check_failed":
