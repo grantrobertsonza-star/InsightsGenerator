@@ -17,6 +17,10 @@ answers:
   of the banner variable, or the design t-test), with letters.
 - **The row:** label "Mean", marked `autoMean`, `isMean`. A question that already has a mean group of the
   researcher's own gets no second one.
+- **Answer labels do not enter it** (B48-F01, batch 48R): the row is the mean of the raw codes, so it never
+  resolves labels to codes. Two codes sharing a label (2 and 3 both "High") still get the row, with the same
+  figures as distinct labels give. A group the researcher defines by its labels still refuses a label shared
+  by several codes (`_resolve_group_labels`), naming it in `skipped`.
 - **Not a scale** (regions, brands, text answers): no mean, and the question is named in
   `notes.meanNotAdded` ("No mean row for ...: their answer codes are not a rating scale ..."), shown under
   the table.

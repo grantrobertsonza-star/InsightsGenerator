@@ -4667,12 +4667,20 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 kind = g.get("kind") or "net"
                 plus_labels = set(g.get("cats", []))
                 minus_labels = set(g.get("minus", []))
-                plus = _resolve_group_labels(plus_labels, g.get("label", ""), "positive answers")
-                if plus is None:
-                    continue
-                minus = _resolve_group_labels(minus_labels, g.get("label", ""), "negative answers") if minus_labels else set()
-                if minus is None:
-                    continue
+                if g.get("autoMean"):
+                    # B48-F01 (Codex): the Mean tick's row is the mean of the raw answer codes (below), so it
+                    # never resolves labels to codes. Resolving them made unique answer labels a condition:
+                    # with 2 and 3 both labelled "High" the row was refused although the codes, the scale
+                    # and the arithmetic were unchanged. A group the researcher defines by its labels still
+                    # refuses a label shared by several codes (_resolve_group_labels).
+                    plus, minus = set(), set()
+                else:
+                    plus = _resolve_group_labels(plus_labels, g.get("label", ""), "positive answers")
+                    if plus is None:
+                        continue
+                    minus = _resolve_group_labels(minus_labels, g.get("label", ""), "negative answers") if minus_labels else set()
+                    if minus is None:
+                        continue
                 if kind == "net":
                     sel = np.array([x in plus for x in ident_arr], dtype=bool)
                     row = prop_row(sel, r_valid)

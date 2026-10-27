@@ -8,6 +8,11 @@
 //   - Mean off, and a request saved before the tick existed: no mean row, nothing named.
 //   - An invalid setting is refused at the boundary and saves nothing.
 //   - Committing a table with Mean on makes its tested mean difference a finding worded as a mean.
+//   - B48-F01 (Codex): an ordinal 1 to 3 scale whose codes 2 and 3 share the label "High" still gets its
+//     Mean row (before: refused, because the automatic mean resolved labels to codes), unweighted and
+//     weighted with "Don't know" left out, equal to the generator's arithmetic; Mean off adds none; the
+//     row is saved and becomes a finding; the same file with distinct labels gives the same means; a group
+//     the researcher defines by the shared label is still refused.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -21,6 +26,10 @@ import type { CrosstabRequest, CrosstabResult } from "../parseStatsFile";
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/db", async () => await import("../db"));
+// The export route's own modules, through the same relative paths (this suite does not resolve "@/").
+vi.mock("@/lib/crosstabMeanRows", async () => await import("../crosstabMeanRows"));
+vi.mock("@/lib/crosstabSlides", async () => await import("../crosstabSlides"));
+vi.mock("@/lib/convertToPdf", async () => await import("../convertToPdf"));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", async (orig) => ({ ...(await orig<object>()), after: vi.fn() }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn(async () => {}) }));
@@ -146,5 +155,115 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("the Mean tick (real database,
     await commitCrosstabs(tenant, run, doc);
     const texts = (await q("select finding_text from findings where run_id = $1", [run])).map((r) => r.finding_text as string);
     expect(texts.some((x) => x.startsWith("The mean of Satisfaction is higher for Segment \"Segment A\""))).toBe(true);
+  });
+
+  // B48-F01: repeated answer labels. 300 respondents, codes 1 to 3 declared ordinal, 9 = "Don't know";
+  // Segment A answers a code higher than Segment B where it can; a weight of 1 or 2.
+  function repeatedLabels(labels: Record<number, string>): { bytes: Buffer; expected: { a: number; b: number; all: number; wAll: number } } {
+    const dir = mkdtempSync(path.join(tmpdir(), "mean-dup-"));
+    const out = path.join(dir, "dup.sav");
+    const script = String.raw`
+import sys, json, pandas as pd, pyreadstat
+labels = {float(k): v for k, v in json.loads(sys.argv[2]).items()}
+n = 300
+seg = [1.0 if i % 2 == 0 else 2.0 for i in range(n)]
+lvl = []
+for i in range(n):
+    v = i % 3 + 1
+    if seg[i] == 1.0 and v < 3 and i % 4 == 0:
+        v += 1
+    lvl.append(9.0 if i % 30 == 0 else float(v))
+w = [1.0 if i % 5 else 2.0 for i in range(n)]
+pyreadstat.write_sav(pd.DataFrame({"seg": seg, "lvl": lvl, "wt": w}), sys.argv[1], column_labels=["Segment", "Level", "Weight"],
+    variable_value_labels={"seg": {1.0: "Segment A", 2.0: "Segment B"}, "lvl": {**labels, 9.0: "Don't know"}}, variable_measure={"seg": "nominal", "lvl": "ordinal", "wt": "scale"})
+ok = [(x, g, ww) for x, g, ww in zip(lvl, seg, w) if x != 9.0]
+mean = lambda xs: sum(xs) / len(xs)
+print(json.dumps({"a": mean([x for x, g, _ in ok if g == 1.0]), "b": mean([x for x, g, _ in ok if g == 2.0]), "all": mean([x for x, _, _ in ok]),
+                  "wAll": sum(x * ww for x, _, ww in ok) / sum(ww for _, _, ww in ok)}))
+`;
+    const r = spawnSync(PYTHON, ["-I", "-c", script, out, JSON.stringify(labels)], { encoding: "utf8" });
+    if (r.status !== 0) throw new Error(r.stderr);
+    return { bytes: readFileSync(out), expected: JSON.parse(r.stdout) };
+  }
+  const dupFile = async (labels: Record<number, string>) => {
+    const made = repeatedLabels(labels);
+    const key = `${tenant}/${run}/${randomUUID()}-dup.sav`;
+    storage.objects.set(key, made.bytes);
+    const id = (await q(
+      `insert into documents (tenant_id, run_id, kind, ingestion_type, source_filename, storage_path, data_setup)
+       values ($1, $2, 'table', 'raw', 'dup.sav', $3, $4) returning id`,
+      [tenant, run, key, JSON.stringify({ layout: "rows_are_cases", unit: "respondents", method: "survey", accepted: true })],
+    ))[0].id as string;
+    return { id, expected: made.expected };
+  };
+  const levelRequest = (extra: Partial<CrosstabRequest> = {}): CrosstabRequest => ({
+    columnVars: ["seg"],
+    rowItems: [{ key: "lvl", label: "Level", vars: ["lvl"] }],
+    weightVar: null,
+    correction: "none",
+    ...extra,
+  });
+  const meanRow = (t: CrosstabResult) => t.questions.find((x) => x.key === "lvl")!.rows.find((r) => r.autoMean);
+
+  it("B48-F01: codes 2 and 3 both labelled High still get the Mean row, unweighted and weighted, Don't know left out", async () => {
+    const { buildCrosstab } = await import("../crosstabs");
+    const dup = await dupFile({ 1: "Low", 2: "High", 3: "High" });
+    const t = await stored((await buildCrosstab(tenant, run, dup.id, levelRequest({ meanRows: true }))).tableId);
+    const m = meanRow(t)!;
+    expect(m).toMatchObject({ label: "Mean", isMean: true });
+    expect(m.pct[0]).toBeCloseTo(dup.expected.a, 2);
+    expect(m.pct[1]).toBeCloseTo(dup.expected.b, 2);
+    expect(m.total.pct).toBeCloseTo(dup.expected.all, 2);
+    expect(t.notes?.meanNotAdded ?? null).toBeNull();
+    const w = await stored((await buildCrosstab(tenant, run, dup.id, levelRequest({ meanRows: true, weightVar: "wt" }))).tableId);
+    expect(meanRow(w)!.total.pct).toBeCloseTo(dup.expected.wAll, 2);
+    // Mean off: none.
+    expect(meanRow(await stored((await buildCrosstab(tenant, run, dup.id, levelRequest({ meanRows: false }))).tableId))).toBeUndefined();
+    // The same file with distinct labels: the same means (labels do not enter the arithmetic).
+    const distinct = await dupFile({ 1: "Low", 2: "Middle", 3: "High" });
+    const d = meanRow(await stored((await buildCrosstab(tenant, run, distinct.id, levelRequest({ meanRows: true }))).tableId))!;
+    expect(d.total.pct).toBeCloseTo(m.total.pct!, 6);
+    expect(d.pct).toEqual(m.pct);
+  });
+
+  it("B48-F01: a group the researcher defines by the shared label is still refused, with its reason", async () => {
+    const { buildCrosstab } = await import("../crosstabs");
+    const dup = await dupFile({ 1: "Low", 2: "High", 3: "High" });
+    const t = await stored((await buildCrosstab(tenant, run, dup.id, levelRequest({
+      meanRows: true,
+      rowItems: [{ key: "lvl", label: "Level", vars: ["lvl"], groups: [{ label: "Top", cats: ["High"] }] }],
+    }))).tableId);
+    const rows = t.questions.find((x) => x.key === "lvl")!.rows;
+    expect(rows.some((r) => r.label === "NET: Top")).toBe(false);
+    expect(t.skipped.map((x) => x.reason)).toContainEqual(expect.stringMatching(/^"Top" \(positive answers "High"\) matches more than one answer code/));
+    expect(meanRow(t)).toBeDefined();
+  });
+
+  it("B48-F01: committing the repeated-label table makes its mean difference a finding worded as a mean", async () => {
+    const { buildCrosstab, commitCrosstabs } = await import("../crosstabs");
+    const dup = await dupFile({ 1: "Low", 2: "High", 3: "High" });
+    await buildCrosstab(tenant, run, dup.id, levelRequest({ meanRows: true }));
+    await commitCrosstabs(tenant, run, dup.id);
+    const texts = (await q("select finding_text from findings where run_id = $1", [run])).map((r) => r.finding_text as string);
+    expect(texts.some((x) => x.startsWith("The mean of Level is higher for Segment \"Segment A\""))).toBe(true);
+  });
+
+  it("B48-F01: the Excel export of the repeated-label table prints its Mean row, and mean=0 leaves it out", async () => {
+    const { buildCrosstab } = await import("../crosstabs");
+    const XLSX = await import("xlsx");
+    const { GET } = await import("../../app/api/runs/[id]/crosstab/export/route");
+    const dup = await dupFile({ 1: "Low", 2: "High", 3: "High" });
+    const tableId = (await buildCrosstab(tenant, run, dup.id, levelRequest({ meanRows: true }))).tableId;
+    const sheetRows = async (extra: string) => {
+      const res = await GET(new Request(`http://local/api/runs/${run}/crosstab/export?tableId=${tableId}&format=xlsx${extra}`), { params: Promise.resolve({ id: run }) });
+      expect(res.status).toBe(200);
+      const wb = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: "buffer" });
+      return XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1 }) as unknown[][];
+    };
+    const shown = (await sheetRows("")).filter((r) => r.some((c) => c === "Mean"));
+    expect(shown.length).toBeGreaterThan(0);
+    const total = (shown[0].filter((c) => typeof c === "number") as number[]).pop()!;
+    expect(total).toBeCloseTo(dup.expected.all, 2);
+    expect((await sheetRows("&mean=0")).some((r) => r.some((c) => c === "Mean"))).toBe(false);
   });
 });
