@@ -87,6 +87,31 @@ function chunkPages(pages: { pageNumber: number; text: string }[]): { text: stri
   return chunks;
 }
 
+/** How many times a part that overflows the output budget is halved before it counts as failed. */
+const MAX_SPLIT_DEPTH = 3;
+/** Below this many characters a part is not split further. */
+const MIN_SPLIT_CHARS = 1500;
+
+/**
+ * A part cut in two at the line nearest its middle (a page marker when there is one near it), so no
+ * question is cut mid-line; each half keeps the page it starts on. Null when too short to split.
+ */
+function splitPart(chunk: { text: string; page: number }): { text: string; page: number }[] | null {
+  const t = chunk.text;
+  if (t.length < MIN_SPLIT_CHARS) return null;
+  const mid = Math.floor(t.length / 2);
+  const markers = [...t.matchAll(/\n\[page (\d+)\]\n/g)].map((m) => ({ at: m.index ?? 0, page: Number(m[1]) }));
+  const nearMarker = markers.filter((m) => m.at > 0 && Math.abs(m.at - mid) < t.length / 4).sort((a, b) => Math.abs(a.at - mid) - Math.abs(b.at - mid))[0];
+  let at = nearMarker?.at ?? t.lastIndexOf("\n", mid);
+  if (at <= 0) at = t.indexOf("\n", mid);
+  if (at <= 0 || at >= t.length - 1) return null;
+  const before = markers.filter((m) => m.at <= at).pop();
+  return [
+    { text: t.slice(0, at), page: chunk.page },
+    { text: t.slice(at), page: nearMarker?.page ?? before?.page ?? chunk.page },
+  ];
+}
+
 function splitText(text: string): { pageNumber: number; text: string }[] {
   const out: { pageNumber: number; text: string }[] = [];
   for (let i = 0; i * CHUNK_CHARS < text.length; i++) {
@@ -345,7 +370,10 @@ async function readItemsWithModel(
   // in full - the same silent-truncation shape as a chunk whose model call actually failed,
   // so it is counted the same way here, not as a separate, unreported kind of gap.
   let failedChunks = Math.max(0, allChunks.length - MAX_CHUNKS);
-  const found = await mapWithConcurrency(chunks, 3, async (chunk) => {
+  // Why parts failed, for the message when none could be read (a read where every part failed used to
+  // say "No question items were found in this file", the same as a file with no questions).
+  const failures: string[] = [];
+  const readPart = async (chunk: { text: string; page: number }, depth: number): Promise<(RawItem & { page: number })[]> => {
     try {
       const response = await anthropic.messages.create({
         model: CLAUDE_MODEL,
@@ -390,12 +418,16 @@ async function readItemsWithModel(
       await logApiUsage(tenantId, runId, "instrument_reader", response.usage);
       // A response cut off by the token budget can still leave a well-formed-looking tool call
       // if the cut happened to land on an array boundary - the JSON parses, but the chunk's
-      // true content past that point was never generated at all. Treated as failed here, the
-      // same as a missing or malformed tool call, rather than as a legitimately complete read
-      // that simply stopped a little short.
+      // true content past that point was never generated at all. So it is never used as it is.
+      // A questionnaire dense with answer lists (a ballot of 61 candidates, say) can need more
+      // output than the budget for one part, so the part is read again in two halves, down to
+      // MAX_SPLIT_DEPTH; only a half that still overflows is counted as failed.
       if (response.stop_reason === "max_tokens") {
+        const halves = depth < MAX_SPLIT_DEPTH ? splitPart(chunk) : null;
+        if (halves) return (await Promise.all(halves.map((h) => readPart(h, depth + 1)))).flat();
         failedChunks += 1;
-        return [] as (RawItem & { page: number })[];
+        failures.push("a part of the file had more questions and answers than one read can return");
+        return [];
       }
       const tool = response.content.find((b) => b.type === "tool_use");
       // A missing tool_use block, or one whose `items` field isn't the array the schema
@@ -408,15 +440,22 @@ async function readItemsWithModel(
       // `complete` honest, which is what the deletion below relies on to be safe.
       if (!tool || tool.type !== "tool_use" || !Array.isArray((tool.input as { items?: unknown }).items)) {
         failedChunks += 1;
-        return [] as (RawItem & { page: number })[];
+        failures.push("the reader returned no usable answer for a part of the file");
+        return [];
       }
       const items = (tool.input as { items: RawItem[] }).items;
       return items.map((i) => ({ ...i, page: chunk.page }));
-    } catch {
+    } catch (e) {
       failedChunks += 1;
-      return [] as (RawItem & { page: number })[];
+      failures.push(e instanceof Error ? e.message : String(e));
+      return [];
     }
-  });
+  };
+  const found = await mapWithConcurrency(chunks, 3, (chunk) => readPart(chunk, 0));
+  if (found.every((f) => f.length === 0) && failedChunks > 0) {
+    const reasons = Array.from(new Set(failures)).slice(0, 2).join("; ");
+    throw new Error(`None of this file could be read: ${failedChunks} of its parts failed (${reasons}). Nothing was saved; use Read to try again.`);
+  }
   // Flatten, tidy and drop repeats at chunk boundaries.
   const seen = new Set<string>();
   // IMP-012: a tool call can come back well-formed (a real `items` array, not the missing/
@@ -601,6 +640,61 @@ export async function suggestInstrumentLinks(
   return { suggested: suggestedNew };
 }
 
+/**
+ * Which data file a questionnaire or codebook should be matched to when nobody has said (Grant,
+ * 27 October 2026: "how does the system know which data file to link them to?"). The file it was
+ * matched to before, while it is still a raw data file of the project; else the only raw data file;
+ * else the file whose variables match the most of its questions, when that lead is clear. Several
+ * waves of one tracker usually share a questionnaire and match it equally, and a file whose variables
+ * cannot be read cannot be compared: both are "choose", with every file's count, never a guess.
+ * Read only; matching is suggestInstrumentLinks.
+ */
+export type MatchTargetChoice =
+  | { kind: "chosen"; dataDocumentId: string; reason: "before" | "only" | "best"; matched: number | null }
+  | { kind: "choose"; candidates: { dataDocumentId: string; filename: string; matched: number | null; error?: string }[] }
+  | { kind: "none" };
+
+/** A lead counts as clear when it is at least this many questions and this share ahead of the next file. */
+const CLEAR_LEAD_ITEMS = 3;
+const CLEAR_LEAD_RATIO = 1.25;
+
+export async function chooseMatchTarget(tenantId: string, runId: string, instrumentId: string): Promise<MatchTargetChoice> {
+  const { files, before } = await withTenantRead(tenantId, async (client) => {
+    const doc = await client.query<{ instrument_for: string | null }>(
+      "select instrument_for from documents where id = $1 and run_id = $2 and kind = 'instrument'",
+      [instrumentId, runId],
+    );
+    if (doc.rows.length === 0) throw new Error("That questionnaire or codebook is not in this project.");
+    const raw = await client.query<{ id: string; source_filename: string }>(
+      "select id, source_filename from documents where run_id = $1 and kind = 'table' and ingestion_type = 'raw' order by uploaded_at, id",
+      [runId],
+    );
+    return { files: raw.rows, before: doc.rows[0].instrument_for };
+  });
+  if (files.length === 0) return { kind: "none" };
+  if (before && files.some((f) => f.id === before)) return { kind: "chosen", dataDocumentId: before, reason: "before", matched: null };
+  if (files.length === 1) return { kind: "chosen", dataDocumentId: files[0].id, reason: "only", matched: null };
+  const items = (await getInstrumentItems(tenantId, instrumentId)).map((i) => ({ id: i.id, code: i.code, text: i.text }));
+  const scored = await mapWithConcurrency(files, 2, async (f) => {
+    try {
+      const dictionary = await loadVariableDictionary(tenantId, runId, f.id);
+      const matched = new Set(matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label }))).map((c) => c.itemId)).size;
+      return { dataDocumentId: f.id, filename: f.source_filename, matched };
+    } catch (e) {
+      return { dataDocumentId: f.id, filename: f.source_filename, matched: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  const known = scored.filter((s): s is typeof s & { matched: number } => s.matched !== null).sort((a, b) => b.matched - a.matched);
+  const [best, second] = known;
+  const clear =
+    known.length === scored.length &&
+    best !== undefined &&
+    best.matched > 0 &&
+    (second === undefined || (best.matched - second.matched >= CLEAR_LEAD_ITEMS && best.matched >= second.matched * CLEAR_LEAD_RATIO));
+  if (clear) return { kind: "chosen", dataDocumentId: best.dataDocumentId, reason: "best", matched: best.matched };
+  return { kind: "choose", candidates: scored };
+}
+
 export async function getInstrumentItems(tenantId: string, instrumentId: string): Promise<InstrumentItem[]> {
   return withTenantRead(tenantId, async (client) => {
     const r = await client.query<{
@@ -651,6 +745,8 @@ export type InstrumentSummary = {
   readStatus?: { complete: boolean; failedChunks: number; incompleteItems: number };
   /** The reason the latest read failed, when it is newer than any finished read. */
   readFailure?: string;
+  /** The data files it has suggested or confirmed links to (several waves can share one questionnaire), oldest upload first. */
+  linkedDataDocumentIds: string[];
 };
 
 export async function getInstrumentSummaries(tenantId: string, runId: string): Promise<Map<string, InstrumentSummary>> {
@@ -665,6 +761,7 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
         out.set(d.id, {
           documentId: d.id, type: d.instrument_type, forDocumentId: d.instrument_for,
           items: 0, withRouting: 0, fromJumps: 0, statedRoutingText: 0, links: { suggested: 0, confirmed: 0, rejected: 0 }, itemsToCheck: 0,
+          linkedDataDocumentIds: [],
         });
       }
       if (out.size === 0) return;
@@ -690,6 +787,15 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
         const s = out.get(r.document_id);
         if (s) s.links[r.status] = Number(r.n);
       }
+      // Linked means a suggested or confirmed link exists for that file, not that it is the default target.
+      const linkedFiles = await client.query<{ document_id: string; data_document_id: string }>(
+        `select i.document_id, l.data_document_id
+         from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = l.data_document_id
+         where l.run_id = $1 and l.status in ('suggested', 'confirmed')
+         group by i.document_id, l.data_document_id, d.uploaded_at order by d.uploaded_at, l.data_document_id`,
+        [runId],
+      );
+      for (const r of linkedFiles.rows) out.get(r.document_id)?.linkedDataDocumentIds.push(r.data_document_id);
       const toCheck = await client.query<{ document_id: string; n: string }>(
         `select i.document_id, count(distinct l.item_id) as n
          from instrument_links l join instrument_items i on i.id = l.item_id

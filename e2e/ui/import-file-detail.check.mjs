@@ -1,8 +1,9 @@
 // Import screen, Grant 2026-10-19: "I imported the questionnaire and it says it was imported but I
 // don't see it in the list", and the right-hand pane showed project totals rather than anything about
 // the selected file. Real browser on the disposable stack (model replay).
-//   1. A questionnaire linked to a raw data file is named on that file's row ("1 linked document"),
-//      and has its own row too, so nothing imported is missing from the list.
+//   1. A questionnaire linked to a raw data file (read and matched: 27 October 2026, never by default) is
+//      named on that file's row ("1 linked document"), and has its own row too, so nothing imported is
+//      missing from the list.
 //   2. Selecting a brief shows what that file is for, with "Review research quality",
 //      which opens that module with the document highlighted.
 //   3. Project totals are one line, not the body of the pane.
@@ -21,7 +22,7 @@
 import { expect, test } from "@playwright/test";
 import { addFiles } from "./helpers/addFiles.mjs";
 import { openSourceTab, selectSource } from "./helpers/sources.mjs";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -29,6 +30,8 @@ const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/ta
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
 if (target.disposable !== true) throw new Error(`${manifestPath} does not describe a disposable stack; refusing to run.`);
 const FIXTURE = path.resolve("fixtures/golden-thread-1");
+const fixtureFile = path.join(path.dirname(path.resolve(manifestPath)), "model-fixture.json");
+test.afterEach(() => rmSync(fixtureFile, { force: true }));
 
 test.use({ viewport: { width: 1600, height: 1000 } });
 
@@ -44,6 +47,12 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   await ui.upload(run, path.join(FIXTURE, "golden-survey-documented.xlsx"), "table");
   await ui.upload(run, path.join(FIXTURE, "client-brief.docx"), "brief");
 
+  // The questionnaire's read is scripted (27 October 2026): a questionnaire is linked to a data file only
+  // once it has been read and matched, never by default, so the read must find its questions.
+  writeFileSync(fixtureFile, JSON.stringify({ tools: { record_items: [{ match: "Document part:", input: { items: [
+    { code: "Q1", text: "What is your gender?", options: [{ code: "1", label: "Male" }, { code: "2", label: "Female" }], routing_text: null, section: null },
+    { code: "Q2", text: "Did you purchase?", options: [{ code: "1", label: "Yes" }, { code: "2", label: "No" }], routing_text: null, section: null },
+  ] } }] } }));
   // The questionnaire, added as a Questionnaire (one of three types since 2026-10-20).
   await addFiles(page, path.join(FIXTURE, "questionnaire.docx"), "Questionnaire");
   const dataRow = page.getByTestId("source-row").filter({ has: page.getByRole("button", { name: "Select golden-survey-documented.xlsx", exact: true }) });
@@ -98,8 +107,7 @@ test("a linked questionnaire stays visible in the list, and the pane describes t
   const line = links.getByTestId("attached-instrument");
   await expect(line).toHaveCount(1);
   await expect(line).toContainText("Questionnaire: questionnaire.docx");
-  // The read finishes from here: items read, or the reason it could not (with model replay this
-  // fixture reads as "No question items were found"), shown on the line rather than lost.
+  // The read finishes from here: items read, or the reason it could not, shown on the line rather than lost.
   await expect(async () => {
     const read = /items read/.test(await line.innerText());
     const reason = (await line.locator(".text-danger").count()) > 0;

@@ -35,6 +35,23 @@ is stored and no second link or overlay path exists.
 (confidence 1), so a codebook's variables are strong matches; "Confirm same-code matches" confirms them.
 The researcher confirms; nothing is applied before that.
 
+**Which data file (Grant, 27 October 2026).** A codebook or questionnaire is matched to the data file
+it was matched to before; else, with no data file named, `chooseMatchTarget` (`instruments.ts`) picks
+the only raw data file, or the one whose variables match the most of its items when that lead is clear
+(at least 3 items and a quarter ahead of the next). Waves of one tracker usually fit equally, and a file
+whose variables cannot be read cannot be compared: then nothing is matched, the card lists each file's
+count and asks. It is never matched to "the first file" by default, and the Import list says "Linked to"
+only for files it actually has links to (`InstrumentSummary.linkedDataDocumentIds`, suggested or
+confirmed), plus the file it was last matched to. One questionnaire can be matched to several waves (choose
+each on its card and Match); every one of them lists it and gets its labels. A read that failed shows
+"Read failed" in the list, not "Not read yet".
+
+**Dense questionnaires.** A part of the document whose questions and answer lists need more output than
+one read returns (a ballot of 61 candidates) is read again in halves, split at a line (a page boundary
+when one is near the middle), down to three times; only a half that still overflows counts as failed.
+A read where every part failed says "None of this file could be read" with the reason; "No question
+items were found" is kept for a read that worked and found none.
+
 **Upload.** Add files offers "Codebook" (`.xlsx .xls .csv .tsv .txt .json .pdf .docx`); a name with
 codebook, data dictionary or variable list suggests it, and a `.json` file is suggested as a codebook.
 Questionnaires also take `.xlsx .xls .csv`. A data workbook's own Codebook sheet is still read with the

@@ -18,6 +18,8 @@ export type ProcessingFacts = {
   preview: { kind: "tables"; count: number } | { kind: "text"; length: number } | null;
   /** Questionnaires and guides: their questions have been read. */
   instrumentRead?: boolean;
+  /** Questionnaires and guides: the latest read failed and no later read finished (InstrumentSummary.readFailure). */
+  instrumentReadFailed?: boolean;
 };
 
 export const PROCESSING_LABEL: Record<ProcessingState, string> = {
@@ -52,7 +54,8 @@ export function processingState(f: ProcessingFacts): ProcessingState {
   if (f.processingStatus === "failed") return "failed";
   if (f.processingStatus === "incomplete") return "partly_read";
   if (f.kind === "output") return "read";
-  if (f.kind === "instrument") return f.instrumentRead ? "read" : "not_read";
+  // A failed latest read is "Read failed", not "Not read yet": the read ran, and its reason is on the card.
+  if (f.kind === "instrument") return f.instrumentReadFailed && !f.instrumentRead ? "failed" : f.instrumentRead ? "read" : "not_read";
   if (!f.preview) return f.processingStatus === "ready" ? "read" : "not_read";
   if (f.preview.kind === "tables") return f.preview.count > 0 ? "read" : "reading";
   if (f.preview.length > 0) return "read";

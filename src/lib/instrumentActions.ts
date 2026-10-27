@@ -15,6 +15,7 @@ import {
   getInstrumentLinks,
   readInstrumentItems,
   suggestInstrumentLinks,
+  chooseMatchTarget,
   type InstrumentItem,
   type InstrumentLink,
   AUTO_CONFIRM_MIN,
@@ -82,6 +83,28 @@ export async function setInstrumentTargetAction(
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, dataDocumentId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: explain(e) };
+  }
+}
+
+/**
+ * The first match after a read, with no data file chosen yet (chooseMatchTarget): matched to the file
+ * that clearly fits, or, when several fit equally (waves of one tracker) or a file cannot be compared,
+ * nothing is matched and the files are returned for the researcher to choose.
+ */
+export async function matchInstrumentAutomaticallyAction(
+  runId: string,
+  instrumentId: string,
+): Promise<Ok<{ matchedTo: string; suggested: number } | { choose: { dataDocumentId: string; filename: string; matched: number | null; error?: string }[] } | { none: true }> | Fail> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const choice = await chooseMatchTarget(TENANT_ID, runId, instrumentId);
+    if (choice.kind === "none") return { ok: true, none: true };
+    if (choice.kind === "choose") return { ok: true, choose: choice.candidates };
+    const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, choice.dataDocumentId);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true, matchedTo: choice.dataDocumentId, ...r };
   } catch (e) {
     return { ok: false, error: explain(e) };
   }

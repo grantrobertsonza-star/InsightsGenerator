@@ -72,7 +72,7 @@ function AttachedInstrumentLine({ runId, info, targetId, dataDocs, autoStart }: 
   const isGuide = !!info.summary.type && guideTypes.includes(info.summary.type);
   // The same data file the full card would match to: this file when it is the only candidate.
   const fixedTarget = isGuide || dataDocs.length > 1 ? undefined : targetId;
-  const target = fixedTarget ?? info.summary.forDocumentId ?? dataDocs[0]?.id ?? "";
+  const target = fixedTarget ?? info.summary.forDocumentId ?? "";
   const auto = useInstrumentAutoStart({ runId, documentId: info.documentId, summary: info.summary, isGuide, target, enabled: autoStart });
   return (
     <div data-testid="attached-instrument" className="flex flex-col gap-1 rounded-lg border border-border bg-white p-3 text-xs">

@@ -27,6 +27,10 @@ describe("processing state", () => {
   it("questionnaires by whether their questions were read; output sets as read", () => {
     expect(processingState({ kind: "instrument", processingStatus: null, preview: null, instrumentRead: false })).toBe("not_read");
     expect(processingState({ kind: "instrument", processingStatus: null, preview: null, instrumentRead: true })).toBe("read");
+    // 27 October 2026: a read that failed showed "Not read yet" beside its own failure message.
+    expect(processingState({ kind: "instrument", processingStatus: null, preview: null, instrumentRead: false, instrumentReadFailed: true })).toBe("failed");
+    // A failure recorded before items that are still there (a reread failed): the stored read stands.
+    expect(processingState({ kind: "instrument", processingStatus: null, preview: null, instrumentRead: true, instrumentReadFailed: true })).toBe("read");
     expect(processingState({ kind: "output", processingStatus: null, preview: null })).toBe("read");
   });
 });

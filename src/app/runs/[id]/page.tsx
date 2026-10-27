@@ -3626,22 +3626,29 @@ export default async function RunPage({
   // above its data quality. One with nowhere to go yet keeps its own card.
   const rawDataDocs = documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw");
   const transcriptDocs = documents.filter((x) => x.kind === "transcript");
-  const instrumentHome = new Map<string, string>(); // instrument id to host document id, "*" for every transcript
+  // The data files a questionnaire or codebook is linked to: those it has suggested or confirmed links
+  // to (several waves can share one questionnaire), plus the file it was last matched to. Never a default:
+  // one not matched yet keeps its own card, where the data file is chosen (chooseMatchTarget), rather
+  // than being shown as "Linked to" whichever data file happens to be first.
+  const instrumentHome = new Map<string, string[] | "*">(); // instrument id to host data file ids, "*" for every transcript
   for (const x of documents) {
     if (x.kind !== "instrument") continue;
     const sm = instrumentSummaries.get(x.id);
     if (!sm) continue;
     if (sm.type === "interview_guide" || sm.type === "focus_group_guide") {
       if (transcriptDocs.length > 0) instrumentHome.set(x.id, "*");
-    } else if (rawDataDocs.length > 0) {
-      instrumentHome.set(x.id, rawDataDocs.find((r) => r.id === sm.forDocumentId)?.id ?? rawDataDocs[0].id);
+    } else {
+      const ids = [...sm.linkedDataDocumentIds, ...(sm.forDocumentId ? [sm.forDocumentId] : [])];
+      // In the order the summary gives (oldest upload first), so waves read in order.
+      const hosts = [...new Set(ids)].filter((hid) => rawDataDocs.some((r) => r.id === hid));
+      if (hosts.length > 0) instrumentHome.set(x.id, hosts);
     }
   }
-  const hostedBy = (d: (typeof documents)[number]) =>
-    documents.filter((x) => {
-      const h = instrumentHome.get(x.id);
-      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
-    });
+  const hostedIn = (instrumentId: string, d: (typeof documents)[number]) => {
+    const h = instrumentHome.get(instrumentId);
+    return h !== undefined && (h === "*" ? d.kind === "transcript" : h.includes(d.id));
+  };
+  const hostedBy = (d: (typeof documents)[number]) => documents.filter((x) => hostedIn(x.id, d));
   // What one file is for and its next step, for the right-hand pane. A brief or proposal ("evidence")
   // is context, not mined for findings: its own quality is checked in Research quality review.
   const findingsByDocument = new Map<string, number>();
@@ -3698,10 +3705,7 @@ export default async function RunPage({
     }
   };
   const attachedFor = (d: (typeof documents)[number]): React.ReactNode => {
-    const hosted = documents.filter((x) => {
-      const h = instrumentHome.get(x.id);
-      return h !== undefined && (h === d.id || (h === "*" && d.kind === "transcript"));
-    });
+    const hosted = hostedBy(d);
     if (hosted.length === 0) return null;
     return (
         <AttachedInstruments
@@ -5281,6 +5285,7 @@ export default async function RunPage({
           // and whether that read was complete; every instrument has a summary, read or not.
           processingStatus: instrument?.readStatus && !instrument.readStatus.complete ? "incomplete" : d.processing_status,
           instrumentRead: instrument ? instrument.items > 0 || instrument.readStatus !== undefined : undefined,
+          instrumentReadFailed: instrument ? instrument.readFailure !== undefined : undefined,
           previewUnverified: previewError !== null,
           preview:
             d.kind === "instrument" || previewError
@@ -5308,15 +5313,18 @@ export default async function RunPage({
           linked: hostedBy(d).map((x) => ({ documentId: x.id, filename: x.source_filename })),
           linkedTo:
             d.kind === "instrument" && instrumentHome.has(d.id)
-              ? instrumentHome.get(d.id) === "*"
-                ? "your transcripts"
-                : (documents.find((x) => x.id === instrumentHome.get(d.id))?.source_filename ?? null)
+              ? (() => {
+                  const h = instrumentHome.get(d.id)!;
+                  if (h === "*") return "your transcripts";
+                  const names = h.map((hid) => documents.find((x) => x.id === hid)?.source_filename).filter((n): n is string => !!n);
+                  return names.length <= 1 ? (names[0] ?? null) : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+                })()
               : null,
           purposeText: purpose.text,
           nextStep: purpose.nextStep,
           typeGroup: sourceGroup(d.kind, instrument?.type),
           autoWork: instrument ? (
-            <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} dataDocIds={documents.filter((x) => x.kind === "table" && x.ingestion_type === "raw").map((x) => x.id)} />
+            <InstrumentAutoRead key="auto" runId={id} documentId={d.id} summary={instrument} />
           ) : undefined,
           // The same colour as this file's card under Cross tabs, Analytics, Coding and Secondary analysis.
           accent: DOC_ACCENTS[documents.indexOf(d) % DOC_ACCENTS.length].border,

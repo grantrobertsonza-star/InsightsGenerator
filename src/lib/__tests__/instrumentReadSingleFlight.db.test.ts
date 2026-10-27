@@ -116,8 +116,8 @@ describe.skipIf(!TEST_DATABASE_URL)("IR-05 one read of a questionnaire at a time
     const doc = await newInstrument();
     model.calls = 0;
     model.fail = true;
-    expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: false, error: expect.stringMatching(/No question items/) });
-    expect((await getInstrumentSummaries(tenant, run)).get(doc)?.readFailure).toMatch(/No question items/);
+    expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: false, error: expect.stringMatching(/^None of this file could be read: .*Synthetic model outage/) });
+    expect((await getInstrumentSummaries(tenant, run)).get(doc)?.readFailure).toMatch(/^None of this file could be read: .*Synthetic model outage/);
     model.fail = false;
     expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: true, items: 1 });
     expect(model.calls).toBe(2);
@@ -232,10 +232,10 @@ describe.skipIf(!TEST_DATABASE_URL)("IR-05 one read of a questionnaire at a time
     expect(await late).toMatchObject({ ok: false, inFlight: true });
     model.fail = true;
     releaseNew();
-    expect(await current).toMatchObject({ ok: false, error: expect.stringMatching(/No question items/) });
+    expect(await current).toMatchObject({ ok: false, error: expect.stringMatching(/^None of this file could be read: .*Synthetic model outage/) });
     model.fail = false;
     expect(await failures(doc)).toBe(1);
-    expect((await getInstrumentSummaries(tenant, run)).get(doc)?.readFailure).toMatch(/No question items/);
+    expect((await getInstrumentSummaries(tenant, run)).get(doc)?.readFailure).toMatch(/^None of this file could be read: .*Synthetic model outage/);
     model.text = "Wording read by the retry";
     expect(await readInstrumentAction(run, doc)).toMatchObject({ ok: true, items: 1 });
     expect((await db.pool.query("select item_text from instrument_items where document_id = $1", [doc])).rows.map((r) => r.item_text)).toEqual(["Wording read by the retry"]);

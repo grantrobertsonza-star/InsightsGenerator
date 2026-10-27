@@ -110,6 +110,7 @@ export type SourceRow = {
   processingStatus: StoredProcessingStatus;
   /** Questionnaires and guides: their questions have been read. */
   instrumentRead?: boolean;
+  instrumentReadFailed?: boolean;
   /** The stored preview's identity could not be verified; its Preview tab says why. */
   previewUnverified?: boolean;
   /** Questionnaires and guides that belong to this file, named in the list (each also has its own row). */
@@ -233,6 +234,7 @@ function sourceStateOf(r: Row, reported: SetupReport | undefined) {
         processingStatus: r.processingStatus,
         preview: r.preview ? (r.preview.kind === "tables" ? { kind: "tables", count: r.preview.tables.length } : { kind: "text", length: r.preview.length }) : null,
         instrumentRead: r.instrumentRead,
+        instrumentReadFailed: r.instrumentReadFailed,
       });
   return { acceptance, wave, processing, previewUnverified: r.previewUnverified ?? false, readError: reported?.readError ?? null };
 }

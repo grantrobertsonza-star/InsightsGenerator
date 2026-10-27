@@ -258,6 +258,48 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("codebooks and spreadsheet que
   });
 
   // B36-F05 (Codex): a header and a single variable was refused as "no codebook table".
+  // Grant, 27 October 2026: "how does the system know which data file to link them to?" It used to take the
+  // first raw data file, and the list said "Linked to" it before anything was matched.
+  it("chooses the data file a codebook belongs to by its variables, asks when waves fit equally, and links one codebook to several waves", async () => {
+    const { readInstrumentItems, chooseMatchTarget, suggestInstrumentLinks, getInstrumentSummaries } = await lib();
+    const saved = run;
+    run = (await db.pool.query("insert into runs (tenant_id, project_name) values ($1, 'Waves') returning id", [tenant])).rows[0].id;
+    try {
+      const codebook = await stored("instrument", "May26_codebook.xlsx", BERKELEY, "codebook");
+      expect(await readInstrumentItems(tenant, run, codebook)).toMatchObject({ count: 7 });
+      expect(await chooseMatchTarget(tenant, run, codebook)).toEqual({ kind: "none" });
+      // An unrelated data file uploaded first: the only file is taken; with the right one added, the best match is.
+      const other = await stored("table", "brand.txt", Buffer.from("RESP\tAWARE\tCONSIDER\n1\t1\t0\n2\t0\t1\n", "utf-8"));
+      expect(await chooseMatchTarget(tenant, run, codebook)).toMatchObject({ kind: "chosen", dataDocumentId: other, reason: "only" });
+      const may = await stored("table", "may2026.txt", DATA);
+      expect(await chooseMatchTarget(tenant, run, codebook)).toEqual({ kind: "chosen", dataDocumentId: may, reason: "best", matched: 7 });
+      // A second wave with the same variables: they fit equally, so the researcher chooses.
+      const wave2 = await stored("table", "jun2026.txt", DATA);
+      const choice = await chooseMatchTarget(tenant, run, codebook);
+      expect(choice).toEqual({ kind: "choose", candidates: [
+        { dataDocumentId: other, filename: "brand.txt", matched: 0 },
+        { dataDocumentId: may, filename: "may2026.txt", matched: 7 },
+        { dataDocumentId: wave2, filename: "jun2026.txt", matched: 7 },
+      ] });
+      // Nothing is linked before a match, so nothing reads as linked.
+      expect((await getInstrumentSummaries(tenant, run)).get(codebook)).toMatchObject({ forDocumentId: null, linkedDataDocumentIds: [] });
+      // Matched to both waves: linked to both, and the file matched last is the one kept for next time.
+      await suggestInstrumentLinks(tenant, run, codebook, may);
+      await suggestInstrumentLinks(tenant, run, codebook, wave2);
+      expect((await getInstrumentSummaries(tenant, run)).get(codebook)).toMatchObject({ forDocumentId: wave2, linkedDataDocumentIds: [may, wave2] });
+      expect(await chooseMatchTarget(tenant, run, codebook)).toMatchObject({ kind: "chosen", dataDocumentId: wave2, reason: "before" });
+      // A file whose variables cannot be read is not compared by guesswork: the researcher chooses.
+      await q("update documents set instrument_for = null where id = $1", [codebook]);
+      await q("update documents set storage_path = 'missing/object', variable_dictionary = null where id = $1", [wave2]);
+      const unreadable = await chooseMatchTarget(tenant, run, codebook);
+      expect(unreadable).toMatchObject({ kind: "choose" });
+      expect((unreadable as { candidates: { dataDocumentId: string; matched: number | null; error?: string }[] }).candidates.find((c) => c.dataDocumentId === wave2)).toMatchObject({ matched: null, error: expect.any(String) });
+      await expect(chooseMatchTarget(tenant, run, may)).rejects.toThrow(/not in this project/);
+    } finally {
+      run = saved;
+    }
+  });
+
   it("reads a one-variable codebook in CSV and Excel; prose is still refused (B36-F05)", async () => {
     const { readInstrumentItems, getInstrumentItems } = await lib();
     const one = [["Variable", "Label", "Values"], ["q", "Which response?", "1=Yes, 2=No"]];

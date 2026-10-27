@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { instrumentReadInFlightAction, readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
+import { instrumentReadInFlightAction, matchInstrumentAutomaticallyAction, readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
 import type { InstrumentSummary } from "@/lib/instruments";
 
 /**
@@ -58,7 +58,10 @@ export function useInstrumentAutoStart({
   documentId: string;
   summary: InstrumentSummary;
   isGuide: boolean;
-  /** The data file to match a questionnaire to; empty when there is none. */
+  /**
+   * The data file to match a questionnaire to; empty when none is named yet, and then the server
+   * chooses it (the only data file, or the one that clearly matches best) or says several fit.
+   */
   target: string;
   enabled: boolean;
 }): AutoState {
@@ -72,12 +75,13 @@ export function useInstrumentAutoStart({
     // A read that failed before (readFailure, recorded) is not repeated by itself: reading is paid.
     const needsRead = summary.items === 0 && !summary.readFailure;
     const links = summary.links.suggested + summary.links.confirmed + summary.links.rejected;
-    const needsMatch = !isGuide && !!target && summary.items > 0 && links === 0;
-    const key = needsRead ? `${documentId}:read` : needsMatch ? `${documentId}:match:${target}` : null;
+    const matchKey = `${documentId}:match:${target || "auto"}`;
+    const needsMatch = !isGuide && summary.items > 0 && links === 0;
+    const key = needsRead ? `${documentId}:read` : needsMatch ? matchKey : null;
     if (!key || begun.has(key)) return;
     begun.add(key);
     // Reading leads on to matching in the same run; a later match of the same file is not repeated.
-    if (needsRead && !isGuide && target) begun.add(`${documentId}:match:${target}`);
+    if (needsRead && !isGuide) begun.add(matchKey);
     setState(documentId, { running: true, error: null, message: null });
     void (async () => {
       if (needsRead) {
@@ -92,6 +96,16 @@ export function useInstrumentAutoStart({
       if (!isGuide && target) {
         const m = await setInstrumentTargetAction(runId, documentId, target).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while matching. Use Match again." }));
         if (!m.ok) return setState(documentId, { running: false, error: m.error, message: null });
+        return setState(documentId, { running: false, error: null, message: `${m.suggested} links suggested. Check them before they are used.` });
+      }
+      if (!isGuide) {
+        const m = await matchInstrumentAutomaticallyAction(runId, documentId).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while matching. Choose the data file and use Match." }));
+        if (!m.ok) return setState(documentId, { running: false, error: m.error, message: null });
+        if ("choose" in m) {
+          const counts = m.choose.map((c) => `${c.filename}: ${c.matched === null ? "could not be compared" : `${c.matched} ${c.matched === 1 ? "question" : "questions"} match`}`).join("; ");
+          return setState(documentId, { running: false, error: null, message: `More than one data file could be this one's (${counts}). Choose the data file on its card and use Match; a questionnaire shared by several waves can be matched to each.` });
+        }
+        if ("none" in m) return setState(documentId, { running: false, error: null, message: null });
         return setState(documentId, { running: false, error: null, message: `${m.suggested} links suggested. Check them before they are used.` });
       }
       setState(documentId, { running: false, error: null, message: null });

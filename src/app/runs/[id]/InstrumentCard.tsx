@@ -78,7 +78,9 @@ export default function InstrumentCard({
   const [ownPending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [target, setTarget] = useState(fixedTarget ?? summary.forDocumentId ?? dataDocs[0]?.id ?? "");
+  // Never a silent default among several data files: until one is chosen (here, or by the server's
+  // first match) the picker says so.
+  const [target, setTarget] = useState(fixedTarget ?? summary.forDocumentId ?? (dataDocs.length === 1 ? dataDocs[0].id : ""));
   const [review, setReview] = useState<{ items: InstrumentItem[]; links: InstrumentLink[] } | null>(null);
   const [report, setReport] = useState<GuideReport | null>(null);
   const [filter, setFilter] = useState<"suggested" | "unmatched" | "confirmed" | "all">("suggested");
@@ -224,8 +226,9 @@ export default function InstrumentCard({
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
               >
+                {!target && <option value="">Choose a data file</option>}
                 {dataDocs.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id}>{d.name}{summary.linkedDataDocumentIds.includes(d.id) ? " (linked)" : ""}</option>
                 ))}
               </select>}
               <button
