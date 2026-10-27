@@ -160,6 +160,41 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-2 recommendations record the decisions t
     await db.pool.query("update runs set decision_statement='1. Raise fees\n2. Hold fees until Q3' where id=$1", [free.run]);
     expect(await freeField()).toBe("Hold fees (no longer a current decision)");
   });
+
+  // Evidence trail extras: the researcher chooses the decisions a recommendation serves.
+  it("the researcher chooses the decisions served: saved against what was shown, refused when stale or not current, kept by regeneration", async () => {
+    const { run, ids } = await project("1. Fund retention\n2. Fund acquisition", ["Fund retention", "Fund acquisition"]);
+    model.indices = [0];
+    await generate(run);
+    const rec = (await db.pool.query("select id from recommendations where run_id=$1", [run])).rows[0].id as string;
+    const { setServedDecisionsAction } = await import("../recommendationActions");
+    const { servedKey } = await import("../recommendationDecisions");
+    const seen = servedKey([{ candidateId: ids[0], text: "Fund retention" }]);
+    // Stale: what was shown is not what is stored.
+    expect(await setServedDecisionsAction(run, rec, [ids[1]], servedKey([]))).toMatchObject({ ok: false, error: expect.stringMatching(/changed since you opened it.*Nothing was saved/) });
+    // Not a current decision; none chosen; malformed; another project's recommendation.
+    expect(await setServedDecisionsAction(run, rec, ["text:Something else"], seen)).toMatchObject({ ok: false, error: expect.stringMatching(/no longer one of the project's decisions/) });
+    expect(await setServedDecisionsAction(run, rec, [], seen)).toMatchObject({ ok: false, error: expect.stringMatching(/at least one decision/) });
+    expect(await setServedDecisionsAction(run, rec, "x", seen)).toMatchObject({ ok: false });
+    const other = await project("Fund retention", ["Fund retention"]);
+    expect(await setServedDecisionsAction(other.run, rec, [other.ids[0]], seen)).toMatchObject({ ok: false, error: expect.stringMatching(/not in this project/) });
+    expect(await stored(run)).toEqual([{ decision_candidate_id: ids[0], decision_text: "Fund retention", origin: "model" }]);
+    // Saved, in the order chosen, as the researcher's.
+    expect(await setServedDecisionsAction(run, rec, [ids[1], ids[0]], seen)).toEqual({ ok: true, changed: true });
+    expect(await stored(run)).toEqual([
+      { decision_candidate_id: ids[1], decision_text: "Fund acquisition", origin: "researcher" },
+      { decision_candidate_id: ids[0], decision_text: "Fund retention", origin: "researcher" },
+    ]);
+    // The same choice again changes nothing; the earlier view is now stale.
+    const now = servedKey([{ candidateId: ids[1], text: "Fund acquisition" }, { candidateId: ids[0], text: "Fund retention" }]);
+    expect(await setServedDecisionsAction(run, rec, [ids[1], ids[0]], now)).toEqual({ ok: true, changed: false });
+    expect(await setServedDecisionsAction(run, rec, [ids[0]], seen)).toMatchObject({ ok: false });
+    // Regeneration does not overwrite the researcher's choice.
+    await db.pool.query("update recommendations set status='accepted' where id=$1", [rec]);
+    model.indices = [0];
+    await generate(run);
+    expect((await stored(run)).filter((d) => d.origin === "researcher")).toHaveLength(2);
+  });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("CE-2 recommendations record the decisions they serve", () => {
   it.skip(DISPOSABLE_DB_SKIP_REASON, () => {});

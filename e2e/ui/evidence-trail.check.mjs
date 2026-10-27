@@ -4,7 +4,11 @@
 // the decision it serves. The coverage check runs through the stack's model-fixture override.
 //   1. The card says which decision it serves; the trail shows the decision and the objective above the
 //      recommendation, and the insight, pre-insight, finding, quote and source file beneath it.
-//   2. After the decision is rejected the trail marks it as no longer current, and the break count says so.
+//   2. From the objective ("Trace from this objective"): the conclusion, the insight it cites with the
+//      recommendation acting on it, and the evidence beneath.
+//   3. The researcher chooses the decisions the recommendation serves: "Saved" only after it is stored,
+//      the card says "(chosen by the researcher)", and the trail shows it.
+//   4. After the decision is rejected the trail marks it as no longer current, and the break count says so.
 import { expect, test } from "@playwright/test";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -96,11 +100,50 @@ test("a recommendation's evidence trail runs from its decision and objective dow
     await trail.getByRole("button", { name: "Close" }).click();
     await expect(trail).toHaveCount(0);
 
-    // 2. A decision rejected since: no longer current, and coverage is out of date too.
+    // 2. The same trail read from the objective down.
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    await openSection(page, "Review Objectives");
+    await page.getByTestId("stated-objectives").getByRole("button", { name: /Understand why members leave/ }).click();
+    await page.getByTestId("trace-objective").click();
+    const fromObjective = page.getByTestId("evidence-trail");
+    await expect(fromObjective.getByTestId("trail-tree")).toBeVisible({ timeout: 60_000 });
+    await expect(fromObjective.getByTestId("trail-purpose").locator('[data-kind="objective"]')).toContainText("Understand why members leave");
+    await expect(fromObjective.getByTestId("trail-purpose").locator('[data-kind="passage"]')).toContainText("We need to understand why members leave.");
+    const objTree = fromObjective.getByTestId("trail-tree");
+    await expect(objTree.locator('[data-kind="coverage"]')).toContainText("Fees explain leaving.");
+    await expect(objTree.locator('[data-kind="insight"]')).toContainText("Fees are the exit trigger");
+    await expect(objTree.locator('[data-kind="recommendation"]')).toContainText("Cut the monthly fee");
+    await expect(objTree.locator('[data-kind="source"]')).toContainText("exit-interviews.pdf, p. 4");
+    if (SHOT) await fromObjective.screenshot({ path: SHOT.replace(".png", "-objective.png") });
+    await fromObjective.getByRole("button", { name: "Close" }).click();
+
+    // 3. The researcher chooses the decisions it serves, adding a second one.
+    const second = await one("insert into decision_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Whether to add a loyalty tier','r','researcher_authored','accepted') returning id", [t, run.id]);
+    await page.goto(run.url, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Recommendations/ }).first().click();
+    await page.getByTestId("rec-tab-review").first().click();
+    const recCard = page.locator(`[data-testid="recommendation-card"][data-recommendation-id="${rec}"]`).filter({ visible: true });
+    await recCard.getByTestId("recommendation-serves").getByRole("button", { name: "Change" }).click();
+    const chooser = recCard.getByTestId("served-decisions-chooser");
+    await chooser.getByLabel("Whether to add a loyalty tier").check();
+    await chooser.getByRole("button", { name: "Save" }).click();
+    await expect(recCard.getByTestId("served-decisions-saved")).toBeVisible({ timeout: 30_000 });
+    await expect.poll(async () => (await db.query("select decision_candidate_id, origin from recommendation_decisions where recommendation_id=$1 order by position", [rec])).rows).toEqual([
+      { decision_candidate_id: decision, origin: "researcher" },
+      { decision_candidate_id: second, origin: "researcher" },
+    ]);
+    await expect(recCard.getByTestId("recommendation-serves")).toContainText("Whether to add a loyalty tier");
+    await expect(recCard.getByTestId("recommendation-serves")).toContainText("(chosen by the researcher)");
+    if (SHOT) await recCard.screenshot({ path: SHOT.replace(".png", "-decisions.png") });
+    trail = await openTrail();
+    await expect(trail.getByTestId("trail-purpose").locator('[data-kind="decision"]').nth(1)).toContainText("Chosen by the researcher");
+    await trail.getByRole("button", { name: "Close" }).click();
+
+    // 4. A decision rejected since: no longer current, and coverage is out of date too.
     await db.query("update decision_candidates set status='rejected' where id=$1", [decision]);
     trail = await openTrail();
-    await expect(trail.getByTestId("trail-purpose").locator('[data-kind="decision"]')).toContainText("No longer a current decision.");
-    await expect(trail.getByTestId("trail-purpose").locator('[data-kind="decision"]')).toHaveAttribute("data-state", "caution");
+    await expect(trail.getByTestId("trail-purpose").locator('[data-kind="decision"]').first()).toContainText("No longer a current decision.");
+    await expect(trail.getByTestId("trail-purpose").locator('[data-kind="decision"]').first()).toHaveAttribute("data-state", "caution");
     await expect(trail.getByTestId("trail-purpose").locator('[data-kind="objective"]')).toContainText("Out of date");
   } finally {
     await db.end();

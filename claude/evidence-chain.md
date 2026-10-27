@@ -56,8 +56,12 @@ and the brief was text or a model-filled id array.
   - Insight generation and synthesis now see the accepted objectives in both modes
     (`projectObjectives.ts`), as context and not a filter; before, a project with a confirmed decision
     gave them no objective at all.
-  - Not yet: the researcher choosing the decisions by hand (with the chain view, CE-5), and
-    researcher-written recommendations (they read "Not recorded" until then).
+  - The researcher chooses the decisions a recommendation serves ("Change" under "Serves" on its card,
+    `setServedDecisions`, b49), for a generated or a researcher-written recommendation alike: chosen from
+    the current decisions only, at least one, the recommendation locked and what is stored compared with
+    what the researcher saw, so a change made meanwhile is refused, never overwritten. Stored with origin
+    "researcher" ("chosen by the researcher" on the card and in the trail). A researcher-written
+    recommendation nobody has chosen for still reads "Not recorded".
 - **CE-3 (done, b43): the report narrative records what it was written for.** Migration 0121
   `deck_narratives.inputs`: the fingerprints of the business problem, the objectives, the decisions, the
   project's own objective and decision text and the accepted insights, read before the model is asked
@@ -87,10 +91,18 @@ and the brief was text or a model-filled id array.
   pre-insights, findings (origin, latest verdict), the data point (quote, stated figures) and the source
   file. Every node is a stored link; a missing, out-of-date or invalid link is a dashed or amber node that
   says why, and the trail counts its breaks. The Word report prints every recommendation's trail as an
-  appendix (`trailOutline`), with each break stated; an unreadable trail is stated, not dropped. Still to
-  do: the trail in the deck,
-  the reverse view from an objective, the researcher choosing a recommendation's decisions, links from a
-  node to its table or transcript, and objective evidence in the exports.
+  appendix (`trailOutline`), with each break stated; an unreadable trail is stated, not dropped.
+  - b49: the story deck has the same appendix (`evidenceTrailSlides.ts`): each recommendation in the deck,
+    its trail as indented lines with every break stated in words; a long trail continues on further
+    slides, never cut short. A recommendation left out of the deck (support no longer valid) has no trail.
+  - b49: "Trace from this objective" (the selected objective's Coverage section) reads the trail the
+    other way (`loadObjectiveTrail`): the objective and its brief passages, the coverage conclusion about
+    it (by id; "not checked yet" or "no row for this objective" as breaks), each insight the conclusion
+    cites with the recommendations acting on it and the evidence beneath, and the findings planned for it
+    (CE-6), grouped by the plan line recorded on their table, plus current plan lines with no finding yet.
+    Both views build insights and findings with the same functions, so they cannot describe one
+    differently.
+  - Still to do: links from a node to its table or transcript, and objective evidence in the exports.
 - **CE-6 (b46): the analysis plan.** Migration 0123; owner `src/lib/analysisPlan.ts`.
   - The plan's lines are the objective evidence questions (`objectiveEvidence.ts`): each objective or
     decision broken into what to measure, for whom and what would support or undermine it, written before

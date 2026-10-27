@@ -204,3 +204,26 @@ export async function regenerateSynthesizedRecommendations(
     return { ok: false, error: message };
   }
 }
+
+/**
+ * CE-2: the researcher chooses the decisions a recommendation serves, from the project's current
+ * decisions, against what they saw (recommendationDecisions.ts setServedDecisions). All or nothing.
+ */
+export async function setServedDecisionsAction(
+  runId: string,
+  recommendationId: string,
+  chosenKeys: unknown,
+  expectedServed: unknown,
+): Promise<{ ok: true; changed: boolean } | { ok: false; error: string }> {
+  const TENANT_ID = await requireTenantId();
+  if (!Array.isArray(chosenKeys) || chosenKeys.length > 100 || !chosenKeys.every((k) => typeof k === "string") || typeof expectedServed !== "string")
+    return { ok: false, error: "The decisions chosen were not understood. Reload and try again." };
+  try {
+    const { setServedDecisions } = await import("./recommendationDecisions");
+    const r = await withTenant(TENANT_ID, (client) => setServedDecisions(client, TENANT_ID, runId, recommendationId, chosenKeys, expectedServed));
+    if (r.changed) revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}

@@ -5,7 +5,9 @@
 //     verdict, quote and figures, and the source file beneath; no breaks;
 //   - breaks are shown, never hidden: coverage out of date, a decision no longer current, a deleted
 //     finding, a finding with no source, coverage never checked, no decision recorded;
-//   - another project's recommendation is refused.
+//   - another project's recommendation is refused;
+//   - read from an objective: its conclusion, the cited insight with its recommendation and evidence, the
+//     findings planned for it (and a plan line with none yet); breaks shown; another project's refused.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
@@ -40,7 +42,7 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
   async function project({ quote = "Fees were the main reason I left.", withSource = true } = {}) {
     const run = await id("insert into runs(tenant_id,project_name,decision_statement) values($1,'R','Whether to cut fees') returning id", [tenant]);
     const decision = await id("insert into decision_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Whether to cut fees','r','researcher_authored','accepted') returning id", [tenant, run]);
-    await q("insert into objective_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Understand why members leave','r','researcher_authored','accepted')", [tenant, run]);
+    const objective = await id("insert into objective_candidates(tenant_id,run_id,candidate_text,rationale,source,status) values($1,$2,'Understand why members leave','r','researcher_authored','accepted') returning id", [tenant, run]);
     // The report's text holds the finding's quote, so the quote can be checked and the insight's support reads current.
     const doc = withSource ? await id("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,extracted_text) values($1,$2,'report','exit-interviews.pdf','x',$3) returning id", [tenant, run, `Exit interviews. ${quote} Other reasons were rare.`]) : null;
     const finding = await id(
@@ -53,7 +55,7 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
     // Its support recorded when drafted, as synthesis records it, so the insight's support can be checked.
     await q("insert into synthesized_insight_sources(synthesized_insight_id,pre_insight_id,tenant_id,support_snapshot) values($1,$2,$3,finding_support_parts($4))", [si, pre, tenant, finding]);
     const rec = await id("insert into recommendations(tenant_id,run_id,synthesized_insight_id,action_text,owner_role,owner_feasibility_note,timeline,metric,priority,assumptions_and_risks,alternatives_considered,source,status) values($1,$2,$3,'Cut the monthly fee for at-risk members','Head of Retention','n','Q1','m','high','a','b','ai_suggested','accepted') returning id", [tenant, run, si]);
-    return { run, decision, finding, si, rec };
+    return { run, decision, objective, finding, si, rec };
   }
   const trail = async (run: string, rec: string) => {
     const { withTenantRead } = await import("../db");
@@ -103,6 +105,22 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
     await q("update document_tables set plan_line = jsonb_set(plan_line, '{approvedRevision}', 'null') where id = $1", [table]);
     const unapproved = flat((await trail(p.run, p.rec)).root).find((n) => n.kind === "plan")!;
     expect(unapproved).toMatchObject({ state: "caution", note: expect.stringMatching(/not approved at this wording/) });
+  });
+
+  // Found by the browser journey C5 (b49): a finding whose figures changed after its insight was drafted was
+  // shown in the trail (and on a deck page holding it without its insight) with no qualification.
+  it("a finding whose part of the support changed since drafting is qualified in the trail, and so is its insight", async () => {
+    const p = await project();
+    await q("update findings set stated_stats = $2 where id = $1", [p.finding, JSON.stringify({ base: 200, share_pct: 35 })]);
+    const t = await trail(p.run, p.rec);
+    const insight = flat(t.root).find((n) => n.kind === "insight")!;
+    expect(insight).toMatchObject({ state: "caution", note: expect.stringMatching(/^Support changed since drafted: the figures in .*Fees drive leaving.* changed/) });
+    const finding = flat(t.root).find((n) => n.kind === "finding")!;
+    expect(finding).toMatchObject({ state: "caution", note: expect.stringMatching(/^Support changed since drafted: the figures in .*Fees drive leaving.* changed\.$/) });
+    expect(flat(t.root).find((n) => n.kind === "pre_insight")).toMatchObject({ state: "caution", note: expect.stringMatching(/^Support changed since drafted: the figures in /) });
+    const { trailOutline } = await import("../evidenceTrail");
+    expect(trailOutline(t as never).find((l) => l.text.startsWith("Finding:"))!.text).toMatch(/\[Check: Support changed since drafted: /);
+    expect(trailOutline(t as never).find((l) => l.text.startsWith("Pre-insight:"))!.text).toMatch(/\[Check: Support changed since drafted: /);
   });
 
   it("B37-F01: rejecting the sole finding makes the objective it answered not current in the trail, saying why", async () => {
@@ -167,6 +185,63 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
     expect(doc).toContain("Source: Source not recorded [Break in the trail: The finding names no source file.]");
     expect(doc).toContain("Recommendation: Raise the joining fee [Break in the trail: The evidence trail could not be read: connection reset]");
     expect(await text(base)).not.toContain("Appendix: evidence trails");
+  });
+
+  // Evidence trail extras (Grant, 26 October 2026): the same trail read from an objective down.
+  const objectiveTrail = async (run: string, objective: string) => {
+    const { withTenantRead } = await import("../db");
+    const { loadObjectiveTrail, loadTrailContext } = await import("../evidenceTrail");
+    const context = await loadTrailContext(tenant, run);
+    return withTenantRead(tenant, (client) => loadObjectiveTrail(client, run, objective, context)) as unknown as Promise<{ purpose: Node[]; root: Node }>;
+  };
+
+  it("traces from an objective to its conclusion, the insight it cites with its recommendation, the evidence, and its planned findings", async () => {
+    const p = await project();
+    await (await import("../objectiveValidator")).generateObjectiveValidation(tenant, p.run);
+    // A plan line for this objective whose table became a finding, and one with no finding yet.
+    const planned = await id("insert into objective_evidence(tenant_id,run_id,item_kind,item_order,item_text,question,request_text,objective_candidate_id) values($1,$2,'objective',0,'Understand why members leave','Do leavers cite fees more?','r',$3) returning id", [tenant, p.run, p.objective]);
+    await q("insert into objective_evidence(tenant_id,run_id,item_kind,item_order,item_text,question,request_text,objective_candidate_id) values($1,$2,'objective',1,'Understand why members leave','Does tenure matter?','r',$3)", [tenant, p.run, p.objective]);
+    await q("insert into objective_evidence(tenant_id,run_id,item_kind,item_order,item_text,question,request_text,objective_candidate_id,excluded) values($1,$2,'objective',2,'Understand why members leave','Excluded line','r',$3,true)", [tenant, p.run, p.objective]);
+    const data = await id("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,ingestion_type) values($1,$2,'table','survey.csv','x','raw') returning id", [tenant, p.run]);
+    const line = { evidenceId: planned, revision: 1, approvedRevision: 1, question: "Do leavers cite fees more?", itemKind: "objective", itemText: "Understand why members leave", objectiveCandidateId: p.objective, decisionCandidateId: null };
+    const table = await id("insert into document_tables(tenant_id,run_id,document_id,table_index,ingestion_type,crosstab,crosstab_status,plan_line,label) values($1,$2,$3,1000,'aggregated','{}','committed',$4,'Fees by status') returning id", [tenant, p.run, data, JSON.stringify(line)]);
+    await q("insert into findings(tenant_id,run_id,origin,finding_text,status,source_table_id,stated_stats) values($1,$2,'generated','Leavers cite fees twice as often','accepted',$3,$4)", [tenant, p.run, table, JSON.stringify({ base: 150 })]);
+
+    const t = await objectiveTrail(p.run, p.objective);
+    expect(t.purpose.map((n) => [n.kind, n.label, n.state])).toEqual([["objective", "Understand why members leave", "current"]]);
+    expect(t.root).toMatchObject({ kind: "coverage", label: "Answered.", state: "current", details: ["Coverage: answered"] });
+    const [insight, ...plans] = t.root.children;
+    expect(insight).toMatchObject({ kind: "insight", label: "Fees are the exit trigger", state: "current" });
+    expect(insight.children.map((n) => [n.kind, n.label])).toEqual([
+      ["recommendation", "Cut the monthly fee for at-risk members"],
+      ["pre_insight", "Fees push members out"],
+    ]);
+    expect(flat(insight).map((n) => n.kind)).toEqual(["insight", "recommendation", "pre_insight", "finding", "data", "source"]);
+    expect(plans.map((n) => [n.kind, n.label, n.state])).toEqual([
+      ["plan", "Do leavers cite fees more?", "current"],
+      ["plan", "Does tenure matter?", "caution"],
+    ]);
+    // The planned finding sits under its line, with its data point and table; the line is not repeated beneath it.
+    expect(flat(plans[0]).map((n) => [n.kind, n.label])).toEqual([
+      ["plan", "Do leavers cite fees more?"], ["finding", "Leavers cite fees twice as often"], ["data", "Figures stated"], ["source", "survey.csv, Fees by status"],
+    ]);
+    expect(plans[0].children[0].details).toContain("Route: Planned");
+    expect(plans[1].note).toBe("No finding from this plan line yet.");
+  });
+
+  it("shows breaks from an objective: coverage never checked, the cited support gone, and refuses another project's objective", async () => {
+    const p = await project();
+    let t = await objectiveTrail(p.run, p.objective);
+    expect(t.root).toMatchObject({ kind: "coverage", label: "Coverage not checked yet", state: "broken" });
+    expect(t.root.children).toEqual([]);
+    await (await import("../objectiveValidator")).generateObjectiveValidation(tenant, p.run);
+    const { setFindingStatus } = await import("../findingActions");
+    expect(await setFindingStatus(p.run, p.finding, "rejected")).toEqual({ ok: true });
+    t = await objectiveTrail(p.run, p.objective);
+    expect(t.root).toMatchObject({ state: "broken", note: expect.stringMatching(/^Not supported now/) });
+    expect(t.root.children[0]).toMatchObject({ kind: "insight", state: "broken" });
+    const other = await project();
+    await expect(objectiveTrail(p.run, other.objective)).rejects.toThrow(/not in this project/);
   });
 
   it("refuses a recommendation of another project", async () => {

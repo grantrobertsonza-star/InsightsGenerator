@@ -352,6 +352,11 @@ function quoteFinding(text: string | null): string {
   return `“${oneLine.length > 70 ? `${oneLine.slice(0, 67)}...` : oneLine}”`;
 }
 
+/** The status one reason gives the insight it is about (a changed figure is "stale", a deleted finding "invalid"). */
+export function supportReasonStatus(reason: SupportReason): SupportStatus {
+  return REASON_STATUS[reason.kind];
+}
+
 export function describeSupportReason(reason: SupportReason): string {
   const f = quoteFinding(reason.findingText);
   switch (reason.kind) {

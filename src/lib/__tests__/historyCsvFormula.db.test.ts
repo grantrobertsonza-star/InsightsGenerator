@@ -16,6 +16,7 @@ import { csvField } from "../csvField";
 
 vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
 vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/evidenceTrailSlides", async () => await import("../evidenceTrailSlides"));
 vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/csvField", async () => await import("../csvField"));

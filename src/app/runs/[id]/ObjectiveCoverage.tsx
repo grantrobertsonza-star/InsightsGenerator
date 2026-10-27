@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { sameObjective, useObjectiveSelection } from "./ObjectiveSelection";
 import { checkObjectiveCoverage, suggestObjectivesFromUnmatched } from "@/lib/objectiveCoverageActions";
+import EvidenceTrailDialog from "./EvidenceTrailDialog";
 
 type Validation = {
   item_kind: "objective" | "decision";
@@ -250,27 +251,41 @@ export function SelectedObjectiveCoverage({
 }) {
   const { selected } = useObjectiveSelection();
   const { pending, error, run } = useCoverageCheck(runId);
+  // The objective whose trail is open, by id: switching objectives while it is open cannot show another's.
+  const [tracing, setTracing] = useState<string | null>(null);
   if (!selected) return null;
   const byId = new Map(insights.map((i) => [i.id, i.headline]));
   // By the candidate's id where the row records it (CE-1), by its wording otherwise.
   const matching = validations.filter((v) => sameObjective(selected, { id: v.objective_candidate_id ?? v.decision_candidate_id ?? null, text: v.item_text }));
   // The same condition as the right pane's button: there is something to check against.
+  const traceId = selected.id ?? matching.find((v) => v.item_kind === "objective" && v.objective_candidate_id)?.objective_candidate_id ?? null;
   const canCheck = hasObjectiveOrDecision && (validations.length > 0 || insights.some((i) => i.review_status === "accepted"));
   return (
     <section className="mt-4" data-testid="selected-objective-coverage">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">Coverage</h3>
-        {canCheck && (
-          <button
-            className={btn}
-            disabled={pending}
-            onClick={() => run(checkObjectiveCoverage)}
-            title="Checks every stated objective and decision against the accepted insights, not only this one"
-          >
-            {pending ? "Working..." : "Update coverage"}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Traced by the objective's id: the selection's, or (a line picked from the stated list carries
+              only its text) the id the matching coverage row records. With neither there is nothing stored
+              to trace by, and no button. */}
+          {traceId && (
+            <button className={btn} data-testid="trace-objective" onClick={() => setTracing(traceId)}>
+              Trace from this objective
+            </button>
+          )}
+          {canCheck && (
+            <button
+              className={btn}
+              disabled={pending}
+              onClick={() => run(checkObjectiveCoverage)}
+              title="Checks every stated objective and decision against the accepted insights, not only this one"
+            >
+              {pending ? "Working..." : "Update coverage"}
+            </button>
+          )}
+        </div>
       </div>
+      {tracing && <EvidenceTrailDialog runId={runId} from={{ kind: "objective", id: tracing }} onClose={() => setTracing(null)} />}
       <StaleNote note={matching.length > 0 ? staleNote : null} />
       {matching.length > 0 ? (
         <ul className="space-y-3">

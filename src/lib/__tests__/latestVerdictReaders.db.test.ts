@@ -31,7 +31,7 @@ const prompts: string[] = [];
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
-for (const m of ["db", "deckSlides", "docxReport", "caveatLabels", "supportStatus", "supportStatusShared", "sourceAttribution", "narrativeSupportSummary", "figureChecks", "numberTrace", "storyNarrative", "latestVerdict", "discoveryReport", "decisionContext", "recommendationQualification", "objectiveCoverage", "narrativeFreshness", "evidenceTrail"]) {
+for (const m of ["db", "deckSlides", "docxReport", "caveatLabels", "supportStatus", "supportStatusShared", "sourceAttribution", "narrativeSupportSummary", "figureChecks", "numberTrace", "storyNarrative", "latestVerdict", "discoveryReport", "decisionContext", "recommendationQualification", "objectiveCoverage", "narrativeFreshness", "evidenceTrail", "evidenceTrailSlides"]) {
   vi.doMock(`@/lib/${m}`, async () => await import(`../${m}`));
 }
 vi.mock("@/lib/discoverySlides", () => ({ addDiscoverySlides: vi.fn() }));

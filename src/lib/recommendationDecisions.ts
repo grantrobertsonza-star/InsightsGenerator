@@ -128,3 +128,58 @@ export function servedDecisionsText(served: ServedDecision[] | undefined, availa
 export function servedDecisionNote(d: ServedDecision): string {
   return d.state === "reworded" ? `since reworded as "${d.currentText}"; written for the earlier wording` : "no longer a current decision";
 }
+
+/**
+ * A decision as offered to the researcher: its key is the accepted candidate's id, or "text:" plus its
+ * wording for a decision from the project's own text (which has no id).
+ */
+export type DecisionOption = { key: string; text: string };
+
+export function decisionOptionKey(d: DecisionItem): string {
+  return d.candidateId ?? `text:${d.text}`;
+}
+
+/** What the researcher saw as served, compared with what is stored before a change is saved. */
+export function servedKey(served: { candidateId: string | null; text: string }[]): string {
+  return served.map((d) => d.candidateId ?? `text:${d.text}`).join("\u0001");
+}
+
+/**
+ * The researcher chooses the decisions a recommendation serves (CE-2, evidence trail extras). Chosen
+ * from the project's current decisions only (keys from `decisionOptionKey`); a key that is no longer a
+ * current decision refuses the whole change. The recommendation row is locked, its project checked, and
+ * what is stored now compared with what the researcher saw (`expectedServed`, a `servedKey`), so a change
+ * made meanwhile by someone else (or by regeneration) is never overwritten: it is refused and nothing is
+ * saved. The new list is stored with origin "researcher". At least one decision is required: an empty
+ * list would read as "not recorded", which is not what the researcher said.
+ */
+export async function setServedDecisions(
+  client: PoolClient,
+  tenantId: string,
+  runId: string,
+  recommendationId: string,
+  chosenKeys: string[],
+  expectedServed: string,
+): Promise<{ changed: boolean }> {
+  if (!(await recommendationDecisionsAvailable(client))) throw new Error("Choosing decisions needs database migration 0120 applied first (npx.cmd supabase migration up). Nothing was saved.");
+  const rec = await client.query<{ id: string }>("select id from recommendations where id = $1 and run_id = $2 and tenant_id = $3 for update", [recommendationId, runId, tenantId]);
+  if (rec.rows.length === 0) throw new Error("That recommendation is not in this project. Nothing was saved.");
+  const stored = await client.query<{ decision_candidate_id: string | null; decision_text: string }>(
+    "select decision_candidate_id, decision_text from recommendation_decisions where recommendation_id = $1 order by position",
+    [recommendationId],
+  );
+  const now = servedKey(stored.rows.map((r) => ({ candidateId: r.decision_candidate_id, text: r.decision_text })));
+  if (now !== expectedServed) throw new Error("The decisions this recommendation serves changed since you opened it. Reload to see them, then choose again. Nothing was saved.");
+  if (chosenKeys.length === 0) throw new Error("Choose at least one decision, or cancel to leave it as it is. Nothing was saved.");
+  const current = await loadDecisionItems(client, runId);
+  const byKey = new Map(current.map((d) => [decisionOptionKey(d), d]));
+  const chosen: DecisionItem[] = [];
+  for (const key of chosenKeys) {
+    const d = byKey.get(key);
+    if (!d) throw new Error("A decision you chose is no longer one of the project's decisions. Reload and choose again. Nothing was saved.");
+    if (!chosen.includes(d)) chosen.push(d);
+  }
+  if (servedKey(chosen) === now) return { changed: false };
+  await storeRecommendationDecisions(client, tenantId, recommendationId, chosen, "researcher");
+  return { changed: true };
+}

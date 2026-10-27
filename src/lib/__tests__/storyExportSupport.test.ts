@@ -30,6 +30,7 @@ vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
 // has its own real-database tests (narrativeWrongGroup.db.test.ts), so here the narrative is current.
 vi.mock("@/lib/narrativeFreshness", async () => ({ ...(await import("../narrativeFreshness")), narrativeFreshnessNote: async () => null }));
 vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/evidenceTrailSlides", async () => await import("../evidenceTrailSlides"));
 vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/caveatLabels", async () => await import("../caveatLabels"));
 vi.mock("@/lib/supportStatus", async () => await import("../supportStatus"));

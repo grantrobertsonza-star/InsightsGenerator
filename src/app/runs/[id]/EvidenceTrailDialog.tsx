@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { loadEvidenceTrailAction } from "@/lib/evidenceTrailActions";
+import { loadEvidenceTrailAction, loadObjectiveTrailAction } from "@/lib/evidenceTrailActions";
 import type { EvidenceTrail, TrailNode, TrailNodeKind } from "@/lib/evidenceTrail";
 
 const KIND: Record<TrailNodeKind, { label: string; accent: string }> = {
   passage: { label: "Brief passage", accent: "bg-fuchsia-600" },
   objective: { label: "Objective", accent: "bg-violet-600" },
+  coverage: { label: "Coverage conclusion", accent: "bg-purple-700" },
   decision: { label: "Decision", accent: "bg-indigo-600" },
   recommendation: { label: "Recommendation", accent: "bg-primary" },
   insight: { label: "Insight", accent: "bg-sky-600" },
@@ -29,9 +30,15 @@ const STATE_WORD = { current: null, caution: "Check", broken: "Break in the trai
  * pre-insights, findings, data points and source files it rests on. Every node is a stored link
  * (evidenceTrail.ts); a link that is missing, out of date or no longer valid is shown as such, dashed,
  * so a break in the trail is visible rather than hidden. Read when opened; a late answer for another
- * recommendation is dropped.
+ * recommendation or objective is dropped.
+ *
+ * With `from` an objective, the same tree is read the other way (loadObjectiveTrail): the objective and
+ * its brief passages above, and beneath them the coverage conclusion, the insights it cites with the
+ * recommendations acting on them, and the findings planned for the objective.
  */
-export default function EvidenceTrailDialog({ runId, recommendationId, onClose }: { runId: string; recommendationId: string; onClose: () => void }) {
+export type TrailSubject = { kind: "recommendation" | "objective"; id: string };
+
+export default function EvidenceTrailDialog({ runId, from, onClose }: { runId: string; from: TrailSubject; onClose: () => void }) {
   const [trail, setTrail] = useState<EvidenceTrail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(0);
@@ -39,7 +46,7 @@ export default function EvidenceTrailDialog({ runId, recommendationId, onClose }
 
   useEffect(() => {
     const token = ++latest.current;
-    void loadEvidenceTrailAction(runId, recommendationId)
+    void (from.kind === "objective" ? loadObjectiveTrailAction(runId, from.id) : loadEvidenceTrailAction(runId, from.id))
       .then((r) => {
         if (token !== latest.current) return;
         if (r.ok) setTrail(r.trail);
@@ -52,7 +59,8 @@ export default function EvidenceTrailDialog({ runId, recommendationId, onClose }
     return () => {
       latest.current += 1;
     };
-  }, [runId, recommendationId]);
+  }, [runId, from.kind, from.id]);
+  const fromObjective = from.kind === "objective";
 
   const breaks = trail ? countBroken([...trail.purpose, trail.root]) : 0;
 
@@ -73,8 +81,10 @@ export default function EvidenceTrailDialog({ runId, recommendationId, onClose }
           <div>
             <h2 className="text-base font-semibold text-foreground">Evidence trail</h2>
             <p className="mt-1 max-w-2xl text-xs text-muted">
-              What this recommendation is for, and every step of evidence beneath it, from stored links only. A dashed step is a
-              break in the trail: not recorded, out of date, or no longer valid.
+              {fromObjective
+                ? "This objective, what the coverage check concluded about it, the insights and recommendations behind that, and the findings planned for it, from stored links only."
+                : "What this recommendation is for, and every step of evidence beneath it, from stored links only."}{" "}
+              A dashed step is a break in the trail: not recorded, out of date, or no longer valid.
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-white">
@@ -92,8 +102,8 @@ export default function EvidenceTrailDialog({ runId, recommendationId, onClose }
             <p className="text-xs text-muted" data-testid="trail-breaks">
               {breaks === 0 ? "No breaks in the trail." : `${breaks} ${breaks === 1 ? "break" : "breaks"} in the trail.`}
             </p>
-            <section aria-label="What it is for">
-              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">What it is for</h3>
+            <section aria-label={fromObjective ? "The objective" : "What it is for"}>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">{fromObjective ? "The objective" : "What it is for"}</h3>
               <div className="grid gap-2 sm:grid-cols-2" data-testid="trail-purpose">
                 {trail.purpose.map((n, i) => (
                   <div key={`${n.kind}-${n.id ?? i}`} className="space-y-1.5">

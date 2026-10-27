@@ -25,6 +25,7 @@ vi.mock("@/lib/storyNarrative", async () => await import("../storyNarrative"));
 vi.mock("@/lib/docxReport", async () => await import("../docxReport"));
 vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
 vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
+vi.mock("@/lib/evidenceTrailSlides", async () => await import("../evidenceTrailSlides"));
 vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/caveatLabels", async () => await import("../caveatLabels"));
 vi.mock("@/lib/supportStatus", async () => await import("../supportStatus"));
@@ -193,6 +194,40 @@ describe.skipIf(!TEST_DATABASE_URL)("objective review persistence (real database
     for (const route of ["export-docx", "export"] as const) {
       expect(await exported(route), route).toMatch(/Answered\. \(Not supported now: an insight this conclusion cites no longer has valid support/);
     }
+  });
+
+  // Evidence trail extras (Grant, 26 October 2026): the deck carries each recommendation's trail, as the
+  // Word report's appendix does, through the real export route and database.
+  it("the story deck carries each recommendation's evidence trail, and none for a recommendation left out", async () => {
+    const r3 = await one(`insert into runs (tenant_id, project_name, research_objective) values ($1, 'Trail', 'Explain churn') returning id`, [TENANT]);
+    const { insightId, findingId } = await insertSupportedInsight(db.pool, TENANT, r3, "Fees drive churn");
+    await db.pool.query(
+      `insert into deck_narratives (tenant_id, run_id, situation, complication, question, governing_thought, pillars, executive_summary)
+       values ($1, $2, 's', 'c', 'q', 'g', $3, 'summary')`,
+      [TENANT, r3, JSON.stringify([{ theme: "T", headline: "Pillar", so_what: "w", insight_ids: [insightId] }])],
+    );
+    await db.pool.query(
+      `insert into recommendations (tenant_id, run_id, synthesized_insight_id, action_text, owner_role, owner_feasibility_note, timeline, metric, priority, assumptions_and_risks, alternatives_considered, source, status)
+       values ($1, $2, $3, 'Cut the fee for at-risk members', 'Head of Retention', 'n', 'Q1', 'm', 'high', 'a', 'b', 'ai_suggested', 'accepted')`,
+      [TENANT, r3, insightId],
+    );
+    const deckText = async () => {
+      const { GET } = await import("../../app/api/runs/[id]/story/export/route");
+      const res = await GET(new Request("http://x/"), { params: Promise.resolve({ id: r3 }) });
+      expect(res.status).toBe(200);
+      const zip = await JSZip.loadAsync(await res.arrayBuffer());
+      const parts = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+      return (await Promise.all(parts.map((f) => zip.file(f)!.async("string")))).join(" ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    };
+    const text = await deckText();
+    expect(text).toContain("EVIDENCE TRAIL 1");
+    expect(text).toContain("Recommendation: Cut the fee for at-risk members");
+    expect(text).toContain("Insight: Fees drive churn");
+    // No decision was recorded: the break is stated on the slide, in words.
+    expect(text).toContain("Decision: Decision served: not recorded [Break in the trail");
+    // Its only finding rejected: the recommendation leaves the deck, and so does its trail.
+    await db.pool.query(`update findings set status = 'rejected' where id = $1`, [findingId]);
+    expect(await deckText()).not.toContain("EVIDENCE TRAIL 1");
   });
 });
 

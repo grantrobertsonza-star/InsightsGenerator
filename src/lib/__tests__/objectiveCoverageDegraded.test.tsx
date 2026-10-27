@@ -11,6 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const selection = vi.hoisted(() => ({ selected: null as { id: string | null; text: string } | null }));
 vi.mock("@/lib/objectiveLines", async () => await import("../objectiveLines"));
 vi.mock("@/lib/objectiveCoverageActions", () => ({ checkObjectiveCoverage: vi.fn(), suggestObjectivesFromUnmatched: vi.fn() }));
+vi.mock("@/lib/evidenceTrailActions", () => ({ loadEvidenceTrailAction: vi.fn(), loadObjectiveTrailAction: vi.fn() }));
 vi.mock("../../app/runs/[id]/ObjectiveSelection", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../app/runs/[id]/ObjectiveSelection")>();
   return { ...actual, useObjectiveSelection: () => ({ selected: selection.selected, select: () => {}, clear: () => {} }) };

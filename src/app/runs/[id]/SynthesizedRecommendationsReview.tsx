@@ -1,6 +1,7 @@
 "use client";
 
-import { servedDecisionsText, type ServedDecision } from "@/lib/recommendationDecisions";
+import { servedDecisionsText, servedKey, type DecisionOption, type ServedDecision } from "@/lib/recommendationDecisions";
+import { setServedDecisionsAction } from "@/lib/recommendationActions";
 import EvidenceTrailDialog from "./EvidenceTrailDialog";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { actionFailureMessage, attempt, CONNECTION_LOST_MESSAGE } from "./actionFailure";
@@ -463,14 +464,88 @@ function EditFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
   );
 }
 
+/**
+ * CE-2: the researcher chooses the decisions a recommendation serves, from the project's current
+ * decisions. Saved against what was shown (a change made meanwhile is refused, never overwritten);
+ * "Saved" only after the save succeeds; a refusal keeps the choice open with the reason.
+ */
+function ServedDecisionsChooser({
+  runId,
+  recommendationId,
+  served,
+  options,
+  onClose,
+}: {
+  runId: string;
+  recommendationId: string;
+  served: ServedDecision[];
+  options: DecisionOption[];
+  onClose: (saved: boolean) => void;
+}) {
+  // A decision since reworded is still the same accepted decision (by id), so it starts ticked; one that
+  // is gone is not offered at all.
+  const initial = served.filter((d) => d.state !== "gone").map((d) => d.candidateId ?? `text:${d.text}`);
+  const [chosen, setChosen] = useState<string[]>(initial.filter((k) => options.some((o) => o.key === k)));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await setServedDecisionsAction(runId, recommendationId, chosen, servedKey(served.map((d) => ({ candidateId: d.candidateId, text: d.text }))));
+      if (r.ok) onClose(true);
+      else setError(r.error);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Not saved. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="rounded-md border border-border bg-slate-50 p-2 text-xs" data-testid="served-decisions-chooser">
+      <p className="mb-1 font-medium text-foreground">Which decisions does this recommendation serve?</p>
+      <ul className="space-y-1">
+        {options.map((o) => (
+          <li key={o.key}>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={chosen.includes(o.key)}
+                onChange={(e) => setChosen((c) => (e.target.checked ? [...c, o.key] : c.filter((k) => k !== o.key)))}
+              />
+              <span>{o.text}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex gap-2">
+        <button type="button" disabled={saving || chosen.length === 0} onClick={() => void save()} className="rounded-md bg-primary px-2 py-1 font-medium text-white disabled:opacity-50">
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button type="button" disabled={saving} onClick={() => onClose(false)} className="rounded-md border border-border px-2 py-1">
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function RecommendationCard({
   runId,
   recommendation,
+  decisionOptions = null,
   selected = false,
   selectionKey = 0,
 }: {
   runId: string;
   recommendation: Recommendation;
+  /** The project's current decisions, for choosing what this serves; null when they could not be read. */
+  decisionOptions?: DecisionOption[] | null;
   /** Opened from the overview's action plan: highlighted and brought into view. */
   selected?: boolean;
   /** Changes with each request, so choosing the same recommendation again scrolls to it again. */
@@ -482,6 +557,8 @@ function RecommendationCard({
     if (selected) cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [selected, selectionKey]);
   const [isEditing, setIsEditing] = useState(false);
+  const [choosingDecisions, setChoosingDecisions] = useState(false);
+  const [decisionsSaved, setDecisionsSaved] = useState(false);
   const [draft, setDraft] = useState<Draft>(draftFrom(recommendation));
   // Each action reports its failure here instead of throwing out of the transition, which
   // replaced the page and lost an open edit; a failed save keeps the editor and draft.
@@ -594,6 +671,13 @@ function RecommendationCard({
           <div className="-mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted" data-testid="recommendation-serves">
               Serves: <span className="font-medium text-foreground">{servedDecisionsText(recommendation.served_decisions, recommendation.served_decisions !== undefined)}</span>
+              {recommendation.served_decisions?.some((d) => d.origin === "researcher") && <span className="ml-1">(chosen by the researcher)</span>}
+              {recommendation.served_decisions !== undefined && decisionOptions && decisionOptions.length > 0 && !choosingDecisions && (
+                <button type="button" className="ml-2 underline" onClick={() => { setDecisionsSaved(false); setChoosingDecisions(true); }}>
+                  Change
+                </button>
+              )}
+              {decisionsSaved && <span className="ml-2 text-success" data-testid="served-decisions-saved">Saved</span>}
             </p>
             <button
               type="button"
@@ -603,7 +687,19 @@ function RecommendationCard({
               Trace the evidence
             </button>
           </div>
-          {tracing && <EvidenceTrailDialog runId={runId} recommendationId={recommendation.id} onClose={() => setTracing(false)} />}
+          {choosingDecisions && decisionOptions && (
+            <ServedDecisionsChooser
+              runId={runId}
+              recommendationId={recommendation.id}
+              served={recommendation.served_decisions ?? []}
+              options={decisionOptions}
+              onClose={(saved) => {
+                setChoosingDecisions(false);
+                setDecisionsSaved(saved);
+              }}
+            />
+          )}
+          {tracing && <EvidenceTrailDialog runId={runId} from={{ kind: "recommendation", id: recommendation.id }} onClose={() => setTracing(false)} />}
           {recommendation.support && <SupportStatusNotice support={recommendation.support} subject="recommendation" />}
           {recommendation.decision_state && (
             <p data-testid="recommendation-decision-note" className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -785,9 +881,12 @@ export default function SynthesizedRecommendationsReview({
   hasDecision,
   hasInsights,
   request,
+  decisionOptions = null,
 }: {
   runId: string;
   recommendations: Recommendation[];
+  /** The project's current decisions (CE-2), for choosing what a recommendation serves. */
+  decisionOptions?: DecisionOption[] | null;
   // Every accepted synthesized insight this run has, for the "add your
   // own" picker. Only accepted ones: a rejected synthesized insight isn't
   // a real insight any more as far as the researcher is concerned.
@@ -1130,7 +1229,7 @@ export default function SynthesizedRecommendationsReview({
       {reviewFilter === "rejected" && rejected.length > 0 && (
         <div className="space-y-3">
           {rejected.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -1138,7 +1237,7 @@ export default function SynthesizedRecommendationsReview({
       {accepted.length > 0 && (
         <div className="space-y-3">
           {accepted.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -1147,7 +1246,7 @@ export default function SynthesizedRecommendationsReview({
         <div className="space-y-3">
           {accepted.length > 0 && <div className="text-xs font-semibold uppercase tracking-wide text-muted">Other recommendations</div>}
           {pending.map((rec) => (
-            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
+            <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
           ))}
         </div>
       )}
@@ -1174,7 +1273,7 @@ export default function SynthesizedRecommendationsReview({
           {rejectedOpen && (
             <div className="mt-3 space-y-2">
               {rejected.map((rec) => (
-                <RecommendationCard key={rec.id} runId={runId} recommendation={rec} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
+                <RecommendationCard key={rec.id} runId={runId} recommendation={rec} decisionOptions={decisionOptions} selected={rec.id === selectedId} selectionKey={appliedRequest ?? 0} />
               ))}
             </div>
           )}

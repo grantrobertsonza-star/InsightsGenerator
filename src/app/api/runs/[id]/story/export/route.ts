@@ -2,7 +2,9 @@ import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
 import { insightsNoItemCites, loadObjectiveCoverage, qualifiedConclusion } from "@/lib/objectiveCoverage";
 import { NextResponse } from "next/server";
 import PptxGenJS from "pptxgenjs";
-import { withTenant } from "@/lib/db";
+import { withTenant, withTenantRead } from "@/lib/db";
+import { loadEvidenceTrail, loadTrailContext, unreadableTrail, type EvidenceTrail } from "@/lib/evidenceTrail";
+import { addEvidenceTrailSlides } from "@/lib/evidenceTrailSlides";
 import {
   addTitleSlide,
   addFooter,
@@ -1071,6 +1073,23 @@ export async function GET(
     );
     addFooter(slide, deckTitle, "Evidence status");
   }
+
+  // The evidence trail of each recommendation in the deck, as the Word report's appendix has it. Read one
+  // recommendation at a time after the deck's own reads, so one unreadable trail is stated on its slide
+  // rather than failing the deck or silently leaving that trail out. Recommendations left out above
+  // (support no longer valid) have no trail here either.
+  const evidenceTrails: EvidenceTrail[] = [];
+  // One context for every trail, read on its own connections (B39-F01); a failed read is stated on each.
+  const trailContext = recommendations.length > 0 ? await loadTrailContext(TENANT_ID, runId).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))) : null;
+  for (const rec of recommendations) {
+    try {
+      if (trailContext instanceof Error) throw trailContext;
+      evidenceTrails.push(await withTenantRead(TENANT_ID, (client) => loadEvidenceTrail(client, TENANT_ID, runId, rec.id, trailContext!)));
+    } catch (e) {
+      evidenceTrails.push(unreadableTrail(rec.action_text, e instanceof Error ? e.message : String(e)));
+    }
+  }
+  addEvidenceTrailSlides(pptx, evidenceTrails, deckTitle);
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
   const safeName = safeFileStem(

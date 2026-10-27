@@ -135,7 +135,7 @@ import { flaggedChecks, sourceGroup, sourceTypeLabel } from "@/lib/importSources
 import { getDocumentRoles } from "@/lib/researchQualityRepository";
 import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
 import { loadBriefPassages, passageSourceText } from "@/lib/briefPassages";
-import { loadRecommendationDecisions, type ServedDecision } from "@/lib/recommendationDecisions";
+import { decisionOptionKey, loadDecisionItems, loadRecommendationDecisions, type DecisionOption, type ServedDecision } from "@/lib/recommendationDecisions";
 import { loadObjectiveCoverage, coverageNote, coverageRowCurrent, coverageSupportNote, type ObjectiveCoverage as LoadedObjectiveCoverage } from "@/lib/objectiveCoverage";
 import { getInstrumentSummaries, getConfirmedItemsForData, InstrumentMeaningUnavailableError } from "@/lib/instruments";
 import { buildStatedRouting, type StatedRouting } from "@/lib/statedRouting";
@@ -1868,6 +1868,16 @@ async function getObjectiveValidations(
   return loadObjectiveCoverage(TENANT_ID, runId);
 }
 
+/** The project's current decisions as choices (recommendationDecisions.ts); null when they could not be read. */
+async function getDecisionOptions(runId: string): Promise<DecisionOption[] | null> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    return await withTenantRead(TENANT_ID, async (client) => (await loadDecisionItems(client, runId)).map((d) => ({ key: decisionOptionKey(d), text: d.text })));
+  } catch {
+    return null;
+  }
+}
+
 type ApiUsageRow = {
   agent: string;
   calls: number;
@@ -3278,6 +3288,8 @@ export default async function RunPage({
     support_label: v.support && v.support.status !== "current" ? SUPPORT_STATUS_LABEL[v.support.status] : null,
   }));
   const objectiveCoverageNote = coverageNote(objectiveCoverage);
+  // CE-2: the project's current decisions, offered when the researcher chooses what a recommendation serves.
+  const decisionOptions = await getDecisionOptions(id);
   if (!run) {
     notFound();
   }
@@ -3903,6 +3915,7 @@ export default async function RunPage({
         parkedInsights={parkedInsights}
         hasDecision={Boolean(run.decision_statement)}
         hasInsights={acceptedSynthesizedInsightCount > 0}
+        decisionOptions={decisionOptions}
       />
     </div>
   );
