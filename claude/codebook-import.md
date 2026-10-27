@@ -65,6 +65,21 @@ XLSForm `relevant` expressions are kept as text only.
    untouched and the original column unchanged, with who confirmed it and on what evidence. Scale means
    and top-box then use the recoded item, and the straightlining check reports the same answer across
    reversed items separately, as a stronger sign of inattention.
+   **Reverse-coded items done (b48, `reverseCoding.ts`):** suggestions per battery on the Data quality tab
+   (respondent check: wording from `_REVERSAL_WORDING_RE` on the item label, the linked codebook's or
+   questionnaire's where the file has none, and a negative item-rest Pearson correlation over at least 30
+   cases, non-answer codes excluded; "both" when they agree). Confirming is a click: the battery and its
+   scale (min and max of its declared points) come from the engine's reading, never the request; the
+   derived variable `<name>_r` (or `_r2`... if taken) is computed by the engine as (min + max) - code on the
+   scale's whole points, other codes and blanks kept; it takes the original's value labels, missing
+   declarations and data-type correction, and its place in the battery (the original stays, out of the
+   set). Stored on the variable's corrections with the evidence and time; undo removes it. If the derived
+   variable can no longer be built (the file was replaced and now has its own column of that name, or the
+   item now has text answers), using it fails with the reason, and the file's own column keeps its name in
+   the variable list (b49). Tables that used
+   the derived variable depend on the source's corrections (`correctionsFor`), so a change or undo marks
+   them changed. The respondent check flags a respondent giving the same answer across items worded in
+   opposite directions. Not yet: the always-shown preview and the single Variables editor.
 4. A qualitative codebook (coding frame) at import, linked to the transcripts, which the Coding section
    starts from instead of inducing a codebook. With its own quality metrics:
    - counts: codes, themes, sub-themes, and the depth of the hierarchy;

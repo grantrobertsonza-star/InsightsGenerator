@@ -7,6 +7,7 @@ import type { DataSetup } from "./dataSetupShared";
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { enrichDictionary } from "./labelOverlay";
 import { loadVariableOverrides, applyQuestionTypeOverrides, type VariableOverrides } from "./variableOverrides";
+import { applyReversals, reversalsOf } from "./reverseCoding";
 import { archiveAndReplaceFindings } from "./findingArchive";
 import {
   runStatsTool,
@@ -150,7 +151,13 @@ export async function resolveAuthoritativeSheet(
  */
 export async function overlayFor(tenantId: string, runId: string, documentId: string) {
   const { getLabelOverlay } = await import("./instruments");
-  return getLabelOverlay(tenantId, runId, documentId);
+  // Import step 3: confirmed reverse-coded items travel with the overlay, which every calculation that
+  // reads the file already sends, so the engine derives them wherever the file is read. A failed read
+  // of the corrections propagates (IMP-005), never "no reversals".
+  const [overlay, overrides] = await Promise.all([getLabelOverlay(tenantId, runId, documentId), loadVariableOverrides(tenantId, runId, documentId)]);
+  const reversals = reversalsOf(overrides);
+  if (reversals.length === 0) return overlay;
+  return { ...(overlay ?? { variableLabels: {}, valueLabels: {}, questions: {} }), reversals };
 }
 
 /** The variable list for a data file, read once and kept on the document. */
@@ -350,7 +357,8 @@ async function buildVariableDictionaryForSetup(
   // genuinely has no corrections" - so a transient failure silently discarded every saved
   // correction instead of stopping the calculation that depends on them.
   const overrides = await loadVariableOverrides(tenantId, runId, documentId);
-  return applyQuestionTypeOverrides(withOverlay, overrides);
+  // Reversed items first, so the derived variable is the battery member a question-type correction sees.
+  return applyQuestionTypeOverrides(applyReversals(withOverlay, reversalsOf(overrides)), overrides);
 }
 
 // ANA-NPS-003: the same PSU/strata name-pattern heuristic CrosstabWorkspace.tsx has used for
@@ -567,11 +575,16 @@ export async function buildCrosstab(
   // (see the `type_overrides` handling in crosstab(), api/parse-stats-file.py). Only the `type`
   // field is relevant here; `questionType` corrections are already folded into the dictionary
   // itself (applyQuestionTypeOverrides) before a request is ever built from it.
-  const typeOverrides = Object.fromEntries(
+  const typeOverrides: Record<string, string> = Object.fromEntries(
     Object.entries(overrides)
       .filter(([, o]) => o.type !== undefined)
-      .map(([name, o]) => [name, o.type]),
+      .map(([name, o]) => [name, o.type as string]),
   );
+  // A reversed item's derived variable is the same measure turned around, so it takes the original's
+  // data-type correction (a scale read as a mean stays a mean); its own, if ever set, wins.
+  for (const r of reversalsOf(overrides)) {
+    if (typeOverrides[r.variable] !== undefined && typeOverrides[r.derived] === undefined) typeOverrides[r.derived] = typeOverrides[r.variable];
+  }
   let result = await runStatsTool<CrosstabResult>("crosstab", doc.storage_path, doc.source_filename, {
     ...request,
     correction: request.correction ?? "fdr",

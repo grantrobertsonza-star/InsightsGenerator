@@ -1835,9 +1835,91 @@ def _apply_overlay(df, meta, overlay):
             vlabels[name] = mapped
 
 
+def _reversals_of(overlay):
+    """Confirmed reverse-coded items (import step 3): {derived name: {variable, min, max}}, from the
+    overlay the app sends with every calculation (src/lib/reverseCoding.ts)."""
+    out = {}
+    for r in (overlay or {}).get("reversals") or []:
+        if isinstance(r, dict) and r.get("derived") and r.get("variable") and isinstance(r.get("min"), (int, float)) and isinstance(r.get("max"), (int, float)):
+            out[str(r["derived"])] = {"variable": str(r["variable"]), "min": float(r["min"]), "max": float(r["max"])}
+    return out
+
+
+def _apply_reversals(df, meta, reversals):
+    """Adds each confirmed reversed item as a new derived column; the original column is never changed.
+    A value on the scale's declared points (whole numbers from min to max) becomes (min + max) - value,
+    so 1..5 reads 5..1; any other value (a missing or "don't know" code such as 9 or 99, or a blank) is
+    kept as it is, so non-answer handling treats it exactly as on the original. The derived column takes
+    the original's value labels for the same codes (the scale reads in the battery's direction, as an
+    SPSS RECODE INTO with the labels applied), its missing declarations, and the original's label with
+    "(reversed)". A source column that is missing or not numeric on its scale points is not derived, and
+    the reason is recorded (meta.reversal_problems), never silently skipped."""
+    import numpy as np
+    import pandas as pd
+
+    if not reversals:
+        return
+    labels = getattr(meta, "column_names_to_labels", None)
+    if labels is None:
+        labels = {}
+        meta.column_names_to_labels = labels
+    vlabels = getattr(meta, "variable_value_labels", None)
+    if vlabels is None:
+        vlabels = {}
+        meta.variable_value_labels = vlabels
+    missing = getattr(meta, "missing_ranges", None)
+    problems = getattr(meta, "reversal_problems", None)
+    if problems is None:
+        problems = []
+        meta.reversal_problems = problems
+    for derived, r in reversals.items():
+        src = r["variable"]
+        if src not in df.columns:
+            problems.append({"derived": derived, "variable": src, "reason": "The variable it reverses is not in this file."})
+            continue
+        if derived in df.columns:
+            problems.append({"derived": derived, "variable": src, "reason": f"The file already has a column named {derived}."})
+            continue
+        lo, hi = r["min"], r["max"]
+        num = pd.to_numeric(df[src], errors="coerce")
+        present = df[src].notna() & (df[src].astype(str).str.strip() != "")
+        if (present & num.isna()).any():
+            problems.append({"derived": derived, "variable": src, "reason": "It has text answers, so it cannot be reversed by number."})
+            continue
+        vals = num.to_numpy(dtype=float)
+        on_scale = (~np.isnan(vals)) & (vals >= lo) & (vals <= hi) & (np.mod(vals, 1) == 0)
+        out = np.where(on_scale, (lo + hi) - vals, vals)
+        df[derived] = out
+        base = labels.get(src) or src
+        labels[derived] = f"{base} (reversed)"
+        if vlabels.get(src):
+            vlabels[derived] = dict(vlabels[src])
+        if isinstance(missing, dict) and missing.get(src):
+            missing[derived] = missing[src]
+
+
 def _read(file_bytes: bytes, source_filename: str, usecols=None, overlay=None, layout=None, selected_sheet=None):
+    # A derived (reversed) variable is not a column of the file: read its source instead, then derive it.
+    reversals = _reversals_of(overlay)
+    requested = list(usecols) if usecols is not None else None
+    if usecols is not None and reversals:
+        wanted = []
+        for u in usecols:
+            # The derived name is read too: if the file has its own column of that name, the reversal
+            # reports the clash (and a request for it fails) instead of either one silently winning.
+            for c in ([reversals[u]["variable"], u] if u in reversals else [u]):
+                if c not in wanted:
+                    wanted.append(c)
+        usecols = wanted
     df, meta = _read_raw(file_bytes, source_filename, usecols, layout, selected_sheet)
     _apply_overlay(df, meta, overlay)
+    _apply_reversals(df, meta, reversals)
+    # A reversed variable asked for by name that could not be built fails here, with its reason, rather
+    # than surfacing later as a missing column (or being read as absent).
+    if requested:
+        for p in getattr(meta, "reversal_problems", None) or []:
+            if p["derived"] in requested:
+                raise ValueError(f'The reversed variable {p["derived"]} (from {p["variable"]}) could not be built: {p["reason"]}')
     return df, meta
 
 
@@ -2850,21 +2932,41 @@ def _rq_raw_answers(file_bytes, source_filename, df):
     respondent who gave "Refused" (declared missing) ten times would look as if they skipped the
     questions, and the diagnostic would report nothing measured (B36-F04). So a .sav/.zsav file is read
     a second time with user_missing=True, and that frame is used by this check alone; it never enters
-    the read cache or any other calculation. Other formats have no separately declared missing codes
-    that the reader masks, so their analysis frame already holds the answers as given."""
+    the read cache or any other calculation. A Stata file is read the same way: its extended missing
+    values (.a to .z, used for "don't know", "refused" and the like) are masked by the analysis read and
+    come back here as their letters, declared in the file's missing_user_values. Returns the frame and,
+    by variable, those declared codes (empty for SPSS, whose declarations are its missing_ranges). Other
+    formats have no separately declared missing codes that the reader masks, so their analysis frame
+    already holds the answers as given."""
     ext = os.path.splitext(source_filename.lower())[1]
-    if ext not in (".sav", ".zsav"):
-        return df
+    if ext not in (".sav", ".zsav", ".dta"):
+        return df, {}
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(file_bytes)
         tmp_path = tmp.name
     try:
-        raw, _ = READERS[ext](tmp_path, user_missing=True)
+        raw, raw_meta = READERS[ext](tmp_path, user_missing=True)
     finally:
         _remove_quietly(tmp_path)
     if len(raw) != len(df) or list(raw.columns) != list(df.columns):
         raise ValueError("The non-answer check could not read this file's answers consistently. Re-upload the file, or contact support if it persists.")
-    return raw
+    if ext != ".dta":
+        return raw, {}
+    declared = {c: list(v) for c, v in (getattr(raw_meta, "missing_user_values", None) or {}).items()}
+    # pyreadstat (1.2.8) returns a plain Stata missing value (".") as 0 in a column that also holds
+    # extended missing values when read with user_missing=True. So a cell is taken from this read only
+    # where the analysis read has it missing and this read gives one of the declared letters; every
+    # other cell is the analysis read's (a blank stays blank, never an answer of 0).
+    merged = df.copy()
+    for c, letters in declared.items():
+        if c not in merged.columns:
+            continue
+        allowed = {str(x) for x in letters}
+        merged[c] = [
+            a if not (a is None or (isinstance(a, float) and a != a)) else (r if isinstance(r, str) and r in allowed else None)
+            for a, r in zip(df[c].tolist(), raw[c].tolist())
+        ]
+    return merged, declared
 
 
 def _rq_code_identity(v):
@@ -2889,10 +2991,11 @@ def _rq_code_identity(v):
     return None if f != f else ("n", f)
 
 
-def _rq_non_answers(raw, meta, n):
+def _rq_non_answers(raw, meta, n, declared_codes=None):
     """Per respondent, the share of answers that are non-answers, over the variables where the file
     says which codes are not answers: a value label meaning no usable answer (_DK_RE), or a declared
-    user-missing value or range (B36-F04). Codes are compared as identities, so a labelled text code
+    user-missing value or range (B36-F04), or a Stata extended missing value the file declares
+    (`declared_codes`, from _rq_raw_answers). Codes are compared as identities, so a labelled text code
     such as "DK" counts. The denominator is the answers the respondent gave to those variables
     (non-answers included); a blank is no answer and is in neither count. A respondent is flagged at
     RQ_NON_ANSWER_SHARE or more of at least RQ_NON_ANSWER_MIN answers. A diagnostic prompt only: no case
@@ -2907,6 +3010,7 @@ def _rq_non_answers(raw, meta, n):
     for c in raw.columns:
         labels = value_labels.get(c) or {}
         codes = {_rq_code_identity(k) for k in _non_answer_codes(labels, None, True)} - {None}
+        codes |= {_rq_code_identity(k) for k in (declared_codes or {}).get(c, [])} - {None}
         ranges = []
         for r in missing.get(c) or []:
             if not isinstance(r, dict):
@@ -2943,17 +3047,73 @@ def _rq_non_answers(raw, meta, n):
     return out, flags
 
 
+# Wording that usually turns an item around: a negation, or a word built on a negative prefix. The prefix
+# words are listed rather than matched by "dis"/"un" alone, which would catch "discount" or "understand".
+_REVERSAL_WORDING_RE = re.compile(
+    r"\b(not|never|no longer|don't|dont|do not|doesn't|does not|isn't|is not|can't|cannot|won't|hardly|rarely|seldom|"
+    r"dislike\w*|disagree\w*|dissatisf\w*|distrust\w*|unhappy|unfair\w*|unreliable|unhelpful|unfriendly|unclear|unsafe|"
+    r"unlikely|unpleasant|unsatisf\w*|untrustworthy|unwilling\w*|difficult\w*|confusing|frustrat\w*|annoy\w*|worse|worst|poor\w*)\b",
+    re.IGNORECASE,
+)
+RQ_REVERSAL_MIN_CASES = 30  # an item-rest correlation on fewer complete cases is not reported
+
+
+def _reversal_suggestions(sub, valid, g, var_labels):
+    """Items of one battery that may be worded in the opposite direction, from two separate signs:
+    wording (a negation or negative word in the item's label, _REVERSAL_WORDING_RE) and a negative
+    item-rest correlation (Pearson, between the item and the mean of the battery's other items, over
+    cases with a valid answer to the item and at least one other; non-answer codes excluded). Strength
+    is "both" when the two agree, else the one that fired. A suggestion only: the researcher confirms.
+    An item whose correlation cannot be computed (under RQ_REVERSAL_MIN_CASES cases, or no variation)
+    carries itemRest None, never 0."""
+    import numpy as np
+
+    out = []
+    items = g["items"]
+    x = np.where(valid, sub, np.nan)
+    for j, item in enumerate(items):
+        label = str(var_labels.get(item) or "")
+        m = _REVERSAL_WORDING_RE.search(label) if label else None
+        others = np.delete(x, j, axis=1)
+        with np.errstate(invalid="ignore"):
+            rest = np.nanmean(others, axis=1) if others.shape[1] else np.full(len(x), np.nan)
+        ok = ~np.isnan(x[:, j]) & ~np.isnan(rest)
+        r = None
+        if ok.sum() >= RQ_REVERSAL_MIN_CASES:
+            a, b = x[ok, j], rest[ok]
+            if np.std(a) > 0 and np.std(b) > 0:
+                r = float(np.corrcoef(a, b)[0, 1])
+        negative = r is not None and r < 0
+        if not m and not negative:
+            continue
+        out.append({
+            "variable": str(item), "label": label or None, "wording": m.group(0) if m else None,
+            "itemRest": None if r is None else round(r, 3), "cases": int(ok.sum()),
+            "strength": "both" if (m and negative) else ("wording" if m else "correlation"),
+        })
+    return out
+
+
 def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> dict:
     """Respondent-level checks over every case: straightlining in batteries, the share of non-answers,
     speeders (when a duration variable is found) and interviewer differences (when an interviewer
-    variable is found), and the cases with the most flags. Unweighted counts of cases. args: layout,
-    selectedSheet."""
+    variable is found), and the cases with the most flags. Unweighted counts of cases. Also, per
+    battery, the items that may be worded in the opposite direction (reversal suggestions, import step
+    3) and, for items the researcher confirmed as reversed, respondents who gave the same answer across
+    items worded in opposite directions. args: layout, selectedSheet, overlay (labels and confirmed
+    reversals, as for every calculation)."""
     import numpy as np
     import pandas as pd
 
     args = args or {}
     layout = args.get("layout")
     df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None)
+    # Labels from a linked codebook or questionnaire help the wording cue; the frame is a copy, so the
+    # cached read is untouched. Reversed items are judged on the original columns, not derived ones.
+    if args.get("overlay"):
+        df = df.copy()
+        _apply_overlay(df, meta, {k: v for k, v in args["overlay"].items() if k != "reversals"})
+    confirmed_reversed = {r["variable"] for r in _reversals_of(args.get("overlay")).values()}
     n = len(df)
     value_labels = getattr(meta, "variable_value_labels", None) or {}
     labels_of = lambda c: value_labels.get(c) or {}
@@ -2983,16 +3143,26 @@ def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> di
         near = eligible & (score >= RQ_NEAR_STRAIGHTLINE) & ~full
         straight_cases += full
         eligible_cases += eligible
+        # Same answer to every item although some are confirmed as worded in the opposite direction: the
+        # answers contradict each other, a stronger sign of inattention than ordinary straightlining.
+        reversed_items = [c for c in g["items"] if c in confirmed_reversed]
+        contradictory = full & (len(reversed_items) > 0) & (len(reversed_items) < len(g["items"]))
+        for i in np.flatnonzero(contradictory):
+            flags[i].append(f"gave the same answer to items worded in opposite directions in {g['stem']}")
         grid_out.append({
             "stem": g["stem"], "items": g["items"], "points": [int(p) for p in g["points"]],
             "eligible": int(eligible.sum()), "straightliners": int(full.sum()), "nearStraightliners": int(near.sum()),
+            "reversedItems": reversed_items,
+            "reversedStraightliners": int(contradictory.sum()) if reversed_items and len(reversed_items) < len(g["items"]) else None,
+            "reversalSuggestions": _reversal_suggestions(sub, valid, g, getattr(meta, "column_names_to_labels", None) or {}),
         })
     straight_flag = (straight_cases >= RQ_STRAIGHTLINED_BATTERIES) & (straight_cases * 2 >= eligible_cases)
     for i in np.flatnonzero(straight_flag):
         flags[i].append(f"straightlined {int(straight_cases[i])} of {int(eligible_cases[i])} batteries")
 
     # Non-answers: codes the file labels as no usable answer, and codes it declares user-missing.
-    non_answer, na_flags = _rq_non_answers(_rq_raw_answers(file_bytes, source_filename, df), meta, n)
+    raw_answers, declared_codes = _rq_raw_answers(file_bytes, source_filename, df)
+    non_answer, na_flags = _rq_non_answers(raw_answers, meta, n, declared_codes)
     for i, text in na_flags:
         flags[i].append(text)
     if not non_answer["measured"]:

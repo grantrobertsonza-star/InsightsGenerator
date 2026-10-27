@@ -27,7 +27,9 @@ answers: a value label meaning no usable answer (`_DK_RE`), or a declared user-m
 Codes are identities, not numbers: a labelled text code such as "DK" counts (B36-F04). The denominator is
 the answers a respondent gave to those variables, non-answers included; a blank is in neither count. A
 respondent is flagged when non-answers are half or more of at least ten answers. An SPSS file is read a
-second time with its user-missing values kept (`_rq_raw_answers`), for this check only: the analysis read,
+second time with its user-missing values kept (`_rq_raw_answers`), for this check only; a Stata file
+the same way, so its declared extended missing values (.a to .z) count as non-answers (a plain "." stays a
+blank: pyreadstat returns it as 0 in that read, so only declared letters are taken from it): the analysis read,
 every table and the read cache still treat them as missing. Without such labels or declarations the check
 is "not measured". A diagnostic prompt: no case is excluded.
 

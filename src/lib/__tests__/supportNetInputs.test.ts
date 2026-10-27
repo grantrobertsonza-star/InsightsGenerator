@@ -38,6 +38,16 @@ describe("tableVariablesFromSavedRequest (GT100-F03)", () => {
     expect(correctionsFor({ UNRELATED: { type: "continuous" } }, vars)).toEqual({});
   });
 
+  // Import step 3: a table that used a reversed item's derived variable depends on its source's entry.
+  it("a derived (reversed) variable depends on its source's corrections, so undoing the reversal changes them", () => {
+    const reverse = { derived: "Q1_3_r", min: 1, max: 5 };
+    const vars = tableVariablesFromSavedRequest({ columnVars: [], rowItems: [{ key: "Q1_3_r", vars: ["Q1_3_r"] }] });
+    const withReversal = { Q1_3: { reverse }, Q1_4: { type: "continuous" } };
+    expect(correctionsFor(withReversal, vars)).toEqual({ Q1_3: { reverse } });
+    expect(correctionsFor({ Q1_4: { type: "continuous" } }, vars)).toEqual({});
+    expect(correctionsFor({ Q1_3: { reverse: { ...reverse, max: 7 } } }, vars)).not.toEqual(correctionsFor(withReversal, vars));
+  });
+
   it("a multiple-response banner set is not resolvable from the request: null, compared file-wide", () => {
     expect(tableVariablesFromSavedRequest({ columnVars: ["set:Q5"], rowItems: [{ key: "Q1", vars: ["Q1"] }] })).toBeNull();
   });

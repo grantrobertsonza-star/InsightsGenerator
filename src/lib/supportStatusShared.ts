@@ -172,6 +172,14 @@ export function correctionsFor(overrides: unknown, variables: string[] | null | 
   const map = overrides as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const v of variables) if (v in map) out[v] = map[v];
+  // A reversed item's derived variable (import step 3) is defined by its source's entry, which holds the
+  // reversal: a table that used the derived variable depends on that entry, so undoing or changing the
+  // reversal marks it changed.
+  const wanted = new Set(variables);
+  for (const [source, entry] of Object.entries(map)) {
+    const derived = (entry as { reverse?: { derived?: unknown } } | null)?.reverse?.derived;
+    if (typeof derived === "string" && wanted.has(derived)) out[source] = entry;
+  }
   return out;
 }
 

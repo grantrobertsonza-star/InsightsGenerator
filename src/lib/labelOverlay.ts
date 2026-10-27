@@ -1,4 +1,5 @@
 import type { VariableDictionary } from "./parseStatsFile";
+import type { Reversal } from "./reverseCoding";
 
 // What a confirmed codebook or questionnaire adds to a data file: the question
 // wording as a variable label where the file has none, and answer labels where
@@ -16,6 +17,8 @@ export type LabelOverlay = {
    * never silently resolved. Absent when every link agrees or has no source.
    */
   conflicts?: LabelConflict[];
+  /** Confirmed reverse-coded items, sent with every calculation (reverseCoding.ts); not a label. */
+  reversals?: Reversal[];
 };
 
 export type LabelSource = { documentId: string; instrumentType: string | null };

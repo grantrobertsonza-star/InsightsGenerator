@@ -146,26 +146,34 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("respondent quality checks (re
   // Ten questions each; respondents by construction:
   //   1: non-answer to all 10 (flagged)  2: to 5 of 10 (50%: flagged)  3: to 4 of 10 (not flagged)
   //   4: 9 non-answers and one blank (9 answers, under the 10 minimum: not eligible)  5: none
-  function nonAnswerSav(kind: "text" | "declared" | "numeric"): Buffer {
+  function nonAnswerSav(kind: "text" | "declared" | "numeric" | "stata-labelled" | "stata-declared"): Buffer {
     const dir = mkdtempSync(path.join(tmpdir(), "rq-non-answers-"));
-    const out = path.join(dir, `${kind}.sav`);
+    const out = path.join(dir, `${kind}.${kind.startsWith("stata") ? "dta" : "sav"}`);
     const script = String.raw`
 import sys, pandas as pd, pyreadstat
 kind = sys.argv[2]
-na = {"text": "DK", "declared": 9.0, "numeric": 99.0}[kind]
-yes = "Y" if kind == "text" else 1.0
+na = {"text": "DK", "declared": 9.0, "numeric": 99.0, "stata-labelled": "a", "stata-declared": "b"}[kind]
+yes = "Y" if kind == "text" else 1
 counts = {1: 10, 2: 5, 3: 4, 4: 9, 5: 0}
 cols = {"ID": [float(i) for i in counts]}
 for j in range(10):
     col = []
     for i, k in counts.items():
         if i == 4 and j == 9:
-            col.append("" if kind == "text" else None)
+            col.append("" if kind == "text" else None)  # a blank: no answer
         else:
             col.append(na if j < k else yes)
     cols[f"S{j + 1}"] = col
 df = pd.DataFrame(cols)
-if kind == "text":
+if kind.startswith("stata"):
+    # Stata's extended missing values: .a labelled "Don't know", or .b with a label that does not say so
+    # (only its declaration marks it). Mixed object columns are how pyreadstat writes them.
+    for j in range(10):
+        df[f"S{j + 1}"] = df[f"S{j + 1}"].astype(object)
+    label = {"stata-labelled": "Don't know", "stata-declared": "Not stated"}[kind]
+    labels = {f"S{j + 1}": {1: "Yes", 2: "No", na: label} for j in range(10)}
+    pyreadstat.write_dta(df, sys.argv[1], variable_value_labels=labels, missing_user_values={f"S{j + 1}": [na] for j in range(10)})
+elif kind == "text":
     labels = {f"S{j + 1}": {"Y": "Yes", "N": "No", "DK": "Don't know"} for j in range(10)}
     pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels)
 elif kind == "declared":
@@ -180,9 +188,9 @@ else:
     if (r.status !== 0) throw new Error(r.stderr);
     return readFileSync(out);
   }
-  for (const kind of ["text", "declared", "numeric"] as const) {
+  for (const kind of ["text", "declared", "numeric", "stata-labelled", "stata-declared"] as const) {
     it(`counts ${kind} non-answer codes against the answers given (B36-F04)`, async () => {
-      const r = await check(await file(`na-${kind}.sav`, nonAnswerSav(kind)));
+      const r = await check(await file(`na-${kind}.${kind.startsWith("stata") ? "dta" : "sav"}`, nonAnswerSav(kind)));
       expect(r.cases).toBe(5);
       expect(r.nonAnswer).toMatchObject({ measured: true, variables: 10, flagged: 2, eligible: 4 });
       expect(r.nonAnswer.medianShare).toBeCloseTo(0.45, 6); // shares 1, 0.5, 0.4, 0 over the four eligible

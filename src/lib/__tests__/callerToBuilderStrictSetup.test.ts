@@ -28,7 +28,8 @@ vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: { storage: { from: vi.fn() }
 vi.mock("../instruments", () => ({ getLabelOverlay: vi.fn(async () => null) }));
 vi.mock("../findingArchive", () => ({ archiveAndReplaceFindings: vi.fn() }));
 vi.mock("../variableOverrides", () => ({
-  loadVariableOverrides: vi.fn(),
+  // A file with no corrections, as the real loader returns it ({}); undefined is not a value it returns.
+  loadVariableOverrides: vi.fn(async () => ({})),
   applyQuestionTypeOverrides: (dict: unknown) => dict,
 }));
 vi.mock("../db", () => ({

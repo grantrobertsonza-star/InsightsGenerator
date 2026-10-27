@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadRespondentQualityAction } from "@/lib/crosstabActions";
+import { confirmReversalAction, removeReversalAction } from "@/lib/variableOverrideActions";
 import type { RespondentQuality } from "@/lib/respondentQuality";
 
 const fmt = (n: number | null | undefined, d = 0) => (n === null || n === undefined ? "n/a" : n.toLocaleString("en-ZA", { maximumFractionDigits: d }));
@@ -55,6 +56,24 @@ export default function RespondentQualityPanel({ runId, documentId }: { runId: s
     load();
   };
 
+  // Import step 3: confirming or withdrawing a reversed item, then reading the checks again so the
+  // battery shows it (and its contradictory-answer count) from the saved state, never assumed.
+  const [reversing, setReversing] = useState<string | null>(null);
+  const [reversalError, setReversalError] = useState<string | null>(null);
+  async function setReversal(variable: string, reverse: boolean) {
+    setReversing(variable);
+    setReversalError(null);
+    try {
+      const r = reverse ? await confirmReversalAction(runId, documentId, variable) : await removeReversalAction(runId, documentId, variable);
+      if (!r.ok) setReversalError(`${variable}: ${r.error}`);
+      else retry();
+    } catch (e) {
+      setReversalError(`${variable}: ${e instanceof Error ? e.message : "not saved"}`);
+    } finally {
+      setReversing(null);
+    }
+  }
+
   return (
     <div ref={root} className="space-y-3 rounded-xl border border-border bg-white p-4" data-testid="respondent-quality">
       <div>
@@ -74,12 +93,23 @@ export default function RespondentQualityPanel({ runId, documentId }: { runId: s
           </button>
         </p>
       )}
-      {quality && <Results q={quality} />}
+      {quality && (
+        <Results
+          q={quality}
+          reversal={{
+            busy: reversing,
+            error: reversalError,
+            set: (variable, reverse) => void setReversal(variable, reverse),
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function Results({ q }: { q: RespondentQuality }) {
+type ReversalControls = { busy: string | null; error: string | null; set: (variable: string, reverse: boolean) => void };
+
+function Results({ q, reversal }: { q: RespondentQuality; reversal: ReversalControls }) {
   const s = q.straightlining;
   const d = q.duration;
   return (
@@ -128,6 +158,8 @@ function Results({ q }: { q: RespondentQuality }) {
           </>
         )}
       </Section>
+
+      <ReversedItems q={q} reversal={reversal} />
 
       <Section title="Non-answers" testId="rq-non-answers">
         {q.nonAnswer.measured ? (
@@ -219,5 +251,74 @@ function Section({ title, testId, children }: { title: string; testId: string; c
       <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted">{title}</div>
       {children}
     </div>
+  );
+}
+
+/**
+ * Import step 3: battery items that may be worded the other way, with the evidence, and the ones the
+ * researcher has reversed. Reversing adds a derived variable (the original is kept) that the battery's
+ * tables use; it is never done without a click here.
+ */
+function ReversedItems({ q, reversal }: { q: RespondentQuality; reversal: ReversalControls }) {
+  const grids = q.straightlining.grids.filter((g) => (g.reversalSuggestions?.length ?? 0) > 0 || (g.reversedItems?.length ?? 0) > 0);
+  const evidence = (s: { wording: string | null; itemRest: number | null; cases: number; strength: string }) =>
+    [
+      s.wording ? `worded with "${s.wording}"` : null,
+      s.itemRest !== null ? `correlation with the rest of the battery ${s.itemRest.toFixed(2)} over ${fmt(s.cases)} respondents` : null,
+      s.strength === "both" ? "both signs agree" : null,
+    ]
+      .filter(Boolean)
+      .join("; ");
+  return (
+    <Section title="Items worded the other way" testId="rq-reversed">
+      {grids.length === 0 ? (
+        <p className="text-muted">No battery item looks worded in the opposite direction (no negative wording and no negative correlation with the rest of its battery).</p>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-muted">
+            Suggested from the item&apos;s wording and from a negative correlation with the rest of its battery. Reversing adds a new
+            variable scored the other way on the battery&apos;s scale (non-answer codes unchanged); the battery&apos;s tables use it and the
+            original is kept.
+          </p>
+          {grids.map((g) => (
+            <div key={g.stem} className="rounded-lg border border-border p-2" data-testid="rq-reversed-battery" data-stem={g.stem}>
+              <p className="font-medium">{g.stem}</p>
+              {g.reversedStraightliners !== null && g.reversedStraightliners !== undefined && (
+                <p className="text-muted" data-testid="rq-reversed-straightliners">
+                  {fmt(g.reversedStraightliners)} gave the same answer to items worded in opposite directions (flagged).
+                </p>
+              )}
+              <ul className="mt-1 space-y-1">
+                {[...new Set([...(g.reversedItems ?? []), ...(g.reversalSuggestions ?? []).map((s) => s.variable)])].map((v) => {
+                  const s = g.reversalSuggestions?.find((x) => x.variable === v);
+                  const done = g.reversedItems?.includes(v) ?? false;
+                  return (
+                    <li key={v} className="flex flex-wrap items-baseline gap-2" data-variable={v} data-reversed={done ? "true" : "false"}>
+                      <span className="font-mono">{v}</span>
+                      {s?.label && <span>{s.label}</span>}
+                      {s && <span className="text-muted">({evidence(s)})</span>}
+                      {done && <span className="rounded bg-green-50 px-1 text-[11px] text-green-800">Reversed</span>}
+                      <button
+                        type="button"
+                        className="underline disabled:opacity-60"
+                        disabled={reversal.busy !== null}
+                        onClick={() => reversal.set(v, !done)}
+                      >
+                        {reversal.busy === v ? "Saving..." : done ? "Undo" : "Reverse this item"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {reversal.error && (
+        <p role="alert" className="text-danger">
+          Not saved: {reversal.error}
+        </p>
+      )}
+    </Section>
   );
 }

@@ -44,6 +44,7 @@ in the change that moves it.
 | Whether a design was applied (labels and caveats) | engine `notes.designApplied`; read by `crosstabs.crosstabFindings`, `npsActions`, `descriptiveFindings` | ANA-NPS-003 comments | `crosstabDesignLabel.test.ts` |
 | Multiple-comparison correction | engine `_adjust_p` | table notes | `scripts/crosstab_selftest.py` |
 | NPS | `src/lib/descriptiveFindings.ts` `computeNps` | descriptive findings comments | `goldenReferenceFixtures.test.ts` |
+| Reverse-coded battery items: suggestion, confirmation, the derived variable and its dependencies (import step 3) | `src/lib/reverseCoding.ts` (`confirmReversal`, `reversalsOf`, `applyReversals`); engine `_reversal_suggestions`, `_apply_reversals`; `supportStatusShared.ts` `correctionsFor` | `claude/codebook-import.md` | `reverseCoding.db.test.ts`, `supportNetInputs.test.ts`, `reversed-items.check.mjs` |
 | Respondent-level quality (straightlining, non-answers, speeders, interviewers) | engine `respondent_quality`, `_rq_grids`; loaded by `src/lib/respondentQuality.ts` | `claude/respondent-quality.md` | `respondentQuality.db.test.ts`, `respondent-quality.check.mjs` |
 | CSM top box and mean | `src/lib/csmMetrics.ts` `summarizeSeries` | `claude/answer-domain.md` | `answerDomainScores.db.test.ts` |
 
