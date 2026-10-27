@@ -69,7 +69,20 @@ export async function storeRecommendationDecisions(
   }
 }
 
-export type ServedDecision = { text: string; candidateId: string | null; origin: "model" | "researcher"; current: boolean };
+/**
+ * One decision a recommendation serves, with its wording as recorded then. `state`: "current" (the same
+ * decision, accepted and worded the same now), "reworded" (the same accepted decision, worded differently
+ * now: `currentText` holds the new wording) or "gone" (no longer an accepted decision). `current` is
+ * true only for "current" (B37-F02, Codex: an edited decision used to read as current by id alone).
+ */
+export type ServedDecision = {
+  text: string;
+  candidateId: string | null;
+  origin: "model" | "researcher";
+  current: boolean;
+  state: "current" | "reworded" | "gone";
+  currentText: string | null;
+};
 /** undefined: recording is not available (before migration 0120), so nothing can be said. */
 export type RecommendationDecisionsByRec = Map<string, ServedDecision[]> | undefined;
 
@@ -77,8 +90,10 @@ export type RecommendationDecisionsByRec = Map<string, ServedDecision[]> | undef
 export async function loadRecommendationDecisions(client: PoolClient, runId: string, recommendationIds: string[]): Promise<RecommendationDecisionsByRec> {
   if (!(await recommendationDecisionsAvailable(client))) return undefined;
   const now = await loadDecisionItems(client, runId);
-  const currentIds = new Set(now.map((d) => d.candidateId).filter(Boolean));
-  const currentTexts = new Set(now.filter((d) => !d.candidateId).map((d) => d.text.trim()));
+  // Wording compared whitespace and case aside, so a re-save of the same words is not a change.
+  const same = (a: string, b: string) => a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
+  const textById = new Map(now.filter((d) => d.candidateId).map((d) => [d.candidateId as string, d.text]));
+  const freeTexts = now.filter((d) => !d.candidateId).map((d) => d.text);
   const r = await client.query<{ recommendation_id: string; decision_candidate_id: string | null; decision_text: string; origin: "model" | "researcher" }>(
     `select recommendation_id, decision_candidate_id, decision_text, origin from recommendation_decisions
      where recommendation_id = any($1::uuid[]) order by recommendation_id, position`,
@@ -86,8 +101,18 @@ export async function loadRecommendationDecisions(client: PoolClient, runId: str
   );
   const out = new Map<string, ServedDecision[]>();
   for (const row of r.rows) {
-    const current = row.decision_candidate_id ? currentIds.has(row.decision_candidate_id) : currentTexts.has(row.decision_text.trim());
-    out.set(row.recommendation_id, [...(out.get(row.recommendation_id) ?? []), { text: row.decision_text, candidateId: row.decision_candidate_id, origin: row.origin, current }]);
+    let state: ServedDecision["state"];
+    let currentText: string | null = null;
+    if (row.decision_candidate_id) {
+      const now = textById.get(row.decision_candidate_id);
+      state = now === undefined ? "gone" : same(now, row.decision_text) ? "current" : "reworded";
+      currentText = now ?? null;
+    } else {
+      // A decision from the project's own text has no id: its wording is its identity.
+      state = freeTexts.some((t) => same(t, row.decision_text)) ? "current" : "gone";
+    }
+    const served: ServedDecision = { text: row.decision_text, candidateId: row.decision_candidate_id, origin: row.origin, current: state === "current", state, currentText };
+    out.set(row.recommendation_id, [...(out.get(row.recommendation_id) ?? []), served]);
   }
   return out;
 }
@@ -96,5 +121,10 @@ export async function loadRecommendationDecisions(client: PoolClient, runId: str
 export function servedDecisionsText(served: ServedDecision[] | undefined, available: boolean): string {
   if (!available) return "Not recorded (a database update is missing)";
   if (!served || served.length === 0) return "Not recorded";
-  return served.map((d) => (d.current ? d.text : `${d.text} (no longer a current decision)`)).join("; ");
+  return served.map((d) => (d.current ? d.text : `${d.text} (${servedDecisionNote(d)})`)).join("; ");
+}
+
+/** Why a served decision is not current, in the words the cards, trail and exports use. */
+export function servedDecisionNote(d: ServedDecision): string {
+  return d.state === "reworded" ? `since reworded as "${d.currentText}"; written for the earlier wording` : "no longer a current decision";
 }

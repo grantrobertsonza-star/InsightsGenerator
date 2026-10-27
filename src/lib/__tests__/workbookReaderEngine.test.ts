@@ -52,7 +52,9 @@ try:
 except Exception as e:
     print(json.dumps({"ok": False, "error": str(e)}))
 `;
-  const r = spawnSync(PYTHON, ["-I", "-c", script, ENGINE, f, action, filename, JSON.stringify(args)], { encoding: "utf8" });
+  // Not -I: the engine's packages may come from PYTHONPATH (a reviewer's private requirements target, Codex
+  // B37/38 continuation), which isolated mode ignores. The script and files are this test's own.
+  const r = spawnSync(PYTHON, ["-c", script, ENGINE, f, action, filename, JSON.stringify(args)], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(r.stderr);
   return JSON.parse(r.stdout.trim().split("\n").pop()!) as { ok: true; result: Record<string, unknown> } | { ok: false; error: string };
 }

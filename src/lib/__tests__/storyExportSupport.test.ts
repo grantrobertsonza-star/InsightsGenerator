@@ -25,7 +25,10 @@ vi.mock("../db", async () => (await import("./helpers/fakeStoryDb")).dbModule(st
 vi.mock("@/lib/db", async () => (await import("./helpers/fakeStoryDb")).dbModule(state));
 vi.mock("@/lib/docxReport", async () => await import("../docxReport"));
 vi.mock("@/lib/deckSlides", async () => await import("../deckSlides"));
-vi.mock("@/lib/narrativeFreshness", async () => await import("../narrativeFreshness"));
+// What the narrative was written for (CE-3, B37-F03) is not what these tests are about, and the fake
+// database cannot model it (it has no inputs column, which now reads as "not known to be current"). It
+// has its own real-database tests (narrativeWrongGroup.db.test.ts), so here the narrative is current.
+vi.mock("@/lib/narrativeFreshness", async () => ({ ...(await import("../narrativeFreshness")), narrativeFreshnessNote: async () => null }));
 vi.mock("@/lib/evidenceTrail", async () => await import("../evidenceTrail"));
 vi.mock("@/lib/objectiveCoverage", async () => await import("../objectiveCoverage"));
 vi.mock("@/lib/caveatLabels", async () => await import("../caveatLabels"));

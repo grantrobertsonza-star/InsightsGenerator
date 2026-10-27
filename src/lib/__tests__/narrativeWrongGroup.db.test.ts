@@ -273,6 +273,28 @@ describe.skipIf(!TEST_DATABASE_URL)("narrative wrong-group grounding, generator 
     expect(await note()).toBeNull();
     await q("update deck_narratives set inputs = null where run_id = $1", [run]);
     expect(await note()).toMatch(/^Not known to be current/);
+    // A malformed record is unknown too, never current.
+    await q(`update deck_narratives set inputs = '"broken"'::jsonb where run_id = $1`, [run]);
+    expect(await note()).toMatch(/^Not known to be current/);
+
+    // B37-F03 (Codex): before migration 0121 (no inputs column) an existing narrative was given no note,
+    // the same as current. It is unknown, naming the update; a project with no narrative still has none.
+    const bare = await runWithInsight("Leadership NPS is 25 (95% interval 14.4 to 35.6, base 200).");
+    await q("alter table deck_narratives rename column inputs to inputs_moved");
+    try {
+      expect(await note()).toMatch(/^Not known to be current: what this report narrative was written for cannot be checked until a database update \(migration 0121\)/);
+      const client = await db.pool.connect();
+      try {
+        expect(await narrativeFreshnessNote(client, bare)).toBeNull();
+      } finally {
+        client.release();
+      }
+    } finally {
+      await q("alter table deck_narratives rename column inputs_moved to inputs");
+    }
+    // Recovery: after the update, regenerating records the inputs and the note clears.
+    await generateStoryNarrative(TENANT, run);
+    expect(await note()).toBeNull();
   });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("narrative wrong-group grounding, generator retry, rounding and invented ranges (real database)", () => { it.skip(DISPOSABLE_DB_SKIP_REASON, () => {}); });

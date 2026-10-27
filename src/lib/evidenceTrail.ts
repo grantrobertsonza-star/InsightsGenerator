@@ -15,7 +15,7 @@
 import type { PoolClient } from "pg";
 import { findingSourceSql, formatFindingSource, SOURCE_NOT_RECORDED, type FindingSource } from "./sourceAttribution";
 import { coverageFreshnessNote, coverageRowCurrent, coverageRowNote, loadObjectiveCoverage } from "./objectiveCoverage";
-import { loadRecommendationDecisions } from "./recommendationDecisions";
+import { loadRecommendationDecisions, servedDecisionNote } from "./recommendationDecisions";
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
 import { SUPPORT_STATUS_LABEL } from "./supportStatusShared";
 import { loadBriefPassages, passageSourceText } from "./briefPassages";
@@ -74,7 +74,7 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
     purpose.push(node("decision", null, "Decision served: not recorded", { state: "broken", note: served === undefined ? "A database update is missing." : "No decision was recorded for this recommendation." }));
   }
   for (const d of decisions) {
-    purpose.push(node("decision", d.candidateId, d.text, { state: d.current ? "current" : "caution", note: d.current ? null : "No longer a current decision.", details: [d.origin === "model" ? "Named when the recommendation was written" : "Chosen by the researcher"] }));
+    purpose.push(node("decision", d.candidateId, d.text, { state: d.current ? "current" : "caution", note: d.current ? null : `${servedDecisionNote(d).replace(/^./, (c) => c.toUpperCase())}.`, details: [d.origin === "model" ? "Named when the recommendation was written" : "Chosen by the researcher"] }));
   }
   if (r.synthesized_insight_id) {
     const coverage = await loadObjectiveCoverage(client, runId, tenantId);

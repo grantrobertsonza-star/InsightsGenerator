@@ -77,6 +77,32 @@ def _beyond_exact_whole(series) -> bool:
     return bool((present.astype(object).map(lambda v: abs(int(v)) > _MAX_EXACT_WHOLE)).any())
 
 
+def _exact_whole_numbers(series):
+    """The final step for every R or Parquet column, whatever its dtype became (B38-F01, Codex): a
+    column of whole numbers holding any value a double cannot hold exactly (|v| > 2^53) is written as
+    exact text, each value as its digits, as the plain-text readers do (_MAX_EXACT_WHOLE). Before this,
+    only some dtype branches checked: a categorical of such integers became objects, went out as JSON
+    numbers, and the app's JSON parse rounded 9007199254740993 to ...992, so the stored preview merged two
+    identifiers the calculation kept apart. Bools are not numbers here; a column with any non-integer
+    value (a float, text) is left as it is."""
+    import numbers
+
+    import pandas as pd
+
+    if series.dtype != object and not pd.api.types.is_integer_dtype(series.dtype):
+        return series
+    present = [v for v in series.tolist() if v is not None and v is not pd.NA and not (isinstance(v, float) and v != v)]
+    if not present or not all(isinstance(v, numbers.Integral) and not isinstance(v, bool) for v in present):
+        return series
+    if not any(abs(int(v)) > _MAX_EXACT_WHOLE for v in present):
+        return series
+    return pd.Series(
+        [None if (v is None or v is pd.NA or (isinstance(v, float) and v != v)) else str(int(v)) for v in series.tolist()],
+        index=series.index,
+        dtype=object,
+    )
+
+
 def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
     """A data frame from R or Parquet as the readers' (data, meta) pair. An R factor (a pandas
     Categorical of text levels) becomes its R codes 1, 2, ... with each level as the code's label, as
@@ -98,10 +124,9 @@ def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
                 continue
             series = series.astype(object).where(series.notna(), None)
         elif pd.api.types.is_integer_dtype(series.dtype) and _beyond_exact_whole(series):
-            # B36-F02 (Codex): a whole number beyond 2^53 is not exact in a double, so a float column
-            # would merge distinct identifiers (9007199254740992 and ...993). The same rule as the
-            # plain-text readers (_MAX_EXACT_WHOLE): such a column stays text, each value written exactly.
-            series = series.astype(object).map(lambda v: None if v is None or v is pd.NA or (isinstance(v, float) and v != v) else str(int(v)))
+            # B36-F02 (Codex): a whole number beyond 2^53 is not exact in a double, so converting the column
+            # to float would merge distinct identifiers; it is left as integers for _exact_whole_numbers.
+            series = series.astype(object).where(series.notna(), None)
         elif pd.api.types.is_extension_array_dtype(series.dtype) and pd.api.types.is_numeric_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype):
             # A nullable integer (R integer with NA, pandas Int64) as the plain float column every
             # numeric variable is read as, with NA as NaN, so it stays numeric (exact: every value is
@@ -111,13 +136,11 @@ def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
             series = series.astype(object).where(series.notna(), None)
         elif series.dtype == object:
             present = [v for v in series if v is not None and not (isinstance(v, float) and v != v)]
-            if present and all(isinstance(v, int) and not isinstance(v, bool) for v in present) and any(abs(v) > _MAX_EXACT_WHOLE for v in present):
-                # B36-F02: exact identifiers beyond 2^53 stay text (see above).
-                series = series.map(lambda v: None if v is None or (isinstance(v, float) and v != v) else str(v))
-            elif present and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in present):
+            beyond = any(isinstance(v, int) and not isinstance(v, bool) and abs(v) > _MAX_EXACT_WHOLE for v in present)
+            if present and not beyond and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in present):
                 # pyreadr returns an R integer column with NA as objects; it is a number column.
                 series = pd.to_numeric(series, errors="coerce").astype("float64")
-        out[str(col)] = series
+        out[str(col)] = _exact_whole_numbers(series)
     frame = pd.DataFrame(out)
     if usecols:
         frame = frame[[c for c in usecols if c in frame.columns]]

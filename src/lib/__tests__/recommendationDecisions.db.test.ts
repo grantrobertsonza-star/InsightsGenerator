@@ -111,6 +111,55 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-2 recommendations record the decisions t
     await db.pool.query("update decision_candidates set status='rejected' where id=$1", [ids[0]]);
     expect(await field()).toBe("Fund retention (no longer a current decision)");
   });
+
+  // B37-F02 (Codex): editing a decision's wording through the actual action kept the old wording reading
+  // as a current decision served, because only the id was compared.
+  it("B37-F02: a decision reworded through the actual action is no longer current; unchanged wording, free text and recovery", async () => {
+    const { run, ids } = await project("Fund retention", ["Fund retention"]);
+    model.indices = [0];
+    await generate(run);
+    const { loadMainRecommendations, exportFields } = await import("../mainRecommendationExport");
+    const field = async () => {
+      const exp = (await loadMainRecommendations(tenant, run, "all"))!;
+      return Object.fromEntries(exportFields(exp.rows[0], exp.supportOf(exp.rows[0])))["Decision served"];
+    };
+    const served = async () => {
+      const { withTenantRead } = await import("../db");
+      const { loadRecommendationDecisions } = await import("../recommendationDecisions");
+      const recId = (await db.pool.query("select id from recommendations where run_id=$1", [run])).rows[0].id;
+      return withTenantRead(tenant, async (client) => (await loadRecommendationDecisions(client, run, [recId]))!.get(recId));
+    };
+    // Unchanged wording, and a re-save with only spacing and case changed: still current.
+    await db.pool.query("update decision_candidates set candidate_text='fund  Retention' where id=$1", [ids[0]]);
+    expect(await field()).toBe("Fund retention");
+    await db.pool.query("update decision_candidates set candidate_text='Fund retention' where id=$1", [ids[0]]);
+
+    const { acceptDecisionCandidate } = await import("../decisionCandidateActions");
+    const r = await acceptDecisionCandidate(run, ids[0], "Stop funding retention", "Fund retention");
+    expect(r).toMatchObject({ ok: true });
+    expect(await served()).toEqual([
+      { text: "Fund retention", candidateId: ids[0], origin: "model", current: false, state: "reworded", currentText: "Stop funding retention" },
+    ]);
+    expect(await field()).toBe('Fund retention (since reworded as "Stop funding retention"; written for the earlier wording)');
+    // Recovery: the same wording again reads as current; a rejection reads as gone.
+    await acceptDecisionCandidate(run, ids[0], "Fund retention", "Stop funding retention");
+    expect(await field()).toBe("Fund retention");
+    await db.pool.query("update decision_candidates set status='rejected' where id=$1", [ids[0]]);
+    expect(await field()).toBe("Fund retention (no longer a current decision)");
+    expect((await served())?.[0]).toMatchObject({ state: "gone", current: false, currentText: null });
+
+    // A free-text decision: its wording is its identity, so a reworded statement is gone, not current.
+    const free = await project("1. Raise fees\n2. Hold fees", []);
+    model.indices = [1];
+    await generate(free.run);
+    const freeField = async () => {
+      const exp = (await loadMainRecommendations(tenant, free.run, "all"))!;
+      return Object.fromEntries(exportFields(exp.rows[0], exp.supportOf(exp.rows[0])))["Decision served"];
+    };
+    expect(await freeField()).toBe("Hold fees");
+    await db.pool.query("update runs set decision_statement='1. Raise fees\n2. Hold fees until Q3' where id=$1", [free.run]);
+    expect(await freeField()).toBe("Hold fees (no longer a current decision)");
+  });
 });
 describe.skipIf(!!TEST_DATABASE_URL)("CE-2 recommendations record the decisions they serve", () => {
   it.skip(DISPOSABLE_DB_SKIP_REASON, () => {});

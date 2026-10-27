@@ -259,7 +259,7 @@ df.to_parquet(sys.argv[1], engine="fastparquet")
   // B36-F02 (Codex): nullable Int64 was turned into float64, so 9007199254740992 and ...993 became one
   // identifier, stored and counted as one. Beyond 2^53 a whole number is kept as its exact text
   // (_MAX_EXACT_WHOLE, the policy the delimited readers already use); up to 2^53 it stays a number.
-  it.skipIf(!R_PARQUET_OK)("Parquet: whole numbers beyond 2^53 keep their exact identity, nullable or not; safe ones stay numbers", async () => {
+  it.skipIf(!R_PARQUET_OK)("Parquet: whole numbers beyond 2^53 keep their exact identity, nullable, plain, categorical, negative or unsigned; safe ones stay numbers", async () => {
     const out = path.join(mkdtempSync(path.join(tmpdir(), "parquet-big-")), "ids.parquet");
     const script = String.raw`
 import sys, pandas as pd
@@ -267,6 +267,10 @@ df = pd.DataFrame({
     "rid": pd.array([9007199254740992, 9007199254740993, None, 9007199254740993], dtype="Int64"),
     "plain": pd.array([9007199254740993, 9007199254740992, 9007199254740995, 9007199254740993], dtype="int64"),
     "safe": pd.array([9007199254740991, 1, None, 9007199254740991], dtype="Int64"),
+    # B38-F01 (Codex): the same identifiers stored as a categorical; and negative and unsigned controls.
+    "catid": pd.Categorical([9007199254740992, 9007199254740993, None, 9007199254740993]),
+    "neg": pd.array([-9007199254740993, -9007199254740992, None, 5], dtype="Int64"),
+    "big": pd.array([18446744073709551615, 9007199254740993, 1, 1], dtype="uint64"),
 })
 df.to_parquet(sys.argv[1], engine="fastparquet")
 `;
@@ -275,12 +279,18 @@ df.to_parquet(sys.argv[1], engine="fastparquet")
     const doc = await file("ids.parquet", readFileSync(out));
     for (const pass of ["first read", "reread"]) {
       const t = await imported(doc);
-      expect(t.headers, pass).toEqual(["rid", "plain", "safe"]);
+      expect(t.headers, pass).toEqual(["rid", "plain", "safe", "catid", "neg", "big"]);
+      expect(t.rows.map((x) => x.catid), pass).toEqual(["9007199254740992", "9007199254740993", null, "9007199254740993"]);
+      expect(t.rows.map((x) => x.neg), pass).toEqual(["-9007199254740993", "-9007199254740992", null, "5"]);
+      expect(t.rows.map((x) => x.big), pass).toEqual(["18446744073709551615", "9007199254740993", "1", "1"]);
       expect(t.rows.map((x) => x.rid), pass).toEqual(["9007199254740992", "9007199254740993", null, "9007199254740993"]);
       expect(t.rows.map((x) => x.plain), pass).toEqual(["9007199254740993", "9007199254740992", "9007199254740995", "9007199254740993"]);
       expect(t.rows.map((x) => x.safe), pass).toEqual([9007199254740991, 1, null, 9007199254740991]);
     }
     expect(await categories(doc, "rid")).toEqual({ "9007199254740992": 1, "9007199254740993": 2 });
     expect(await categories(doc, "plain")).toEqual({ "9007199254740992": 1, "9007199254740993": 2, "9007199254740995": 1 });
+    // The stored preview agrees value by value with the calculation from the same bytes.
+    expect(await categories(doc, "catid")).toEqual({ "9007199254740992": 1, "9007199254740993": 2 });
+    expect(await categories(doc, "neg")).toEqual({ "-9007199254740993": 1, "-9007199254740992": 1, "5": 1 });
   });
 });

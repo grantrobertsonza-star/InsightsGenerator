@@ -44,13 +44,18 @@ export async function recordNarrativeInputs(client: PoolClient, runId: string, i
  * unknown, and said so.
  */
 export async function narrativeFreshnessNote(client: PoolClient, runId: string): Promise<string | null> {
-  if (!(await inputsColumn(client))) return null;
-  const r = await client.query<{ inputs: unknown }>("select inputs from deck_narratives where run_id = $1", [runId]);
+  // B37-F03 (Codex): before migration 0121 an existing narrative used to get no note at all, the same
+  // null as "current". With the column missing, whether a narrative exists is still read (deck_narratives
+  // predates 0121), and an existing one is unknown, said so; no narrative is still null.
+  const recorded = await inputsColumn(client);
+  const r = await client.query<{ inputs: unknown }>(`select ${recorded ? "inputs" : "null::jsonb as inputs"} from deck_narratives where run_id = $1`, [runId]);
   if (r.rows.length === 0) return null;
   const stored = r.rows[0].inputs as Partial<NarrativeFingerprint> | null;
   const keys = Object.keys(LABEL) as (keyof NarrativeFingerprint)[];
-  if (!stored || !keys.every((k) => typeof stored[k] === "string")) {
-    return "Not known to be current: this report narrative was written before the app recorded what it was written for. Regenerate the report to be sure it reflects the current objectives and decisions.";
+  if (!stored || typeof stored !== "object" || !keys.every((k) => typeof stored[k] === "string")) {
+    return recorded
+      ? "Not known to be current: this report narrative was written before the app recorded what it was written for. Regenerate the report to be sure it reflects the current objectives and decisions."
+      : "Not known to be current: what this report narrative was written for cannot be checked until a database update (migration 0121) is applied. Apply it, then regenerate the report to be sure it reflects the current objectives and decisions.";
   }
   const now = await narrativeFingerprint(client, runId);
   const changed = keys.filter((k) => stored[k] !== now[k]).map((k) => LABEL[k]);

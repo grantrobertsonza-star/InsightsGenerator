@@ -49,6 +49,9 @@ and the brief was text or a model-filled id array.
   - Shown on each recommendation card ("Serves: ...") and in the main recommendation export ("Decision
     served"); none named is "Not recorded", a decision since rejected or reworded is "no longer a current
     decision", with its wording kept.
+  - A served decision is current only when the same decision is accepted and worded the same now
+    (whitespace and case aside); one reworded since says so with its new wording, one rejected or removed
+    is "no longer a current decision" (B37-F02, b47). A free-text decision's wording is its identity.
   - An insight's objectives are read from coverage (CE-1, by id), not stored a second time.
   - Insight generation and synthesis now see the accepted objectives in both modes
     (`projectObjectives.ts`), as context and not a filter; before, a project with a confirmed decision
@@ -62,7 +65,8 @@ and the brief was text or a model-filled id array.
   qualifies the narrative on the Insights report screen, in both story exports (joined to the existing
   support qualification on every framing slide and passage) and for the research assistant; the narrative
   and any researcher revision of it are kept until the report is regenerated. A narrative saved before
-  0121 reads as not known to be current.
+  0121 reads as not known to be current. Before migration 0121 itself, an existing narrative is also "not known to be current", naming the
+  update; no narrative has no note (B37-F03, b47).
   Insights and recommendations are not marked stale on an objective edit: objectives are context for
   them, not a filter (discovery stays open), and the link from an insight to an objective is coverage
   (CE-1), which is marked out of date. Recommendations already carry decision freshness (GT-007) and,
