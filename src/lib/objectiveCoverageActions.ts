@@ -44,8 +44,9 @@ export async function suggestObjectivesFromUnmatched(runId: string): Promise<Res
   try {
     // "Not cited by any objective" is only known from coverage that is current (CE-1): an out-of-date
     // check may miss an insight accepted since, or cite one since rejected.
+    // Coverage first, on its own connections (B39-F01), then the accepted insights.
+    const coverage = await loadObjectiveCoverage(TENANT_ID, runId);
     const read = await withTenant(TENANT_ID, async (client) => {
-      const coverage = await loadObjectiveCoverage(client, runId, TENANT_ID);
       if (coverage.freshness.state !== "current") return { stale: coverageFreshnessNote(coverage.freshness) ?? "Check coverage first.", headlines: [] };
       const accepted = await client.query<{ id: string; headline: string }>(
         "select id, headline from synthesized_insights where run_id = $1 and review_status = 'accepted' order by created_at, id",

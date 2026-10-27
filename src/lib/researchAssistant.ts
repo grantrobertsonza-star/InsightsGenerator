@@ -66,6 +66,9 @@ type NarrativeRow = {
  * themselves discarded.
  */
 async function loadContext(tenantId: string, runId: string) {
+  // Through the coverage owner (CE-1): an out-of-date check reaches the assistant qualified, so it is
+  // not quoted as a current verdict. Read before the transaction, on its own connections (B39-F01).
+  const coverage = await loadObjectiveCoverage(tenantId, runId);
   return withTenant(tenantId, async (client) => {
     const runResult = await client.query<RunFraming>(
       `select project_name, business_problem, research_objective, decision_statement, audience, entry_point
@@ -119,9 +122,6 @@ async function loadContext(tenantId: string, runId: string) {
       [runId, MAX_RECOMMENDATIONS_FOR_CONTEXT]
     );
 
-    // Through the coverage owner (CE-1): an out-of-date check reaches the assistant qualified, so it
-    // is not quoted as a current verdict.
-    const coverage = await loadObjectiveCoverage(client, runId, tenantId);
     const objectiveValidationsResult = {
       rows: coverage.rows.map((r) => ({
         item_kind: r.item_kind,

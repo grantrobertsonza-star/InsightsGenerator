@@ -77,6 +77,9 @@ const ANALYSIS_SOURCES = ["nps_tool", "chart_tool", "scatter_tool", "brand_healt
 
 /** The stored-record facts for one project. Throws when they cannot be read. */
 export async function loadProjectStageFacts(tenantId: string, runId: string): Promise<ProjectStageFacts> {
+  // Through the coverage owner (CE-1), with whether it is still current; read first, on its own
+  // connections, not inside the read below (B39-F01).
+  const coverageRead = await loadObjectiveCoverage(tenantId, runId);
   const [db, transcriptSetups, instruments, failedFill, lastFill, qualityStatus, refreshPending] = await Promise.all([
     withTenantRead(tenantId, async (client) => {
       const q = async <T>(sql: string, args: unknown[] = [runId]) => (await client.query(sql, args)).rows as T[];
@@ -102,8 +105,6 @@ export async function loadProjectStageFacts(tenantId: string, runId: string): Pr
       );
       const qualityMissing = !(await has("objective_quality"));
       const quality = qualityMissing ? [] : await q<{ item_text: string; quality_tier: "strong" | "workable" | "weak" | null }>("select item_text, quality_tier from objective_quality where run_id = $1 order by item_order");
-      // Through the coverage owner (CE-1), with whether it is still current.
-      const coverageRead = await loadObjectiveCoverage(client, runId, tenantId);
       const coverage = coverageRead.rows;
       // B37-F01: out-of-date inputs, or conclusions resting on support that is no longer current.
       const coverageStale = coverageNote(coverageRead);

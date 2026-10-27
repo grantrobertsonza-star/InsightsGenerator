@@ -2,7 +2,7 @@ import { narrativeFreshnessNote } from "@/lib/narrativeFreshness";
 import { insightsNoItemCites, loadObjectiveCoverage, qualifiedConclusion } from "@/lib/objectiveCoverage";
 import { NextResponse } from "next/server";
 import { withTenant, withTenantRead } from "@/lib/db";
-import { loadEvidenceTrail, unreadableTrail, type EvidenceTrail } from "@/lib/evidenceTrail";
+import { loadEvidenceTrail, loadTrailContext, unreadableTrail, type EvidenceTrail } from "@/lib/evidenceTrail";
 import {
   buildNarrativeReportDocx,
   humanizeTitle,
@@ -74,6 +74,9 @@ export async function GET(
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
+  // B39-F01: coverage reads its cited insights' support on its own connections, so it is read before
+  // the export's transaction rather than inside it (a connection held while waiting for another).
+  const coverage = await loadObjectiveCoverage(TENANT_ID, runId);
   const result = await withTenant(TENANT_ID, async (client) => {
     const runResult = await client.query<{
       project_name: string | null;
@@ -173,7 +176,6 @@ export async function GET(
     // Coverage is read through its one owner (objectiveCoverage.ts). The inferred and degraded
     // (OBJ-REV-012) qualifications and, CE-1, an out-of-date or unknown check are folded into the
     // `conclusion` string every renderer already prints, so none of them is dropped on export.
-    const coverage = await loadObjectiveCoverage(client, runId, TENANT_ID);
     const objectiveValidationsResult = {
       rows: coverage.rows.map((r): NarrativeReportObjectiveItem => ({
         item_kind: r.item_kind,
@@ -362,10 +364,14 @@ export async function GET(
   // report's own transaction, one recommendation at a time, so one unreadable trail is stated in the
   // appendix rather than failing the whole report or silently leaving that trail out.
   const evidenceTrails: EvidenceTrail[] = [];
+  // One context for every trail (B39-F01: read on its own connections, before any trail's). A failed
+  // context read is stated on each trail, as one unreadable trail is.
+  const trailContext = rawRecommendations.length > 0 ? await loadTrailContext(TENANT_ID, runId).catch((e: unknown) => e instanceof Error ? e : new Error(String(e))) : null;
   for (const r of rawRecommendations) {
     if (support.statusOf(r.synthesized_insight_id).status === "invalid") continue;
     try {
-      evidenceTrails.push(await withTenantRead(TENANT_ID, (client) => loadEvidenceTrail(client, TENANT_ID, runId, r.id)));
+      if (trailContext instanceof Error) throw trailContext;
+      evidenceTrails.push(await withTenantRead(TENANT_ID, (client) => loadEvidenceTrail(client, TENANT_ID, runId, r.id, trailContext!)));
     } catch (e) {
       evidenceTrails.push(unreadableTrail(r.action_text, e instanceof Error ? e.message : String(e)));
     }

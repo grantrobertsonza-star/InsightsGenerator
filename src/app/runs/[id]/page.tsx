@@ -1854,7 +1854,7 @@ async function getObjectiveValidations(
 ): Promise<LoadedObjectiveCoverage> {
   const TENANT_ID = await requireTenantId();
   // One owner for reading coverage and whether it is still current (objectiveCoverage.ts, CE-1).
-  return withTenantRead(TENANT_ID, (client) => loadObjectiveCoverage(client, runId, TENANT_ID));
+  return loadObjectiveCoverage(TENANT_ID, runId);
 }
 
 type ApiUsageRow = {

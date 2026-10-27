@@ -57,8 +57,9 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
   }
   const trail = async (run: string, rec: string) => {
     const { withTenantRead } = await import("../db");
-    const { loadEvidenceTrail } = await import("../evidenceTrail");
-    return withTenantRead(tenant, (client) => loadEvidenceTrail(client, tenant, run, rec)) as unknown as Promise<{ purpose: Node[]; root: Node }>;
+    const { loadEvidenceTrail, loadTrailContext } = await import("../evidenceTrail");
+    const context = await loadTrailContext(tenant, run);
+    return withTenantRead(tenant, (client) => loadEvidenceTrail(client, tenant, run, rec, context)) as unknown as Promise<{ purpose: Node[]; root: Node }>;
   };
   const decide = async (rec: string, decision: string) =>
     q("insert into recommendation_decisions(recommendation_id,decision_candidate_id,decision_text,position,origin,tenant_id) values($1,$2,'Whether to cut fees',0,'model',$3)", [rec, decision, tenant]);

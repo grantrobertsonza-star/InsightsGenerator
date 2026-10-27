@@ -165,6 +165,9 @@ export async function GET(
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
 
+  // B39-F01: coverage reads its cited insights' support on its own connections, so it is read before
+  // the export's transaction rather than inside it (a connection held while waiting for another).
+  const coverage = await loadObjectiveCoverage(TENANT_ID, runId);
   const result = await withTenant(TENANT_ID, async (client) => {
     const runResult = await client.query<{
       project_name: string | null;
@@ -260,7 +263,6 @@ export async function GET(
     // Coverage is read through its one owner (objectiveCoverage.ts). The inferred and degraded
     // (OBJ-REV-012) qualifications and, CE-1, an out-of-date or unknown check are folded into the
     // `conclusion` string every renderer already prints, so none of them is dropped on export.
-    const coverage = await loadObjectiveCoverage(client, runId, TENANT_ID);
     const objectiveValidationsResult = {
       rows: coverage.rows.map((r): ExportObjectiveValidation => ({
         item_kind: r.item_kind,

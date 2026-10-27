@@ -73,9 +73,8 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-1 objective coverage identity and freshn
     });
   });
   const coverage = async () => {
-    const { withTenantRead } = await import("../db");
     const { loadObjectiveCoverage } = await import("../objectiveCoverage");
-    return withTenantRead(tenant, (client) => loadObjectiveCoverage(client, run, tenant));
+    return loadObjectiveCoverage(tenant, run);
   };
   const check = async () => (await import("../objectiveValidator")).generateObjectiveValidation(tenant, run);
 

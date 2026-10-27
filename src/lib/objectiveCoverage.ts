@@ -26,7 +26,8 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { ObjectiveValidation } from "./objectiveValidator";
-import { loadInsightSupportOrUnchecked } from "./supportStatus";
+import { withTenantRead } from "./db";
+import { loadInsightSupportOrUnchecked, type InsightSupportResult } from "./supportStatus";
 import { summariseSupport, worstSupportStatus, type InsightSupport, type SupportStatus } from "./supportStatusShared";
 
 export type CoverageInputs = {
@@ -204,12 +205,16 @@ export async function coverageIdentitySchema(client: PoolClient): Promise<boolea
   return columnExists(client, "objective_validations", "inputs");
 }
 
+/** Coverage as stored, with its freshness, before the support of the insights it cites is attached. */
+export type CoverageRead = { rows: Omit<StoredCoverageRow, "support">[]; freshness: CoverageFreshness };
+
 /**
- * The stored coverage of a project with its freshness. Insights cited are read from the
- * objective_validation_insights link table (foreign keys, so a deleted insight is gone rather than a
- * dangling id); before migration 0119, from the legacy uuid[] column.
+ * The stored coverage of a project with its freshness, read through the caller's connection. Insights
+ * cited are read from the objective_validation_insights link table (foreign keys, so a deleted insight is
+ * gone rather than a dangling id); before migration 0119, from the legacy uuid[] column. The support of
+ * those insights is not part of this read: see withCoverageSupport.
  */
-export async function loadObjectiveCoverage(client: PoolClient, runId: string, tenantId: string): Promise<ObjectiveCoverage> {
+export async function readObjectiveCoverage(client: PoolClient, runId: string): Promise<CoverageRead> {
   const degraded = await columnExists(client, "objective_validations", "evidence_digest_degraded");
   const identity = await coverageIdentitySchema(client);
   const r = await client.query<Omit<StoredCoverageRow, "support"> & { inputs?: unknown }>(
@@ -228,15 +233,32 @@ export async function loadObjectiveCoverage(client: PoolClient, runId: string, t
   );
   const current = coverageFingerprint(await readCoverageInputs(client, runId));
   const freshness = coverageFreshness(r.rows.map((x) => x.inputs ?? null), current);
-  // B37-F01: the cited insights' support, from the one support reader. A failed check makes every
-  // citing conclusion "Support not checked", never current. Its own snapshot (the reader opens one),
-  // so a review committed between the two reads is seen on the next load.
-  const cited = [...new Set(r.rows.flatMap((x) => x.synthesized_insight_ids))];
-  const support = cited.length > 0 ? await loadInsightSupportOrUnchecked(tenantId, runId, cited) : null;
+  return { rows: r.rows.map(({ inputs: _inputs, ...row }) => row), freshness };
+}
+
+/**
+ * B37-F01: attaches the cited insights' support, from the one support reader. A failed check makes every
+ * citing conclusion "Support not checked", never current. B39-F01 (Codex): the support reader opens its
+ * own connections (a repeatable-read snapshot, and per-file settings reads), so this must be called with
+ * no connection of the same pool held by the caller; otherwise a pool's worth of concurrent coverage
+ * reads each hold one connection while waiting for another, and none finishes.
+ */
+export async function withCoverageSupport(tenantId: string, runId: string, read: CoverageRead, support?: InsightSupportResult): Promise<ObjectiveCoverage> {
+  const cited = [...new Set(read.rows.flatMap((x) => x.synthesized_insight_ids))];
+  const checked = support ?? (cited.length > 0 ? await loadInsightSupportOrUnchecked(tenantId, runId, cited) : null);
   return {
-    rows: r.rows.map(({ inputs: _inputs, ...row }) => ({ ...row, support: support ? coverageRowSupport(row.synthesized_insight_ids, support.statusOf) : null })),
-    freshness,
+    rows: read.rows.map((row) => ({ ...row, support: checked ? coverageRowSupport(row.synthesized_insight_ids, checked.statusOf) : null })),
+    freshness: read.freshness,
   };
+}
+
+/**
+ * The stored coverage with its freshness and its cited insights' support, each read on its own
+ * connection and never one inside another (B39-F01). Callers do not hold a connection when calling it.
+ */
+export async function loadObjectiveCoverage(tenantId: string, runId: string): Promise<ObjectiveCoverage> {
+  const read = await withTenantRead(tenantId, (client) => readObjectiveCoverage(client, runId));
+  return withCoverageSupport(tenantId, runId, read);
 }
 
 /** Accepted insights no stated (non-inferred) objective or decision cites; empty when there is no coverage. */

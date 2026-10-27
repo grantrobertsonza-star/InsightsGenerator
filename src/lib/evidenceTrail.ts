@@ -14,9 +14,10 @@
 // out: a break in the trail is part of the evidence. Nothing is inferred from wording.
 import type { PoolClient } from "pg";
 import { findingSourceSql, formatFindingSource, SOURCE_NOT_RECORDED, type FindingSource } from "./sourceAttribution";
-import { coverageFreshnessNote, coverageRowCurrent, coverageRowNote, loadObjectiveCoverage } from "./objectiveCoverage";
+import { coverageFreshnessNote, coverageRowCurrent, coverageRowNote, readObjectiveCoverage, withCoverageSupport, type ObjectiveCoverage } from "./objectiveCoverage";
+import { withTenantRead } from "./db";
 import { loadRecommendationDecisions, servedDecisionNote } from "./recommendationDecisions";
-import { loadInsightSupportOrUnchecked } from "./supportStatus";
+import { loadInsightSupportOrUnchecked, type InsightSupportResult } from "./supportStatus";
 import { SUPPORT_STATUS_LABEL } from "./supportStatusShared";
 import { loadBriefPassages, passageSourceText } from "./briefPassages";
 
@@ -58,7 +59,21 @@ function statFacts(stats: unknown): string[] {
     .map(([k, v]) => `${k.replace(/_/g, " ")}: ${String(v)}`);
 }
 
-export async function loadEvidenceTrail(client: PoolClient, tenantId: string, runId: string, recommendationId: string): Promise<EvidenceTrail> {
+/**
+ * What a trail reads on connections of its own (B39-F01, Codex): the project's coverage with the support
+ * of the insights it cites, and every insight's support, from the one support reader. Loaded before the
+ * trail's own connection is opened (the support reader opens others, and holding one while waiting for
+ * another can exhaust the pool), and one context serves every trail of a project (the report appendix).
+ */
+export type TrailContext = { coverage: ObjectiveCoverage; support: InsightSupportResult };
+
+export async function loadTrailContext(tenantId: string, runId: string): Promise<TrailContext> {
+  const read = await withTenantRead(tenantId, (client) => readObjectiveCoverage(client, runId));
+  const support = await loadInsightSupportOrUnchecked(tenantId, runId);
+  return { coverage: await withCoverageSupport(tenantId, runId, read, support), support };
+}
+
+export async function loadEvidenceTrail(client: PoolClient, tenantId: string, runId: string, recommendationId: string, context: TrailContext): Promise<EvidenceTrail> {
   const rec = await client.query<{ id: string; action_text: string; status: string; synthesized_insight_id: string | null; insight_id: string | null }>(
     "select id, action_text, status, synthesized_insight_id, insight_id from recommendations where id = $1 and run_id = $2",
     [recommendationId, runId],
@@ -77,7 +92,7 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
     purpose.push(node("decision", d.candidateId, d.text, { state: d.current ? "current" : "caution", note: d.current ? null : `${servedDecisionNote(d).replace(/^./, (c) => c.toUpperCase())}.`, details: [d.origin === "model" ? "Named when the recommendation was written" : "Chosen by the researcher"] }));
   }
   if (r.synthesized_insight_id) {
-    const coverage = await loadObjectiveCoverage(client, runId, tenantId);
+    const coverage = context.coverage;
     const freshness = coverageFreshnessNote(coverage.freshness);
     // B37-F01: whether each answering conclusion stands is its own note: out-of-date inputs, or cited support
     // that is no longer current (the same note the coverage pane and exports show).
@@ -162,7 +177,7 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
       [r.synthesized_insight_id],
     );
     const i = insight.rows[0];
-    const support = (await loadInsightSupportOrUnchecked(tenantId, runId, [r.synthesized_insight_id])).statusOf(r.synthesized_insight_id);
+    const support = context.support.statusOf(r.synthesized_insight_id);
     const insightNode = node("insight", r.synthesized_insight_id, i?.headline ?? "Insight no longer exists", {
       details: i ? [`Review: ${i.review_status}`, SUPPORT_STATUS_LABEL[support.status]] : [],
       state: !i || support.status === "invalid" ? "broken" : support.status === "current" && i.review_status === "accepted" ? "current" : "caution",

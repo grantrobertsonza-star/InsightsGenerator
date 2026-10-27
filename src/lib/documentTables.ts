@@ -265,6 +265,8 @@ export async function extractAndStoreDocumentTables(
     const parsed = await parseStatsFile(document.storage_path, document.source_filename);
     const { headers, rows } = parsed;
     extracted = [{ label: null, sourcePage: null, headers, rows }];
+    // B40-F01: recorded, so a table read before an engine fix is known as such (importPreviewIdentity.ts).
+    if (parsed.reader) provenance = { reader: parsed.reader, sheet: "", layout, encoding: null, dateColumns: [] };
     if (parsed.totalVariables && parsed.keptVariables) {
       // Very wide file: only the usable variables were kept so the table
       // fits in storage. Recorded so the cut is never silent.

@@ -397,7 +397,7 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
             row[header] = _resolve_value(raw_name, value, value_labels_by_var)
         rows.append(row)
 
-    result = {"headers": headers, "rows": rows}
+    result = {"headers": headers, "rows": rows, "reader": STATS_READER}
     if len(raw_names) < len(all_names):
         result["totalVariables"] = len(all_names)
         result["keptVariables"] = len(raw_names)
@@ -411,6 +411,10 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 # against a fresh read before it is shown (importPreviewIdentity.ts).
 # c: Excel cells read without merging TRUE with 1 or FALSE with 0 (CAL-R1-F03).
 TABLE_READER = "engine-plain-2026.10.26c"
+# The same for SPSS, Stata, SAS, R and Parquet tables (convert). 2026.10.27: R and Parquet whole numbers
+# beyond 2^53 kept exact as text (B38-F01); an R or Parquet table stored without this name was read
+# before that, may hold rounded identifiers, and is checked against a fresh read (B40-F01).
+STATS_READER = "engine-stats-2026.10.27"
 
 
 def _json_cell(v):

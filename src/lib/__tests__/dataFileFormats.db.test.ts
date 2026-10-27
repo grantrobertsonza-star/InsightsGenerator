@@ -262,7 +262,7 @@ df.to_parquet(sys.argv[1], engine="fastparquet")
   it.skipIf(!R_PARQUET_OK)("Parquet: whole numbers beyond 2^53 keep their exact identity, nullable, plain, categorical, negative or unsigned; safe ones stay numbers", async () => {
     const out = path.join(mkdtempSync(path.join(tmpdir(), "parquet-big-")), "ids.parquet");
     const script = String.raw`
-import sys, pandas as pd
+import sys, numpy as np, pandas as pd
 df = pd.DataFrame({
     "rid": pd.array([9007199254740992, 9007199254740993, None, 9007199254740993], dtype="Int64"),
     "plain": pd.array([9007199254740993, 9007199254740992, 9007199254740995, 9007199254740993], dtype="int64"),
@@ -270,8 +270,14 @@ df = pd.DataFrame({
     # B38-F01 (Codex): the same identifiers stored as a categorical; and negative and unsigned controls.
     "catid": pd.Categorical([9007199254740992, 9007199254740993, None, 9007199254740993]),
     "neg": pd.array([-9007199254740993, -9007199254740992, None, 5], dtype="Int64"),
-    "big": pd.array([18446744073709551615, 9007199254740993, 1, 1], dtype="uint64"),
+    # numpy, not pd.array: pandas 3.1 builds pd.array([18446744073709551615, ...], dtype="uint64") from a
+    # Python list through float, giving [0, 9007199254740992, 1, 1] (Codex's B39/40 review mismatch).
+    "big": np.array([18446744073709551615, 9007199254740993, 1, 1], dtype=np.uint64),
 })
+# The fixture is checked before it is written, so a writer that changes the values fails here, as a
+# fixture error, and never reads as the app's.
+assert df["big"].tolist() == [18446744073709551615, 9007199254740993, 1, 1], df["big"].tolist()
+assert df["rid"].tolist()[:2] == [9007199254740992, 9007199254740993]
 df.to_parquet(sys.argv[1], engine="fastparquet")
 `;
     const r = spawnSync(PYTHON, ["-I", "-c", script, out], { encoding: "utf8" });
@@ -292,5 +298,53 @@ df.to_parquet(sys.argv[1], engine="fastparquet")
     // The stored preview agrees value by value with the calculation from the same bytes.
     expect(await categories(doc, "catid")).toEqual({ "9007199254740992": 1, "9007199254740993": 2 });
     expect(await categories(doc, "neg")).toEqual({ "-9007199254740993": 1, "-9007199254740992": 1, "5": 1 });
+  });
+
+  // B40-F01 (Codex): a Parquet preview stored before the B38-F01 repair (identifiers rounded, no read
+  // provenance) was still shown as the file's data. Now it is compared with a fresh read and withheld
+  // with a recovery; reading the file again replaces it with the exact identifiers.
+  it.skipIf(!R_PARQUET_OK)("B40-F01: a Parquet preview stored before the repair is withheld until the file is read again; a healthy one is shown", async () => {
+    const out = path.join(mkdtempSync(path.join(tmpdir(), "parquet-legacy-")), "legacy.parquet");
+    const script = String.raw`
+import sys, pandas as pd
+df = pd.DataFrame({"catid": pd.Categorical([9007199254740992, 9007199254740993]), "n": pd.array([1, 2], dtype="Int64")})
+df.to_parquet(sys.argv[1], engine="fastparquet")
+`;
+    const r = spawnSync(PYTHON, ["-I", "-c", script, out], { encoding: "utf8" });
+    if (r.status !== 0) throw new Error(r.stderr);
+    const doc = await file("legacy.parquet", readFileSync(out));
+    await imported(doc);
+    const { loadImportPreviewIdentities, ENGINE_STATS_READER } = await import("../importPreviewIdentity");
+    const stored = async () => (await q(
+      "select document_id, table_index, headers, rows, jsonb_array_length(rows) as row_count, read_provenance from document_tables where document_id = $1 and table_index < 100", [doc],
+    )) as Parameters<typeof loadImportPreviewIdentities>[2];
+    const identity = async () => (await loadImportPreviewIdentities(tenant, run, await stored())).get(doc);
+    // A fresh read records the reader and is shown.
+    expect((await stored())[0].read_provenance).toMatchObject({ reader: ENGINE_STATS_READER });
+    expect(await identity()).toEqual({ error: null });
+    // The pre-repair state: the two identifiers rounded to one number, no provenance.
+    await q(`update document_tables set rows = '[{"catid": 9007199254740992, "n": 1}, {"catid": 9007199254740992, "n": 2}]'::jsonb, read_provenance = null where document_id = $1`, [doc]);
+    expect(await identity()).toEqual({ error: expect.stringMatching(/^Stored preview cannot be verified: the stored table differs from what the file holds now .*Read the file again/) });
+    // A healthy table from before provenance was recorded is shown after the check.
+    await q(`update document_tables set rows = '[{"catid": "9007199254740992", "n": 1}, {"catid": "9007199254740993", "n": 2}]'::jsonb where document_id = $1`, [doc]);
+    expect(await identity()).toEqual({ error: null });
+    // The source cannot be read: withheld with the reason, never shown as verified.
+    await q(`update document_tables set rows = '[{"catid": 9007199254740992, "n": 1}, {"catid": 9007199254740992, "n": 2}]'::jsonb where document_id = $1`, [doc]);
+    const key = (await q("select storage_path from documents where id = $1", [doc]))[0].storage_path as string;
+    const bytes = storage.objects.get(key)!;
+    storage.objects.delete(key);
+    expect((await identity())?.error).toMatch(/^Stored preview cannot be verified: /);
+    storage.objects.set(key, bytes);
+    // Work done on the file before the reread: a saved table with a finding, and a variable correction.
+    const ct = (await q("insert into document_tables(tenant_id,run_id,document_id,table_index,ingestion_type,crosstab,crosstab_status) values($1,$2,$3,100,'raw','{}','committed') returning id", [tenant, run, doc]))[0].id;
+    const finding = (await q("insert into findings(tenant_id,run_id,origin,finding_text,status,source_table_id) values($1,$2,'generated','n is higher for 9007199254740993','accepted',$3) returning id", [tenant, run, ct]))[0].id;
+    await q(`update documents set variable_overrides = '{"n": {"type": "discrete"}}'::jsonb where id = $1`, [doc]);
+    // Recovery: reading the file again stores the exact identifiers with the reader, and it is shown;
+    // the saved table, its finding and the correction are kept.
+    const again = await imported(doc);
+    expect(again.rows.map((x) => x.catid)).toEqual(["9007199254740992", "9007199254740993"]);
+    expect(await identity()).toEqual({ error: null });
+    expect(await q("select status, source_table_id from findings where id = $1", [finding])).toEqual([{ status: "accepted", source_table_id: ct }]);
+    expect((await q("select variable_overrides from documents where id = $1", [doc]))[0].variable_overrides).toEqual({ n: { type: "discrete" } });
   });
 });

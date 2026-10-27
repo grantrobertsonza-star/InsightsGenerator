@@ -19,6 +19,8 @@ export type ParsedTable = {
   /** Set only when a very wide file was cut down to its usable variables. */
   totalVariables?: number;
   keptVariables?: number;
+  /** The engine reader that produced it (STATS_READER), stored as the table's read provenance. */
+  reader?: string;
 };
 
 import { isStatsFileName } from "./statsFileName";
