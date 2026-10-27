@@ -1,3 +1,4 @@
+import { readFindingRoutes, routeText, type FindingRoute } from "@/lib/analysisPlan";
 import { loadAssistantConversation } from "@/lib/researchAssistant";
 import { cellText, type TableCell } from "@/lib/rowCells";
 import Link from "next/link";
@@ -340,6 +341,9 @@ type Finding = {
   // any human wording - purely an additional, read-only signal. Null for a finding with no
   // source table at all (nothing to compare, a different thing from "couldn't compare").
   designFreshness: DesignFreshness | null;
+  /** CE-6: planned, discovered or stated, and for a planned finding the plan line and its objective. */
+  route: FindingRoute;
+  routeText: string;
 };
 
 async function getRun(runId: string): Promise<Run | null> {
@@ -901,7 +905,7 @@ async function getCodebooks(runId: string): Promise<Map<string, CodebookView>> {
   return out;
 }
 
-type FindingRow = Omit<Finding, "designFreshness"> & {
+type FindingRow = Omit<Finding, "designFreshness" | "route" | "routeText"> & {
   source_table_document_id: string | null;
   design_snapshot: { design: { psu: string | null; strata: string | null } | null } | null;
 };
@@ -1027,8 +1031,15 @@ async function getFindings(runId: string): Promise<Finding[]> {
     }),
   );
 
+  // CE-6: each finding's route. A failed read shows every route as unknown, never as discovered.
+  const routes = await withTenantRead(TENANT_ID, (client) => readFindingRoutes(client, runId)).catch(() => null);
+  const routeOf = (id: string) => {
+    const info = routes?.get(id) ?? { route: "unknown" as const, planLine: null };
+    return { route: info.route, routeText: routeText(info) };
+  };
   return rows.map((r) => {
-    const { source_table_document_id, design_snapshot, ...finding } = r;
+    const { source_table_document_id, design_snapshot, ...rest } = r;
+    const finding = { ...rest, ...routeOf(rest.id) };
     if (!source_table_document_id) {
       // No source table at all - there is nothing to compare, a different thing from having
       // tried to compare and failed. Unchanged from before this repair.

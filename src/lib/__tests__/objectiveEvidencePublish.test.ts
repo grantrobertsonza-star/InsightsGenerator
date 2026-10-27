@@ -566,6 +566,8 @@ function runLoad(
       if (sql.includes("from objective_evidence_results where run_id = $1 order by dataset_name")) {
         return { rows: working.results };
       }
+      // CE-6 (migration 0123) is not part of this fixture: its catalogue check finds no plan columns.
+      if (sql.includes("from information_schema.columns")) return { rows: [{ n: 0 }] };
       throw new Error(`unhandled query in fake client: ${sql}`);
     },
   };

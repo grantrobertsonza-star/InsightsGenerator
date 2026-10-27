@@ -91,7 +91,32 @@ and the brief was text or a model-filled id array.
   do: the trail in the deck,
   the reverse view from an objective, the researcher choosing a recommendation's decisions, links from a
   node to its table or transcript, and objective evidence in the exports.
-- **CE-6: the analysis plan** from objectives, decisions, the proposal's methodology and the
-  questionnaire or guide; approved line by line; planned findings carry their line.
+- **CE-6 (b46): the analysis plan.** Migration 0123; owner `src/lib/analysisPlan.ts`.
+  - The plan's lines are the objective evidence questions (`objectiveEvidence.ts`): each objective or
+    decision broken into what to measure, for whom and what would support or undermine it, written before
+    any table is seen. No second plan store.
+  - Inputs: the accepted objectives and decisions, the data files' variables (with questionnaire wording
+    where confirmed links give it), and the project's stated methodology (`runs.methodology`, read from the
+    brief, proposal or report). The methodology is in the instructions when stated, and the generation
+    records its state (`stated` with a sha, `none_stated`, `not_read`). A plan written with other text, or
+    before one was stated, is shown as such; "not read" is never shown as "none stated".
+  - Approval line by line at a wording revision (`approved_revision` = `question_revision`). An edit makes
+    an approved line "changed since approval" until approved again; excluding withdraws approval; an
+    excluded line cannot be approved. A stale revision refuses the whole call with nothing saved. Approved
+    lines are kept when the plan is written again, like edited and excluded ones. Approval is acceptance
+    only: who wrote the wording stays in `source`. Before 0123 approval reads "unknown" and approving is
+    refused with the migration named.
+  - Planned tables: "Add approved tables to Cross tabs" moves each approved line's evidence table for a
+    data file into the Cross tabs drafts, recording the line on the table (`plan_evidence_id` and a
+    `plan_line` snapshot: id, revision, approved revision, question, objective or decision). Safe to repeat;
+    unapproved lines' tables stay. Committing there gives findings as for any table.
+  - Routes: every finding is planned (computed from a table carrying a plan line), discovered (computed or
+    coded outside the plan) or stated (a report's or transcript's own claim); unknown when the plan record
+    cannot be read, never discovered by default (`findingRoute`, `readFindingRoutes`). Shown on findings
+    (chip with the line and objective), in the findings export (Route, Plan line) and in the evidence trail
+    (a plan line node under the finding, after its data point). The snapshot keeps the route if the line is
+    later edited or removed.
+  - Not yet: checking discovered and stated findings against the objectives one by one (coverage does this
+    at the insight level, CE-1); the plan as its own exportable document.
 - **CE-7: qualitative:** spontaneous versus probed (the moderator turn before an answer), negative cases
   attached to the findings and insights they qualify, a failed guide read shown as a failure.

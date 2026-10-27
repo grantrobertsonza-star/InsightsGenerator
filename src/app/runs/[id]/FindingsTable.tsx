@@ -96,6 +96,9 @@ type Finding = {
   // no source table at all. Never touches finding_text - a visibility signal only, rendered in
   // SourceInfo below.
   designFreshness: "current" | "stale" | "unknown" | null;
+  /** CE-6 route (analysisPlan.ts): planned, discovered or stated; absent where the page did not read it. */
+  route?: "planned" | "discovered" | "stated" | "unknown";
+  routeText?: string;
 };
 
 type Viewer =
@@ -488,6 +491,13 @@ function CodingBadges({
   );
 }
 
+const ROUTE_BADGE: Record<NonNullable<Finding["route"]>, { text: string; title: string; cls: string }> = {
+  planned: { text: "Planned", title: "From a table in the approved analysis plan.", cls: "bg-green-50 text-green-800 ring-green-200" },
+  discovered: { text: "Discovered", title: "Computed or coded outside the analysis plan.", cls: "bg-slate-50 text-slate-600 ring-slate-200" },
+  stated: { text: "Stated", title: "A claim the report or transcript itself makes.", cls: "bg-slate-50 text-slate-600 ring-slate-200" },
+  unknown: { text: "Route unknown", title: "Whether this came from the analysis plan could not be read.", cls: "bg-amber-50 text-amber-800 ring-amber-200" },
+};
+
 function DiscoveryBadges({
   finding,
 }: {
@@ -499,6 +509,8 @@ function DiscoveryBadges({
     | "contradicts_report"
     | "pattern_type"
     | "stated_stats"
+    | "route"
+    | "routeText"
   >;
 }) {
   const discovery = classifyFindingDiscovery({
@@ -508,8 +520,14 @@ function DiscoveryBadges({
   });
   const base =
     "inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset";
+  const route = finding.route ? ROUTE_BADGE[finding.route] : null;
   return (
     <>
+      {route && (
+        <span title={finding.routeText ?? route.title} data-testid="finding-route" data-route={finding.route} className={`${base} ${route.cls}`}>
+          {route.text}
+        </span>
+      )}
       {finding.origin === "generated" && discovery.type === "net_new" && (
         <span
           title={

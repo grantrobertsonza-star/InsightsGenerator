@@ -1,3 +1,4 @@
+import { readFindingRoutes, ROUTE_LABEL, routeText } from "@/lib/analysisPlan";
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
@@ -6,6 +7,7 @@ import { findingOriginalAvailable } from "@/lib/findingWording";
 import { routeRequestContext } from "@/lib/requestContext";
 
 type ExportRow = {
+  id: string;
   origin: "stated" | "generated" | "coded";
   data_type: "qualitative" | "quantitative" | null;
   finding_text: string;
@@ -66,7 +68,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       // Golden-thread repair: source_table_id points at document_tables, not documents, so the
       // old documents-on-source_table_id join never matched and every computed finding exported a
       // blank Source. Resolved through the shared definition (sourceAttribution.ts).
-      `select c.origin, c.finding_text, c.finding_kind, c.pattern_type, c.theme, c.status,
+      `select c.id, c.origin, c.finding_text, c.finding_kind, c.pattern_type, c.theme, c.status,
               ${findingSourceSql("c").columns},
               c.quote_verified, c.duplicate_group_id, c.researcher_note, c.data_type,
               ${originals ? "c.original_extraction->>'finding_text'" : "null::text"} as original_finding_text
@@ -76,7 +78,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
        order by c.theme nulls last, c.created_at, c.id`,
       [runId]
     );
-    return [runResult.rows[0], findingsResult.rows] as const;
+    // CE-6: planned, discovered or stated, read in the same transaction as the findings.
+    const routes = await readFindingRoutes(client, runId);
+    return [runResult.rows[0], findingsResult.rows.map((r) => ({ ...r, route: routes.get(r.id) ?? { route: "unknown" as const, planLine: null } }))] as const;
   });
 
   if (!run) {
@@ -91,6 +95,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         : row.origin === "coded"
           ? "Coded (from transcript)"
           : "Stated (from report)",
+    Route: ROUTE_LABEL[row.route.route],
+    "Plan line": row.route.planLine ? routeText(row.route) : "",
     "Data type": row.data_type === "qualitative" ? "Qualitative" : row.data_type === "quantitative" ? "Quantitative" : "",
     Kind: row.finding_kind
       ? (kindLabel[row.finding_kind] ?? row.finding_kind)
@@ -114,6 +120,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   worksheet["!cols"] = [
     { wch: 24 }, // Theme
     { wch: 20 }, // Origin
+    { wch: 14 }, // Route
+    { wch: 60 }, // Plan line
     { wch: 14 }, // Data type
     { wch: 18 }, // Kind
     { wch: 80 }, // Finding

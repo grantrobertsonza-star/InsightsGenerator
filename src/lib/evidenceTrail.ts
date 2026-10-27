@@ -12,6 +12,7 @@
 //
 // A link that is not recorded, out of date or no longer valid is a node that says so (state), never left
 // out: a break in the trail is part of the evidence. Nothing is inferred from wording.
+import { readFindingRoutes, ROUTE_LABEL, type FindingRouteInfo } from "./analysisPlan";
 import type { PoolClient } from "pg";
 import { findingSourceSql, formatFindingSource, SOURCE_NOT_RECORDED, type FindingSource } from "./sourceAttribution";
 import { coverageFreshnessNote, coverageRowCurrent, coverageRowNote, readObjectiveCoverage, withCoverageSupport, type ObjectiveCoverage } from "./objectiveCoverage";
@@ -21,7 +22,7 @@ import { loadInsightSupportOrUnchecked, type InsightSupportResult } from "./supp
 import { SUPPORT_STATUS_LABEL } from "./supportStatusShared";
 import { loadBriefPassages, passageSourceText } from "./briefPassages";
 
-export type TrailNodeKind = "passage" | "decision" | "objective" | "recommendation" | "insight" | "pre_insight" | "finding" | "data" | "source";
+export type TrailNodeKind = "passage" | "decision" | "objective" | "recommendation" | "insight" | "pre_insight" | "finding" | "plan" | "data" | "source";
 /** current: stored and current. caution: stored, with a qualification. broken: not recorded, gone or no longer valid. */
 export type TrailState = "current" | "caution" | "broken";
 
@@ -147,6 +148,13 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
       )
     ).rows;
 
+  // CE-6: each finding's route; a planned one shows the plan line and the objective it was planned for.
+  let routes = new Map<string, FindingRouteInfo>();
+  const withRoutes = async (rows: FindingRow[]) => {
+    const ids = rows.map((r) => r.finding_id).filter((x): x is string => !!x);
+    if (ids.length > 0) routes = new Map([...routes, ...(await readFindingRoutes(client, runId, ids))]);
+    return rows;
+  };
   const preInsightNode = (row: FindingRow): TrailNode => {
     const pre = node("pre_insight", row.pre_insight_id, row.pre_headline);
     if (!row.finding_id) {
@@ -158,6 +166,20 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
       state: row.finding_status === "rejected" ? "broken" : row.verdict_tier === "robust" ? "current" : "caution",
       note: row.finding_status === "rejected" ? "Rejected by the researcher." : row.verdict_tier === "robust" ? null : row.verdict_tier === "use_with_caution" ? "Verified with caution." : "Not verified as robust.",
     });
+    const route = routes.get(row.finding_id) ?? { route: "unknown" as const, planLine: null };
+    finding.details.push(`Route: ${ROUTE_LABEL[route.route]}`);
+    let planNode: TrailNode | null = null;
+    if (route.route === "planned" && route.planLine) {
+      const p = route.planLine;
+      const approved = p.approvedRevision === p.revision;
+      planNode = (
+        node("plan", p.evidenceId, p.question, {
+          details: [`For the ${p.itemKind}: ${p.itemText}`, approved ? "Approved in the analysis plan" : "Not approved when its table was added"],
+          state: approved ? "current" : "caution",
+          note: approved ? null : "The plan line was not approved at this wording when its table was moved into Cross tabs.",
+        })
+      );
+    }
     const facts = statFacts(row.stated_stats);
     const quote = row.source_quote?.trim();
     if (facts.length > 0 || quote) {
@@ -167,6 +189,8 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
     }
     const where = formatFindingSource(row);
     (finding.children[0] ?? finding).children.push(node("source", null, where ?? SOURCE_NOT_RECORDED, where ? {} : { state: "broken", note: "The finding names no source file." }));
+    // After the data point, so the data point stays the finding's first child (its source hangs off it).
+    if (planNode) finding.children.push(planNode);
     pre.children.push(finding);
     return pre;
   };
@@ -184,12 +208,12 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
       // The support status is already a detail; the note adds only what the details do not say.
       note: !i ? "The insight was deleted." : i.review_status !== "accepted" ? `Insight ${i.review_status}.` : null,
     });
-    const rows = await findingRows("pi.id in (select s.pre_insight_id from synthesized_insight_sources s where s.synthesized_insight_id = $1)", r.synthesized_insight_id);
+    const rows = await withRoutes(await findingRows("pi.id in (select s.pre_insight_id from synthesized_insight_sources s where s.synthesized_insight_id = $1)", r.synthesized_insight_id));
     if (rows.length === 0) insightNode.children.push(node("pre_insight", null, "No supporting pre-insights remain", { state: "broken" }));
     insightNode.children.push(...rows.map(preInsightNode));
     root.children.push(insightNode);
   } else if (r.insight_id) {
-    root.children.push(...(await findingRows("pi.id = $1", r.insight_id)).map(preInsightNode));
+    root.children.push(...(await withRoutes(await findingRows("pi.id = $1", r.insight_id))).map(preInsightNode));
   } else {
     root.children.push(node("insight", null, "Insight not recorded", { state: "broken" }));
   }
@@ -199,6 +223,7 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
 const KIND_WORD: Record<TrailNodeKind, string> = {
   passage: "Brief passage",
   objective: "Objective",
+  plan: "Plan line",
   decision: "Decision",
   recommendation: "Recommendation",
   insight: "Insight",

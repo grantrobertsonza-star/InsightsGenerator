@@ -25,6 +25,18 @@ import {
   type Stance,
 } from "./evidenceStance";
 import type { CrosstabResult } from "./parseStatsFile";
+import {
+  approvalOf,
+  methodologyInstruction,
+  planColumnsAvailable,
+  readPlanApprovals,
+  readPlanMethodologyFreshness,
+  readStatedMethodology,
+  withdrawApprovalOnExclusion,
+  type PlanApproval,
+  type PlanMethodologyFreshness,
+  type StatedMethodology,
+} from "./analysisPlan";
 
 /**
  * The objective evidence lane. Each research objective (and confirmed
@@ -75,6 +87,10 @@ export type EvidenceQuestion = {
   excluded: boolean;
   /** Bumped by editEvidenceQuestion on a wording change; see migration 0082 (OBJ-REV-007). */
   question_revision: number;
+  /** CE-6: this line's approval in the analysis plan (analysisPlan.ts); "unknown" before migration 0123. */
+  approval: PlanApproval;
+  approved_revision: number | null;
+  approved_at: string | null;
   /** Derived from `results`: the stance across data sets, and how it was decided. */
   stance: Stance | null;
   basis: "computed" | "judged" | null;
@@ -393,7 +409,14 @@ async function fetchObjectiveEvidenceRows(
     const { had_table: _hadTable, ...rest } = x;
     byQuestion.set(x.evidence_id, [...(byQuestion.get(x.evidence_id) ?? []), { ...rest, stale }]);
   }
-  return { questions: rows.map((row) => shape(row, byQuestion.get(row.id as string) ?? [])), originAvailable };
+  // CE-6: approvals read in the same snapshot; before migration 0123 every line reads as "unknown".
+  const approvals = await readPlanApprovals(client, runId);
+  const questions = rows.map((row) => {
+    const q = shape(row, byQuestion.get(row.id as string) ?? []);
+    const a = approvals?.get(q.id);
+    return { ...q, approved_revision: a?.approved_revision ?? null, approved_at: a?.approved_at ?? null, approval: approvalOf(q.question_revision, a?.approved_revision, approvals !== null) };
+  });
+  return { questions, originAvailable };
 }
 
 export async function listObjectiveEvidence(tenantId: string, runId: string): Promise<EvidenceQuestion[]> {
@@ -431,7 +454,7 @@ export async function listObjectiveEvidence(tenantId: string, runId: string): Pr
 export async function loadObjectiveEvidenceAndCoverage(
   client: PoolClient,
   runId: string,
-): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean; remaining: number }> {
+): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean; remaining: number; planMethodology: PlanMethodologyFreshness }> {
   await client.query("savepoint objective_evidence_coverage_read");
   let variablesTruncated: boolean | null;
   try {
@@ -453,13 +476,14 @@ export async function loadObjectiveEvidenceAndCoverage(
   const currentItems = await readCurrentEvidenceItems(client, runId);
   const { questions, originAvailable } = await fetchObjectiveEvidenceRows(client, runId);
   const remaining = (await pendingPairsForClient(client, runId)).length;
-  return { questions, variablesTruncated, currentItems, originAvailable, remaining };
+  const planMethodology = await readPlanMethodologyFreshness(client, runId);
+  return { questions, variablesTruncated, currentItems, originAvailable, remaining, planMethodology };
 }
 
 export async function loadObjectiveEvidenceWithCoverage(
   tenantId: string,
   runId: string,
-): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean; remaining: number }> {
+): Promise<{ questions: EvidenceQuestion[]; variablesTruncated: boolean | null; currentItems: CurrentEvidenceItem[]; originAvailable: boolean; remaining: number; planMethodology: PlanMethodologyFreshness }> {
   return withTenantRepeatableRead(tenantId, (client) => loadObjectiveEvidenceAndCoverage(client, runId));
 }
 
@@ -566,7 +590,7 @@ function varSummary(names: { name: string; label: string }[]): string {
 
 type Drafted = { question: string; request: string; supports_if: string; against_if: string; expectation: Expectation | null };
 
-async function decompose(tenantId: string, runId: string, item: RawItem, vars: string): Promise<Drafted[]> {
+async function decompose(tenantId: string, runId: string, item: RawItem, vars: string, methodology: StatedMethodology): Promise<Drafted[]> {
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 2000,
@@ -580,7 +604,9 @@ async function decompose(tenantId: string, runId: string, item: RawItem, vars: s
       "- Give a machine-readable expectation only when it can be judged from numbers. Never invent a threshold or a benchmark; if the objective does not state one, use a comparison with a direction, or kind 'none'.\n" +
       "- Use only variables that appear in the list. If the files cannot speak to the objective, return no questions.\n" +
       "- The same question will be put to every data file in the project. A file that lacks the variable will simply answer that it is silent, so write each question about the topic and not about one file.\n\n" +
-      `Variables across the project's data files:\n${vars}`,
+      `Variables across the project's data files:\n${vars}` +
+      // CE-6: the plan follows the project's stated methodology (groups to compare, measures, population).
+      methodologyInstruction(methodology),
     ),
     tools: [DECOMPOSE_TOOL],
     tool_choice: { type: "tool", name: "submit_questions" },
@@ -668,16 +694,19 @@ export async function generateEvidenceQuestions(
     // belongs to a current item suppresses drafting for it. Deleted-candidate, unknown-origin and
     // conflicting rows have keys no current item can have, so an orphaned researcher row never
     // stops an unrelated item that now sits in its old position from getting questions.
+    // CE-6: an approved line is a researcher decision too, so its item is kept like an edited one.
+    const approved = (await planColumnsAvailable(client)) ? " or approved_revision is not null" : "";
     const r = await client.query<IdentityRow>(
-      "select id, item_kind, item_order, item_text, objective_candidate_id, decision_candidate_id, origin_candidate_id, origin_recorded from objective_evidence where run_id = $1 and (source <> 'auto' or excluded = true)",
+      `select id, item_kind, item_order, item_text, objective_candidate_id, decision_candidate_id, origin_candidate_id, origin_recorded from objective_evidence where run_id = $1 and (source <> 'auto' or excluded = true${approved})`,
       [runId],
     );
-    return new Set(r.rows.map((row) => evidenceIdentity(row).key));
+    const methodology = await readStatedMethodology(client, runId);
+    return { keys: new Set(r.rows.map((row) => evidenceIdentity(row).key)), methodology };
   });
   const drafted: { item: RawItem; qs: Drafted[] }[] = [];
   for (const item of items) {
-    if (kept.has(currentItemKey(item))) continue; // the researcher has taken over this one
-    drafted.push({ item, qs: await decompose(tenantId, runId, item, vars) });
+    if (kept.keys.has(currentItemKey(item))) continue; // the researcher has taken over this one
+    drafted.push({ item, qs: await decompose(tenantId, runId, item, vars, kept.methodology) });
   }
   const { generationId, created } = await withTenant(tenantId, (client) =>
     publishGeneratedQuestions(client, {
@@ -687,6 +716,7 @@ export async function generateEvidenceQuestions(
       variablesTruncated,
       pooledCount: pooled.length,
       usedCount: Math.min(pooled.length, POOLED_VAR_SUMMARY_CAP),
+      methodology: kept.methodology,
     }),
   );
   return { created, items: items.length, skippedInferred, datasets: datasets.length, variablesTruncated, generationId };
@@ -743,9 +773,11 @@ export async function publishGeneratedQuestions(
     variablesTruncated: boolean;
     pooledCount: number;
     usedCount: number;
+    /** CE-6: the stated methodology the questions were written with; recorded on the generation. */
+    methodology?: StatedMethodology;
   },
 ): Promise<{ generationId: string; created: number }> {
-  const { tenantId, runId, drafted, variablesTruncated, pooledCount, usedCount } = params;
+  const { tenantId, runId, drafted, variablesTruncated, pooledCount, usedCount, methodology } = params;
   // Serializes every publication for this run - see the function doc above for why this is
   // unconditional and why the run row (not an objective_evidence/generations row) is what gets
   // locked.
@@ -780,17 +812,29 @@ export async function publishGeneratedQuestions(
   // this run before promoting the new one. A no-op, not an error, the first time a run ever
   // publishes a generation.
   await client.query("update objective_evidence_generations set is_current = false where run_id = $1 and is_current = true", [runId]);
-  const generation = await client.query<{ id: string }>(
-    `insert into objective_evidence_generations (tenant_id, run_id, variables_truncated, pooled_count, used_count, is_current)
-     values ($1, $2, $3, $4, $5, true)
-     returning id`,
-    [tenantId, runId, variablesTruncated, pooledCount, usedCount],
-  );
+  // CE-6 (migration 0123): the methodology the plan followed, and approved lines kept like edited ones.
+  const plan = await planColumnsAvailable(client);
+  const generation = plan
+    ? await client.query<{ id: string }>(
+        `insert into objective_evidence_generations (tenant_id, run_id, variables_truncated, pooled_count, used_count, is_current, methodology_state, methodology_sha)
+         values ($1, $2, $3, $4, $5, true, $6, $7)
+         returning id`,
+        [tenantId, runId, variablesTruncated, pooledCount, usedCount, methodology?.state ?? null, methodology?.state === "stated" ? methodology.sha : null],
+      )
+    : await client.query<{ id: string }>(
+        `insert into objective_evidence_generations (tenant_id, run_id, variables_truncated, pooled_count, used_count, is_current)
+         values ($1, $2, $3, $4, $5, true)
+         returning id`,
+        [tenantId, runId, variablesTruncated, pooledCount, usedCount],
+      );
   const generationId = generation.rows[0].id;
   // excluded = false here for the same reason as before this pass: an excluded row must
   // survive the sweep that clears untouched auto rows, not just keep its item out of the
   // drafting loop in generateEvidenceQuestions.
-  await client.query("delete from objective_evidence where run_id = $1 and source = 'auto' and excluded = false", [runId]);
+  await client.query(
+    `delete from objective_evidence where run_id = $1 and source = 'auto' and excluded = false${plan ? " and approved_revision is null" : ""}`,
+    [runId],
+  );
   let created = 0;
   for (const { item, qs } of drafted) {
     for (const q of qs) {
@@ -1443,6 +1487,9 @@ export async function editEvidenceQuestion(
     );
     // an edit clears the old answers; they are read again on the next run
     if (changedWording) await client.query("delete from objective_evidence_results where evidence_id = $1 and run_id = $2", [id, runId]);
+    // CE-6: an excluded line leaves the plan, so its approval goes with it. An edit keeps the approval
+    // record at the old revision, which reads as "changed since approval" until approved again.
+    if (patch.excluded === true) await withdrawApprovalOnExclusion(client, runId, id);
   });
 }
 

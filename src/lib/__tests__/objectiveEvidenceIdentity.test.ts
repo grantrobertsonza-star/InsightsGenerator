@@ -64,6 +64,8 @@ function fakeClient() {
       if (s.startsWith("select id, item_kind, item_order, objective_candidate_id")) return { rows: world.evidence };
       if (s.includes("from objective_evidence_results")) return { rows: world.results };
       if (s.includes("from objective_evidence_generations")) return { rows: [] };
+      // CE-6 (migration 0123) is not part of this fixture: its catalogue check finds no plan columns.
+      if (s.includes("from information_schema.columns")) return { rows: [{ n: 0 }] };
       throw new Error(`unhandled read-only fake query: ${sql}`);
     },
   };

@@ -27,6 +27,7 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: vi.fn() }));
 vi.mock("../verifyAfterGenerate", () => ({ verifyAfterGenerate: vi.fn(async () => {}) }));
+vi.mock("@/lib/analysisPlan", async () => await import("../analysisPlan"));
 vi.mock("@/lib/db", async () => await import("../db"));
 vi.mock("@/lib/sourceAttribution", async () => await import("../sourceAttribution"));
 vi.mock("@/lib/findingWording", async () => await import("../findingWording"));

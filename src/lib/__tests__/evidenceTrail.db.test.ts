@@ -80,11 +80,31 @@ describe.skipIf(!TEST_DATABASE_URL)("CE-5 evidence trail of a recommendation", (
     const nodes = flat(t.root);
     expect(nodes.find((n) => n.kind === "data")).toMatchObject({ label: '"Fees were the main reason I left."', details: ["base: 200", "share pct: 41"] });
     expect(nodes.find((n) => n.kind === "source")!.label).toBe("exit-interviews.pdf, p. 4");
-    expect(nodes.find((n) => n.kind === "finding")!.details).toEqual(["Origin: stated", "Verdict: robust"]);
+    expect(nodes.find((n) => n.kind === "finding")!.details).toEqual(["Origin: stated", "Verdict: robust", "Route: Stated"]);
   });
 
   // B37-F01 (Codex): rejecting the only finding broke the insight and finding in the trail, but its
   // objective still read "Coverage: answered", current, with no note.
+  // CE-6: a finding committed from a table moved from the analysis plan is "planned"; the trail shows the
+  // plan line and the objective it was planned for, after the finding's data point.
+  it("CE-6: a planned finding shows its plan line and objective in the trail", async () => {
+    const p = await project();
+    const data = await id("insert into documents(tenant_id,run_id,kind,source_filename,storage_path,ingestion_type) values($1,$2,'table','survey.csv','x','raw') returning id", [tenant, p.run]);
+    const line = { evidenceId: "00000000-0000-0000-0000-000000000001", revision: 2, approvedRevision: 2, question: "Do women buy more than men?", itemKind: "objective", itemText: "Understand why members leave", objectiveCandidateId: null, decisionCandidateId: null };
+    const table = await id("insert into document_tables(tenant_id,run_id,document_id,table_index,ingestion_type,crosstab,crosstab_status,plan_line) values($1,$2,$3,1000,'aggregated','{}','committed',$4) returning id", [tenant, p.run, data, JSON.stringify(line)]);
+    await q("update findings set origin = 'generated', source_table_id = $2, source_document_id = null where id = $1", [p.finding, table]);
+    const t = await trail(p.run, p.rec);
+    const finding = flat(t.root).find((n) => n.kind === "finding")!;
+    expect(finding.details).toContain("Route: Planned");
+    const plan = finding.children.find((n) => n.kind === "plan")!;
+    expect(plan).toMatchObject({ label: "Do women buy more than men?", state: "current", details: ["For the objective: Understand why members leave", "Approved in the analysis plan"] });
+    expect(finding.children[0].kind).toBe("data");
+    // Moved before it was approved at this wording: shown, with a caution.
+    await q("update document_tables set plan_line = jsonb_set(plan_line, '{approvedRevision}', 'null') where id = $1", [table]);
+    const unapproved = flat((await trail(p.run, p.rec)).root).find((n) => n.kind === "plan")!;
+    expect(unapproved).toMatchObject({ state: "caution", note: expect.stringMatching(/not approved at this wording/) });
+  });
+
   it("B37-F01: rejecting the sole finding makes the objective it answered not current in the trail, saying why", async () => {
     const p = await project();
     await decide(p.rec, p.decision);

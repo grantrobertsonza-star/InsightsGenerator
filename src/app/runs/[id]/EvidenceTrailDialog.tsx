@@ -12,6 +12,7 @@ const KIND: Record<TrailNodeKind, { label: string; accent: string }> = {
   insight: { label: "Insight", accent: "bg-sky-600" },
   pre_insight: { label: "Pre-insight", accent: "bg-cyan-600" },
   finding: { label: "Finding", accent: "bg-teal-600" },
+  plan: { label: "Plan line", accent: "bg-lime-700" },
   data: { label: "Data point", accent: "bg-emerald-600" },
   source: { label: "Source", accent: "bg-slate-500" },
 };

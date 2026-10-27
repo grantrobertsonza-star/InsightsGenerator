@@ -14,6 +14,7 @@ import {
   type ItemEvidence,
 } from "./objectiveEvidence";
 import { requireTenantId } from "./requestContext";
+import { planMethodologyNote, promoteApprovedPlanTables, promoteEvidenceTable, setPlanLineApproval } from "./analysisPlan";
 
 type Fail = { ok: false; error: string };
 
@@ -53,7 +54,11 @@ function explain(error: unknown): string {
 export async function loadObjectiveEvidenceAction(
   runId: string,
 ): Promise<
-  | { ok: true; questions: EvidenceQuestion[]; items: ItemEvidence[]; variablesTruncated: boolean | null; originAvailable: boolean; remaining: number }
+  | {
+      ok: true; questions: EvidenceQuestion[]; items: ItemEvidence[]; variablesTruncated: boolean | null; originAvailable: boolean; remaining: number;
+      /** CE-6: whether line approval can be read (migration 0123), and the plan's methodology note. */
+      planAvailable: boolean; planMethodologyNote: string | null;
+    }
   | Fail
 > {
   const TENANT_ID = await requireTenantId();
@@ -75,9 +80,12 @@ export async function loadObjectiveEvidenceAction(
     // questions, and grouping/orphan classification here is pure over that returned data.
     // originAvailable = false (migration 0095 not applied) is passed through so the panel can say
     // so; a failed read throws into the catch below, never an empty or all-orphaned success.
-    const { questions, variablesTruncated, currentItems, originAvailable, remaining } = await loadObjectiveEvidenceWithCoverage(TENANT_ID, runId);
+    const { questions, variablesTruncated, currentItems, originAvailable, remaining, planMethodology } = await loadObjectiveEvidenceWithCoverage(TENANT_ID, runId);
     const currentKeys = new Set(currentItems.map(currentItemKey));
-    return { ok: true, questions, items: rollUp(questions, currentKeys), variablesTruncated, originAvailable, remaining };
+    return {
+      ok: true, questions, items: rollUp(questions, currentKeys), variablesTruncated, originAvailable, remaining,
+      planAvailable: planMethodology.state !== "unknown", planMethodologyNote: planMethodologyNote(planMethodology),
+    };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }
@@ -146,14 +154,9 @@ export async function retryObjectiveEvidenceAction(runId: string, id?: string): 
 export async function promoteEvidenceTableAction(runId: string, tableId: string): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    const moved = await withTenant(TENANT_ID, async (client) => {
-      const r = await client.query(
-        "update document_tables set crosstab_status = 'draft' where id = $1 and run_id = $2 and crosstab_status = 'evidence' returning id",
-        [tableId, runId],
-      );
-      return r.rows.length;
-    });
-    if (moved === 0) return { ok: false, error: "That table is already in Cross tabs." };
+    // CE-6: the plan line the table answers is recorded on it, so its findings are "planned".
+    const moved = await withTenant(TENANT_ID, (client) => promoteEvidenceTable(client, runId, tableId));
+    if (!moved) return { ok: false, error: "That table is already in Cross tabs." };
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
   } catch (error) {
@@ -191,6 +194,36 @@ export async function listEvidenceTablesAction(
       return r.rows;
     });
     return { ok: true, tables };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+const isLineList = (v: unknown): v is { id: string; expectedRevision: number }[] =>
+  Array.isArray(v) && v.length <= 500 && v.every((x) => x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string" && Number.isInteger((x as { expectedRevision?: unknown }).expectedRevision));
+
+/** CE-6: approves plan lines at the wording shown (or withdraws approval). All or nothing. */
+export async function setPlanLineApprovalAction(runId: string, lines: unknown, approve: unknown): Promise<{ ok: true; changed: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
+  if (!isLineList(lines) || typeof approve !== "boolean") return { ok: false, error: "The plan lines to approve were not understood. Reload and try again." };
+  try {
+    return { ok: true, ...(await setPlanLineApproval(TENANT_ID, runId, lines, approve)) };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+/** CE-6: moves every approved line's table for one data file into Cross tabs, with its line recorded. */
+export async function promoteApprovedPlanTablesAction(
+  runId: string,
+  documentId: string,
+): Promise<{ ok: true; moved: number; alreadyInCrossTabs: number; withoutTable: number; approved: number } | Fail> {
+  const TENANT_ID = await requireTenantId();
+  if (typeof documentId !== "string" || !documentId) return { ok: false, error: "Choose a data file." };
+  try {
+    const r = await promoteApprovedPlanTables(TENANT_ID, runId, documentId);
+    if (r.moved > 0) revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }
