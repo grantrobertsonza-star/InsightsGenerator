@@ -101,9 +101,14 @@ XLSForm `relevant` expressions are kept as text only.
    that code and drop them from the base (every 4 became 2, "Refused": base 35 instead of 47). The engine
    gives the reason per battery (`reversalProblem`, `_reversal_problem`) and the Data quality panel shows
    it instead of the Reverse button. Non-answer codes outside the range (9, 99) and blanks are kept as they
-   were. A stored reversal is checked again on every read (`_reversal_collisions`): if the file's labels or
-   missing declarations have changed so a non-answer now lies inside the scale, the derived variable is not
-   built and any use of it fails with the reason; undo recovers. Tables that used
+   were. A stored reversal is checked again on every read with the same rule (`_reversal_problem`, Codex's
+   replay of B42-F01, batch 46R2): the item's scale now (its labelled answer codes in the confirmed range
+   plus the codes it holds there) must still be every whole number of that range with no non-answer
+   inside it, or the derived variable is not built and any use of it fails with the reason (a file
+   replaced by one whose scale is 1, 3, 4, 5 no longer turns every 4 into a code 2 the scale lacks); undo
+   recovers. A scale's points, at confirmation and on read, are the codes used plus its labelled answer
+   codes in range (`_battery_scale_points`), so a fully labelled 1 to 5 scale on which nobody chose 2 is
+   still full; an unlabelled item on which nobody chose a middle point reads as a gap and is refused. Tables that used
    the derived variable depend on the source's corrections (`correctionsFor`), so a change or undo marks
    them changed. The respondent check flags a respondent giving the same answer across items worded in
    opposite directions. Not yet: the always-shown preview and the single Variables editor.

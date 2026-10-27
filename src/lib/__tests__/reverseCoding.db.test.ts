@@ -93,7 +93,7 @@ print(json.dumps({"n": n, "original": count(cols["Q1_3"]), "reversed": count([6 
  * designed(); in the first two, every 2 is a refusal. Returns the base, sum and mean of the valid answers
  * of Q1_3 by plain arithmetic, so the original variable can be checked to stay intact.
  */
-function internalNonAnswer(variant: "declared" | "labelled" | "gap"): { bytes: Buffer; base: number; sum: number } {
+function internalNonAnswer(variant: "declared" | "labelled" | "gap" | "unchosen"): { bytes: Buffer; base: number; sum: number } {
   const dir = mkdtempSync(path.join(tmpdir(), "reverse-internal-"));
   const out = path.join(dir, "battery.sav");
   const script = String.raw`
@@ -108,13 +108,15 @@ for j in range(1, 6):
         v = min(5, max(1, base + ((i + j) % 3) - 1))
         if j == 3:
             v = 6 - v
-        if variant == "gap" and v == 2:
+        if variant in ("gap", "unchosen") and v == 2:
             v = 3
         col.append(float(v))
     cols[f"Q1_{j}"] = col
 cols["Q1_3"][0] = 9.0
 if variant == "gap":
     scale = {1.0: "Strongly disagree", 3.0: "Neither", 4.0: "Agree", 5.0: "Strongly agree", 9.0: "Don't know"}
+elif variant == "unchosen":
+    scale = {1.0: "Strongly disagree", 2.0: "Disagree", 3.0: "Neither", 4.0: "Agree", 5.0: "Strongly agree", 9.0: "Don't know"}
 else:
     scale = {1.0: "Strongly disagree", 2.0: "Refused", 3.0: "Neither", 4.0: "Agree", 5.0: "Strongly agree", 9.0: "Don't know"}
 names = ["ID"] + [f"Q1_{j}" for j in range(1, 6)]
@@ -289,7 +291,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("import step 3: reverse-coded 
     await q("update documents set storage_path = $2 where id = $1", [doc, key]);
     const { loadCategories, buildCrosstab } = await import("../crosstabs");
     await expect(loadCategories(tenant, run, doc, "Q1_3_r")).rejects.toThrow(
-      /Q1_3_r \(from Q1_3\) could not be built: Code 2 \(labelled "Refused"\) lies inside its scale 1 to 5, so reversing would turn valid answers into it/,
+      /Q1_3_r \(from Q1_3\) could not be built: Code 2 \(labelled "Refused"\) lies inside the scale 1 to 5, so turning the scale around would move valid answers onto a non-answer code\. Undo the reversal/,
     );
     const before = (await q("select count(*)::int as n from document_tables where document_id = $1", [doc]))[0].n;
     await expect(buildCrosstab(tenant, run, doc, { columnVars: [], rowItems: [{ key: "Q1_3_r", label: "r", vars: ["Q1_3_r"] }], weightVar: null } as never)).rejects.toThrow(/could not be built/);
@@ -298,5 +300,46 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("import step 3: reverse-coded 
     expect(await (await actions()).removeReversalAction(run, doc, "Q1_3")).toMatchObject({ ok: true, removed: true });
     await expect(loadCategories(tenant, run, doc, "Q1_3_r")).rejects.toThrow();
     expect((await loadCategories(tenant, run, doc, "Q1_3")).categories.length).toBeGreaterThan(2);
+  });
+
+  // Codex B42-F01 replay (S1): a stored reversal applied to a file whose scale now has a gap (1, 3, 4, 5;
+  // no non-answer inside it) was still built: every 4 became 2, a code the scale no longer has, with no
+  // label and no refusal. The same rule as confirmation now decides it on every read.
+  it("B42-F01 replay: a stored reversal whose scale now has a gap is not built, says why, saves no table, and undo recovers", async () => {
+    const doc = await file(designed(false).bytes);
+    expect(await (await actions()).confirmReversalAction(run, doc, "Q1_3")).toEqual({ ok: true, derived: "Q1_3_r" });
+    const key = `${tenant}/${run}/${randomUUID()}-gap.sav`;
+    storage.objects.set(key, internalNonAnswer("gap").bytes);
+    await q("update documents set storage_path = $2 where id = $1", [doc, key]);
+    const { loadCategories, buildCrosstab } = await import("../crosstabs");
+    await expect(loadCategories(tenant, run, doc, "Q1_3_r")).rejects.toThrow(
+      /Q1_3_r \(from Q1_3\) could not be built: Its answers \(1, 3, 4, 5\) are not every whole number from 1 to 5, so the scale has no single mirror\. Undo the reversal/,
+    );
+    const before = (await q("select count(*)::int as n from document_tables where document_id = $1", [doc]))[0].n;
+    await expect(buildCrosstab(tenant, run, doc, { columnVars: [], rowItems: [{ key: "Q1_3_r", label: "r", vars: ["Q1_3_r"] }], weightVar: null } as never)).rejects.toThrow(/no single mirror/);
+    expect((await q("select count(*)::int as n from document_tables where document_id = $1", [doc]))[0].n).toBe(before);
+    // The original is unaffected and reads normally.
+    const original = (await loadCategories(tenant, run, doc, "Q1_3")).categories.map((c) => c.label);
+    expect(original).toEqual(expect.arrayContaining(["Strongly disagree", "Neither", "Agree", "Strongly agree"]));
+    // Recovery: undo removes the reversal; the derived name is no longer offered and nothing fails on the original.
+    expect(await (await actions()).removeReversalAction(run, doc, "Q1_3")).toMatchObject({ ok: true, removed: true });
+    expect(await (await actions()).confirmReversalAction(run, doc, "Q1_3")).toMatchObject({ ok: false, error: expect.stringMatching(/no single mirror\. Nothing was saved\.$/) });
+    expect((await stored(doc)).Q1_3?.reverse).toBeUndefined();
+  });
+
+  it("control: a fully labelled scale on which nobody chose 2 is a full scale, at confirmation and on every read", async () => {
+    // The labels define the scale's points (1 to 5, "Disagree" included), so the unused point is not a
+    // gap: confirmation and the stored reversal agree, and the reversal is built (5 becomes 1, 3 stays 3).
+    const doc = await file(internalNonAnswer("unchosen").bytes);
+    expect((await quality(doc)).straightlining.grids.find((g) => g.stem === "Q1")!.reversalProblem).toBeNull();
+    expect(await (await actions()).confirmReversalAction(run, doc, "Q1_3")).toEqual({ ok: true, derived: "Q1_3_r" });
+    expect((await stored(doc)).Q1_3.reverse).toMatchObject({ min: 1, max: 5 });
+    const { loadCategories } = await import("../crosstabs");
+    const counts = async (v: string) => Object.fromEntries((await loadCategories(tenant, run, doc, v)).categories.map((c) => [c.label, c.n]));
+    const original = await counts("Q1_3");
+    const reversed = await counts("Q1_3_r");
+    expect(reversed["Strongly disagree"]).toBe(original["Strongly agree"]);
+    expect(reversed["Neither"]).toBe(original["Neither"]);
+    expect(reversed["Agree"] ?? 0).toBe(0); // nobody answered 2 ("Disagree"), so nobody is at 4 after reversal
   });
 });

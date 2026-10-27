@@ -1890,14 +1890,20 @@ def _reversal_collisions(lo, hi, value_labels, missing_ranges):
     return sorted(out.items())
 
 
-def _reversal_problem(points, value_labels_by_item, missing_by_item, items):
-    """Why a battery's scale cannot be reversed faithfully, or None. Its usable points must be every whole
-    number from the lowest to the highest (a scale with a gap, 1, 3, 4, 5, has no single mirror), and no
-    non-answer code may sit inside that range (_reversal_collisions). Checked when an item is confirmed
-    (the respondent check reports it per battery) and, through _reversal_collisions, again whenever a
-    stored reversal is applied, in case the file's declarations changed since."""
-    pts = sorted(int(p) for p in points)
-    lo, hi = pts[0], pts[-1]
+def _reversal_problem(points, value_labels_by_item, missing_by_item, items, lo=None, hi=None):
+    """Why a scale cannot be reversed faithfully, or None: the one rule for confirming a reversal and for
+    applying a stored one. Its usable points must be every whole number from the lowest to the highest (a
+    scale with a gap, 1, 3, 4, 5, has no single mirror: 4 would become 2, a code the scale does not have),
+    and no non-answer code may sit inside that range (_reversal_collisions: valid answers would land on
+    it and leave the base). At confirmation the range is the battery's own (lo and hi omitted, taken from
+    its points). For a stored reversal (_apply_reversals) the range is the one confirmed (lo, hi), and the
+    points are the item's scale as the file has it now, so a file replaced or relabelled since is checked
+    on every read (Codex B42-F01, batch 46R and its replay)."""
+    pts = sorted({int(p) for p in points})
+    if not pts:
+        return "it has no answers on a scale"
+    lo = pts[0] if lo is None else int(lo)
+    hi = pts[-1] if hi is None else int(hi)
     for item in items:
         clashes = _reversal_collisions(lo, hi, value_labels_by_item.get(item), missing_by_item.get(item))
         if clashes:
@@ -1907,6 +1913,23 @@ def _reversal_problem(points, value_labels_by_item, missing_by_item, items):
     if pts != list(range(lo, hi + 1)):
         return f"its answers ({', '.join(str(p) for p in pts)}) are not every whole number from {lo} to {hi}, so the scale has no single mirror"
     return None
+
+
+def _battery_scale_points(grid, meta):
+    """A battery's scale points for the reversal rule: the codes its items hold, plus the labelled answer
+    codes (not non-answers) inside that range, so a fully labelled 1 to 5 scale on which nobody happened
+    to choose 2 is still a full scale. The same definition as a stored reversal's points now
+    (_apply_reversals), so confirming and applying cannot disagree about one file."""
+    pts = {float(p) for p in grid["points"]}
+    if not pts:
+        return pts
+    lo, hi = min(pts), max(pts)
+    for item in grid["items"]:
+        for k, v in ((getattr(meta, "variable_value_labels", None) or {}).get(item) or {}).items():
+            n = _num_or_none(k)
+            if n is not None and lo <= n <= hi and float(n).is_integer() and not _DK_RE.match(str(v).strip()):
+                pts.add(float(n))
+    return pts
 
 
 def _apply_reversals(df, meta, reversals):
@@ -1947,16 +1970,6 @@ def _apply_reversals(df, meta, reversals):
             problems.append({"derived": derived, "variable": src, "reason": f"The file already has a column named {derived}."})
             continue
         lo, hi = r["min"], r["max"]
-        # Checked on every read, not only at confirmation: the file's value labels or missing declarations
-        # can change after a reversal was confirmed (a corrected codebook), and a reversal that now moves
-        # valid answers onto a non-answer code must not be built (Codex B42-F01).
-        clashes = _reversal_collisions(lo, hi, vlabels.get(src), missing.get(src) if isinstance(missing, dict) else None)
-        if clashes:
-            code, why = clashes[0]
-            problems.append({"derived": derived, "variable": src, "reason": (
-                f"Code {int(code)} ({why}) lies inside its scale {int(lo)} to {int(hi)}, so reversing would turn valid answers into it. "
-                "Undo the reversal, or correct what that code means, and confirm it again.")})
-            continue
         num = pd.to_numeric(df[src], errors="coerce")
         present = df[src].notna() & (df[src].astype(str).str.strip() != "")
         if (present & num.isna()).any():
@@ -1964,6 +1977,22 @@ def _apply_reversals(df, meta, reversals):
             continue
         vals = num.to_numpy(dtype=float)
         on_scale = (~np.isnan(vals)) & (vals >= lo) & (vals <= hi) & (np.mod(vals, 1) == 0)
+        # Checked on every read, not only at confirmation, with the same rule (_reversal_problem): the file
+        # can be replaced or relabelled after a reversal was confirmed (a corrected codebook, a new wave).
+        # The item's scale now is its labelled answer codes in the confirmed range (non-answers excluded)
+        # and the whole-number codes it actually holds there. A code inside the range that is now a
+        # non-answer, or a point the scale no longer has, means the reversal no longer fits: it is not
+        # built, and using it fails with the reason (Codex B42-F01 and its replay). An unlabelled item on
+        # which nobody chose a middle point reads as a gap too: refused, never guessed.
+        item_labels = vlabels.get(src) or {}
+        labelled = [float(k) for k, v in item_labels.items() if _num_or_none(k) is not None and lo <= float(k) <= hi
+                    and float(k).is_integer() and not _DK_RE.match(str(v).strip())]
+        points_now = set(labelled) | set(vals[on_scale].tolist())
+        problem = _reversal_problem(points_now, {src: item_labels}, {src: missing.get(src) if isinstance(missing, dict) else None}, [src], lo, hi)
+        if problem:
+            problems.append({"derived": derived, "variable": src, "reason": (
+                f"{problem[0].upper()}{problem[1:]}. Undo the reversal, or correct the item's scale, and confirm it again.")})
+            continue
         out = np.where(on_scale, (lo + hi) - vals, vals)
         df[derived] = out
         base = labels.get(src) or src
@@ -3244,7 +3273,7 @@ def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> di
             "reversedStraightliners": int(contradictory.sum()) if reversed_items and len(reversed_items) < len(g["items"]) else None,
             "reversalSuggestions": _reversal_suggestions(sub, valid, g, getattr(meta, "column_names_to_labels", None) or {}),
             # Why this battery's items cannot be reversed (gap in the scale, a non-answer code inside it), or null.
-            "reversalProblem": _reversal_problem(g["points"], getattr(meta, "variable_value_labels", None) or {}, getattr(meta, "missing_ranges", None) or {}, g["items"]),
+            "reversalProblem": _reversal_problem(_battery_scale_points(g, meta), getattr(meta, "variable_value_labels", None) or {}, getattr(meta, "missing_ranges", None) or {}, g["items"]),
         })
     straight_flag = (straight_cases >= RQ_STRAIGHTLINED_BATTERIES) & (straight_cases * 2 >= eligible_cases)
     for i in np.flatnonzero(straight_flag):
