@@ -31,10 +31,10 @@ test("the sidebar's stages, Objectives tabs, split Cross tabs and Analytics, and
   // 2. Groups in order.
   const menu = page.locator("#run-nav-slot");
   await expect(menu.getByLabel("Current project")).toHaveValue(run.id);
-  expect(await menu.getByRole("group").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Prepare", "Analyse", "Develop findings", "Deliver", "Tools"]);
+  expect(await menu.getByRole("group").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["Project", "Prepare", "Analyse", "Develop findings", "Deliver", "Tools"]);
   const labels = await menu.locator("[data-nav-label]").allInnerTexts();
-  // Each stage opens with its overview (Grant, 2026-10-23).
-  expect(labels.slice(0, 16)).toEqual(["Prepare overview", "Import data", "Research quality", "Objectives", "Business decisions", "Analyse overview", "Cross tabs", "Analytics", "Coding", "Secondary analysis", "Develop overview", "Findings", "Insights", "Deliver overview", "Recommendations", "Insights report"]);
+  // The project's own overview first (Grant, 2026-10-27), then each stage opens with its overview (2026-10-23).
+  expect(labels.slice(0, 17)).toEqual(["Project overview", "Prepare overview", "Import data", "Research quality", "Objectives", "Business decisions", "Analyse overview", "Cross tabs", "Analytics", "Coding", "Secondary analysis", "Develop overview", "Findings", "Insights", "Deliver overview", "Recommendations", "Insights report"]);
 
   // 3. Objectives: one entry, two tabs, highlighted on both.
   const objectives = menu.getByRole("button", { name: /^Objectives$/ });

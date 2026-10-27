@@ -102,11 +102,13 @@ export function RunSectionProvider({
   const storageKey = () => `run-section:${window.location.pathname}`;
   const usable = (id: string | null): id is string => !!id && (!validIds || validIds.includes(id));
   const readStartSection = () => {
-    // A link naming a section (?section=, from the main dashboard's next step) opens it; otherwise
-    // the one remembered for this run, so a reload (or the refresh after saving) returns to where
-    // you were instead of the default section.
+    // A link naming a section (?section=, from the main dashboard's next step) opens it. Otherwise a
+    // project always opens on its overview (Grant, 27 October 2026: "When I open a project, it jumps to
+    // different pages"), except when this page itself is reloaded: then it returns to where you were.
+    // (A refresh after saving does not remount this, so the choice in `chosen` stays.)
     const linked = new URLSearchParams(window.location.search).get("section");
     if (usable(linked)) return linked;
+    if (!reloadOfThisPage()) return null;
     try {
       const saved = window.sessionStorage.getItem(storageKey());
       return usable(saved) ? saved : null;
@@ -141,6 +143,20 @@ export function RunSectionProvider({
       {children}
     </RunSectionContext.Provider>
   );
+}
+
+/**
+ * True when the browser loaded this document by reloading this same address. Opening the project from
+ * the dashboard or the project list is a client-side move from another page, whose document entry names
+ * that page, so it is not a reload of this one. No entry (an old browser): not a reload.
+ */
+function reloadOfThisPage(): boolean {
+  try {
+    const entry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    return !!entry && entry.type === "reload" && new URL(entry.name).pathname === window.location.pathname;
+  } catch {
+    return false;
+  }
 }
 
 /** Switches the run to another section from any client component inside the provider. */

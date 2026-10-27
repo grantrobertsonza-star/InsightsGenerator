@@ -38,10 +38,11 @@ export const CROSSTAB_STATE_NOTE: Record<Exclude<CrosstabDatasetState, "ready">,
 };
 
 /**
- * The file shown first: the one used last in this project when it is still listed, else the first
+ * The file shown first: the one used last in this project when it is still listed, else the latest
+ * wave of a tracking study when it can be opened (waves.ts decides which is latest), else the first
  * file the workspace can open, else the first file. Null when there are none.
  */
-export function initialCrosstabDataset(datasets: readonly { id: string; state: CrosstabDatasetState }[], lastUsed: string | null): string | null {
+export function initialCrosstabDataset(datasets: readonly { id: string; state: CrosstabDatasetState; latestWave?: boolean }[], lastUsed: string | null): string | null {
   if (lastUsed && datasets.some((d) => d.id === lastUsed)) return lastUsed;
-  return (datasets.find((d) => d.state === "ready") ?? datasets[0])?.id ?? null;
+  return (datasets.find((d) => d.latestWave && d.state === "ready") ?? datasets.find((d) => d.state === "ready") ?? datasets[0])?.id ?? null;
 }

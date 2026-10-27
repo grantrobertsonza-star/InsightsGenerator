@@ -79,7 +79,9 @@ test("a layout chosen while the page loads is held, and one chosen after loading
     await held;
     await route.continue().catch(() => {});
   });
-  await page.goto(runUrl, { waitUntil: "commit" });
+  // The Import section by its link (a project opens on its overview), rendered on the server, so the
+  // control is there before the scripts load.
+  await page.goto(`${runUrl}?section=upload`, { waitUntil: "commit" });
   await expect(layout()).toBeAttached({ timeout: 60_000 });
   await expect(layout()).toBeDisabled();
   await expect(page.getByTestId("setup-loading").first()).toBeAttached();

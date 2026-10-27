@@ -18,7 +18,7 @@ export function findingSourceSql(alias: string): { join: string; columns: string
       `left join documents src_doc on src_doc.id = coalesce(${alias}.source_document_id, src_dt.document_id)`,
     columns:
       `src_doc.source_filename as source_filename, ${alias}.source_page as source_page, ` +
-      `src_dt.label as source_table_label`,
+      `src_dt.label as source_table_label, nullif(btrim(src_doc.data_setup->>'wave'), '') as source_wave`,
   };
 }
 
@@ -26,12 +26,14 @@ export type FindingSource = {
   source_filename: string | null;
   source_page: number | null;
   source_table_label?: string | null;
+  /** The data file's wave label, when it is a wave of a tracking study (data set-up). */
+  source_wave?: string | null;
 };
 
-/** "survey.xlsx, Table 3" / "report.pdf, p. 4" / null when no source file is recorded. */
+/** "survey.xlsx, Table 3" / "wave2.sav (Wave 2), Table 3" / "report.pdf, p. 4" / null when no source file is recorded. */
 export function formatFindingSource(s: FindingSource): string | null {
   if (!s.source_filename) return null;
-  const parts = [s.source_filename];
+  const parts = [s.source_wave ? `${s.source_filename} (${s.source_wave})` : s.source_filename];
   if (s.source_table_label && s.source_table_label.trim()) parts.push(s.source_table_label.trim());
   if (s.source_page !== null && s.source_page !== undefined) parts.push(`p. ${s.source_page}`);
   return parts.join(", ");

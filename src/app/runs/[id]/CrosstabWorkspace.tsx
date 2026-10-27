@@ -281,7 +281,8 @@ export default function CrosstabWorkspace({
   // than rebuilt by hand. Silent when the run has no wave-labelled files at all.
   useEffect(() => {
     listWaveFilesAction(runId).then((r) => {
-      if (r.ok) setWaveFiles(r.files);
+      // Any labelled wave can be copied from, including one left out of wave tracking.
+      if (r.ok) setWaveFiles([...r.files, ...r.excluded]);
     });
   }, [runId]);
   const otherWaves = waveFiles.filter((w) => w.documentId !== documentId);

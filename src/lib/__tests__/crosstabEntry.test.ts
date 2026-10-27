@@ -28,4 +28,10 @@ describe("the file Cross tabs opens first", () => {
     expect(initialCrosstabDataset([{ id: "agg", state: "aggregated" }], null)).toBe("agg");
     expect(initialCrosstabDataset([], "a")).toBeNull();
   });
+  it("with no file used last, opens the latest wave of a tracker when it can be opened", () => {
+    const waves = [{ id: "w1", state: "ready" as const }, { id: "w2", state: "ready" as const, latestWave: true }];
+    expect(initialCrosstabDataset(waves, null)).toBe("w2");
+    expect(initialCrosstabDataset(waves, "w1")).toBe("w1");
+    expect(initialCrosstabDataset([{ id: "w1", state: "ready" as const }, { id: "w2", state: "needs_setup" as const, latestWave: true }], null)).toBe("w1");
+  });
 });

@@ -80,9 +80,9 @@ describe("runWaveNpsAction preserves per-wave design metadata (overnight queue, 
       .mockResolvedValueOnce({ ok: true, result: wave3 });
 
     const files: WaveFile[] = [
-      { documentId: "doc-1", filename: "w1.csv", wave: "Wave 1", uploadedAt: "2026-01-01" },
-      { documentId: "doc-2", filename: "w2.csv", wave: "Wave 2", uploadedAt: "2026-02-01" },
-      { documentId: "doc-3", filename: "w3.csv", wave: "Wave 3", uploadedAt: "2026-03-01" },
+      { documentId: "doc-1", filename: "w1.csv", wave: "Wave 1", waveDate: null, uploadedAt: "2026-01-01" },
+      { documentId: "doc-2", filename: "w2.csv", wave: "Wave 2", waveDate: null, uploadedAt: "2026-02-01" },
+      { documentId: "doc-3", filename: "w3.csv", wave: "Wave 3", waveDate: null, uploadedAt: "2026-03-01" },
     ];
 
     const r = await runWaveNpsAction("run-1", files, "nps", null);

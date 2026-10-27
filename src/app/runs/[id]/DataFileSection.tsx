@@ -9,6 +9,10 @@ export type DataFileOption = {
   id: string;
   filename: string;
   state: CrosstabDatasetState;
+  /** Its wave label, when it is a wave of a tracking study (data set-up). */
+  wave?: string | null;
+  /** The latest wave in the analysis (waves.ts): opened first when no file was used last. */
+  latestWave?: boolean;
   /** Tables saved for this file (drafts and committed). */
   savedTables: number;
   /** Of those, drafts not yet committed and committed tables, for the stage status. */
@@ -132,7 +136,7 @@ export default function DataFileSection({
         >
           {datasets.map((d) => (
             <option key={d.id} value={d.id}>
-              {`${d.filename}${d.state === "ready" ? "" : ` (${CROSSTAB_STATE_NOTE[d.state]})`}${d.savedTables > 0 ? `, ${d.savedTables} ${d.savedTables === 1 ? "table" : "tables"}` : ""}`}
+              {`${d.wave ? `${d.wave}: ` : ""}${d.filename}${d.state === "ready" ? "" : ` (${CROSSTAB_STATE_NOTE[d.state]})`}${d.savedTables > 0 ? `, ${d.savedTables} ${d.savedTables === 1 ? "table" : "tables"}` : ""}`}
             </option>
           ))}
         </select>

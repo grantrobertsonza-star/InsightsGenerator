@@ -16,6 +16,7 @@ type ExportRow = {
   theme: string | null;
   status: string;
   source_filename: string | null;
+  source_wave: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
   duplicate_group_id: string | null;
@@ -110,6 +111,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     "Original wording": row.original_finding_text ?? "",
     Status: row.status.charAt(0).toUpperCase() + row.status.slice(1),
     Source: row.source_filename ?? SOURCE_NOT_RECORDED,
+    Wave: row.source_wave ?? "",
     Page: row.source_page ?? "",
     "Quote verified": row.quote_verified === null ? "" : row.quote_verified ? "Yes" : "No",
     "Possible duplicate": row.duplicate_group_id ? "Yes" : "No",
@@ -129,6 +131,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     { wch: 60 }, // Original wording
     { wch: 10 }, // Status
     { wch: 30 }, // Source
+    { wch: 14 }, // Wave
     { wch: 6 },  // Page
     { wch: 14 }, // Quote verified
     { wch: 16 }, // Possible duplicate

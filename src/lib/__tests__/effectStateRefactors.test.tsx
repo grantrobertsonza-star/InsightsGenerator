@@ -190,13 +190,30 @@ describe("RunSectionProvider", () => {
     expect(storage.get(key)).toBe("analytics");
   });
 
-  it("without a link the remembered section opens; an unknown one falls back to the default", async () => {
+  // Grant, 27 October 2026: a project always opens on the same page. The remembered section returns only
+  // when this page itself is reloaded (the browser's navigation entry says "reload" for this address).
+  it("opened afresh, the default shows even with a section remembered; a reload of this page returns to it; an unknown one falls back", async () => {
+    const navigation = (type: string, name: string) =>
+      vi.spyOn(performance, "getEntriesByType").mockReturnValue([{ type, name } as unknown as PerformanceEntry]);
     storage.set(key, "import");
+    let spy = navigation("navigate", "http://app.test/runs/run-1");
+    expect((await shownSection(["dashboard", "import"])).text()).toBe("dashboard");
+    await act(() => root!.unmount());
+    root = null;
+    spy.mockRestore();
+    // A reload of the dashboard, then a move to this project: not a reload of this page.
+    spy = navigation("reload", "http://app.test/");
+    expect((await shownSection(["dashboard", "import"])).text()).toBe("dashboard");
+    await act(() => root!.unmount());
+    root = null;
+    spy.mockRestore();
+    spy = navigation("reload", "http://app.test/runs/run-1");
     expect((await shownSection(["dashboard", "import"])).text()).toBe("import");
     await act(() => root!.unmount());
     root = null;
     storage.set(key, "gone");
     expect((await shownSection(["dashboard", "import"])).text()).toBe("dashboard");
+    spy.mockRestore();
   });
 
   it("a section chosen in the page wins over the link and is remembered", async () => {

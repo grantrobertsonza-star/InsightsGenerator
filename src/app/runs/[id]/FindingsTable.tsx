@@ -69,6 +69,8 @@ type Finding = {
   theme: string | null;
   status: "pending" | "accepted" | "rejected";
   source_filename: string | null;
+  /** Its data file's wave label, when the file is a wave of a tracker (Import data). */
+  source_wave?: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
   source_document_id: string | null;
@@ -697,6 +699,7 @@ function SourceInfo({
   return (
     <div className="text-xs text-muted">
       <div className="truncate">{finding.source_filename ?? "—"}</div>
+      {finding.source_wave && <div data-testid="finding-wave">{finding.source_wave}</div>}
       {finding.source_page != null && <div>page {finding.source_page}</div>}
       {(finding.source_document_id || finding.source_table_id) && (
         <button

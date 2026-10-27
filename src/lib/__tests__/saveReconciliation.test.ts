@@ -15,6 +15,8 @@ const BASE_SETUP: DataSetup = {
   method: "survey",
   accepted: false,
   wave: null,
+  waveDate: null,
+  waveIncluded: true,
   design: null,
 };
 

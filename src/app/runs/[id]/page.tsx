@@ -106,6 +106,7 @@ import { Pane, ThreePane } from "./ThreePane";
 import SectionDashboard, { ModuleStatusBar } from "./SectionDashboard";
 import { loadProjectStageFacts, objectiveUnscoredReason } from "@/lib/projectStageFacts";
 import { SECTIONS, sectionStatuses, type ProjectStageFacts } from "@/lib/sectionStatus";
+import ProjectOverview from "./ProjectOverview";
 import { summarizeFindings, summarizeInsights } from "@/lib/evidenceOverview";
 import { summarizeRecommendations } from "@/lib/recommendationOverview";
 import RerunExtractButton from "./RerunExtractButton";
@@ -303,6 +304,8 @@ type Finding = {
   theme: string | null;
   status: "pending" | "accepted" | "rejected";
   source_filename: string | null;
+  /** The wave label of the data file the finding comes from, when it is a wave of a tracker. */
+  source_wave: string | null;
   source_page: number | null;
   quote_verified: boolean | null;
   source_document_id: string | null;
@@ -952,6 +955,7 @@ async function getFindings(runId: string): Promise<Finding[]> {
       const result = await client.query<FindingRow>(
         `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
                 coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                nullif(btrim(coalesce(d2.data_setup, d1.data_setup)->>'wave'), '') as source_wave,
                 c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
                 c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
                 c.pattern_type, c.stated_stats, c.created_at::text as created_at,
@@ -986,6 +990,7 @@ async function getFindings(runId: string): Promise<Finding[]> {
       const result = await client.query<Omit<FindingRow, "design_snapshot">>(
         `select c.id, c.origin, c.finding_text, c.finding_kind, c.theme, c.status,
                 coalesce(d1.source_filename, d2.source_filename) as source_filename,
+                nullif(btrim(coalesce(d2.data_setup, d1.data_setup)->>'wave'), '') as source_wave,
                 c.source_page, c.quote_verified, c.source_document_id, c.source_table_id,
                 c.source_cells, c.duplicate_group_id, c.researcher_note, c.data_type,
                 c.pattern_type, c.stated_stats, c.created_at::text as created_at,
@@ -3164,11 +3169,14 @@ function countOf(n: number, one: string, many = `${one}s`): string {
 
 export default async function RunPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const TENANT_ID = await requireTenantId();
   const { id } = await params;
+  const requestedSection = (await searchParams)?.section;
   // Every loader below only needs the run id, so they all run at once. They
   // used to run one after another, which meant the page waited on the sum of
   // some thirty database round trips instead of the slowest one.
@@ -4540,6 +4548,8 @@ export default async function RunPage({
                   return {
                     id: d.id,
                     filename: d.source_filename,
+                    wave: dataSetups.get(d.id)?.wave ?? null,
+                    latestWave: waveFiles.length > 0 && waveFiles[waveFiles.length - 1].documentId === d.id,
                     state,
                     savedTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100).length,
                     draftTables: (documentTablesByDocument.get(d.id) ?? []).filter((t) => t.table_index >= 100 && t.crosstab_status === "draft").length,
@@ -5102,6 +5112,8 @@ export default async function RunPage({
     // Review), switched by tabs inside them. Cross tabs and Analytics are two entries over the same
     // data files, each showing its own part of a file's launcher.
     // Each stage opens with its overview (Grant, 2026-10-23): the state of every module in it.
+    // Where a project opens (Grant, 2026-10-27): its stages and its next step.
+    { id: "project-overview", group: "Project", label: "Project overview" },
     { id: "overview-prepare", group: "Prepare", label: "Prepare overview" },
     { id: "upload", group: "Prepare", label: "Import data" },
     { id: "research-quality", group: "Prepare", label: "Research quality" },
@@ -5132,12 +5144,12 @@ export default async function RunPage({
   // is pending.
   // A new project starts with context (all optional), then data import;
   // once there are documents, the work is Findings.
-  const defaultSectionId =
-    documents.length === 0
-      ? "objective"
-      : findings.length === 0
-        ? "upload"
-        : "findings";
+  // A project always opens on its overview (Grant, 2026-10-27: "Should we not always open on the same
+  // page?"); a link naming a section, or a reload, still opens that section (RunShell).
+  // A ?section= link is rendered on the server too, so the section it names is there before the
+  // scripts load (RunShell then keeps it).
+  const knownSections = navSections.flatMap((s) => [s.id, ...(s.activeFor ?? [])]);
+  const defaultSectionId = typeof requestedSection === "string" && knownSections.includes(requestedSection) ? requestedSection : "project-overview";
 
   // The Import screen's sources (TranscriptSetup.tsx): every document, then each statistical output
   // set, with the tabs its type has after Preview and Setup. Grant, 2026-10-20, from his prototype:
@@ -5507,6 +5519,9 @@ export default async function RunPage({
         <RunNav sections={navSections} projects={projectList} currentProjectId={id} />
 
         <div className="px-6 pb-6 pt-2">
+          <SectionPanel id="project-overview">
+            <ProjectOverview sections={sectionState.ok ? sectionState.sections : null} error={sectionState.ok ? null : sectionState.error} />
+          </SectionPanel>
           {SECTIONS.map((s) => (
             <SectionPanel key={s.navId} id={s.navId}>
               <SectionDashboard

@@ -30,6 +30,12 @@ export type DataSetup = {
   /** Free text ("Wave 1", "Baseline"): which wave of a tracking study this file is. Files left blank
    * here don't show up in Wave tracking at all, so a one-off project never needs to think about it. */
   wave: string | null;
+  /** When this wave's fieldwork took place (YYYY-MM or YYYY-MM-DD); orders the waves when every wave has
+   * one (src/lib/waves.ts). null: not given, and the waves are then in upload order, said so. */
+  waveDate: string | null;
+  /** Whether this wave is in wave tracking (Grant, 27 October 2026: "toggle which data sets should be
+   * included"). Only meaningful with a wave label; true unless the researcher takes it out. */
+  waveIncluded: boolean;
   /** ANA-NPS-003 (second counter-review): the persisted survey-design choice for this document.
    * null means "never decided" (see DataDesignChoice above) - the default for every document,
    * including every one saved before this field existed. */
@@ -42,6 +48,8 @@ export const DEFAULT_DATA_SETUP: DataSetup = {
   method: "survey",
   accepted: false,
   wave: null,
+  waveDate: null,
+  waveIncluded: true,
   design: null,
 };
 
@@ -92,6 +100,21 @@ function normaliseDesign(value: unknown): DataDesignChoice | null {
   return { mode: v.mode, psu, strata };
 }
 
+/** A fieldwork date as YYYY-MM or YYYY-MM-DD (a real month and day); anything else is "not given". */
+export function normaliseWaveDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const t = value.trim();
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(t);
+  if (!m) return null;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  if (m[3] !== undefined) {
+    const d = new Date(Date.UTC(Number(m[1]), month - 1, Number(m[3])));
+    if (d.getUTCMonth() !== month - 1 || d.getUTCDate() !== Number(m[3])) return null;
+  }
+  return t;
+}
+
 export function normaliseDataSetup(value: unknown): DataSetup {
   const v = (value ?? {}) as Partial<DataSetup>;
   const wave = typeof v.wave === "string" ? v.wave.trim() : "";
@@ -101,6 +124,8 @@ export function normaliseDataSetup(value: unknown): DataSetup {
     method: v.method && v.method in METHOD_LABEL ? v.method : DEFAULT_DATA_SETUP.method,
     accepted: v.accepted === true,
     wave: wave.length > 0 ? wave : null,
+    waveDate: normaliseWaveDate(v.waveDate),
+    waveIncluded: v.waveIncluded !== false,
     design: normaliseDesign(v.design),
   };
 }

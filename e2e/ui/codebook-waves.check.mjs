@@ -11,7 +11,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as XLSX from "xlsx";
 import { openAddFiles } from "./helpers/addFiles.mjs";
-import { selectSource } from "./helpers/sources.mjs";
+import { openSourceTab, selectSource } from "./helpers/sources.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -74,7 +74,9 @@ test("a codebook shared by two waves is not matched to either by default, and ca
   await expect(page.getByText("Linked to may2026.txt and jun2026.txt").first()).toBeVisible({ timeout: 60_000 });
   if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-both.png") });
   for (const name of ["may2026.txt", "jun2026.txt"]) {
+    // Each data file names its questionnaire on its Labels and documentation tab (as import-file-detail reads it).
     await selectSource(page, name);
-    await expect(page.getByTestId("attached-instrument").filter({ visible: true }).filter({ hasText: "Poll_codebook.xlsx" })).toHaveCount(1);
+    const links = await openSourceTab(page, "Labels and documentation");
+    await expect(links.getByTestId("attached-instrument").filter({ hasText: "Poll_codebook.xlsx" })).toHaveCount(1);
   }
 });

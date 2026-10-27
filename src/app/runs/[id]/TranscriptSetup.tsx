@@ -681,6 +681,34 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
             Wave tracking.
           </p>
         </Field>
+        {choice.wave && (
+          <Field label="Fieldwork month (orders the waves)">
+            {/* Saved on change: a month picker gives a whole value, not keystrokes. Waves are ordered by
+                fieldwork once every wave has one, otherwise by upload, and Wave tracking says which. */}
+            <input
+              type="month"
+              aria-label={`Fieldwork month: ${row.filename}`}
+              disabled={!ready}
+              className={`${select} w-full`}
+              value={choice.waveDate ? choice.waveDate.slice(0, 7) : ""}
+              onChange={(e) => {
+                const next = e.target.value || null;
+                if (next === (choice.waveDate ? choice.waveDate.slice(0, 7) : null)) return;
+                void save({ ...choice, waveDate: next });
+              }}
+            />
+            <label className="mt-1.5 flex items-center gap-2 text-[11px] text-foreground">
+              <input
+                type="checkbox"
+                aria-label={`Include in wave tracking: ${row.filename}`}
+                disabled={!ready}
+                checked={choice.waveIncluded}
+                onChange={(e) => void save({ ...choice, waveIncluded: e.target.checked })}
+              />
+              Include this wave in wave tracking
+            </label>
+          </Field>
+        )}
       </div>
       <LoadingHint ready={ready} />
       {layoutChanged && !error && (

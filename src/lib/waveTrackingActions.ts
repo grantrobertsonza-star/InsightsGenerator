@@ -6,6 +6,7 @@ import { withTenant, withTenantRead } from "./db";
 import { recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
 import { normaliseDataSetup } from "./dataSetupShared";
+import { projectWaves, waveOrderText, type OrderedWave } from "./waves";
 import { runDistributionAction, type ChartResult } from "./chartActions";
 import { runNpsAction, type NpsResult, type NpsSegment } from "./npsActions";
 import { runDriverAnalysisFor, type DriverReport } from "./drivers";
@@ -14,34 +15,28 @@ import { requireTenantId } from "./requestContext";
 
 type Fail = { ok: false; error: string };
 
-export type WaveFile = { documentId: string; filename: string; wave: string; uploadedAt: string };
+export type WaveFile = OrderedWave;
 
 /**
- * Raw case-level data files in this run labelled with a wave (set on the file itself, under Import data),
- * oldest upload first. A one-off project with no file labelled this way returns an empty list, so nothing
- * about Wave tracking shows up unless the researcher has actually marked at least one file as a wave.
+ * The waves in this run's analysis (`projectWaves`): raw case-level data files labelled with a wave
+ * (set on the file itself, under Import data), those the researcher took out left out, in fieldwork
+ * order when every wave has a date and in upload order otherwise, with the basis said in words. A
+ * one-off project with no file labelled this way returns an empty list, so nothing about Wave tracking
+ * shows up unless the researcher has actually marked at least one file as a wave.
  */
-export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[] } | Fail> {
+export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[]; excluded: WaveFile[]; order: string } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const files = await withTenantRead(TENANT_ID, async (client) => {
-      const r = await client.query<{ id: string; source_filename: string; data_setup: unknown; uploaded_at: string }>(
+      const r = await client.query<{ id: string; source_filename: string; data_setup: unknown; uploaded_at: Date | string }>(
         `select id, source_filename, data_setup, uploaded_at from documents
          where run_id = $1 and kind = 'table' and ingestion_type = 'raw' and data_setup is not null
          order by uploaded_at asc`,
         [runId],
       );
-      return r.rows
-        .map((row) => ({ row, setup: normaliseDataSetup(row.data_setup) }))
-        .filter((x): x is { row: typeof x.row; setup: typeof x.setup & { wave: string } } => !!x.setup.wave)
-        .map(({ row, setup }) => ({
-          documentId: row.id,
-          filename: row.source_filename,
-          wave: setup.wave,
-          uploadedAt: row.uploaded_at,
-        }));
+      return projectWaves(r.rows.map((row) => ({ documentId: row.id, filename: row.source_filename, uploadedAt: row.uploaded_at instanceof Date ? row.uploaded_at.toISOString() : String(row.uploaded_at), setup: normaliseDataSetup(row.data_setup) })));
     });
-    return { ok: true, files };
+    return { ok: true, files: files.included, excluded: files.excluded, order: waveOrderText(files.basis) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
