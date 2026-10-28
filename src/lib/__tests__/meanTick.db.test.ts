@@ -28,6 +28,7 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 vi.mock("@/lib/db", async () => await import("../db"));
 // The export route's own modules, through the same relative paths (this suite does not resolve "@/").
 vi.mock("@/lib/crosstabMeanRows", async () => await import("../crosstabMeanRows"));
+vi.mock("@/lib/crosstabExact", async () => await import("../crosstabExact"));
 vi.mock("@/lib/crosstabSlides", async () => await import("../crosstabSlides"));
 vi.mock("@/lib/convertToPdf", async () => await import("../convertToPdf"));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

@@ -779,5 +779,176 @@ _ind = subprocess.run([sys.executable, os.path.join(HERE, "indicator_selftest.py
 print(_ind.stdout.rstrip())
 check("indicator data reader self-test (scripts/indicator_selftest.py)", _ind.returncode == 0, _ind.stderr[-400:])
 
+# CT5K-F01 (Codex, 28 October 2026): row percentages and shares of responses were divided from counts
+# already rounded to one decimal for display, so multiplying every positive weight by one constant changed
+# them (with weights of 1/1024 the selected answer's row % read 0/0/100 and a share of responses was blank
+# despite 100 unweighted cases). Expected values below are written by hand from the counts, not from the engine.
+def _rows_by(q, key="label"):
+    return {r.get(key): r for r in q["rows"] if not r.get("isBase")}
+
+def _close(a, b, tol=0.051):
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(a - b) <= tol
+
+def _all_close(a, b, tol=0.051):
+    return isinstance(a, list) and len(a) == len(b) and all(_close(x, y, tol) for x, y in zip(a, b))
+
+ra = []
+for g in range(3):
+    k_sel, k_m2 = [10, 30, 60][g], [30, 50, 70][g]
+    for i in range(100):
+        ra.append({"Y": 1.0 if i < k_sel else 2.0, "G": float(g + 1), "H": 1.0 if i % 2 == 0 else 2.0,
+                   "M_1": float(i < k_sel), "M_2": float(i < k_m2),
+                   # K_1 is chosen only in the third group; nobody chose K_2. Both answered by everyone.
+                   "K_1": float(g == 2 and i < 20), "K_2": 0.0, "W": 1.0})
+dA = pd.DataFrame(ra)
+pA = os.path.join(tempfile.mkdtemp(), "ct5k.sav")
+pyreadstat.write_sav(dA, pA, variable_value_labels={
+    # Code 3 is declared and never used: its row is kept with a zero count in every column.
+    "Y": {1: "Selected", 2: "Other", 3: "Never"}, "G": {1: "G1", 2: "G2", 3: "G3"}, "H": {1: "Even", 2: "Odd"},
+    "M_1": {0: "No", 1: "Yes"}, "M_2": {0: "No", 1: "Yes"}, "K_1": {0: "No", 1: "Yes"}, "K_2": {0: "No", 1: "Yes"}})
+bA = open(pA, "rb").read()
+
+def _ct5k(cols_, weight_scale, rows_):
+    d = dA.copy()
+    d["W"] = weight_scale
+    p = os.path.join(tempfile.mkdtemp(), "ct5k.sav")
+    pyreadstat.write_sav(d, p, variable_value_labels={
+        "Y": {1: "Selected", 2: "Other", 3: "Never"}, "G": {1: "G1", 2: "G2", 3: "G3"}, "H": {1: "Even", 2: "Odd"},
+        "M_1": {0: "No", 1: "Yes"}, "M_2": {0: "No", 1: "Yes"}, "K_1": {0: "No", 1: "Yes"}, "K_2": {0: "No", 1: "Yes"}})
+    return psf.crosstab(open(p, "rb").read(), "ct5k.sav", {"columnVars": cols_, "weightVar": "W", "correction": "none", "rowItems": rows_})
+
+ct5k_items = [
+    {"key": "Y", "label": "Y", "vars": ["Y"], "groups": [{"kind": "net", "label": "Picked", "cats": ["Selected"], "place": "end"}]},
+    {"key": "M", "label": "M", "vars": ["M_1", "M_2"], "stem": ""},
+    {"key": "K", "label": "K", "vars": ["K_1", "K_2"], "stem": ""},
+    {"key": "U", "label": "U", "kind": "nets", "vars": [], "nets": [{"label": "Any M", "vars": ["M_1", "M_2"]}]},
+]
+for scale in [1.0, 1 / 1024, 1e-6, 1000.0, 3.7]:
+    tag = f"weights x{scale:g}"
+    rt = _ct5k(["G", "H"], scale, ct5k_items)
+    qs = {q["key"]: q for q in rt["questions"]}
+    y = _rows_by(qs["Y"])
+    # G block is columns 0-2, H block columns 3-4: each row % is within its own banner variable.
+    check(f"CT5K {tag}: selected answer row % 10/30/60 (G) and 50/50 (H)", _all_close(y["Selected"]["rowPct"], [10.0, 30.0, 60.0, 50.0, 50.0]), str(y["Selected"]["rowPct"]))
+    check(f"CT5K {tag}: other answer row % 45/35/20 (G); H 50/50", _all_close(y["Other"]["rowPct"], [45.0, 35.0, 20.0, 50.0, 50.0]), str(y["Other"]["rowPct"]))
+    check(f"CT5K {tag}: column % unchanged by weight scale", _all_close(y["Selected"]["pct"], [10.0, 30.0, 60.0, 33.3, 33.3]), str(y["Selected"]["pct"]))
+    check(f"CT5K {tag}: NET row % from unrounded counts", _all_close(y["NET: Picked"]["rowPct"], [10.0, 30.0, 60.0, 50.0, 50.0]), str(y["NET: Picked"]["rowPct"]))
+    check(f"CT5K {tag}: an answer nobody gave has no row % (zero denominator, explicit None)", y["Never"]["rowPct"] == [None] * 5 and y["Never"]["pct"] == [0.0] * 5, str(y["Never"]["rowPct"]))
+    m = _rows_by(qs["M"], "variable")
+    check(f"CT5K {tag}: share of responses overall 40/60", _close(m["M_1"]["total"]["respPct"], 40.0) and _close(m["M_2"]["total"]["respPct"], 60.0), f'{m["M_1"]["total"]["respPct"]} {m["M_2"]["total"]["respPct"]}')
+    check(f"CT5K {tag}: share of responses per column (G1 25/75, G2 37.5/62.5, G3 46.2/53.8)",
+          _all_close(m["M_1"]["respPct"][:3], [25.0, 37.5, 46.2]) and _all_close(m["M_2"]["respPct"][:3], [75.0, 62.5, 53.8]), f'{m["M_1"]["respPct"]} {m["M_2"]["respPct"]}')
+    check(f"CT5K {tag}: share of responses in each banner's NET column 40/60", all(_close(nt["respPct"], 40.0) for nt in m["M_1"]["net"]) and all(_close(nt["respPct"], 60.0) for nt in m["M_2"]["net"]), str([nt["respPct"] for nt in m["M_1"]["net"]]))
+    check(f"CT5K {tag}: multi-response option row % (M_2 20/33.3/46.7)", _all_close(m["M_2"]["rowPct"][:3], [20.0, 33.3, 46.7]), str(m["M_2"]["rowPct"]))
+    k = _rows_by(qs["K"], "variable")
+    check(f"CT5K {tag}: zero-selected columns: share of responses unavailable where no option was chosen, 100/0 where one was",
+          k["K_1"]["respPct"][:3] == [None, None, 100.0] and k["K_2"]["respPct"][:3] == [None, None, 0.0], f'{k["K_1"]["respPct"]} {k["K_2"]["respPct"]}')
+    check(f"CT5K {tag}: an option chosen in one column only: row % 0/0/100; never chosen: None",
+          _all_close(k["K_1"]["rowPct"][:3], [0.0, 0.0, 100.0]) and k["K_2"]["rowPct"] == [None] * 5, f'{k["K_1"]["rowPct"]} {k["K_2"]["rowPct"]}')
+    check(f"CT5K {tag}: share of responses total with a zero option 100/0", k["K_1"]["total"]["respPct"] == 100.0 and k["K_2"]["total"]["respPct"] == 0.0)
+    u = _rows_by(qs["U"])
+    check(f"CT5K {tag}: researcher net row % 20/33.3/46.7", _all_close(u["NET: Any M"]["rowPct"][:3], [20.0, 33.3, 46.7]), str(u["NET: Any M"]["rowPct"]))
+    # The unrounded figures are saved with the result (countExact, pctExact, seExact), so figures derived
+    # in src/lib (NPS, top-box, the export's Total line) never add the display values. Hand counts below.
+    check(f"CT5K {tag}: countExact is the unrounded weighted count (10/30/60 cases x weight)",
+          _all_close(y["Selected"]["countExact"], [10 * scale, 30 * scale, 60 * scale, 50 * scale, 50 * scale], 1e-9 * max(scale, 1))
+          and abs(y["Selected"]["total"]["countExact"] - 100 * scale) <= 1e-9 * max(scale, 1), str(y["Selected"]["countExact"]))
+    check(f"CT5K {tag}: pctExact is the unrounded share (H: 50/150 = 33.333...)", _all_close(y["Selected"]["pctExact"], [10.0, 30.0, 60.0, 100 / 3, 100 / 3], 1e-9), str(y["Selected"]["pctExact"]))
+    check(f"CT5K {tag}: NET column carries countExact and pctExact", all(abs(nt["pctExact"] - 100 / 3) < 1e-9 and abs(nt["countExact"] - 100 * scale) <= 1e-9 * max(scale, 1) for nt in y["Selected"]["net"]))
+    check(f"CT5K {tag}: pctExact is null exactly where pct is", all((a is None) == (b is None) for q in rt["questions"] for r in q["rows"] if not r.get("isBase") for a, b in zip(r["pct"], r["pctExact"])))
+    check(f"CT5K {tag}: seExact rounds to se", all((a is None and b is None) or (a is not None and abs(round(b, 2) - a) < 1e-9) for a, b in zip(y["Selected"]["se"], y["Selected"]["seExact"])))
+    # Overlapping banner (a multiple-response set as columns): a case can sit in both columns; each row %
+    # divides by the sum over that banner's columns, the existing domain. Hand count: every Selected case is
+    # in both M_1 and M_2 (100 each); Other cases are only in M_2: 20 + 20 + 10 = 50.
+    ro = _ct5k(["set:M"], scale, [ct5k_items[0]])
+    yo = _rows_by(ro["questions"][0])
+    check(f"CT5K {tag}: overlapping banner row % (Selected 50/50, Other 0/100)", _all_close(yo["Selected"]["rowPct"], [50.0, 50.0]) and _all_close(yo["Other"]["rowPct"], [0.0, 100.0]), f'{yo["Selected"]["rowPct"]} {yo["Other"]["rowPct"]}')
+
+# Ordinary fractional weights, a tiny column and partly missing options, against a direct calculation from
+# the case records; then the same table with every weight multiplied by 1/1024 and by 1000 must give the same
+# percentages and the same blanks (suppressed tiny column, zero denominators).
+rkf = np.random.default_rng(59)
+nf = 406
+gf = np.concatenate([rkf.choice([1.0, 2.0, 3.0], nf - 6), np.full(6, 4.0)])  # group 4: 6 cases, suppressed
+hf = rkf.choice([1.0, 2.0], nf)
+yf = rkf.choice([1.0, 2.0, 3.0], nf, p=[0.2, 0.5, 0.3])
+mf = {f"M_{j}": (rkf.random(nf) < [0.15, 0.35, 0.6][j - 1]).astype(float) for j in (1, 2, 3)}
+mf["M_3"][rkf.random(nf) < 0.25] = np.nan  # option 3 not asked of a quarter
+wf = rkf.uniform(0.013, 0.097, nf)
+dF = pd.DataFrame({"Y": yf, "G": gf, "H": hf, **mf, "W": wf})
+labF = {"Y": {1: "A", 2: "B", 3: "C"}, "G": {1: "G1", 2: "G2", 3: "G3", 4: "Tiny"}, "H": {1: "H1", 2: "H2"},
+        **{f"M_{j}": {0: "No", 1: "Yes"} for j in (1, 2, 3)}}
+
+def _ct5k_frac(scale):
+    d = dF.copy()
+    d["W"] = d["W"] * scale
+    p = os.path.join(tempfile.mkdtemp(), "ct5kf.sav")
+    pyreadstat.write_sav(d, p, variable_value_labels=labF)
+    return psf.crosstab(open(p, "rb").read(), "ct5kf.sav", {"columnVars": ["G", "H"], "weightVar": "W", "correction": "none", "rowItems": [
+        {"key": "Y", "label": "Y", "vars": ["Y"]}, {"key": "M", "label": "M", "vars": ["M_1", "M_2", "M_3"], "stem": ""}]})
+
+colsF = [("G", 1.0), ("G", 2.0), ("G", 3.0), ("G", 4.0), ("H", 1.0), ("H", 2.0)]
+def _ref_rowpct(sel, valid):
+    out = []
+    for var, code in colsF:
+        num = float(dF["W"][sel & valid & (dF[var] == code)].sum())
+        den = sum(float(dF["W"][sel & valid & (dF[v2] == c2)].sum()) for v2, c2 in colsF if v2 == var)
+        n = int((valid & (dF[var] == code)).sum())
+        out.append(None if n < 10 or den <= 0 else round(100 * num / den, 1))
+    return out
+def _ref_resppct(opt):
+    out = []
+    for var, code in colsF:
+        col = dF[var] == code
+        num = float(dF["W"][col & (dF[opt] == 1)].sum())
+        den = sum(float(dF["W"][col & (dF[o] == 1)].sum()) for o in ("M_1", "M_2", "M_3"))
+        n = int((col & dF[opt].notna()).sum())
+        out.append(None if n < 10 or den <= 0 else round(100 * num / den, 1))
+    return out
+
+fr = {s: _ct5k_frac(s) for s in (1.0, 1 / 1024, 1000.0)}
+qf = {q["key"]: q for q in fr[1.0]["questions"]}
+yfr = _rows_by(qf["Y"], "rawCode")
+validY = dF["Y"].notna()
+check("CT5K fractional weights: single-answer row % equals the direct calculation", all(_all_close(yfr[str(c)]["rowPct"], _ref_rowpct(dF["Y"] == float(c), validY)) for c in (1, 2, 3)),
+      str([(yfr[str(c)]["rowPct"], _ref_rowpct(dF["Y"] == float(c), validY)) for c in (1, 2, 3)]))
+mfr = _rows_by(qf["M"], "variable")
+check("CT5K fractional weights: share of responses equals the direct calculation", all(_all_close(mfr[o]["respPct"], _ref_resppct(o)) for o in ("M_1", "M_2", "M_3")),
+      str([(mfr[o]["respPct"], _ref_resppct(o)) for o in ("M_1", "M_2", "M_3")]))
+check("CT5K fractional weights: option row % equals the direct calculation", all(_all_close(mfr[o]["rowPct"], _ref_rowpct(dF[o] == 1, dF[o].notna())) for o in ("M_1", "M_2", "M_3")),
+      str([(mfr[o]["rowPct"], _ref_rowpct(dF[o] == 1, dF[o].notna())) for o in ("M_1", "M_2", "M_3")]))
+check("CT5K fractional weights: the tiny column stays suppressed", yfr["1"]["rowPct"][3] is None and mfr["M_1"]["respPct"][3] is None)
+
+def _figures(res_):
+    out = []
+    for q in res_["questions"]:
+        for r in q["rows"]:
+            if r.get("isBase"):
+                continue
+            out.append((r["label"], r.get("pct"), r.get("rowPct"), r.get("respPct"), r["total"].get("pct"), r["total"].get("respPct"),
+                        [(nt.get("pct"), nt.get("rowPct"), nt.get("respPct")) for nt in r["net"]]))
+    return out
+
+def _same_figures(a, b):
+    def same(x, y):
+        if isinstance(x, (list, tuple)):
+            return isinstance(y, (list, tuple)) and len(x) == len(y) and all(same(p, q) for p, q in zip(x, y))
+        if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            return abs(x - y) <= 0.1001  # one display step: a value on a rounding boundary may land either side
+        return x == y
+    return same(a, b)
+
+base_f = _figures(fr[1.0])
+for s in (1 / 1024, 1000.0):
+    check(f"CT5K fractional weights x{s:g}: every percentage and every blank unchanged by rescaling", _same_figures(base_f, _figures(fr[s])))
+
+# Mean rows and histograms carry their unrounded figures too (CT5K-F01): the weighted mean of the codes,
+# computed here directly, and each value's weighted share.
+check("CT5K: a mean row's pctExact is the unrounded weighted mean", all(abs(sat_rows[0]["pctExact"][ci] - float((d48["w"][(d48["seg"] == code) & (d48["sat"] != 99)] * d48["sat"][(d48["seg"] == code) & (d48["sat"] != 99)]).sum() / d48["w"][(d48["seg"] == code) & (d48["sat"] != 99)].sum())) < 1e-9 for ci, code in enumerate([1.0, 2.0])))
+h48 = qs48["sat"].get("desc", {}).get("hist") or []
+check("CT5K: histogram bars carry pctExact that rounds to pct and adds to 100", bool(h48) and all(abs(round(b["pctExact"], 1) - b["pct"]) < 1e-9 for b in h48) and abs(sum(b["pctExact"] for b in h48) - 100) < 1e-9, str(h48[:2]))
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

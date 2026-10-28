@@ -1,5 +1,6 @@
 import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
 import { tableMethodStatus, type TableMethodStatus } from "./tableMethod";
+import { exactPct, exactTotalPct } from "./crosstabExact";
 import { withTenant, withTenantRead } from "./db";
 import { hasRepeatedSetKeys } from "./variableSetKeys";
 import { assertImportCaseCount } from "./importLimits";
@@ -481,7 +482,8 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
         candidates.push({
           text: `${subject}, ${weighted}, based on ${base.n} cases (effective base ${Math.round(base.nEff)}); ${designApplied ? "t-test with design degrees of freedom, Taylor series variance" : "z-test"} of this group against all other cases in the same banner variable (not against the overall figure), ${row.pAdj?.[k] != null || qv !== null ? "unadjusted " : ""}p=${fmtP(row.p[k])}${row.pAdj?.[k] != null ? `, adjusted p=${fmtP(row.pAdj[k])} (corrected across the banner columns of this row)` : ""}${qv !== null ? `, false discovery rate q=${fmtP(qv)} (across every cell tested in this table; inclusion was decided on q, not on p)` : ""}.`,
           theme: `${q.label} by ${col.blockLabel}`,
-          gap: Math.abs(value - total),
+          // Ranking only; from the unrounded figures (CT5K-F01) so a tie is not decided by display rounding.
+          gap: Math.abs((exactPct(row, k) ?? value) - (exactTotalPct(row) ?? total)),
           stats: {
             testType: isMean || row.isMean ? "column_mean_vs_rest" : isScore ? "column_score_vs_rest" : "column_proportion_vs_rest",
             question: q.label,

@@ -23,10 +23,18 @@ export function bandColors(verdict: BandVerdict): { bg: string; fg: string } {
 }
 
 /** The category average across every brand's score for one variable, the baseline the fingerprint and funnel gap readings are banded against. Null scores are dropped, not counted as zero. */
-export function categoryAverage(byBrand: { value: number | null }[]): number | null {
-  const vals = byBrand.map((b) => b.value).filter((v): v is number => v !== null);
+/** The brands' average, unrounded: from each brand's unrounded score (`exact`, CT5K-F01) where the
+ * score carries it, else its display value. */
+export function categoryAverageExact(byBrand: { value: number | null; exact?: number | null }[]): number | null {
+  const vals = byBrand.map((b) => (b.exact !== undefined ? b.exact : b.value)).filter((v): v is number => v !== null);
   if (vals.length === 0) return null;
-  return Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10) / 10;
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+/** The brands' average for display: categoryAverageExact rounded once to one decimal. */
+export function categoryAverage(byBrand: { value: number | null; exact?: number | null }[]): number | null {
+  const avg = categoryAverageExact(byBrand);
+  return avg === null ? null : Math.round(avg * 10) / 10;
 }
 
 /**

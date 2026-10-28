@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { CURRENT_TABLE_METHOD, tableMethodStatus } from "../tableMethod";
+import { CURRENT_TABLE_METHOD, EARLIER_METHOD_TEXT, tableMethodStatus } from "../tableMethod";
 
 describe("table method version", () => {
   it("equals the engine's TABLE_METHOD", () => {
@@ -18,5 +18,10 @@ describe("table method version", () => {
     expect(tableMethodStatus(null)).toBe("earlier");
     expect(tableMethodStatus(undefined)).toBe("earlier");
     expect(tableMethodStatus("2026.10.26")).toBe("earlier");
+  });
+
+  it("a table saved under the batch 47 method is earlier: its row % and shares of responses came from rounded counts (CT5K-F01)", () => {
+    expect(tableMethodStatus("2026.10.27")).toBe("earlier");
+    expect(EARLIER_METHOD_TEXT).toMatch(/unrounded weighted counts/);
   });
 });

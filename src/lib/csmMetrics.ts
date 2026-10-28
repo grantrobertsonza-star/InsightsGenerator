@@ -38,7 +38,7 @@ export function metricLabel(metric: CsmMetric): string {
  * summed share of the top-N codes by value. Bars whose label carries no leading number (an
  * open-ended "Other", say) are dropped from a mean and from the box, not counted as zero.
  */
-export function summarizeSeries(series: ChartSeries, metric: CsmMetric): { value: number | null; base: number } {
+export function summarizeSeries(series: ChartSeries, metric: CsmMetric): { value: number | null; exact: number | null; base: number } {
   // Overnight queue, package 4 (IMP-004): a labelled scale's display text often carries no
   // leading digit ("Very dissatisfied" ... "Very satisfied"), so deriving the code purely
   // from the label text (leadingNumber) previously returned null for every bar on such a
@@ -53,22 +53,29 @@ export function summarizeSeries(series: ChartSeries, metric: CsmMetric): { value
     }
     return leadingNumber(b.label);
   };
-  const coded = series.bars
-    .map((b) => ({ code: codeOf(b), pct: b.pct }))
-    .filter((b): b is { code: number; pct: number } => b.code !== null);
-  if (coded.length === 0) return { value: null, base: series.n };
+  // CT5K-F01: the mean and the box are added from each bar's unrounded share (the engine's pctExact,
+  // carried as `share`) and rounded once at the end, never from the one-decimal display `pct`. A bar the
+  // table suppressed (share null) makes this reading unavailable rather than counting as 0. A series
+  // built without shares (wave tracking) is read from pct, as before.
+  const shareOf = (b: ChartSeries["bars"][number]): number | null => (b.share !== undefined ? b.share : b.pct);
+  const codedAll = series.bars.map((b) => ({ code: codeOf(b), pct: shareOf(b) })).filter((b) => b.code !== null);
+  if (codedAll.some((b) => b.pct === null)) return { value: null, exact: null, base: series.n };
+  const coded = codedAll as { code: number; pct: number }[];
+  if (coded.length === 0) return { value: null, exact: null, base: series.n };
 
   if (metric === "mean") {
     const totalPct = coded.reduce((s, b) => s + b.pct, 0);
-    if (totalPct <= 0) return { value: null, base: series.n };
+    if (totalPct <= 0) return { value: null, exact: null, base: series.n };
     const mean = coded.reduce((s, b) => s + b.code * b.pct, 0) / totalPct;
-    return { value: round1(mean), base: series.n };
+    return { value: round1(mean), exact: mean, base: series.n };
   }
 
   const topN = metric === "top1" ? 1 : metric === "top2" ? 2 : 3;
   const ranked = [...coded].sort((a, b) => b.code - a.code).slice(0, topN);
   const value = ranked.reduce((s, b) => s + b.pct, 0);
-  return { value: round1(value), base: series.n };
+  // exact: the same figure unrounded, for figures built on it (brand funnel ratios, category averages
+  // and gaps); value is the one-decimal display figure.
+  return { value: round1(value), exact: value, base: series.n };
 }
 
 /** A stable key for the variable(s) a section's finding is about, so re-mapping to a different question posts a new finding rather than silently overwriting the old one. Null when the section has nothing to post yet. */

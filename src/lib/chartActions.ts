@@ -9,6 +9,7 @@ import { withTenant } from "./db";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf } from "./descriptiveFindings";
+import { exactPct, exactTotalPct } from "./crosstabExact";
 import { requireTenantId } from "./requestContext";
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -18,8 +19,12 @@ export type ChartSeries = {
   n: number;
   /** rawCode: the bar's underlying answer code when the source row carried one (CrosstabRow.rawCode) -
    * see ANA-BRAND-002: wave tracking aligns bars across waves on this, not on `label`, since a wording-only
-   * value-label change between waves must not look like a different category. */
-  bars: { label: string; pct: number; rawCode?: string }[];
+   * value-label change between waves must not look like a different category.
+   * share: the bar's percentage unrounded (the engine's pctExact; CT5K-F01), null where the table
+   * suppressed it, for figures derived from several bars (csmMetrics.summarizeSeries). `pct` is the
+   * one-decimal display value (0 for a suppressed cell, as drawn). Absent on series built elsewhere
+   * (wave tracking), which summarizeSeries reads from pct. */
+  bars: { label: string; pct: number; share?: number | null; rawCode?: string }[];
 };
 
 export type ChartResult = {
@@ -137,7 +142,7 @@ export async function runDistributionAction(
               {
                 name: "All respondents",
                 n: Math.round(n),
-                bars: hist.map((b) => ({ label: b.lo === b.hi ? `${b.lo}` : `${b.lo} to ${b.hi}`, pct: round1(b.pct) })),
+                bars: hist.map((b) => ({ label: b.lo === b.hi ? `${b.lo}` : `${b.lo} to ${b.hi}`, pct: round1(b.pct), share: b.pctExact ?? b.pct })),
               },
             ],
           },
@@ -164,7 +169,7 @@ export async function runDistributionAction(
           grouped: false,
           groupLabel: null,
           method: "values",
-          series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), rawCode: r.rawCode })) }],
+          series: [{ name: "All respondents", n: Math.round(n0), bars: answers.map((r) => ({ label: r.label, pct: round1(r.total.pct as number), share: exactTotalPct(r), rawCode: r.rawCode })) }],
         },
       };
     }
@@ -186,7 +191,7 @@ export async function runDistributionAction(
       return {
         name: c.name,
         n: Math.round(n),
-        bars: answers.map((r) => ({ label: r.label, pct: r.pct[i] !== null && r.pct[i] !== undefined ? round1(r.pct[i] as number) : 0, rawCode: r.rawCode })),
+        bars: answers.map((r) => ({ label: r.label, pct: r.pct[i] !== null && r.pct[i] !== undefined ? round1(r.pct[i] as number) : 0, share: exactPct(r, i), rawCode: r.rawCode })),
       };
     });
 

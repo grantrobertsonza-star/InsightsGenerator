@@ -1,3 +1,4 @@
+import { exactCount, exactNetCount, exactNetPct, exactPct, exactTotalCount, exactTotalPct, roundOnce } from "@/lib/crosstabExact";
 import { NextResponse } from "next/server";
 import { withoutMeanTickRows } from "@/lib/crosstabMeanRows";
 import * as XLSX from "xlsx";
@@ -167,16 +168,21 @@ function tableSheet(label: string, r: CrosstabResult, opts: ExportOpts): XLSX.Wo
         };
         for (const m of opts.measures.filter((x) => x === "col" || x === "n" || (x === "count" && weighted))) {
           if (m === "n" && answers[0].nCell === undefined) continue;
+          // CT5K-F01: the Total line adds the answers' unrounded shares and weighted counts
+          // (crosstabExact.ts) and rounds the sum once; unweighted n are whole numbers already.
           const pick = (e: Entry | "total"): number | null =>
             sum(
               answers.map((x) => {
-                if (e === "total") return m === "col" ? x.total.pct : m === "n" ? (x.total.nCell ?? null) : x.total.count;
-                if (e.kind === "col") return m === "col" ? x.pct[e.j] : m === "n" ? (x.nCell?.[e.j] ?? null) : x.count[e.j];
+                if (e === "total") return m === "col" ? exactTotalPct(x) : m === "n" ? (x.total.nCell ?? null) : exactTotalCount(x);
+                if (e.kind === "col") return m === "col" ? exactPct(x, e.j) : m === "n" ? (x.nCell?.[e.j] ?? null) : exactCount(x, e.j);
                 const nt = x.net?.find((y) => y.block === e.block);
-                return !nt ? null : m === "col" ? nt.pct : m === "n" ? nt.nCell : nt.count;
+                return !nt ? null : m === "col" ? exactNetPct(nt) : m === "n" ? nt.nCell : exactNetCount(nt);
               }),
             );
-          const cell = (v: number | null): Cell => (v === null ? "" : m === "col" ? (Math.abs(v - 100) <= 0.5 ? 100 : v) / 100 : v);
+          // A column % total within half a point of 100 is printed as 100: it can only differ by the
+          // rounding of tables saved before the exact figures were kept.
+          const cell = (v: number | null): Cell =>
+            v === null ? "" : m === "col" ? (Math.abs(v - 100) <= 0.5 ? 100 : roundOnce(v)) / 100 : m === "n" ? v : roundOnce(v);
           const line: Cell[] = ["Total", MEASURE_NAME[m], ...layout.map((e) => cell(pick(e))), cell(pick("total"))];
           if (m === "col") for (let c = FIRST; c <= FIRST + layout.length; c++) pctCells.push([aoa.length, c]);
           aoa.push(line);

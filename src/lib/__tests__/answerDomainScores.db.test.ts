@@ -178,8 +178,9 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("answer domain for scores (Cod
     // Weighted, non-answers out. Men: valid weight 20+20+20 = 60, top two (5,4) = 20+20 = 40 -> 66.7.
     // Women: valid 10+40 = 50, top two (5 none, 4) = 10 -> 20. Overall: valid 110, top two 50 -> 45.5.
     const seg = Object.fromEntries(r.dashboard.overall!.bySegment.map((x) => [x.name, x.value]));
-    // The box sums the bars' one-decimal percentages (33.3 + 33.3), so 66.6 for 66.67.
-    expect(seg.Men).toBeCloseTo(66.6, 1);
+    // CT5K-F01 (batch 59): the box adds the unrounded shares (33.33 + 33.33 = 66.67) and rounds once, so
+    // 66.7. Before, it added the one-decimal display shares (33.3 + 33.3) and this test pinned 66.6.
+    expect(seg.Men).toBe(66.7);
     expect(seg.Women).toBeCloseTo(20, 1);
     expect(r.dashboard.overall!.overall).toBeCloseTo(45.5, 1);
   });

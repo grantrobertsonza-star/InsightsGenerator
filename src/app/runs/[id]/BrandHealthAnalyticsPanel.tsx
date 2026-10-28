@@ -24,7 +24,7 @@ import {
   type CsmMetric,
 } from "@/lib/brandHealthActions";
 import { defaultMetricForScale, metricLabel } from "@/lib/csmMetrics";
-import { bandVerdict, bandColors, brandHealthFindingKey } from "@/lib/brandHealthMetrics";
+import { bandVerdict, bandColors, brandHealthFindingKey, categoryAverageExact } from "@/lib/brandHealthMetrics";
 
 const METRICS: CsmMetric[] = ["mean", "top1", "top2", "top3"];
 const FUNNEL_FIELDS: { key: "awareness" | "consideration" | "usage" | "frequent"; label: string }[] = [
@@ -591,7 +591,8 @@ function ScoreRow({ score, ourBrand }: { score: BrandHealthScore; ourBrand: stri
       </div>
       <div className="flex flex-wrap gap-1.5">
         {score.byBrand.map((b) => {
-          const verdict = bandVerdict(b.value, score.categoryAvg);
+          // Compared unrounded (CT5K-F01), so a brand on the 5-point band edge is not placed by display rounding.
+          const verdict = bandVerdict(b.exact !== undefined ? b.exact : b.value, categoryAverageExact(score.byBrand));
           const colors = bandColors(verdict);
           const ours = b.brand === ourBrand;
           return (

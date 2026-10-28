@@ -207,7 +207,7 @@ describe("classifyInsightSupport (pure rule)", () => {
       const earlier = classifyInsightSupport(two({ calculatedTableDocumentId: "doc-1", tableMethod }), ok, true);
       expect(earlier.status).toBe("stale");
       expect(earlier.reasons.map((r) => r.kind)).toContain("method_changed");
-      expect(summariseSupport(earlier)).toMatch(/significance test and the don't know rules were updated/);
+      expect(summariseSupport(earlier)).toMatch(/cross tab rules were last updated \(28 October 2026\): row percentages and shares of responses/);
     }
     // A finding with no calculated table behind it (report text) is never judged on table method.
     expect(classifyInsightSupport(two({ tableMethod: null }), none, true).status).toBe("current");

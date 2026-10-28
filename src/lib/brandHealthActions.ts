@@ -10,7 +10,7 @@ import { runDistributionAction, type ChartSeries } from "./chartActions";
 import { runNpsAction } from "./npsActions";
 import type { VariableInfo, VariableSet, VariableDictionary } from "./parseStatsFile";
 import { defaultMetricForScale, summarizeSeries, type CsmMetric } from "./csmMetrics";
-import { categoryAverage, brandHealthFindingKey, matchSetMembersToBrands } from "./brandHealthMetrics";
+import { categoryAverage, categoryAverageExact, brandHealthFindingKey, matchSetMembersToBrands } from "./brandHealthMetrics";
 import { requireTenantId } from "./requestContext";
 
 export type { CsmMetric };
@@ -24,7 +24,9 @@ export type BrandHealthScore = {
   variable: string;
   label: string;
   metric: CsmMetric;
-  byBrand: { brand: string; value: number | null; n: number }[];
+  /** value: the display score (one decimal); exact: the same score unrounded, which the funnel ratios,
+   * category average and gaps are computed from (CT5K-F01). */
+  byBrand: { brand: string; value: number | null; exact?: number | null; n: number }[];
   categoryAvg: number | null;
 };
 
@@ -170,7 +172,7 @@ async function scoreByBrand(
   if (!res.ok) return { error: res.error };
   const byBrand = res.result.series.map((s: ChartSeries) => {
     const sum = summarizeSeries(s, metric);
-    return { brand: s.name, value: sum.value, n: s.n };
+    return { brand: s.name, value: sum.value, exact: sum.exact, n: s.n };
   });
   return {
     variable,
@@ -213,7 +215,7 @@ async function scoreBySet(
     const series = res.result.series[0];
     if (!series) continue;
     const sum = summarizeSeries(series, metric);
-    byBrand.push({ brand, value: sum.value, n: series.n });
+    byBrand.push({ brand, value: sum.value, exact: sum.exact, n: series.n });
   }
   return {
     variable: setKey,
@@ -343,8 +345,9 @@ export async function buildBrandHealthDashboardAction(
         byBrand: brands.map((brand) => {
           const fromEntry = from.byBrand.find((b) => b.brand === brand);
           const toEntry = to.byBrand.find((b) => b.brand === brand);
-          const fromVal = fromEntry?.value ?? null;
-          const toVal = toEntry?.value ?? null;
+          // The ratio of the two unrounded scores, rounded once (CT5K-F01).
+          const fromVal = (fromEntry?.exact !== undefined ? fromEntry.exact : fromEntry?.value) ?? null;
+          const toVal = (toEntry?.exact !== undefined ? toEntry.exact : toEntry?.value) ?? null;
           // ANA-BRAND-001: each stage's own QUESTION-ANSWERED base for this brand (fixed in
           // chartActions.ts to read the row's per-column base, not the banner column's overall
           // size - the two used to be conflated, so a brand's whole sample size looked like
@@ -489,11 +492,18 @@ function pctOf(v: number | null): string {
 function describeBrandHealthSection(dashboard: BrandHealthDashboard, section: BrandHealthFindingSection): { text: string; theme: string } {
   const base = dashboard.weighted ? "weighted" : "unweighted";
   const ours = (byBrand: { brand: string; value: number | null }[]) => byBrand.find((b) => b.brand === dashboard.ourBrand)?.value ?? null;
+  const oursExact = (byBrand: BrandHealthScore["byBrand"]) => {
+    const b = byBrand.find((x) => x.brand === dashboard.ourBrand);
+    return (b?.exact !== undefined ? b.exact : b?.value) ?? null;
+  };
 
   if (section === "funnel" && dashboard.funnel.length) {
     const parts = dashboard.funnel.map((f) => {
       const v = ours(f.byBrand);
-      const gap = v !== null && f.categoryAvg !== null ? Math.round((v - f.categoryAvg) * 10) / 10 : null;
+      // From the unrounded score and average, rounded once (CT5K-F01).
+      const vExact = oursExact(f.byBrand);
+      const avgExact = categoryAverageExact(f.byBrand);
+      const gap = vExact !== null && avgExact !== null ? Math.round((vExact - avgExact) * 10) / 10 : null;
       const gapText = gap === null ? "" : gap >= 0 ? ` (+${gap} vs category)` : ` (${gap} vs category)`;
       return `${f.label} ${pctOf(v)}${gapText}`;
     });

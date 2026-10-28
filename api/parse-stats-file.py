@@ -496,7 +496,7 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 #     (_excel_sheet_grid, CAL-R1-F03); cached Excel dictionaries are rebuilt (minimumDictionaryVersion
 #     14 for .xlsx/.xls; CSV/TSV reading did not change and their version-13 copies stay valid).
 DICTIONARY_VERSION = 14
-ENGINE_VERSION = "2026.10.27-1"  # shares tested with the pooled two-proportion z-test
+ENGINE_VERSION = "2026.10.28-2"  # unrounded figures saved as countExact/pctExact/seExact; derived figures computed from them
 # The version of the rules that decide a table's figures and flags, recorded in every table's notes as
 # methodVersion. A table recorded with a different version (or none: built before this was recorded) was
 # built under rules that can give different figures or flags, and is reported as built with an earlier
@@ -504,7 +504,10 @@ ENGINE_VERSION = "2026.10.27-1"  # shares tested with the pooled two-proportion 
 # "2026.10.27" (batch 47): shares tested pooled under the null hypothesis (before: unpooled, which flagged
 # a 0% or 100% cell against a small gap), and non-answer labels recognised when their words run together
 # ("DontKnow", "Not_applicable"), so those codes leave the bases and banners.
-TABLE_METHOD = "2026.10.27"
+# "2026.10.28" (batch 59, CT5K-F01): row % and share of responses divided from the unrounded weighted
+# sums, not from counts rounded to one decimal (before: small or fractional weights shifted them, and
+# weights of 1/1024 blanked or inverted them).
+TABLE_METHOD = "2026.10.28"
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -4943,8 +4946,18 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         return n, sw, n_eff
 
     def prop_row(sel_mask, valid_mask):
-        """Per column and total: weighted selected count, base, pct, p, sig."""
+        """Per column and total: weighted selected count, base, pct, p, sig.
+
+        "count" and "pct" are rounded for display (one decimal). "countExact" and "pctExact" carry the
+        same figures unrounded, per column, for the total and for each banner's NET column, and are saved
+        with the result (CT5K-F01). Every figure derived from counts or shares (row %, share of responses
+        here; NPS, top-box, coded means and the export's Total line in src/lib) is computed from the exact
+        fields and rounded once at the end, never from the rounded ones: with small weights the rounded
+        counts lose the figures (weights of 1/1024 turned a row % of 10/30/60 into 0/0/100), and even
+        ordinary fractional weights shifted them. pctExact is None exactly where pct is (a suppressed
+        or empty base). "seExact" is "se" unrounded, for intervals around those figures."""
         counts, bases, pcts, ncell = [], [], [], []
+        counts_exact, pcts_exact, ses_exact = [], [], []
         tot_n, tot_w, tot_eff = base_stats(valid_mask)
         tot_sel = float(wv[valid_mask & sel_mask].sum())
         pt = tot_sel / tot_w if tot_w > 0 else float("nan")
@@ -4953,11 +4966,13 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             vm = valid_mask & col_masks[k]
             n, sw, n_eff = base_stats(vm)
             sel = float(wv[vm & sel_mask].sum())
+            counts_exact.append(sel)
             counts.append(round(sel, 1))
             bases.append({"n": n, "w": round(sw, 1), "nEff": round(n_eff, 1)})
             ncell.append(int((vm & sel_mask & w_ok).sum()))
             pj = sel / sw if sw > 0 else float("nan")
             suppressed = n < MIN_BASE_SUPPRESS
+            pcts_exact.append(None if (math.isnan(pj) or suppressed) else pj * 100)
             pcts.append(None if (math.isnan(pj) or suppressed) else round(pj * 100, 1))
             p, sg = None, 0
             # Test this column against everyone else in the same banner
@@ -4973,8 +4988,10 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             if not math.isnan(pj) and n >= MIN_BASE_SUPPRESS and n_eff > 0:
                 se_k = math.sqrt(dsg.var_totals(tk)) if (dsg is not None and tk is not None) else math.sqrt(pj * (1 - pj) / n_eff)
                 ses.append(round(se_k * 100, 2))
+                ses_exact.append(se_k * 100)
             else:
                 ses.append(None)
+                ses_exact.append(None)
             if (n >= MIN_BASE_RELIABLE and not math.isnan(pj) and not math.isnan(pc)
                     and n_eff >= MIN_EFFECTIVE_BASE and c_eff >= MIN_EFFECTIVE_BASE):
                 if dsg is not None:
@@ -5013,6 +5030,8 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 "block": b,
                 "count": round(selb, 1),
                 "pct": None if (math.isnan(pb) or nb < MIN_BASE_SUPPRESS) else round(pb * 100, 1),
+                "countExact": selb,
+                "pctExact": None if (math.isnan(pb) or nb < MIN_BASE_SUPPRESS) else pb * 100,
                 "rowPct": 100.0 if (selb > 0 and nb >= MIN_BASE_SUPPRESS) else None,
                 "nCell": int((vm_b & sel_mask & w_ok).sum()),
                 "base": {"n": nb, "w": round(swb, 1), "nEff": round(neb, 1)},
@@ -5020,7 +5039,10 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         return {
             "_est": ests,
             "se": ses,
+            "seExact": ses_exact,
             "count": counts,
+            "countExact": counts_exact,
+            "pctExact": pcts_exact,
             "nCell": ncell,
             "pct": pcts,
             "p": ps,
@@ -5028,19 +5050,24 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             "base": bases,
             "net": nets,
             "total": {"count": round(tot_sel, 1), "pct": None if math.isnan(pt) else round(pt * 100, 1),
+                      "countExact": tot_sel, "pctExact": None if math.isnan(pt) else pt * 100,
                       "nCell": int((valid_mask & sel_mask & w_ok).sum()),
                       "base": {"n": tot_n, "w": round(tot_w, 1), "nEff": round(tot_eff, 1)}},
         }
 
     def add_row_pct(row, block_of_col):
         """Row % = share of this answer's total that falls in each column of the
-        same banner variable."""
+        same banner variable. The answer's total is the sum over that banner's columns, so where
+        columns overlap (a multiple-response banner) a case counts once in each column it is in.
+        Numerator and denominator are the unrounded weighted sums (prop_row "countExact", CT5K-F01);
+        only the result is rounded. A banner where nobody gave the answer has no row % (None), never 0."""
+        sel_w = row["countExact"]
         totals = {}
-        for k, cnt in enumerate(row["count"]):
-            totals[block_of_col[k]] = totals.get(block_of_col[k], 0.0) + cnt
+        for k in range(K):
+            totals[block_of_col[k]] = totals.get(block_of_col[k], 0.0) + sel_w[k]
         row["rowPct"] = [
             None if (totals[block_of_col[k]] <= 0 or row["base"][k]["n"] < MIN_BASE_SUPPRESS)
-            else round(row["count"][k] / totals[block_of_col[k]] * 100, 1)
+            else round(sel_w[k] / totals[block_of_col[k]] * 100, 1)
             for k in range(K)
         ]
 
@@ -5176,12 +5203,12 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         wsum = np.bincount(inv, weights=wi)
         mode = float(uv[int(np.argmax(wsum))])
         if len(uv) <= 12:
-            hist = [{"lo": r3(v), "hi": r3(v), "pct": round(float(wv_ / sw * 100), 1)} for v, wv_ in zip(uv, wsum)]
+            hist = [{"lo": r3(v), "hi": r3(v), "pct": round(float(wv_ / sw * 100), 1), "pctExact": float(wv_ / sw * 100)} for v, wv_ in zip(uv, wsum)]
         else:
             edges = np.linspace(mn, mx, 11)
             bi = np.clip(np.searchsorted(edges, xi, side="right") - 1, 0, 9)
             hb = np.bincount(bi, weights=wi, minlength=10)
-            hist = [{"lo": r3(edges[i]), "hi": r3(edges[i + 1]), "pct": round(float(hb[i] / sw * 100), 1)} for i in range(10)]
+            hist = [{"lo": r3(edges[i]), "hi": r3(edges[i + 1]), "pct": round(float(hb[i] / sw * 100), 1), "pctExact": float(hb[i] / sw * 100)} for i in range(10)]
         extra_p = []
         for q_ in (args.get("percentiles") or []):
             try:
@@ -5241,13 +5268,15 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 var = float((wv[m] * (x[m] - mj) ** 2).sum() / sw) * n_eff / (n_eff - 1)
             return n, sw, n_eff, mj, var
 
-        means, sigs, ps, bases, ests = [], [], [], [], []
+        # pctExact: the same means unrounded (this row's "pct" holds a mean), for figures derived from
+        # them (CT5K-F01); None exactly where pct is.
+        means, sigs, ps, bases, ests, means_exact = [], [], [], [], [], []
         for k in range(K):
             m = valid & col_masks[k]
             n, sw, n_eff, mj, var = mv(m)
             bases.append({"n": n, "w": round(sw, 1), "nEff": round(n_eff, 1)})
             if mj is None or n < MIN_BASE_SUPPRESS:
-                means.append(None); sigs.append(0); ps.append(None); ests.append(None); continue
+                means.append(None); means_exact.append(None); sigs.append(0); ps.append(None); ests.append(None); continue
             tk = dsg.totals(np.where(m, wv * (np.nan_to_num(x) - mj) / sw, 0.0)) if dsg is not None and sw > 0 else None
             ests.append((mj, var / n_eff, None if tk is None else tk.astype(np.float32), None) if (n >= MIN_BASE_RELIABLE and var is not None and n_eff >= MIN_EFFECTIVE_BASE) else None)
             p, sg = None, 0
@@ -5265,7 +5294,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     p = _p_two_sided_design(z, dsg)
                     if p < SIG_LEVEL:
                         sg = 1 if z > 0 else -1
-            means.append(round(mj, 2)); sigs.append(sg); ps.append(None if p is None else round(p, 4))
+            means.append(round(mj, 2)); means_exact.append(mj); sigs.append(sg); ps.append(None if p is None else round(p, 4))
         tn, tw, te = base_stats(valid)
         # Eta: share of the variation in the answer that lies between the groups of a banner variable.
         etas = []
@@ -5291,10 +5320,11 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         for b in sorted(set(block_of_col)):
             nb, swb, neb, mb, _ = mv(valid & block_any[b])
             nets.append({"block": b, "count": None, "pct": None if (mb is None or nb < MIN_BASE_SUPPRESS) else round(mb, 2),
+                         "pctExact": None if (mb is None or nb < MIN_BASE_SUPPRESS) else mb,
                          "rowPct": None, "nCell": None, "base": {"n": nb, "w": round(swb, 1), "nEff": round(neb, 1)}})
-        return {"desc": desc, "eta": etas, "_est": ests, "count": [None] * K, "nCell": [None] * K, "pct": means, "rowPct": [None] * K, "p": ps, "sig": sigs, "base": bases,
+        return {"desc": desc, "eta": etas, "_est": ests, "count": [None] * K, "nCell": [None] * K, "pct": means, "pctExact": means_exact, "rowPct": [None] * K, "p": ps, "sig": sigs, "base": bases,
                 "net": nets,
-                "total": {"count": None, "nCell": None, "pct": round(gm, 2), "base": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1)}}}
+                "total": {"count": None, "nCell": None, "pct": round(gm, 2), "pctExact": gm, "base": {"n": tn, "w": round(tw, 1), "nEff": round(te, 1)}}}
 
     def base_src(valid_mask):
         """Bases only (no tests), for the base rows of a question."""
@@ -5709,25 +5739,27 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             questions.append({"key": it["key"], "label": it["label"], "kind": "numeric",
                               "rows": base_rows("Base: answered this question", row) + [row]})
 
-    # Share of responses (mentions): each option's count over all mentions in that column.
+    # Share of responses (mentions): each option's weighted mentions over all mentions in that column
+    # (or the total, or a banner's NET column). Divided from the unrounded weighted sums (prop_row
+    # "countExact", CT5K-F01), never from the rounded counts. Where nobody chose any option the share is None.
     for q_ in questions:
         if q_.get("kind") != "multi":
             continue
         opt = [r for r in q_["rows"] if not r.get("isBase") and not str(r.get("label", "")).startswith("NET:")]
         if len(opt) < 2:
             continue
-        den = [sum(r["count"][k] for r in opt) for k in range(K)]
-        tden = sum(r["total"]["count"] for r in opt)
+        den = [math.fsum(r["countExact"][k] for r in opt) for k in range(K)]
+        tden = math.fsum(r["total"]["countExact"] for r in opt)
         bden = {}
         for r in opt:
             for nt in r["net"]:
-                bden[nt["block"]] = bden.get(nt["block"], 0.0) + nt["count"]
+                bden[nt["block"]] = bden.get(nt["block"], 0.0) + nt["countExact"]
         for r in opt:
-            r["respPct"] = [None if (den[k] <= 0 or r["base"][k]["n"] < MIN_BASE_SUPPRESS) else round(r["count"][k] / den[k] * 100, 1) for k in range(K)]
-            r["total"]["respPct"] = None if tden <= 0 else round(r["total"]["count"] / tden * 100, 1)
+            r["respPct"] = [None if (den[k] <= 0 or r["base"][k]["n"] < MIN_BASE_SUPPRESS) else round(r["countExact"][k] / den[k] * 100, 1) for k in range(K)]
+            r["total"]["respPct"] = None if tden <= 0 else round(r["total"]["countExact"] / tden * 100, 1)
             for nt in r["net"]:
                 d_ = bden.get(nt["block"], 0.0)
-                nt["respPct"] = None if (d_ <= 0 or nt["base"]["n"] < MIN_BASE_SUPPRESS) else round(nt["count"] / d_ * 100, 1)
+                nt["respPct"] = None if (d_ <= 0 or nt["base"]["n"] < MIN_BASE_SUPPRESS) else round(nt["countExact"] / d_ * 100, 1)
 
     # Column-pair letters. Each column is tested against every other column of the
     # same banner variable; a cell shows the letters of the columns it is

@@ -643,13 +643,17 @@ export type CrosstabDesc = {
   skewness?: number | null;
   kurtosis?: number | null;
   /** Histogram bars: one per value when there are 12 or fewer, otherwise ten equal-width bins. */
-  hist?: { lo: number; hi: number; pct: number }[];
+  /** pctExact: the same share unrounded (engine 2026.10.28 on; CT5K-F01). */
+  hist?: { lo: number; hi: number; pct: number; pctExact?: number }[];
   percentiles?: { p: number; v: number | null }[];
 };
 export type CrosstabNetCell = {
   block: number;
   count: number | null;
   pct: number | null;
+  /** The NET column's count and pct unrounded (see CrosstabRow.countExact). */
+  countExact?: number | null;
+  pctExact?: number | null;
   rowPct: number | null;
   /** Share of responses (mentions), multiple response only. */
   respPct?: number | null;
@@ -687,6 +691,13 @@ export type CrosstabRow = {
   /** One entry per banner variable, in block order. Absent on tables saved before 9 October 2026. */
   net?: CrosstabNetCell[];
   pct: (number | null)[];
+  /** CT5K-F01 (batch 59): the weighted count and the percentage (or, on a mean or score row, the mean) of
+   * each column unrounded, saved with the table. `count` and `pct` are rounded for display; every figure
+   * derived from them (NPS, top-box, coded means, the export's Total line) is computed from these and
+   * rounded once at the end (read through src/lib/crosstabExact.ts). pctExact is null exactly where pct
+   * is. Absent on tables built before engine 2026.10.28, which tableMethodStatus reports as earlier. */
+  countExact?: (number | null)[];
+  pctExact?: (number | null)[];
   rowPct: (number | null)[];
   /** Share of responses (mentions) in each column, multiple response options only. */
   respPct?: (number | null)[];
@@ -696,6 +707,8 @@ export type CrosstabRow = {
   sig: number[];
   /** Standard error of each column percentage, in percentage points (design based when a design was given). */
   se?: (number | null)[];
+  /** se unrounded (engine 2026.10.28 on), for intervals around derived figures; see countExact. */
+  seExact?: (number | null)[];
   /** Letters of the columns this cell is significantly higher than (column-pair test). */
   letters?: string[];
   /** Standardized residual (observed minus expected, over the square root of expected), one per column.
@@ -704,7 +717,7 @@ export type CrosstabRow = {
   /** Adjusted residual: the standardized residual divided by its own standard error, so it reads like a z-score. */
   adjResidual?: (number | null)[];
   base: CellBase[];
-  total: { count: number | null; nCell?: number | null; pct: number | null; respPct?: number | null; base: CellBase };
+  total: { count: number | null; nCell?: number | null; pct: number | null; countExact?: number | null; pctExact?: number | null; respPct?: number | null; base: CellBase };
 };
 /** What produced a table, kept so any number can be traced and reproduced. */
 export type CrosstabProvenance = {

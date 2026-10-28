@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { exactPct, exactSe, exactTotalPct } from "./crosstabExact";
 
 import { buildCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { resolveSurveyDesign, effectiveDesignChoice, type SurveyDesignChoice } from "./surveyDesign";
@@ -217,7 +218,8 @@ export async function runNpsAction(
     // from a genuine design-based category SE just by its presence - see parseStatsFile.ts's
     // designApplied comment. Gate on it so an abandoned design is never mislabelled design-based.
     const designApplied = result.notes?.designApplied === true;
-    const nps = computeNps(answers, n0, (r) => r.total.pct, singleCol && designApplied ? (r) => r.se?.[0] ?? null : () => null, contrastSe);
+    // CT5K-F01: the parts are the unrounded shares (crosstabExact.ts); computeNps rounds only its results.
+    const nps = computeNps(answers, n0, (r) => exactTotalPct(r), singleCol && designApplied ? (r) => exactSe(r, 0) : () => null, contrastSe);
     if (!nps) {
       return {
         ok: false,
@@ -253,7 +255,7 @@ export async function runNpsAction(
           if (segBase === null) return null;
           const nI = segBase.eff;
           const segContrastSe = q.npsContrastSe?.columns?.[i] ?? undefined;
-          const segNps = computeNps(answers, nI, (r) => r.pct[i] ?? null, designApplied ? (r) => r.se?.[i] ?? null : () => null, segContrastSe);
+          const segNps = computeNps(answers, nI, (r) => exactPct(r, i), designApplied ? (r) => exactSe(r, i) : () => null, segContrastSe);
           // A suppressed point within this one segment makes only this segment's reading
           // unavailable (ANA-NPS-001); the segment is dropped rather than shown with a score
           // that silently treated the missing point as 0.
