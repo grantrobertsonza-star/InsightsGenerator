@@ -29,6 +29,10 @@ export const CAVEAT_LABELS: Record<string, string> = {
   stage_ratio_population_comparability_unverified: "Stage ratio: equivalent population not established",
   survey_design_missing_for_some_cases: "Design info missing for some cases",
   survey_design_candidates_ambiguous: "Design candidates ambiguous",
+  // EF-FND-F03 (batch 62, tableFindingPublication.ts): a kept, researcher-annotated table finding whose
+  // table has since been computed again with different figures, or without this comparison at all.
+  superseded_by_recomputation: "Superseded: the table now gives different figures",
+  not_reproduced_on_recomputation: "Not reproduced when the table was computed again",
 };
 
 export function caveatLabel(caveat: string): string {

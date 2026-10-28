@@ -1030,21 +1030,49 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
   }));
 }
 
-/** Turns every draft table in the set into findings and marks the set committed. */
+/**
+ * Turns every draft table in the set into findings and marks the set committed.
+ *
+ * EF-FND-F05 (batch 62): two commits of the same set (a double click, two tabs, a retry while the first
+ * is still running) used to read the same drafts before either marked them committed, and both inserted
+ * the findings. Each draft is now claimed inside the write transaction: the drafts are selected
+ * `for update` (in table order, so two commits lock in the same order and cannot deadlock), and under
+ * READ COMMITTED a commit that waited on the lock re-reads the row and finds it no longer a draft, so it
+ * commits nothing more. Every write is scoped to this tenant, project and data file. A draft that
+ * already has findings from its own table id (which only an earlier interrupted path could leave) gets
+ * no second set: the duplicate check is by the table's own identity (source_table_id), never by text
+ * across different tables. Any failure rolls the whole commit back, drafts and findings together, so a
+ * retry starts from the same drafts. A retry or second commit returns { tables: 0, findings: 0 }.
+ */
 export async function commitCrosstabs(
   tenantId: string,
   runId: string,
   documentId: string,
 ): Promise<{ tables: number; findings: number }> {
   return withTenant(tenantId, async (client) => {
+    const owner = await client.query(
+      "select id from documents where id = $1 and run_id = $2 and tenant_id = $3",
+      [documentId, runId, tenantId],
+    );
+    if (owner.rowCount !== 1) throw new Error("That data file is not in this project, so nothing was committed.");
     const drafts = await client.query<{ id: string; crosstab: CrosstabResult }>(
       `select id, crosstab from document_tables
-       where run_id = $1 and document_id = $2 and crosstab_status = 'draft' and crosstab is not null
-       order by table_index`,
-      [runId, documentId],
+       where run_id = $1 and document_id = $2 and tenant_id = $3 and crosstab_status = 'draft' and crosstab is not null
+       order by table_index, id
+       for update`,
+      [runId, documentId, tenantId],
     );
     let findings = 0;
+    let tables = 0;
     for (const draft of drafts.rows) {
+      const claimed = await client.query(
+        "update document_tables set crosstab_status = 'committed' where id = $1 and run_id = $2 and tenant_id = $3 and crosstab_status = 'draft'",
+        [draft.id, runId, tenantId],
+      );
+      if (claimed.rowCount !== 1) continue;
+      tables++;
+      const existing = await client.query("select 1 from findings where source_table_id = $1 and run_id = $2 limit 1", [draft.id, runId]);
+      if (existing.rows.length > 0) continue;
       for (const f of crosstabFindings(draft.crosstab)) {
         await client.query(
           `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, data_type, status)
@@ -1065,9 +1093,8 @@ export async function commitCrosstabs(
         );
         findings++;
       }
-      await client.query("update document_tables set crosstab_status = 'committed' where id = $1", [draft.id]);
     }
-    return { tables: drafts.rows.length, findings };
+    return { tables, findings };
   });
 }
 

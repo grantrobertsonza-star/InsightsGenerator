@@ -2,11 +2,11 @@ import { readFindingRoutes, ROUTE_LABEL, routeText } from "@/lib/analysisPlan";
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
-import { findingSourceSql, SOURCE_NOT_RECORDED } from "@/lib/sourceAttribution";
+import { describeFindingLocator, findingLocatorColumns, findingSourceSql, SOURCE_NOT_RECORDED, type FindingLocatorRow } from "@/lib/sourceAttribution";
 import { findingOriginalAvailable } from "@/lib/findingWording";
 import { routeRequestContext } from "@/lib/requestContext";
 
-type ExportRow = {
+type ExportRow = FindingLocatorRow & {
   id: string;
   origin: "stated" | "generated" | "coded";
   data_type: "qualitative" | "quantitative" | null;
@@ -71,6 +71,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       // blank Source. Resolved through the shared definition (sourceAttribution.ts).
       `select c.id, c.origin, c.finding_text, c.finding_kind, c.pattern_type, c.theme, c.status,
               ${findingSourceSql("c").columns},
+              ${findingLocatorColumns("c")},
               c.quote_verified, c.duplicate_group_id, c.researcher_note, c.data_type,
               ${originals ? "c.original_extraction->>'finding_text'" : "null::text"} as original_finding_text
        from findings c
@@ -88,7 +89,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  const sheetRows = rows.map((row) => ({
+  // EF-FND-F04: the exact place each finding rests on (shared rule, sourceAttribution.ts).
+  const located = rows.map((row) => ({ row, locator: describeFindingLocator(row) }));
+  const sheetRows = located.map(({ row, locator }) => ({
     Theme: row.theme ?? "No theme",
     Origin:
       row.origin === "generated"
@@ -111,11 +114,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     "Original wording": row.original_finding_text ?? "",
     Status: row.status.charAt(0).toUpperCase() + row.status.slice(1),
     Source: row.source_filename ?? SOURCE_NOT_RECORDED,
+    Table: locator.table,
+    "Source state": locator.sourceState,
     Wave: row.source_wave ?? "",
     Page: row.source_page ?? "",
     "Quote verified": row.quote_verified === null ? "" : row.quote_verified ? "Yes" : "No",
     "Possible duplicate": row.duplicate_group_id ? "Yes" : "No",
     Note: row.researcher_note ?? "",
+    "Finding ID": row.id,
+  }));
+  // One row per finding with its full locator, joined to the Findings sheet by Finding ID (the finding's
+  // wording is not repeated here, so each finding's text appears once in the workbook).
+  const evidenceRows = located.map(({ row, locator }) => ({
+    "Finding ID": row.id,
+    "Source state": locator.sourceState,
+    File: locator.file,
+    "File ID": locator.fileId,
+    Table: locator.table,
+    "Table ID": locator.tableId,
+    Sheet: locator.sheet,
+    Page: locator.page,
+    Quote: locator.quote,
+    Rows: locator.rows,
+    Variables: locator.variables,
+    Filters: locator.filters,
+    Weight: locator.weight,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(sheetRows);
@@ -131,14 +154,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     { wch: 60 }, // Original wording
     { wch: 10 }, // Status
     { wch: 30 }, // Source
+    { wch: 40 }, // Table
+    { wch: 24 }, // Source state
     { wch: 14 }, // Wave
     { wch: 6 },  // Page
     { wch: 14 }, // Quote verified
     { wch: 16 }, // Possible duplicate
     { wch: 40 }, // Note
+    { wch: 38 }, // Finding ID
   ];
+  const evidenceSheet = XLSX.utils.json_to_sheet(evidenceRows);
+  evidenceSheet["!cols"] = [38, 24, 30, 38, 40, 38, 16, 6, 60, 30, 50, 40, 16].map((wch) => ({ wch }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Findings");
+  XLSX.utils.book_append_sheet(workbook, evidenceSheet, "Evidence");
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 

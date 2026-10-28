@@ -1,7 +1,5 @@
-import {
-  archiveAndReplaceFindings,
-  type ArchiveReason,
-} from "./findingArchive";
+import type { ArchiveReason } from "./findingArchive";
+import { publishTableFindings } from "./tableFindingPublication";
 import { withTenant } from "./db";
 import { computeBannerPlanPatterns } from "./bannerPlanComputation";
 
@@ -74,39 +72,33 @@ export async function generateFindingsFromBannerPlan(
   let kept = 0;
   const discarded = 0;
 
+  // EF-FND-F03: replaced through the shared table publication rule (tableFindingPublication.ts), so a
+  // reviewed, annotated or cited finding survives recomputation exactly as it does for a summary table.
+  // The table row is locked and its plan re-read under the lock: a plan or rows changed since the read
+  // above stops this run rather than publishing findings computed from the older version.
   await withTenant(tenantId, async (client) => {
-    // Same reasoning as generateFindingsFromTable.ts: re-running this
-    // replaces its own previous findings rather than duplicating them.
-    await archiveAndReplaceFindings(client, {
-      documentColumn: "source_table_id",
-      documentId: documentTableId,
-      onlyRejected: onlyReplacePending,
+    const locked = await client.query<{ rows: unknown; banner_columns: unknown; stub_columns: unknown }>(
+      "select rows, banner_columns, stub_columns from document_tables where id = $1 and run_id = $2 and tenant_id = $3 for update",
+      [documentTableId, runId, tenantId],
+    );
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    if (
+      locked.rows.length !== 1 ||
+      !same(locked.rows[0].banner_columns, documentTable.banner_columns) ||
+      !same(locked.rows[0].stub_columns, documentTable.stub_columns) ||
+      !same(locked.rows[0].rows, documentTable.rows)
+    ) {
+      throw new Error("This table or its banner plan changed (or it was removed) while findings were being computed, so nothing was changed. Try again.");
+    }
+    const published = await publishTableFindings(client, {
+      tenantId,
+      runId,
+      tableId: documentTableId,
+      patterns,
+      onlyReplacePending,
       archiveReason,
     });
-
-    for (const pattern of patterns) {
-      const sourceCells =
-        pattern.rowIndices.length > 0
-          ? JSON.stringify({ rowIndices: pattern.rowIndices })
-          : null;
-      // See the matching comment in extractFindings.ts: status starts at
-      // 'accepted', not 'pending'.
-      await client.query(
-        `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, source_cells, data_type, status)
-         values ($1, $2, 'generated', $3, $4, $5, $6, $7, $8, 'quantitative', 'accepted')`,
-        [
-          tenantId,
-          runId,
-          pattern.description,
-          pattern.theme,
-          pattern.patternType,
-          JSON.stringify(pattern.statedStats),
-          documentTableId,
-          sourceCells,
-        ],
-      );
-      kept++;
-    }
+    kept = published.inserted + published.unchanged;
   });
 
   return { kept, discarded };

@@ -1,9 +1,7 @@
-import {
-  archiveAndReplaceFindings,
-  type ArchiveReason,
-} from "./findingArchive";
+import type { ArchiveReason } from "./findingArchive";
 import { withTenant } from "./db";
-import { computeTablePatterns } from "./tableComputation";
+import { computeTablePatterns, type TableScanCoverage } from "./tableComputation";
+import { publishTableFindings, type TablePublicationOutcome } from "./tableFindingPublication";
 import { generateFindingsFromBannerPlan } from "./generateFindingsFromBannerPlan";
 
 /**
@@ -38,7 +36,7 @@ export async function generateFindingsFromTable(
   runId: string,
   documentTableId: string,
   options: { onlyReplacePending?: boolean; archiveReason?: ArchiveReason } = {},
-): Promise<{ kept: number; discarded: number }> {
+): Promise<{ kept: number; discarded: number; scan?: TableScanCoverage; publication?: TablePublicationOutcome }> {
   const { onlyReplacePending = false, archiveReason = "manual_reextract" } =
     options;
   const documentTable = await withTenant(tenantId, async (client) => {
@@ -57,12 +55,6 @@ export async function generateFindingsFromTable(
     throw new Error("Table not found for this run");
   }
 
-  const table = {
-    headers: documentTable.headers as string[],
-    rows: documentTable.rows as Record<string, string | number | null>[],
-  };
-
-  let kept = 0;
   const discarded = 0;
 
   // Raw (case-level) data never runs through this scan, no exception, per
@@ -115,56 +107,35 @@ export async function generateFindingsFromTable(
     return result;
   }
 
-  // Runs against every row the table actually has, not a model-eyeballed
-  // preview: there's no prompt size to budget for anymore, since no prompt
-  // is involved in finding these patterns.
-  const { patterns } = computeTablePatterns(table.headers, table.rows);
-
-  await withTenant(tenantId, async (client) => {
-    // Re-running generation on the same table replaces its previous
-    // generated findings rather than duplicating them. onlyReplacePending
-    // narrows that to findings nobody has reviewed yet, and either way
-    // whatever is about to be deleted is snapshotted first, see the
-    // matching comment in extractFindings.ts for the full reasoning.
-    await archiveAndReplaceFindings(client, {
-      documentColumn: "source_table_id",
-      documentId: documentTableId,
-      onlyRejected: onlyReplacePending,
+  // Runs against every row the table actually has, not a model-eyeballed preview. The rows are read
+  // again, and the table row locked, inside the publication transaction (EF-FND-F03): two regenerations
+  // of one table are serialised, the table must still belong to this project and tenant, and the
+  // findings are computed from exactly the rows they are published against.
+  const outcome = await withTenant(tenantId, async (client) => {
+    const locked = await client.query<{ headers: unknown; rows: unknown; ingestion_type: string }>(
+      "select headers, rows, ingestion_type from document_tables where id = $1 and run_id = $2 and tenant_id = $3 for update",
+      [documentTableId, runId, tenantId],
+    );
+    if (locked.rows.length !== 1 || locked.rows[0].ingestion_type !== "aggregated") {
+      throw new Error("This table is no longer in this project (or is no longer a summary table), so nothing was changed.");
+    }
+    const { patterns, scan } = computeTablePatterns(locked.rows[0].headers as string[], locked.rows[0].rows as Record<string, string | number | null>[]);
+    const published = await publishTableFindings(client, {
+      tenantId,
+      runId,
+      tableId: documentTableId,
+      patterns,
+      onlyReplacePending,
       archiveReason,
     });
-
-    // After a partial regenerate the accepted findings are still there: do not add a second copy of each.
-    const existing = new Set<string>();
-    if (onlyReplacePending) {
-      const r = await client.query<{ finding_text: string }>("select finding_text from findings where source_table_id = $1", [documentTableId]);
-      for (const row of r.rows) existing.add(row.finding_text);
-    }
-
-    for (const pattern of patterns) {
-      if (existing.has(pattern.description)) continue;
-      const sourceCells =
-        pattern.rowIndices.length > 0
-          ? JSON.stringify({ rowIndices: pattern.rowIndices })
-          : null;
-      // See the matching comment in extractFindings.ts: status starts at
-      // 'accepted', not 'pending'.
-      await client.query(
-        `insert into findings (tenant_id, run_id, origin, finding_text, theme, pattern_type, stated_stats, source_table_id, source_cells, data_type, status)
-         values ($1, $2, 'generated', $3, $4, $5, $6, $7, $8, 'quantitative', 'accepted')`,
-        [
-          tenantId,
-          runId,
-          pattern.description,
-          pattern.theme,
-          pattern.patternType,
-          JSON.stringify(pattern.statedStats),
-          documentTableId,
-          sourceCells,
-        ],
-      );
-      kept++;
-    }
+    // EF-FND-F01: what the scan examined and omitted, and whether the per-table cap held findings back,
+    // recorded with the outcome so "nothing found" is never confused with "not looked at" or "capped".
+    await client.query(
+      `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'table_findings_scan', $3)`,
+      [tenantId, runId, JSON.stringify({ documentTableId, scan, published })],
+    );
+    return { scan, published };
   });
 
-  return { kept, discarded };
+  return { kept: outcome.published.inserted + outcome.published.unchanged, discarded, scan: outcome.scan, publication: outcome.published };
 }
