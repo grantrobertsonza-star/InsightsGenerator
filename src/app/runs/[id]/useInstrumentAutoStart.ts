@@ -1,5 +1,6 @@
 "use client";
 
+import { matchOutcomeMessage } from "@/lib/instrumentMatchMessage";
 import { useEffect, useSyncExternalStore } from "react";
 import { instrumentReadInFlightAction, matchInstrumentAutomaticallyAction, readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
 import type { InstrumentSummary } from "@/lib/instruments";
@@ -96,7 +97,7 @@ export function useInstrumentAutoStart({
       if (!isGuide && target) {
         const m = await setInstrumentTargetAction(runId, documentId, target).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while matching. Use Match again." }));
         if (!m.ok) return setState(documentId, { running: false, error: m.error, message: null });
-        return setState(documentId, { running: false, error: null, message: `${m.suggested} links suggested. Check them before they are used.` });
+        return setState(documentId, { running: false, error: null, message: matchOutcomeMessage(m) });
       }
       if (!isGuide) {
         const m = await matchInstrumentAutomaticallyAction(runId, documentId).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while matching. Choose the data file and use Match." }));
@@ -106,7 +107,7 @@ export function useInstrumentAutoStart({
           return setState(documentId, { running: false, error: null, message: `More than one data file could be this one's (${counts}). Choose the data file on its card and use Match; a questionnaire shared by several waves can be matched to each.` });
         }
         if ("none" in m) return setState(documentId, { running: false, error: null, message: null });
-        return setState(documentId, { running: false, error: null, message: `${m.suggested} links suggested. Check them before they are used.` });
+        return setState(documentId, { running: false, error: null, message: matchOutcomeMessage(m) });
       }
       setState(documentId, { running: false, error: null, message: null });
     })();

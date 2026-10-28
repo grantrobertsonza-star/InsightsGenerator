@@ -5,7 +5,7 @@ import { withTenant, withTenantRead } from "./db";
 import type { PoolClient } from "pg";
 import { extractDocumentText } from "./extractFindings";
 import { loadVariableDictionary } from "./crosstabs";
-import { codeFamily, matchItems } from "./instrumentMatch";
+import { codeFamily, codebookWordingMatches, matchItems, type ConfirmedCodebookEntry } from "./instrumentMatch";
 import { parseRouting, type Routing } from "./routingParse";
 import { deriveGotoRouting } from "./gotoRouting";
 import { buildLabelOverlay, type LabelOverlay } from "./labelOverlay";
@@ -35,9 +35,13 @@ export type InstrumentLink = {
   itemId: string;
   dataDocumentId: string;
   variable: string;
-  method: "code" | "stem" | "wording" | "manual";
+  method: "code" | "stem" | "wording" | "manual" | "codebook";
   confidence: number;
   status: LinkStatus;
+  /** Batch 49, method 'codebook' only: the codebook entry's code it was linked through, and whether that
+   * entry is still confirmed for the variable (false: the link no longer counts, and says so). */
+  basisCode?: string | null;
+  basisHolds?: boolean;
 };
 
 export const CHUNK_CHARS = 14000;
@@ -590,13 +594,24 @@ async function storeInstrumentRows(
   return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems };
 }
 
-/** Suggests links between an instrument's items and a data file's variables. Confirmed and rejected links are kept. */
+/**
+ * Suggests links between an instrument's items and a data file's variables. Confirmed and rejected links
+ * are kept.
+ *
+ * Batch 49 (Grant, 27 October 2026): for a questionnaire, a question worded identically to a codebook
+ * entry the researcher has confirmed for a variable of this data file (codebookWordingMatches) is linked
+ * to that variable through the codebook: method 'codebook', confirmed, with the codebook entry as its
+ * basis. It counts as confirmed only while that entry stays confirmed for the variable
+ * (getConfirmedItemsForData). A link the researcher already confirmed or rejected is never overwritten;
+ * only a suggestion is upgraded. Before migration 0125 nothing is linked this way and
+ * `codebookUnavailable` says so.
+ */
 export async function suggestInstrumentLinks(
   tenantId: string,
   runId: string,
   instrumentId: string,
   dataDocumentId: string,
-): Promise<{ suggested: number }> {
+): Promise<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean }> {
   const items = await getInstrumentItems(tenantId, instrumentId);
   const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
   const candidates = matchItems(
@@ -604,6 +619,8 @@ export async function suggestInstrumentLinks(
     dictionary.variables.map((v) => ({ name: v.name, label: v.label })),
   );
   let suggestedNew = 0;
+  let fromCodebook = 0;
+  let codebookUnavailable = false;
   await withTenant(tenantId, async (client) => {
     await client.query(
       `delete from instrument_links where status = 'suggested' and data_document_id = $2
@@ -624,6 +641,41 @@ export async function suggestInstrumentLinks(
         )
       ).rows.map((r) => [r.variable, r.item_id]),
     );
+    const own = await client.query<{ instrument_type: string | null }>(
+      "select instrument_type from documents where id = $1 and run_id = $2 and tenant_id = $3",
+      [instrumentId, runId, tenantId],
+    );
+    if (own.rows.length === 0) throw new Error("That questionnaire or codebook was not found in this project.");
+    if (own.rows[0].instrument_type !== "codebook") {
+      if (!(await codebookLinksAvailable(client))) {
+        codebookUnavailable = true;
+      } else {
+        const entries = (
+          await client.query<{ variable: string; item_id: string; code: string | null; item_text: string }>(
+            `select l.variable, i.id as item_id, i.code, i.item_text
+               from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
+              where l.run_id = $1 and l.data_document_id = $2 and l.status = 'confirmed' and d.instrument_type = 'codebook' and d.id <> $3`,
+            [runId, dataDocumentId, instrumentId],
+          )
+        ).rows.map((r): ConfirmedCodebookEntry => ({ variable: r.variable, itemId: r.item_id, code: r.code, text: r.item_text }));
+        for (const m of codebookWordingMatches(items.map((i) => ({ id: i.id, code: i.code, text: i.text })), entries)) {
+          if (taken.has(m.variable) && taken.get(m.variable) !== m.itemId) continue;
+          // Upgrades a suggestion for the same pair; a link the researcher confirmed or rejected stays as it is.
+          const r = await client.query(
+            `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status, basis_item_id)
+             values ($1,$2,$3,$4,$5,'codebook',1,'confirmed',$6)
+             on conflict (item_id, data_document_id, variable) do update
+               set method = 'codebook', confidence = 1, status = 'confirmed', basis_item_id = excluded.basis_item_id
+               where instrument_links.status = 'suggested'`,
+            [tenantId, runId, m.itemId, dataDocumentId, m.variable, m.basisItemId],
+          );
+          if (r.rowCount) {
+            fromCodebook += 1;
+            taken.set(m.variable, m.itemId);
+          }
+        }
+      }
+    }
     for (const c of candidates) {
       if (taken.has(c.variable) && taken.get(c.variable) !== c.itemId) continue;
       // Everything starts as a suggestion. Confirming is the researcher's step.
@@ -637,7 +689,7 @@ export async function suggestInstrumentLinks(
     }
     await client.query("update documents set instrument_for = $1 where id = $2", [dataDocumentId, instrumentId]);
   });
-  return { suggested: suggestedNew };
+  return { suggested: suggestedNew, fromCodebook, codebookUnavailable };
 }
 
 /**
@@ -712,13 +764,31 @@ export async function getInstrumentItems(tenantId: string, instrumentId: string)
   });
 }
 
+/**
+ * Batch 49: SQL true when link `alias` is not a link through the codebook, or its codebook entry (the
+ * basis) is still confirmed for the same variable of the same data file. A deleted basis (set null) is
+ * not confirmed. Only for databases with migration 0125 (codebookLinksAvailable).
+ */
+export const CODEBOOK_BASIS_HOLDS = (alias: string) =>
+  `(${alias}.method <> 'codebook' or exists (select 1 from instrument_links b where b.item_id = ${alias}.basis_item_id and b.data_document_id = ${alias}.data_document_id and b.variable = ${alias}.variable and b.status = 'confirmed'))`;
+
+/** Whether migration 0125 (links through the codebook) is applied; checked, never assumed. */
+async function codebookLinksAvailable(client: PoolClient): Promise<boolean> {
+  const r = await client.query<{ ok: boolean }>(
+    `select exists (select 1 from information_schema.columns where table_name = 'instrument_links' and column_name = 'basis_item_id') as ok`,
+  );
+  return r.rows[0]?.ok === true;
+}
+
 export async function getInstrumentLinks(tenantId: string, instrumentId: string): Promise<InstrumentLink[]> {
   return withTenantRead(tenantId, async (client) => {
+    const withBasis = await codebookLinksAvailable(client);
     const r = await client.query<{
       id: string; item_id: string; data_document_id: string; variable: string;
-      method: InstrumentLink["method"]; confidence: string; status: LinkStatus;
+      method: InstrumentLink["method"]; confidence: string; status: LinkStatus; basis_code: string | null; basis_holds: boolean | null;
     }>(
-      `select l.id, l.item_id, l.data_document_id, l.variable, l.method, l.confidence, l.status
+      `select l.id, l.item_id, l.data_document_id, l.variable, l.method, l.confidence, l.status,
+              ${withBasis ? `(select bi.code from instrument_items bi where bi.id = l.basis_item_id) as basis_code, ${CODEBOOK_BASIS_HOLDS("l")} as basis_holds` : "null::text as basis_code, null::boolean as basis_holds"}
        from instrument_links l join instrument_items i on i.id = l.item_id
        where i.document_id = $1 order by i.item_order, l.confidence desc`,
       [instrumentId],
@@ -726,6 +796,7 @@ export async function getInstrumentLinks(tenantId: string, instrumentId: string)
     return r.rows.map((x) => ({
       id: x.id, itemId: x.item_id, dataDocumentId: x.data_document_id, variable: x.variable,
       method: x.method, confidence: Number(x.confidence), status: x.status,
+      ...(x.method === "codebook" ? { basisCode: x.basis_code, basisHolds: x.basis_holds === true } : {}),
     }));
   });
 }
@@ -856,6 +927,11 @@ export type ConfirmedItem = {
 export async function getConfirmedItemsForData(tenantId: string, runId: string, dataDocumentId: string): Promise<ConfirmedItem[]> {
   try {
     return await withTenantRead(tenantId, async (client) => {
+      // Batch 49: a link made through the codebook (method 'codebook') stands only while the codebook
+      // entry it relied on is still confirmed for the same variable of this data file; otherwise it is
+      // not used, neither as a meaning nor as a gate (CODEBOOK_BASIS_HOLDS). Before migration 0125 there
+      // are no such links and the column is absent, so the condition is left out.
+      const basisHolds = (await codebookLinksAvailable(client)) ? `and ${CODEBOOK_BASIS_HOLDS("l")}` : "";
       // Ordered so every reader that takes the first item per variable or code takes it from the
       // strongest source: confirmed before suggested, then a codebook before a questionnaire
       // (labelSourceRank), then the earlier document, then the question's order in it.
@@ -865,6 +941,7 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
          from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
          where l.run_id = $1 and l.data_document_id = $2
            and (l.status = 'confirmed' or (l.status = 'suggested' and l.method = 'code' and l.confidence >= 0.9))
+           ${basisHolds}
          order by (l.status = 'confirmed') desc, case d.instrument_type when 'codebook' then 0 when 'questionnaire' then 1 else 2 end,
                   d.uploaded_at, d.id, i.item_order, l.variable`,
         [runId, dataDocumentId],

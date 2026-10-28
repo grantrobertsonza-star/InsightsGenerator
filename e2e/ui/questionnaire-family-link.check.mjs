@@ -56,7 +56,7 @@ test("a multiple-response stem is linked to its whole family; Link all respects 
 
     // 2. Reject MR_Value, then Link all from the picker: the other two are linked, the rejection stays.
     const valueRow = mr.locator("div.mb-1", { hasText: "MR_Value" });
-    await valueRow.getByRole("button", { name: "Reject" }).click();
+    await valueRow.getByRole("button", { name: "Not MR_Value", exact: true }).click();
     await expect(valueRow).toContainText("Rejected", { timeout: 30_000 });
     await mr.getByRole("button", { name: "Choose another" }).click();
     const all = mr.getByTestId("variable-picker-link-all");

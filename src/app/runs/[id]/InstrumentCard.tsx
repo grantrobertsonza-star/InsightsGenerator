@@ -1,5 +1,6 @@
 "use client";
 
+import { matchOutcomeMessage, type MatchOutcome } from "@/lib/instrumentMatchMessage";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   chooseInstrumentLinkAction,
@@ -27,6 +28,7 @@ const methodLabel: Record<InstrumentLink["method"], string> = {
   stem: "Code stem",
   wording: "Wording",
   manual: "Chosen by you",
+  codebook: "Identical to codebook",
 };
 
 const btn =
@@ -92,6 +94,23 @@ export default function InstrumentCard({
   // Questions whose every link is shown: a multiple-response family can have dozens, and only the
   // first six are listed until the researcher asks for the rest.
   const [allLinksFor, setAllLinksFor] = useState<Set<string>>(new Set());
+
+  // Batch 49: each link shows its variable's label, so the researcher can compare the wording on the
+  // row. Loaded once per data file when the review opens (the same list the picker uses).
+  useEffect(() => {
+    if (!review || !target || variables?.forTarget === target) return;
+    let live = true;
+    void listLinkableVariablesAction(runId, target).then((r) => {
+      if (!live) return;
+      if (r.ok) setVariables({ forTarget: target, list: r.variables });
+      else setVariablesError(r.error);
+    });
+    return () => {
+      live = false;
+    };
+  }, [review, target, runId, variables?.forTarget]);
+  const labelOf = (name: string) => (variables?.forTarget === target ? variables.list.find((v) => v.name === name)?.label ?? null : null);
+  const targetName = dataDocs.find((d) => d.id === target)?.name ?? "the data file";
 
   async function openPicker(itemId: string) {
     setChoosing(itemId);
@@ -234,7 +253,7 @@ export default function InstrumentCard({
               <button
                 className={btnPrimary}
                 disabled={pending || !target}
-                onClick={() => run(() => setInstrumentTargetAction(runId, documentId, target), (r) => `${r.suggested} links suggested. Check them before they are used.`)}
+                onClick={() => run(() => setInstrumentTargetAction(runId, documentId, target), (r) => matchOutcomeMessage(r as MatchOutcome))}
               >
                 {pending ? "Matching..." : summary.links.suggested + summary.links.confirmed > 0 ? "Match again" : "Match to variables"}
               </button>
@@ -323,7 +342,7 @@ export default function InstrumentCard({
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted">
                   <th className="w-16 px-2 py-1.5">Code</th>
                   <th className="px-2 py-1.5">Question</th>
-                  <th className="w-[22rem] px-2 py-1.5">Linked variable</th>
+                  <th className="w-[22rem] px-2 py-1.5" data-testid="links-variable-heading">Variable in {targetName}</th>
                 </tr>
               </thead>
               <tbody>
@@ -341,7 +360,9 @@ export default function InstrumentCard({
                     </td>
                     <td className="px-2 py-1.5" data-testid="item-links" data-item-code={i.code ?? ""}>
                       {(linksByItem.get(i.id) ?? []).length === 0 ? (
-                        <span className="text-muted">No match</span>
+                        <span className="block text-muted" data-testid="item-no-match">
+                          {isCodebook && i.code ? `No variable named ${i.code} in ${targetName}` : "No match"}
+                        </span>
                       ) : (
                         <>
                         {(() => {
@@ -361,18 +382,34 @@ export default function InstrumentCard({
                               <span className={`block truncate ${l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}`} title={l.variable}>
                                 {l.variable}
                               </span>
-                              <span className="block whitespace-nowrap text-[10px] text-muted">
-                                {`${methodLabel[l.method]}${l.method === "manual" ? "" : `, ${Math.round(l.confidence * 100)}%`}`}
-                                {l.status === "confirmed" && <span className="ml-1 text-success">· Confirmed</span>}
+                              {labelOf(l.variable) && labelOf(l.variable) !== l.variable && (
+                                <span className="block truncate text-[10px] text-muted" title={labelOf(l.variable) ?? ""} data-testid="link-variable-label">
+                                  {labelOf(l.variable)}
+                                </span>
+                              )}
+                              <span className="block whitespace-nowrap text-[10px] text-muted" data-testid="link-method">
+                                {l.method === "codebook"
+                                  ? `Identical to codebook ${l.basisCode ?? "entry"}`
+                                  : `${methodLabel[l.method]}${l.method === "manual" ? "" : `, ${Math.round(l.confidence * 100)}%`}`}
+                                {l.status === "confirmed" && l.basisHolds !== false && <span className="ml-1 text-success">· Confirmed</span>}
                                 {l.status === "rejected" && <span className="ml-1">· Rejected</span>}
                               </span>
+                              {l.method === "codebook" && l.basisHolds === false && l.status === "confirmed" && (
+                                <span className="block text-[10px] text-amber-800" data-testid="link-basis-withdrawn">
+                                  The codebook no longer confirms {l.variable}, so this link is not used. Choose {l.variable} again to confirm it yourself.
+                                </span>
+                              )}
                             </div>
                             <div className="flex shrink-0 items-center gap-1">
                               {l.status !== "confirmed" && (
-                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>Confirm</button>
+                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>
+                                  {`Confirm: ${i.code || "this"} is ${l.variable}`}
+                                </button>
                               )}
                               {l.status !== "rejected" && (
-                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>Reject</button>
+                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>
+                                  {`Not ${l.variable}`}
+                                </button>
                               )}
                             </div>
                           </div>

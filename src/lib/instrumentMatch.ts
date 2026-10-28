@@ -163,3 +163,60 @@ export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchC
   out.push(...best.values());
   return out.sort((a, b) => b.confidence - a.confidence);
 }
+
+// ---- Wording identical to a confirmed codebook entry (batch 49) ----
+
+/** Fewer words than this is too little text to call two documents' wording the same question. */
+export const IDENTICAL_WORDING_MIN_WORDS = 5;
+
+/**
+ * A question's wording as compared for "identical": case, spacing, punctuation, quotes and dashes
+ * ignored, and a leading question number dropped ("1A.", "Q1)", "Q 12:"), so the codebook's
+ * "Q1 California will be holding..." and the questionnaire's "1A. California will be  holding..." are
+ * the same text. Nothing else is changed: different words are different wording.
+ */
+export function normalisedWording(text: string): string {
+  const flat = text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[‘’“”'"`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return flat.replace(/^(?:q\s?)?\d+[a-z]?(?:\s+|$)/, "").trim();
+}
+
+export type ConfirmedCodebookEntry = { variable: string; itemId: string; code: string | null; text: string };
+export type CodebookWordingMatch = { itemId: string; variable: string; basisItemId: string; basisCode: string | null };
+
+/**
+ * Questionnaire items whose wording is identical (normalisedWording) to the wording of a codebook entry
+ * the researcher confirmed for a variable of the same data file. Pure. Only unambiguous pairs: the
+ * wording is at least IDENTICAL_WORDING_MIN_WORDS words, exactly one confirmed variable carries it in
+ * the codebook, and exactly one questionnaire item has it; anything else is left to the ordinary
+ * suggestions for the researcher to check. Identity is the variable name the codebook link confirmed,
+ * never the wording on its own.
+ */
+export function codebookWordingMatches(items: ItemLike[], entries: ConfirmedCodebookEntry[]): CodebookWordingMatch[] {
+  const enough = (w: string) => w.split(" ").filter(Boolean).length >= IDENTICAL_WORDING_MIN_WORDS;
+  const byWording = new Map<string, ConfirmedCodebookEntry[]>();
+  for (const e of entries) {
+    const w = normalisedWording(e.text);
+    if (!enough(w)) continue;
+    const list = byWording.get(w) ?? [];
+    if (!list.some((x) => x.variable === e.variable)) list.push(e);
+    byWording.set(w, list);
+  }
+  const itemsByWording = new Map<string, ItemLike[]>();
+  for (const i of items) {
+    const w = normalisedWording(i.text);
+    if (!enough(w)) continue;
+    itemsByWording.set(w, [...(itemsByWording.get(w) ?? []), i]);
+  }
+  const out: CodebookWordingMatch[] = [];
+  for (const [w, its] of itemsByWording) {
+    const es = byWording.get(w);
+    if (!es || es.length !== 1 || its.length !== 1) continue;
+    out.push({ itemId: its[0].id, variable: es[0].variable, basisItemId: es[0].itemId, basisCode: es[0].code });
+  }
+  return out;
+}

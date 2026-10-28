@@ -4,12 +4,17 @@
 // an error, never a "no pattern" reading. The model client is mocked; the table builder is real.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const state = vi.hoisted(() => ({ response: null as unknown, requests: [] as { system: string; messages: { content: string }[] }[] }));
+const state = vi.hoisted(() => ({ response: null as unknown, queue: [] as unknown[], requests: [] as { system: string; max_tokens: number; messages: { content: string }[] }[] }));
 vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "test-model",
-  anthropic: { messages: { create: vi.fn(async (req: never) => { state.requests.push(req); return state.response; }) } },
+  anthropic: { messages: { create: vi.fn(async (req: never) => { state.requests.push(req); return state.queue.length ? state.queue.shift() : state.response; }) } },
 }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn(async () => {}) }));
+const traced = vi.hoisted(() => ({ rows: [] as unknown[][] }));
+vi.mock("../db", () => ({
+  withTenant: async (_t: string, fn: (c: { query: (sql: string, p: unknown[]) => Promise<unknown> }) => unknown) =>
+    fn({ query: async (_sql: string, p: unknown[]) => { traced.rows.push(p); return { rows: [] }; } }),
+}));
 
 import { insightTableText, summarizeCrosstabTable } from "../crosstabInsights";
 import type { CrosstabResult } from "../parseStatsFile";
@@ -28,6 +33,8 @@ const table = (n: number, pad = 0) => ({ columns: [{ name: "Segment1" }, { name:
 
 beforeEach(() => {
   state.requests = [];
+  state.queue = [];
+  traced.rows = [];
 });
 
 describe("insightTableText", () => {
@@ -94,14 +101,49 @@ describe("summarizeCrosstabTable", () => {
     expect((await summarizeCrosstabTable("t", "r", table(1))).cards).toHaveLength(1);
     expect(state.requests.at(-1)!.system).toContain("Whole-table test");
   });
+  it("batch 49: an empty first answer is retried once with more room, and the second healthy answer is the reading", async () => {
+    state.queue = [tool({})];
+    state.response = tool({ headline: "Segment1 says yes more often.", cards: [{ title: "Gap", body: "60% against 40%." }] });
+    const r = await summarizeCrosstabTable("t", "r", table(1));
+    expect(r.headline).toBe("Segment1 says yes more often.");
+    expect(state.requests.map((q) => q.max_tokens)).toEqual([1500, 3000]);
+  });
+  it("batch 49: the error says what came back, and how much of the table was sent", async () => {
+    state.response = { content: [{ type: "text", text: "I cannot" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } };
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow(
+      /no reading was returned \(stop: end_turn; returned: text\).*It was sent 1 of the table's 1 questions, [\d,]+ characters\. Try again, or read a smaller table\./,
+    );
+  });
+  it("batch 49: a reading wrapped in one field, or sent as JSON text, is read; the failure says the shape, never the text", async () => {
+    const reading = { headline: "A reports more", cards: [{ title: "Gap", body: "60% against 40%." }] };
+    state.response = tool({ reading });
+    expect((await summarizeCrosstabTable("t", "r", table(1))).headline).toBe("A reports more");
+    state.response = tool({ input: JSON.stringify(reading) });
+    expect((await summarizeCrosstabTable("t", "r", table(1))).cards).toHaveLength(1);
+    // Two fields, neither a headline: not guessed at. The error and the trace name the fields and types only.
+    state.response = tool({ summary: "Segment A says yes more often, by 20 points", points: ["60% against 40%"] });
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("the reading had no headline (fields returned: summary (string), points (list))");
+    const detail = traced.rows.map((r) => JSON.parse(String(r[2])));
+    expect(detail).toEqual([
+      { reason: "the reading had no headline (fields returned: summary (string), points (list))" },
+      { reason: "the reading had no headline (fields returned: summary (string), points (list))" },
+    ]);
+    expect(JSON.stringify(detail)).not.toContain("20 points");
+  });
+  it("batch 49: cards sent as JSON text are read as the list they are", async () => {
+    state.response = tool({ headline: "A reports more", cards: JSON.stringify([{ title: "Gap", body: "60% against 40%." }]) });
+    expect((await summarizeCrosstabTable("t", "r", table(1))).cards).toEqual([{ title: "Gap", stat: undefined, body: "60% against 40%." }]);
+    expect(state.requests).toHaveLength(1);
+  });
   it("an empty or cut-off answer is an error, not a 'no pattern' reading", async () => {
+    // Batch 49: each failure is retried once, and the error names what came back both times.
     state.response = tool({});
-    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("came back empty");
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow(/^The AI reading failed twice: the reading had no headline \(fields returned: none\) \(first try: the reading had no headline/);
     state.response = tool({ headline: "  " }, "max_tokens");
-    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("cut off");
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("the answer was cut off at 3000 tokens (first try: the answer was cut off at 1500 tokens)");
     // B4-F01: a cut-off answer that already has a headline and a card is still refused.
     state.response = tool({ headline: "A reports more", cards: [{ title: "Gap", body: "60% against 40%." }] }, "max_tokens");
-    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow("The AI reading was cut off before it finished. Try again.");
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow(/cut off at 3000 tokens/);
     // A healthy read after a refusal succeeds.
     state.response = tool({ headline: "A reports more", cards: [{ title: "Gap", body: "60% against 40%." }] });
     const again = await summarizeCrosstabTable("t", "r", table(1));

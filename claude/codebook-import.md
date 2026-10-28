@@ -166,3 +166,38 @@ non-answer codes.
 - **Freshness.** Unchanged: confirming a link has always changed the labels later tables use, and a
   table already built keeps its labels. A project whose second document was refused before can now
   confirm it; nothing changes until someone does.
+
+## Questionnaire through the codebook (batch 49, 27 October 2026)
+
+Grant: questionnaire 1A and codebook Q1 have the same wording, yet 1A was offered to Q1 at 63% and had
+to be confirmed again. Cause: each document is matched to the data file on its own, and the
+questionnaire's wording was compared only with the data file's short label for Q1, never with the
+codebook's confirmed wording (and wording matches are capped at 89%).
+
+- **Rule** (`instrumentMatch.codebookWordingMatches`, `normalisedWording`): a questionnaire question
+  whose wording is identical to that of a codebook entry confirmed for a variable of the same data file
+  (case, spacing, punctuation, quotes and a leading question number ignored; at least five words) is that
+  variable. Only unambiguous pairs: one confirmed variable with that wording in the codebook, one
+  question with it in the questionnaire. Close wording stays an ordinary suggestion.
+- **Persistence** (`suggestInstrumentLinks`, migration 0125): written in the matching transaction as
+  method `codebook`, confirmed, confidence 1, `basis_item_id` the codebook entry. It upgrades a suggestion
+  for the same pair; a link the researcher confirmed or rejected is never overwritten; matching again adds
+  nothing. A variable already confirmed for another question of the questionnaire is not taken.
+- **Freshness** (`CODEBOOK_BASIS_HOLDS`, used by `getConfirmedItemsForData` and `getInstrumentLinks`): a
+  link through the codebook counts as confirmed only while its codebook entry is still confirmed for the
+  same variable of the same data file. Rejecting or re-linking the entry, or deleting it, withdraws the
+  link from every calculation; the card says "The codebook no longer confirms Q1, so this link is not
+  used" and choosing the variable again confirms it as the researcher's own.
+- **Before 0125:** nothing is linked this way, the match says "Links through the codebook need migration
+  0125", and confirmed meanings read as before.
+- **Screens:** the tab is "Codebook links" for a codebook and "Questionnaire links" for a questionnaire;
+  the links column is "Variable in <data file>", each link shows the variable's label, a link through the
+  codebook reads "Identical to codebook Q1", the buttons read "Confirm: 1A is Q1" and "Not Q1", and a
+  codebook entry with no column reads "No variable named w2 in <data file>".
+- **Order:** the codebook's entries must be confirmed before the questionnaire is matched; matching the
+  questionnaire again after confirming the codebook picks them up.
+
+Tests: `codebookWordingMatch.test.ts` (Grant's two texts, close wording, too short, ambiguous both sides),
+`codebookWordingLinks.db.test.ts` (real database: linked with its basis, idempotent, withdrawn with the
+codebook entry and restored, a researcher's rejection kept, deleted basis), `codebookWordingLinksPre0125
+.db.test.ts`, `e2e/ui/codebook-questionnaire-links.check.mjs`.

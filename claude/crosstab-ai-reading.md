@@ -61,6 +61,20 @@ The cell flags themselves changed too (pooled test, `claude/table-method.md`), w
 "lower" on a 0% cell that the reading had been led by. Tests: `crosstabInsights.test.ts` batch 47 cases
 (both fail on the old code).
 
+## Batch 49 (27 October 2026)
+
+Grant: a 20-question starter table read as "The AI reading came back empty" again. The message said
+nothing about why. A failed reading (no reading returned, no headline, no cards, or cut off) is now retried
+once with more room for the answer (3,000 tokens instead of 1,500); if the second also fails, the error
+names what came back both times and how much of the table was sent ("The AI reading failed twice: the
+reading had no headline (fields returned: none) (first try: ...). It was sent 20 of the table's 20
+questions, 18,400 characters."). Cards sent as JSON text are read as the list they are. The trace on Grant's machine showed the
+cause was not size: the model sent 14,311 tokens in and wrote 962 back, but not in the exact shape the
+tool's schema gives. A reading wrapped once or twice in a single field, or sent as JSON text, is now read
+(`readingIn`); any other shape is no reading, and the error and the trace (`crosstab_insights_failed`)
+name its fields and their types, never their text. Tests:
+`crosstabInsights.test.ts` batch 49 cases (retry succeeds, the error's content, cards as text).
+
 ## Limits
 
 The hosted model's judgment is not tested. The correction note covers only the table's own tests.

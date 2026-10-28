@@ -57,7 +57,7 @@ test("a codebook is read, matched by name and gives the data file its labels", a
   await selectSource(page, "May26_codebook.xlsx");
   await expect(page.getByTestId("file-purpose-text")).toContainText(/^Codebook\. /);
   // The card is in the selected source's tab panel, not its header.
-  const card = page.getByRole("tabpanel", { name: "Questionnaire links", exact: true });
+  const card = page.getByRole("tabpanel", { name: "Codebook links", exact: true });
   await expect(card.getByText("Variables read")).toBeVisible({ timeout: 3 * 60_000 });
   const confirm = card.getByRole("button", { name: "Confirm same-code matches" });
   await expect(confirm).toBeEnabled({ timeout: 3 * 60_000 });

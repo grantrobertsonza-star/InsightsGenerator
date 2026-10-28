@@ -53,7 +53,7 @@ test("a codebook shared by two waves is not matched to either by default, and ca
 
   // 1. Read, then not matched: both waves fit, so the card asks, and the list claims no link.
   await selectSource(page, "Poll_codebook.xlsx");
-  const card = page.getByRole("tabpanel", { name: "Questionnaire links", exact: true });
+  const card = page.getByRole("tabpanel", { name: "Codebook links", exact: true });
   await expect(card.getByText("Variables read")).toBeVisible({ timeout: 3 * 60_000 });
   await expect(card).toContainText("More than one data file could be this one's", { timeout: 60_000 });
   await expect(card).toContainText("may2026.txt: 3 questions match");

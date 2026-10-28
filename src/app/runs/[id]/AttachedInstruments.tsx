@@ -36,10 +36,11 @@ function headline(s: InstrumentSummary, isGuide: boolean): string {
 export function QuestionnaireLinkingNote() {
   return (
     <p className="max-w-3xl text-xs text-muted" data-testid="questionnaire-linking-note">
-      Linking matches each question in the questionnaire to a variable in the data file. Once you confirm a link, tables and
-      charts built from that variable show the question&apos;s wording and answer labels, and answer codes the questionnaire marks as
-      don&apos;t know are treated as missing, so bases and percentages can change. Nothing applies until you confirm, and
-      the data file itself is never changed.
+      Linking matches each question in the questionnaire, or each entry in the codebook, to a variable in the data file. Once
+      you confirm a link, tables and charts built from that variable show its wording and answer labels, and answer codes marked as
+      don&apos;t know are treated as missing, so bases and percentages can change. Nothing applies until it is confirmed, by you
+      or, for a question worded exactly like a codebook entry you have confirmed, through that entry (shown as &quot;Identical to
+      codebook&quot;, and withdrawn if the codebook entry is). The data file itself is never changed.
     </p>
   );
 }

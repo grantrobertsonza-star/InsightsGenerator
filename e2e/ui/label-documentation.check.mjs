@@ -55,7 +55,7 @@ test.use({ viewport: { width: 1600, height: 1000 } });
 
 async function confirmSameCode(page, filename) {
   await selectSource(page, filename);
-  const card = page.getByRole("tabpanel", { name: "Questionnaire links", exact: true });
+  const card = page.getByRole("tabpanel", { name: /^(Questionnaire|Codebook) links$/ });
   const confirm = card.getByRole("button", { name: "Confirm same-code matches" });
   await expect(confirm).toBeEnabled({ timeout: 3 * 60_000 });
   await confirm.click();

@@ -77,7 +77,7 @@ export async function setInstrumentTargetAction(
   runId: string,
   instrumentId: string,
   dataDocumentId: string,
-): Promise<Ok<{ suggested: number }> | Fail> {
+): Promise<Ok<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean }> | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, dataDocumentId);
@@ -96,7 +96,7 @@ export async function setInstrumentTargetAction(
 export async function matchInstrumentAutomaticallyAction(
   runId: string,
   instrumentId: string,
-): Promise<Ok<{ matchedTo: string; suggested: number } | { choose: { dataDocumentId: string; filename: string; matched: number | null; error?: string }[] } | { none: true }> | Fail> {
+): Promise<Ok<{ matchedTo: string; suggested: number; fromCodebook: number; codebookUnavailable: boolean } | { choose: { dataDocumentId: string; filename: string; matched: number | null; error?: string }[] } | { none: true }> | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const choice = await chooseMatchTarget(TENANT_ID, runId, instrumentId);

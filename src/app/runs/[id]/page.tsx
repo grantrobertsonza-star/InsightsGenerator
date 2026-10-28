@@ -5268,7 +5268,8 @@ export default async function RunPage({
         if (instrument) {
           panels.push({
             id: "links",
-            label: isGuide ? "Guide" : "Questionnaire links",
+            // Named for the document it belongs to (Grant, 27 October 2026: a codebook's tab said "Questionnaire links").
+            label: isGuide ? "Guide" : instrument.type === "codebook" ? "Codebook links" : "Questionnaire links",
             badge: flagLinks(instrument.itemsToCheck),
             node: (
               <div key="panel" className="flex flex-col gap-3">
