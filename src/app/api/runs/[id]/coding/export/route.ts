@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/lib/db";
-import { crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
+import { codingExportBlocker, crossTranscriptThemes, getCodingAnalysis } from "@/lib/codingAnalysis";
 import { kappaBand } from "@/lib/qualAudit";
 import { getTranscriptSetups } from "@/lib/transcriptSetup";
 import {
@@ -10,6 +10,7 @@ import {
   usableAttributes,
 } from "@/lib/qualCrosstab";
 import { routeRequestContext } from "@/lib/requestContext";
+import { SET_ASIDE_REASON } from "@/lib/setAsideNotes";
 
 type Cell = string | number | boolean | null;
 
@@ -112,6 +113,9 @@ export async function GET(
   }
 
   const analysis = await getCodingAnalysis(TENANT_ID, runId);
+  // This workbook carries the set-aside notes sheet, so it also refuses when those cannot be read.
+  const blocked = codingExportBlocker(analysis, { setAsideNotes: true });
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 503 });
   const fileName = new Map(data.docs.map((d) => [d.id, d.source_filename]));
   const num = (v: unknown) => (typeof v === "number" ? v : 0);
 
@@ -201,6 +205,7 @@ export async function GET(
   const readingRows: Cell[][] = [];
   const qualityRows: Cell[][] = [];
   const verbatimRows: Cell[][] = [];
+  const setAsideRows: Cell[][] = [];
   const meaningRows: Cell[][] = [];
   const changeRows: Cell[][] = [];
   const attrCrossRows: Cell[][] = [];
@@ -357,6 +362,21 @@ export async function GET(
           vb.note || null,
         ]);
       }
+    }
+    // COD5K-F02: notes whose turn is gone or changed, wording verbatim, one row each, with the words of
+    // the turn they were written on when those were kept ("Not kept" otherwise). No author is stored.
+    for (const o of v.orphanNotes ?? []) {
+      setAsideRows.push([
+        file,
+        o.formerIndex + 1,
+        o.segmentTextHash ?? "Not recorded",
+        o.turnText ?? "Not kept",
+        o.note,
+        "Not recorded",
+        o.writtenAt,
+        o.setAsideAt ?? "Found on reading (not yet moved)",
+        SET_ASIDE_REASON[o.reason],
+      ]);
     }
     for (const c of v.codes) {
       const m = v.meaningChecks[c.id];
@@ -863,6 +883,24 @@ export async function GET(
       ],
       verbatimRows,
       [28, 34, 18, 22, 8, 8, 100, 40, 12, 10, 28, 60],
+    ),
+  );
+  add(
+    "Set-aside notes",
+    sheet(
+      [
+        "Transcript",
+        "Turn written on",
+        "Turn text fingerprint (md5)",
+        "Turn text when written",
+        "Researcher note",
+        "Written by",
+        "Written at",
+        "Set aside at",
+        "Why set aside",
+      ],
+      setAsideRows,
+      [28, 10, 34, 16, 80, 14, 24, 24, 44],
     ),
   );
   add(

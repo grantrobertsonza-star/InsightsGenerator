@@ -8,6 +8,7 @@ import {
 } from "docx";
 import { withTenant } from "@/lib/db";
 import {
+  codingExportBlocker,
   getCodingAnalysis,
   type CodeAnalysis,
   type CodingAnalysisView,
@@ -45,6 +46,8 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   const analysis = await getCodingAnalysis(TENANT_ID, runId);
+  const blocked = codingExportBlocker(analysis);
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 503 });
   if (analysis.size === 0)
     return NextResponse.json(
       { error: "No coding yet. Code themes first." },

@@ -66,9 +66,11 @@ import {
 import {
   countKeyword,
   loadCodeMetaForDocuments,
+  loadOrphanTurnNotes,
   loadTurnNotes,
   splitKeywords,
   type CodeMeta,
+  type OrphanTurnNote,
 } from "./codingMeta";
 
 /**
@@ -305,6 +307,14 @@ export type CodingAnalysisView = {
   // Every coded participant turn with the themes it carries: the trail from a
   // theme back to what people actually said.
   verbatims: VerbatimView[];
+  // COD5K-F02: researcher notes whose turn is gone or changed since they were written (migration
+  // 0127), wording kept, never shown as the note of the turn now at their index. Null when they could
+  // not be read: the screen says so rather than showing none.
+  orphanNotes: OrphanTurnNote[] | null;
+  // Set when the researcher's turn notes could not be read: every verbatims[].note is then "" because
+  // it is unknown, not because there is none. The screen says so and pauses note editing; the
+  // exports refuse rather than leave the notes out (codingExportBlocker).
+  turnNotesError: string | null;
   // Model-assisted meaning saturation check per code id (migration 0049).
   meaningChecks: Record<string, MeaningCheck>;
   // Manual theme changes by the researcher (migration 0050).
@@ -325,6 +335,27 @@ function rowsToArrays(headers: string[], rows: TableRow[]): CellValue[][] {
 const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 // --- Reading -----------------------------------------------------------------
+
+const TURN_NOTES_UNREAD =
+  "Your notes on turns could not be read just now. They have not been removed; try again.";
+
+/**
+ * The reason a coding export or extract must not be produced from this analysis, or null. A file
+ * built while turn notes could not be read would silently leave every researcher note out.
+ */
+export function codingExportBlocker(
+  analysis: Map<string, CodingAnalysisView>,
+  options: { setAsideNotes?: boolean } = {},
+): string | null {
+  for (const view of analysis.values()) {
+    if (view.turnNotesError)
+      return "Your notes on turns could not be read, so the export was not made (it would have left them out). Try again.";
+    if (options.setAsideNotes && view.orphanNotes === null)
+      return "Your notes set aside from changed turns could not be read, so the export was not made (it would have left them out). Try again.";
+  }
+  return null;
+}
+
 
 export async function getCodingAnalysis(
   tenantId: string,
@@ -876,20 +907,29 @@ export async function getCodingAnalysis(
   const perBook = new Map(
     await Promise.all(
       books.map(async (b) => {
-        const [mc, tn] = await Promise.all([
+        const [mc, tn, orphans] = await Promise.all([
           loadMeaningChecks(tenantId, b.document_id),
-          loadTurnNotes(tenantId, b.document_id).catch(
-            () => new Map<number, string>(), // migration 0055 not applied
-          ),
+          // A missing 0055 table already reads as no notes inside loadTurnNotes; any other failure is
+          // reported (turnNotesError), never shown as a transcript without notes.
+          loadTurnNotes(tenantId, b.document_id).catch((error: unknown) => {
+            console.error("Turn notes could not be read", error);
+            return null;
+          }),
+          loadOrphanTurnNotes(tenantId, b.document_id).catch((error: unknown) => {
+            console.error("Notes set aside from changed turns could not be read", error);
+            return null;
+          }),
         ]);
-        return [b.document_id, { mc, tn }] as const;
+        return [b.document_id, { mc, tn, orphans }] as const;
       }),
     ),
   );
 
   for (const book of books) {
     const meaningChecks = perBook.get(book.document_id)?.mc ?? new Map();
-    const turnNotes = perBook.get(book.document_id)?.tn ?? new Map<number, string>();
+    const loadedNotes = perBook.get(book.document_id)?.tn ?? null;
+    const turnNotes = loadedNotes ?? new Map<number, string>();
+    const orphanNotes = perBook.get(book.document_id)?.orphans ?? null;
     const docMeta = metaByDoc.get(book.document_id) ?? new Map<string, CodeMeta>();
     const metaOf = (name: string): CodeMeta | undefined =>
       docMeta.get(normName(name));
@@ -1383,6 +1423,8 @@ export async function getCodingAnalysis(
             note: turnNotes.get(sg.segment_index) ?? "",
           };
         }),
+      orphanNotes,
+      turnNotesError: loadedNotes === null ? TURN_NOTES_UNREAD : null,
       overrides: overrideRows
         .filter((o) => o.document_id === book.document_id)
         .map((o) => {

@@ -21,10 +21,13 @@ import { lockOwnedTranscript } from "./codingTranscriptOwnership";
 import {
   loadCodeMeta,
   loadCodeMetaForDocuments,
+  readNotedTurnTexts,
   saveCodeMeta,
+  setAsideNotesOfReplacedTurns,
   syncFindingThemes,
 } from "./codingMeta";
 import { extractDocumentText } from "./extractFindings";
+import { CURRENT_SENTENCE_RULE, type SentenceRule } from "./sentences";
 import {
   MAX_CODES,
   buildApplyBatches,
@@ -1809,10 +1812,21 @@ async function replaceSegments(
   segments: (TranscriptSegment & { page: number | null })[],
 ): Promise<StoredSegment[]> {
   return withTenant(tenantId, async (client) => {
+    // COD5K-F02: the update lock waits for a turn note being saved (share lock) and makes a note save
+    // that arrives during the re-read wait, then read the new turns; the notes whose turn changed are
+    // set aside in this same transaction (setAsideNotesOfReplacedTurns), so none is ever shown
+    // against different speech, and a failed re-read rolls back with every note where it was.
+    await lockOwnedTranscript(client, tenantId, runId, documentId, "update");
+    // The noted turns' words, read before they are deleted, so a note set aside below keeps the exact
+    // text it was written about.
+    const notedTurns = await readNotedTurnTexts(client, documentId);
     await client.query("delete from coding_segments where document_id = $1", [
       documentId,
     ]);
-    if (segments.length === 0) return [];
+    if (segments.length === 0) {
+      await setAsideNotesOfReplacedTurns(client, documentId, notedTurns);
+      return [];
+    }
     const inserted = await client.query<{ id: string; segment_index: number }>(
       `insert into coding_segments (tenant_id, run_id, document_id, segment_index, speaker, role, page, text)
        select $1, $2, $3, t.i, t.sp, t.r, t.pg, t.tx
@@ -1829,6 +1843,7 @@ async function replaceSegments(
         segments.map((s) => s.text),
       ],
     );
+    await setAsideNotesOfReplacedTurns(client, documentId, notedTurns);
     const idByIndex = new Map(
       inserted.rows.map((r) => [r.segment_index, r.id]),
     );
@@ -1843,23 +1858,37 @@ export type CodedUnitPassage = {
   unit: number;
   /** The exact passage the model was shown when this code was assigned (migration 0090
    * snapshot, captured in applyCodebook/writeCodebookAndFindings at coding time). Null only for
-   * a row written before 0090 shipped, when no snapshot was ever taken - currentText below is
-   * the only passage available for it. */
+   * a row written before 0090 shipped, when no snapshot was ever taken - a re-derivation (see
+   * `text` and `codedUnderRule`) is the only passage available for it. */
   textAsCoded: string | null;
   /** The passage as reconstructCodedUnitText reads it from the document's CURRENT stored
    * segment texts, same re-derivation this function has always done. Null when the stored
    * transcript has moved on since the code was applied (resegmented, or the unit no longer
    * exists) - see reconstructCodedUnitText's own comment. */
   currentText: string | null;
-  /** True when a snapshot exists and no longer matches the current re-derivation - the
-   * transcript has visibly changed since this code was assigned (ANA-QUAL-002). Advisory only:
-   * `text` below always shows the historical passage regardless of this flag, it is never
-   * silently swapped for whatever currentText happens to read now. False (not stale) when there
-   * is no snapshot to compare - a pre-0090 row has nothing to be caught drifting from. */
+  /** The same re-derivation under the sentence rule in force before COD5K-F01
+   * ("legacy-number-full-stop", sentences.ts), which read any number then a full stop as a list
+   * marker. Equal to currentText for every turn without such a number. */
+  legacyRuleText: string | null;
+  /** Which sentence rule reproduces the passage the model was shown: the rule whose re-derivation
+   * equals the snapshot (the current rule when both do); for a row without a snapshot on a database
+   * that has the 0090 column, "legacy-number-full-stop", since such a row was written before 0090
+   * and so before COD5K-F01. Null when that cannot be established (stale, or see passageUncertain). */
+  codedUnderRule: SentenceRule | null;
+  /** True when a snapshot exists and matches neither re-derivation - the transcript has visibly
+   * changed since this code was assigned (ANA-QUAL-002). A snapshot that only the legacy rule
+   * reproduces is NOT stale: the stored turn is unchanged, only the boundary rule moved, and the
+   * snapshot is still the passage the model saw. Advisory only: `text` below always shows the
+   * historical passage regardless of this flag. False when there is no snapshot to compare. */
   stale: boolean;
+  /** True only for a row without a snapshot on a database without migration 0090, where the two
+   * rules give different passages: the row may have been coded under either, so which passage the
+   * model saw is unknown and `text` is null rather than a guess. */
+  passageUncertain: boolean;
   /** The passage to show by default: the immutable snapshot when one was taken, otherwise the
-   * live re-derivation (pre-0090 rows only, where that re-derivation is all there has ever
-   * been). Never resolves a snapshotted assignment to different current text. */
+   * re-derivation under the rule the row was coded with (pre-0090 rows: the legacy rule). Never
+   * resolves a snapshotted assignment to different current text, and never shows a passage
+   * re-split under a rule the model was not shown. */
   text: string | null;
 };
 
@@ -1943,11 +1972,34 @@ export async function getCodedUnitPassages(
     );
     return assigned.rows.map((r) => {
       const segmentIndex = indexById.get(r.segment_id) ?? -1;
-      const currentText = segmentIndex >= 0 ? reconstructCodedUnitText(allSegmentTexts, segmentIndex, r.unit) : null;
+      const derive = (rule: SentenceRule) =>
+        segmentIndex >= 0 ? reconstructCodedUnitText(allSegmentTexts, segmentIndex, r.unit, rule) : null;
+      const currentText = derive(CURRENT_SENTENCE_RULE);
+      const legacyRuleText = derive("legacy-number-full-stop");
       const textAsCoded = r.unit_text ?? null;
-      const stale = textAsCoded !== null && currentText !== textAsCoded;
-      const text = textAsCoded ?? currentText;
-      return { segmentIndex, codeId: r.code_id, codeName: r.code_name, unit: r.unit, textAsCoded, currentText, stale, text };
+      let codedUnderRule: SentenceRule | null = null;
+      let passageUncertain = false;
+      let text: string | null;
+      if (textAsCoded !== null) {
+        if (currentText === textAsCoded) codedUnderRule = CURRENT_SENTENCE_RULE;
+        else if (legacyRuleText === textAsCoded) codedUnderRule = "legacy-number-full-stop";
+        text = textAsCoded;
+      } else if (hasUnitText) {
+        // Written before 0090 shipped, so before COD5K-F01: the model saw the legacy rule's units.
+        codedUnderRule = "legacy-number-full-stop";
+        text = legacyRuleText;
+      } else if (currentText === legacyRuleText) {
+        codedUnderRule = CURRENT_SENTENCE_RULE;
+        text = currentText;
+      } else {
+        passageUncertain = true;
+        text = null;
+      }
+      const stale = textAsCoded !== null && codedUnderRule === null;
+      return {
+        segmentIndex, codeId: r.code_id, codeName: r.code_name, unit: r.unit, textAsCoded,
+        currentText, legacyRuleText, codedUnderRule, stale, passageUncertain, text,
+      };
     });
   });
 }

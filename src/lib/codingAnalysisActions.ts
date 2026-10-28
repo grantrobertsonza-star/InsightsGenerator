@@ -13,7 +13,7 @@ import {
   changeTurnCode,
   restoreCodebookVersion,
 } from "./codingOverrides";
-import { saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
+import { attachOrphanTurnNote, clearOrphanTurnNote, saveCodeMeta, saveTurnNote, syncFindingThemes } from "./codingMeta";
 import { addMemo, deleteMemo, reuseCodebook } from "./codingMemos";
 import { saveTranscriptSetup, withdrawTranscriptSetup, type InterviewStyle } from "./transcriptSetup";
 import {
@@ -396,15 +396,62 @@ export async function saveCodeMetaAction(
   });
 }
 
+/** A server action's arguments are not checked by their TypeScript types: anything not a string is refused. */
+function requireText(value: unknown, what: string): string {
+  if (typeof value !== "string") throw new Error(`${what} is missing.`);
+  return value;
+}
+
+/**
+ * `turnText` is the turn as the screen showed it; when given, the note is saved only if the turn still
+ * says exactly that (COD5K-F02). Omitted only by callers that have no screen copy of the turn.
+ */
 export async function saveTurnNoteAction(
   runId: string,
   documentId: string,
   segmentIndex: number,
   note: string,
+  turnText?: string,
 ) {
   const TENANT_ID = await requireTenantId();
   return guard(runId, async () => {
-    await saveTurnNote(TENANT_ID, runId, documentId, segmentIndex, note);
+    await saveTurnNote(
+      TENANT_ID,
+      runId,
+      documentId,
+      segmentIndex,
+      requireText(note, "The note"),
+      turnText === undefined ? undefined : requireText(turnText, "The turn's text"),
+    );
+  });
+}
+
+export async function clearOrphanTurnNoteAction(runId: string, documentId: string, ref: string) {
+  const TENANT_ID = await requireTenantId();
+  return guard(runId, async () => {
+    await clearOrphanTurnNote(TENANT_ID, runId, documentId, requireText(ref, "The note"));
+    return "Note removed.";
+  });
+}
+
+export async function attachOrphanTurnNoteAction(
+  runId: string,
+  documentId: string,
+  ref: string,
+  segmentIndex: number,
+  turnText: string,
+) {
+  const TENANT_ID = await requireTenantId();
+  return guard(runId, async () => {
+    await attachOrphanTurnNote(
+      TENANT_ID,
+      runId,
+      documentId,
+      requireText(ref, "The note"),
+      segmentIndex,
+      requireText(turnText, "The turn's text"),
+    );
+    return `Note attached to turn ${segmentIndex + 1}.`;
   });
 }
 

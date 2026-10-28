@@ -85,6 +85,9 @@ in the change that moves it.
 | Human wording survives regenerate, retry and re-accept | `src/lib/findingWording.ts` (`editFindingWordingTx`, `revertFindingWordingTx`) | `claude/finding-edit-failure.md` | `findingWording.db.test.ts`, `findingEditContract.db.test.ts` |
 | Researcher corrections to variables | `src/lib/variableOverrides.ts` `saveVariableOverride` (row lock) | `claude/column-names-and-preview-identity.md` | `oneReaderImport.db.test.ts` (TP500-F03) |
 | Data setup saves (compare and swap) | `src/lib/dataSetup.ts` `saveDataSetup` | `claude/setup-loading-guard.md` | `dataSetupStatus.test.ts` |
+| Sentence boundaries: a numeric ending ends a sentence, only a real list marker does not (COD5K-F01); footers, coding units and rebuilt coded passages | `src/lib/sentences.ts` `splitSentences`, `CURRENT_SENTENCE_RULE`; consumers `qualCoding.ts` `splitIntoUnits`, `findRepeatedFooters`, `reconstructCodedUnitText`, `decisionPresentation.ts` `evidenceSummaryPoints` | `claude/coding-text-units.md` | `sentenceBoundaries.test.ts`, `qualCoding.test.ts`, `decisionPresentation.test.ts` |
+| A coded passage is shown as the model saw it, never re-split under a later rule (snapshot, legacy rule) | `src/lib/extractThemes.ts` `getCodedUnitPassages` | `claude/coding-text-units.md` | `codedPassageSnapshot.db.test.ts` |
+| A turn note belongs to the turn it was written on; set aside, wording kept, when the turn is gone or changed (COD5K-F02, 0127) | `src/lib/codingMeta.ts` `saveTurnNote`, `loadTurnNotes`, `loadOrphanTurnNotes`, `setAsideNotesOfReplacedTurns`, `clearOrphanTurnNote`, `attachOrphanTurnNote` | `claude/coding-text-units.md`, `claude/coding-write-ownership.md` | `turnNoteIdentity.db.test.ts`, `turnNoteMigration.db.test.ts`, `quotesTurnNotes.test.tsx` |
 
 ## Files, projects and tenancy
 

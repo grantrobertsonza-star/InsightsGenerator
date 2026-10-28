@@ -12,7 +12,9 @@ that the document exists. So every coding write now confirms its transcript firs
 | Writer | Lock | Why |
 |---|---|---|
 | `codingMeta.saveCodeMeta` (theme, note, keywords per code) | share | the document cannot be deleted or moved to another run before the write commits; two annotation saves on one transcript run side by side |
-| `codingMeta.saveTurnNote` (note on one turn, also clearing it) | share | as above; a negative or fractional turn index is refused first |
+| `codingMeta.saveTurnNote` (note on one turn, also clearing it) | share | as above; a negative or fractional turn index is refused first; then the turn row is read `for share` and must exist and still say the shown text (COD5K-F02, `claude/coding-text-units.md`) |
+| `codingMeta.clearOrphanTurnNote`, `attachOrphanTurnNote` (a note set aside from a changed turn) | share | as above; the set-aside note is locked and must still exist (0127) |
+| `extractThemes.replaceSegments` (a transcript read again) | update | waits for note saves and makes them wait; sets aside notes whose turn changed in the same transaction (COD5K-F02) |
 | `codingOverrides.changeTurnCode` (a hand change to a turn's themes) | update | the code is checked against the codebook version in force while no new version can be inserted; the override records this run |
 | `codingOverrides.addResearcherCode` | update | as above |
 | `codingOverrides.restoreCodebookVersion`, `extractThemes.insertCodebook` (every new version) | update | serialise with the hand changes above |
@@ -22,7 +24,8 @@ that the document exists. So every coding write now confirms its transcript firs
 written, because a server action's argument is not checked by its TypeScript type (an empty, null or
 differently cased value used to be treated as remove).
 
-Callers pass the run: `saveCodeMetaAction`, `saveTurnNoteAction`, `changeTurnCodeAction` and the
+Callers pass the run: `saveCodeMetaAction`, `saveTurnNoteAction`, `clearOrphanTurnNoteAction`,
+`attachOrphanTurnNoteAction`, `changeTurnCodeAction` and the
 internal callers in `extractThemes.ts` (theme grouping, coded import) and `codingMemos.reuseCodebook`.
 
 **Rows left by the old code.** A row another tenant stored against a transcript before this change is
