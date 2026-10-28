@@ -78,6 +78,52 @@ export function isTableIngestionType(value: FormDataEntryValue | null): value is
   return typeof value === "string" && (TABLE_INGESTION_TYPES as readonly string[]).includes(value);
 }
 
+/** What lay under a failed storage write, for diagnosis: the network error's code and message. */
+export type StorageFailureCause = { code: string | null; message: string };
+
+/**
+ * The innermost cause of a storage client error. supabase-js reports a network failure as a
+ * StorageUnknownError whose `originalError` is fetch's TypeError("fetch failed"), and that error's
+ * `cause` is what actually happened (UND_ERR_SOCKET, ECONNRESET, UND_ERR_HEADERS_TIMEOUT, ...).
+ * Addresses are replaced, because a storage address can carry a signed token; nothing else is read.
+ * Null when there is nothing beneath the top-level message.
+ */
+export function storageFailureCause(error: unknown): StorageFailureCause | null {
+  let current: unknown = error;
+  let deepest: { code?: unknown; message?: unknown } | null = null;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+    const next = (current as { originalError?: unknown; cause?: unknown }).originalError ?? (current as { cause?: unknown }).cause;
+    if (!next || typeof next !== "object") break;
+    deepest = next as { code?: unknown; message?: unknown };
+    current = next;
+  }
+  if (!deepest) return null;
+  const code = typeof deepest.code === "string" && /^[A-Z0-9_]{2,60}$/.test(deepest.code) ? deepest.code : null;
+  const message = String(deepest.message ?? "")
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[address]")
+    .replace(/\b(token|apikey|key|signature|authorization)=\S+/gi, "$1=[hidden]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [hidden]")
+    .slice(0, 300);
+  if (!code && !message) return null;
+  return { code, message };
+}
+
+/**
+ * A storage write failed. The message names the file, the storage client's message and, when there is
+ * one, the underlying cause in plain words, so a failure such as "fetch failed" can be told apart
+ * (Codex's 120 MB check, batch 65); `failureCause` carries the same for the upload_error trace.
+ */
+export class StorageWriteError extends Error {
+  readonly failureCause: StorageFailureCause | null;
+  constructor(fileName: string, error: { message: string }) {
+    const cause = storageFailureCause(error);
+    // Without a cause the message is exactly what it always was.
+    const why = cause ? `. The connection reported: ${[cause.code, cause.message].filter(Boolean).join(", ")}.` : "";
+    super(`Upload of ${fileName} failed: ${error.message}${why}`);
+    this.failureCause = cause;
+  }
+}
+
 /**
  * Stores one uploaded file as a document row of the given kind. This is
  * the one piece of storage-upload-then-insert logic shared by every place
@@ -150,7 +196,7 @@ export async function storeUploadedDocument(
       if (!intent.rowCount) throw new Error("This upload was cleaned up before it started. Retry the file.");
       // Cleanup takes the same lock, so it cannot remove bytes between upload and insertion.
       const { error: uploadError } = await supabaseAdmin.storage.from(BUCKET).upload(storagePath, buffer, { contentType: file.type || undefined });
-      if (uploadError) throw new Error(`Upload of ${file.name} failed: ${uploadError.message}`);
+      if (uploadError) throw new StorageWriteError(file.name, uploadError);
       // The instrument column only exists once migration 0060 is applied, so
       // it is only named for instrument uploads and every other upload is
       // unaffected until then.

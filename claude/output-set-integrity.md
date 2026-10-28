@@ -36,6 +36,35 @@ Codex data-integrity extension, DI-F01 to DI-F07 (2026-10-24).
   inputs cap them too); a save returns the values actually stored, which become the card's values and
   its next opened values (B23-F01: the card used to keep longer typed text and refuse its own next save).
 
+## One selection, one set (B52-F01, batches 52R and 65; migration 0129)
+
+`ingestOutputFiles` (`src/lib/outputIngest.ts`) owns grouping; `resolveOutputSet` decides the set for each request
+inside its transaction, every query scoped by tenant and project.
+
+- **Selection id.** The Add files dialog makes one id per selection of statistical output (the files chosen as
+  Statistical output when Upload is pressed) before the first request, and sends it as `outputSelectionId` with every
+  request carrying that selection's output. Unsent output files keep it after any failure, so the enabled retry
+  sends it again without a reload. With 0129 (`output_sets.client_selection_id`, unique per tenant) the first request
+  to arrive creates the set (`insert ... on conflict do nothing`) and every later or retried request joins it, even
+  when no reply ever named the set. Two requests at once give one set.
+- **Set id.** `outputSetId` (52R) is still sent once a reply named the set. With a selection id it must be that
+  selection's set, otherwise "belongs to a different upload" and nothing is added. A set with no selection id (made
+  before 0129) is claimed for the selection that names it, unless the selection already has a set.
+- **Bin and other projects.** The selection id stays on a set moved to the bin, so a late request of that selection
+  finds it there and is refused ("no longer in this project"); it never starts a replacement set. The same holds for
+  a set in another project. Nothing is stored for a refused request.
+- **Families** are recomputed over the whole set after every request of a selection.
+- **Never merged by name.** Two selections are two sets whatever their file names. A known stored file is not sent
+  again: a file whose request got no answer leaves the list, and the message says to reload and check.
+- **Before 0129.** The selection id is ignored and the set id works as in 52R. When a request of the selection got no
+  answer before any reply named the set, the dialog marks the rest `outputSelectionUnconfirmed`, and the server
+  refuses them with "this server cannot find that set yet (database migration 0129 is not applied). Nothing was
+  added, so no second set was started. Reload the page and check Sources, then choose the files that are missing and
+  upload them; they will form a new set." Detected through `information_schema` (`outputSelectionIdentityAvailable`).
+- **Limits.** Files chosen while the remaining files of a selection wait in the dialog join that selection when
+  uploaded together, as in 52R. A selection whose set was merged into another set (Merge) and then retried after a
+  lost reply starts a new set, because the merged set is deleted.
+
 ## Finding history keeps the researcher note (DI-F07)
 
 `findingArchive.archiveAndReplaceFindings` (rereads, regenerated output findings, wave comparisons)

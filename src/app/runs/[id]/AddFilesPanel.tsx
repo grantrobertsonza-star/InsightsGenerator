@@ -10,8 +10,28 @@ import { FILE_LIMIT_MESSAGE } from "@/lib/importLimits";
 
 /** `suggested` is the reason while the type is the panel's own suggestion; null once the researcher chooses. */
 // `outputSetId`: statistical output from a selection whose earlier request already created its output set; a retry
-// adds it to that set rather than starting another (B52-F01).
-type Picked = { key: number; file: File; purpose: UploadPurposeId | ""; suggested: string | null; outputSetId?: string };
+// adds it to that set rather than starting another (B52-F01). `selectionId`: the selection's own id, made before
+// its first request and kept on its unsent output files, so a retry joins the same set even when no reply ever
+// named it (batch 65). `selectionUnconfirmed`: a request of the selection got no answer.
+type Picked = {
+  key: number;
+  file: File;
+  purpose: UploadPurposeId | "";
+  suggested: string | null;
+  outputSetId?: string;
+  selectionId?: string;
+  selectionUnconfirmed?: boolean;
+};
+
+/** A random version 4 UUID; crypto.randomUUID is missing outside a secure context (a plain-http address). */
+function newSelectionId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 
 const btn = "rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:border-slate-400 disabled:opacity-50";
 const primary = "flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover disabled:opacity-60";
@@ -104,6 +124,13 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
       // first request that carries output creates the set; every later one, and a retry of files left from a
       // failed upload, names it so the server adds to it.
       let outputSetId = chosen.find((p) => p.purpose === "output" && p.outputSetId)?.outputSetId;
+      // Batch 65: the selection's own id goes with every request that carries its output, so the server finds the
+      // set the first request made even when that request's reply was lost (migration 0129). Without the
+      // migration the server cannot, and a request of a selection that already had a lost reply says so instead
+      // of quietly starting a second set (`outputSelectionUnconfirmed`).
+      const outputs = chosen.filter((p) => p.purpose === "output");
+      const selectionId = outputs.length > 0 ? (outputs.find((p) => p.selectionId)?.selectionId ?? newSelectionId()) : undefined;
+      let selectionUnconfirmed = outputs.some((p) => p.selectionUnconfirmed);
       let failure: string | null = null;
       for (const batch of batches) {
         // B52-F02: the list as it stands now decides what is sent. A file removed while an earlier request ran
@@ -119,7 +146,12 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
           sent.add(p.key);
         }
         data.set("outputWave", outputWave);
-        if (outputSetId && items.some((p) => p.purpose === "output")) data.set("outputSetId", outputSetId);
+        const carriesOutput = items.some((p) => p.purpose === "output");
+        if (outputSetId && carriesOutput) data.set("outputSetId", outputSetId);
+        if (selectionId && carriesOutput) {
+          data.set("outputSelectionId", selectionId);
+          if (selectionUnconfirmed && !outputSetId) data.set("outputSelectionUnconfirmed", "1");
+        }
         let result: Awaited<ReturnType<typeof uploadDocumentsAction>>;
         try {
           result = await uploadDocumentsAction(runId, data);
@@ -127,6 +159,7 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
           // No answer from the server: whether these files were stored is not known, so the reader is told
           // to look rather than told they failed or succeeded.
           failure = `The upload of ${items.map((p) => p.file.name).join(", ")} did not get an answer from the server. Reload the page to see whether ${items.length === 1 ? "it was" : "they were"} added before trying again.`;
+          if (carriesOutput && !outputSetId) selectionUnconfirmed = true;
           break;
         }
         if (result.outputSetId) outputSetId = result.outputSetId;
@@ -138,11 +171,12 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
           break;
         }
       }
-      // Output files of this selection still waiting keep its set, so a retry completes the same set.
+      // Output files of this selection still waiting keep its set and its selection id, so a retry completes the
+      // same set.
       const inSelection = new Set(chosen.map((p) => p.key));
       const rest = pickedNow.current
         .filter((p) => !sent.has(p.key))
-        .map((p) => (outputSetId && inSelection.has(p.key) && p.purpose === "output" ? { ...p, outputSetId } : p));
+        .map((p) => (inSelection.has(p.key) && p.purpose === "output" ? { ...p, outputSetId, selectionId, selectionUnconfirmed } : p));
       const repeatText = repeats.length > 0 ? ` ${repeats.join(" ")}` : "";
       const problems = [...(failure ? [failure] : []), ...refused];
       // Done with nothing left to send: the dialog closes so the new sources can be checked, and the

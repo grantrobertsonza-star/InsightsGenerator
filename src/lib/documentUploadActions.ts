@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "./db";
 import { ingestOutputFiles } from "./outputIngest";
 import { readContextDocument } from "./extractFindings";
-import { DuplicateUploadError, INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
+import { DuplicateUploadError, INSTRUMENT_TYPES, StorageWriteError, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
 import { requireTenantId } from "./requestContext";
 import { saveSourceRoles } from "./researchQualityRepository";
 import { readIndicatorDocument } from "./indicatorData";
@@ -65,6 +65,7 @@ export type UploadResult =
 
 // `outputSetId` (B52-F01): the output set this request's statistical output went into, so the dialog's next
 // request for the same selection is added to it (one selection, one set, however many requests it takes).
+// Also the shape of `outputSelectionId`, the dialog's own id for the selection (batch 65).
 const SET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -97,6 +98,14 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     return { ok: false, error: "This upload named an output set that is not valid; choose the files again.", added: [] };
   }
   const appendTo = typeof setRaw === "string" && setRaw !== "" ? setRaw : undefined;
+  // Batch 65: the dialog's id for the whole selection of statistical output (ingestOutputFiles joins every
+  // request carrying it to one set, even after a lost reply), and whether a request of it got no answer.
+  const selectionRaw = formData.get("outputSelectionId");
+  if (selectionRaw !== null && selectionRaw !== "" && !(typeof selectionRaw === "string" && SET_ID.test(selectionRaw))) {
+    return { ok: false, error: "This upload named a selection of statistical output that is not valid; choose the files again.", added: [] };
+  }
+  const selectionId = typeof selectionRaw === "string" && selectionRaw !== "" ? selectionRaw.toLowerCase() : undefined;
+  const selectionUnconfirmed = formData.get("outputSelectionUnconfirmed") === "1";
   const waveRaw = formData.get("outputWave");
   const outputWave = typeof waveRaw === "string" ? waveRaw : "";
   const typeRaw = formData.get("instrumentType");
@@ -137,7 +146,8 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
       await withTenant(TENANT_ID, async (client) => {
         await client.query(
           `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'upload_error', $3)`,
-          [TENANT_ID, runId, JSON.stringify({ file: file.name, message })],
+          // A storage write's underlying network cause, when there was one (batch 65), for diagnosis.
+          [TENANT_ID, runId, JSON.stringify({ file: file.name, message, ...(error instanceof StorageWriteError && error.failureCause ? { cause: error.failureCause } : {}) })],
         );
       }).catch(() => {});
     }
@@ -145,7 +155,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   let outputSetId: string | undefined;
   if (outputs.length > 0) {
     try {
-      const r = await ingestOutputFiles(TENANT_ID, runId, outputs, { waveLabel: outputWave, appendTo });
+      const r = await ingestOutputFiles(TENANT_ID, runId, outputs, { waveLabel: outputWave, appendTo, selectionId, selectionUnconfirmed });
       outputSetId = r.setId;
       added.push(`Statistical output, ${r.added} file${r.added === 1 ? "" : "s"}${r.skipped.length > 0 ? ` (${r.skipped.length} left out: ${r.skipped.slice(0, 3).map((x) => x.path).join(", ")}${r.skipped.length > 3 ? ", ..." : ""})` : ""}`);
     } catch (error) {
