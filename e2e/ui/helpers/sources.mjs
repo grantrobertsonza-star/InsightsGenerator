@@ -16,8 +16,13 @@ export async function selectSource(page, name) {
 export async function openSourceTab(page, tab) {
   const button = page.getByRole("tab", { name: tab, exact: true });
   await expect(button).toBeVisible({ timeout: 60_000 });
-  await button.click();
-  await expect(button).toHaveAttribute("aria-selected", "true");
+  // The tabs are drawn by the server, so they are visible before the page is interactive; a click in
+  // that moment is lost (data-setup-hydration releases the scripts and selects at once). Clicking again
+  // until the tab is selected is what a person does, and still fails if the tab never responds.
+  await expect(async () => {
+    if ((await button.getAttribute("aria-selected")) !== "true") await button.click({ timeout: 5_000 });
+    await expect(button).toHaveAttribute("aria-selected", "true", { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
   return page.getByRole("tabpanel", { name: tab, exact: true });
 }
 

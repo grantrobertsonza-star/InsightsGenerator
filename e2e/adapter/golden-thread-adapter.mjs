@@ -176,8 +176,18 @@ export async function bind({ page, target, testInfo }) {
     // Cross tabs opens straight into the workspace (2026-10-20), so there is no tile to click.
     const dialog = page.getByTestId("crosstab-workspace").filter({ visible: true });
     if (!(await dialog.isVisible())) await openSection("Cross tabs");
+    await showTab(dialog, "Build table");
     await expect(dialog.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: STEP_TIMEOUT });
     return dialog;
+  }
+
+  // The page's two tabs (2026-10-27): Build table holds the variable list and the choices, View tables
+  // the tables; adding a table switches to View tables by itself.
+  async function showTab(dialog, name) {
+    const tab = dialog.getByRole("tab", { name });
+    await expect(tab).toBeVisible({ timeout: STEP_TIMEOUT });
+    if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true");
   }
 
   // Finds a variable's row by its exact name. The list hides some variable types until their
@@ -185,6 +195,7 @@ export async function bind({ page, target, testInfo }) {
   // listed under "Text answers"), so each filter is tried in turn and the one that held the
   // variable is recorded.
   async function pickVariable(dialog, name, axis, on = true) {
+    await showTab(dialog, "Build table");
     const search = dialog.getByPlaceholder("Search name or label");
     const filter = dialog.getByLabel("Variable type");
     const options = await filter.evaluate((s) => [...s.options].map((o) => o.value));
@@ -252,6 +263,7 @@ export async function bind({ page, target, testInfo }) {
   // all tables: a result can contain a nested descriptive-statistics table, which an earlier
   // "last matching table" selector picked instead of the result itself.
   async function resultTableFor(dialog, row, { hasText = null } = {}) {
+    await showTab(dialog, /^View tables \d+$/);
     const all = dialog.locator('table[data-testid="crosstab-result-table"]');
     let found = -1;
     await expect

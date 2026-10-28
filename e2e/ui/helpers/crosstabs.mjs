@@ -19,6 +19,20 @@ export async function openCrosstabs(page, filename) {
     await select.selectOption(value);
   }
   const workspace = crosstabWorkspace(page);
+  await showBuild(workspace);
   await expect(workspace.getByRole("button", { name: /Add table to set/ })).toBeVisible({ timeout: 60_000 });
   return workspace;
 }
+
+// The page has two tabs (Grant, 27 October 2026): Build table (the variable list and the choices) and
+// View tables (the tables at full width). Adding a table switches to View tables by itself.
+async function showTab(workspace, name) {
+  const tab = workspace.getByRole("tab", { name });
+  await expect(tab).toBeVisible({ timeout: 60_000 });
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+/** Shows the Build table tab: the variable list, Columns and Rows, and Refine your table. */
+export const showBuild = (workspace) => showTab(workspace, "Build table");
+/** Shows the View tables tab: the tables of the chosen way of making them, the commit and the cell pane. */
+export const showTables = (workspace) => showTab(workspace, /^View tables \d+$/);

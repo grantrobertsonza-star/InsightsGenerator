@@ -181,18 +181,31 @@ export default function CrosstabWorkspace({
   const [colGroups, setColGroups] = useState<Record<string, CrosstabGroup[]>>({});
   const [grouping, setGrouping] = useState<{ variable: string; target: "col" | "row" } | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+  // The page in two tabs (Grant, 27 October 2026): Build table holds the variable list and the
+  // choices; View tables gives the tables the full width, for charts and the cell pane. A new table
+  // switches to View tables. The overlay keeps one view.
+  // With a count of the researcher's view choices (a tab, a way of making tables, Change settings): a
+  // new table switches to View tables only when no view was chosen since its Add was pressed. The
+  // list's refresh can land after the researcher has moved on (back to SemanticTabs, say) and must not
+  // pull them away from it (a late response never overrides newer intent).
+  const [viewState, setViewState] = useState<{ view: "build" | "tables"; choices: number }>({ view: "build", choices: 0 });
+  const view = viewState.view;
+  const chooseView = (v: "build" | "tables") => setViewState((p) => ({ view: v, choices: p.choices + 1 }));
+  // Which "Refine your table" panel is open under its card; one at a time, none at first.
+  const [refine, setRefine] = useState<"filters" | "settings" | "display" | null>(null);
   const [collapseAll, setCollapseAll] = useState<{ open: boolean; tick: number }>({ open: true, tick: 0 });
   const [layerVar, setLayerVar] = useState("");
   const [waveFiles, setWaveFiles] = useState<WaveFile[]>([]);
   const [copyFrom, setCopyFrom] = useState("");
   const [copying, setCopying] = useState(false);
 
-  const refreshList = (added?: string) =>
+  const refreshList = (added?: string, showIfNoChoiceSince?: number) =>
     startTransition(async () => {
       const r = await listCrosstabsAction(runId, documentId);
       if (!r.ok) return setError(r.error);
       setItems(r.items);
       if (added) setLastAdded(added);
+      if (showIfNoChoiceSince !== undefined) setViewState((p) => (p.choices === showIfNoChoiceSince ? { ...p, view: "tables" } : p));
     });
 
   useEffect(() => {
@@ -650,6 +663,7 @@ export default function CrosstabWorkspace({
   }
 
   function addTable(over?: { columnVars: string[]; rowItems: CrosstabRowItem[]; filters?: CrosstabFilter[] }) {
+    const choicesAtAdd = viewState.choices;
     const fl = over?.filters ?? filters;
     let cv = over?.columnVars ?? columnVars;
     let ri = over?.rowItems ?? rowItems;
@@ -683,7 +697,7 @@ export default function CrosstabWorkspace({
         setMessage(`Added a table with ${r.questions} question(s).${skipped}`);
         setRowItems([]);
         setNets([]);
-        refreshList(r.tableId);
+        refreshList(r.tableId, choicesAtAdd);
         return;
       }
       // Layered: one saved table per category of the layer variable, SPSS-style, sharing a
@@ -721,7 +735,7 @@ export default function CrosstabWorkspace({
       setMessage(`Added ${cats.length - failures.length} layered table(s) by ${layerLabel}, ${totalQuestions} question(s) in all.${skippedText}${failedText}`);
       setRowItems([]);
       setNets([]);
-      refreshList(lastTableId);
+      refreshList(lastTableId, choicesAtAdd);
     });
   }
 
@@ -738,6 +752,7 @@ export default function CrosstabWorkspace({
   }
 
   function buildStarter() {
+    const choicesAtAdd = viewState.choices;
     setError(null);
     setMessage(null);
     startTransition(async () => {
@@ -755,7 +770,7 @@ export default function CrosstabWorkspace({
       );
       if (!r.ok) return setError(r.error);
       setMessage(`Added ${r.tables} starter table(s) as drafts, ${r.questions} question(s) each. Review them, delete what you do not need, then commit.`);
-      refreshList();
+      refreshList(undefined, choicesAtAdd);
       router.refresh();
     });
   }
@@ -853,7 +868,9 @@ export default function CrosstabWorkspace({
         type="button"
         onClick={() => {
           setSettingsOpen(true);
-          requestAnimationFrame(() => settingsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+          setRefine("settings");
+          chooseView("build");
+          requestAnimationFrame(() => (settingsRef.current ?? refineRef.current)?.scrollIntoView({ block: "start", behavior: "smooth" }));
         }}
         className="font-medium text-primary underline"
       >
@@ -865,26 +882,15 @@ export default function CrosstabWorkspace({
   // set, and it opens by itself while the survey design needs a choice (designUnresolved).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDetailsElement>(null);
-  const tableSettings = (
-    <details
-      ref={settingsRef}
-      open={settingsOpen || designUnresolved}
-      onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
-      className="rounded-lg border border-slate-200 bg-slate-50"
-      data-testid="crosstab-table-settings"
-    >
-      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
-        {asPage && entry === "build" ? "3. Table settings" : "Table settings"}
-        <span className="ml-2 text-[11px] font-normal text-slate-600" data-testid="crosstab-table-settings-summary">
-          {[
-            weightVar ? `weighted by ${weights.find((w) => w.name === weightVar)?.label ?? weightVar}` : "unweighted",
-            correction === "fdr" ? "false discovery rate" : correction === "bonferroni" ? "Bonferroni" : "uncorrected",
-            designOk && (psuVar || strataVar) ? "survey design set" : "no survey design",
-            excludeDk ? "non-answers excluded" : "non-answers included",
-          ].join(" · ")}
-        </span>
-      </summary>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 px-3 py-2">
+  const refineRef = useRef<HTMLDivElement>(null);
+  const tableSettingsSummaryText = [
+    weightVar ? `weighted by ${weights.find((w) => w.name === weightVar)?.label ?? weightVar}` : "unweighted",
+    correction === "fdr" ? "false discovery rate" : correction === "bonferroni" ? "Bonferroni" : "uncorrected",
+    designOk && (psuVar || strataVar) ? "survey design set" : "no survey design",
+    excludeDk ? "non-answers excluded" : "non-answers included",
+  ].join(" · ");
+  const tableSettingsBody = (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
               <label className="flex min-w-0 items-center gap-2 text-xs">
                 <span className="font-medium text-foreground">Weight</span>
                 <select
@@ -970,6 +976,22 @@ export default function CrosstabWorkspace({
                 </select>
               </label>
       </div>
+  );
+  const tableSettings = (
+    <details
+      ref={settingsRef}
+      open={settingsOpen || designUnresolved}
+      onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
+      className="rounded-lg border border-slate-200 bg-slate-50"
+      data-testid="crosstab-table-settings"
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
+        Table settings
+        <span className="ml-2 text-[11px] font-normal text-slate-600" data-testid="crosstab-table-settings-summary">
+          {tableSettingsSummaryText}
+        </span>
+      </summary>
+      <div className="border-t border-slate-200">{tableSettingsBody}</div>
     </details>
   );
   const headerBar = (
@@ -1016,7 +1038,11 @@ export default function CrosstabWorkspace({
                 type="button"
                 title={hint}
                 aria-pressed={entry === k}
-                onClick={() => setEntry(k)}
+                onClick={() => {
+                  setEntry(k);
+                  // A way of making tables opens on building one; All tables has nothing to build.
+                  chooseView(k === "all" ? "tables" : "build");
+                }}
                 className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${entry === k ? "bg-white text-primary shadow-sm ring-1 ring-primary/40" : "text-muted hover:bg-white/70 hover:text-foreground"}`}
               >
                 {title}
@@ -1305,12 +1331,85 @@ export default function CrosstabWorkspace({
         )}
     </>
   );
+  const notices = (
+    <>
+      {message && <p className="text-xs text-success">{message}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </>
+  );
+  // On the page it sits beside the tabs, so drafts waiting to be committed are in view on either tab.
+  const commitButton = drafts.length > 0 && (
+    <button
+      type="button"
+      onClick={commit}
+      disabled={isPending}
+      className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+    >
+      Commit {drafts.length} table{drafts.length > 1 ? "s" : ""}{entry === "all" ? "" : " (all modes)"} and generate findings
+    </button>
+  );
+  // The tables of the chosen way of making them. On the page, the View tables tab at full width; in
+  // the overlay, under the build controls as before.
+  const tableList = (
+          <div className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                {modeName}: {visible.length} table{visible.length === 1 ? "" : "s"}
+                {entry !== "all" && items.length > visible.length ? ` (${items.length} in all)` : ""}
+              </span>
+              {entry === "all" && drafts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={deleteDrafts}
+                  disabled={isPending}
+                  className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-danger hover:border-danger disabled:opacity-50"
+                >
+                  Delete all drafts ({drafts.length})
+                </button>
+              )}
+              {!asPage && commitButton}
+            </div>
+            {visible.length === 0 && (
+              <p className="text-xs text-muted">
+                {entry === "all"
+                  ? "No tables yet. Make some with Workspace, Ask in plain English, the Crosstabs window or the Starter set."
+                  : `No tables from ${modeName} yet. Tables you make here appear below. Every table is also listed under All tables.`}
+              </p>
+            )}
+            {visible.map((it, i) => {
+              const newLayerGroup = !!it.layerGroup && it.layerGroup !== visible[i - 1]?.layerGroup;
+              return (
+                <div key={`${entry === "all" ? "all" : "mode"}-${it.id}`}>
+                  {newLayerGroup && (
+                    <p className="mb-1 mt-2 text-[11px] font-medium text-muted first:mt-0">
+                      Layered by {it.layerLabel ?? "variable"}, one table per category
+                    </p>
+                  )}
+                  <TableCard
+                    startOpen={false}
+                    runId={runId}
+                    item={it}
+                    collapse={collapseAll}
+                    cells={cellPrefs}
+                    net={cellNet}
+                    stats={statPrefs}
+                    scrollTo={lastAdded === it.id}
+                    onDelete={() => remove(it)}
+                    layerBadge={it.layerCategory ?? undefined}
+                  />
+                </div>
+              );
+            })}
+          </div>
+  );
   const buildPane = (
     <>
-        {/* Build, table set, viewer */}
-        <section aria-label="Tables" className={asPage ? "flex h-[36rem] flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-13rem)] lg:min-h-[32rem]" : "flex min-h-0 flex-col overflow-y-auto"}>
-          <div className="space-y-3 border-b border-border p-4">
-            {entry !== "all" && settingsSummary}
+        {/* The build controls. On the page they are the Build table tab and grow with their content, so
+            the page has one scroll bar (Grant, 27 October 2026); the tables are the View tables tab. In
+            the overlay, the table list follows underneath. */}
+        <section aria-label={asPage ? "Build table" : "Tables"} className={asPage ? "flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm" : "flex min-h-0 flex-col overflow-y-auto"}>
+          <div className={asPage ? "space-y-3 p-4" : "space-y-3 border-b border-border p-4"}>
+            {entry !== "all" && !(asPage && entry === "build") && settingsSummary}
             {entry !== "all" && entry !== "build" && tableSettings}
             {entry === "objectives" && (
               <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-3 text-xs">
@@ -1449,10 +1548,10 @@ export default function CrosstabWorkspace({
             )}
             {entry === "build" && (
               <>
-            <h3 className="text-sm font-semibold text-foreground">1. Rows and columns</h3>
+            {asPage && <h3 className="text-base font-semibold text-foreground">Build a cross-tab: choose the groups to compare and the questions to measure</h3>}
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <p className="mb-1.5 text-base font-semibold text-foreground">Columns (banner, side by side)</p>
+                <p className="mb-1.5 text-base font-semibold text-foreground">Columns <span className="text-xs font-normal uppercase tracking-wide text-slate-500">groups to compare</span></p>
                 <div className="flex h-44 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-white p-2 text-sm shadow-inner">
                   {columnVars.length === 0 && <span className="text-muted">One or more variables, for example province. Leave empty to describe all respondents.</span>}
                   {columnVars.map((n) => (
@@ -1480,7 +1579,7 @@ export default function CrosstabWorkspace({
                 </div>
               </div>
               <div>
-                <p className="mb-1.5 text-base font-semibold text-foreground">Rows (questions to measure)</p>
+                <p className="mb-1.5 text-base font-semibold text-foreground">Rows <span className="text-xs font-normal uppercase tracking-wide text-slate-500">questions to measure</span></p>
                 <div className="flex h-44 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-white p-2 text-sm shadow-inner">
                   {rowItems.length === 0 && nets.length === 0 && <span className="text-muted">One or more variables or whole sets.</span>}
                   {rowItems.map((r) => (
@@ -1530,6 +1629,59 @@ export default function CrosstabWorkspace({
             )}
             {entry === "build" && (
               <>
+            {dict && (asPage ? (
+              // The page: three cards, each opening its panel underneath (Grant, 27 October 2026). Each
+              // card says what is set, so a closed panel never hides a choice that changes the tables.
+              <div ref={refineRef} className="space-y-2" data-testid="crosstab-refine">
+                <h3 className="text-sm font-semibold text-foreground">Refine your table</h3>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {(
+                    [
+                      ["filters", "Filters and layers", `${filters.length === 0 ? "No filter" : `${filters.length} ${filters.length === 1 ? "filter" : "filters"}`} · ${layerVar ? `layered by ${byName.get(layerVar)?.label || layerVar}` : "no layer"}`, "crosstab-filters-section"],
+                      ["settings", "Table settings", tableSettingsSummaryText, "crosstab-table-settings"],
+                      ["display", "Display and statistics", "Cell figures, NET columns, mean and sizes of association", "crosstab-display-section"],
+                    ] as const
+                  ).map(([key, title, summary, testId]) => {
+                    const open = refine === key || (key === "settings" && refine === null && designUnresolved);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={`crosstab-refine-${key}`}
+                        onClick={() => setRefine(open ? null : key)}
+                        data-testid={testId}
+                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors ${open ? "border-primary bg-primary-light" : "border-slate-200 bg-white hover:border-slate-400"}`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-foreground">{title}</span>
+                          <span className="block text-[11px] text-slate-600" data-testid={`${testId}-summary`}>{summary}</span>
+                        </span>
+                        <span aria-hidden className={`shrink-0 text-slate-500 transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(refine === "filters") && (
+                  <div id="crosstab-refine-filters" role="region" aria-label="Filters and layers" className="rounded-lg border border-slate-200 p-2">
+                    <CrosstabOptions part="filters" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                  </div>
+                )}
+                {(refine === "settings" || (refine === null && designUnresolved)) && (
+                  <div id="crosstab-refine-settings" role="region" aria-label="Table settings" className="rounded-lg border border-slate-200 bg-slate-50">
+                    {tableSettingsBody}
+                  </div>
+                )}
+                {refine === "display" && (
+                  <div id="crosstab-refine-display" role="region" aria-label="Display and statistics" className="rounded-lg border border-slate-200 p-2">
+                    <CrosstabOptions part="display" runId={runId} documentId={documentId} dict={dict} weighted={weightVar !== ""} filters={filters} setFilters={setFilters} cells={cellPrefs} setCells={setCellPrefs} net={cellNet} setNet={setCellNet} stats={statPrefs} setStats={setStatPrefs} layerVar={layerVar} setLayerVar={setLayerVar} />
+                  </div>
+                )}
+                {/* The choices that change what every table means, in one line under the cards (Grant's mock). */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{settingsSummary}</div>
+              </div>
+            ) : (
+              <>
             {dict && (
               <details className="rounded-lg border border-slate-200" open={filters.length > 0 || layerVar !== "" ? true : undefined} data-testid="crosstab-filters-section">
                 <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-foreground">
@@ -1555,6 +1707,8 @@ export default function CrosstabWorkspace({
                 </div>
               </details>
             )}
+              </>
+            ))}
             {/* Kept in view at the foot of the pane while the sections above are scrolled. */}
             <div className={asPage ? "sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-white/95 px-4 py-2 backdrop-blur" : "flex flex-wrap items-center gap-3"}>
               <button
@@ -1571,70 +1725,9 @@ export default function CrosstabWorkspace({
             </div>
               </>
             )}
-            {message && <p className="text-xs text-success">{message}</p>}
-            {error && <p className="text-xs text-danger">{error}</p>}
+            {notices}
           </div>
-
-          <div className="space-y-3 p-4">
-            {asPage && entry === "build" && <h3 className="text-sm font-semibold text-foreground">4. Results and saved tables</h3>}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-foreground">
-                {modeName}: {visible.length} table{visible.length === 1 ? "" : "s"}
-                {entry !== "all" && items.length > visible.length ? ` (${items.length} in all)` : ""}
-              </span>
-              {entry === "all" && drafts.length > 0 && (
-                <button
-                  type="button"
-                  onClick={deleteDrafts}
-                  disabled={isPending}
-                  className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-danger hover:border-danger disabled:opacity-50"
-                >
-                  Delete all drafts ({drafts.length})
-                </button>
-              )}
-              {drafts.length > 0 && (
-                <button
-                  type="button"
-                  onClick={commit}
-                  disabled={isPending}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-                >
-                  Commit {drafts.length} table{drafts.length > 1 ? "s" : ""}{entry === "all" ? "" : " (all modes)"} and generate findings
-                </button>
-              )}
-            </div>
-            {visible.length === 0 && (
-              <p className="text-xs text-muted">
-                {entry === "all"
-                  ? "No tables yet. Make some with Workspace, Ask in plain English, the Crosstabs window or the Starter set."
-                  : `No tables from ${modeName} yet. Tables you make here appear below. Every table is also listed under All tables.`}
-              </p>
-            )}
-            {visible.map((it, i) => {
-              const newLayerGroup = !!it.layerGroup && it.layerGroup !== visible[i - 1]?.layerGroup;
-              return (
-                <div key={`${entry === "all" ? "all" : "mode"}-${it.id}`}>
-                  {newLayerGroup && (
-                    <p className="mb-1 mt-2 text-[11px] font-medium text-muted first:mt-0">
-                      Layered by {it.layerLabel ?? "variable"}, one table per category
-                    </p>
-                  )}
-                  <TableCard
-                    startOpen={false}
-                    runId={runId}
-                    item={it}
-                    collapse={collapseAll}
-                    cells={cellPrefs}
-                    net={cellNet}
-                    stats={statPrefs}
-                    scrollTo={lastAdded === it.id}
-                    onDelete={() => remove(it)}
-                    layerBadge={it.layerCategory ?? undefined}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          {!asPage && tableList}
         </section>
     </>
   );
@@ -1646,14 +1739,52 @@ export default function CrosstabWorkspace({
         <div className="flex flex-col gap-3" data-testid="crosstab-workspace">
           {headerBar}
           {dialogs}
-          <ThreePane
-            storageKey="crosstab-workspace"
-            leftDefaultPx={560}
-            leftMaxShare={0.55}
-            left={variablesPane}
-            middle={buildPane}
-            right={cellSel ? <CellDetailPane onClose={() => setCellSel(null)} /> : undefined}
-          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div role="tablist" aria-label="Build or view tables" className="inline-flex self-start rounded-xl border border-border bg-slate-100 p-1">
+            {(
+              [
+                ["build", "Build table", entry === "all"],
+                ["tables", `View tables ${visible.length}`, false],
+              ] as const
+            ).map(([key, title, disabled]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`crosstab-tab-${key}`}
+                aria-selected={view === key}
+                aria-controls={`crosstab-panel-${key}`}
+                disabled={disabled}
+                title={disabled ? "All tables lists every table; choose a way of making tables to build one." : undefined}
+                onClick={() => chooseView(key)}
+                className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 ${view === key ? "bg-white text-primary shadow-sm ring-1 ring-primary/40" : "text-muted hover:bg-white/70 hover:text-foreground"}`}
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+          {commitButton}
+          </div>
+          {view === "build" ? (
+            <div role="tabpanel" id="crosstab-panel-build" aria-labelledby="crosstab-tab-build">
+              <ThreePane storageKey="crosstab-workspace" leftDefaultPx={560} leftMaxShare={0.55} left={variablesPane} middle={buildPane} />
+            </div>
+          ) : (
+            // Full width: no variable list, so tables and charts have the room; the cell pane opens on
+            // the right while a cell is selected and gives its room back on Close.
+            <div role="tabpanel" id="crosstab-panel-tables" aria-labelledby="crosstab-tab-tables">
+              <ThreePane
+                storageKey="crosstab-tables"
+                middle={
+                  <section aria-label="Tables" className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {(message || error) && <div className="px-4 pt-4">{notices}</div>}
+                    {tableList}
+                  </section>
+                }
+                right={cellSel ? <CellDetailPane onClose={() => setCellSel(null)} /> : undefined}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">
@@ -1683,7 +1814,7 @@ function CellDetailPane({ onClose }: { onClose?: () => void }) {
       aria-label="Selected cell"
       className={
         onClose
-          ? "flex h-[36rem] flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:h-[calc(100vh-13rem)] lg:min-h-[32rem]"
+          ? "flex max-h-[36rem] flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]"
           : "hidden min-h-0 flex-col gap-4 overflow-y-auto border-l-2 border-slate-300 bg-white p-4 xl:flex"
       }
       data-testid="crosstab-cell-pane"

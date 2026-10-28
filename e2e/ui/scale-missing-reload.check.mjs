@@ -12,7 +12,7 @@
 // reload and read again; the import's data audit must still report both user-missing declarations
 // after the reload. Real browser, engine and database on the disposable stack. No model calls.
 import { expect, test } from "@playwright/test";
-import { openCrosstabs } from "./helpers/crosstabs.mjs";
+import { openCrosstabs, showTables } from "./helpers/crosstabs.mjs";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -42,6 +42,7 @@ pyreadstat.write_sav(df, sys.argv[1], variable_value_labels=labels, missing_rang
 async function reopenSaved(page, run, row) {
   await page.goto(run.url, { waitUntil: "networkidle" });
   const dialog = await openCrosstabs(page);
+  await showTables(dialog);
   const matching = dialog.locator(`table[data-testid="crosstab-result-table"][data-question-keys*='"${row}"']`);
   await expect
     .poll(

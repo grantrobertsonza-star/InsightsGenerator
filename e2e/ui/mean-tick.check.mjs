@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
-import { openCrosstabs } from "./helpers/crosstabs.mjs";
+import { openCrosstabs, showTables } from "./helpers/crosstabs.mjs";
 
 const manifestPath = process.env.GOLDEN_SMOKE_TARGET_MANIFEST ?? "e2e-results/target-manifest.json";
 const target = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -82,6 +82,7 @@ test("Mean is on by default, adds a mean row above a rating scale, names the res
     ws = await openCrosstabs(page, "mean-tick.sav");
     // Cross tabs opens on CrossTabs; the starter table is listed under StarterTabs.
     await ws.getByRole("button", { name: "StarterTabs" }).click();
+    await showTables(ws);
     await expect.poll(async () => (await expandAll(), table.count()), { timeout: 60_000 }).toBeGreaterThan(0);
     await expect(ws.locator('table[data-testid="crosstab-result-table"]').first().locator("tbody tr").filter({ hasText: /^\s*(×\s*)?Mean(?!\s*score)/ }).first()).toBeVisible();
   } finally {

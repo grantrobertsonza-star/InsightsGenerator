@@ -182,7 +182,29 @@ function jsonParts(content) {
 
 export function createModelReplay(fixturePath) {
   const log = [];
-  const server = http.createServer(async (req, res) => {
+  // A check rewrites the fixture file between its steps; a request that arrives mid-write reads an empty or
+  // partial file. That once threw out of this handler and stopped the whole stack, so every later check
+  // timed out (27 October 2026). The read is retried briefly, and any other unexpected error answers that
+  // one request with a 500 (which the app reports as a failed model call) instead of ending the server.
+  const readFixture = async () => {
+    if (!fixturePath || !existsSync(fixturePath)) return null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return JSON.parse(readFileSync(fixturePath, "utf8"));
+      } catch (error) {
+        if (attempt >= 20) throw error;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    }
+  };
+  const server = http.createServer((req, res) => {
+    handle(req, res).catch((error) => {
+      log.push({ at: new Date().toISOString(), replayError: String(error?.message ?? error) });
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: `Replay error: ${error?.message ?? error}` } }));
+    });
+  });
+  async function handle(req, res) {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
@@ -191,7 +213,7 @@ export function createModelReplay(fixturePath) {
     const textOf = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.map((b) => (b?.type === "text" ? b.text : JSON.stringify(b))).join("\n") : JSON.stringify(c));
     const content = (body.messages ?? []).map((m) => textOf(m.content)).join("\n");
     const system = textOf(body.system ?? "");
-    const fixture = fixturePath && existsSync(fixturePath) ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
+    const fixture = await readFixture();
     const override = fixture?.tools?.[name]?.find(rule => content.includes(rule.match));
     if (override?.status) {
       log.push({ at: new Date().toISOString(), tool: name, scripted: true, injectedStatus: override.status });
@@ -236,6 +258,6 @@ export function createModelReplay(fixturePath) {
         usage: { input_tokens: 0, output_tokens: 0 },
       }),
     );
-  });
+  }
   return { server, log };
 }

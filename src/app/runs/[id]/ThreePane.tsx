@@ -342,7 +342,8 @@ function ThreePaneColumns({
               testId="three-pane-handle-right"
             />
           </div>
-          <div ref={rightRef} className="min-w-0" data-testid="three-pane-right">
+          {/* Stretched to the row's height so a right pane can stay in view (sticky) beside a long middle. */}
+          <div ref={rightRef} className="min-w-0 lg:self-stretch" data-testid="three-pane-right">
             {right}
           </div>
         </>
