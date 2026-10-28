@@ -217,17 +217,18 @@ async function readOnce(tenantId: string, runId: string, content: string, maxTok
     messages: [{ role: "user", content }],
   });
   await logApiUsage(tenantId, runId, "crosstab_insights", response.usage);
-  if (response.stop_reason === "max_tokens") return { ok: false, reason: `the answer was cut off at ${maxTokens} tokens` };
-  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  if (!tu) return { ok: false, reason: `no reading was returned (stop: ${response.stop_reason ?? "unknown"}; returned: ${response.content.map((b) => b.type).join(", ") || "nothing"})` };
-  const input = readingIn(tu.input);
-  const headline = input && typeof input.headline === "string" ? input.headline.trim() : "";
-  if (!input || !headline) {
-    const reason = `the reading had no headline (${shapeOf(tu.input)})`;
-    // What came back, by field name and type only (never the text), so a failure can be diagnosed later.
+  // Every failed reading is traced the same way (B49-F02, Codex): what came back, by field name and type only
+  // (never the text), so any failure, not only a missing headline, can be diagnosed later.
+  const fail = async (reason: string): Promise<ReadingAttempt> => {
     await traceReadingFailure(tenantId, runId, reason);
     return { ok: false, reason };
-  }
+  };
+  if (response.stop_reason === "max_tokens") return fail(`the answer was cut off at ${maxTokens} tokens`);
+  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+  if (!tu) return fail(`no reading was returned (stop: ${response.stop_reason ?? "unknown"}; returned: ${response.content.map((b) => b.type).join(", ") || "nothing"})`);
+  const input = readingIn(tu.input);
+  const headline = input && typeof input.headline === "string" ? input.headline.trim() : "";
+  if (!input || !headline) return fail(`the reading had no headline (${shapeOf(tu.input)})`);
   // A list sent as JSON text is read as the list it is (some answers arrive that way); anything else is no cards.
   let rawCards: unknown = input.cards;
   if (typeof rawCards === "string") {
@@ -243,6 +244,6 @@ async function readOnce(tenantId: string, runId: string, content: string, maxTok
         .slice(0, 4)
         .map((c) => ({ title: String(c.title), stat: c.stat ? String(c.stat) : undefined, body: String(c.body) }))
     : [];
-  if (cards.length === 0) return { ok: false, reason: "the reading came back without any patterns described" };
+  if (cards.length === 0) return fail(`the reading came back without any patterns described (${shapeOf(tu.input)})`);
   return { ok: true, reading: { headline, cards } };
 }

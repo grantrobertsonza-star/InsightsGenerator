@@ -130,6 +130,25 @@ describe("summarizeCrosstabTable", () => {
     ]);
     expect(JSON.stringify(detail)).not.toContain("20 points");
   });
+  it("B49-F02: malformed cards and a missing reading are traced like a missing headline, by shape only", async () => {
+    state.response = tool({ headline: "Segment A says yes more often, by 20 points", cards: { unexpected: true } });
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow(
+      "the reading came back without any patterns described (fields returned: headline (string), cards (object))",
+    );
+    expect(state.requests.map((q) => q.max_tokens)).toEqual([1500, 3000]);
+    const cardsTrace = traced.rows.map((r) => JSON.parse(String(r[2])));
+    expect(cardsTrace).toEqual([
+      { reason: "the reading came back without any patterns described (fields returned: headline (string), cards (object))" },
+      { reason: "the reading came back without any patterns described (fields returned: headline (string), cards (object))" },
+    ]);
+    expect(JSON.stringify(cardsTrace)).not.toContain("20 points");
+    traced.rows.length = 0;
+    state.response = { content: [{ type: "text", text: "I cannot read this table" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } };
+    await expect(summarizeCrosstabTable("t", "r", table(1))).rejects.toThrow(/no reading was returned/);
+    const none = traced.rows.map((r) => JSON.parse(String(r[2])));
+    expect(none).toEqual([{ reason: "no reading was returned (stop: end_turn; returned: text)" }, { reason: "no reading was returned (stop: end_turn; returned: text)" }]);
+    expect(JSON.stringify(none)).not.toContain("cannot read");
+  });
   it("batch 49: cards sent as JSON text are read as the list they are", async () => {
     state.response = tool({ headline: "A reports more", cards: JSON.stringify([{ title: "Gap", body: "60% against 40%." }]) });
     expect((await summarizeCrosstabTable("t", "r", table(1))).cards).toEqual([{ title: "Gap", stat: undefined, body: "60% against 40%." }]);

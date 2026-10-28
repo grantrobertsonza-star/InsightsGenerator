@@ -97,7 +97,7 @@ test("Cross tabs: direct entry, file chooser, kept state, contextual cell pane",
     //    Adding a table switches to View tables (Grant, 2026-10-27): the tables at full width with no
     //    variable list, and no scroll box of their own, so the page's scroll bar is the only one.
     await expect(ws.getByRole("tab", { name: /^View tables \d+$/ })).toHaveAttribute("aria-selected", "true");
-    await expect(ws.getByPlaceholder("Search name or label")).toHaveCount(0);
+    await expect(ws.getByPlaceholder("Search name or label")).toBeHidden();
     const tablesPane = ws.getByRole("region", { name: "Tables" });
     expect(await tablesPane.evaluate((el) => getComputedStyle(el).overflowY)).toBe("visible");
     const widths = await ws.evaluate((el) => ({ ws: el.getBoundingClientRect().width, tables: el.querySelector('section[aria-label="Tables"]').getBoundingClientRect().width }));

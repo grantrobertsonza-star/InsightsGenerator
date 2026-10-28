@@ -1725,7 +1725,7 @@ export default function CrosstabWorkspace({
             </div>
               </>
             )}
-            {notices}
+            {!asPage && notices}
           </div>
           {!asPage && tableList}
         </section>
@@ -1765,26 +1765,28 @@ export default function CrosstabWorkspace({
           </div>
           {commitButton}
           </div>
-          {view === "build" ? (
-            <div role="tabpanel" id="crosstab-panel-build" aria-labelledby="crosstab-tab-build">
+          {/* Messages (added, committed, refused) once, above both tabs, so each is shown once whichever tab
+              is open: with both tabs mounted, one copy per tab put the same text on the page twice. */}
+          {(message || error) && <div className="space-y-1">{notices}</div>}
+          {/* Both tabs stay mounted and the inactive one is hidden (B50-F01, Codex): unmounting it threw away
+              work in progress there, a reviewed SemanticTabs plan or a table's Mean, measures, title or AI
+              reading. A reload still starts afresh, as before. */}
+          <div role="tabpanel" id="crosstab-panel-build" aria-labelledby="crosstab-tab-build" hidden={view !== "build"}>
               <ThreePane storageKey="crosstab-workspace" leftDefaultPx={560} leftMaxShare={0.55} left={variablesPane} middle={buildPane} />
-            </div>
-          ) : (
-            // Full width: no variable list, so tables and charts have the room; the cell pane opens on
-            // the right while a cell is selected and gives its room back on Close.
-            <div role="tabpanel" id="crosstab-panel-tables" aria-labelledby="crosstab-tab-tables">
+          </div>
+          {/* Full width: no variable list, so tables and charts have the room; the cell pane opens on the
+              right while a cell is selected and gives its room back on Close. */}
+          <div role="tabpanel" id="crosstab-panel-tables" aria-labelledby="crosstab-tab-tables" hidden={view !== "tables"}>
               <ThreePane
                 storageKey="crosstab-tables"
                 middle={
                   <section aria-label="Tables" className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                    {(message || error) && <div className="px-4 pt-4">{notices}</div>}
                     {tableList}
                   </section>
                 }
                 right={cellSel ? <CellDetailPane onClose={() => setCellSel(null)} /> : undefined}
               />
-            </div>
-          )}
+          </div>
         </div>
       ) : (
         <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Crosstab workspace">

@@ -78,3 +78,8 @@ name its fields and their types, never their text. Tests:
 ## Limits
 
 The hosted model's judgment is not tested. The correction note covers only the table's own tests.
+
+B49-F02 (Codex, 28 October 2026): every failed reading is traced the same way (`crosstab_insights_failed`,
+field names and types only): cut off, no reading returned, no headline, and no usable cards ("the reading came
+back without any patterns described (fields returned: headline (string), cards (object))"). Only a missing
+headline used to be traced. Test: `crosstabInsights.test.ts` "B49-F02".

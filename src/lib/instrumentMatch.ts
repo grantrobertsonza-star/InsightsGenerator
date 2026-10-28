@@ -170,19 +170,43 @@ export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchC
 export const IDENTICAL_WORDING_MIN_WORDS = 5;
 
 /**
- * A question's wording as compared for "identical": case, spacing, punctuation, quotes and dashes
- * ignored, and a leading question number dropped ("1A.", "Q1)", "Q 12:"), so the codebook's
- * "Q1 California will be holding..." and the questionnaire's "1A. California will be  holding..." are
- * the same text. Nothing else is changed: different words are different wording.
+ * A question's wording as compared for "identical" (B49-F01, Codex, 28 October 2026). Only formatting is
+ * set aside: Unicode compatibility forms (NFKC), case, runs of spacing, the style of quotation marks and
+ * dashes, and punctuation closing the question. Everything that can carry meaning is kept: symbols and
+ * signs ("< 5000" is not "> 5000", "-500" is not "+500"), numbers, and every script ("東京" is not "大阪").
+ * The first version reduced the text to ASCII letters and digits and dropped any leading number, so those
+ * pairs were linked and confirmed with no researcher.
+ *
+ * A leading question label is dropped only when it is unmistakably a label: the item's own code at the start
+ * ("Q1 California..." for the entry Q1), or a number label closed by ".", ")" or ":" ("1A.", "Q1)", "Q 12:").
+ * A number that opens the sentence ("18 years and older ...") stays: it may be the question.
  */
-export function normalisedWording(text: string): string {
-  const flat = text
-    .normalize("NFKC")
+export function normalisedWording(text: string, code?: string | null): string {
+  let t = text.normalize("NFKC").trim();
+  const own = (code ?? "").normalize("NFKC").trim();
+  if (own) {
+    const lead = new RegExp(`^${esc(own)}(?:[.):]\\s*|\\s+)`, "i");
+    t = t.replace(lead, "");
+  }
+  t = t.replace(/^(?:q\s?)?\d+[a-z]?[.):]\s+/i, "");
+  return t
     .toLowerCase()
-    .replace(/[‘’“”'"`]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[‘’‚‛′]/g, "'")
+    .replace(/[“”„‟″]/g, '"')
+    .replace(/[‐‑‒–—―−]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[\s.?!:;]+$/, "")
     .trim();
-  return flat.replace(/^(?:q\s?)?\d+[a-z]?(?:\s+|$)/, "").trim();
+}
+
+/**
+ * Whether a link through the codebook still rests on identical wording under the current rule. Links made
+ * by the first rule (B49-F01) are checked again with it wherever they are read, so a false one stops
+ * counting without anything being deleted; matching again turns it back into an ordinary suggestion.
+ */
+export function wordingIdentical(a: { text: string; code: string | null }, b: { text: string; code: string | null }): boolean {
+  const wa = normalisedWording(a.text, a.code);
+  return wa.split(" ").filter(Boolean).length >= IDENTICAL_WORDING_MIN_WORDS && wa === normalisedWording(b.text, b.code);
 }
 
 export type ConfirmedCodebookEntry = { variable: string; itemId: string; code: string | null; text: string };
@@ -200,7 +224,7 @@ export function codebookWordingMatches(items: ItemLike[], entries: ConfirmedCode
   const enough = (w: string) => w.split(" ").filter(Boolean).length >= IDENTICAL_WORDING_MIN_WORDS;
   const byWording = new Map<string, ConfirmedCodebookEntry[]>();
   for (const e of entries) {
-    const w = normalisedWording(e.text);
+    const w = normalisedWording(e.text, e.code);
     if (!enough(w)) continue;
     const list = byWording.get(w) ?? [];
     if (!list.some((x) => x.variable === e.variable)) list.push(e);
@@ -208,7 +232,7 @@ export function codebookWordingMatches(items: ItemLike[], entries: ConfirmedCode
   }
   const itemsByWording = new Map<string, ItemLike[]>();
   for (const i of items) {
-    const w = normalisedWording(i.text);
+    const w = normalisedWording(i.text, i.code);
     if (!enough(w)) continue;
     itemsByWording.set(w, [...(itemsByWording.get(w) ?? []), i]);
   }

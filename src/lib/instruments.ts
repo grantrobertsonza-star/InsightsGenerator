@@ -5,7 +5,7 @@ import { withTenant, withTenantRead } from "./db";
 import type { PoolClient } from "pg";
 import { extractDocumentText } from "./extractFindings";
 import { loadVariableDictionary } from "./crosstabs";
-import { codeFamily, codebookWordingMatches, matchItems, type ConfirmedCodebookEntry } from "./instrumentMatch";
+import { codeFamily, codebookWordingMatches, matchItems, wordingIdentical, type ConfirmedCodebookEntry } from "./instrumentMatch";
 import { parseRouting, type Routing } from "./routingParse";
 import { deriveGotoRouting } from "./gotoRouting";
 import { buildLabelOverlay, type LabelOverlay } from "./labelOverlay";
@@ -42,6 +42,9 @@ export type InstrumentLink = {
    * entry is still confirmed for the variable (false: the link no longer counts, and says so). */
   basisCode?: string | null;
   basisHolds?: boolean;
+  /** B49-F01: why a link through the codebook no longer counts, when it does not: the entry is no longer
+   * confirmed for the variable, or the wording is not identical under the current rule. */
+  basisLapse?: "withdrawn" | "wording";
 };
 
 export const CHUNK_CHARS = 14000;
@@ -658,7 +661,22 @@ export async function suggestInstrumentLinks(
             [runId, dataDocumentId, instrumentId],
           )
         ).rows.map((r): ConfirmedCodebookEntry => ({ variable: r.variable, itemId: r.item_id, code: r.code, text: r.item_text }));
-        for (const m of codebookWordingMatches(items.map((i) => ({ id: i.id, code: i.code, text: i.text })), entries)) {
+        const matches = codebookWordingMatches(items.map((i) => ({ id: i.id, code: i.code, text: i.text })), entries);
+        // B49-F01: a link through the codebook made by the first wording rule that the current rule does not
+        // support goes back to an ordinary suggestion for the researcher to check. Only links the matcher
+        // made (method 'codebook') are touched; a link the researcher chose, confirmed or rejected is not.
+        const supported = new Set(matches.map((m) => `${m.itemId}|${m.variable}`));
+        const made = await client.query<{ id: string; item_id: string; variable: string }>(
+          `select l.id, l.item_id, l.variable from instrument_links l join instrument_items i on i.id = l.item_id
+            where i.document_id = $1 and l.data_document_id = $2 and l.method = 'codebook' and l.status = 'confirmed'`,
+          [instrumentId, dataDocumentId],
+        );
+        for (const l of made.rows) {
+          if (supported.has(`${l.item_id}|${l.variable}`)) continue;
+          await client.query("update instrument_links set method = 'wording', confidence = 0.85, status = 'suggested', basis_item_id = null where id = $1 and method = 'codebook'", [l.id]);
+          if (taken.get(l.variable) === l.item_id) taken.delete(l.variable);
+        }
+        for (const m of matches) {
           if (taken.has(m.variable) && taken.get(m.variable) !== m.itemId) continue;
           // Upgrades a suggestion for the same pair; a link the researcher confirmed or rejected stays as it is.
           const r = await client.query(
@@ -780,15 +798,27 @@ async function codebookLinksAvailable(client: PoolClient): Promise<boolean> {
   return r.rows[0]?.ok === true;
 }
 
+/** A link through the codebook counts while its entry is still confirmed for the variable and the wording is
+ * still identical under the current rule (wordingIdentical); otherwise it says which no longer holds. */
+function codebookBasis(x: { basis_code: string | null; basis_holds: boolean | null; basis_text: string | null; item_code: string | null; item_text: string }): Pick<InstrumentLink, "basisCode" | "basisHolds" | "basisLapse"> {
+  if (x.basis_holds !== true) return { basisCode: x.basis_code, basisHolds: false, basisLapse: "withdrawn" };
+  if (x.basis_text === null || !wordingIdentical({ text: x.item_text, code: x.item_code }, { text: x.basis_text, code: x.basis_code })) {
+    return { basisCode: x.basis_code, basisHolds: false, basisLapse: "wording" };
+  }
+  return { basisCode: x.basis_code, basisHolds: true };
+}
+
 export async function getInstrumentLinks(tenantId: string, instrumentId: string): Promise<InstrumentLink[]> {
   return withTenantRead(tenantId, async (client) => {
     const withBasis = await codebookLinksAvailable(client);
     const r = await client.query<{
       id: string; item_id: string; data_document_id: string; variable: string;
       method: InstrumentLink["method"]; confidence: string; status: LinkStatus; basis_code: string | null; basis_holds: boolean | null;
+      item_code: string | null; item_text: string; basis_text: string | null;
     }>(
       `select l.id, l.item_id, l.data_document_id, l.variable, l.method, l.confidence, l.status,
-              ${withBasis ? `(select bi.code from instrument_items bi where bi.id = l.basis_item_id) as basis_code, ${CODEBOOK_BASIS_HOLDS("l")} as basis_holds` : "null::text as basis_code, null::boolean as basis_holds"}
+              i.code as item_code, i.item_text,
+              ${withBasis ? `(select bi.code from instrument_items bi where bi.id = l.basis_item_id) as basis_code, (select bi.item_text from instrument_items bi where bi.id = l.basis_item_id) as basis_text, ${CODEBOOK_BASIS_HOLDS("l")} as basis_holds` : "null::text as basis_code, null::text as basis_text, null::boolean as basis_holds"}
        from instrument_links l join instrument_items i on i.id = l.item_id
        where i.document_id = $1 order by i.item_order, l.confidence desc`,
       [instrumentId],
@@ -796,7 +826,7 @@ export async function getInstrumentLinks(tenantId: string, instrumentId: string)
     return r.rows.map((x) => ({
       id: x.id, itemId: x.item_id, dataDocumentId: x.data_document_id, variable: x.variable,
       method: x.method, confidence: Number(x.confidence), status: x.status,
-      ...(x.method === "codebook" ? { basisCode: x.basis_code, basisHolds: x.basis_holds === true } : {}),
+      ...(x.method === "codebook" ? codebookBasis(x) : {}),
     }));
   });
 }
@@ -931,13 +961,15 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
       // entry it relied on is still confirmed for the same variable of this data file; otherwise it is
       // not used, neither as a meaning nor as a gate (CODEBOOK_BASIS_HOLDS). Before migration 0125 there
       // are no such links and the column is absent, so the condition is left out.
-      const basisHolds = (await codebookLinksAvailable(client)) ? `and ${CODEBOOK_BASIS_HOLDS("l")}` : "";
+      const withBasis = await codebookLinksAvailable(client);
+      const basisHolds = withBasis ? `and ${CODEBOOK_BASIS_HOLDS("l")}` : "";
       // Ordered so every reader that takes the first item per variable or code takes it from the
       // strongest source: confirmed before suggested, then a codebook before a questionnaire
       // (labelSourceRank), then the earlier document, then the question's order in it.
-      const r = await client.query<{ variable: string; item_id: string; code: string | null; item_text: string; response_options: ItemOption[]; routing: Routing | null; routing_text: string | null; status: string; document_id: string; instrument_type: string | null }>(
+      const r = await client.query<{ variable: string; item_id: string; code: string | null; item_text: string; response_options: ItemOption[]; routing: Routing | null; routing_text: string | null; status: string; document_id: string; instrument_type: string | null; method: string; basis_code: string | null; basis_text: string | null }>(
         `select l.variable, i.id as item_id, i.code, i.item_text, i.response_options, i.routing, i.routing_text, l.status,
-                i.document_id, d.instrument_type
+                i.document_id, d.instrument_type, l.method,
+                ${withBasis ? "(select bi.code from instrument_items bi where bi.id = l.basis_item_id) as basis_code, (select bi.item_text from instrument_items bi where bi.id = l.basis_item_id) as basis_text" : "null::text as basis_code, null::text as basis_text"}
          from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
          where l.run_id = $1 and l.data_document_id = $2
            and (l.status = 'confirmed' or (l.status = 'suggested' and l.method = 'code' and l.confidence >= 0.9))
@@ -946,7 +978,11 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
                   d.uploaded_at, d.id, i.item_order, l.variable`,
         [runId, dataDocumentId],
       );
-      return r.rows.map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed", documentId: x.document_id, instrumentType: x.instrument_type }));
+      // B49-F01: a link through the codebook counts only while the wording is still identical under the
+      // current rule, so one made by the first rule for different questions is not used ("< 5000" vs "> 5000").
+      return r.rows
+        .filter((x) => x.method !== "codebook" || (x.basis_text !== null && wordingIdentical({ text: x.item_text, code: x.code }, { text: x.basis_text, code: x.basis_code })))
+        .map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed", documentId: x.document_id, instrumentType: x.instrument_type }));
     });
   } catch (e) {
     // GTR-01: an undefined table or column alone does not show that this database has no

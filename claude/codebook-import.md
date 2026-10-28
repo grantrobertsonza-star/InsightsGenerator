@@ -174,11 +174,19 @@ to be confirmed again. Cause: each document is matched to the data file on its o
 questionnaire's wording was compared only with the data file's short label for Q1, never with the
 codebook's confirmed wording (and wording matches are capped at 89%).
 
-- **Rule** (`instrumentMatch.codebookWordingMatches`, `normalisedWording`): a questionnaire question
-  whose wording is identical to that of a codebook entry confirmed for a variable of the same data file
-  (case, spacing, punctuation, quotes and a leading question number ignored; at least five words) is that
-  variable. Only unambiguous pairs: one confirmed variable with that wording in the codebook, one
-  question with it in the questionnaire. Close wording stays an ordinary suggestion.
+- **Rule** (`instrumentMatch.codebookWordingMatches`, `normalisedWording`, `wordingIdentical`): a
+  questionnaire question whose wording is identical to that of a codebook entry confirmed for a variable of
+  the same data file is that variable. Identical means equal after formatting only (B49-F01, 28 October
+  2026): NFKC, case, runs of spacing, the style of quotation marks and dashes, and closing punctuation.
+  Symbols and signs ("<", ">", "+", "-"), numbers and every script are kept, so "< 5000" is not "> 5000"
+  and "東京" is not "大阪". A leading question label is dropped only when unmistakable: the item's own code
+  at the start, or a number label closed by ".", ")" or ":" ("1A.", "Q1)"); "18 years and older" keeps its
+  18. At least five words; only unambiguous pairs. Close wording stays an ordinary suggestion.
+- **Links made by the first rule** (which reduced wording to ASCII letters and digits): every reader checks a
+  link through the codebook again with `wordingIdentical` (`getConfirmedItemsForData` leaves a failing one
+  out; the card says "The wording is not identical to codebook Q1, so this link is not used"). Matching again
+  turns such a link back into a suggestion (method `wording`); the next match works suggestions out afresh,
+  as always. Links the researcher chose, confirmed or rejected are never touched.
 - **Persistence** (`suggestInstrumentLinks`, migration 0125): written in the matching transaction as
   method `codebook`, confirmed, confidence 1, `basis_item_id` the codebook entry. It upgrades a suggestion
   for the same pair; a link the researcher confirmed or rejected is never overwritten; matching again adds

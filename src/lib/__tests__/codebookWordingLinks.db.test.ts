@@ -115,4 +115,60 @@ describe.skipIf(!TEST_DATABASE_URL)("links through the codebook (real database, 
     expect(await linksOf(fresh.q1a)).toEqual([{ variable: "Q1", method: "codebook", status: "confirmed", basis_item_id: null }]);
     expect((await getConfirmedItemsForData(tenant, fresh.run, fresh.data)).filter((c) => c.variable === "Q1")).toEqual([]);
   });
+
+  // B49-F01 (Codex, 28 October 2026): wording that differs in meaning was linked as identical and confirmed.
+  async function meaningPair(questionnaireText: string, codebookText: string) {
+    const fresh = await project(db, tenant);
+    await db.pool.query("update instrument_items set item_text = $2 where id = $1", [fresh.cbQ1, codebookText]);
+    await db.pool.query("update instrument_items set item_text = $2 where id = $1", [fresh.q1a, questionnaireText]);
+    return fresh;
+  }
+  const INCOME_LT = "Is your monthly household income < 5000 dollars?";
+  const INCOME_GT = "Is your monthly household income > 5000 dollars?";
+
+  it("B49-F01: different meanings are not linked through the codebook, and nothing is confirmed for them", async () => {
+    const { suggestInstrumentLinks, getConfirmedItemsForData } = await import("../instruments");
+    for (const [a, b] of [[INCOME_LT, INCOME_GT], ["How satisfied are you with service in 東京?", "How satisfied are you with service in 大阪?"], ["18 years and older should receive this benefit automatically", "21 years and older should receive this benefit automatically"]]) {
+      const f = await meaningPair(a, b);
+      expect(await suggestInstrumentLinks(tenant, f.run, f.questionnaire, f.data), a).toMatchObject({ fromCodebook: 0 });
+      expect((await linksOf(f.q1a)).filter((l) => l.status === "confirmed"), a).toEqual([]);
+      expect((await getConfirmedItemsForData(tenant, f.run, f.data)).map((c) => c.code), a).toEqual(["Q1"]);
+    }
+  });
+
+  it("B49-F01: a false link left by the first rule is not used and says why; matching again makes it a suggestion, once; corrected wording links", async () => {
+    const { suggestInstrumentLinks, getConfirmedItemsForData, getInstrumentLinks } = await import("../instruments");
+    const f = await meaningPair(INCOME_LT, INCOME_GT);
+    // As the first rule stored it: confirmed through the codebook.
+    await db.pool.query(
+      "insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status, basis_item_id) values ($1,$2,$3,$4,'Q1','codebook',1,'confirmed',$5)",
+      [tenant, f.run, f.q1a, f.data, f.cbQ1],
+    );
+    expect((await getConfirmedItemsForData(tenant, f.run, f.data)).map((c) => c.code)).toEqual(["Q1"]);
+    expect((await getInstrumentLinks(tenant, f.questionnaire)).find((l) => l.itemId === f.q1a)).toMatchObject({ method: "codebook", basisHolds: false, basisLapse: "wording" });
+    await suggestInstrumentLinks(tenant, f.run, f.questionnaire, f.data);
+    expect(await linksOf(f.q1a)).toEqual([{ variable: "Q1", method: "wording", status: "suggested", basis_item_id: null }]);
+    // Again: suggestions are worked out afresh, as on every match; this pair has no ordinary one (the data
+    // label differs), so none remains. Nothing is confirmed, nothing duplicated, and again gives the same.
+    for (let i = 0; i < 2; i++) {
+      expect(await suggestInstrumentLinks(tenant, f.run, f.questionnaire, f.data)).toMatchObject({ fromCodebook: 0 });
+      expect(await linksOf(f.q1a)).toEqual([]);
+    }
+    // The questionnaire corrected to the codebook's wording: linked through it, confirmed.
+    await db.pool.query("update instrument_items set item_text = $2 where id = $1", [f.q1a, INCOME_GT]);
+    expect(await suggestInstrumentLinks(tenant, f.run, f.questionnaire, f.data)).toMatchObject({ fromCodebook: 1 });
+    expect(await linksOf(f.q1a)).toEqual([{ variable: "Q1", method: "codebook", status: "confirmed", basis_item_id: f.cbQ1 }]);
+    expect((await getConfirmedItemsForData(tenant, f.run, f.data)).map((c) => c.code)).toEqual(["Q1", "1A"]);
+  });
+
+  it("B49-F01: a link the researcher confirmed or rejected is never changed by the stricter rule", async () => {
+    const { suggestInstrumentLinks } = await import("../instruments");
+    const f = await meaningPair(INCOME_LT, INCOME_GT);
+    await db.pool.query(
+      "insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status) values ($1,$2,$3,$4,'Q1','manual',1,'confirmed')",
+      [tenant, f.run, f.q1a, f.data],
+    );
+    await suggestInstrumentLinks(tenant, f.run, f.questionnaire, f.data);
+    expect(await linksOf(f.q1a)).toEqual([{ variable: "Q1", method: "manual", status: "confirmed", basis_item_id: null }]);
+  });
 });

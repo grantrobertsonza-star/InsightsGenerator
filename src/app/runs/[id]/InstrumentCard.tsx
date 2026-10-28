@@ -396,7 +396,9 @@ export default function InstrumentCard({
                               </span>
                               {l.method === "codebook" && l.basisHolds === false && l.status === "confirmed" && (
                                 <span className="block text-[10px] text-amber-800" data-testid="link-basis-withdrawn">
-                                  The codebook no longer confirms {l.variable}, so this link is not used. Choose {l.variable} again to confirm it yourself.
+                                  {l.basisLapse === "wording"
+                                    ? `The wording is not identical to codebook ${l.basisCode ?? "entry"}, so this link is not used. Match again to check it, or choose ${l.variable} to confirm it yourself.`
+                                    : `The codebook no longer confirms ${l.variable}, so this link is not used. Choose ${l.variable} again to confirm it yourself.`}
                                 </span>
                               )}
                             </div>
