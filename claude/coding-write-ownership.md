@@ -18,6 +18,7 @@ that the document exists. So every coding write now confirms its transcript firs
 | `codingOverrides.changeTurnCode` (a hand change to a turn's themes) | update | the code is checked against the codebook version in force while no new version can be inserted; the override records this run |
 | `codingOverrides.addResearcherCode` | update | as above |
 | `codingOverrides.restoreCodebookVersion`, `extractThemes.insertCodebook` (every new version) | update | serialise with the hand changes above |
+| `codingAnalysis.saveStabilityResult` (batch 61; the stability result and its check record) | share, plus the codebook row `for update` | the transcript cannot leave the project before commit; two checks of one codebook save one after the other, each re-checking its original (`claude/coding-stability.md`) |
 
 **Operations (Codex B21-F01).** A hand change to a turn's themes is "add" or "remove" and nothing else:
 `parseTurnCodeAction` is checked in `changeTurnCode` and in `changeInTx` before anything is read or

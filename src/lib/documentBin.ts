@@ -46,6 +46,9 @@ export const MOVED_WITH_DOCUMENT = [
   "coding_respondent_attributes",
   "coding_run_manifest",
   "coding_variable_links",
+  // The model's original coding (0128): immutable except for the project it belongs to, so it moves with its
+  // transcript into the bin and back, and is erased with it.
+  "coding_model_baselines",
   "csm_modules",
   "brand_health_modules",
   "driver_analyses",
@@ -136,8 +139,22 @@ async function rowsOf(client: PoolClient, sql: string, params: unknown[]): Promi
   return (await client.query<{ row: unknown }>(sql, params)).rows.map((r) => r.row);
 }
 
+/**
+ * The listed tables this database has. A table added by a migration not yet applied (coding_model_baselines,
+ * 0128) has nothing to move, and naming it would fail the whole removal: the app must keep working before
+ * Grant applies a migration.
+ */
+async function presentMovedTables(client: PoolClient): Promise<string[]> {
+  const r = await client.query<{ table_name: string }>(
+    "select table_name from information_schema.tables where table_schema = 'public' and table_name = any($1::text[])",
+    [[...MOVED_WITH_DOCUMENT]],
+  );
+  const present = new Set(r.rows.map((x) => x.table_name));
+  return MOVED_WITH_DOCUMENT.filter((t) => present.has(t));
+}
+
 async function moveOwnMaterial(client: PoolClient, documentId: string, fromRun: string, toRun: string): Promise<void> {
-  for (const table of MOVED_WITH_DOCUMENT) {
+  for (const table of await presentMovedTables(client)) {
     await client.query(`update ${table} set run_id = $3 where document_id = $1 and run_id = $2`, [documentId, fromRun, toRun]);
   }
   // Rows tied to the file through one of its tables rather than its id.
@@ -154,7 +171,7 @@ async function moveOwnMaterial(client: PoolClient, documentId: string, fromRun: 
 }
 
 async function moveOwnMaterialBack(client: PoolClient, documentId: string, binRun: string, runId: string): Promise<void> {
-  for (const table of MOVED_WITH_DOCUMENT) {
+  for (const table of await presentMovedTables(client)) {
     await client.query(`update ${table} set run_id = $3 where document_id = $1 and run_id = $2`, [documentId, binRun, runId]);
   }
   for (const table of ["objective_evidence", "objective_evidence_results", "claim_table_checks"]) {

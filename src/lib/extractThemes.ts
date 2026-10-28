@@ -18,6 +18,7 @@ import { markDocumentProcessingStatus } from "./documentUpload";
 import { mapWithConcurrency } from "./concurrency";
 import type { ParsedCoding } from "./codedImport";
 import { lockOwnedTranscript } from "./codingTranscriptOwnership";
+import { codingHasGap, recordModelBaselineTx } from "./codingBaseline";
 import {
   loadCodeMeta,
   loadCodeMetaForDocuments,
@@ -1142,6 +1143,13 @@ const APPLY_TOOLS = [
 const APPLY_INPUT_VERSION = "structured-decisions-v1";
 export const APPLY_PROMPT_HASH = sha256(APPLY_SYSTEM + JSON.stringify(APPLY_TOOLS) + APPLY_INPUT_VERSION);
 
+/** The model the apply calls use. Set CODING_APPLY_MODEL to try a cheaper model for these yes/no calls;
+ * unset keeps the usual one. Read once per application, so every call of one application, its manifest
+ * rows and its stored baseline name the same model. */
+export function codingApplyModel(): string {
+  return process.env.CODING_APPLY_MODEL || CLAUDE_MODEL;
+}
+
 function codebookBlock(codes: CodeRow[]): string {
   return codes
     .map(
@@ -1183,7 +1191,11 @@ export async function applyCodebook(
    * and counted separately so it is never conflated with either "coded as not meeting" or "the call
    * failed outright". */
   incompleteBatches: number;
+  /** The model and prompt this application used (codingApplyModel, APPLY_PROMPT_HASH). */
+  model: string;
+  promptHash: string;
 }> {
+  const model = codingApplyModel();
   const batches = buildApplyBatches(segments, { maxItems: 30, maxChars: 9000 });
   const unitsOf = (item: { text: string; units: string[] }) => (item.units.length > 0 ? item.units : [item.text]);
   // ANA-QUAL-002: captured once, from the same batches the apply calls below actually read from,
@@ -1213,8 +1225,7 @@ export async function applyCodebook(
         `Code ${code}:\n${codebookBlock([codes[code - 1]]).replace(/^1\./, `${code}.`)}\n\n` +
         `For every unit above, decide whether it meets this code.`;
       const response = await anthropic.messages.create({
-        // Set CODING_APPLY_MODEL to try a cheaper model for these yes/no calls; unset keeps the usual one.
-        model: process.env.CODING_APPLY_MODEL || CLAUDE_MODEL,
+        model,
         max_tokens: 8000,
         system: APPLY_SYSTEM,
         tool_choice: { type: "tool", name: "record_decisions" },
@@ -1265,9 +1276,8 @@ export async function applyCodebook(
         runIndex: batchIndex * 1000 + code,
         promptHash: APPLY_PROMPT_HASH,
         inputHash: sha256(turns + question),
-        // The actual model this call used, not always CLAUDE_MODEL - see the CODING_APPLY_MODEL
-        // comment on the request above.
-        model: process.env.CODING_APPLY_MODEL || CLAUDE_MODEL,
+        // The actual model this call used, not always CLAUDE_MODEL (codingApplyModel).
+        model,
         detail: {
           code,
           turns: batch.items.length,
@@ -1354,7 +1364,7 @@ export async function applyCodebook(
       unitCodes.set(turn, list);
     }
   }
-  return { assignments: merged, unitCodes, unitTexts, failedBatches: failedSet.size, totalBatches: batches.length, incompleteBatches };
+  return { assignments: merged, unitCodes, unitTexts, failedBatches: failedSet.size, totalBatches: batches.length, incompleteBatches, model, promptHash: APPLY_PROMPT_HASH };
 }
 
 // --- Step 4: findings ---------------------------------------------------
@@ -1470,24 +1480,6 @@ async function summarise(
   return out;
 }
 
-/**
- * Counter-review on ANA-QUAL-001: a batch that failed outright (no usable tool call at
- * all - a bad response, a timeout, an out-of-credit stop) used to be invisible to the
- * ready/incomplete decision at every one of applyCodebook's three call sites, which only
- * looked at incompleteBatches (a batch that DID return a usable call but left some units
- * undecided). The counter-review's own reproduction: one of three batches failed outright
- * (failedBatches: 1, incompleteBatches: 0) and every caller still picked "ready" - a
- * document whose transcript was only two-thirds actually coded looked indistinguishable
- * from a complete run. A failed batch's assignments are already correctly excluded from
- * the merged results (perUnit/merged skip failedSet entries), so the FINDINGS themselves
- * were never wrong - only the status claiming they were complete was. An explicit no-code
- * decision (hits is an empty but non-null map, incomplete: false) is not a gap at all and
- * must not trip this - that case already falls through to false here, same as before.
- */
-function codingHasGap(applied: { failedBatches: number; incompleteBatches: number }): boolean {
-  return applied.failedBatches > 0 || applied.incompleteBatches > 0;
-}
-
 async function writeCodebookAndFindings(
   tenantId: string,
   runId: string,
@@ -1509,6 +1501,16 @@ async function writeCodebookAndFindings(
   // coding_segments.text holds then. Optional for the same reason unitCodes is: a caller with no
   // unit-level codes has nothing to snapshot either.
   unitTexts?: Map<number, string[]>,
+  // Batch 61 (STAB-F02): when `assignments` is the model's own application of this codebook, how it was
+  // made. The same assignments are then kept, in this transaction, as the immutable original the
+  // stability check compares with. Omitted for a researcher-coded import, which has no model original.
+  modelApplication?: {
+    model: string;
+    promptHash: string;
+    totalBatches: number;
+    failedBatches: number;
+    incompleteBatches: number;
+  },
 ): Promise<{ id: string; finding_text: string }[]> {
   const segmentByIndex = new Map(segments.map((s) => [s.index, s]));
   // Findings and their turn counts follow what the researcher has changed by
@@ -1660,6 +1662,32 @@ async function writeCodebookAndFindings(
           await client.query("rollback to savepoint coding_unit_assignments_insert");
         }
       }
+    }
+    if (modelApplication) {
+      const decisions = new Map<string, string[]>();
+      for (const [segIndex, codeNumbers] of assignments) {
+        const segment = segmentByIndex.get(segIndex);
+        if (!segment || codeNumbers.length === 0) continue;
+        decisions.set(segment.id, codeNumbers.map((n) => codes[n - 1].id));
+      }
+      await recordModelBaselineTx(client, {
+        tenantId,
+        runId,
+        documentId,
+        codebookId,
+        model: modelApplication.model,
+        promptHash: modelApplication.promptHash,
+        codes: codes.map((c) => ({
+          id: c.id,
+          name: c.name,
+          definition: c.definition,
+          inclusion: c.inclusion,
+          exclusion: c.exclusion,
+        })),
+        segments: segments.map((s) => ({ id: s.id, index: s.index, role: s.role, text: s.text })),
+        applied: modelApplication,
+        decisions,
+      });
     }
     // Lay the researcher's own changes back over the model's assignments.
     await applyOverrides(
@@ -2329,6 +2357,7 @@ async function extractThemesFromTranscriptInner(
     { onlyReplacePending, archiveReason },
     applied.unitCodes,
     applied.unitTexts,
+    applied,
   );
 
   await recordTrace(tenantId, runId, "coding_summary", {
@@ -2538,6 +2567,7 @@ export async function importCodedTranscript(
   let finalAssignments = assignments;
   let finalUnitCodes: Map<number, { unit: number; codes: number[] }[]> | undefined;
   let finalUnitTexts: Map<number, string[]> | undefined;
+  let modelApplication: Awaited<ReturnType<typeof applyCodebook>> | undefined;
   // ANA-QUAL-001: set below in either branch - true by default since a plain researcher-
   // coded import (codebookOnly false) always writes "ready" unconditionally further down,
   // and that write's own result overwrites this default.
@@ -2580,6 +2610,7 @@ export async function importCodedTranscript(
     finalAssignments = applied.assignments;
     finalUnitCodes = applied.unitCodes;
     finalUnitTexts = applied.unitTexts;
+    modelApplication = applied;
   }
   const rows = await writeCodebookAndFindings(
     tenantId,
@@ -2592,6 +2623,7 @@ export async function importCodedTranscript(
     { onlyReplacePending: false, archiveReason: "manual_reextract" },
     finalUnitCodes,
     finalUnitTexts,
+    modelApplication,
   );
 
   const codesWithoutQuotes = coding.codes
@@ -2765,6 +2797,7 @@ export async function reapplyCodebook(
     { onlyReplacePending: false, archiveReason: "manual_reextract" },
     applied.unitCodes,
     applied.unitTexts,
+    applied,
   );
   await recordTrace(tenantId, runId, "coding_summary", {
     documentId,

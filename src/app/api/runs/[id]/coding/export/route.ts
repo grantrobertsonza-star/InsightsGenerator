@@ -160,42 +160,55 @@ export async function GET(
     const st = analysis.get(b.document_id)?.stability;
     if (!st) continue;
     const name = fileName.get(b.document_id) ?? b.document_id;
+    // Batch 61: the qualification of how the result was made travels with every row of it.
+    const checkNote = st.check.recorded
+      ? `${st.check.complete} of ${st.check.requested} passes complete and compared with the model's original coding, same method` +
+        (st.check.excluded.length > 0
+          ? `; left out: ${st.check.excluded.map((e) => `pass ${e.pass} ${e.reason}`).join("; ")}`
+          : "") +
+        (st.check.againstCurrentOriginal ? "" : "; the codebook has been applied again since, so this describes the earlier coding")
+      : "Checked before completeness and method were recorded: an incomplete pass may count as no theme and the first run may include hand changes. Run the check again.";
     for (const c of st.perCode) {
       reliabilityRows.push([
         name,
         c.name,
         st.runs,
         c.usedTurns,
-        c.usedTurns === 0 ? null : c.consistent,
-        c.usedTurns === 0 ? null : Number((c.consistent / c.usedTurns).toFixed(3)),
+        c.pairwise === null ? null : Number(c.pairwise.toFixed(3)),
         c.kappa === null ? null : Number(c.kappa.toFixed(3)),
         kappaBand(c.kappa, c.tooFew),
-        c.tooFew ? "Came up in too few turns for the figures to mean much. Left out of the averages." : "",
+        c.usedTurns === 0 ? null : c.consistent,
+        c.usedTurns === 0 ? null : Number((c.consistent / c.usedTurns).toFixed(3)),
+        [c.tooFew ? "Came up in too few turns for the figures to mean much. Left out of the averages." : "", checkNote]
+          .filter(Boolean)
+          .join(" "),
       ]);
     }
     reliabilityRows.push([
       name,
-      "All themes (average, themes with 10 or more turns)",
+      `All themes (average over the ${st.eligibleCodes} with 10 or more turns; ${st.belowMinimumCodes} left out)`,
       st.runs,
       null,
-      null,
-      st.codeAgreement === null ? null : Number(st.codeAgreement.toFixed(3)),
+      st.pairwiseAverage === null ? null : Number(st.pairwiseAverage.toFixed(3)),
       st.kappaAverage === null ? null : Number(st.kappaAverage.toFixed(3)),
       kappaBand(st.kappaAverage, false),
-      "",
+      null,
+      st.codeAgreement === null ? null : Number(st.codeAgreement.toFixed(3)),
+      st.eligibleCodes === 0 ? `No theme came up in 10 or more turns, so there is no average. ${checkNote}` : checkNote,
     ]);
   }
   if (reliabilityRows.length > 0) {
-    reliabilityRows.push([null, null, null, null, null, null, null, null, null]);
+    reliabilityRows.push([null, null, null, null, null, null, null, null, null, null]);
     for (const line of [
       "How to read this table",
       "Runs: how many times the codebook was applied to the same turns, the original included.",
-      "Same in every run: of the turns the theme came up in, how many had it in every run. This is a strict test and falls as runs are added.",
+      "Pairwise agreement: for each pair of runs, the share of turns on which both made the same yes or no decision on the theme. With kappa, the lead measure of repeatability.",
+      "Same in every run: of the turns the theme came up in, how many had it in every run. It counts consistent positive codings only, so it is stricter than pairwise agreement and falls as runs are added.",
       "Kappa: agreement between runs after removing what chance alone would give, averaged over every pair of runs. 0.80 or above is usually read as strong, 0.60 to 0.79 as moderate, below 0.60 as weak.",
       "Read it theme by theme. A low overall figure does not mean all of the coding is unreliable: it is an average, and a few fuzzy themes can pull it down while the rest are solid. Report strong themes with confidence and weak ones as tentative.",
       "These figures show consistency, not correctness. Runs share the model's blind spots, so a theme can be consistent and still wrong. Agreement with a human coder on an audit sample is the check on that.",
     ])
-      reliabilityRows.push([line, null, null, null, null, null, null, null, null]);
+      reliabilityRows.push([line, null, null, null, null, null, null, null, null, null]);
   }
   const agreementRows: Cell[][] = [];
   const calibrationRows: Cell[][] = [];
@@ -727,14 +740,15 @@ export async function GET(
           "Theme",
           "Runs",
           "Turns it came up in",
-          "Same in every run",
-          "Share same in every run",
+          "Pairwise agreement",
           "Kappa between runs",
           "Band",
+          "Same in every run",
+          "Share same in every run (stricter)",
           "Note",
         ],
         reliabilityRows,
-        [28, 44, 8, 14, 14, 14, 14, 22, 60],
+        [28, 44, 8, 14, 14, 14, 22, 14, 14, 60],
       ),
     );
   add(
