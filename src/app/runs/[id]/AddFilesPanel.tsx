@@ -5,6 +5,8 @@ import Link from "next/link";
 import { UploadIcon } from "@/components/icons";
 import { uploadDocumentsAction } from "@/lib/documentUploadActions";
 import { UPLOAD_PURPOSES, purposeById, purposeMismatch, suggestPurposeFor, type UploadPurposeId } from "@/lib/uploadPurposes";
+import { planUploadBatches } from "@/lib/uploadBatches";
+import { FILE_LIMIT_MESSAGE } from "@/lib/importLimits";
 
 /** `suggested` is the reason while the type is the panel's own suggestion; null once the researcher chooses. */
 type Picked = { key: number; file: File; purpose: UploadPurposeId | ""; suggested: string | null };
@@ -80,29 +82,56 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
   const has = (id: UploadPurposeId) => picked.some((p) => p.purpose === id);
 
   function upload() {
-    const data = new FormData();
-    // Only these go: files chosen while this upload runs stay in the list for the next one.
-    const sent = new Set(picked.map((p) => p.key));
-    for (const p of picked) if (p.purpose !== "") data.append(purposeById(p.purpose).field, p.file);
-    data.set("outputWave", outputWave);
+    // Sent in batches that each fit through the sign-in proxy (planUploadBatches): files chosen together
+    // over 100 MB used to go in one request, which the proxy cut off, and the page failed with "Unexpected
+    // end of form". A file over the per-file limit is not sent; it is named and left out of the list.
+    const chosen = picked.filter((p) => p.purpose !== "").map((p) => ({ ...p, size: p.file.size }));
+    const { batches, tooLarge } = planUploadBatches(chosen);
+    const refused = tooLarge.map((p) => `${p.file.name}: ${FILE_LIMIT_MESSAGE}`);
+    const dropped = new Set(tooLarge.map((p) => p.key));
     setMessage(null);
     setError(null);
     start(async () => {
-      const result = await uploadDocumentsAction(runId, data);
-      // IMP-008: files already in the project are named, not silently dropped or re-added.
-      const repeats = result.alreadyPresent && result.alreadyPresent.length > 0 ? ` ${result.alreadyPresent.join(" ")}` : "";
-      const rest = pickedNow.current.filter((p) => !sent.has(p.key));
-      // Done with nothing left to send: the dialog closes so the new sources can be checked, and the
-      // message shows under the heading. Files chosen while it ran keep it open for the next upload.
-      if (result.ok && rest.length === 0) setOpen(false);
-      if (result.ok) {
-        setMessage(`Added ${result.added.length} file${result.added.length === 1 ? "" : "s"}${result.added.length ? `: ${result.added.join(", ")}` : ""}.${repeats}`);
-      } else {
-        // Files named in `added` are already stored even though the batch failed, so they are named
-        // here, and the sent files leave the list either way: re-submitting must mean re-choosing,
-        // never silently resending (and re-storing) what already went through.
-        setError((result.added.length > 0 ? `${result.error} (Already added: ${result.added.join(", ")}.)` : result.error) + repeats);
+      const added: string[] = [];
+      const repeats: string[] = [];
+      // Only files actually sent leave the list (with the too-large ones): a batch not yet sent when an
+      // earlier one fails stays chosen, so retrying sends it and never re-sends what already went through.
+      const sent = new Set<number>(dropped);
+      let failure: string | null = null;
+      for (const batch of batches) {
+        const data = new FormData();
+        for (const p of batch) {
+          data.append(purposeById(p.purpose as UploadPurposeId).field, p.file);
+          sent.add(p.key);
+        }
+        data.set("outputWave", outputWave);
+        let result: Awaited<ReturnType<typeof uploadDocumentsAction>>;
+        try {
+          result = await uploadDocumentsAction(runId, data);
+        } catch {
+          // No answer from the server: whether these files were stored is not known, so the reader is told
+          // to look rather than told they failed or succeeded.
+          failure = `The upload of ${batch.map((p) => p.file.name).join(", ")} did not get an answer from the server. Reload the page to see whether ${batch.length === 1 ? "it was" : "they were"} added before trying again.`;
+          break;
+        }
+        added.push(...result.added);
+        // IMP-008: files already in the project are named, not silently dropped or re-added.
+        if (result.alreadyPresent) repeats.push(...result.alreadyPresent);
+        if (!result.ok) {
+          failure = result.error;
+          break;
+        }
       }
+      const rest = pickedNow.current.filter((p) => !sent.has(p.key));
+      const repeatText = repeats.length > 0 ? ` ${repeats.join(" ")}` : "";
+      const problems = [...(failure ? [failure] : []), ...refused];
+      // Done with nothing left to send: the dialog closes so the new sources can be checked, and the
+      // message shows under the heading. Files chosen while it ran, or not yet sent, keep it open.
+      if (problems.length === 0 && rest.length === 0) setOpen(false);
+      if (added.length > 0 || problems.length === 0) {
+        setMessage(`Added ${added.length} file${added.length === 1 ? "" : "s"}${added.length ? `: ${added.join(", ")}` : ""}.${repeatText}`);
+      }
+      if (problems.length > 0) setError(problems.join(" ") + (added.length === 0 ? repeatText : ""));
       setPicked(rest);
     });
   }
