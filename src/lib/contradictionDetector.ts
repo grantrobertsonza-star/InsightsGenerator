@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -416,10 +417,13 @@ export async function detectSynthesizedContradictions(
           response.usage,
         );
 
-        const toolUse = response.content.find(
-          (block) => block.type === "tool_use",
-        );
-        if (!toolUse || toolUse.type !== "tool_use") {
+        // EC10K-F02: only a finished call is a check; a cut-off, refused or other-tool answer is "not
+        // checked", like a missing one, never "checked, nothing contradicts it".
+        let finished: Record<string, unknown>;
+        try {
+          finished = finishedToolInput(response, "record_contradictions", "The contradiction check");
+        } catch (error) {
+          if (!(error instanceof UnfinishedModelResultError)) throw error;
           return {
             insight,
             checked: false,
@@ -427,7 +431,7 @@ export async function detectSynthesizedContradictions(
             detail: "",
           };
         }
-        const raw = toolUse.input as {
+        const raw = finished as {
           contradicted_indices?: unknown;
           detail?: unknown;
         };

@@ -44,7 +44,7 @@ vi.mock("../anthropic", () => ({
             assumptions_and_risks: "a",
             alternatives_considered: "b",
           }));
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { recommendations } }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_recommendations", input: { recommendations } }] };
       }),
     },
   },

@@ -21,14 +21,14 @@ vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "controlled", anthropic: { messag
   const content = request.messages[0].content;
   if (state.allFail) throw new Error("Synthetic outage");
   if (state.dense) {
-    if (content.length > 5000) return { usage: {}, stop_reason: "max_tokens", content: [{ type: "tool_use", input: { items: [] } }] };
+    if (content.length > 5000) return { usage: {}, stop_reason: "max_tokens", content: [{ type: "tool_use", name: "record_items", input: { items: [] } }] };
     const found = [...content.matchAll(/^Q(\d+)\. ([^?]+\?)/gm)].map((m) => ({ code: `Q${m[1]}`, text: m[2], options: [{ code: "1", label: "Candidate" }], routing_text: null, section: null }));
-    return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: found } }] };
+    return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_items", input: { items: found } }] };
   }
   const second = content.includes("SECOND_CHUNK");
-  if (state.empty) return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [] } }] };
+  if (state.empty) return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_items", input: { items: [] } }] };
   if (second && state.partial) throw new Error("Synthetic second-chunk outage");
-  return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [{ code: second ? "Q2" : "Q1", text: second ? "Second question" : "First question", options: [{ code: "1", label: "Yes" }, { code: "2", label: "No" }], routing_text: null, section: null }] } }] };
+  return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_items", input: { items: [{ code: second ? "Q2" : "Q1", text: second ? "Second question" : "First question", options: [{ code: "1", label: "Yes" }, { code: "2", label: "No" }], routing_text: null, section: null }] } }] };
 } ) } } }));
 describe.skipIf(!TEST_DATABASE_URL)("IMP-012 instrument reread persistence", () => {
   let db: DisposableDb; const tenant = randomUUID(); let run: string, instrument: string, data: string;

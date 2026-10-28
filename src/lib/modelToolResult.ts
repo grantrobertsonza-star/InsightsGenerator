@@ -57,3 +57,21 @@ export function requiredTextOrNullField(input: Record<string, unknown>, field: s
     throw new UnfinishedModelResultError("malformed", `${what} returned a result without ${field}, so nothing from it was used. Try again.`);
   return optionalTextField(input, field, what);
 }
+
+/**
+ * The same rule for a caller whose failure path is a value rather than a throw (a coding pass that is
+ * counted as failed, a batch that is traced and left out): the finished input, or the reason it is not
+ * one (EC10K-F02, batch 64). Never a partial input.
+ */
+export function finishedToolResult(
+  response: ToolResponse,
+  toolName: string,
+  what: string,
+): { input: Record<string, unknown>; unfinished: null } | { input: null; unfinished: UnfinishedModelResultError } {
+  try {
+    return { input: finishedToolInput(response, toolName, what), unfinished: null };
+  } catch (error) {
+    if (error instanceof UnfinishedModelResultError) return { input: null, unfinished: error };
+    throw error;
+  }
+}

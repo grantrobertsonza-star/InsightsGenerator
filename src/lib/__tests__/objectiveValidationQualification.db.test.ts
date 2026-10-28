@@ -10,7 +10,7 @@ import { insertSupportedInsight } from "./helpers/supportedInsight";
 import { createDisposableDb, TEST_DATABASE_URL, DISPOSABLE_DB_SKIP_REASON, type DisposableDb } from "./helpers/disposableDb";
 
 const state = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], withEvidence: "First objective" }));
-vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "synthetic", anthropic: { messages: { create: async () => ({ content: [{ type: "tool_use", input: { validations: state.rows } }], usage: {} }) } } }));
+vi.mock("../anthropic", () => ({ CLAUDE_MODEL: "synthetic", anthropic: { messages: { create: async (req: { tool_choice?: { name?: string } }) => ({ stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice?.name, input: { validations: state.rows } }], usage: {} }) } } }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../objectiveEvidence", async (importOriginal) => {

@@ -91,17 +91,17 @@ vi.mock("../anthropic", () => ({
           const affected = model.extract !== "normal" && (!model.extractOnly || content.includes(`Document: `) && content.split("\n")[0].includes(model.extractOnly));
           if (affected && model.extract === "invent") {
             const invented = facts.map((f, i) => ({ ...f, exact_quote: `This sentence ${i + 1} was never written in the document.` }));
-            return { usage, content: [{ type: "tool_use", input: { nothing_found: false, facts: invented } }] };
+            return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: false, facts: invented } }] };
           }
-          if (affected && model.extract === "badEnum") return { usage, content: [{ type: "tool_use", input: { nothing_found: false, facts: facts.map((f) => ({ ...f, topic: "not_a_topic" })) } }] };
+          if (affected && model.extract === "badEnum") return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: false, facts: facts.map((f) => ({ ...f, topic: "not_a_topic" })) } }] };
           if (affected && model.extract === "mixed") {
             const extra = [1, 2].map((i) => ({ topic: "claim", phase: "planned", selection: "unstated", statement: "invented", exact_quote: `An invented passage number ${i} about the sampling frame.` }));
-            return { usage, content: [{ type: "tool_use", input: { nothing_found: false, facts: [...facts, ...extra] } }] };
+            return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: false, facts: [...facts, ...extra] } }] };
           }
-          if (model.cutOff === "extract") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: { facts: facts.slice(0, 1) } }] };
+          if (model.cutOff === "extract") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", name: req.tool_choice.name, input: { facts: facts.slice(0, 1) } }] };
           // The live model's slip seen on 2026-10-18: the list arrives as a JSON string and the flag is left out.
-          if (model.stringifyLists) return { usage, content: [{ type: "tool_use", input: { facts: JSON.stringify(facts) } }] };
-          return { usage, content: [{ type: "tool_use", input: { nothing_found: facts.length === 0, facts } }] };
+          if (model.stringifyLists) return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { facts: JSON.stringify(facts) } }] };
+          return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { nothing_found: facts.length === 0, facts } }] };
         }
         if (tool === "record_checklist_statuses") {
           // Checklist stand-in: an element is present when a fact of its matching topic exists, and
@@ -115,7 +115,7 @@ vi.mock("../anthropic", () => ({
             const f = t ? cp.facts.filter((x) => x.topic === t).map((x) => x.id) : [];
             return { element_id: e.element_id, status: f.length ? "present" : "absent", fact_ids: f.slice(0, 2), reason: f.length ? "stated" : "not stated" };
           });
-          return { usage, content: [{ type: "tool_use", input: { elements } }] };
+          return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: { elements } }] };
         }
         const payload = jsonParts(content) as { criteria: { id: string }[]; facts: { id: string; topic: string }[]; context: { decisions: { ref: number }[] } };
         const group = payload.criteria[0].id;
@@ -156,8 +156,8 @@ vi.mock("../anthropic", () => ({
           };
         });
         void group;
-        if (model.cutOff === "assess") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", input: {} }] };
-        return { usage, content: [{ type: "tool_use", input: model.stringifyLists ? { observations: JSON.stringify(observations) } : { observations } }] };
+        if (model.cutOff === "assess") return { usage, stop_reason: "max_tokens", content: [{ type: "tool_use", name: req.tool_choice.name, input: {} }] };
+        return { usage, stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice.name, input: model.stringifyLists ? { observations: JSON.stringify(observations) } : { observations } }] };
       },
     },
   },

@@ -1080,7 +1080,8 @@ export async function GET(
   // (support no longer valid) have no trail here either.
   const evidenceTrails: EvidenceTrail[] = [];
   // One context for every trail, read on its own connections (B39-F01); a failed read is stated on each.
-  const trailContext = recommendations.length > 0 ? await loadTrailContext(TENANT_ID, runId).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))) : null;
+  // EC10K-P01: the served decisions and brief passages of every trail are read once, with the context.
+  const trailContext = recommendations.length > 0 ? await loadTrailContext(TENANT_ID, runId, recommendations.map((r) => r.id)).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))) : null;
   for (const rec of recommendations) {
     try {
       if (trailContext instanceof Error) throw trailContext;

@@ -16,7 +16,7 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { system: string }) => {
         model.systems.push(req.system);
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { insights: [] } }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_insights", input: { insights: [] } }] };
       }),
     },
   },

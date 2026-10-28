@@ -28,7 +28,7 @@ vi.mock("../anthropic", () => ({
         scorer.calls++;
         const n = (req.messages[0].content.match(/^\d+\. Action:/gm) ?? []).length;
         const scores = Array.from({ length: n }, (_, index) => ({ index, actionability_score: 3, feasibility_score: 3, evidence_score: 1, impact_score: 3, rationale: "rescored" }));
-        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", input: { scores } }] };
+        return { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: "record_scores", input: { scores } }] };
       }),
     },
   },

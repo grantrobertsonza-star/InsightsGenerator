@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { lockRunForContextChange, syncDecisionStatement } from "./runSync";
@@ -237,11 +238,9 @@ export async function generateDecisionCandidates(
 
   await logApiUsage(tenantId, runId, "decision_framer_synthesis", synthesisResponse.usage);
 
-  const synthesisToolUse = synthesisResponse.content.find((block) => block.type === "tool_use");
-  const synthesisInput =
-    synthesisToolUse && synthesisToolUse.type === "tool_use"
-      ? (synthesisToolUse.input as { synthesis?: unknown })
-      : undefined;
+  // EC10K-F02: only a finished call is used. A cut-off synthesis would otherwise be saved over the
+  // previous one as if whole; it throws, so nothing is saved and the previous synthesis and candidates stand.
+  const synthesisInput = finishedToolInput(synthesisResponse, "record_evidence_synthesis", "The evidence synthesis") as { synthesis?: unknown };
   const evidenceSynthesis =
     synthesisInput && typeof synthesisInput.synthesis === "string" && synthesisInput.synthesis.trim().length > 0
       ? synthesisInput.synthesis.trim()
@@ -333,12 +332,8 @@ export async function generateDecisionCandidates(
 
   await logApiUsage(tenantId, runId, "decision_framer_candidates", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    throw new Error("Did not return a structured decision candidate list");
-  }
-
-  const rawInput = toolUse.input as { candidates?: unknown };
+  // EC10K-F02: a cut-off, refused or other-tool answer throws (nothing is saved), as a missing one did.
+  const rawInput = finishedToolInput(response, "record_decision_candidates", "The decision suggestions") as { candidates?: unknown };
   // The model sometimes returns an array field as a JSON string.
   let candidatesField: unknown = rawInput.candidates;
   if (typeof candidatesField === "string") {

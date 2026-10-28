@@ -34,7 +34,7 @@ vi.mock("../anthropic", () => ({
         const { gate, text } = model;
         if (gate) await gate;
         if (model.fail) throw new Error("Synthetic model outage");
-        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { items: [{ code: "Q1", text, options: [], routing_text: null, section: null }] } }] };
+        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_items", input: { items: [{ code: "Q1", text, options: [], routing_text: null, section: null }] } }] };
       }),
     },
   },

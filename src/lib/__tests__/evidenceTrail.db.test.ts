@@ -14,7 +14,7 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 
 vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "synthetic",
-  anthropic: { messages: { create: async () => ({ content: [{ type: "tool_use", input: { validations: [{ item_index: 0, status: "resolved", conclusion: "Answered.", insight_indices: [0] }, { item_index: 1, status: "partial", conclusion: "Partly.", insight_indices: [0] }] } }], usage: {} }) } },
+  anthropic: { messages: { create: async () => ({ stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_validations", input: { validations: [{ item_index: 0, status: "resolved", conclusion: "Answered.", insight_indices: [0] }, { item_index: 1, status: "partial", conclusion: "Partly.", insight_indices: [0] }] } }], usage: {} }) } },
 }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

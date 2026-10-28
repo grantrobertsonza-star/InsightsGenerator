@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { isPlainTableFileName, parseTableDocument } from "./parseTable";
@@ -113,10 +114,16 @@ async function detectTablesAcrossPages(
 
     await logApiUsage(tenantId, runId, "extract_document_tables", response.usage);
 
-    const toolUse = response.content.find((block) => block.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") return [];
-
-    const rawTables = (toolUse.input as { tables?: unknown }).tables;
+    // EC10K-F02: only a finished call is used; a cut-off, refused or missing answer for any part fails
+    // the read (below, after every part has answered) instead of reading as "these pages have no tables".
+    let finished: Record<string, unknown>;
+    try {
+      finished = finishedToolInput(response, "record_tables", "The reading of the document's tables");
+    } catch (error) {
+      if (error instanceof UnfinishedModelResultError) return { unfinished: error.message };
+      throw error;
+    }
+    const rawTables = finished.tables;
     if (!Array.isArray(rawTables)) return [];
 
     const tables: ExtractedTable[] = [];
@@ -148,7 +155,11 @@ async function detectTablesAcrossPages(
     return tables;
   });
 
-  return chunkResults.flat();
+  const unfinished = chunkResults.flatMap((r) => (Array.isArray(r) ? [] : [r.unfinished]));
+  if (unfinished.length > 0) {
+    throw new Error(`${unfinished.length} of ${chunks.length} part(s) of this document could not be read for tables, so no tables were stored: ${unfinished[0]}`);
+  }
+  return chunkResults.flatMap((r) => (Array.isArray(r) ? r : []));
 }
 
 /**

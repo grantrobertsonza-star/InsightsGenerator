@@ -1,4 +1,5 @@
 import { loadInsightSupportOrUnchecked } from "./supportStatus";
+import { finishedToolInput } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -248,11 +249,10 @@ export async function generateObjectiveValidation(tenantId: string, runId: strin
 
   await logApiUsage(tenantId, runId, "objective_validator", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  const rawValidations =
-    toolUse && toolUse.type === "tool_use" && Array.isArray((toolUse.input as { validations?: unknown }).validations)
-      ? ((toolUse.input as { validations: unknown[] }).validations as Record<string, unknown>[])
-      : [];
+  // EC10K-F02: only a finished record_validations call is used; an unfinished one throws before
+  // anything is saved, so the previous coverage stands and the failure is recorded.
+  const finished = finishedToolInput(response, "record_validations", "The objective coverage check");
+  const rawValidations = Array.isArray(finished.validations) ? (finished.validations as Record<string, unknown>[]) : [];
 
   const byIndex = new Map<number, { status: ValidationStatus; conclusion: string; insightIds: string[] }>();
   const conflicting = new Set<number>();

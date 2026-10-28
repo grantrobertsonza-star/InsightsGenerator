@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { lockRunForContextChange, syncResearchObjective } from "./runSync";
@@ -199,12 +200,8 @@ export async function generateObjectiveCandidates(
 
   await logApiUsage(tenantId, runId, "objective_framer", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
-    throw new Error("Did not return a structured objective candidate list");
-  }
-
-  const rawInput = toolUse.input as { candidates?: unknown };
+  // EC10K-F02: a cut-off, refused or other-tool answer throws (nothing is saved), as a missing one did.
+  const rawInput = finishedToolInput(response, "record_objective_candidates", "The objective suggestions") as { candidates?: unknown };
   const rawCandidates = Array.isArray(rawInput.candidates) ? rawInput.candidates : [];
 
   const validCandidates = rawCandidates.filter(

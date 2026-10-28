@@ -366,9 +366,10 @@ export async function GET(
   const evidenceTrails: EvidenceTrail[] = [];
   // One context for every trail (B39-F01: read on its own connections, before any trail's). A failed
   // context read is stated on each trail, as one unreadable trail is.
-  const trailContext = rawRecommendations.length > 0 ? await loadTrailContext(TENANT_ID, runId).catch((e: unknown) => e instanceof Error ? e : new Error(String(e))) : null;
-  for (const r of rawRecommendations) {
-    if (support.statusOf(r.synthesized_insight_id).status === "invalid") continue;
+  // EC10K-P01: the served decisions and brief passages of every trail are read once, with the context.
+  const trailed = rawRecommendations.filter((r) => support.statusOf(r.synthesized_insight_id).status !== "invalid");
+  const trailContext = trailed.length > 0 ? await loadTrailContext(TENANT_ID, runId, trailed.map((r) => r.id)).catch((e: unknown) => e instanceof Error ? e : new Error(String(e))) : null;
+  for (const r of trailed) {
     try {
       if (trailContext instanceof Error) throw trailContext;
       evidenceTrails.push(await withTenantRead(TENANT_ID, (client) => loadEvidenceTrail(client, TENANT_ID, runId, r.id, trailContext!)));

@@ -27,7 +27,7 @@ vi.mock("../anthropic", () => ({
           .map((t, index) => ({ t, index }))
           .filter(({ t }) => !model.omit.has(t))
           .map(({ index }) => ({ index, specific_score: 5, measurable_score: 3, answerable_score: 3, relevant_score: 5, rationale: "Synthetic rationale", suggestion: "" }));
-        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", input: { scores } }] };
+        return { usage: {}, stop_reason: "tool_use", content: [{ type: "tool_use", name: "record_scores", input: { scores } }] };
       }),
     },
   },

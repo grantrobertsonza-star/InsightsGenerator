@@ -22,7 +22,7 @@ import { createDisposableDb, DISPOSABLE_DB_SKIP_REASON, TEST_DATABASE_URL, type 
 const model = vi.hoisted(() => ({ answer: null as null | (() => Promise<unknown>) }));
 vi.mock("../anthropic", () => ({
   CLAUDE_MODEL: "synthetic",
-  anthropic: { messages: { create: async () => ({ content: [{ type: "tool_use", input: await model.answer!() }], usage: {} }) } },
+  anthropic: { messages: { create: async (req: { tool_choice?: { name?: string } }) => ({ stop_reason: "tool_use", content: [{ type: "tool_use", name: req.tool_choice?.name, input: await model.answer!() }], usage: {} }) } },
 }));
 vi.mock("../apiUsage", () => ({ logApiUsage: vi.fn() }));
 vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));

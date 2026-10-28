@@ -110,11 +110,12 @@ function makeFakeDb(rows: Row[]) {
 function mockLlmCandidates(candidates: { candidate_text: string; rationale: string }[]) {
   vi.mocked(anthropic.messages.create)
     .mockResolvedValueOnce({
-      content: [{ type: "tool_use", input: { synthesis: "Customers want faster delivery across the board." } }],
+      content: [{ type: "tool_use", name: "record_evidence_synthesis", input: { synthesis: "Customers want faster delivery across the board." } }],
       usage: {},
+      stop_reason: "tool_use",
     } as never)
     .mockResolvedValueOnce({
-      content: [{ type: "tool_use", input: { candidates } }],
+      content: [{ type: "tool_use", name: "record_decision_candidates", input: { candidates } }],
       usage: {},
       stop_reason: "tool_use",
     } as never);

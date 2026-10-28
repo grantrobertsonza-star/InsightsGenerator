@@ -232,8 +232,16 @@ export async function loadInsightSupport(
        ) as available`,
     );
     const available = probe.rows[0]?.available === true;
+    // EC10K-F03: a synthesized insight reframes its pre-insights' wording, so a link's drafted-from
+    // support is the support its pre-insight was drafted from (insights.support_snapshot, 0103). Links
+    // written before batch 64 stored the finding's fingerprint at synthesis time instead, which hid a
+    // correction made between drafting the pre-insight and synthesis ("Support current" around older
+    // wording); reading the pre-insight's snapshot first qualifies those existing insights too, without
+    // rewriting any stored row. A pre-insight that recorded none falls back to the link's own snapshot
+    // (written null from batch 64, so "not checked"; a legacy link keeps what it stored).
+    const draftedFrom = available && (await preInsightSupportSnapshotAvailable(client));
     const snapshotColumns = available
-      ? "s.support_snapshot, case when f.id is null then null else finding_support_parts(f.id) end as current_parts"
+      ? `${draftedFrom ? "coalesce(i.support_snapshot, s.support_snapshot)" : "s.support_snapshot"} as support_snapshot, case when f.id is null then null else finding_support_parts(f.id) end as current_parts`
       : "null::jsonb as support_snapshot, null::jsonb as current_parts";
     const filter = insightIds ? "and si.id = any($2::uuid[])" : "";
     const driver = driverLineage(await driverAnalysesPresent(client));

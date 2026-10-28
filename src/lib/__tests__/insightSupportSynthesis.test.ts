@@ -20,12 +20,21 @@ vi.mock("../db", () => {
     query: async (sql: string, params: unknown[] = []) => {
       state.statements.push({ sql, params });
       if (/from runs where id/.test(sql)) {
-        return { rows: [{ entry_point: "generate", decision_statement: null, research_objective: "Grow share", business_problem: null }] };
+        return { rows: [{ entry_point: "generate", decision_statement: null, research_objective: "Grow share", business_problem: null }], rowCount: 1 };
       }
       if (/select count\(\*\)::text as count/.test(sql)) return { rows: [{ count: String(state.eligible.length) }] };
       if (/to_regprocedure\('finding_support_parts/.test(sql)) return { rows: [{ available: state.available }] };
       if (/select i\.id, i\.headline/.test(sql)) return { rows: state.eligible };
       if (/insert into trace/.test(sql)) return { rows: [] };
+      // EC10K-F03: whether pre-insights record their drafted-from snapshot (0103); applied here.
+      if (/table_name = 'insights' and column_name = 'support_snapshot'/.test(sql)) return { rows: [{ available: true }] };
+      // EC10K-F04: the synthesis write's lock, the run check and the recheck that every member is still free.
+      if (/pg_advisory_xact_lock/.test(sql)) return { rows: [{}] };
+      if (/^select 1 from runs where id = \$1$/.test(sql)) return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      if (/not exists \(select 1 from synthesized_insight_sources s where s\.pre_insight_id = i\.id\)/.test(sql) && /i\.id = any\(\$1::uuid\[\]\)/.test(sql)) {
+        const ids = params[0] as string[];
+        return { rows: ids.map((id) => ({ id })), rowCount: ids.length };
+      }
       if (/insert into synthesized_insights/.test(sql)) return { rows: [{ id: "si-new" }] };
       if (/insert into synthesized_insight_sources/.test(sql)) return { rows: [] };
       // Numerical traceability (0101) column check: this fake predates it, so it reads as not applied.
@@ -51,7 +60,7 @@ vi.mock("../anthropic", () => ({
           return {
             stop_reason: "tool_use",
             usage: {},
-            content: [{ type: "tool_use", input: { clusters: [{ label: "Regional lift", member_indices: [0, 0, 1] }] } }],
+            content: [{ type: "tool_use", name: "record_clusters", input: { clusters: [{ label: "Regional lift", member_indices: [0, 0, 1] }] } }],
           };
         }
         return {
@@ -60,6 +69,7 @@ vi.mock("../anthropic", () => ({
           content: [
             {
               type: "tool_use",
+              name: "record_synthesized_insight",
               input: {
                 headline: "Region B is pulling ahead",
                 observation: "Two findings agree region B leads.",
@@ -101,12 +111,15 @@ beforeEach(() => {
 });
 
 describe("synthesizeInsights records the drafted-from support (F1)", () => {
-  it("reads finding_support_parts with the eligible pre-insights and stores exactly those values on each link", async () => {
+  it("reads each pre-insight's own drafted-from snapshot with the eligible pre-insights and stores exactly those values on each link", async () => {
     const { synthesizeInsights } = await import("../insightSynthesizer");
     await synthesizeInsights("tenant-1", "run-1");
 
+    // EC10K-F03 (batch 64): the pre-insight's snapshot, not the finding's fingerprint now (which
+    // stamped a finding corrected after the pre-insight was drafted as current).
     const read = state.statements.find((s) => /select i\.id, i\.headline/.test(s.sql))!;
-    expect(read.sql).toMatch(/finding_support_parts\(f\.id\) as support_snapshot/);
+    expect(read.sql).toMatch(/i\.support_snapshot as support_snapshot/);
+    expect(read.sql).not.toMatch(/finding_support_parts\(f\.id\) as support_snapshot/);
 
     const links = state.statements.filter((s) => /insert into synthesized_insight_sources/.test(s.sql));
     expect(links).toHaveLength(2); // the duplicated index was claimed once

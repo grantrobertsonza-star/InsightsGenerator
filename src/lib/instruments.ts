@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { mapWithConcurrency } from "./concurrency";
 import { withTenant, withTenantRead } from "./db";
@@ -451,7 +452,13 @@ async function readItemsWithModel(
         failures.push("a part of the file had more questions and answers than one read can return");
         return [];
       }
-      const tool = response.content.find((b) => b.type === "tool_use");
+      // EC10K-F02: a refused, other-stop or other-tool answer is a failed part too, not only a cut-off one.
+      let finished: Record<string, unknown> | null = null;
+      try {
+        finished = finishedToolInput(response, "record_items", "The reading of the questionnaire");
+      } catch (error) {
+        if (!(error instanceof UnfinishedModelResultError)) throw error;
+      }
       // A missing tool_use block, or one whose `items` field isn't the array the schema
       // requires, is not the same thing as the model genuinely finding zero items in this
       // chunk (that case still comes back as a present, empty `items` array and is a real
@@ -460,12 +467,12 @@ async function readItemsWithModel(
       // return usable output could make its items look like they were read and found absent,
       // rather than simply not read. Counting it as a failed chunk here is what keeps
       // `complete` honest, which is what the deletion below relies on to be safe.
-      if (!tool || tool.type !== "tool_use" || !Array.isArray((tool.input as { items?: unknown }).items)) {
+      if (!finished || !Array.isArray(finished.items)) {
         failedChunks += 1;
         failures.push("the reader returned no usable answer for a part of the file");
         return [];
       }
-      const items = (tool.input as { items: RawItem[] }).items;
+      const items = finished.items as RawItem[];
       return items.map((i) => ({ ...i, page: chunk.page }));
     } catch (e) {
       failedChunks += 1;

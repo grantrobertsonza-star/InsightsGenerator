@@ -1,4 +1,5 @@
 import { computeDataQuality, type DataQuality } from "./qualQuality";
+import { finishedToolResult } from "./modelToolResult";
 import { clearCodingLabel, relabelCodingWork } from "./codingProgress";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
@@ -2595,11 +2596,11 @@ export async function proposeVariableLinks(
     messages: [{ role: "user", content: user }],
   });
   await logApiUsage(tenantId, runId, "coding_link_proposal", response.usage);
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use")
-    throw new Error("The model did not return any proposals.");
+  // EC10K-F02 (batch 64): only a finished record_links call is used; anything else throws, nothing saved.
+  const result = finishedToolResult(response, "record_links", "The proposal of links to variables");
+  if (!result.input) throw new Error(result.unfinished.reason === "no_tool_use" ? "The model did not return any proposals." : result.unfinished.message);
   const proposals = validateLinkProposals(
-    (toolUse.input as { links?: unknown }).links,
+    (result.input as { links?: unknown }).links,
     codes.length,
     vars.map((v) => v.name),
   );
@@ -2785,24 +2786,18 @@ export async function searchNegativeCases(
           "coding_negative_cases",
           response.usage,
         );
-        const toolUse = response.content.find((b) => b.type === "tool_use");
-        if (
-          !toolUse ||
-          toolUse.type !== "tool_use" ||
-          response.stop_reason === "max_tokens"
-        ) {
+        // EC10K-F02 (batch 64): a cut-off, refused, other-stop or other-tool answer fails the batch (traced).
+        const result = finishedToolResult(response, "record_negative_cases", "The search for negative cases");
+        if (!result.input) {
           await recordTrace(tenantId, runId, "negative_case_batch_failed", {
             document_id: documentId,
             batch: batchIndex,
-            reason:
-              response.stop_reason === "max_tokens"
-                ? "max_tokens"
-                : "no_tool_use",
+            reason: result.unfinished.reason === "malformed" ? "no_tool_use" : result.unfinished.reason,
           });
           return null;
         }
         const parsed = parseNegativeCases(
-          (toolUse.input as { cases?: unknown }).cases,
+          (result.input as { cases?: unknown }).cases,
           new Set(batch.items.map((i) => i.index)),
           codes.length,
         );

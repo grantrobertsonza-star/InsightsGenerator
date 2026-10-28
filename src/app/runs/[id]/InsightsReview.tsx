@@ -54,6 +54,40 @@ type FailedVerdictSample = {
 
 const UNCATEGORIZED = "Uncategorized";
 
+/** Whether every eligible verified finding has an insight, counted when the page was read (EC10K-F01). */
+export type InsightCoverageGap = {
+  /** Verified findings still without an insight; null when this could not be counted. */
+  uncovered: number | null;
+  /** A "validate" project with no confirmed decision yet: nothing is drafted, and that is not a gap. */
+  waitingForDecision: boolean;
+  error: string | null;
+  /** The last automatic attempt's own account of what it could not write, when there is a gap. */
+  reason: string | null;
+};
+
+/**
+ * EC10K-F01: says when verified findings have no insight yet, so a partial or bounded generation never
+ * reads as complete; says the count is unknown when it could not be read. Nothing when complete.
+ */
+export function InsightCoverageNotice({ gap }: { gap: InsightCoverageGap }) {
+  if (gap.waitingForDecision) return null;
+  if (gap.uncovered === null) {
+    return (
+      <p className="text-sm text-danger">
+        Whether every verified finding has an insight could not be checked{gap.error ? `: ${gap.error}` : ""}.
+      </p>
+    );
+  }
+  if (gap.uncovered === 0) return null;
+  return (
+    <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-foreground">
+      {gap.uncovered} verified finding{gap.uncovered === 1 ? " has" : "s have"} no insight yet, so this list is
+      incomplete.{gap.reason ? ` Last attempt: ${gap.reason}` : ""} The insights already written are kept; processing
+      the project again drafts only the missing ones.
+    </p>
+  );
+}
+
 /**
  * A run with a few dozen insights used to mean scrolling past all of them
  * to find the ones that actually matter, with no sense of the overall mix
@@ -78,6 +112,7 @@ export default function InsightsReview({
   verdictSummary,
   insightError,
   failedVerdictSamples,
+  coverageGap,
 }: {
   insights: Insight[];
   inputState: InputCompleteness;
@@ -85,6 +120,7 @@ export default function InsightsReview({
   verdictSummary: VerdictSummary | null;
   insightError: string | null;
   failedVerdictSamples: FailedVerdictSample[];
+  coverageGap: InsightCoverageGap;
 }) {
   const [tierFilter, setTierFilter] = useState<"all" | VerdictTier>("all");
   const [themeFilter, setThemeFilter] = useState<string>("all");
@@ -133,6 +169,7 @@ export default function InsightsReview({
             Last automatic attempt failed: {insightError}
           </p>
         )}
+        <InsightCoverageNotice gap={{ ...coverageGap, reason: null }} />
         {failedVerdictSamples.length > 0 && (
           <div className="mt-2 space-y-2 rounded-lg border border-border bg-white p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -162,6 +199,7 @@ export default function InsightsReview({
 
   return (
     <div className="space-y-4">
+      <InsightCoverageNotice gap={coverageGap} />
       <div>
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
           Evidence strength

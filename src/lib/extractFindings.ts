@@ -1,4 +1,5 @@
 import { extractText as extractPdfText, getDocumentProxy } from "unpdf";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import {
   archiveAndReplaceFindings,
@@ -643,8 +644,7 @@ async function extractFindingsFromChunk(
       `${response.usage.output_tokens} output tokens, stop: ${response.stop_reason}`,
   );
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
+  if (!response.content.some((block) => block.type === "tool_use")) {
     throw new Error(
       chunk.total > 1
         ? `Claude did not return a structured findings list for part ${chunk.index + 1} of ${chunk.total} of "${document.source_filename}".`
@@ -653,7 +653,7 @@ async function extractFindingsFromChunk(
   }
 
   if (response.stop_reason === "max_tokens") {
-    // The response was cut off mid-generation, so whatever is in toolUse.input
+    // The response was cut off mid-generation, so whatever is in the tool block's input
     // is an incomplete, unusable fragment rather than a real (if short) answer.
     // This happens on long, finding-dense documents; raising max_tokens further
     // or extracting in smaller sections are the two ways out of it (a document
@@ -666,8 +666,18 @@ async function extractFindingsFromChunk(
     );
   }
 
-  const rawInput = toolUse.input as { findings?: unknown };
   const partLabel = chunk.total > 1 ? ` (part ${chunk.index + 1} of ${chunk.total})` : "";
+  // EC10K-F02 (batch 64): besides the cut-off and missing answers above, a refused or other-stop answer,
+  // another tool's block or a non-object input fails this part too (modelToolResult.ts), so the previous
+  // reading stays.
+  let finished: Record<string, unknown>;
+  try {
+    finished = finishedToolInput(response, "record_findings", "The findings reading");
+  } catch (error) {
+    if (!(error instanceof UnfinishedModelResultError)) throw error;
+    throw new Error(`Claude's answer for "${document.source_filename}"${partLabel} could not be used (${error.message}) Nothing was replaced. Run Extract findings again.`);
+  }
+  const rawInput = finished as { findings?: unknown };
   // SEC500-F01 (Codex, 2026-10-24): an answer with no findings list used to be treated as "this part
   // has no findings", so a complete, empty reading was published and replaced the document's previous
   // findings. Only an explicit list says what the part contains: a missing or malformed one is recorded

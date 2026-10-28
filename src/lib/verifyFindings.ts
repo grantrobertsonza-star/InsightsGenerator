@@ -3,6 +3,7 @@ import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { checkBaseSize } from "./stats";
 import { mapWithConcurrency } from "./concurrency";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { applyRecordedContradictions } from "./contradictionDetector";
 import { verificationBasisFor } from "./discoveryClassification";
 import { codeVerdict, findingBasis } from "./findingBasis";
@@ -423,11 +424,19 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<n
 
     await logApiUsage(tenantId, runId, "verify_findings", response.usage);
 
-    const toolUse = response.content.find((block) => block.type === "tool_use");
-    const rawVerdicts =
-      toolUse && toolUse.type === "tool_use" && Array.isArray((toolUse.input as { verdicts?: unknown }).verdicts)
-        ? ((toolUse.input as { verdicts: unknown[] }).verdicts as Record<string, unknown>[])
-        : [];
+    // EC10K-F02: only a finished record_verdicts call is used (modelToolResult.ts). A cut-off answer
+    // can carry a block holding the first few verdicts, which used to be written as the pass's
+    // judgment (and every finding after the cut filled in as insufficient_information). An
+    // unfinished answer fails the chunk, so nothing in this pass is written and the previous
+    // verdicts stand.
+    let finished: Record<string, unknown>;
+    try {
+      finished = finishedToolInput(response, "record_verdicts", "The verification of the findings");
+    } catch (error) {
+      if (error instanceof UnfinishedModelResultError) return { ok: false, error: error.message };
+      throw error;
+    }
+    const rawVerdicts = Array.isArray(finished.verdicts) ? (finished.verdicts as Record<string, unknown>[]) : [];
 
     const batchVerdicts: PreparedVerdict[] = [];
     for (const raw of rawVerdicts) {

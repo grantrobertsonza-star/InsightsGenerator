@@ -15,7 +15,7 @@ vi.mock("../anthropic", () => ({
     messages: {
       create: vi.fn(async (req: { tool_choice: { name: string } }) =>
         req.tool_choice.name === "record_evidence_synthesis"
-          ? { content: [{ type: "tool_use", name: req.tool_choice.name, input: { synthesis: "Synthesis." } }], usage: { input_tokens: 1, output_tokens: 1 } }
+          ? { content: [{ type: "tool_use", name: req.tool_choice.name, input: { synthesis: "Synthesis." } }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "tool_use" }
           : {
               content: [{ type: "tool_use", name: req.tool_choice.name, input: { candidates: [{ candidate_text: `Whether to act ${randomUUID().slice(0, 6)}`, rationale: "r" }] } }],
               usage: { input_tokens: 1, output_tokens: 1 },

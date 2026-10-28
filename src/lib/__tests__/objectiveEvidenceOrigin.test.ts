@@ -36,6 +36,7 @@ vi.mock("../anthropic", () => ({
       create: vi.fn(async (args: { messages: { content: string }[] }) => {
         drafted.push(args.messages[0].content);
         return {
+          stop_reason: "tool_use",
           content: [{ type: "tool_use", id: "t", name: "submit_questions", input: { questions: [{ question: `Q for ${args.messages[0].content}`, request: "mobile banking by gender", supports_if: "higher", against_if: "lower", expectation: { kind: "none" } }] } }],
           usage: { input_tokens: 1, output_tokens: 1 },
         };

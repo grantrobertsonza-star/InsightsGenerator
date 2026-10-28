@@ -9,6 +9,7 @@ import { mapWithConcurrency } from "./concurrency";
 import { figureCheck, type FigureCheck } from "./numberTrace";
 import { recommendationDecisionContextAvailable } from "./decisionContext";
 import { figureCheckAvailable } from "./figureChecks";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { DECISION_INDICES_FIELD, decisionsPromptBlock, loadDecisionItems, parseDecisionIndices, storeRecommendationDecisions, type DecisionItem } from "./recommendationDecisions";
 
 const MAX_INSIGHTS_FOR_PROMPT = 60;
@@ -85,6 +86,15 @@ async function settleRecommendationRun(
   }
 }
 
+
+/** The recommendations list of a finished record_recommendations call; anything else throws (EC10K-F02). */
+function recommendationsFrom(response: Parameters<typeof finishedToolInput>[0]): Record<string, unknown>[] {
+  const input = finishedToolInput(response, "record_recommendations", "The recommendation drafting");
+  if (!Array.isArray(input.recommendations)) {
+    throw new UnfinishedModelResultError("malformed", "The recommendation drafting returned a result in the wrong shape (recommendations), so nothing from it was used. Try again.");
+  }
+  return input.recommendations.filter((r): r is Record<string, unknown> => !!r && typeof r === "object");
+}
 
 /**
  * Numerical traceability for one drafted recommendation (numberTrace.ts), against the insight it
@@ -390,13 +400,10 @@ export async function generateRecommendations(tenantId: string, runId: string): 
 
       await logApiUsage(tenantId, runId, "recommendation_agent", response.usage);
 
-      const toolUse = response.content.find((block) => block.type === "tool_use");
-      const rawRecommendations =
-        toolUse &&
-        toolUse.type === "tool_use" &&
-        Array.isArray((toolUse.input as { recommendations?: unknown }).recommendations)
-          ? ((toolUse.input as { recommendations: unknown[] }).recommendations as Record<string, unknown>[])
-          : [];
+      // EC10K-F02: only a finished record_recommendations call is used (modelToolResult.ts). A cut-off,
+      // refused or other-tool answer throws here; containChunk reports the batch as failed, nothing from
+      // it is written, and its insights count as missing, so running again drafts them.
+      const rawRecommendations = recommendationsFrom(response);
 
       const prepared: Prepared[] = [];
       const seenIndices = new Set<number>();
@@ -689,13 +696,10 @@ export async function generateSynthesizedRecommendations(tenantId: string, runId
 
       await logApiUsage(tenantId, runId, "synthesized_recommendation_agent", response.usage);
 
-      const toolUse = response.content.find((block) => block.type === "tool_use");
-      const rawRecommendations =
-        toolUse &&
-        toolUse.type === "tool_use" &&
-        Array.isArray((toolUse.input as { recommendations?: unknown }).recommendations)
-          ? ((toolUse.input as { recommendations: unknown[] }).recommendations as Record<string, unknown>[])
-          : [];
+      // EC10K-F02: only a finished record_recommendations call is used (modelToolResult.ts). A cut-off,
+      // refused or other-tool answer throws here; containChunk reports the batch as failed, nothing from
+      // it is written, and its insights count as missing, so running again drafts them.
+      const rawRecommendations = recommendationsFrom(response);
 
       const prepared: Prepared[] = [];
       const seenIndices = new Set<number>();

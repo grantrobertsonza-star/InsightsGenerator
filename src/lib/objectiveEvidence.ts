@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { finishedToolInput } from "./modelToolResult";
 import type { PoolClient } from "pg";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
@@ -613,8 +614,10 @@ async function decompose(tenantId: string, runId: string, item: RawItem, vars: s
     messages: [{ role: "user", content: `${item.kind === "objective" ? "Research objective" : "Decision"}: ${item.text}` }],
   });
   await logApiUsage(tenantId, runId, "objective_evidence", response.usage);
-  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  const raw = tu && Array.isArray((tu.input as { questions?: unknown }).questions) ? ((tu.input as { questions: unknown[] }).questions as Record<string, unknown>[]) : [];
+  // EC10K-F02: only a finished call is used; a cut-off or missing answer throws before the plan is
+  // published, where it used to read as an objective with no questions and replace its drafted lines.
+  const finished = finishedToolInput(response, "submit_questions", "The analysis plan drafting");
+  const raw = Array.isArray(finished.questions) ? (finished.questions as Record<string, unknown>[]) : [];
   const out: Drafted[] = [];
   for (const q of raw.slice(0, MAX_QUESTIONS_PER_ITEM)) {
     const question = typeof q.question === "string" ? q.question.trim() : "";
@@ -971,8 +974,8 @@ async function chooseResponse(
     ],
   });
   await logApiUsage(tenantId, runId, "objective_evidence", response.usage);
-  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  const choice = String((tu?.input as { choice?: unknown } | undefined)?.choice ?? "none");
+  // EC10K-F02: an unfinished answer throws (the evaluation's failure handler records it) rather than reading as "none".
+  const choice = String(finishedToolInput(response, "choose_answer", "The choice of the answer to evaluate").choice ?? "none");
   const index = Number(choice) - 1;
   return Number.isInteger(index) && index >= 0 && index < options.length ? options[index] : null;
 }
@@ -1017,8 +1020,9 @@ async function judge(
     ],
   });
   await logApiUsage(tenantId, runId, "objective_evidence", response.usage);
-  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  const input = (tu?.input ?? {}) as { stance?: string; summary?: string };
+  // EC10K-F02: an unfinished answer throws (the evaluation's failure handler records it) rather than
+  // reading as an "inconclusive" judgement.
+  const input = finishedToolInput(response, "record_stance", "The judgement of the evidence table") as { stance?: string; summary?: string };
   const ok: Stance[] = ["supports", "against", "mixed", "inconclusive", "silent"];
   const stance = ok.find((s) => s === input.stance) ?? "inconclusive";
   return { stance, summary: capWords(String(input.summary ?? "The table was read but no summary came back."), 60) };

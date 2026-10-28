@@ -19,7 +19,7 @@ import type { PoolClient } from "pg";
 import { findingSourceSql, formatFindingSource, SOURCE_NOT_RECORDED, type FindingSource } from "./sourceAttribution";
 import { coverageFreshnessNote, coverageRowCurrent, coverageRowNote, readObjectiveCoverage, withCoverageSupport, type ObjectiveCoverage } from "./objectiveCoverage";
 import { withTenantRead } from "./db";
-import { loadRecommendationDecisions, servedDecisionNote } from "./recommendationDecisions";
+import { loadRecommendationDecisions, servedDecisionNote, type RecommendationDecisionsByRec } from "./recommendationDecisions";
 import { loadInsightSupportOrUnchecked, type InsightSupportResult } from "./supportStatus";
 import { describeSupportReason, summariseSupport, SUPPORT_STATUS_LABEL, supportReasonStatus } from "./supportStatusShared";
 import { loadBriefPassages, passageSourceText } from "./briefPassages";
@@ -68,12 +68,43 @@ function statFacts(stats: unknown): string[] {
  * trail's own connection is opened (the support reader opens others, and holding one while waiting for
  * another can exhaust the pool), and one context serves every trail of a project (the report appendix).
  */
-export type TrailContext = { coverage: ObjectiveCoverage; support: InsightSupportResult };
+export type TrailContext = {
+  coverage: ObjectiveCoverage;
+  support: InsightSupportResult;
+  /**
+   * EC10K-P01: what a report with many trails reads once instead of once per trail: the decisions served
+   * by the recommendations named when the context was loaded (the bulk reader, so the project's accepted
+   * decisions and decision statement are read once), and the project's brief passages. Absent for a
+   * context loaded for one trail on screen, which reads them itself.
+   */
+  shared?: {
+    recommendationIds: ReadonlySet<string>;
+    served: RecommendationDecisionsByRec;
+    passages: BriefPassagesByObjective;
+  };
+};
+type BriefPassagesByObjective = Awaited<ReturnType<typeof loadBriefPassages>>;
 
-export async function loadTrailContext(tenantId: string, runId: string): Promise<TrailContext> {
-  const read = await withTenantRead(tenantId, (client) => readObjectiveCoverage(client, runId));
+/**
+ * `recommendationIds`: the recommendations whose trails will be read with this context (an export's
+ * appendix). Their served decisions and the brief passages are then read here, in the coverage read's
+ * transaction, and a failure fails the context, which each trail then states as unreadable (the
+ * export's existing rule for a failed context). A trail for a recommendation not named reads its own.
+ */
+export async function loadTrailContext(tenantId: string, runId: string, recommendationIds?: string[]): Promise<TrailContext> {
+  const { read, shared } = await withTenantRead(tenantId, async (client) => ({
+    read: await readObjectiveCoverage(client, runId),
+    shared:
+      recommendationIds && recommendationIds.length > 0
+        ? {
+            recommendationIds: new Set(recommendationIds),
+            served: await loadRecommendationDecisions(client, runId, recommendationIds),
+            passages: await loadBriefPassages(client, runId),
+          }
+        : undefined,
+  }));
   const support = await loadInsightSupportOrUnchecked(tenantId, runId);
-  return { coverage: await withCoverageSupport(tenantId, runId, read, support), support };
+  return { coverage: await withCoverageSupport(tenantId, runId, read, support), support, ...(shared ? { shared } : {}) };
 }
 
 export async function loadEvidenceTrail(client: PoolClient, tenantId: string, runId: string, recommendationId: string, context: TrailContext): Promise<EvidenceTrail> {
@@ -86,7 +117,10 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
 
   // Purpose: decisions served (CE-2) and objectives answered through its insight's coverage (CE-1).
   const purpose: TrailNode[] = [];
-  const served = await loadRecommendationDecisions(client, runId, [r.id]);
+  // The shared read is used only for a recommendation it was loaded for, and only after the query above
+  // has confirmed that recommendation is in this project.
+  const shared = context.shared;
+  const served = shared?.recommendationIds.has(r.id) ? shared.served : await loadRecommendationDecisions(client, runId, [r.id]);
   const decisions = served?.get(r.id) ?? [];
   if (decisions.length === 0) {
     purpose.push(node("decision", null, "Decision served: not recorded", { state: "broken", note: served === undefined ? "A database update is missing." : "No decision was recorded for this recommendation." }));
@@ -108,7 +142,7 @@ export async function loadEvidenceTrail(client: PoolClient, tenantId: string, ru
         }),
       );
     }
-    const passages = await loadBriefPassages(client, runId);
+    const passages = shared ? shared.passages : await loadBriefPassages(client, runId);
     for (const o of answering) {
       const objective = node("objective", o.objective_candidate_id, o.item_text, {
         details: [`Coverage: ${o.status === "resolved" ? "answered" : o.status === "partial" ? "partly answered" : "gap"}`],

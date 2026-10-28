@@ -31,6 +31,21 @@ clearing it restores current. It returns null (compare the whole file's correcti
 path) for no saved request, a multiple-response banner `set:<key>` (members resolved from the file,
 not recorded in the request) and any shape the engine would not read; never an empty list.
 
+**Drafted-from support across synthesis** (Codex EC10K-F03, batch 64). A synthesized insight reframes
+its pre-insights' wording, so each source link records the support its pre-insight was drafted from
+(`insights.support_snapshot`, 0103), not the finding's fingerprint at synthesis time. Before, a finding
+corrected after its pre-insight was drafted (a withdrawn claim) was stamped current around the older
+wording and read "Support current" through recommendations, coverage and both exports. The reader
+(`loadInsightSupport`) prefers the pre-insight's snapshot, so links written before batch 64 are
+qualified too, without rewriting any row; a pre-insight with no snapshot gives a link written null
+("Support not checked"); a legacy link whose pre-insight recorded none keeps what it stored (limit). The
+qualification stays until the finding is back to what was drafted from (or the pre-insight is written
+again from it); a fingerprint is never refreshed around old wording. No pre-insight regeneration exists
+yet, so a corrected finding's synthesized insight stays "changed since drafted" until the researcher
+reviews it, keeping its wording and review decision. Pinned by `synthesisDraftedFrom.db.test.ts`
+(correction before clustering and while the model answers, unchanged control, recovery, legacy link,
+no snapshot, both story exports).
+
 **Tests.** `supportQuoteGrounding.db`, `supportQuoteSnapshot.db` (actual `deleteDocument` and the
 actual Slides route, interleaved between the reads), `supportReplacementDuplicates.db`,
 `supportNetInputs` and `supportNetInputs.db`, all on real disposable PostgreSQL.

@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -224,11 +225,17 @@ async function readOnce(tenantId: string, runId: string, content: string, maxTok
     return { ok: false, reason };
   };
   if (response.stop_reason === "max_tokens") return fail(`the answer was cut off at ${maxTokens} tokens`);
-  const tu = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  if (!tu) return fail(`no reading was returned (stop: ${response.stop_reason ?? "unknown"}; returned: ${response.content.map((b) => b.type).join(", ") || "nothing"})`);
-  const input = readingIn(tu.input);
+  // EC10K-F02: besides a cut-off (above), a refused, other-stop or other-tool answer is a failed reading too.
+  let tuInput: Record<string, unknown>;
+  try {
+    tuInput = finishedToolInput(response, "record_insights", "The reading of the table");
+  } catch (error) {
+    if (!(error instanceof UnfinishedModelResultError)) throw error;
+    return fail(`${!response.content.some((b) => b.type === "tool_use") ? "no reading was returned" : error.message} (stop: ${response.stop_reason ?? "unknown"}; returned: ${response.content.map((b) => b.type).join(", ") || "nothing"})`);
+  }
+  const input = readingIn(tuInput);
   const headline = input && typeof input.headline === "string" ? input.headline.trim() : "";
-  if (!input || !headline) return fail(`the reading had no headline (${shapeOf(tu.input)})`);
+  if (!input || !headline) return fail(`the reading had no headline (${shapeOf(tuInput)})`);
   // A list sent as JSON text is read as the list it is (some answers arrive that way); anything else is no cards.
   let rawCards: unknown = input.cards;
   if (typeof rawCards === "string") {
@@ -244,6 +251,6 @@ async function readOnce(tenantId: string, runId: string, content: string, maxTok
         .slice(0, 4)
         .map((c) => ({ title: String(c.title), stat: c.stat ? String(c.stat) : undefined, body: String(c.body) }))
     : [];
-  if (cards.length === 0) return fail(`the reading came back without any patterns described (${shapeOf(tu.input)})`);
+  if (cards.length === 0) return fail(`the reading came back without any patterns described (${shapeOf(tuInput)})`);
   return { ok: true, reading: { headline, cards } };
 }

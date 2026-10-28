@@ -112,6 +112,14 @@ and the brief was text or a model-filled id array.
     (CE-6), grouped by the plan line recorded on their table, plus current plan lines with no finding yet.
     Both views build insights and findings with the same functions, so they cannot describe one
     differently.
+  - b64 (Codex EC10K-P01, measured): an export reads the served decisions of all its trails with the bulk
+    reader (`loadRecommendationDecisions`, so the accepted decisions and decision statement once) and the
+    brief passages once, in `loadTrailContext(tenant, run, recommendationIds)`; a trail uses them only for a
+    recommendation it has confirmed is in the project, and reads its own otherwise (the dialog). A failed
+    shared read fails the context, which each trail states as unreadable; the next export recovers. Word
+    export statements for 1/5/10/20/40 recommendations on Codex's own harness: 53/97/152/262/482 before,
+    53/73/98/148/248 after (about 5 statements per further recommendation instead of 11); Slides the same
+    shape. Trails are identical to ones read alone (`exportTrailQueries.db.test.ts`).
   - Still to do: links from a node to its table or transcript, and objective evidence in the exports.
 - **CE-6 (b46): the analysis plan.** Migration 0123; owner `src/lib/analysisPlan.ts`.
   - The plan's lines are the objective evidence questions (`objectiveEvidence.ts`): each objective or

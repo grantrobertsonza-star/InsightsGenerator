@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { mapWithConcurrency } from "./concurrency";
@@ -284,10 +285,9 @@ async function chainCheckOneClaim(
 
   await logApiUsage(tenantId, runId, "validate_stated_insight", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") return null;
-
-  const raw = toolUse.input as {
+  // EC10K-F02: only a finished record call is used; an unfinished one throws, and the claim is left
+  // unverified with the failure traced (validate_stated_insight_claim_error), so the next pass retries it.
+  const raw = finishedToolInput(response, "record_chain_verdict", "The check of a report claim against the evidence") as {
     outcome?: unknown;
     rationale?: unknown;
     relied_indices?: unknown;

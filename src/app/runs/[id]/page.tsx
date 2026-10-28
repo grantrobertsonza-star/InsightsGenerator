@@ -35,7 +35,7 @@ import {
   finishProcessProgress,
   isPipelineActive,
 } from "@/lib/processProgress";
-import { refreshInsights } from "@/lib/insightGenerator";
+import { loadInsightCoverageGap, refreshInsights } from "@/lib/insightGenerator";
 import { refreshRecommendations } from "@/lib/recommendationAgent";
 import { generateStoryNarrative, latestNarrativeFailure, type DeckPillar } from "@/lib/storyNarrative";
 import { loadInsightSupportOrUnchecked, loadPreInsightSupportOrUnchecked, type InsightSupportResult } from "@/lib/supportStatus";
@@ -3105,7 +3105,11 @@ async function processRunAction(
             await refreshVerdicts(TENANT_ID, runId);
             await refreshStatedInsightValidations(TENANT_ID, runId);
           });
-          await stage("insights", () => refreshInsights(TENANT_ID, runId));
+          // EC10K-F01: an incomplete or failed generation is the stage's error, never "done".
+          await stage("insights", async () => {
+            const problem = await refreshInsights(TENANT_ID, runId);
+            if (problem) throw new Error(problem);
+          });
         })(),
         refreshObjectiveCandidates(runId).catch(() => undefined),
       ]);
@@ -3329,6 +3333,7 @@ export default async function RunPage({
     objectiveValidationError,
     programWaves,
     methodologyFailure,
+    insightCoverage,
   ] = await Promise.all([
     timing(
       "findingCodingCounts",
@@ -3350,7 +3355,13 @@ export default async function RunPage({
       ? getProgramWaves(run.program_id, id)
       : Promise.resolve([]),
     latestMethodologyFailure(TENANT_ID, id),
+    // EC10K-F01: verified findings still without an insight, counted now.
+    loadInsightCoverageGap(TENANT_ID, id),
   ]);
+  const insightGapReason =
+    insightCoverage.uncovered !== null && insightCoverage.uncovered > 0
+      ? await getLatestTraceMessage(id, ["insight_generator_incomplete", "insight_generator_error"])
+      : null;
   const failedVerdictSamples =
     verdictSummary &&
     verdictSummary.verdictedCount > 0 &&
@@ -3814,6 +3825,7 @@ export default async function RunPage({
       verdictSummary={verdictSummary}
       insightError={insightError}
       failedVerdictSamples={failedVerdictSamples}
+      coverageGap={{ ...insightCoverage, reason: insightGapReason }}
     />
   );
 

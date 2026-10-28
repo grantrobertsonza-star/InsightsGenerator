@@ -17,6 +17,7 @@
 // claimed it. Attempts are bounded per task and per review. Grant's decision (2026-10-16): no
 // monetary cap; the estimate is shown before the explicit start and actual cost is recorded.
 import { findPrecisionChecks } from "./marginOfError";
+import { finishedToolInput, UnfinishedModelResultError } from "./modelToolResult";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { costOfUsage, logApiUsage } from "./apiUsage";
 import { cachedSystem, cachedUserThen } from "./promptCache";
@@ -306,9 +307,13 @@ async function callTool(tenantId: string, runId: string, agent: string, system: 
   // An answer cut off at the length limit is incomplete even when it parses; it is refused with
   // that reason rather than validated as if it were whole.
   if (response.stop_reason === "max_tokens") throw Object.assign(new Error(`the answer was cut off at the ${maxTokens}-token limit`), { usage });
-  const block = response.content.find((b) => b.type === "tool_use") as { input?: unknown } | undefined;
-  if (!block || block.input === undefined) throw Object.assign(new Error("the model gave no structured answer"), { usage });
-  return { input: block.input, usage };
+  // EC10K-F02: a refused, other-stop or other-tool answer is refused too, not only a cut-off one.
+  try {
+    return { input: finishedToolInput(response, tool.name, "The research quality reading"), usage };
+  } catch (error) {
+    if (!(error instanceof UnfinishedModelResultError)) throw error;
+    throw Object.assign(new Error(!response.content.some((b) => b.type === "tool_use") ? "the model gave no structured answer" : error.message), { usage });
+  }
 }
 
 // Output budgets. Up to 60 facts with quotes of up to 400 characters, plus statements, can exceed

@@ -1,4 +1,5 @@
 import { getGuideHintsForRun } from "./guides";
+import { finishedToolInput, finishedToolResult } from "./modelToolResult";
 import type { PoolClient } from "pg";
 import {
   applyOverrides,
@@ -318,7 +319,6 @@ async function runOpenCoding(
     });
     await logApiUsage(tenantId, runId, "extract_themes", response.usage);
 
-    const toolUse = response.content.find((block) => block.type === "tool_use");
     if (response.stop_reason === "max_tokens") {
       noteOpenCodingFailure(
         documentId,
@@ -326,11 +326,13 @@ async function runOpenCoding(
       );
       return null;
     }
-    if (!toolUse || toolUse.type !== "tool_use") {
-      noteOpenCodingFailure(documentId, "the model did not return a list of themes");
+    // EC10K-F02 (batch 64): a refused, other-stop or other-tool answer is a failed pass too, like a missing one.
+    const result = finishedToolResult(response, "record_themes", "The open coding pass");
+    if (!result.input) {
+      noteOpenCodingFailure(documentId, result.unfinished.reason === "no_tool_use" ? "the model did not return a list of themes" : result.unfinished.message);
       return null;
     }
-    const raw = (toolUse.input as { themes?: unknown }).themes;
+    const raw = (result.input as { themes?: unknown }).themes;
     if (!Array.isArray(raw)) {
       noteOpenCodingFailure(documentId, "the model returned themes in an unreadable shape");
       return null;
@@ -495,11 +497,9 @@ async function consolidate(
   });
   await logApiUsage(tenantId, runId, "codebook_consolidation", response.usage);
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  const raw =
-    toolUse && toolUse.type === "tool_use"
-      ? (toolUse.input as { codes?: unknown }).codes
-      : null;
+  // EC10K-F02 (batch 64): an unfinished answer throws before anything is replaced, rather than reading
+  // as a merge that produced no codes.
+  const raw = finishedToolInput(response, "record_codebook", "The merging of the coding passes into one codebook").codes;
   const codes = validateConsolidation(raw, themesPerRun);
   const manifestId = await recordManifest(tenantId, runId, documentId, {
     stage: "consolidation",
@@ -672,8 +672,10 @@ async function groupCodesIntoThemes(
       messages: [{ role: "user", content: input }],
     });
     await logApiUsage(tenantId, runId, "theme_grouping", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const toolInput = toolUse && toolUse.type === "tool_use" ? toolUse.input : null;
+    // EC10K-F02 (batch 64): an unfinished answer is a grouping that failed, with its reason.
+    const result = finishedToolResult(response, "record_themes", "The grouping of codes into themes");
+    if (!result.input && result.unfinished.reason !== "no_tool_use") return { themes: 0, reason: result.unfinished.message };
+    const toolInput = result.input;
     const raw = normaliseThemeList(toolInput);
     if (!Array.isArray(raw)) {
       let sample = "";
@@ -768,10 +770,8 @@ async function mergeOverlappingThemes(
       messages: [{ role: "user", content: listing }],
     });
     await logApiUsage(tenantId, runId, "theme_integration_review", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const raw = normaliseThemeList(
-      toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
-    );
+    // EC10K-F02 (batch 64): an unfinished review throws (the integration is refused and nothing saved).
+    const raw = normaliseThemeList(finishedToolInput(response, "record_merges", "The review of overlapping themes"));
     const otherIndex = groups.findIndex((g) => g.theme === OTHER_THEME) + 1;
     const merges = validateThemeGrouping(raw, groups.length).filter(
       (m) => otherIndex === 0 || !m.codes.includes(otherIndex),
@@ -866,10 +866,8 @@ async function placeLeftoverCodes(
       ],
     });
     await logApiUsage(tenantId, runId, "theme_integration_place", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const raw = normaliseThemeList(
-      toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
-    );
+    // EC10K-F02 (batch 64): an unfinished placement throws (the integration is refused and nothing saved).
+    const raw = normaliseThemeList(finishedToolInput(response, "place_codes", "The placing of codes left outside every theme"));
     if (!Array.isArray(raw)) return groups;
     const next = groups.map((g) => ({ theme: g.theme, codes: [...g.codes] }));
     const seen = new Set<number>();
@@ -968,10 +966,8 @@ export async function integrateThemes(
     messages: [{ role: "user", content: listing }],
   });
   await logApiUsage(tenantId, runId, "theme_integration", response.usage);
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  const raw = normaliseThemeList(
-    toolUse && toolUse.type === "tool_use" ? toolUse.input : null,
-  );
+  // EC10K-F02 (batch 64): an unfinished answer throws before any grouping is saved.
+  const raw = normaliseThemeList(finishedToolInput(response, "record_themes", "The grouping across transcripts"));
   const groups = validateThemeGrouping(raw, rows.length);
   if (groups.length === 0)
     throw new Error(
@@ -1244,17 +1240,18 @@ export async function applyCodebook(
       // connection holds a worker for the SDK default of 10 minutes per attempt, and the bar looks frozen.
       { timeout: 120_000, maxRetries: 2 });
       await logApiUsage(tenantId, runId, "codebook_apply", response.usage);
-      const toolUse = response.content.find((b) => b.type === "tool_use");
-      if (!toolUse || toolUse.type !== "tool_use" || response.stop_reason === "max_tokens") {
+      // EC10K-F02 (batch 64): a cut-off, refused, other-stop or other-tool answer fails the batch (traced).
+      const result = finishedToolResult(response, "record_decisions", "The coding of a batch");
+      if (!result.input) {
         await recordTrace(tenantId, runId, "coding_apply_batch_failed", {
           document_id: documentId,
           batch: batchIndex,
           code,
-          reason: response.stop_reason === "max_tokens" ? "max_tokens" : "no_tool_use",
+          reason: result.unfinished.reason === "malformed" ? "no_tool_use" : result.unfinished.reason,
         });
         return { batchIndex, code, hits: null as Map<number, number[]> | null, incomplete: false };
       }
-      const rawDecisions = (toolUse.input as { decisions?: unknown }).decisions;
+      const rawDecisions = (result.input as { decisions?: unknown }).decisions;
       const unitCounts = new Map(batch.items.map((i) => [i.index, unitsOf(i).length]));
       const { hits, decided } = parseUnitDecisions(rawDecisions, unitCounts);
       // Diagnostic only: how often the model called a decision ambiguous rather than clear, which is a
@@ -1449,11 +1446,9 @@ async function summarise(
       messages: [{ role: "user", content: user }],
     });
     await logApiUsage(tenantId, runId, "codebook_summary", response.usage);
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    const raw =
-      toolUse && toolUse.type === "tool_use"
-        ? (toolUse.input as { summaries?: unknown }).summaries
-        : null;
+    // EC10K-F02 (batch 64): an unfinished answer throws into the catch below, so every code keeps its own
+    // definition as its finding wording rather than part of a cut-off answer.
+    const raw = finishedToolInput(response, "record_summaries", "The summaries of the codes").summaries;
     if (Array.isArray(raw)) {
       for (const item of raw as { code?: unknown; finding_text?: unknown }[]) {
         if (

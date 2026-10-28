@@ -1,4 +1,5 @@
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
+import { finishedToolInput } from "./modelToolResult";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
 import { parseNumberedItems } from "./text";
@@ -234,11 +235,8 @@ export async function scoreObjectiveQuality(
         messages: [{ role: "user", content: user }],
       });
       await logApiUsage(tenantId, runId, "objective_quality_scorer", response.usage);
-      const toolUse = response.content.find((b) => b.type === "tool_use");
-      const scores = parseObjectiveScores(
-        toolUse && toolUse.type === "tool_use" ? (toolUse.input as { scores?: unknown }).scores : undefined,
-        batch.length,
-      );
+      // EC10K-F02: only a finished record_scores call is used; an unfinished one throws into the catch below.
+      const scores = parseObjectiveScores(finishedToolInput(response, "record_scores", "The objective quality scoring").scores, batch.length);
       if (scores.length === 0)
         throw new Error(`The scorer returned nothing usable (stop reason: ${response.stop_reason ?? "unknown"}).`);
       for (const sc of scores) fresh.set(batch[sc.index][0], sc);
