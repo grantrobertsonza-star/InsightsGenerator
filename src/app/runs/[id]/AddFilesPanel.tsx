@@ -9,7 +9,9 @@ import { planUploadBatches } from "@/lib/uploadBatches";
 import { FILE_LIMIT_MESSAGE } from "@/lib/importLimits";
 
 /** `suggested` is the reason while the type is the panel's own suggestion; null once the researcher chooses. */
-type Picked = { key: number; file: File; purpose: UploadPurposeId | ""; suggested: string | null };
+// `outputSetId`: statistical output from a selection whose earlier request already created its output set; a retry
+// adds it to that set rather than starting another (B52-F01).
+type Picked = { key: number; file: File; purpose: UploadPurposeId | ""; suggested: string | null; outputSetId?: string };
 
 const btn = "rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:border-slate-400 disabled:opacity-50";
 const primary = "flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover disabled:opacity-60";
@@ -97,23 +99,36 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
       // Only files actually sent leave the list (with the too-large ones): a batch not yet sent when an
       // earlier one fails stays chosen, so retrying sends it and never re-sends what already went through.
       const sent = new Set<number>(dropped);
+      // B52-F01: one selection of statistical output is one output set, however many requests it takes. The
+      // first request that carries output creates the set; every later one, and a retry of files left from a
+      // failed upload, names it so the server adds to it.
+      let outputSetId = chosen.find((p) => p.purpose === "output" && p.outputSetId)?.outputSetId;
       let failure: string | null = null;
       for (const batch of batches) {
+        // B52-F02: the list as it stands now decides what is sent. A file removed while an earlier request ran
+        // is not sent; a changed type is sent as its new type; a file left without a valid type stays chosen.
+        const now = new Map(pickedNow.current.map((p) => [p.key, p]));
+        const items = batch
+          .map((p) => now.get(p.key))
+          .filter((p): p is Picked => !!p && p.purpose !== "" && purposeMismatch(p.file.name, p.purpose) === null);
+        if (items.length === 0) continue;
         const data = new FormData();
-        for (const p of batch) {
+        for (const p of items) {
           data.append(purposeById(p.purpose as UploadPurposeId).field, p.file);
           sent.add(p.key);
         }
         data.set("outputWave", outputWave);
+        if (outputSetId && items.some((p) => p.purpose === "output")) data.set("outputSetId", outputSetId);
         let result: Awaited<ReturnType<typeof uploadDocumentsAction>>;
         try {
           result = await uploadDocumentsAction(runId, data);
         } catch {
           // No answer from the server: whether these files were stored is not known, so the reader is told
           // to look rather than told they failed or succeeded.
-          failure = `The upload of ${batch.map((p) => p.file.name).join(", ")} did not get an answer from the server. Reload the page to see whether ${batch.length === 1 ? "it was" : "they were"} added before trying again.`;
+          failure = `The upload of ${items.map((p) => p.file.name).join(", ")} did not get an answer from the server. Reload the page to see whether ${items.length === 1 ? "it was" : "they were"} added before trying again.`;
           break;
         }
+        if (result.outputSetId) outputSetId = result.outputSetId;
         added.push(...result.added);
         // IMP-008: files already in the project are named, not silently dropped or re-added.
         if (result.alreadyPresent) repeats.push(...result.alreadyPresent);
@@ -122,7 +137,11 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
           break;
         }
       }
-      const rest = pickedNow.current.filter((p) => !sent.has(p.key));
+      // Output files of this selection still waiting keep its set, so a retry completes the same set.
+      const inSelection = new Set(chosen.map((p) => p.key));
+      const rest = pickedNow.current
+        .filter((p) => !sent.has(p.key))
+        .map((p) => (outputSetId && inSelection.has(p.key) && p.purpose === "output" ? { ...p, outputSetId } : p));
       const repeatText = repeats.length > 0 ? ` ${repeats.join(" ")}` : "";
       const problems = [...(failure ? [failure] : []), ...refused];
       // Done with nothing left to send: the dialog closes so the new sources can be checked, and the

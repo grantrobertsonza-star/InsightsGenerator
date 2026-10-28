@@ -44,12 +44,16 @@ async function storeContext(tenantId: string, runId: string, file: File, role: "
 export type UploadResult =
   // IMP-008: `alreadyPresent` lists files whose identical content was already in this project as
   // the same kind; they are not added a second time (a retried batch imports each file once).
-  | { ok: true; added: string[]; alreadyPresent?: string[] }
+  | { ok: true; added: string[]; alreadyPresent?: string[]; outputSetId?: string }
   // `added` here too: a partial failure already stored some files durably (each is its
   // own try/catch in the loop below), and the caller needs their names to avoid
   // resubmitting them - a retry that resends the whole original file list, successes
   // included, stores each already-added file a second time under a new document row.
-  | { ok: false; error: string; added: string[]; alreadyPresent?: string[] };
+  | { ok: false; error: string; added: string[]; alreadyPresent?: string[]; outputSetId?: string };
+
+// `outputSetId` (B52-F01): the output set this request's statistical output went into, so the dialog's next
+// request for the same selection is added to it (one selection, one set, however many requests it takes).
+const SET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Stores whichever of the five upload slots have files. Returns what was
@@ -75,6 +79,11 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   const briefs = files("briefFiles");
   const proposals = files("proposalFiles");
   const technical = files("technicalFiles");
+  const setRaw = formData.get("outputSetId");
+  if (setRaw !== null && setRaw !== "" && !(typeof setRaw === "string" && SET_ID.test(setRaw))) {
+    return { ok: false, error: "This upload named an output set that is not valid; choose the files again.", added: [] };
+  }
+  const appendTo = typeof setRaw === "string" && setRaw !== "" ? setRaw : undefined;
   const waveRaw = formData.get("outputWave");
   const outputWave = typeof waveRaw === "string" ? waveRaw : "";
   const typeRaw = formData.get("instrumentType");
@@ -119,9 +128,11 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
       }).catch(() => {});
     }
   }
+  let outputSetId: string | undefined;
   if (outputs.length > 0) {
     try {
-      const r = await ingestOutputFiles(TENANT_ID, runId, outputs, { waveLabel: outputWave });
+      const r = await ingestOutputFiles(TENANT_ID, runId, outputs, { waveLabel: outputWave, appendTo });
+      outputSetId = r.setId;
       added.push(`Statistical output, ${r.added} file${r.added === 1 ? "" : "s"}${r.skipped.length > 0 ? ` (${r.skipped.length} left out: ${r.skipped.slice(0, 3).map((x) => x.path).join(", ")}${r.skipped.length > 3 ? ", ..." : ""})` : ""}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -130,7 +141,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   }
   revalidatePath(`/runs/${runId}`);
   if (failed.length > 0) {
-    return { ok: false, error: `Could not add ${failed.length} file(s). ${failed.join(" | ")}`, added, alreadyPresent };
+    return { ok: false, error: `Could not add ${failed.length} file(s). ${failed.join(" | ")}`, added, alreadyPresent, outputSetId };
   }
-  return { ok: true, added, alreadyPresent };
+  return { ok: true, added, alreadyPresent, outputSetId };
 }

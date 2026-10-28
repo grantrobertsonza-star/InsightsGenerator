@@ -609,6 +609,10 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
   // review (the stage status block would otherwise ask for an acceptance already in flight). A
   // failed attempt leaves it needing review.
   const autoPending = row.dataSetup === null && !autoAccepted && !autoFailed;
+  // The fields wait for that first-view acceptance: an edit made while it was on its way was lost to it (its
+  // success set the defaults over the edit, and the edit's own save then conflicted with it), seen as a wave
+  // label typed into a newly opened file disappearing under load (waves-in-project, 28 October 2026).
+  const editable = ready && !autoPending;
   useReportSetup(row.documentId, pending || autoPending ? "saving" : choice.accepted ? "accepted" : "needs_review", choice.wave ?? null, readError);
 
   return (
@@ -621,7 +625,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         <Field label="What a case is">
         <select
           aria-label={`What a case is: ${row.filename}`}
-          disabled={!ready}
+          disabled={!editable}
           className={`${select} w-full`}
           value={choice.unit}
           onChange={(e) => void save({ ...choice, unit: e.target.value as DataSetup["unit"] })}
@@ -638,7 +642,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
           aria-label={`How the file is laid out: ${row.filename}`}
           className={`${select} w-full`}
           value={choice.layout}
-          disabled={!ready}
+          disabled={!editable}
           onChange={(e) => void save({ ...choice, layout: e.target.value as DataSetup["layout"] })}
         >
           {Object.entries(LAYOUT_LABEL).map(([k, l]) => (
@@ -651,7 +655,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         <Field label="How collected">
         <select
           aria-label={`How the data was collected: ${row.filename}`}
-          disabled={!ready}
+          disabled={!editable}
           className={`${select} w-full`}
           value={choice.method}
           onChange={(e) => void save({ ...choice, method: e.target.value as DataSetup["method"] })}
@@ -666,7 +670,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         <Field label="Wave (optional)">
           <input
             aria-label={`Wave: ${row.filename}`}
-            disabled={!ready}
+            disabled={!editable}
             className={`${select} w-full`}
             placeholder="e.g. Wave 1, Baseline"
             value={waveText}
@@ -688,7 +692,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
             <input
               type="month"
               aria-label={`Fieldwork month: ${row.filename}`}
-              disabled={!ready}
+              disabled={!editable}
               className={`${select} w-full`}
               value={choice.waveDate ? choice.waveDate.slice(0, 7) : ""}
               onChange={(e) => {
@@ -701,7 +705,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
               <input
                 type="checkbox"
                 aria-label={`Include in wave tracking: ${row.filename}`}
-                disabled={!ready}
+                disabled={!editable}
                 checked={choice.waveIncluded}
                 onChange={(e) => void save({ ...choice, waveIncluded: e.target.checked })}
               />
