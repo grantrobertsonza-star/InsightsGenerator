@@ -35,6 +35,8 @@ test("long codebook names stay inside the Code column and do not overlap the que
   await selectSource(page, "survey_codebook.csv");
   const card = page.getByRole("tabpanel", { name: "Codebook links", exact: true });
   await expect(card.getByText("Variables read")).toBeVisible({ timeout: 3 * 60_000 });
+  // The matches table is folded away until the researcher asks to review it.
+  await card.getByRole("button", { name: "Review matches", exact: true }).click();
   const all = card.getByRole("button", { name: "All", exact: true });
   if (await all.count()) await all.click();
   for (const name of NAMES) {
@@ -47,6 +49,23 @@ test("long codebook names stay inside the Code column and do not overlap the que
     });
     expect(box.overflow, `${name} overflows its cell`).toBeLessThanOrEqual(0);
     expect(box.right, `${name} runs into the question`).toBeLessThanOrEqual(box.nextLeft + 0.5);
+    // The variable column: its name and method, and the confirm and reject buttons, stay inside the cell and
+    // never sit on top of each other (the buttons wrap under the variable when the names are long).
+    const links = card.locator(`[data-testid="item-links"][data-item-code="${name}"]`);
+    const geo = await links.evaluate((cell) => {
+      const c = cell.getBoundingClientRect();
+      const v = cell.querySelector('[data-testid="link-variable"]').getBoundingClientRect();
+      const b = [...cell.querySelectorAll('[data-testid="link-choices"] button')].map((x) => x.getBoundingClientRect());
+      const hit = (a, z) => a.left < z.right - 0.5 && z.left < a.right - 0.5 && a.top < z.bottom - 0.5 && z.top < a.bottom - 0.5;
+      return {
+        buttons: b.length,
+        overlaps: b.filter((x) => hit(x, v)).length,
+        past: Math.max(v.right, ...b.map((x) => x.right)) - c.right,
+      };
+    });
+    expect(geo.buttons, `${name} has its confirm and reject buttons`).toBe(2);
+    expect(geo.overlaps, `${name}: a button covers the variable`).toBe(0);
+    expect(geo.past, `${name}: the links run past their column`).toBeLessThanOrEqual(0.5);
   }
   if (SHOT) await card.screenshot({ path: SHOT });
 });

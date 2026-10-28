@@ -34,8 +34,10 @@ const methodLabel: Record<InstrumentLink["method"], string> = {
 const btn =
   "rounded-lg border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50";
 // The per-link Confirm and Reject: small and on one line beside the variable.
-const linkBtn =
-  "whitespace-nowrap rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50";
+// The confirm and reject buttons name the code and the variable, so a long name would push them over the
+// variable they are about (Grant, 28 October 2026): they wrap inside the column instead of running past it.
+const linkChoiceBtn =
+  "max-w-full rounded-md border border-border bg-white px-2 py-0.5 text-left text-[11px] font-medium text-foreground [overflow-wrap:anywhere] hover:bg-slate-50 disabled:opacity-50";
 const btnPrimary =
   "rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-white hover:bg-primary-hover disabled:opacity-50";
 
@@ -335,8 +337,9 @@ export default function InstrumentCard({
           </div>
           <div className="max-h-96 overflow-auto rounded-lg border border-border">
             {/* Fixed columns (Grant, 2026-10-20: the buttons were squeezed into a narrow last column and
-                stacked): the links column is wide enough for a variable, its method and both buttons on
-                one line, and the question wraps instead. */}
+                stacked): the links column is wide enough for a usual variable, its method and both buttons on
+                one line, and the question wraps instead. With long names the buttons move under the variable
+                rather than over it. */}
             <table className="w-full min-w-[640px] table-fixed text-left">
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -380,8 +383,8 @@ export default function InstrumentCard({
                           ) : null;
                         })()}
                         {(linksByItem.get(i.id) ?? []).slice(0, allLinksFor.has(i.id) ? undefined : 6).map((l) => (
-                          <div key={l.id} className="mb-1 flex items-center gap-2">
-                            <div className="min-w-0 flex-1">
+                          <div key={l.id} className="mb-1 flex flex-wrap items-start gap-x-2 gap-y-1" data-testid="link-row">
+                            <div className="min-w-[9rem] flex-1" data-testid="link-variable">
                               <span className={`block truncate ${l.status === "rejected" ? "text-muted line-through" : "font-medium text-foreground"}`} title={l.variable}>
                                 {l.variable}
                               </span>
@@ -390,7 +393,7 @@ export default function InstrumentCard({
                                   {labelOf(l.variable)}
                                 </span>
                               )}
-                              <span className="block whitespace-nowrap text-[10px] text-muted" data-testid="link-method">
+                              <span className="block text-[10px] text-muted" data-testid="link-method">
                                 {l.method === "codebook"
                                   ? `Identical to codebook ${l.basisCode ?? "entry"}`
                                   : `${methodLabel[l.method]}${l.method === "manual" ? "" : `, ${Math.round(l.confidence * 100)}%`}`}
@@ -405,14 +408,14 @@ export default function InstrumentCard({
                                 </span>
                               )}
                             </div>
-                            <div className="flex shrink-0 items-center gap-1">
+                            <div className="flex max-w-full flex-wrap items-center gap-1" data-testid="link-choices">
                               {l.status !== "confirmed" && (
-                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>
+                                <button className={linkChoiceBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "confirmed"))}>
                                   {`Confirm: ${i.code || "this"} is ${l.variable}`}
                                 </button>
                               )}
                               {l.status !== "rejected" && (
-                                <button className={linkBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>
+                                <button className={linkChoiceBtn} disabled={pending} onClick={() => run(() => setLinkStatusAction(runId, l.id, "rejected"))}>
                                   {`Not ${l.variable}`}
                                 </button>
                               )}
