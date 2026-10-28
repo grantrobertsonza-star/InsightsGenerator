@@ -49,7 +49,7 @@ test("a battery item worded the other way is suggested, reversed into a new vari
     const run = await ui.createRun({ name: `reversed-${Date.now()}` });
     await ui.upload(run, file, "table");
     await ui.expectReadyOrActionableRecovery();
-    await page.getByRole("tab", { name: "Data quality", exact: true }).click();
+    await page.getByRole("tab", { name: "Respondents", exact: true }).click();
     const panel = page.getByTestId("respondent-quality").filter({ visible: true });
     const section = panel.getByTestId("rq-reversed");
     const item = section.locator('li[data-variable="Q1_3"]');
@@ -88,7 +88,7 @@ test("a battery item worded the other way is suggested, reversed into a new vari
     // Undo.
     await page.goto(run.url, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /^Import data/ }).first().click();
-    await page.getByRole("tab", { name: "Data quality", exact: true }).click();
+    await page.getByRole("tab", { name: "Respondents", exact: true }).click();
     const again = page.getByTestId("respondent-quality").filter({ visible: true }).getByTestId("rq-reversed").locator('li[data-variable="Q1_3"]');
     await expect(again).toHaveAttribute("data-reversed", "true", { timeout: 90_000 });
     await again.getByRole("button", { name: "Undo" }).click();

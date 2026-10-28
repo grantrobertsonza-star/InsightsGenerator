@@ -340,7 +340,10 @@ export default function InstrumentCard({
             <table className="w-full min-w-[640px] table-fixed text-left">
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="w-16 px-2 py-1.5">Code</th>
+                  {/* Codes are kept as written (up to 256 characters: economycode, wpid_random): the column is
+                      wide enough for the usual names and a longer one wraps inside it instead of running
+                      into the question (Grant, 28 October 2026, Findex codebook). */}
+                  <th className="w-36 px-2 py-1.5">Code</th>
                   <th className="px-2 py-1.5">Question</th>
                   <th className="w-[22rem] px-2 py-1.5" data-testid="links-variable-heading">Variable in {targetName}</th>
                 </tr>
@@ -348,7 +351,7 @@ export default function InstrumentCard({
               <tbody>
                 {rows.slice(0, 300).map((i) => (
                   <tr key={i.id} className="border-b border-border align-top last:border-0">
-                    <td className="px-2 py-1.5 font-medium text-foreground">{i.code ?? ""}</td>
+                    <td className="px-2 py-1.5 font-medium text-foreground [overflow-wrap:anywhere]" data-testid="item-code">{i.code ?? ""}</td>
                     <td className="px-2 py-1.5 text-muted">
                       {i.text}
                       {i.routingText && (

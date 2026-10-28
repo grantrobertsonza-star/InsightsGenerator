@@ -84,6 +84,15 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     await openImport(casesRun);
     await expect(caseMessage).toBeVisible({ timeout: 120_000 });
     expect(await tables(casesRun)).toEqual([]);
+    // The refused file says so everywhere (Grant, 28 October 2026): its Preview does not claim it is still
+    // being read, and no "Setup: Accepted" chip or Open Crosstabs sits beside "Read failed".
+    const header = page.getByTestId("selected-source");
+    await expect(header.getByTestId("source-processing")).toHaveText("Processing: Read failed");
+    await expect(header.getByTestId("source-acceptance")).toHaveCount(0);
+    await expect(header.getByRole("button", { name: "Open Crosstabs" })).toHaveCount(0);
+    await expect(page.getByTestId("preview-read-failed").filter({ visible: true })).toBeVisible();
+    await expect(page.getByText("Reading the file now.")).toHaveCount(0);
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-case-refused.png") });
     await deleteFirstSource(page);
     await expect.poll(async () => (await docs(casesRun)).length, { timeout: 60_000 }).toBe(0);
     await openImport(casesRun);

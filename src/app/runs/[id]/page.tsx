@@ -5171,7 +5171,7 @@ export default async function RunPage({
 
   // The Import screen's sources (TranscriptSetup.tsx): every document, then each statistical output
   // set, with the tabs its type has after Preview and Setup. Grant, 2026-10-20, from his prototype:
-  // raw data has Variables, Data quality, Weights and Labels and documentation; qualitative data Data quality and
+  // raw data has Variables, Data quality, Respondents, Weights and Labels and documentation; qualitative data Data quality and
   // Guide; aggregated tables Data quality; a questionnaire or guide its questions and links; a
   // brief, proposal or report its document details; an output set its overview and related sets.
   const importRows: SourceRow[] = [
@@ -5219,13 +5219,11 @@ export default async function RunPage({
               id: "quality",
               label: "Data quality",
               badge: flagQuality(tableFlags),
-              node: (
-                <div key="panel" className="flex flex-col gap-4">
-                  <ImportQualityPanel tables={ownTables} hasReportOnly={false} withinSource />
-                  <RespondentQualityPanel runId={id} documentId={d.id} />
-                </div>
-              ),
+              node: <ImportQualityPanel key="panel" tables={ownTables} hasReportOnly={false} withinSource />,
             });
+            // The checks of each respondent across the whole file have their own tab (Grant, 28 October 2026),
+            // beside the file-level Data quality checks rather than below them.
+            panels.push({ id: "respondents", label: "Respondents", node: <RespondentQualityPanel key="panel" runId={id} documentId={d.id} /> });
             // Its own tab (Grant, 2026-10-20), read from the whole file when the tab is first shown.
             panels.push({ id: "weights", label: "Weights", node: <DataAuditPanel key="panel" runId={id} documentId={d.id} asTab part="weights" /> });
           } else if (!isRaw && (documentTablesByDocument.get(d.id) ?? []).length > 0) {

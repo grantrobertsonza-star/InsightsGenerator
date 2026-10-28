@@ -55,7 +55,7 @@ test("the Data quality tab checks every respondent and lists who to look at", as
   const run = await ui.createRun({ name: `respondents-${Date.now()}` });
   await ui.upload(run, file, "table");
   await ui.expectReadyOrActionableRecovery();
-  await page.getByRole("tab", { name: "Data quality", exact: true }).click();
+  await page.getByRole("tab", { name: "Respondents", exact: true }).click();
   const panel = page.getByTestId("respondent-quality").filter({ visible: true });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("Nothing is excluded");

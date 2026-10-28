@@ -2,7 +2,7 @@
 
 Grant, 26 October 2026, after Inspirient's survey quality assessment. Owner: `respondent_quality` in
 `api/parse-stats-file.py`, loaded by `src/lib/respondentQuality.ts` and shown by
-`src/app/runs/[id]/RespondentQualityPanel.tsx` on the Import screen's Data quality tab. Pinned by
+`src/app/runs/[id]/RespondentQualityPanel.tsx` on the Import screen's Respondents tab (its own tab beside Data quality since 28 October 2026). Pinned by
 `respondentQuality.db.test.ts` (a designed file whose every flag is known by construction) and
 `e2e/ui/respondent-quality.check.mjs`.
 

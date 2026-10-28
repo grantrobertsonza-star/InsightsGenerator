@@ -328,7 +328,7 @@ export function SelectedFileDetail() {
       <div className="p-5">
         {row?.preview && (
           <div role="tabpanel" aria-labelledby="source-tab-preview" className={active === "preview" ? "" : "hidden"}>
-            <PreviewPanel preview={row.preview} docKind={row.kind} />
+            <SourcePreview row={row} />
           </div>
         )}
         <div role="tabpanel" aria-labelledby="source-tab-setup" className={row && active === "setup" ? "" : "hidden"}>
@@ -368,9 +368,13 @@ function SourceHeader({ row }: { row: Row }) {
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <Chip tone={processingTone(s.processing)} testId="source-processing">{`Processing: ${processingLabel(s.processing, row.kind)}`}</Chip>
-          <Chip tone={acceptanceTone(s.acceptance)} testId="source-acceptance">
-            {s.acceptance === "none" ? ACCEPTANCE_LABEL.none : `Setup: ${ACCEPTANCE_LABEL[s.acceptance]}`}
-          </Chip>
+          {/* A file that could not be read has no setup to stand behind, and no tables to open: an "Accepted"
+              chip and Open Crosstabs beside "Read failed" would contradict it. */}
+          {s.processing !== "failed" && (
+            <Chip tone={acceptanceTone(s.acceptance)} testId="source-acceptance">
+              {s.acceptance === "none" ? ACCEPTANCE_LABEL.none : `Setup: ${ACCEPTANCE_LABEL[s.acceptance]}`}
+            </Chip>
+          )}
           {s.previewUnverified && <Chip tone="amber">Preview not verified</Chip>}
         </div>
         {s.processing === "partly_read" && row.kind === "transcript" && (
@@ -398,13 +402,21 @@ function SourceHeader({ row }: { row: Row }) {
             className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:border-slate-400 disabled:opacity-50"
           />
         )}
-        {row.nextStep}
+        {s.processing !== "failed" && row.nextStep}
       </div>
     </div>
   );
 }
 
-function PreviewPanel({ preview, docKind }: { preview: FilePreview; docKind?: string }) {
+// The Preview tab of the selected source, told whether the file's read has failed: a file that could not be
+// read has nothing to preview, and saying it is still being read would contradict the failure shown above
+// (Grant, 28 October 2026: a file over the case limit).
+function SourcePreview({ row }: { row: Row }) {
+  const s = useSourceState(row);
+  return row.preview ? <PreviewPanel preview={row.preview} docKind={row.kind} readFailed={s.processing === "failed"} /> : null;
+}
+
+function PreviewPanel({ preview, docKind, readFailed = false }: { preview: FilePreview; docKind?: string; readFailed?: boolean }) {
   if (preview.kind === "text") {
     return (
       <div className="flex flex-col gap-2 text-xs">
@@ -426,6 +438,14 @@ function PreviewPanel({ preview, docKind }: { preview: FilePreview; docKind?: st
           </>
         )}
       </div>
+    );
+  }
+  if (preview.tables.length === 0 && readFailed) {
+    return (
+      <p className="text-xs text-muted" data-testid="preview-read-failed">
+        This file could not be read, so there is nothing to preview. The reason is shown above. Remove it from its ⋯ menu and add a
+        version the app can read.
+      </p>
     );
   }
   if (preview.tables.length === 0) {
