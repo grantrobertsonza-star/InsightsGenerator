@@ -11,6 +11,10 @@ export const IMPORT_LIMITS = limits;
 const mb = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`;
 export const FILE_LIMIT_MESSAGE = `This file exceeds the supported ${mb(limits.maxFileBytes)} limit (${limits.maxFileBytes.toLocaleString("en-GB")} bytes). Split it into smaller files, then retry.`;
 export const CASE_LIMIT_MESSAGE = `This file exceeds the supported ${limits.maxCases.toLocaleString("en-GB")} case limit. Split it into smaller files, then retry; no partial result was published.`;
+// Indicator data counts values (observations), not rows (Grant, 2026-10-28; set from measurement,
+// claude/indicator-data.md). The same words as INDICATOR_VALUES_LIMIT_MESSAGE in the engine.
+export const INDICATOR_VALUES_LIMIT_MESSAGE = `This file holds more than the supported ${limits.maxIndicatorValues.toLocaleString("en-GB")} values for indicator data. Download fewer indicators, areas or years per file, then retry; nothing was read.`;
+export const INDICATOR_LIMITS_CAPTION = `Up to ${mb(limits.maxFileBytes)} and ${limits.maxIndicatorValues.toLocaleString("en-GB")} values per file`;
 export const LIMITS_CAPTION = `Up to ${mb(limits.maxFileBytes)} and ${limits.maxCases.toLocaleString("en-GB")} cases per file`;
 
 export function assertImportCaseCount(cases: number) {

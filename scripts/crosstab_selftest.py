@@ -772,5 +772,12 @@ r48own = psf.crosstab(b48, "m48.sav", own)
 means48 = [r for r in r48own["questions"][0]["rows"] if r.get("isMean")]
 check("a question with its own mean group gets no second mean", len(means48) == 1 and not means48[0].get("autoMean"), str([r["label"] for r in means48]))
 
+# Indicator data reader (batch 54): its own self-test, run here so this gate covers it.
+import subprocess  # noqa: E402
+
+_ind = subprocess.run([sys.executable, os.path.join(HERE, "indicator_selftest.py")], capture_output=True, text=True)
+print(_ind.stdout.rstrip())
+check("indicator data reader self-test (scripts/indicator_selftest.py)", _ind.returncode == 0, _ind.stderr[-400:])
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

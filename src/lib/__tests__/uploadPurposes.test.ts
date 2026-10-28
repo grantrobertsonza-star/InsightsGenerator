@@ -12,6 +12,8 @@ describe("upload purposes", () => {
       // Context, with briefs and proposals (Grant, 2026-10-24).
       ["Technical document", "technicalFiles"],
       ["Raw data", "rawTableFiles"],
+      // Published statistics by area and year (Grant, 2026-10-28): series over time, not respondents.
+      ["Indicator data", "indicatorFiles"],
       ["Tables", "tableFiles"],
       ["Statistical output", "outputFiles"],
       ["Qual data", "transcriptFiles"],

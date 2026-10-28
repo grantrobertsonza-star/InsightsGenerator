@@ -60,13 +60,15 @@ export async function parseStatsFile(storagePath: string, sourceFilename: string
 }
 
 /**
- * Runs one of the engine's two table-producing actions: "convert" (SPSS/Stata/SAS, above) or "table"
- * (the one reader for CSV, TSV and Excel; parseTable.ts). Both answers are respondent-level tables,
- * usually past a serverless response limit, so the engine writes them to the file's converted copy and
- * this reads them back from storage (see parseStatsFile's comment), then removes the copy.
+ * Runs one of the engine's actions whose answer is too large to return directly: "convert"
+ * (SPSS/Stata/SAS, above), "table" (the one reader for CSV, TSV and Excel; parseTable.ts) or
+ * "indicators" (Indicator data; indicatorData.ts). The answers are respondent-level tables or a file's
+ * indicator observations, usually past a serverless response limit, so the engine writes them to the
+ * file's converted copy and this reads them back from storage (see parseStatsFile's comment), then
+ * removes the copy.
  */
 export async function runEngineConversion<T>(
-  action: "convert" | "table",
+  action: "convert" | "table" | "indicators",
   storagePath: string,
   sourceFilename: string,
   args: Record<string, unknown>,
@@ -167,7 +169,7 @@ type LocalWorker = {
  * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
  * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
  */
-const WORKER_PROTOCOL = 4; // 3: the respondent_quality action; 4: codebook and instrument_sheet
+const WORKER_PROTOCOL = 5; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
@@ -366,7 +368,7 @@ export async function sweepStatsCache(dir: string = tmpdir(), now: number = Date
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
-  action: "convert" | "table" | "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet",
+  action: "convert" | "table" | "indicators" | "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet",
   args: unknown = {},
 ): Promise<T> {
   // The same data file is read many times in a session (every table built,

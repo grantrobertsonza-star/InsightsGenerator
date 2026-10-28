@@ -11,4 +11,11 @@ Upload still waits until every file has a type that fits it (`purposeMismatch`),
 sent under the form field its type always used, so the server's checks and limits are unchanged:
 the suggestion is a default in the browser, never a server-side decision.
 
-Tests: `uploadPurposes.test.ts`; browser `e2e/ui/add-files-panel.check.mjs`.
+Indicator data (batch 54, `claude/indicator-data.md`): a CSV, TSV or text file whose first lines have
+an indicator header (Data360 long or wide, WDI, or "Indicator name, Value") is suggested as Indicator
+data, checked before the name rules for tables; the panel now reads the first lines of .tsv files too.
+`sampleLooksLikeIndicatorData` mirrors the reader's layout rules and is kept equal to it on the fixture
+files (`indicatorData.test.ts`).
+
+Tests: `uploadPurposes.test.ts`, `indicatorData.test.ts`; browser `e2e/ui/add-files-panel.check.mjs`,
+`e2e/ui/indicator-data.check.mjs`.

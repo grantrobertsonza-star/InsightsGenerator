@@ -115,6 +115,13 @@ stores those counts with the removal (shown in the bin), and reports what it act
   two identical copies can both be in the bin. Before 0117, removing a second identical copy is refused
   naming the migration, with nothing changed.
 
+## Indicator data (migration 0126, batch 54)
+
+`indicator_reads`, `indicator_series` and `indicator_observations` carry document_id and tenant_id but no
+run_id: their project is the document's. Removing the file moves the document to the bin run, and every
+indicator read checks the document's run, so they are hidden with it and back on restore unchanged (the
+same read id); erasing deletes them through `on delete cascade`. Pinned by `indicatorData.db.test.ts`.
+
 ## Known costs and limits
 
 - Hiding a removed file by moving it to the bin run means no document query needed changing; the places

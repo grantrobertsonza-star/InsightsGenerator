@@ -141,6 +141,8 @@ export function sourceTypeLabel(kind: string, ingestionType: string | null, role
       return "Report";
     case "technical":
       return "Technical document";
+    case "indicator":
+      return "Indicator data";
     case "evidence": {
       const brief = roles?.includes("brief") ?? false;
       const proposal = roles?.includes("proposal") ?? false;
@@ -174,7 +176,7 @@ const INSTRUMENT_LABEL: Record<string, string> = { questionnaire: "Questionnaire
  */
 export type SourceGroup = "quant" | "qual" | "context";
 export function sourceGroup(kind: string, instrumentType?: string | null): SourceGroup {
-  if (kind === "table" || kind === "output") return "quant";
+  if (kind === "table" || kind === "output" || kind === "indicator") return "quant";
   if (kind === "transcript") return "qual";
   if (kind === "instrument") return instrumentType === "questionnaire" || instrumentType === "codebook" ? "quant" : instrumentType === "interview_guide" || instrumentType === "focus_group_guide" ? "qual" : "context";
   return "context";

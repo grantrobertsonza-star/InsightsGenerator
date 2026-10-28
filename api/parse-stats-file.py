@@ -63,6 +63,15 @@ CASE_LIMIT_MESSAGE = (
 )
 
 
+# Indicator data counts values (observations), not file rows (Grant, 28 October 2026): a long Data360
+# file has one row per value and a wide one 45 values per row, and both are read alike. Set from
+# measurement against the deployed reader (claude/indicator-data.md, scripts/measure_indicator_limits.py).
+INDICATOR_VALUES_LIMIT_MESSAGE = (
+    f"This file holds more than the supported {IMPORT_LIMITS['maxIndicatorValues']:,} values for indicator data. "
+    "Download fewer indicators, areas or years per file, then retry; nothing was read."
+)
+
+
 def _check_import_limits(file_bytes, cases=None):
     if len(file_bytes) > IMPORT_LIMITS["maxFileBytes"]:
         raise ValueError(FILE_LIMIT_MESSAGE)
@@ -2984,8 +2993,10 @@ def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
     return {"items": items, "sheets": used, "skippedSheets": skipped}
 
 
-def _sheet_grids(file_bytes: bytes, source_filename: str):
-    """[(sheet name or None, grid of cell text)] for a CSV, text or Excel file, every sheet."""
+def _sheet_grids(file_bytes: bytes, source_filename: str, meta=None, sep=None):
+    """[(sheet name or None, grid of cell text)] for a CSV, text or Excel file, every sheet. When a dict
+    is given as meta, a delimited file's encoding is recorded in it (meta["encoding"]). sep, when given,
+    is the separator of a delimited file, chosen by the caller's own rule (indicator data)."""
     import pandas as pd
 
     ext = os.path.splitext(source_filename.lower())[1]
@@ -2995,8 +3006,10 @@ def _sheet_grids(file_bytes: bytes, source_filename: str):
     try:
         if ext in DELIMITED_EXTS:
             with open(path, "rb") as fh:
-                text, _enc = _decode_plain_text(fh.read())
-            sep = "\t" if ext == ".tsv" else _sniff_delimiter(text, ragged=True)
+                text, encoding = _decode_plain_text(fh.read())
+            if meta is not None:
+                meta["encoding"] = encoding
+            sep = "\t" if ext == ".tsv" else (sep or _sniff_delimiter(text, ragged=True))
             # A document row may be shorter or longer than the first (ragged rows are allowed), but its
             # quoting must be valid (B36-F03, Codex): an unclosed quote or text after a closing quote
             # used to merge the following rows into one cell, and the read was stored as complete.
@@ -3104,6 +3117,735 @@ def instrument_sheet(file_bytes: bytes, source_filename: str, args=None) -> dict
     if not parts:
         raise ValueError("This spreadsheet has no text to read as a questionnaire.")
     return {"text": "\n\n".join(parts), "format": "sheet_text"}
+
+
+# ---------------------------------------------------------------------------
+# Indicator data (batch 54; Grant, 28 October 2026): published statistics such as World Bank Data360,
+# WDI or Findex downloads, one row per area, indicator, breakdown and period (or one row per series
+# with a column per year), never one row per respondent. Contract: claude/indicator-data.md.
+#
+# The file is read as a grid of literal text (_sheet_grids, the reader for document-shaped files) and
+# recognised by one stated rule per layout (_indicator_layout). A file no rule recognises is refused by
+# name, never guessed. Observations come back tidy: each one a series (an indicator with its breakdown
+# codes), an area, a period and the value as written. A blank cell (or ".." or a declared missing token)
+# is an absent observation, never zero. Units are never mixed within a series; the unit multiplier and
+# the proportion scale are recorded for display and never applied to the stored value.
+# ---------------------------------------------------------------------------
+
+INDICATOR_READER = "engine-indicators-2026.10.28"
+
+# SDMX columns with a fixed meaning in Data360 files. Everything else that is not a label partner
+# (X_LABEL of a column X) or, in the wide layout, a year column is a breakdown dimension.
+_IND_REQUIRED = ("FREQ", "REF_AREA", "INDICATOR", "UNIT_MEASURE")
+_IND_LONG = ("TIME_PERIOD", "OBS_VALUE")
+# Bookkeeping and observation attributes: describe the record or the observation, never split a series.
+_IND_ATTRIBUTES = {
+    "STRUCTURE", "STRUCTURE_ID", "STRUCTURE_NAME", "ACTION", "DATABASE_ID", "AGG_METHOD", "UNIT_TYPE",
+    "DECIMALS", "TIME_FORMAT", "COMMENT_OBS", "COMMENT_TS", "UNIT_MULT", "OBS_STATUS", "OBS_CONF",
+    "DATA_SOURCE", "SOURCE", "OBS_NOTE",
+}
+# A dimension column is named as an SDMX code (upper case, digits, underscores); any other unexplained
+# column name (an OECD-style "Reference area" label column, say) is refused rather than read as one.
+_IND_CODE_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_IND_YEAR = re.compile(r"^[0-9]{4}$")
+# Periods as SDMX writes them: a year, or a year with a sub-annual part (2015-Q1, 2015-03, 2015-S1).
+_IND_PERIOD = re.compile(r"^[0-9]{4}(?:-(?:Q[1-4]|S[12]|W[0-9]{2}|M[0-9]{2}|[0-9]{2}(?:-[0-9]{2})?))?$")
+_IND_WDI_HEADER = ("country name", "country code", "indicator name", "indicator code")
+# Published statistics also write ".." for "no value" (World Bank DataBank exports).
+_IND_ABSENT = _NA_STRING_TOKENS | {".."}
+_IND_LAYOUT_RULES = {
+    "sdmx_long": "Data360 / SDMX long: the columns FREQ, REF_AREA, INDICATOR, UNIT_MEASURE, TIME_PERIOD and OBS_VALUE; every other code-named column that is not a label (X_LABEL) or a known attribute is a breakdown.",
+    "data360_wide": "Data360 wide: the columns FREQ, REF_AREA, INDICATOR and UNIT_MEASURE with one column per year and no TIME_PERIOD or OBS_VALUE; every other code-named column that is not a label or a known attribute is a breakdown.",
+    "wdi_wide": "World Bank WDI wide: the columns Country Name, Country Code, Indicator Name and Indicator Code, then one column per year.",
+    "oecd_sdmx": "OECD Data Explorer SDMX-CSV: the columns REF_AREA, MEASURE, TIME_PERIOD and OBS_VALUE (no INDICATOR); a column headed in words right after a code column is that column's label; every other code-named column that is not a known attribute is a breakdown, CURRENCY among them.",
+    "oecd_notes": "OECD reference information: STRUCTURE, REF_AREA and TIME_PERIOD without OBS_VALUE; notes keyed by the dimension codes up to TIME_PERIOD (\"~\" means any), read in English and shown with matching series of the same dataflow.",
+    "imf_wide": "IMF data portal wide: the columns DATASET, SERIES_CODE and OBS_MEASURE, dimension columns holding labels whose codes are the parts of SERIES_CODE, the dataset's description, and period columns of every frequency (2023, 2023-Q1, 2023-M01) filled as each row's FREQUENCY says.",
+    "label_value": "Label and value: the last two columns are \"Indicator name\" and \"Value\", optionally after grouping columns; the area and year come from the file name or are not stated.",
+}
+_IND_RECOGNISED = (
+    "Indicator data is read from six layouts: Data360 / SDMX long (FREQ, REF_AREA, INDICATOR, "
+    "UNIT_MEASURE, TIME_PERIOD, OBS_VALUE), Data360 wide (the same columns with one column per year), "
+    "OECD Data Explorer SDMX-CSV (REF_AREA, MEASURE, TIME_PERIOD, OBS_VALUE), "
+    "World Bank WDI wide (Country Name, Country Code, Indicator Name, Indicator Code, then years), the IMF "
+    "data portal wide download (DATASET, SERIES_CODE, OBS_MEASURE, then periods) and a label and value "
+    "table (Indicator name, Value)."
+)
+
+
+def _ind_cell(v) -> str:
+    return "" if v is None else str(v).strip()
+
+
+def _ind_value(text, where):
+    """The value as written, or None for an absent observation. A cell that is neither a plain decimal
+    number nor a missing token is refused with where it is: published statistics are never guessed
+    ("1,234" could be a thousands separator or a decimal comma)."""
+    if text in _IND_ABSENT:
+        return None
+    if not _STRICT_NUMBER.match(text):
+        raise ValueError(f"{where} holds {text!r}, which is not a plain number, so this file was not read. Correct the value (or leave the cell blank for no value) and read the file again.")
+    return text
+
+
+def _ind_period(text, where):
+    if not _IND_PERIOD.match(text):
+        raise ValueError(f"{where} has the period {text!r}, which is not a year or a year with a quarter, half or month (2015, 2015-Q1, 2015-03, 2015-M03), so this file was not read.")
+    return text
+
+
+def _indicator_layout(header):
+    """Which layout a header row has, or None. Long and wide Data360 are told apart by TIME_PERIOD and
+    OBS_VALUE; a header with some but not all of a layout's columns is refused naming what is missing."""
+    names = [_ind_cell(h) for h in header]
+    upper = set(names)
+    if "REF_AREA" in upper and "INDICATOR" in upper:
+        years = [n for n in names if _IND_YEAR.match(n)]
+        long_cols = [c for c in _IND_LONG if c in upper]
+        missing = [c for c in _IND_REQUIRED if c not in upper]
+        if long_cols and years:
+            raise ValueError("This file has both TIME_PERIOD/OBS_VALUE columns and year columns, so which values are the observations is not clear. Download it in one layout (long or wide) and read it again.")
+        if len(long_cols) == 1:
+            missing.append([c for c in _IND_LONG if c not in upper][0])
+        if not long_cols and not years:
+            raise ValueError("This file has REF_AREA and INDICATOR columns but neither TIME_PERIOD and OBS_VALUE nor year columns, so it holds no observations to read.")
+        if missing:
+            raise ValueError(f"This file looks like a Data360 / SDMX download but has no {', '.join(missing)} column, so it was not read. Download it again with all columns.")
+        return "sdmx_long" if long_cols else "data360_wide"
+    if "REF_AREA" in upper and "TIME_PERIOD" in upper and "OBS_VALUE" not in upper and "STRUCTURE" in upper:
+        # OECD "reference information": notes about a dataflow, not data (Grant, 28 October 2026: read as
+        # notes and shown with the matching series of a data file of the same dataflow).
+        return "oecd_notes"
+    if "REF_AREA" in upper and "TIME_PERIOD" in upper and "OBS_VALUE" in upper:
+        if "MEASURE" in upper:
+            return "oecd_sdmx"
+        raise ValueError("This SDMX file has neither an INDICATOR column (World Bank Data360) nor a MEASURE column (OECD), so which indicator each value belongs to is not known and it was not read.")
+    if all(c in upper for c in _IMF_CORE):
+        return "imf_wide"
+    lowered = [n.lower() for n in names]
+    if tuple(lowered[:4]) == _IND_WDI_HEADER:
+        return "wdi_wide"
+    if len(lowered) >= 2 and lowered[-2:] == ["indicator name", "value"] and all(lowered[:-2]):
+        return "label_value"
+    return None
+
+
+def _ind_find_header(grid):
+    """(row index, layout) of the header. The Data360 and label and value layouts start with their header
+    (the first non-blank row); only a WDI file has lines before it ("Data Source", "Last Updated Date"),
+    so a WDI header is looked for within the first 10 non-blank rows. A data row is never read as a
+    header: a data dictionary listing REF_AREA and INDICATOR as values is not indicator data."""
+    seen = 0
+    for i, row in enumerate(grid):
+        if not any(_ind_cell(c) for c in row):
+            continue
+        layout = _indicator_layout(row) if seen == 0 else ("wdi_wide" if tuple(_ind_cell(c).lower() for c in row[:4]) == _IND_WDI_HEADER else None)
+        if layout:
+            return i, layout
+        seen += 1
+        if seen >= 10:
+            break
+    return None, None
+
+
+class _IndicatorBuilder:
+    """Collects series, areas and observations, refusing what the contract refuses: two values for one
+    series, area and period; two units or unit multipliers in one series."""
+
+    def __init__(self):
+        self.series = {}  # key -> dict
+        self.series_order = []
+        self.areas = {}  # code -> label (None when the file gives none)
+        self.obs = {}  # (series key, area code, period) -> (value, status, note)
+        self.label_conflicts = []
+        self.statuses = {}
+        self.absent = 0
+
+    def _label(self, store, key, label, what):
+        if key not in store or store[key] is None:
+            store[key] = label
+        elif label and store[key] != label and len(self.label_conflicts) < 50:
+            self.label_conflicts.append({"what": what, "code": key, "kept": store[key], "alsoGiven": label})
+
+    def add_series(self, key, meta, unit, unit_mult):
+        """unit is (code, label); the code is the unit's identity, the label its first wording."""
+        s = self.series.get(key)
+        if s is None:
+            s = dict(meta, key=key, units=set(), unitMults=set(), unitLabel=None)
+            self.series[key] = s
+            self.series_order.append(key)
+        s["units"].add(unit[0])
+        if s["unitLabel"] is None:
+            s["unitLabel"] = unit[1]
+        s["unitMults"].add(unit_mult)
+        return s
+
+    def add_area(self, code, label):
+        self._label(self.areas, code, label or None, "area")
+
+    def add_obs(self, series_key, area, period, value, status, note, where):
+        if value is None:
+            self.absent += 1
+            return
+        k = (series_key, area, period)
+        # Refused as soon as the count passes the limit, so an oversized file never builds its full answer.
+        if len(self.obs) >= IMPORT_LIMITS["maxIndicatorValues"] and k not in self.obs:
+            raise ValueError(INDICATOR_VALUES_LIMIT_MESSAGE)
+        if k in self.obs:
+            raise ValueError(f"{where} gives a second value for the same indicator, breakdown, area and period ({self.obs[k][0]} and {value}), so which one is right is not known and this file was not read.")
+        self.obs[k] = (value, status, note)
+
+    def result(self, describe):
+        series_out, index = [], {}
+        for key in sorted(self.series_order, key=lambda k: (self.series[k].get("indicatorCode") or "", self.series[k].get("indicatorLabel") or "", json.dumps(self.series[k].get("breakdowns"), ensure_ascii=False))):
+            s = self.series[key]
+            if len(s["units"]) > 1:
+                units = sorted(u or "(none)" for u in s["units"])
+                raise ValueError(f"The series {describe(s)} has more than one unit ({', '.join(units)}). Units are never mixed in one series, so this file was not read.")
+            if len(s["unitMults"]) > 1:
+                raise ValueError(f"The series {describe(s)} has more than one unit multiplier ({', '.join(sorted(str(m) for m in s['unitMults']))}), so its values are not on one scale and this file was not read.")
+            (unit_code,) = s["units"]
+            (unit_mult,) = s["unitMults"]
+            out = {k: v for k, v in s.items() if k not in ("units", "unitMults")}
+            out.update(unitCode=unit_code, unitMult=unit_mult)
+            index[key] = len(series_out)
+            series_out.append(out)
+        area_codes = sorted(self.areas, key=lambda c: (c is None, c or ""))
+        area_index = {c: i for i, c in enumerate(area_codes)}
+        observations = sorted(
+            ([index[sk], area_index[a], p, v, st, note] for (sk, a, p), (v, st, note) in self.obs.items()),
+            key=lambda o: (o[0], o[1], o[2] or ""),
+        )
+        return {
+            "series": series_out,
+            "areas": [{"code": c, "label": self.areas[c]} for c in area_codes],
+            "observations": observations,
+            "statuses": self.statuses,
+            "labelConflicts": self.label_conflicts,
+            "absentCells": self.absent,
+        }
+
+
+def _ind_series_text(s):
+    parts = [s.get("indicatorCode") or s.get("indicatorLabel") or "(no indicator)"]
+    parts += [f"{b['dimension']}={b['code']}" for b in s.get("breakdowns") or []]
+    return parts[0] + (f" ({', '.join(parts[1:])})" if len(parts) > 1 else "")
+
+
+# OECD Data Explorer SDMX-CSV: observation attributes beyond the Data360 ones. CONF_STATUS says whether a
+# value is free (F) or withheld as confidential (C). CURRENCY is not listed: it is read as a breakdown,
+# so a series in "Reported currency" is one currency and areas in different currencies are never one
+# line or one unit.
+_IND_OECD_ATTRIBUTES = {"CONF_STATUS", "BASE_PER", "OBS_CONF"}
+
+
+def _ind_label_columns(header, layout):
+    """{code column: index of its label column} and the set of label column indexes. Data360 names the
+    label X_LABEL; OECD SDMX-CSV ("codes and labels") puts it right after its code column with a heading in
+    words ("REF_AREA", "Reference area"), so it is paired by position: a code-named column followed by a
+    column whose heading is not code-named. With no such columns (the codes-only download) labels are not
+    known and codes are shown."""
+    col = {n: i for i, n in enumerate(header) if n}
+    if layout == "oecd_sdmx":
+        pairs = {}
+        for i, n in enumerate(header[:-1]):
+            nxt = header[i + 1]
+            if n and _IND_CODE_NAME.match(n) and nxt and not _IND_CODE_NAME.match(nxt):
+                pairs[n] = i + 1
+        return pairs, set(pairs.values())
+    pairs = {n[: -len("_LABEL")]: i for i, n in enumerate(header) if n.endswith("_LABEL") and n[: -len("_LABEL")] in col}
+    return pairs, set(pairs.values())
+
+
+def _ind_sdmx(grid, h, layout, b, line_of):
+    """Data360 long or wide, and OECD SDMX-CSV (long, its measure in MEASURE). Every code-named column that
+    is not required, a label or a known attribute is a breakdown dimension."""
+    header = [_ind_cell(c) for c in grid[h]]
+    col = {n: i for i, n in enumerate(header) if n}
+    if len(col) != len([n for n in header if n]):
+        dup = sorted({n for n in header if n and header.count(n) > 1})
+        raise ValueError(f"This file has the column {dup[0]} more than once, so its values cannot be matched to it.")
+    oecd = layout == "oecd_sdmx"
+    indicator_col = "MEASURE" if oecd else "INDICATOR"
+    label_at, label_cols = _ind_label_columns(header, layout)
+    years = [(i, n) for i, n in enumerate(header) if _IND_YEAR.match(n)] if layout == "data360_wide" else []
+    # In an OECD dataflow UNIT_MEASURE is a dimension (one measure in US dollars and in reported
+    # currency), so it is part of the series identity as well as the series' unit: never mixed.
+    fixed = (set(_IND_REQUIRED) - ({"UNIT_MEASURE", "FREQ"} if oecd else set())) | set(_IND_LONG) | _IND_ATTRIBUTES | {indicator_col} | (_IND_OECD_ATTRIBUTES if oecd else set())
+    dims, ignored = [], []
+    for i, n in enumerate(header):
+        if not n or n in fixed or _IND_YEAR.match(n) or i in label_cols:
+            continue
+        if n.endswith("_LABEL") and not oecd:
+            ignored.append(n)
+            continue
+        if not _IND_CODE_NAME.match(n):
+            raise ValueError(
+                f"The column {n!r} is neither a {'SDMX' if oecd else 'Data360'} column, a label column after a code column, nor a breakdown code column (named in capitals, such as SEX or AGE), so what it holds is not known and this file was not read."
+            )
+        dims.append(n)
+    # FREQ is a breakdown too: a series is one frequency, and the view offers it only when it varies.
+    dims = (["FREQ"] if "FREQ" in col else []) + [d for d in dims if d != "FREQ"]
+
+    def get(row, name):
+        i = col.get(name)
+        return _ind_cell(row[i]) if i is not None and i < len(row) else ""
+
+    def lab(row, name):
+        i = label_at.get(name)
+        return _ind_cell(row[i]) if i is not None and i < len(row) else ""
+
+    sources = {}
+    withheld = []
+    rows = 0
+    width = len(header)
+    for r in range(h + 1, len(grid)):
+        row = grid[r]
+        if not any(_ind_cell(c) for c in row):
+            continue
+        if len(row) > width and any(_ind_cell(c) for c in row[width:]):
+            raise ValueError(f"Line {line_of(r)} has more values than the header has columns, so its values cannot be matched to their columns. Nothing was read.")
+        rows += 1
+        where = f"Line {line_of(r)}"
+        area = get(row, "REF_AREA")
+        indicator = get(row, indicator_col)
+        if not area or not indicator:
+            raise ValueError(f"{where} has no {'REF_AREA' if not area else indicator_col} code, so which area or indicator its values belong to is not known. Nothing was read.")
+        breakdowns = [{"dimension": d, "code": get(row, d), "label": lab(row, d) or None} for d in dims]
+        key = json.dumps([indicator, [[x["dimension"], x["code"]] for x in breakdowns]], ensure_ascii=False)
+        mult_text = get(row, "UNIT_MULT")
+        if mult_text and not re.match(r"^-?[0-9]+$", mult_text):
+            raise ValueError(f"{where} has the unit multiplier {mult_text!r}, which is not a whole power of ten, so this file was not read.")
+        s = b.add_series(
+            key,
+            {"indicatorCode": indicator, "indicatorLabel": lab(row, indicator_col) or None, "breakdowns": breakdowns, "baseDescription": None, "valueScale": None, "groups": None},
+            (get(row, "UNIT_MEASURE") or None, lab(row, "UNIT_MEASURE") or None),
+            int(mult_text) if mult_text else None,
+        )
+        if s["indicatorLabel"] is None and lab(row, indicator_col):
+            s["indicatorLabel"] = lab(row, indicator_col)
+        b.add_area(area, lab(row, "REF_AREA"))
+        status = get(row, "OBS_STATUS") or None
+        if status and status not in b.statuses:
+            b.statuses[status] = lab(row, "OBS_STATUS") or None
+        note = get(row, "COMMENT_OBS") or None
+        db = get(row, "DATABASE_ID") if "DATABASE_ID" in col else get(row, "STRUCTURE_ID")
+        db_label = lab(row, "DATABASE_ID") if "DATABASE_ID" in col else get(row, "STRUCTURE_NAME")
+        if db or db_label:
+            sources.setdefault(db, db_label or None)
+        confidential = get(row, "CONF_STATUS") == "C"
+        if layout in ("sdmx_long", "oecd_sdmx"):
+            period = _ind_period(get(row, "TIME_PERIOD"), where)
+            value = _ind_value(get(row, "OBS_VALUE"), where)
+            if value is None and confidential:
+                withheld.append([key, area, period])
+            b.add_obs(key, area, period, value, status, note, f"{where} ({_ind_series_text(s)}, {area}, {period})")
+        else:
+            for i, year in years:
+                value = _ind_value(_ind_cell(row[i]) if i < len(row) else "", f"{where}, column {year}")
+                b.add_obs(key, area, year, value, status, note, f"{where} ({_ind_series_text(s)}, {area}, {year})")
+    out = {
+        "dimensions": [{"column": d, "labelColumn": header[label_at[d]] if d in label_at else None} for d in dims],
+        "ignoredColumns": ignored,
+        "sources": [{"code": k or None, "label": v} for k, v in sorted(sources.items())],
+    }
+    if oecd:
+        out["labelsKnown"] = bool(label_at)
+        # The dataflow, so reference notes of the same dataflow can be matched to this file's series.
+        flows = {get(grid[r], "STRUCTURE_ID") for r in range(h + 1, len(grid)) if any(_ind_cell(c) for c in grid[r])}
+        out["dataflow"] = flows.pop() if len(flows) == 1 else None
+        # Values withheld as confidential (CONF_STATUS C with no value): never zero, said where shown.
+        out["withheld"] = withheld
+    return rows, out
+
+
+def _ind_wdi(grid, h, b, line_of):
+    header = [_ind_cell(c) for c in grid[h]]
+    years = []
+    for i, n in enumerate(header[4:], start=4):
+        if _IND_YEAR.match(n):
+            years.append((i, n))
+        elif n:
+            raise ValueError(f"The column {n!r} is not a year, so this WDI-style file was not read (after Country Name, Country Code, Indicator Name and Indicator Code every column must be a year).")
+        elif any(i < len(r) and _ind_cell(r[i]) for r in grid[h + 1:]):
+            raise ValueError(f"Column {i + 1} has values but no heading, so what they are is not known and this file was not read.")
+    if not years:
+        raise ValueError("This WDI-style file has no year columns, so it holds no observations to read.")
+    preamble = {}
+    for row in grid[:h]:
+        cells = [_ind_cell(c) for c in row]
+        if len(cells) >= 2 and cells[0]:
+            preamble[cells[0].lower()] = cells[1]
+    rows = 0
+    for r in range(h + 1, len(grid)):
+        row = grid[r]
+        if not any(_ind_cell(c) for c in row):
+            continue
+        rows += 1
+        where = f"Line {line_of(r)}"
+        cells = [_ind_cell(c) for c in row[:4]] + [""] * max(0, 4 - len(row))
+        name, area, ind_name, indicator = cells[:4]
+        if not area or not indicator:
+            raise ValueError(f"{where} has no {'Country Code' if not area else 'Indicator Code'}, so which area or indicator its values belong to is not known. Nothing was read.")
+        key = json.dumps([indicator, []], ensure_ascii=False)
+        s = b.add_series(key, {"indicatorCode": indicator, "indicatorLabel": ind_name or None, "breakdowns": [], "baseDescription": None, "valueScale": None, "groups": None}, (None, None), None)
+        b.add_area(area, name)
+        for i, year in years:
+            value = _ind_value(_ind_cell(row[i]) if i < len(row) else "", f"{where}, column {year}")
+            b.add_obs(key, area, year, value, None, None, f"{where} ({_ind_series_text(s)}, {area}, {year})")
+    source = preamble.get("data source")
+    return rows, {
+        "dimensions": [],
+        "ignoredColumns": [],
+        "sources": [{"code": None, "label": source}] if source else [],
+        "lastUpdated": preamble.get("last updated date"),
+    }
+
+
+# IMF data portal wide CSV (Grant, 28 October 2026): DATASET, SERIES_CODE (dot-separated codes) and
+# OBS_MEASURE, then dimension columns holding labels (COUNTRY, INDICATOR, UNIT, FREQUENCY, SCALE, ...),
+# then the dataset's own description (constant columns such as PUBLISHER and LICENSE), then period
+# columns of every frequency in one header (2023, 2023-Q1, 2023-M01); each row's FREQUENCY says which
+# of them it fills.
+_IMF_CORE = ("DATASET", "SERIES_CODE", "OBS_MEASURE")
+_IMF_PERIOD = re.compile(r"^[0-9]{4}(?:-Q[1-4]|-M(?:0[1-9]|1[0-2]))?$")
+_IMF_FREQUENCY = {
+    "Annual": re.compile(r"^[0-9]{4}$"),
+    "Quarterly": re.compile(r"^[0-9]{4}-Q[1-4]$"),
+    "Monthly": re.compile(r"^[0-9]{4}-M[0-9]{2}$"),
+}
+# SCALE in words, as a power of ten (the same meaning as SDMX UNIT_MULT; applied for display only).
+_IMF_SCALE = {"Units": 0, "Thousands": 3, "Millions": 6, "Billions": 9, "Trillions": 12}
+# The dataset's description: kept once (provenance.dataset), never read as a breakdown.
+_IMF_DATASET_COLUMNS = {
+    "DOI", "FULL_DESCRIPTION", "AUTHOR", "PUBLISHER", "DEPARTMENT", "CONTACT_POINT", "CREATOR", "DATA_OWNER",
+    "DATA_STEWARD", "TOPIC", "TOPIC_DATASET", "KEYWORDS", "KEYWORDS_DATASET", "LANGUAGE", "PUBLICATION_DATE",
+    "UPDATE_DATE", "METHODOLOGY", "METHODOLOGY_NOTES", "ACCESS_SHARING_LEVEL", "ACCESS_SHARING_NOTES",
+    "SECURITY_CLASSIFICATION", "SOURCE", "SHORT_SOURCE_CITATION", "FULL_SOURCE_CITATION", "LICENSE",
+    "SUGGESTED_CITATION", "KEY_INDICATOR", "SERIES_NAME", "IFS_FLAG", "DECIMALS_DISPLAYED",
+}
+
+
+def _ind_imf(grid, h, b, line_of):
+    """The IMF wide layout, by one rule. SERIES_CODE is the identity: its dot-separated parts are the
+    codes of the first dimension columns after OBS_MEASURE, in order (GBR.RXF11ORA_REVS.USD.M is COUNTRY,
+    INDICATOR, UNIT, FREQUENCY), and each part must stand for one label of its column throughout the file
+    (and each label for one code); otherwise the codes cannot be told from the labels and the file is
+    refused. COUNTRY is the area, INDICATOR the indicator, the other coded columns breakdowns (FREQUENCY
+    among them, so annual, quarterly and monthly values are never one series), UNIT the unit, SCALE the
+    unit multiplier. A dimension column after the coded ones that is always blank is ignored (listed); one
+    with values is a breakdown known by its label only."""
+    header = [_ind_cell(c) for c in grid[h]]
+    col = {n: i for i, n in enumerate(header) if n}
+    for need in ("INDICATOR", "FREQUENCY"):
+        if need not in col:
+            raise ValueError(f"This IMF data portal file has no {need} column, so it was not read. Download it again with all columns.")
+    periods = [(i, n) for i, n in enumerate(header) if _IMF_PERIOD.match(n)]
+    if not periods:
+        raise ValueError("This IMF data portal file has no period columns (2023, 2023-Q1, 2023-M01), so it holds no observations to read.")
+    start = col["OBS_MEASURE"] + 1
+    dims, dataset_cols = [], []
+    for i in range(start, len(header)):
+        n = header[i]
+        if not n or _IMF_PERIOD.match(n):
+            continue
+        if n in _IMF_DATASET_COLUMNS:
+            dataset_cols.append(n)
+        elif not _IND_CODE_NAME.match(n):
+            raise ValueError(f"The column {n!r} is neither an IMF data portal column nor a dimension column (named in capitals, such as COUNTRY), so what it holds is not known and this file was not read.")
+        else:
+            dims.append(n)
+    rows = []
+    for r in range(h + 1, len(grid)):
+        row = grid[r]
+        if not any(_ind_cell(c) for c in row):
+            continue
+        if len(row) > len(header) and any(_ind_cell(c) for c in row[len(header):]):
+            raise ValueError(f"Line {line_of(r)} has more values than the header has columns, so its values cannot be matched to their columns. Nothing was read.")
+        rows.append(r)
+
+    def get(row, name):
+        i = col.get(name)
+        return _ind_cell(row[i]) if i is not None and i < len(row) else ""
+
+    parts_of = {}
+    widths = set()
+    for r in rows:
+        code = get(grid[r], "SERIES_CODE")
+        if not code:
+            raise ValueError(f"Line {line_of(r)} has no SERIES_CODE, so which series its values belong to is not known. Nothing was read.")
+        parts_of[r] = code.split(".")
+        widths.add(len(parts_of[r]))
+    if len(widths) != 1 or next(iter(widths)) > len(dims):
+        raise ValueError(f"The SERIES_CODE values have {' or '.join(str(w) for w in sorted(widths))} parts but the file has {len(dims)} dimension columns after OBS_MEASURE, so the codes cannot be matched to their columns and this file was not read.")
+    k = next(iter(widths))
+    coded = dims[:k]
+    for j, d in enumerate(coded):
+        label_of, code_of = {}, {}
+        for r in rows:
+            c, lab = parts_of[r][j], get(grid[r], d)
+            if label_of.setdefault(c, lab) != lab or code_of.setdefault(lab, c) != c:
+                raise ValueError(f"In the {d} column the SERIES_CODE part {c!r} and the label {lab!r} do not always go together (line {line_of(r)}), so the codes cannot be matched to their labels and this file was not read.")
+    extra = dims[k:]
+    blank_extra = [d for d in extra if not any(get(grid[r], d) for r in rows)]
+    label_dims = [d for d in extra if d not in blank_extra and d not in ("SCALE", "UNIT")]
+    dataset, varying = {"DATASET": None}, []
+    for n in ["DATASET"] + dataset_cols:
+        values = {get(grid[r], n) for r in rows}
+        if len(values) == 1:
+            v = values.pop()
+            if v:
+                dataset[n] = v
+        else:
+            varying.append(n)
+    dataset = {key: v for key, v in dataset.items() if v}
+    for r in rows:
+        row = grid[r]
+        parts = parts_of[r]
+        where = f"Line {line_of(r)}"
+        freq = get(row, "FREQUENCY")
+        if freq not in _IMF_FREQUENCY:
+            raise ValueError(f"{where} has the frequency {freq!r}; only Annual, Quarterly and Monthly are read, so this file was not read.")
+        scale = get(row, "SCALE")
+        if scale and scale not in _IMF_SCALE:
+            raise ValueError(f"{where} has the scale {scale!r}, which is not one of {', '.join(_IMF_SCALE)}, so its values cannot be put on one scale and this file was not read.")
+        area = parts[coded.index("COUNTRY")] if "COUNTRY" in coded else (get(row, "COUNTRY") or None)
+        b.add_area(area, get(row, "COUNTRY") or None)
+        ind_code = parts[coded.index("INDICATOR")] if "INDICATOR" in coded else get(row, "INDICATOR")
+        breakdowns = [{"dimension": d, "code": parts[j], "label": get(row, d) or None} for j, d in enumerate(coded) if d not in ("COUNTRY", "INDICATOR")]
+        breakdowns += [{"dimension": d, "code": get(row, d), "label": get(row, d) or None} for d in label_dims]
+        unit_code = parts[coded.index("UNIT")] if "UNIT" in coded else (get(row, "UNIT") or None)
+        template = ".".join("{COUNTRY}" if d == "COUNTRY" else parts[j] for j, d in enumerate(coded))
+        groups = [{"column": "SERIES_CODE", "value": template}] + [{"column": n, "value": get(row, n)} for n in varying if get(row, n)]
+        key = json.dumps([ind_code, [[x["dimension"], x["code"]] for x in breakdowns]], ensure_ascii=False)
+        s = b.add_series(
+            key,
+            {"indicatorCode": ind_code, "indicatorLabel": get(row, "INDICATOR") or None, "breakdowns": breakdowns, "baseDescription": None, "valueScale": None, "groups": groups},
+            (unit_code, get(row, "UNIT") or None),
+            _IMF_SCALE[scale] if scale else None,
+        )
+        allowed = _IMF_FREQUENCY[freq]
+        for i, period in periods:
+            text = _ind_cell(row[i]) if i < len(row) else ""
+            if text in _IND_ABSENT:
+                # Not counted as absent: most blank cells are periods of another frequency.
+                continue
+            if not allowed.match(period):
+                raise ValueError(f"{where} ({get(row, 'SERIES_CODE')}, {freq}) has a value in the column {period}, which is not a {freq.lower()} period, so the frequency of that value is not known and this file was not read.")
+            b.add_obs(key, area, period, _ind_value(text, f"{where}, column {period}"), None, None, f"{where} ({get(row, 'SERIES_CODE')}, {period})")
+    return len(rows), {
+        "dimensions": [{"column": d, "labelColumn": d, "codesFrom": "SERIES_CODE" if d in coded else None} for d in dims if d not in blank_extra],
+        "ignoredColumns": blank_extra,
+        "sources": [{"code": dataset.get("DATASET"), "label": dataset.get("SOURCE") or dataset.get("PUBLISHER")}] if dataset.get("DATASET") or dataset.get("SOURCE") or dataset.get("PUBLISHER") else [],
+        "dataset": dataset,
+        "seriesColumns": varying,
+    }
+
+
+# "(%, age 15+)" or "(% internet users, age 15+)" at the end of a label: the unit is percent and the
+# rest is the base population the share is of.
+_IND_PERCENT_BASE = re.compile(r"\(\s*%\s*,?\s*([^()]*)\)\s*$")
+_IND_NAME_AREA = re.compile(r"^[A-Z]{3}$")
+
+
+def _ind_from_filename(source_filename):
+    """Area and year stated by a label and value file's name, by one rule: the name split on "_", "-",
+    spaces and dots; exactly one token of three capital letters is the area code, exactly one four-digit
+    token from 1900 to 2100 is the year. None for either when there is not exactly one (never guessed)."""
+    stem = os.path.splitext(os.path.basename(source_filename))[0]
+    tokens = [t for t in re.split(r"[_\-\s.]+", stem) if t]
+    areas = [t for t in tokens if _IND_NAME_AREA.match(t)]
+    years = [t for t in tokens if _IND_YEAR.match(t) and 1900 <= int(t) <= 2100]
+    return (areas[0] if len(areas) == 1 else None), (years[0] if len(years) == 1 else None)
+
+
+def _ind_label_value(grid, h, b, line_of, source_filename):
+    header = [_ind_cell(c) for c in grid[h]]
+    groups = header[:-2]
+    area, period = _ind_from_filename(source_filename)
+    b.add_area(area, None)
+    rows = []
+    for r in range(h + 1, len(grid)):
+        row = grid[r]
+        if not any(_ind_cell(c) for c in row):
+            continue
+        cells = [_ind_cell(c) for c in row] + [""] * max(0, len(header) - len(row))
+        if len(row) > len(header) and any(cells[len(header):]):
+            raise ValueError(f"Line {line_of(r)} has more values than the header has columns, so its values cannot be matched to their columns. Nothing was read.")
+        label = cells[len(header) - 2]
+        if not label:
+            raise ValueError(f"Line {line_of(r)} has a value but no indicator name, so what it measures is not known. Nothing was read.")
+        value = _ind_value(cells[len(header) - 1], f"Line {line_of(r)}")
+        rows.append((r, label, value, [{"column": g, "value": cells[i]} for i, g in enumerate(groups)]))
+    seen = {}
+    for r, label, _v, _g in rows:
+        if label in seen:
+            raise ValueError(f"The indicator {label!r} is on line {line_of(seen[label])} and again on line {line_of(r)}, so which value is right is not known and this file was not read.")
+        seen[label] = r
+    # Proportions: when every value of a "%" indicator lies from 0 to 1 the file stores proportions
+    # (0.811 for 81.1%). Stored as written, the scale recorded for display; never rescaled.
+    pct_values = [float(v) for _r, label, v, _g in rows if v is not None and _IND_PERCENT_BASE.search(label)]
+    scale = None
+    if pct_values:
+        scale = "proportion" if all(0 <= x <= 1 for x in pct_values) else "percent"
+    for r, label, value, grp in rows:
+        m = _IND_PERCENT_BASE.search(label)
+        key = json.dumps([None, [], label], ensure_ascii=False)
+        meta = {"indicatorCode": None, "indicatorLabel": label, "breakdowns": [], "baseDescription": (m.group(1).strip() or None) if m else None, "valueScale": scale if m else None, "groups": grp or None}
+        b.add_series(key, meta, ("%", "Percent") if m else (None, None), None)
+        b.add_obs(key, area, period, value, None, None, f"Line {line_of(r)} ({label})")
+    return len(rows), {
+        "dimensions": [],
+        "ignoredColumns": [],
+        "sources": [],
+        "areaFrom": "file name" if area else None,
+        "periodFrom": "file name" if period else None,
+        "groupColumns": groups,
+    }
+
+
+def _ind_delimiter(file_bytes):
+    """The separator under which the file's first lines hold an indicator header, or None (then the
+    document rule, _sniff_delimiter ragged, applies and the file is refused if no header is found). An
+    indicator file's header is what identifies it, so the separator is the one that makes it one: the
+    ragged rule counts rows that split, and an IMF file's descriptions (with semicolons and line breaks
+    inside quotes) split more rows on ";" than its rows do on ",". Read from the first 256 KB only."""
+    head = file_bytes[:262144]
+    if head.startswith(b"\xef\xbb\xbf"):
+        head = head[3:]
+    try:
+        text = head.decode("utf-8", errors="ignore") if not head.startswith((b"\xff\xfe", b"\xfe\xff")) else head.decode("utf-16", errors="ignore")
+    except UnicodeDecodeError:
+        return None
+    found = []
+    for sep in (",", ";", "\t", "|"):
+        rows = []
+        try:
+            for row in csv.reader(io.StringIO(text, newline=""), delimiter=sep):
+                rows.append(row)
+                if len(rows) >= 12:
+                    break
+            _h, layout = _ind_find_header(rows)
+        except (csv.Error, ValueError):
+            # A partly recognised header (refused later with its reason) still says which separator.
+            layout = "partial"
+        if layout:
+            found.append(sep)
+    return found[0] if len(found) == 1 else None
+
+
+# A notes cell holds its text once per language: en:"...",fr:"..." (a quotation mark or apostrophe
+# inside a text is escaped with a backslash, \" and \'). Only the English text is read.
+_IND_NOTE_LANG = re.compile(r'\s*([a-z]{2}(?:-[A-Za-z0-9]+)?):"((?:[^"\\]|\\.)*)"\s*(?:,|$)', re.S)
+
+
+def _ind_note_english(cell):
+    """(English text or None, whether the cell is in the language format). A cell that is not written as
+    language:"text" pairs is kept as written (language not stated); one with no English text gives None."""
+    if not cell:
+        return None, True
+    texts, pos = {}, 0
+    while pos < len(cell):
+        m = _IND_NOTE_LANG.match(cell, pos)
+        if not m:
+            return cell.strip(), False
+        texts.setdefault(m.group(1), re.sub(r"\\(.)", r"\1", m.group(2), flags=re.S))
+        pos = m.end()
+    english = texts.get("en")
+    return (english.strip() or None) if english is not None else None, True
+
+
+def _ind_oecd_notes(grid, h, line_of):
+    """OECD reference information: one note per row and field, keyed by the row's dimension codes. The key
+    columns are the code-named columns up to and including TIME_PERIOD ("~" means any value, so a key
+    holds only the dimensions it names); the code-named columns after it are the note fields (DATA_SOURCE,
+    STAT_CONC_DEF, ...), each followed by its label column. Notes never change values."""
+    header = [_ind_cell(c) for c in grid[h]]
+    label_at, label_cols = _ind_label_columns(header, "oecd_sdmx")
+    t = header.index("TIME_PERIOD")
+    key_cols = [n for i, n in enumerate(header[: t + 1]) if n and i not in label_cols and _IND_CODE_NAME.match(n) and n not in ("STRUCTURE", "STRUCTURE_ID", "STRUCTURE_NAME", "ACTION")]
+    field_cols = [n for i, n in enumerate(header) if i > t and n and i not in label_cols and _IND_CODE_NAME.match(n)]
+    col = {n: i for i, n in enumerate(header) if n}
+
+    def get(row, name):
+        i = col.get(name)
+        return _ind_cell(row[i]) if i is not None and i < len(row) else ""
+
+    notes, dataflows, rows, no_english, unstated = [], {}, 0, 0, 0
+    for r in range(h + 1, len(grid)):
+        row = grid[r]
+        if not any(_ind_cell(c) for c in row):
+            continue
+        rows += 1
+        dataflows.setdefault(get(row, "STRUCTURE_ID"), get(row, "STRUCTURE_NAME") or None)
+        key = {d: get(row, d) for d in key_cols if d != "TIME_PERIOD" and get(row, d) not in ("", "~")}
+        labels = {d: _ind_cell(row[label_at[d]]) for d in key if d in label_at and label_at[d] < len(row) and _ind_cell(row[label_at[d]])}
+        period = get(row, "TIME_PERIOD")
+        for f in field_cols:
+            text, formatted = _ind_note_english(get(row, f))
+            if not formatted:
+                unstated += 1
+            if text is None:
+                if get(row, f):
+                    no_english += 1
+                continue
+            notes.append({"key": key, "keyLabels": labels, "period": None if period in ("", "~") else period, "field": f, "fieldLabel": header[label_at[f]] if f in label_at else None, "text": text, "line": line_of(r)})
+    if len(dataflows) != 1 or not next(iter(dataflows)):
+        raise ValueError("This OECD reference information names no dataflow, or several (STRUCTURE_ID), so which data its notes belong to is not known and it was not read.")
+    if not notes:
+        raise ValueError("This OECD reference information has no English notes, so there is nothing to read.")
+    (dataflow, name), = dataflows.items()
+    return rows, notes, {"dataflow": dataflow, "dataflowName": name, "keyColumns": [d for d in key_cols], "noteFields": field_cols, "notesWithoutEnglish": no_english, "notesLanguageNotStated": unstated, "sources": [{"code": dataflow, "label": name}]}
+
+
+def indicator_observations(file_bytes: bytes, source_filename: str, args=None) -> dict:
+    """Indicator data from a CSV, TSV, text or Excel file: tidy observations, the layout recognised and
+    its provenance. Refuses a file no layout rule recognises (naming the layouts that are read), a value
+    that is not a number, two values for one observation, and a series with two units."""
+    ext = os.path.splitext(source_filename.lower())[1]
+    if ext not in TABLE_EXTS:
+        raise ValueError(f"Indicator data is read from CSV, TSV, delimited text (.txt) and Excel files, not {ext or '(none)'} files.")
+    _check_import_limits(file_bytes)
+    meta = {}
+    grids = _sheet_grids(file_bytes, source_filename, meta, _ind_delimiter(file_bytes) if ext in (".csv", ".txt") else None)
+    found = []
+    for sheet, grid in grids:
+        h, layout = _ind_find_header(grid)
+        if layout:
+            found.append((sheet, grid, h, layout))
+    if not found:
+        first = next((g for _s, g in grids if g), [])
+        heads = [_ind_cell(c) for c in (first[0] if first else []) if _ind_cell(c)][:6]
+        sheets = f" (sheets: {', '.join(str(s) for s, _g in grids)})" if len(grids) > 1 else ""
+        raise ValueError(
+            f"This file is not in a recognised indicator layout{sheets}; its first columns are "
+            f"{', '.join(repr(x) for x in heads) if heads else 'empty'}. {_IND_RECOGNISED} "
+            "Upload it as another type if it is not indicator data."
+        )
+    if len(found) > 1:
+        raise ValueError(f"The sheets {', '.join(repr(s) for s, *_r in found)} each hold indicator data, and choosing one is not supported yet. Save the sheet you want as its own file and upload that.")
+    sheet, grid, h, layout = found[0]
+
+    def line_of(r):
+        return r + 1
+
+    if layout == "oecd_notes":
+        rows, notes, prov = _ind_oecd_notes(grid, h, lambda r: r + 1)
+        provenance = dict(prov, layoutRule=_IND_LAYOUT_RULES[layout], sheet=sheet, encoding=meta.get("encoding"), headerRow=h + 1, dataRows=rows)
+        return {"series": [], "areas": [], "observations": [], "notes": notes, "reader": INDICATOR_READER, "layout": layout, "provenance": provenance}
+    b = _IndicatorBuilder()
+    if layout in ("sdmx_long", "data360_wide", "oecd_sdmx"):
+        rows, prov = _ind_sdmx(grid, h, layout, b, line_of)
+    elif layout == "wdi_wide":
+        rows, prov = _ind_wdi(grid, h, b, line_of)
+    elif layout == "imf_wide":
+        rows, prov = _ind_imf(grid, h, b, line_of)
+    else:
+        rows, prov = _ind_label_value(grid, h, b, line_of, source_filename)
+    out = b.result(_ind_series_text)
+    if not out["observations"]:
+        raise ValueError("This file is in a recognised indicator layout but every value cell is blank, so it holds no observations to read.")
+    provenance = dict(prov, layoutRule=_IND_LAYOUT_RULES[layout], sheet=sheet, encoding=meta.get("encoding"), headerRow=h + 1, dataRows=rows, absentCells=out.pop("absentCells"), labelConflicts=out.pop("labelConflicts"), statuses=out.pop("statuses"))
+    return dict(out, reader=INDICATOR_READER, layout=layout, provenance=provenance)
 
 
 # Respondent-level quality (Grant, 26 October 2026, after Inspirient's survey quality assessment). Case
@@ -5179,7 +5921,7 @@ _SIGNED_PATH = re.compile(
     re.IGNORECASE,
 )
 _SIGNATURE_LIFETIME_SECONDS = 300
-_SIGNED_ACTIONS = {"convert", "table", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet"}
+_SIGNED_ACTIONS = {"convert", "table", "indicators", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet"}
 
 
 def verify_parse_request(secret, header, action, bucket, storage_path, now=None):
@@ -5263,11 +6005,16 @@ class handler(BaseHTTPRequestHandler):
             if action == "crosstab":
                 self._send_json(200, {"result": crosstab(file_bytes, source_filename, body.get("args") or {})})
                 return
-            # Both answers are respondent-level tables, often past the 4.5 MB response limit, so both are
-            # written to the converted copy the app reads back (and removes) rather than returned.
+            # These answers (respondent-level tables, indicator observations) are often past the 4.5 MB
+            # response limit, so they are written to the converted copy the app reads back (and removes)
+            # rather than returned.
             # allow_nan=False: a number JSON cannot hold fails here, never as an unreadable preview.
             if action == "table":
                 result = read_table(file_bytes, source_filename, body.get("args") or {})
+            elif action == "indicators":
+                # Indicator data: a large file (WB FinData, 249,113 observations) answers past the
+                # response limit too, so it takes the same route.
+                result = indicator_observations(file_bytes, source_filename, body.get("args") or {})
             else:
                 result = convert(file_bytes, source_filename)
 

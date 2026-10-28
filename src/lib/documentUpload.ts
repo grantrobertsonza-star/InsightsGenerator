@@ -30,11 +30,21 @@ const BUCKET = "documents";
 // Set Objectives stores); uploadable from Import data since 2026-10-19.
 // "technical": methodology, fieldwork, sampling, weighting or analysis documentation (Grant,
 // 2026-10-24; migration 0112), read for the Research assistant to quote; never mined for findings.
-export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evidence", "technical"] as const;
+// "indicator": published statistics by area and period (Grant, 2026-10-28; migration 0126), read by
+// indicatorData.ts into series and observations; never mined for findings.
+export const UPLOAD_KINDS = ["report", "table", "transcript", "instrument", "evidence", "technical", "indicator"] as const;
 
 /** Said when a technical document is refused because migration 0112 is not applied. */
 export const TECHNICAL_MIGRATION_MESSAGE =
   "Technical documents need the database update 0112_technical_documents.sql. Nothing was stored; apply it and add the file again.";
+/** Said when Indicator data is refused because migration 0126 is not applied (same text as indicatorData.ts). */
+export const INDICATOR_UPLOAD_MIGRATION_MESSAGE =
+  "Indicator data needs the database update 0126_indicator_observations.sql. Nothing was stored; apply it and add the file again.";
+/** Kinds added by a migration: before it, the kind check refuses the insert and this is said instead. */
+const KIND_MIGRATION_MESSAGE: Partial<Record<UploadKind, string>> = {
+  technical: TECHNICAL_MIGRATION_MESSAGE,
+  indicator: INDICATOR_UPLOAD_MIGRATION_MESSAGE,
+};
 // "codebook" (Grant, 2026-10-26; migration 0118): a data file's variable list with labels and answer
 // codes, read and linked like a questionnaire.
 export const INSTRUMENT_TYPES = ["questionnaire", "interview_guide", "focus_group_guide", "codebook"] as const;
@@ -178,10 +188,11 @@ export async function storeUploadedDocument(
     }
     // A concurrent retry stored the same bytes first (unique index from 0098): a duplicate,
     // reported as such - the storage object was cleaned up above like any failed insert.
-    // Before migration 0112 the kind check refuses a technical document; the insert rolled back and
-    // the stored object was cleaned up above, so nothing is left behind.
-    if (kind === "technical" && (error as { code?: string })?.code === "23514" && /documents_kind_check/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
-      throw new Error(TECHNICAL_MIGRATION_MESSAGE);
+    // Before migration 0112 (technical) or 0126 (indicator) the kind check refuses the document; the
+    // insert rolled back and the stored object was cleaned up above, so nothing is left behind.
+    const kindMessage = KIND_MIGRATION_MESSAGE[kind];
+    if (kindMessage && (error as { code?: string })?.code === "23514" && /documents_kind_check/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
+      throw new Error(kindMessage);
     }
     if ((error as { code?: string })?.code === "23505" && /documents_run_kind_content_uidx/.test(String((error as { constraint?: string })?.constraint ?? (error as Error).message))) {
       throw new DuplicateUploadError(file.name, file.name);

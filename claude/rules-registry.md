@@ -20,6 +20,15 @@ in the change that moves it.
 | Whether a stored preview may be shown | `src/lib/importPreviewIdentity.ts` `loadImportPreviewIdentities`, reader id `TABLE_READER` = `ENGINE_TABLE_READER` | `claude/one-reader-import.md` | `importPreviewIdentity.test.ts`, `engineTableReader.test.ts` |
 | When a cached dictionary is rebuilt | `DICTIONARY_VERSION` (engine), `crosstabs.minimumDictionaryVersion` | `claude/one-reader-import.md` | `dictionaryCacheUpgrade.db.test.ts` |
 | Display of a stored cell | `src/lib/rowCells.ts` `cellText`, type `TableCell` | `claude/one-reader-import.md` | `cellText.test.ts` |
+| Which layout an indicator file has, and what is refused (batch 54) | engine `indicator_observations`, `_indicator_layout`, `_ind_find_header`. Mirror: `src/lib/uploadPurposes.ts` `sampleLooksLikeIndicatorData` (the upload suggestion) | `claude/indicator-data.md` | `scripts/indicator_selftest.py`, `indicatorData.test.ts` (suggestion equals the engine on every fixture) |
+| Indicator series identity, units never mixed, absent is never zero, proportions recorded not rescaled | engine `_IndicatorBuilder`, `_ind_sdmx`, `_ind_wdi`, `_ind_label_value`, `_ind_value` | `claude/indicator-data.md` | `scripts/indicator_selftest.py` |
+| Indicator data limit: values, not rows (500,000, measured); the byte limit kept | engine `_IndicatorBuilder.add_obs`, `INDICATOR_VALUES_LIMIT_MESSAGE`; `api/import-limits.json` `maxIndicatorValues`. Mirror: `src/lib/importLimits.ts` `INDICATOR_VALUES_LIMIT_MESSAGE` | `claude/indicator-data.md` (measurement table) | `scripts/indicator_selftest.py`, `indicatorData.test.ts` (messages equal) |
+| IMF data portal wide (SERIES_CODE identity, frequency a breakdown, SCALE the multiplier) and OECD SDMX-CSV (codes and labels paired by position, CURRENCY a breakdown, withheld values) | engine `_ind_imf`, `_ind_sdmx` with `_ind_label_columns`, `_ind_delimiter` | `claude/indicator-data.md` | `scripts/indicator_selftest.py`, `indicatorData.db.test.ts` |
+| OECD reference notes: read in English, keyed by dimension codes ("~" any), stored by dataflow, shown with matching series of the same dataflow in the project | engine `_ind_oecd_notes`, `_ind_note_english`; `src/lib/indicatorData.ts` (`indicator_notes`, `loadIndicatorCatalogue`); `src/lib/indicatorDisplay.ts` `notesFor`, `noteText`, `indicatorCsv` | `claude/indicator-data.md` | `scripts/indicator_selftest.py`, `indicatorDisplay.test.ts`, `indicatorData.db.test.ts` |
+| Marked statuses on the chart (not normal: own shape, legend naming the status) | `src/lib/indicatorDisplay.ts` `statusMarkers`, `isMarkedStatus`; `src/lib/indicatorChartOptions.ts` | `claude/indicator-data.md` | `indicatorChartOptions.test.ts` (real Plot, linkedom) |
+| Indicator answer checked before storing; number rule | `src/lib/indicatorData.ts` `validateIndicatorResult`; `STRICT_NUMBER` mirrors engine `_STRICT_NUMBER` | `claude/indicator-data.md` | `indicatorData.test.ts` (reads the engine source) |
+| Publishing an indicator read (one transaction, ownership under the row lock, stage then publish, failure kept beside the previous version) | `src/lib/indicatorData.ts` `publishIndicatorRead`, `recordIndicatorReadFailure`, `readIndicatorDocument` | `claude/indicator-data.md` | `indicatorData.db.test.ts`, `indicatorDataBeforeMigration.db.test.ts` |
+| Indicator values as shown (proportion x 100, unit multiplier), time axis with gaps, CSV of what is shown | `src/lib/indicatorDisplay.ts` `shownNumber`, `periodAxis`, `chartPoints`, `indicatorCsv`; `src/lib/csvField.ts` `csvNumberField` | `claude/indicator-data.md` | `indicatorDisplay.test.ts`, `e2e/ui/indicator-data.check.mjs` |
 
 ## Answers, bases and statistics
 
@@ -79,7 +88,7 @@ in the change that moves it.
 
 | Rule | Owner | Contract | Pinned by |
 |---|---|---|---|
-| Remove, restore and erase of a file, links between files | `src/lib/documentBin.ts` | `claude/document-deletion-contract.md` | `documentBin.db.test.ts`, `documentBinIntegrity.db.test.ts` |
+| Remove, restore and erase of a file, links between files | `src/lib/documentBin.ts` | `claude/document-deletion-contract.md` | `documentBin.db.test.ts`, `documentBinIntegrity.db.test.ts`; indicator rows (no run_id, cascade): `indicatorData.db.test.ts` |
 | "Source document removed" marker | `src/lib/candidateSourceDocuments.ts` `ALL_SOURCES_ACTIVE` | `claude/document-deletion-contract.md` | `documentBinIntegrity.db.test.ts` |
 | Tenant and project isolation | `src/lib/db.ts` `withTenant`/`withTenantRead`, row-level security in migrations, app role | `docs/database-roles.md` | `tenantIsolation.db.test.ts`, `scripts/check-tenant-isolation.mjs` |
 | Stage and module status | `src/lib/sectionStatus.ts` | `claude/stage-status.md` | `stage-status.check.mjs` |

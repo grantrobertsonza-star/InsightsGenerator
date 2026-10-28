@@ -3,9 +3,9 @@
 // panel and its tests. Each file is sent under its type's form field in the server action
 // (documentUploadActions.ts), where the limits and checks for that kind apply; technical documents
 // (2026-10-24) have their own field, `technicalFiles`.
-import { LIMITS_CAPTION, REFUSED_DATA_FILE } from "./importLimits";
+import { INDICATOR_LIMITS_CAPTION, LIMITS_CAPTION, REFUSED_DATA_FILE } from "./importLimits";
 
-export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide" | "technical" | "codebook";
+export type UploadPurposeId = "brief" | "proposal" | "raw" | "tables" | "output" | "transcript" | "report" | "questionnaire" | "interview_guide" | "focus_group_guide" | "technical" | "codebook" | "indicator";
 
 export type UploadPurpose = {
   id: UploadPurposeId;
@@ -27,6 +27,9 @@ export const UPLOAD_PURPOSES: UploadPurpose[] = [
   { id: "proposal", label: "Proposal", field: "proposalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "A research proposal: context, and checked in Research quality review." },
   { id: "technical", label: "Technical document", field: "technicalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "Methodology, fieldwork, sampling, weighting or analysis notes: read by the Research assistant." },
   { id: "raw", label: "Raw data", field: "rawTableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: `One row per respondent. CSV, tab-delimited text, Excel, SPSS, Stata, SAS, R or Parquet. ${LIMITS_CAPTION}.` },
+  // Grant, 2026-10-28: published statistics are one row per area, indicator and year, never one row
+  // per respondent; read as series over time (indicatorData.ts), never as cases.
+  { id: "indicator", label: "Indicator data", field: "indicatorFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls"], hint: `Published statistics by country or region and year, for example World Bank, IMF, OECD or Stats SA: read as series over time, not as respondents. ${INDICATOR_LIMITS_CAPTION}.` },
   { id: "tables", label: "Tables", field: "tableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: "Already aggregated: totals or percentages." },
   { id: "output", label: "Statistical output", field: "outputFiles", extensions: [".zip", ".csv", ".tsv", ".xlsx", ".xls", ".txt", ".md", ".docx"], hint: "A zip of models, clusters and logs." },
   { id: "transcript", label: "Qual data", field: "transcriptFiles", extensions: null, hint: "Transcripts, coded or uncoded." },
@@ -69,6 +72,8 @@ export function purposeMismatch(filename: string, id: UploadPurposeId): string |
  * - A file named as a transcript, FGD, IDI or interview (not a guide) is qualitative data.
  * - A PDF, Word or PowerPoint file named as a report, deck or presentation is a report.
  * - A spreadsheet named as cross tabs, tables, a banner, a tabulation or output is tables.
+ * - A CSV, TSV or text file whose first lines have an indicator data header is Indicator data
+ *   (sampleLooksLikeIndicatorData); this is checked before the name rules for tables below.
  * - A CSV whose first lines read like tables (Total or Base rows, many percentages) is tables.
  * - Otherwise a spreadsheet is raw data (the most common case), a PDF, Word or PowerPoint file a
  *   report, and a text file qualitative data.
@@ -93,6 +98,70 @@ function hasPurpose(id: string): boolean {
 function instrumentSuggestion(kind: "questionnaire" | "interview_guide" | "focus_group_guide", reason: string): PurposeSuggestion {
   // One type per kind where this copy has three; one shared "instrument" type where it has one.
   return hasPurpose(kind) ? { id: kind as string as UploadPurposeId, reason } : { id: "instrument" as string as UploadPurposeId, reason, instrument: kind };
+}
+
+/** The cells of one delimited line, quote-aware (a quoted value may hold the separator). */
+function splitLine(line: string, sep: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (ch === '"') quoted = false;
+      else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === sep) {
+      cells.push(cur.trim());
+      cur = "";
+    } else cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+const WDI_HEADER = ["country name", "country code", "indicator name", "indicator code"];
+
+/**
+ * Whether a delimited file's first lines have an indicator data header, by the reader's own layout rules
+ * (api/parse-stats-file.py `_indicator_layout` and `_ind_find_header`), applied to the first lines only:
+ * - the first non-blank line holds REF_AREA and INDICATOR with TIME_PERIOD and OBS_VALUE (Data360 /
+ *   SDMX long) or a year column (Data360 wide);
+ * - or it holds DATASET, SERIES_CODE and OBS_MEASURE (the IMF data portal wide download);
+ * - or REF_AREA, MEASURE, TIME_PERIOD and OBS_VALUE without INDICATOR (OECD Data Explorer SDMX-CSV), or
+ *   STRUCTURE, REF_AREA and TIME_PERIOD without OBS_VALUE (its reference information, read as notes);
+ * - or its last two columns are "Indicator name" and "Value" (a label and value table);
+ * - or one of the first ten non-blank lines starts Country Name, Country Code, Indicator Name,
+ *   Indicator Code (World Bank WDI, which has "Data Source" lines above its header).
+ * A data row is never taken for a header, so a data dictionary listing those names as values is not
+ * indicator data. Only a suggestion: the reader decides, and refuses anything else by name. A mirror of
+ * the engine rule, kept equal by uploadPurposes.test.ts on the same fixture files.
+ */
+export function sampleLooksLikeIndicatorData(sample: string): boolean {
+  const lines = sample.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim().length > 0).slice(0, 10);
+  if (lines.length === 0) return false;
+  const sepOf = (line: string) => (["\t", ",", ";", "|"] as const).reduce((best, sep) => (splitLine(line, sep).length > splitLine(line, best).length ? sep : best), "," as string);
+  const first = splitLine(lines[0], sepOf(lines[0]));
+  const names = new Set(first);
+  if (names.has("REF_AREA") && names.has("INDICATOR") && names.has("FREQ") && names.has("UNIT_MEASURE")) {
+    const long = names.has("TIME_PERIOD") && names.has("OBS_VALUE");
+    const wide = first.some((n) => /^[0-9]{4}$/.test(n)) && !names.has("TIME_PERIOD") && !names.has("OBS_VALUE");
+    return long || wide;
+  }
+  if (names.has("DATASET") && names.has("SERIES_CODE") && names.has("OBS_MEASURE")) return true;
+  // OECD SDMX-CSV data (no INDICATOR; its measure is MEASURE), and its reference information file (the
+  // same dimension columns, STRUCTURE and no OBS_VALUE), read as notes for that data.
+  if (names.has("REF_AREA") && names.has("MEASURE") && names.has("TIME_PERIOD") && names.has("OBS_VALUE") && !names.has("INDICATOR")) return true;
+  if (names.has("REF_AREA") && names.has("TIME_PERIOD") && names.has("STRUCTURE") && !names.has("OBS_VALUE")) return true;
+  const lower = first.map((n) => n.toLowerCase());
+  if (lower.length >= 2 && lower[lower.length - 2] === "indicator name" && lower[lower.length - 1] === "value" && lower.slice(0, -2).every((n) => n.length > 0)) return true;
+  return lines.some((l) => {
+    const cells = splitLine(l, sepOf(l)).slice(0, 4).map((c) => c.toLowerCase());
+    return WDI_HEADER.every((h, i) => cells[i] === h);
+  });
 }
 
 /** True when a CSV's first lines read like aggregated tables rather than one row per respondent. */
@@ -153,6 +222,10 @@ export function suggestPurposeFor(filename: string, csvSample?: string | null): 
   }
   if (/transcript|\bfgd\b|\bidi\b|interview|focus group/.test(name) && !/guide/.test(name)) return { id: "transcript", reason: fromName };
   if ([...DOCUMENT, ".pptx"].includes(ext) && /report|deck|presentation|findings/.test(name)) return { id: "report", reason: fromName };
+  // Before the name rules for tables: a published-statistics header says more than a file name does.
+  if ([".csv", ".tsv", ".txt"].includes(ext) && csvSample && hasPurpose("indicator") && sampleLooksLikeIndicatorData(csvSample)) {
+    return { id: "indicator", reason: "Suggested: its first lines read like published statistics by area and year" };
+  }
   if (SPREADSHEET.includes(ext)) {
     if (/cross ?tabs?|crosstab|\btables?\b|\btabs\b|banner|tabulation|output/.test(name)) return { id: "tables", reason: fromName };
     if (ext === ".csv" && csvSample && csvLooksLikeTables(csvSample)) return { id: "tables", reason: "Suggested: its first lines read like totals or percentages" };

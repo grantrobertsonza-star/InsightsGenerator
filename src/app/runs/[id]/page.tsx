@@ -149,6 +149,7 @@ import InstrumentCard from "./InstrumentCard";
 import InstrumentAutoRead from "./InstrumentAutoRead";
 import AttachedInstruments, { QuestionnaireLinkingNote } from "./AttachedInstruments";
 import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
+import IndicatorDataPanel from "./IndicatorDataPanel";
 import AcceptDataButton from "./AcceptDataButton";
 import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
 import DataFileSection from "./DataFileSection";
@@ -283,7 +284,7 @@ type Run = {
 
 type Document = {
   id: string;
-  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output" | "technical";
+  kind: "report" | "table" | "evidence" | "transcript" | "instrument" | "output" | "technical" | "indicator";
   source_filename: string;
   uploaded_at: string;
   ingestion_type: "raw" | "aggregated" | null;
@@ -2875,7 +2876,7 @@ async function processRunAction(
   const allDocuments = await withTenant(TENANT_ID, async (client) => {
     const result = await client.query<{
       id: string;
-      kind: "report" | "table" | "evidence" | "transcript" | "technical";
+      kind: "report" | "table" | "evidence" | "transcript" | "technical" | "indicator";
       has_findings: boolean;
     }>(
       `select d.id, d.kind,
@@ -2952,6 +2953,9 @@ async function processRunAction(
     DOCUMENT_PROCESSING_CONCURRENCY,
     async (doc) => {
       try {
+        // Indicator data is read when it is added and with Read the file again (indicatorData.ts), and
+        // is not mined for findings: processing leaves it and its own status as they are.
+        if (doc.kind === "indicator") return;
         if (doc.kind === "report") {
           const result = await extractFindingsFromDocument(TENANT_ID, runId, doc.id, {
             onlyReplacePending,
@@ -3717,6 +3721,11 @@ export default async function RunPage({
         };
       case "transcript":
         return { text: "Transcript. Code it under Coding once its setup is accepted.", nextStep: <GoToSection key="next-step" id="coding">Open Coding</GoToSection> };
+      case "indicator":
+        return {
+          text: "Indicator data: published statistics by area and period, read as series over time rather than as respondents. Chart an indicator for chosen areas on its Indicator data tab. It is not mined for findings.",
+          nextStep: null,
+        };
       default:
         return { text: "", nextStep: null };
     }
@@ -5292,6 +5301,9 @@ export default async function RunPage({
         if (d.kind === "evidence" || d.kind === "report") {
           panels.push({ id: "details", label: "Document details", node: <DocumentIndicatorsPanel key="panel" runId={id} documentId={d.id} /> });
         }
+        if (d.kind === "indicator") {
+          panels.push({ id: "indicators", label: "Indicator data", node: <IndicatorDataPanel key={`indicators-${d.id}`} runId={id} documentId={d.id} /> });
+        }
         const excerpt = documentExcerpts.get(d.id);
         const purpose = purposeOf(d);
         return {
@@ -5577,6 +5589,7 @@ export default async function RunPage({
                 ["instrument", "questionnaire(s) or guide(s)"],
                 ["evidence", "context file(s)"],
                 ["technical", "technical document(s)"],
+                ["indicator", "indicator data file(s)"],
               ]
                 .map(([kind, label]) => `${documents.filter((d) => d.kind === kind).length} ${label}`)
                 .join(", ")}${outputSets.length > 0 ? `, ${outputSets.length} statistical output ${outputSets.length === 1 ? "set" : "sets"}` : ""}; ${findings.length} ${findings.length === 1 ? "finding" : "findings"}.`}

@@ -114,6 +114,8 @@ def main() -> int:
                 result = mod.crosstab(data, name, args)
             elif action == "table":
                 result = mod.read_table(data, name, args)
+            elif action == "indicators":
+                result = mod.indicator_observations(data, name, args)
             elif action == "convert":
                 result = mod.convert(data, name)
             else:

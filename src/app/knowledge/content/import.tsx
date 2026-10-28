@@ -140,6 +140,21 @@ export default function ImportGuide() {
         and has no acceptance step. The Research assistant reads and quotes it when you ask how the study was done;
         what it describes is not checked against your data. It needs database update 0112.
       </P>
+      <H3>Indicator data</H3>
+      <P>
+        Indicator data is published statistics by country or region and year, such as a World Bank Data360, WDI or
+        Findex download: one row per area, indicator, breakdown and year, not one row per respondent. It is read
+        when it is added into series (an indicator with its breakdowns) and values, and suggested from a CSV&apos;s
+        first lines. Six layouts are read: Data360 long and wide, WDI wide, the IMF data portal download, OECD Data
+        Explorer data and a two-column label and value table; anything else is refused with the reason. An OECD
+        reference information file is read as notes: its English notes are shown under the chart of matching series
+        of the same dataflow, and in the CSV, and never change a value. A file may hold up to 500,000 values. A blank cell is a missing value, never zero,
+        a value the publisher withholds as confidential is marked as withheld, and the values are kept as the file
+        writes them. Values the file marks as estimated, provisional or a break in series have their own point shape
+        on the chart, named in its legend. On the file&apos;s Indicator data tab, choose an indicator, its breakdowns and up
+        to twelve areas to see a line chart over time with the unit and source, a table and a CSV of what is shown.
+        Indicator data is not mined for findings yet. It needs database update 0126.
+      </P>
       <H3>The file list and the selected file</H3>
       <P>
         The list of sources rolls up with its own button, which only hides it: the search, filters and sort keep

@@ -7,6 +7,7 @@ import { readContextDocument } from "./extractFindings";
 import { DuplicateUploadError, INSTRUMENT_TYPES, storeUploadedDocument, markDocumentProcessingStatus, type InstrumentTypeChoice } from "./documentUpload";
 import { requireTenantId } from "./requestContext";
 import { saveSourceRoles } from "./researchQualityRepository";
+import { readIndicatorDocument } from "./indicatorData";
 
 /**
  * Stores a report or transcript and reads its text straight away, so the preview on the Import page
@@ -41,6 +42,17 @@ async function storeContext(tenantId: string, runId: string, file: File, role: "
   return id;
 }
 
+/**
+ * Indicator data: stored, then read straight away into series and observations (indicatorData.ts), so
+ * the Indicator data tab has something to show. The read is best effort like a report's: a failed read
+ * leaves the upload standing with its failure recorded and shown on the file, and Read again retries.
+ */
+async function storeAndReadIndicators(tenantId: string, runId: string, file: File): Promise<string> {
+  const id = await storeUploadedDocument(tenantId, runId, "indicator", file);
+  await readIndicatorDocument(tenantId, runId, id);
+  return id;
+}
+
 export type UploadResult =
   // IMP-008: `alreadyPresent` lists files whose identical content was already in this project as
   // the same kind; they are not added a second time (a retried batch imports each file once).
@@ -56,7 +68,7 @@ export type UploadResult =
 const SET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Stores whichever of the five upload slots have files. Returns what was
+ * Stores whichever of the upload slots have files. Returns what was
  * added, or the error, so the form can say so instead of failing silently.
  */
 export async function uploadDocumentsAction(runId: string, formData: FormData): Promise<UploadResult> {
@@ -79,6 +91,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
   const briefs = files("briefFiles");
   const proposals = files("proposalFiles");
   const technical = files("technicalFiles");
+  const indicators = files("indicatorFiles");
   const setRaw = formData.get("outputSetId");
   if (setRaw !== null && setRaw !== "" && !(typeof setRaw === "string" && SET_ID.test(setRaw))) {
     return { ok: false, error: "This upload named an output set that is not valid; choose the files again.", added: [] };
@@ -91,7 +104,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     typeof typeRaw === "string" && (INSTRUMENT_TYPES as readonly string[]).includes(typeRaw)
       ? (typeRaw as InstrumentTypeChoice)
       : "questionnaire";
-  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...typed.map(([f]) => f), ...outputs, ...briefs, ...proposals, ...technical];
+  const all = [...reports, ...tables, ...raw, ...transcripts, ...instruments, ...typed.map(([f]) => f), ...outputs, ...briefs, ...proposals, ...technical, ...indicators];
   if (all.length === 0) return { ok: false, error: "Choose at least one file first.", added: [] };
 
   const added: string[] = [];
@@ -108,6 +121,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
     ...proposals.map((f): [File, () => Promise<string>] => [f, () => storeContext(TENANT_ID, runId, f, "proposal")]),
     // Read straight away like a brief, for the Research assistant; no Research quality role.
     ...technical.map((f): [File, () => Promise<string>] => [f, () => storeAndRead(runId, "technical", f)]),
+    ...indicators.map((f): [File, () => Promise<string>] => [f, () => storeAndReadIndicators(TENANT_ID, runId, f)]),
   ];
   for (const [file, run] of jobs) {
     try {
