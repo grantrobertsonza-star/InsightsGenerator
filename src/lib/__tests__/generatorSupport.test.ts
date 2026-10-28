@@ -52,7 +52,9 @@ function answer(sql: string): { rows: unknown[] } {
   }
   if (/from recommendations r/.test(s)) {
     return {
+      // id: the recommendation's identity, part of the narrative's recorded inputs (CE-3, EF-REP-F01).
       rows: ["si-cur", "si-inv"].map((id) => ({
+        id: `rec-${id}`,
         action_text: `Act on the ${names[id].toLowerCase()} insight`,
         owner_role: "Marketing lead",
         timeline: "Next quarter",

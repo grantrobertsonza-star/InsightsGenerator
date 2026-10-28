@@ -71,6 +71,16 @@ and the brief was text or a model-filled id array.
   and any researcher revision of it are kept until the report is regenerated. A narrative saved before
   0121 reads as not known to be current. Before migration 0121 itself, an existing narrative is also "not known to be current", naming the
   update; no narrative has no note (B37-F03, b47).
+  EF-REP-F01 (b63): the inputs also hold `recommendations`, a fingerprint of the accepted recommendations
+  the generator gives the model (`readFramingRecommendations`, the generator's own reader): identity,
+  action, owner, timeline, priority and anchor insight id and headline, as a set sorted by id, so
+  reordering is not a change. A wording, owner, timing or priority edit, a rejection, a deletion or a
+  newly accepted recommendation qualifies the narrative ("the accepted recommendations changed") on the
+  screen, for the assistant and in both exports. The set is read before the generator's own support
+  filter (FND-001), so a change to a recommendation left out for invalid support also qualifies it
+  (over-cautious). A narrative recorded before b63 has no `recommendations` part: it is compared on the
+  parts it has and the recommendations part reads as not known (never current, never changed); with
+  nothing else changed the note is "Not known to be current". No migration: `inputs` is jsonb (0121).
   Insights and recommendations are not marked stale on an objective edit: objectives are context for
   them, not a filter (discovery stays open), and the link from an insight to an objective is coverage
   (CE-1), which is marked out of date. Recommendations already carry decision freshness (GT-007) and,

@@ -1,4 +1,4 @@
-import { narrativeFingerprint, recordNarrativeInputs } from "./narrativeFreshness";
+import { narrativeFingerprint, readFramingRecommendations, recordNarrativeInputs } from "./narrativeFreshness";
 import { anthropic, CLAUDE_MODEL } from "./anthropic";
 import { logApiUsage } from "./apiUsage";
 import { withTenant } from "./db";
@@ -19,17 +19,6 @@ type EvidenceInsight = {
   confidence_tier: ConfidenceTier;
   quality_tier: QualityTier;
   quality_score: number | null;
-};
-
-type EvidenceRecommendation = {
-  action_text: string;
-  owner_role: string;
-  timeline: string;
-  metric: string;
-  priority: "high" | "medium" | "low";
-  synthesized_insight_headline: string | null;
-  /** FND-001: the anchor insight, so a recommendation on an insight with invalid support is left out. */
-  synthesized_insight_id: string | null;
 };
 
 export type DeckPillar = {
@@ -202,9 +191,10 @@ export async function generateStoryNarrative(
   tenantId: string,
   runId: string,
 ): Promise<DeckNarrative> {
-  // CE-3: what this narrative is written against, read before the model is asked. A change made while it
-  // is being written leaves the saved fingerprint older than the project, so the narrative reads as
-  // written for an earlier version (narrativeFreshness.ts), never as current.
+  // CE-3: what this narrative is written against (including the accepted recommendations, EF-REP-F01),
+  // read before the model is asked. A change made while it is being written leaves the saved fingerprint
+  // older than the project, so the narrative reads as written for an earlier version
+  // (narrativeFreshness.ts), never as current. A failed generation saves neither narrative nor fingerprint.
   const writtenFor = await withTenant(tenantId, (client) => narrativeFingerprint(client, runId));
   const { run, insights: acceptedInsights, recommendations: acceptedRecommendations } = await withTenant(
     tenantId,
@@ -231,20 +221,12 @@ export async function generateStoryNarrative(
         [runId],
       );
 
-      const recommendationsResult = await client.query<EvidenceRecommendation>(
-        `select r.action_text, r.owner_role, r.timeline, r.metric, r.priority, si.headline as synthesized_insight_headline,
-              si.id as synthesized_insight_id
-       from recommendations r
-       join synthesized_insights si on si.id = r.synthesized_insight_id
-       where r.run_id = $1 and r.status = 'accepted' and r.synthesized_insight_id is not null
-       order by si.quality_score desc nulls last, r.created_at`,
-        [runId],
-      );
-
+      // CE-3: the same reader the narrative fingerprint uses, so the recorded snapshot covers exactly
+      // the recommendations (and fields) given to the model.
       return {
         run: runResult.rows[0],
         insights: insightsResult.rows,
-        recommendations: recommendationsResult.rows,
+        recommendations: await readFramingRecommendations(client, runId),
       };
     },
   );
@@ -266,7 +248,7 @@ export async function generateStoryNarrative(
   );
   const insights = acceptedInsights.filter((insight) => support.statusOf(insight.id).status !== "invalid");
   const recommendations = acceptedRecommendations.filter(
-    (rec) => !rec.synthesized_insight_id || support.statusOf(rec.synthesized_insight_id).status !== "invalid",
+    (rec) => support.statusOf(rec.synthesized_insight_id).status !== "invalid",
   );
   if (acceptedInsights.length > 0 && insights.length === 0) {
     throw new Error(
