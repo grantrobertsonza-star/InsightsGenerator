@@ -24,6 +24,13 @@ export const STEM_CAP = 60;
  * a label that starts with another question's code (0.9). An exact code still wins (1).
  */
 export const FAMILY_CONFIDENCE = 0.92;
+/**
+ * IS-F06 (Codex, 27 October 2026): several columns that are the item's code once case, spacing and
+ * separators are set aside (q1 and Q1, Q_1 and Q.1, Q1 and Ｑ１), and none of them written exactly as the
+ * code. Each is offered below "Confirm same-code matches" (AUTO_CONFIRM_MIN), so the researcher chooses
+ * which column the item describes; giving each confidence 1 bulk-confirmed the item to all of them.
+ */
+export const AMBIGUOUS_CODE_CONFIDENCE = 0.8;
 
 const STOP = new Set(
   "the and for that this with from your you are was were have has had been will would could should what which when where who how why about into over than then them they their there these those also any all can not but our out its just more most some such only very per each both other another one two three four five ask read prompt interviewer please select none dont know refused code codes".split(" "),
@@ -67,6 +74,15 @@ export function exactCodeVariables(code: string | null | undefined, variableName
   if (!c) return [];
   const strict = (s: string) => matchableCode(s).toLowerCase().replace(/[_.\-]/g, "_");
   const exact = variableNames.filter((n) => strict(n) === strict(c));
+  if (exact.length > 1) {
+    // Several columns fit once case and separators are set aside (IS-F06): the one written exactly as
+    // the code wins, first as written, then after NFKC and invisible characters; otherwise all are
+    // returned and the matcher offers them for the researcher to choose (codeIsAmbiguous).
+    const asWritten = exact.filter((n) => n.trim() === (code ?? "").trim());
+    if (asWritten.length === 1) return asWritten;
+    const sameCase = exact.filter((n) => matchableCode(n) === c);
+    if (sameCase.length === 1) return sameCase;
+  }
   if (exact.length > 0) return exact;
   const splitsNumber = (s: string) => /\d[_.\-]+\d/.test(s);
   if (splitsNumber(c)) return [];
@@ -113,7 +129,8 @@ export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchC
     if (code) {
       const exact = exactCodeVariables(code, names);
       if (exact.length > 0) {
-        for (const name of exact) offer({ itemId: item.id, variable: name, method: "code", confidence: 1 });
+        const confidence = exact.length === 1 ? 1 : AMBIGUOUS_CODE_CONFIDENCE;
+        for (const name of exact) offer({ itemId: item.id, variable: name, method: "code", confidence });
         matched = true;
       } else {
         const family = new Set(codeFamily(code, names));

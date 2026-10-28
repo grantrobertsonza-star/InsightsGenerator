@@ -1359,15 +1359,72 @@ def _decode_plain_text(raw: bytes):
         ) from exc
 
 
-def _sniff_delimiter(text: str) -> str:
-    """A plain "," default used to mean a semicolon-delimited CSV (the common export format wherever the
-    system locale uses a comma as the decimal separator) silently became a single column. Sniffed
-    instead, from whichever delimiter is most consistent across the file's first lines."""
-    sample = "\n".join(text.splitlines()[:10])
-    try:
-        return csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
-    except csv.Error:
-        return ","
+_DELIMITER_NAMES = {",": "commas", ";": "semicolons", "\t": "tabs", "|": "pipes"}
+_DELIMITER_SAMPLE_RECORDS = 5000
+
+
+def _sniff_delimiter(text: str, ragged: bool = False) -> str:
+    """The separator between a delimited file's values, chosen by a stated rule rather than guessed.
+
+    IS-F01 (Codex import stress review, 2026-10-27): csv.Sniffer gave up on a semicolon file with one
+    short row (a supported shape: the row is padded with missing values), and the fallback silently
+    returned a comma, so the whole file was published as one text column. Each candidate (comma,
+    semicolon, tab, pipe) is now read quote-aware over the first records, and a candidate fits when its
+    header row splits into at least two columns and no later row has a non-empty value beyond the
+    header's width (short rows and trailing empty values are allowed, as _csv_grid reads them):
+      - exactly one fits: that one;
+      - several fit: the one with more rows at full width; equal counts cannot be told apart, so the
+        file is refused and the researcher asked to save it with one separator (never a guess);
+      - none fits but a candidate splits the header: the one with the most full-width rows, so
+        _csv_grid refuses its surplus row with the line, rather than importing one merged column;
+      - nothing splits the header: a genuinely single-column file, read with a comma.
+    ragged=True (documents such as a codebook, whose rows may be longer or shorter than the first)
+    chooses the candidate that splits the most rows into two or more values; it is never refused."""
+    stats = {}
+    unreadable = []
+    for sep in (",", ";", "\t", "|"):
+        reader = csv.reader(io.StringIO(text, newline=""), delimiter=sep, strict=True)
+        rows = []
+        try:
+            for row in reader:
+                if row:
+                    rows.append(row)
+                if len(rows) >= _DELIMITER_SAMPLE_RECORDS:
+                    break
+        except csv.Error:
+            unreadable.append(sep)
+            continue
+        if not rows:
+            continue
+        width = len(rows[0])
+        if ragged:
+            stats[sep] = sum(1 for r in rows if len(r) >= 2)
+            continue
+        if width < 2:
+            continue
+        surplus = any(len(r) > width and any(c.strip() for c in r[width:]) for r in rows[1:])
+        full = sum(1 for r in rows[1:] if len(r) >= width)
+        stats[sep] = (surplus, full)
+    if ragged:
+        best = max(stats, key=lambda k: stats[k], default=None)
+        return best if best is not None and stats[best] > 0 else ","
+    fitting = sorted((k for k, (surplus, _f) in stats.items() if not surplus), key=lambda k: -stats[k][1])
+    if len(fitting) == 1:
+        return fitting[0]
+    if len(fitting) > 1:
+        if stats[fitting[0]][1] == stats[fitting[1]][1]:
+            raise ValueError(
+                f"This file's values could be separated by {_DELIMITER_NAMES[fitting[0]]} or by "
+                f"{_DELIMITER_NAMES[fitting[1]]}, and both read as a complete table, so its columns cannot be "
+                "told apart safely. Nothing was imported; save it again with one separator (for example as "
+                "\"CSV UTF-8\" or tab-delimited text) and upload it again."
+            )
+        return fitting[0]
+    if stats:
+        return max(stats, key=lambda k: stats[k][1])
+    # A quoting error under every splitting candidate: the first one is returned so _csv_grid reports
+    # where the quoting goes wrong, rather than reading the file as one column.
+    return unreadable[0] if unreadable else ","
 
 
 def _csv_grid(text: str, sep: str):
@@ -2610,8 +2667,15 @@ def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=N
 # A row with one filled cell is a section heading. A name cell listing several names ("white, black,
 # latino") gives each the row's label and values. Values written another way ("as is", "1 thru 58",
 # "0-7") give no answer list; the text is kept as the variable's note.
+# A cell that looks like a variable name: used to find which column of a sheet holds the names, and to
+# split a cell of several comma-separated names. It does not decide which names are kept (IS-F05).
 _CB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.$#@]{0,63}$")
-_CB_PAIR_RE = re.compile(r"(?:^|,)\s*(-?\d+(?:\.\d+)?)\s*=\s*")
+# The longest variable name a codebook entry may have; longer text in a name column is a sentence.
+_CB_NAME_MAX = 256
+# One "<code>=" in an answer list: the code is a quoted text, or a run of characters with no space,
+# comma, "=" or quotation mark ("1", "01", "-9", "1.5", "1e0", "AA", "A_B", "C-D").
+_CB_CODE_AT = re.compile(r"""\s*(?:"([^"]*)"|'([^']*)'|([^\s=,"']+))\s*=\s*""")
+_CB_NEXT_CODE = re.compile(r""",\s*(?:"[^"]*"|'[^']*'|[^\s=,"']+)\s*=""")
 
 
 def _cb_text(v):
@@ -2620,23 +2684,69 @@ def _cb_text(v):
     return _literal_text(v).strip()
 
 
+def _cb_name(cell):
+    """A codebook variable name exactly as written (IS-F05, Codex: "Age years", "回答", "_Q1", numeric
+    and long names were dropped while the read reported itself complete, though the data reader accepts
+    them as column names). Any non-empty text up to _CB_NAME_MAX characters, with no line break."""
+    name = _cb_text(cell)
+    return name if name and len(name) <= _CB_NAME_MAX and "\n" not in name and "\r" not in name else ""
+
+
+def _cb_list(text):
+    """An answer list written in one cell, "1=Yes, 2=No, 9=Don't know", as ([(code, label)], unread).
+
+    IS-F02 (Codex): a code is kept exactly as written through _cb_code, the rule the long and JSON
+    layouts use (B36-F01), so "01" and "1" stay two codes and 9007199254740993 is not rounded; whether
+    "1" and "1.0" are the same answer is decided against the data column when the labels are applied.
+    IS-F04: text codes ("AA=Yes", "A_B=Yes, C-D=No") and spellings such as "1e0" are read, and a label
+    in quotation marks may hold commas ('1="Yes, often", 2=No'). A label without quotation marks runs to
+    the next ", <code>=", so it may hold a comma but not a comma followed by a code and "=".
+    unread is True when the cell has an "=" yet is not such a list, so the item is reported as not fully
+    read rather than silently given no answers; text with no "=" ("as is") is not an answer list."""
+    text = text.strip()
+    pairs, at = [], 0
+    while at < len(text):
+        m = _CB_CODE_AT.match(text, at)
+        if not m:
+            return [], "=" in text
+        code = next(g for g in m.groups() if g is not None)
+        at = m.end()
+        if text[at:at + 1] in ('"', "'"):
+            close = text.find(text[at], at + 1)
+            if close < 0:
+                return [], True
+            label = text[at + 1:close]
+            at = close + 1
+            rest = text[at:].lstrip()
+            if rest and not rest.startswith(","):
+                return [], True
+            at = len(text) - len(rest) + (1 if rest else 0)
+        else:
+            nxt = _CB_NEXT_CODE.search(text, at)
+            end = nxt.start() if nxt else len(text)
+            label = text[at:end].strip().rstrip(",").strip()
+            if "=" in label:
+                # "1=Yes 2=No": codes not separated by commas; never read as one label "Yes 2=No".
+                return [], True
+            at = end + 1 if nxt else len(text)
+        pairs.append((_cb_code(code), label))
+    return pairs, False
+
+
 def _cb_pairs(text):
-    """"1=Yes, 2=No, 9=Don't know" as [(code, label)], or [] when the text is not written that way."""
-    marks = list(_CB_PAIR_RE.finditer(text))
-    if not marks or marks[0].start() != 0:
-        return []
-    out = []
-    for i, m in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-        label = text[m.end():end].strip().rstrip(",").strip()
-        out.append((_format_code(float(m.group(1))) if "." not in m.group(1) else m.group(1), label))
-    return out
+    """The answer list in a cell as [(code, label)], or [] when the cell is not one (see _cb_list)."""
+    return _cb_list(text)[0]
 
 
 def _cb_names(cell):
-    """The variable names a name cell holds: one name, or several separated by commas."""
-    parts = [p.strip() for p in cell.split(",")] if "," in cell else [cell]
-    return parts if parts and all(_CB_NAME_RE.match(p) for p in parts) else []
+    """The variable names a name cell holds: several when it is a comma-separated list of name-like
+    cells ("Q1, Q2"), otherwise the cell as one name ("Age, years" stays one name)."""
+    if "," in cell:
+        parts = [p.strip() for p in cell.split(",")]
+        if parts and all(_CB_NAME_RE.match(p) for p in parts):
+            return parts
+    name = _cb_name(cell)
+    return [name] if name else []
 
 
 def _cb_sheet_items(grid, sheet):
@@ -2654,8 +2764,8 @@ def _cb_sheet_items(grid, sheet):
             items, order, last = {}, [], None
             vl = pos["vlabel"] if pos["vlabel"] is not None else pos["label"]
             for r in rows[h + 1:]:
-                name = r[pos["var"]] or last
-                if not name or not _CB_NAME_RE.match(name):
+                name = _cb_name(r[pos["var"]]) or last
+                if not name:
                     continue
                 last = name
                 if name not in items:
@@ -2674,9 +2784,12 @@ def _cb_sheet_items(grid, sheet):
     # Without a header, three or more such rows are needed before a sheet is taken for a codebook (a
     # prose document can have two). With a header naming a variable and a label column, one variable
     # under it is enough (B36-F05, Codex: a valid one-variable codebook was refused).
-    headed = any(
-        (lambda pos: pos["var"] is not None and pos["label"] is not None)(_classify_header([c.lower() for c in r])) for r in rows[: min(6, len(rows))]
+    found = next(
+        ((i, pos) for i, pos in ((i, _classify_header([c.lower() for c in r])) for i, r in enumerate(rows[: min(6, len(rows))])) if pos["var"] is not None and pos["label"] is not None),
+        (None, None),
     )
+    header_row, header = found
+    headed = header is not None
     if len(body) < (2 if headed else 3):
         return []
 
@@ -2684,34 +2797,58 @@ def _cb_sheet_items(grid, sheet):
         cells = [r[col] for r in body if r[col]]
         return (sum(1 for c in cells if test(c)) / len(cells)) if cells else 0.0
 
-    name_col = max(range(width), key=lambda c: share(c, lambda x: bool(_cb_names(x))))
-    if share(name_col, lambda x: bool(_cb_names(x))) < 0.6:
-        return []
+    # The names column is the one the header names, unless that column holds almost no one-word cells
+    # while another is mostly name-like: a header written the wrong way round (Grant's Berkeley IGS
+    # codebook, "VARIABLE LABEL" over the names). Without such a header, the column of name-like cells.
+    # Once found, every entry in it is kept as written (IS-F05): finding it by name-like cells alone took
+    # the labels column when the names were "Age years" or "回答" and the labels were single words.
+    name_like = lambda x: all(_CB_NAME_RE.match(p.strip()) for p in x.split(","))
+    one_word = lambda x: not any(ch.isspace() for ch in x)
+    likeliest = max(range(width), key=lambda c: share(c, name_like))
+    if header is not None and not (share(header["var"], one_word) < 0.2 and share(likeliest, name_like) >= 0.6):
+        name_col = header["var"]
+    else:
+        name_col = likeliest
+        if share(name_col, name_like) < 0.6:
+            return []
     others = [c for c in range(width) if c != name_col]
-    values_col = max(others, key=lambda c: share(c, lambda x: bool(_cb_pairs(x))), default=None)
-    if values_col is not None and share(values_col, lambda x: bool(_cb_pairs(x))) < 0.2:
+    # The values column holds answer lists, read or not (an unreadable list still marks its column, so
+    # the item is reported incomplete rather than its list taken for a label; IS-F04).
+    is_list = lambda x: bool(_cb_list(x)[0]) or _cb_list(x)[1]
+    values_col = max(others, key=lambda c: (share(c, is_list), share(c, lambda x: bool(_cb_pairs(x)))), default=None)
+    if values_col is not None and share(values_col, is_list) < 0.2:
         values_col = None
     label_candidates = [c for c in others if c != values_col]
     if not label_candidates:
         return []
-    label_col = max(label_candidates, key=lambda c: sum(len(r[c]) for r in body))
+    if header is not None and name_col == header["var"] and header["label"] in label_candidates:
+        label_col = header["label"]
+    else:
+        label_col = max(label_candidates, key=lambda c: sum(len(r[c]) for r in body))
     items, section = [], None
-    for r in rows:
+    for i, r in enumerate(rows):
+        # The header row and anything above it are never variables (IS-F07, Codex: "VARIABLE NAME, LABEL"
+        # was read as a variable "LABEL", and the next row's label taken for its name).
+        if header_row is not None and i <= header_row:
+            continue
         filled = [c for c in r if c]
-        if len(filled) == 1 and not _cb_names(filled[0]):
+        # One filled cell that is not name-like is a section heading, not a variable without a label.
+        if len(filled) == 1 and not name_like(filled[0]):
             section = filled[0]
             continue
         names = _cb_names(r[name_col])
         if not names or (r[name_col].lower() in ("variable", "variable name", "name", "variable label")):
             continue
         values = r[values_col] if values_col is not None else ""
-        pairs = _cb_pairs(values) if values else []
+        pairs, unread = _cb_list(values) if values else ([], False)
         for name in names:
             items.append({
                 "variable": name,
                 "label": r[label_col],
                 "options": [{"code": c, "label": l} for c, l in pairs],
                 "note": None if pairs or not values else values,
+                # An answer list that could not be read (IS-F04): the read is reported incomplete.
+                "unreadValues": values if unread else None,
                 "section": section,
                 "sheet": sheet,
             })
@@ -2794,8 +2931,8 @@ def _codebook_from_json(file_bytes: bytes) -> dict:
         if not isinstance(e, dict):
             continue
         name = _cb_first(e, _CB_NAME_KEYS)
-        name = _cb_text(name) if name is not None else ""
-        if not _CB_NAME_RE.match(name) or name in seen:
+        name = _cb_name(name) if isinstance(name, (str, int, float)) else ""
+        if not name or name in seen:
             continue
         seen.add(name)
         values = _cb_first(e, _CB_VALUES_KEYS)
@@ -2859,7 +2996,7 @@ def _sheet_grids(file_bytes: bytes, source_filename: str):
         if ext in DELIMITED_EXTS:
             with open(path, "rb") as fh:
                 text, _enc = _decode_plain_text(fh.read())
-            sep = "\t" if ext == ".tsv" else _sniff_delimiter(text)
+            sep = "\t" if ext == ".tsv" else _sniff_delimiter(text, ragged=True)
             # A document row may be shorter or longer than the first (ragged rows are allowed), but its
             # quoting must be valid (B36-F03, Codex): an unclosed quote or text after a closing quote
             # used to merge the following rows into one cell, and the read was stored as complete.
@@ -2935,8 +3072,8 @@ def _xlsform_items(grids):
             continue
         if kind.replace(" ", "_") in skip or words[0] in skip:
             continue
-        name = r[n].strip()
-        if not _CB_NAME_RE.match(name):
+        name = _cb_name(r[n])
+        if not name:
             continue
         parts = kind.split()
         options = lists.get(parts[-1], []) if parts[0] in ("select_one", "select_multiple") and len(parts) > 1 else []

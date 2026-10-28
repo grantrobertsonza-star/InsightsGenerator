@@ -21,8 +21,15 @@ copy and read back, as `convert` does) and refuses an answer that is not a compl
   used is stored (`read_provenance.encoding`) and a non-UTF-8 read is shown on the Data quality tab. A
   file that is none of these is refused, naming the byte; no replacement characters are ever read in.
   Code points are kept exactly; nothing is normalised.
-- **Delimiter.** `.tsv` is tab; a `.csv` delimiter is sniffed (`,` `;` tab `|`) from its first lines,
-  defaulting to `,`.
+- **Delimiter** (`_sniff_delimiter`, IS-F01, batch 51). `.tsv` is tab. For a `.csv` or `.txt`, each of
+  `,` `;` tab `|` is read quote-aware over the first 5,000 records; a candidate fits when it splits the
+  header into two or more columns and no later row has a non-empty value beyond the header's width.
+  One fits: that one. Several: the one with more full-width rows; equal counts are refused as ambiguous,
+  naming both separators, never guessed. None fits but one splits the header: that one, so its surplus
+  row is refused with the line (below), never published as one merged column. Nothing splits the header:
+  a genuinely single-column file, read with `,`. There was a silent `,` fallback when `csv.Sniffer` gave
+  up; a valid short row made Codex's semicolon file import as one text column. Documents (a codebook)
+  are ragged, so they take the candidate that splits the most rows and are never refused for it.
 - **Quoting.** Python's `csv` reader in strict mode: quoted fields, doubled quotes and line breaks inside
   quotes are read as written. A quoted value never closed, or text after a closing quote, is refused
   with the line before anything is published (IP1000-F04). A row with more values than the header is

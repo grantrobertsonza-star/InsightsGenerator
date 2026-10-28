@@ -295,10 +295,10 @@ async function readClaimedInstrument(
   // was lost or cut short, not that the document legitimately has no more to give - the same
   // "better a stale item than a silently destroyed confirmed link" reasoning the chunk-level
   // failure already gets, so it folds into the same `complete` flag the deletion below relies on.
-  const complete = read.failedChunks === 0 && read.invalidItems === 0 && read.truncatedOptionItems === 0;
+  const truncatedOptionItems = read.truncatedOptionItems + (read.unreadOptionItems ?? 0);
+  const complete = read.failedChunks === 0 && read.invalidItems === 0 && truncatedOptionItems === 0;
   const failedChunks = read.failedChunks;
   const invalidItems = read.invalidItems;
-  const truncatedOptionItems = read.truncatedOptionItems;
   return storeInstrumentRows(tenantId, runId, documentId, doc, rows, { complete, failedChunks, invalidItems, truncatedOptionItems });
 }
 
@@ -314,7 +314,8 @@ type ReadRow = {
    * uses it to avoid overwriting an existing, previously-complete item with this partial one. */
   truncated: boolean;
 };
-type ReadRows = { rows: ReadRow[]; failedChunks: number; invalidItems: number; truncatedOptionItems: number };
+/** unreadOptionItems: engine-read items whose answer list was written but could not be read (IS-F04). */
+type ReadRows = { rows: ReadRow[]; failedChunks: number; invalidItems: number; truncatedOptionItems: number; unreadOptionItems?: number };
 
 /**
  * A codebook laid out as a table (CSV, text or Excel), read by the engine without the model
@@ -322,14 +323,28 @@ type ReadRows = { rows: ReadRow[]; failedChunks: number; invalidItems: number; t
  * variable name, so it links to the data file's variable of that name. Its text is the codebook's
  * label (or the name when it has none); its options are the answer codes and labels.
  */
-type EngineItem = { variable: string; label: string; options: { code: string; label: string }[]; section: string | null; routing?: string | null };
+type EngineItem = {
+  variable: string;
+  label: string;
+  options: { code: string; label: string }[];
+  section: string | null;
+  routing?: string | null;
+  /** The answer list as written when the engine could not read it ("=Yes", "1=Yes 2=No"); IS-F04. */
+  unreadValues?: string | null;
+};
 
 /** Engine-read items as rows: the code is the variable name, so each links to the data column of that name. */
 function rowsFromEngineItems(items: EngineItem[]): ReadRows {
   let truncatedOptionItems = 0;
+  let unreadOptionItems = 0;
   const rows: ReadRow[] = items.map((it) => {
-    const { options, truncated } = cleanOptions(it.options);
-    if (truncated) truncatedOptionItems += 1;
+    const { options, truncated: cut } = cleanOptions(it.options);
+    if (cut) truncatedOptionItems += 1;
+    // An answer list the engine could not read leaves the item's options incomplete, as a cut list does:
+    // the read is not complete, and the item does not replace an earlier complete reading of it.
+    const unread = typeof it.unreadValues === "string" && it.unreadValues.length > 0;
+    if (unread && !cut) unreadOptionItems += 1;
+    const truncated = cut || unread;
     return {
       section: it.section,
       code: it.variable,
@@ -343,7 +358,7 @@ function rowsFromEngineItems(items: EngineItem[]): ReadRows {
       truncated,
     };
   });
-  return { rows, failedChunks: 0, invalidItems: 0, truncatedOptionItems };
+  return { rows, failedChunks: 0, invalidItems: 0, truncatedOptionItems, unreadOptionItems };
 }
 
 /**
@@ -615,16 +630,21 @@ export async function suggestInstrumentLinks(
   instrumentId: string,
   dataDocumentId: string,
 ): Promise<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean }> {
-  const items = await getInstrumentItems(tenantId, instrumentId);
   const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
-  const candidates = matchItems(
-    items.map((i) => ({ id: i.id, code: i.code, text: i.text })),
-    dictionary.variables.map((v) => ({ name: v.name, label: v.label })),
-  );
   let suggestedNew = 0;
   let fromCodebook = 0;
   let codebookUnavailable = false;
   await withTenant(tenantId, async (client) => {
+    // IS-F03: both files are locked and checked as active files of this project before anything is
+    // deleted or written, and the questions are read here, from this project only, under the lock.
+    const { instrumentType } = await lockLinkDocuments(client, tenantId, runId, instrumentId, [dataDocumentId]);
+    const items = (
+      await client.query<{ id: string; code: string | null; item_text: string }>(
+        "select id, code, item_text from instrument_items where document_id = $1 and run_id = $2 order by item_order",
+        [instrumentId, runId],
+      )
+    ).rows.map((i) => ({ id: i.id, code: i.code, text: i.item_text }));
+    const candidates = matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label })));
     await client.query(
       `delete from instrument_links where status = 'suggested' and data_document_id = $2
          and item_id in (select id from instrument_items where document_id = $1)`,
@@ -644,12 +664,7 @@ export async function suggestInstrumentLinks(
         )
       ).rows.map((r) => [r.variable, r.item_id]),
     );
-    const own = await client.query<{ instrument_type: string | null }>(
-      "select instrument_type from documents where id = $1 and run_id = $2 and tenant_id = $3",
-      [instrumentId, runId, tenantId],
-    );
-    if (own.rows.length === 0) throw new Error("That questionnaire or codebook was not found in this project.");
-    if (own.rows[0].instrument_type !== "codebook") {
+    if (instrumentType !== "codebook") {
       if (!(await codebookLinksAvailable(client))) {
         codebookUnavailable = true;
       } else {
@@ -657,11 +672,12 @@ export async function suggestInstrumentLinks(
           await client.query<{ variable: string; item_id: string; code: string | null; item_text: string }>(
             `select l.variable, i.id as item_id, i.code, i.item_text
                from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
-              where l.run_id = $1 and l.data_document_id = $2 and l.status = 'confirmed' and d.instrument_type = 'codebook' and d.id <> $3`,
+              where l.run_id = $1 and l.data_document_id = $2 and l.status = 'confirmed' and d.instrument_type = 'codebook' and d.id <> $3
+                and ${LINK_ENDS_ACTIVE("l")}`,
             [runId, dataDocumentId, instrumentId],
           )
         ).rows.map((r): ConfirmedCodebookEntry => ({ variable: r.variable, itemId: r.item_id, code: r.code, text: r.item_text }));
-        const matches = codebookWordingMatches(items.map((i) => ({ id: i.id, code: i.code, text: i.text })), entries);
+        const matches = codebookWordingMatches(items, entries);
         // B49-F01: a link through the codebook made by the first wording rule that the current rule does not
         // support goes back to an ordinary suggestion for the researcher to check. Only links the matcher
         // made (method 'codebook') are touched; a link the researcher chose, confirmed or rejected is not.
@@ -705,7 +721,8 @@ export async function suggestInstrumentLinks(
       );
       if (r.rowCount) suggestedNew += 1;
     }
-    await client.query("update documents set instrument_for = $1 where id = $2", [dataDocumentId, instrumentId]);
+    const target = await client.query("update documents set instrument_for = $1 where id = $2 and run_id = $3 and tenant_id = $4 and kind = 'instrument'", [dataDocumentId, instrumentId, runId, tenantId]);
+    if (target.rowCount !== 1) throw new Error("That questionnaire or codebook is not in this project. Nothing was changed.");
   });
   return { suggested: suggestedNew, fromCodebook, codebookUnavailable };
 }
@@ -731,7 +748,7 @@ const CLEAR_LEAD_RATIO = 1.25;
 export async function chooseMatchTarget(tenantId: string, runId: string, instrumentId: string): Promise<MatchTargetChoice> {
   const { files, before } = await withTenantRead(tenantId, async (client) => {
     const doc = await client.query<{ instrument_for: string | null }>(
-      "select instrument_for from documents where id = $1 and run_id = $2 and kind = 'instrument'",
+      "select instrument_for from documents where id = $1 and run_id = $2 and kind = 'instrument' and removed_at is null",
       [instrumentId, runId],
     );
     if (doc.rows.length === 0) throw new Error("That questionnaire or codebook is not in this project.");
@@ -788,7 +805,55 @@ export async function getInstrumentItems(tenantId: string, instrumentId: string)
  * not confirmed. Only for databases with migration 0125 (codebookLinksAvailable).
  */
 export const CODEBOOK_BASIS_HOLDS = (alias: string) =>
-  `(${alias}.method <> 'codebook' or exists (select 1 from instrument_links b where b.item_id = ${alias}.basis_item_id and b.data_document_id = ${alias}.data_document_id and b.variable = ${alias}.variable and b.status = 'confirmed'))`;
+  `(${alias}.method <> 'codebook' or exists (select 1 from instrument_links b where b.item_id = ${alias}.basis_item_id and b.data_document_id = ${alias}.data_document_id and b.variable = ${alias}.variable and b.status = 'confirmed' and ${LINK_ENDS_ACTIVE("b")}))`;
+
+/**
+ * IS-F03 (Codex import stress review, 27 October 2026): a link counts only while both its ends are
+ * active files of the link's own project: the question's questionnaire or codebook (and the question
+ * itself) and the data file, neither in the bin. A codebook from another project, or one removed to
+ * the bin, could be matched and confirmed for the active file through a stale or crafted request, and
+ * its meanings then changed bases (Codex: base 4 became 2). The one rule for every reader of link
+ * meanings (getConfirmedItemsForData, and a codebook link's basis); the writes refuse such a link
+ * under lockLinkDocuments. Removing a file to the bin moves its links with it (documentBin), so a
+ * restored pair counts again with no further step.
+ */
+export const LINK_ENDS_ACTIVE = (l: string) =>
+  `(exists (select 1 from instrument_items si join documents sd on sd.id = si.document_id
+             where si.id = ${l}.item_id and si.run_id = ${l}.run_id and sd.run_id = ${l}.run_id and sd.kind = 'instrument' and sd.removed_at is null)
+    and exists (select 1 from documents dd where dd.id = ${l}.data_document_id and dd.run_id = ${l}.run_id and dd.kind = 'table' and dd.removed_at is null))`;
+
+/**
+ * IS-F03: locks, in id order (the same order everywhere, so two callers cannot deadlock), the
+ * questionnaire or codebook and the data files a link write touches, and checks under the lock that
+ * each is an active file of this project: the instrument a questionnaire or codebook, each data file a
+ * raw data file, none in the bin. A file removed meanwhile (removal moves it to the bin under the same
+ * row lock) or from another project is refused and nothing is written. Returns the instrument's type.
+ */
+async function lockLinkDocuments(
+  client: PoolClient,
+  tenantId: string,
+  runId: string,
+  instrumentId: string | null,
+  dataDocumentIds: string[],
+): Promise<{ instrumentType: string | null }> {
+  const data = [...new Set(dataDocumentIds)];
+  const ids = [...new Set([...(instrumentId ? [instrumentId] : []), ...data])].sort();
+  const r = await client.query<{ id: string; kind: string; ingestion_type: string | null; instrument_type: string | null }>(
+    `select id, kind, ingestion_type, instrument_type from documents
+      where id = any($1::uuid[]) and run_id = $2 and tenant_id = $3 and removed_at is null
+      order by id for update`,
+    [ids, runId, tenantId],
+  );
+  const found = new Map(r.rows.map((x) => [x.id, x]));
+  if (instrumentId && found.get(instrumentId)?.kind !== "instrument") {
+    throw new Error("That questionnaire or codebook is not in this project: it may have been removed to the bin. Nothing was changed.");
+  }
+  for (const id of data) {
+    const d = found.get(id);
+    if (d?.kind !== "table" || d.ingestion_type !== "raw") throw new Error("That data file is not in this project: it may have been removed to the bin. Nothing was changed.");
+  }
+  return { instrumentType: instrumentId ? (found.get(instrumentId)!.instrument_type ?? null) : null };
+}
 
 /** Whether migration 0125 (links through the codebook) is applied; checked, never assumed. */
 async function codebookLinksAvailable(client: PoolClient): Promise<boolean> {
@@ -973,6 +1038,7 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
          from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
          where l.run_id = $1 and l.data_document_id = $2
            and (l.status = 'confirmed' or (l.status = 'suggested' and l.method = 'code' and l.confidence >= 0.9))
+           and ${LINK_ENDS_ACTIVE("l")}
            ${basisHolds}
          order by (l.status = 'confirmed') desc, case d.instrument_type when 'codebook' then 0 when 'questionnaire' then 1 else 2 end,
                   d.uploaded_at, d.id, i.item_order, l.variable`,
@@ -1053,7 +1119,7 @@ export class InstrumentLinkTakenError extends Error {}
  * separately (LBL-01, 2026-10-26): a codebook entry and a questionnaire question both describe a
  * variable, and refusing the second document's confirmation would leave either its wording or the
  * codebook's labels unusable. Which document's labels apply is decided when the labels are built
- * (labelOverlay.ts, codebook before questionnaire), not here. Callers lock the data file's row first (lockDataDocuments), so two
+ * (labelOverlay.ts, codebook before questionnaire), not here. Callers lock the data file's row first (lockLinkDocuments), so two
  * confirmations for the same file are decided one after the other and cannot both pass this check.
  * Returns the message naming the question that already has the variable, or null when it is free.
  */
@@ -1069,14 +1135,6 @@ async function variableTakenBy(client: PoolClient, dataDocumentId: string, varia
   return q ? `${variable} is already confirmed for ${q.code ?? `"${q.item_text.slice(0, 60)}"`}. Reject that link first if it is wrong.` : null;
 }
 
-/** Locks the data files' rows in id order (the same order everywhere, so two callers cannot deadlock). */
-async function lockDataDocuments(client: PoolClient, runId: string, dataDocumentIds: string[]): Promise<void> {
-  const ids = [...new Set(dataDocumentIds)].sort();
-  if (ids.length === 0) return;
-  const r = await client.query("select id from documents where id = any($1::uuid[]) and run_id = $2 order by id for update", [ids, runId]);
-  if ((r.rowCount ?? 0) !== ids.length) throw new Error("That data file is not in this project.");
-}
-
 /**
  * Sets one link's status (Confirm or Reject on the review table). Confirming goes through the
  * shared rule above with the data file locked; a variable taken by another question is refused with
@@ -1085,10 +1143,17 @@ async function lockDataDocuments(client: PoolClient, runId: string, dataDocument
  */
 export async function setInstrumentLinkStatus(tenantId: string, runId: string, linkId: string, status: LinkStatus): Promise<void> {
   await withTenant(tenantId, async (client) => {
-    const found = await client.query<{ data_document_id: string }>("select data_document_id from instrument_links where id = $1 and run_id = $2", [linkId, runId]);
+    const found = await client.query<{ data_document_id: string; instrument_id: string | null }>(
+      `select l.data_document_id, (select i.document_id from instrument_items i where i.id = l.item_id and i.run_id = l.run_id) as instrument_id
+         from instrument_links l where l.id = $1 and l.run_id = $2`,
+      [linkId, runId],
+    );
     if (!found.rows[0]) throw new Error("That link is not in this project.");
     if (status === "confirmed") {
-      await lockDataDocuments(client, runId, [found.rows[0].data_document_id]);
+      // IS-F03: confirming needs both ends active in this project, checked under their locks: a
+      // question from another project's codebook, or one in the bin, is never confirmed for this file.
+      if (!found.rows[0].instrument_id) throw new Error("That link's question is not in this project: its codebook or questionnaire may have been removed. Nothing was changed.");
+      await lockLinkDocuments(client, tenantId, runId, found.rows[0].instrument_id, [found.rows[0].data_document_id]);
       // Read again after the lock: the link may have changed while this request waited.
       const link = await client.query<{ item_id: string; variable: string; status: LinkStatus }>(
         "select item_id, variable, status from instrument_links where id = $1 and run_id = $2 for update",
@@ -1118,19 +1183,19 @@ export async function confirmInstrumentLinks(
   minConfidence: number,
 ): Promise<{ confirmed: number; refused: { variable: string; reason: string }[] }> {
   return withTenant(tenantId, async (client) => {
-    const inst = await client.query("select 1 from documents where id = $1 and run_id = $2 and kind = 'instrument'", [instrumentId, runId]);
-    if (inst.rowCount !== 1) throw new Error("Questionnaire or guide not found for this run");
     const pending = async () =>
       (
         await client.query<{ id: string; item_id: string; data_document_id: string; variable: string }>(
           `select l.id, l.item_id, l.data_document_id, l.variable
            from instrument_links l join instrument_items i on i.id = l.item_id
-           where l.run_id = $1 and i.document_id = $2 and l.status = 'suggested' and l.confidence >= $3
+           where l.run_id = $1 and i.run_id = $1 and i.document_id = $2 and l.status = 'suggested' and l.confidence >= $3
            order by l.confidence desc, i.item_order, l.id`,
           [runId, instrumentId, minConfidence],
         )
       ).rows;
-    await lockDataDocuments(client, runId, (await pending()).map((c) => c.data_document_id));
+    // IS-F03: the questionnaire and every data file are locked and checked as active files of this
+    // project before any link is confirmed; one removed meanwhile refuses the whole batch.
+    await lockLinkDocuments(client, tenantId, runId, instrumentId, (await pending()).map((c) => c.data_document_id));
     let confirmed = 0;
     const refused: { variable: string; reason: string }[] = [];
     // Read again under the locks, then decide in order of confidence: an earlier confirmation in
@@ -1173,9 +1238,7 @@ export async function chooseInstrumentLink(
   const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
   if (!dictionary.variables.some((v) => v.name === variable)) throw new Error(`${variable} is not a variable of this data file.`);
   return withTenant(tenantId, async (client) => {
-    const doc = await client.query("select id from documents where id = $1 and run_id = $2 and kind = 'table' and ingestion_type = 'raw'", [dataDocumentId, runId]);
-    if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
-    await lockDataDocuments(client, runId, [dataDocumentId]);
+    await lockLinkDocuments(client, tenantId, runId, instrumentId, [dataDocumentId]);
     const item = await client.query("select 1 from instrument_items where id = $1 and document_id = $2 and run_id = $3", [itemId, instrumentId, runId]);
     if (item.rowCount !== 1) throw new Error("That question is not in this questionnaire.");
     const taken = await variableTakenBy(client, dataDocumentId, variable, itemId);
@@ -1212,9 +1275,7 @@ export async function chooseInstrumentLinkFamily(
   const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
   const names = dictionary.variables.map((v) => v.name);
   return withTenant(tenantId, async (client) => {
-    const doc = await client.query("select id from documents where id = $1 and run_id = $2 and kind = 'table' and ingestion_type = 'raw'", [dataDocumentId, runId]);
-    if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
-    await lockDataDocuments(client, runId, [dataDocumentId]);
+    await lockLinkDocuments(client, tenantId, runId, instrumentId, [dataDocumentId]);
     const item = await client.query<{ code: string | null }>("select code from instrument_items where id = $1 and document_id = $2 and run_id = $3", [itemId, instrumentId, runId]);
     if (item.rowCount !== 1) throw new Error("That question is not in this questionnaire.");
     const family = codeFamily(item.rows[0].code, names);

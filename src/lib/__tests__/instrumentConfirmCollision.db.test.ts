@@ -111,7 +111,7 @@ describe.skipIf(!TEST_DATABASE_URL)("IR-04 one confirmation rule for questionnai
     expect(await confirmLinksAction(run, instrument, 0.9)).toMatchObject({ ok: true, confirmed: 1, refused: [{ variable: "V", reason: expect.stringMatching(/for Q2/) }] });
     expect(await confirmedFor("V")).toEqual([items.Q2]);
     expect(await setLinkStatusAction(otherRun, ids.Q1V, "confirmed")).toMatchObject({ ok: false, error: expect.stringMatching(/not in this project/) });
-    expect(await confirmLinksAction(otherRun, instrument, 0.9)).toMatchObject({ ok: false, error: expect.stringMatching(/not found for this run/) });
+    expect(await confirmLinksAction(otherRun, instrument, 0.9)).toMatchObject({ ok: false, error: expect.stringMatching(/not in this project/) });
   });
 
   it("applies the same rule between a hand-chosen link and Confirm, both ways", async () => {

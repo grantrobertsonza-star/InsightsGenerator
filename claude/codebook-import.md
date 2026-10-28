@@ -10,11 +10,27 @@ is stored and no second link or overlay path exists.
 - A codebook in CSV, TSV, delimited text, Excel or JSON is read by the engine without the model
   (`codebook_items` in `api/parse-stats-file.py`). Each variable is an item whose code is the variable
   name, whose text is its label (or the name), and whose options are its answer codes and labels.
-  - Columns are found by content: a column of name-like cells (60% or more), a column of
-    `<code>=<label>` lists (20% or more), and the longest remaining text column as the label. Header text
-    is not trusted for this layout: the Berkeley IGS Poll codebook heads its name column "VARIABLE
-    LABEL".
-  - A value starts only at `<code>=` at the start or after a comma, so commas inside a label stay.
+  - Columns (batch 51, IS-F05): the names column is the one a header row names, unless that column holds
+    almost no one-word cells (under 20%) while another column is mostly name-like (60% or more): the
+    Berkeley IGS Poll codebook heads its name column "VARIABLE LABEL", the wrong way round. Without such
+    a header, the column of name-like cells (60% or more). The label column is the header's, else the
+    longest remaining text. The values column holds answer lists, read or not (20% or more).
+  - The header row, and any title rows above it, are never variables (IS-F07, Codex 28 October 2026:
+    "VARIABLE NAME,LABEL,VALUES" over "q_2028,Satisfaction,..." gave a variable "LABEL" and took the label
+    "Satisfaction" for the name, so the answers were confirmed onto a data column called Satisfaction).
+    A one-variable codebook under a multiword header ("VARIABLE NAME, VARIABLE LABEL") is read.
+  - Names are kept exactly as written (`_cb_name`): any text up to 256 characters with no line break, so
+    "Age years", "回答", "_Q1", "123" and "__proto__" are read as the data reader reads its columns. The
+    name-like pattern only finds the column and splits "Q1, Q2"; it no longer drops names (they were
+    dropped while the read said complete). One filled cell that is not name-like is a section heading.
+  - Answer lists (`_cb_list`, IS-F02 and IS-F04): a code is kept exactly as written through `_cb_code`,
+    the rule the long and JSON layouts use (B36-F01), so "01" and "1" are two codes and
+    9007199254740993 is not rounded (it used to be converted through a number: Codex's 50% became 33.3%).
+    A code is a quoted text or a run with no space, comma, "=" or quotation mark ("AA", "A_B", "C-D",
+    "1e0", "-9", "1.5"). A label in quotation marks may hold commas; an unquoted label runs to the next
+    ", <code>=". A cell with "=" that is not such a list ("=Yes", "1=Yes 2=No") is an unread list: the item
+    keeps no answers, the read is reported incomplete (`unreadValues`, counted in `incompleteItems`), and
+    the item does not replace an earlier complete reading of it. Text without "=" ("as is") is not a list.
   - One row per value (variable, value, value label, with the variable repeated or blank) is read by
     its header names (`_classify_header`).
   - A row with one filled cell is a section heading; a name cell listing several names gives each the
@@ -31,8 +47,24 @@ is stored and no second link or overlay path exists.
   instruction). Any other spreadsheet's sheets are turned into text, row by row, and read by the model
   as a Word or PDF questionnaire is.
 
-**Linking.** Unchanged: `suggestInstrumentLinks` matches the item code to the variable name exactly
+**Linking.** `suggestInstrumentLinks` matches the item code to the variable name exactly
 (confidence 1), so a codebook's variables are strong matches; "Confirm same-code matches" confirms them.
+When several columns are the code once case, spacing and separators are set aside (q1 and Q1, Q_1 and
+Q.1, Q1 and Ｑ１), the one written exactly as the code wins (as written, then after NFKC); when none is,
+each is offered at 0.8, below "Confirm same-code matches", for the researcher to choose (IS-F06, batch
+51: each used to be offered at 1 and the item bulk-confirmed to all of them).
+
+**Scope (IS-F03, batch 51).** A link counts only while both its ends are active files of the link's
+own project: the question's codebook or questionnaire and the data file, neither in the bin
+(`LINK_ENDS_ACTIVE`, used by `getConfirmedItemsForData` and by a codebook link's basis). Every write
+that creates or confirms a link (`suggestInstrumentLinks`, `setInstrumentLinkStatus` confirming,
+`confirmInstrumentLinks`, `chooseInstrumentLink`, `chooseInstrumentLinkFamily`) first locks both files
+in id order and checks them under the lock (`lockLinkDocuments`): the instrument a questionnaire or
+codebook, the data file a raw data file, both in this project and not removed; matching reads the
+questions under that lock from this project only, and its `instrument_for` update is scoped and must
+change one row. A codebook from another project, or one in the bin, is refused with nothing written; a
+confirmation waiting while the file is removed is refused. Removing a file moves its links with it
+(`documentBin`), so restoring both files brings their links back, as they were, with no further step.
 The researcher confirms; nothing is applied before that.
 
 **Which data file (Grant, 27 October 2026).** A codebook or questionnaire is matched to the data file
