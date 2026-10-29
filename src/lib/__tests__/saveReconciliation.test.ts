@@ -18,6 +18,7 @@ const BASE_SETUP: DataSetup = {
   waveDate: null,
   waveIncluded: true,
   design: null,
+  headerRowsSkipped: null,
 };
 
 function freshState(): SaveReconciliationState {

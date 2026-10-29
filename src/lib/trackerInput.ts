@@ -44,6 +44,7 @@ export async function loadRoleInput(tenantId: string, runId: string, documentId:
   const labels = await runStatsTool<{ valueLabels: Record<string, Record<string, string>>; cut: string[] }>("value_labels", doc.storage_path, doc.source_filename, {
     overlay,
     layout: setup.setup.layout,
+    headerRowsSkipped: setup.setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
   });
   const meta = codebookQuestionsByVariable(items);

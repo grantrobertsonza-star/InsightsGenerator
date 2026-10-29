@@ -8,6 +8,7 @@ import { isPlainTableFileName, parseTableDocument, type ParsedTable, type Previe
 import { resolveAuthoritativeSheet } from "./crosstabs";
 import { readProvenanceAvailable } from "./documentTables";
 import { requireTenantId } from "./requestContext";
+import { loadDataSetupWithStatus } from "./dataSetup";
 
 const BUCKET = "documents";
 
@@ -86,8 +87,9 @@ export async function getDocumentPreviewUrl(
       storage_path: string;
       kind: string;
       selected_sheet: string | null;
+      ingestion_type: string | null;
     }>(
-      "select preview_storage_path, source_filename, storage_path, kind, selected_sheet from documents where id = $1 and run_id = $2",
+      "select preview_storage_path, source_filename, storage_path, kind, selected_sheet, ingestion_type from documents where id = $1 and run_id = $2",
       [source.sourceDocumentId, runId]
     );
     return result.rows[0];
@@ -128,9 +130,18 @@ export async function getDocumentPreviewUrl(
     if (!isPlainTableFileName(document.source_filename)) {
       return { error: `"${document.source_filename}" is not a CSV or Excel file, so it has no table preview here. Open it from Import data.` };
     }
+    // The header row choice (decision 9) is applied, unlike the layout: which row names the variables is part of
+    // reading the file as written, and without it a file whose title rows detection misses could not be shown at
+    // all. A choice that cannot be read shows no table rather than one read another way.
+    let headerRowsSkipped: number | null = null;
+    if (document.ingestion_type === "raw") {
+      const setup = await loadDataSetupWithStatus(TENANT_ID, sourceDocumentId);
+      if (!setup.ok) return { error: `Could not read the header row setting of "${document.source_filename}", so no preview is shown. Try again. (${setup.error})` };
+      headerRowsSkipped = setup.setup.headerRowsSkipped;
+    }
     let table: ParsedTable;
     try {
-      table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet });
+      table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet, headerRowsSkipped });
     } catch (err) {
       return readFailure(err);
     }
@@ -152,7 +163,7 @@ export async function getDocumentPreviewUrl(
     }
     if (authoritative !== table.sheetName) {
       try {
-        table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative });
+        table = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative, headerRowsSkipped });
       } catch (err) {
         return readFailure(err);
       }

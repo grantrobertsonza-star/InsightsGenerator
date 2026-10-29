@@ -203,6 +203,35 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("one reader for CSV, TSV and E
     expect(csv.rows.map((r) => r["Observation date"])).toEqual(["2024-01-01", "1950-06-15"]);
   });
 
+  it("decision 5 (29 October 2026): NA in a column of country codes stays missing and is recorded for the warning; other columns, and the wide layout, by the same rule", async () => {
+    const countriesDoc = await file("countries.csv", Buffer.from("id,country,answer,score\n1,ZA,yes,3\n2,NA,NA,4\n3,NG,no,5\n4,US,maybe,2\n5,KE,yes,1\n", "utf-8"));
+    const csv = await imported(countriesDoc);
+    expect(csv.rows.map((r) => r.country)).toEqual(["ZA", null, "NG", "US", "KE"]);
+    expect(csv.provenance).toMatchObject({ naCodeColumns: ["country"] });
+    expect(await categories(countriesDoc, "country")).toEqual({ ZA: 1, NG: 1, US: 1, KE: 1 });
+    // Words are not codes; a codes column with no NA cell needs no warning.
+    const none = await imported(await file("codes.csv", Buffer.from("country,answer\nZA,yes\nNG,NA\nUS,no\n", "utf-8")));
+    expect(none.provenance).toMatchObject({ naCodeColumns: [] });
+    const wide = await imported(await file("countries-wide.xlsx", xlsx([["Variable", "C1", "C2", "C3", "C4"], ["country", "ZA", "NA", "NG", "US"]]), "columns_are_cases"));
+    expect(wide.provenance).toMatchObject({ naCodeColumns: ["country"] });
+  });
+
+  it("decision 9 (29 October 2026): title rows above the header are set aside and named, in CSV and Excel; a one-variable file reads as before", async () => {
+    const csv = await imported(await file("titled.csv", Buffer.from("BMW tracker wave 1\nExported 1 October 2026\n\nid,q1,q2\n1,2,3\n2,3,4\n", "utf-8")));
+    expect(csv.headers).toEqual(["id", "q1", "q2"]);
+    expect(csv.rows.length).toBe(2);
+    expect(csv.provenance).toMatchObject({ titleRows: ["BMW tracker wave 1", "Exported 1 October 2026"] });
+    const xl = await imported(await file("titled.xlsx", xlsx([["Brand health tracker"], [], ["id", "q1"], [1, 2], [2, 3]])));
+    expect(xl.headers).toEqual(["id", "q1"]);
+    expect(xl.rows.map((r) => r.q1)).toEqual([2, 3]);
+    expect(xl.provenance).toMatchObject({ titleRows: ["Brand health tracker", ""] });
+    const one = await imported(await file("one.csv", Buffer.from("q\n1\n2\n", "utf-8")));
+    expect(one.headers).toEqual(["q"]);
+    expect(one.provenance).toMatchObject({ titleRows: [] });
+    const plain = await imported(await file("plain.csv", Buffer.from("a,b\n1,2\n", "utf-8")));
+    expect(plain.provenance).toMatchObject({ titleRows: [] });
+  });
+
   it("IP1000-F03: UTF-8 without a BOM keeps every code point for each delimiter; BOM control; Windows-1252 is reported; other bytes are refused", async () => {
     const values = ["Café", "naïve", "é", "日本語", "😀", "line one\nline two"];
     const quote = (v: string) => (/[\n,;\t"]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);

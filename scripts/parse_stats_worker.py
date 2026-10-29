@@ -101,7 +101,7 @@ def main() -> int:
             if action == "dictionary":
                 result = mod.dictionary(data, name, args)
             elif action == "categories":
-                result = mod.categories(data, name, args["variable"], args.get("overlay"), args.get("layout"), args.get("selectedSheet"))
+                result = mod.categories(data, name, args["variable"], args.get("overlay"), args.get("layout"), args.get("selectedSheet"), args.get("headerRowsSkipped"))
             elif action == "columns":
                 result = mod.driver_columns(data, name, args)
             elif action == "instrument_sheet":

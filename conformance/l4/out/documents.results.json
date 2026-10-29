@@ -1,0 +1,487 @@
+{
+ "runner": "documents",
+ "checks": [
+  {
+   "case": "DOC-01",
+   "check": "page_count",
+   "basis": "contract",
+   "expected": 2,
+   "actual": 2,
+   "pass": true,
+   "note": "extractFindings: each Word page gets a real page number"
+  },
+  {
+   "case": "DOC-01",
+   "check": "cells_on_page",
+   "basis": "research",
+   "expected": "every cell on page 2",
+   "actual": "all present",
+   "pass": true
+  },
+  {
+   "case": "DOC-01",
+   "check": "prose_quote_verifiable",
+   "basis": "contract",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "case": "DOC-01",
+   "check": "table_row_quote_verifiable",
+   "basis": "research",
+   "expected": [
+    "Yes 60% 64% 56%",
+    "No 35% 31% 39%",
+    "Don't know 5% 5% 5%",
+    "Base 1000 480 520"
+   ],
+   "actual": {
+    "verified": [
+     "Yes 60% 64% 56%",
+     "No 35% 31% 39%",
+     "Don't know 5% 5% 5%",
+     "Base 1000 480 520"
+    ]
+   },
+   "pass": true,
+   "note": "A claim read from a table row, quoted as the row reads, should verify against its page (C3)."
+  },
+  {
+   "case": "DOC-02",
+   "check": "rows_each_on_one_page",
+   "basis": "research",
+   "expected": "all 70 rows found, each on one page",
+   "actual": {
+    "allFound": true,
+    "pagesUsed": [
+     5,
+     6
+    ]
+   },
+   "pass": true
+  },
+  {
+   "case": "DOC-02",
+   "check": "table_spans_pages",
+   "basis": "research",
+   "expected": "table starts on page 5 and continues on page 6",
+   "actual": [
+    5,
+    6
+   ],
+   "pass": true,
+   "note": "Precondition for the cross-chunk case in part 2 (5 pages per model call)."
+  },
+  {
+   "case": "DOC-03",
+   "check": "page_count",
+   "basis": "contract",
+   "expected": 2,
+   "actual": 2,
+   "pass": true
+  },
+  {
+   "case": "DOC-03",
+   "check": "table1_cells_on_page",
+   "basis": "research",
+   "expected": "every cell on page 1",
+   "actual": "all present",
+   "pass": true
+  },
+  {
+   "case": "DOC-03",
+   "check": "table1_row_quote_verifiable",
+   "basis": "research",
+   "expected": 3,
+   "actual": 3,
+   "pass": true
+  },
+  {
+   "case": "DOC-03",
+   "check": "table2_cells_on_page",
+   "basis": "research",
+   "expected": "every cell on page 2",
+   "actual": "all present",
+   "pass": true
+  },
+  {
+   "case": "DOC-03",
+   "check": "table2_row_quote_verifiable",
+   "basis": "research",
+   "expected": 4,
+   "actual": 4,
+   "pass": true
+  },
+  {
+   "case": "DOC-03",
+   "check": "group_header_in_text",
+   "basis": "research",
+   "expected": "Wave 1 and Wave 2 present",
+   "actual": {
+    "wave1": true,
+    "wave2": true
+   },
+   "pass": true
+  },
+  {
+   "case": "DOC-04",
+   "check": "page_count",
+   "basis": "contract",
+   "expected": 4,
+   "actual": 4,
+   "pass": true,
+   "note": "Each slide becomes one PDF page (convertToPdf.ts)"
+  },
+  {
+   "case": "DOC-04",
+   "check": "native_table_cells_on_slide",
+   "basis": "research",
+   "expected": "every cell on page 2",
+   "actual": "all present",
+   "pass": true
+  },
+  {
+   "case": "DOC-04",
+   "check": "chart_values_readable",
+   "basis": "research",
+   "expected": {
+    "categories": [
+     "Male",
+     "Female"
+    ],
+    "values": [
+     34,
+     26
+    ]
+   },
+   "actual": {
+    "categories": [
+     "Male",
+     "Female"
+    ],
+    "values": [
+     "34",
+     "26"
+    ]
+   },
+   "pass": true,
+   "note": "The chart's data are in the file (embedded chart workbook); only what LibreOffice draws as text reaches the page text."
+  },
+  {
+   "case": "DOC-04",
+   "check": "picture_table_readable",
+   "basis": "research",
+   "expected": "table values readable (or the slide flagged as an unread image)",
+   "actual": {
+    "valuesFound": 0,
+    "textLength": 30
+   },
+   "pass": false,
+   "severity": "S3",
+   "note": "No OCR and no flag: an image of a table is silently invisible."
+  },
+  {
+   "case": "DOC-05",
+   "check": "image_only_text",
+   "basis": "research",
+   "expected": "no text (values only in an image)",
+   "actual": {
+    "pages": 1,
+    "chars": [
+     0
+    ]
+   },
+   "pass": true,
+   "note": "Precondition for the refusal case in part 2."
+  },
+  {
+   "case": "B-01",
+   "check": "stored",
+   "basis": "contract",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "case": "B-01",
+   "check": "label_and_page",
+   "basis": "contract",
+   "expected": {
+    "label": "Table 1: Awareness of Brand X by gender (column %)",
+    "page": 2
+   },
+   "actual": {
+    "label": "Table 1: Awareness of Brand X by gender (column %)",
+    "page": 2
+   },
+   "pass": true
+  },
+  {
+   "case": "B-01",
+   "check": "cell_identity",
+   "basis": "contract",
+   "expected": {
+    "Total": "60%",
+    "Male": "64%",
+    "Female": "56%"
+   },
+   "actual": {
+    "Male": "64%",
+    "Total": "60%",
+    "Female": "56%",
+    "Response": "Yes"
+   },
+   "pass": true
+  },
+  {
+   "case": "B-01",
+   "check": "base_row_kept",
+   "basis": "contract",
+   "expected": "Base 1000 480 520",
+   "actual": {
+    "Male": "480",
+    "Total": "1000",
+    "Female": "520",
+    "Response": "Base"
+   },
+   "pass": true
+  },
+  {
+   "case": "B-02",
+   "check": "stored",
+   "basis": "contract",
+   "expected": 2,
+   "actual": 2,
+   "pass": true
+  },
+  {
+   "case": "B-02",
+   "check": "repeated_subheaders_distinct",
+   "basis": "research",
+   "expected": "4 value columns: Wave 1 Yes 48%, Wave 1 No 52%, Wave 2 Yes 55%, Wave 2 No 45%",
+   "actual": {
+    "headers": [
+     "Province",
+     "Wave 1: Yes",
+     "Wave 1: No",
+     "Wave 2: Yes",
+     "Wave 2: No"
+    ],
+    "gauteng": {
+     "Province": "Gauteng",
+     "Wave 1: No": "52%",
+     "Wave 2: No": "45%",
+     "Wave 1: Yes": "48%",
+     "Wave 2: Yes": "55%"
+    },
+    "valuesKept": 5
+   },
+   "pass": true,
+   "note": "Rows are mapped onto headers by name (setCell); a repeated name keeps only the last value, so Wave 1 is lost while headers still list it twice."
+  },
+  {
+   "case": "B-02",
+   "check": "group_row_kept",
+   "basis": "research",
+   "expected": "Wave 1 / Wave 2 identity on the columns",
+   "actual": [
+    "Province",
+    "Wave 1: Yes",
+    "Wave 1: No",
+    "Wave 2: Yes",
+    "Wave 2: No"
+   ],
+   "pass": true,
+   "note": "record_tables has one header row; a group row has nowhere to go."
+  },
+  {
+   "case": "B-03",
+   "check": "one_table_all_rows",
+   "basis": "research",
+   "expected": {
+    "tables": 1,
+    "rows": 70,
+    "label": "Table 5: Account ownership by region (row %)"
+   },
+   "actual": {
+    "tables": 1,
+    "rows": 70,
+    "labels": [
+     "Table 5: Account ownership by region (row %)"
+    ]
+   },
+   "pass": true,
+   "note": "Pages go to the model 5 at a time (PAGES_PER_TABLE_DETECTION_CALL); nothing joins a table that continues into the next call."
+  },
+  {
+   "case": "B-04",
+   "check": "failure_not_reported_as_absence",
+   "basis": "contract",
+   "expected": "an error saying table detection did not complete (retry), not 'No tables were found'",
+   "actual": "1 of 1 part(s) of this document could not be read for tables, so no tables were stored: The reading of the document's tables was cut off before it finished, so nothing from it was used. Try again.",
+   "pass": true,
+   "note": "Standing requirement 1: distinguish absent information from failed retrieval."
+  },
+  {
+   "case": "B-05",
+   "check": "impossible_page_not_stored",
+   "basis": "research",
+   "expected": "source_page null or the answer refused (document has 2 pages)",
+   "actual": [
+    null
+   ],
+   "pass": true
+  },
+  {
+   "case": "B-06",
+   "check": "ragged_rows_flagged",
+   "basis": "research",
+   "expected": "a row whose length does not match the headers is refused or flagged",
+   "actual": {
+    "stored": 1,
+    "notes": [
+     "1 row has more cells than there are columns; the cells beyond the last column were left out.",
+     "1 row has fewer cells than there are columns; the missing cells are blank."
+    ]
+   },
+   "pass": true,
+   "note": "Extra cells are dropped and missing cells become blank; both are now recorded with the table."
+  },
+  {
+   "case": "B-07",
+   "check": "image_only_refused_before_model",
+   "basis": "contract",
+   "expected": "the 'no page text ... scanned or image-based' refusal, with no model call",
+   "actual": {
+    "error": "No page text could be extracted from this file, so no tables could be found in it. If it's a scanned or image-based PDF, table extraction from scans isn't supported yet.",
+    "modelCalls": 0
+   },
+   "pass": true,
+   "note": "documentTables.ts refuses only when pages.length is 0; an image-only PDF has a page with empty text."
+  },
+  {
+   "case": "B-08",
+   "check": "native_table_slide",
+   "basis": "contract",
+   "expected": 2,
+   "actual": [
+    2
+   ],
+   "pass": true
+  },
+  {
+   "case": "B-08",
+   "check": "chart_data_as_table",
+   "basis": "research",
+   "expected": "the chart's data (Male 34, Female 26) available as a table",
+   "actual": "1 table(s), none from the chart",
+   "pass": false,
+   "severity": "S2",
+   "note": "Chart data never reach the table pipeline: the prompt asks for printed tables and the page text holds at most the drawn labels."
+  },
+  {
+   "case": "C-01",
+   "check": "no_accepted_finding_from_total_row",
+   "basis": "research",
+   "expected": 0,
+   "actual": {
+    "stored": 0,
+    "fromTotalRow": []
+   },
+   "pass": true,
+   "note": "Row 5 is the Total row; these are stored with status accepted."
+  },
+  {
+   "case": "C-01",
+   "check": "claim_against_percent_formatted_table",
+   "basis": "research",
+   "expected": "supports (0.6 formatted as 60%)",
+   "actual": [
+    {
+     "stance": "supports",
+     "summary": "Stated 60%; the table gives 60 for Yes / Percent. Matches within rounding. (Read as a percentage: the table labels its figures as percentages and this column holds values from 0 to 1, read as proportions.)",
+     "dataset": "agg02_frequency_pctformat.xlsx"
+    }
+   ],
+   "pass": true,
+   "note": "End to end through loadViews, candidates, the recorded atom and store."
+  },
+  {
+   "case": "C-01",
+   "check": "model_shown_exact_values",
+   "basis": "research",
+   "expected": "the table as stored: 0.6, 0.35, 0.05",
+   "actual": [
+    "  Yes: 600 | 60",
+    "  No: 350 | 35",
+    "  Don't know: 50 | 5"
+   ],
+   "pass": false,
+   "severity": "S3",
+   "note": "claimTableChecks.render rounds every value to one decimal: 0.35 is shown as 0.4 and 0.05 as 0.1."
+  },
+  {
+   "case": "C-02",
+   "check": "right_table_offered_among_others",
+   "basis": "research",
+   "expected": "the claim's own table (agg02) is among the tables shown to the model",
+   "actual": [
+    {
+     "stance": "silent",
+     "summary": "No table in this project speaks to this claim.",
+     "dataset": null
+    }
+   ],
+   "pass": false,
+   "severity": "S3",
+   "note": "candidates(): at most 6 tables by shared words, 2 per data set; report tables mentioning Brand X and Yes outrank the claim's table."
+  }
+ ],
+ "extra": {
+  "DOC-01.pages": [
+   "Brand X tracker, wave 3 Awareness of Brand X reached 60% of adults this wave. Men were more aware than women (64% against 56%). Table 1 gives the full results.",
+   "Table 1: Awareness of Brand X by gender (column %) Response Total Male Female Yes 60% 64% 56% No 35% 31% 39% Don't know 5% 5% 5% Base 1000 480 520"
+  ],
+  "DOC-02.rowPages": [
+   5,
+   6
+  ],
+  "DOC-02.pageCount": 6,
+  "DOC-03.pages": [
+   "Mobile money report Table 3: Uses mobile money, wave 1 and wave 2 (row %) Wave 1 Wave 2 Province Yes No Yes No Gauteng 48% 52% 55% 45% Limpopo 31% 69% 39% 61% Western Cape 44% 56% 47% 53%",
+   "Table 1: Awareness of Brand X by gender (column %) Response Total Male Female Yes 60% 64% 56% No 35% 31% 39% Don't know 5% 5% 5% Base 1000 480 520"
+  ],
+  "DOC-04.pages": [
+   "Brand X tracker deck",
+   "Table 1: Awareness of Brand X by gender (column %) Response Total Male Female Yes 60% 64% 56% No 35% 31% 39% Don't know 5% 5% 5% Base 1000 480 520",
+   "Very satisfied by gender (%) Male Female 0 5 10 15 20 25 30 35 40 34 26 Very satisfied",
+   "Awareness (picture of a table)"
+  ],
+  "DOC-05.pages": [
+   {
+    "n": 1,
+    "chars": 0
+   }
+  ],
+  "B-03.calls": [
+   [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   [
+    6
+   ]
+  ],
+  "C-01.generated": [],
+  "C-01.locatePrompt": [
+   "[T1] data set \"agg02_frequency_pctformat.xlsx\", table \"Table\"\nColumns: Count | Percent\n  Yes: 600 | 60\n  No: 350 | 35\n  Don't know: 50 | 5\n  Total: 1000 | 100\nClaim: 60% of adults have heard of Brand X (Response Yes, Percent)."
+  ],
+  "C-02.locatePrompt": [
+   "[T1] data set \"doc01_report_table.docx\", table \"Table 1: Awareness of Brand X by gender (column %)\"\nColumns: Total | Male | Female\n  Yes: 60 | 64 | 56\n  No: 35 | 31 | 39\n  Don't know: 5 | 5 | 5\n\n[T2] data set \"doc03_tables.pdf\", table \"Table 1: Awareness of Brand X by gender (column %)\"\nColumns: Total | Male | Female\n  Yes: 60 | 64 | 56\n  No: 35 | 31 | 39\n  Don't know: 5 | 5 | 5\n\n[T3] data set \"doc01_report_table.docx\", table \"Table 1: Awareness of Brand X by gender (column %)\"\nColumns: Total | Male | Female\n  Yes: 60 | 64 | 56\n  No: 35 | 31 | 39\n  Don't know: 5 | 5 | 5\n\n[T4] data set \"doc01_report_table.docx\", table \"Table 1: Awareness of Brand X by gender (column %)\"\nColumns: Total | Male | Female\n  Yes: 60 | 64 | 56\n  No: 35 | - | -\n  Don't know: 5 | 5 | 5\n\n[T5] data set \"doc04_deck.pptx\", table \"Table 1: Awareness of Brand X by gender (column %)\"\nColumns: Total | Male | Female\n  Yes: 60 | 64 | 56\n  No: 35 | 31 | 39\n  Don't know: 5 | 5 | 5\n\n[T6] data set \"doc03_tables.pdf\", table \"Table 3: Uses mobile money, wave 1 and wave 2 (row %)\"\nColumns: Wave 1: Yes | Wave 1: No | Wave 2: Yes | Wave 2: No\n  Gauteng: 48 | 52 | 55 | 45\n  Limpopo: 31 | 69 | 39 | 61\n  Western Cape: 44 | 56 | 47 | 53\nClaim: 60% of adults have heard of Brand X (Response Yes, Percent)."
+  ]
+ }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { saveSetupEdit } from "@/lib/dataSetupRebase";
+import { saveSetupEdit, setupReadChanged, setupStructureChanged } from "@/lib/dataSetupRebase";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction, withdrawTranscriptSetupAction } from "@/lib/codingAnalysisActions";
@@ -10,6 +10,8 @@ import { displayDay, displayUtcMinute } from "@/lib/displayDate";
 import { useHydrated } from "@/app/useHydrated";
 import {
   DEFAULT_DATA_SETUP,
+  HEADER_ROWS_SKIPPED_MAX,
+  isPlainTableFileName,
   LAYOUT_LABEL,
   METHOD_LABEL,
   UNIT_LABEL,
@@ -541,6 +543,8 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [layoutChanged, setLayoutChanged] = useState(false);
+  // The header row control's own status: "saved" only once the save has succeeded (decision 9).
+  const [headerStatus, setHeaderStatus] = useState<"saving" | "saved" | null>(null);
   const [autoAccepted, setAutoAccepted] = useState(false);
   const [autoFailed, setAutoFailed] = useState(false);
   const router = useRouter();
@@ -608,8 +612,9 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
 
   // Changing the structure puts the file back to "needs review": what was
   // checked is no longer what will be read.
-  async function save(next: DataSetup) {
-    if (next.unit !== choice.unit || next.layout !== choice.layout || next.method !== choice.method) next = { ...next, accepted: false };
+  // Resolves true once the change is saved (after a rebase over a concurrent save too), false otherwise.
+  async function save(next: DataSetup): Promise<boolean> {
+    if (setupStructureChanged(choice, next)) next = { ...next, accepted: false };
     const previous = choice;
     setChoice(next);
     setError(null);
@@ -622,7 +627,8 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
     setPending(false);
     if (r.status === "saved") {
       setChoice(r.setup);
-      if (r.setup.layout !== r.savedOver.layout) await readAgainForLayout();
+      if (setupReadChanged(r.savedOver, r.setup)) await readAgainForLayout();
+      return true;
     } else if (r.status === "conflict") {
       setChoice(r.current ?? previous);
       setError("This file's set-up changed elsewhere just now; showing the latest version. Make your change again if it's still needed.");
@@ -631,6 +637,15 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
       if (r.current) setChoice(r.current);
       setError(r.error);
     }
+    return false;
+  }
+
+  async function saveHeaderRow(value: string) {
+    const headerRowsSkipped = value === "" ? null : Number(value);
+    if (headerRowsSkipped === choice.headerRowsSkipped) return;
+    setHeaderStatus("saving");
+    const ok = await save({ ...choice, headerRowsSkipped });
+    setHeaderStatus(ok ? "saved" : null);
   }
 
   // While the first-view acceptance above is on its way, the file is being saved, not waiting for
@@ -680,6 +695,35 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
           ))}
         </select>
         </Field>
+        {isPlainTableFileName(row.filename) && (
+          <Field label="Header row">
+            {/* Decision 9, second part: the row naming the variables, counted from the top over rows holding text.
+                Every row above it is set aside as a title row and named on the Data quality tab. Changing it reads the
+                file again and asks for acceptance again, as a layout change does. */}
+            <select
+              aria-label={`Header row: ${row.filename}`}
+              data-testid="header-row-choice"
+              disabled={!editable}
+              className={`${select} w-full`}
+              value={choice.headerRowsSkipped === null ? "" : String(choice.headerRowsSkipped)}
+              onChange={(e) => void saveHeaderRow(e.target.value)}
+            >
+              <option value="">Detected automatically</option>
+              {Array.from({ length: HEADER_ROWS_SKIPPED_MAX + 1 }, (_, n) => (
+                <option key={n} value={String(n)}>
+                  Row {n + 1}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted" data-testid="header-row-status">
+              {headerStatus === "saving"
+                ? "Saving the header row."
+                : headerStatus === "saved"
+                  ? "Header row saved. Rows above it are set aside as title rows."
+                  : "Rows are counted from the top, skipping blank rows."}
+            </p>
+          </Field>
+        )}
         <Field label="How collected">
         <select
           aria-label={`How the data was collected: ${row.filename}`}
@@ -745,7 +789,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
       <LoadingHint ready={ready} />
       {layoutChanged && !error && (
         <p className="text-[11px] text-muted">
-          Layout changed. Reading the file again the new way, then the preview and quality checks update.
+          How the file is read changed. Reading the file again the new way, then the preview and quality checks update.
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">

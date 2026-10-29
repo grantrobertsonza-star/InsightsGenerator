@@ -11,12 +11,15 @@ import { mapWithConcurrency } from "./concurrency";
 import type { ArchiveReason } from "./findingArchive";
 import { loadDataSetupWithStatus, transposeTable } from "./dataSetup";
 import { setCell, type TableCell } from "./rowCells";
+import { joinAcrossParts, shapeTable, type ShapedTable } from "./documentTableShape";
 
 type ExtractedTable = {
   label: string | null;
   sourcePage: number | null;
   headers: string[];
   rows: Record<string, TableCell>[];
+  /** A table read from a document's pages: what its reading adjusted (documentTableShape.ts). */
+  notes?: string[];
 };
 
 /** How an engine-read table was read, stored on document_tables.read_provenance (migration 0116). */
@@ -26,6 +29,14 @@ export type TableReadProvenance = {
   layout: "rows_are_cases" | "columns_are_cases";
   encoding: string | null;
   dateColumns: string[];
+  /** Absent on tables read before it was recorded: unknown, so no warning is shown for them. */
+  naCodeColumns?: string[];
+  /** Title rows set aside above the header (decision 9); absent on tables read before it was recorded. */
+  titleRows?: string[];
+  /** The header row choice the file was read under (DataSetup.headerRowsSkipped; decision 9, second part): null when
+   * detected automatically. Absent on tables read before it was recorded, which were all read with detection, so
+   * absent is read as null (importPreviewIdentity.ts). */
+  headerRowsSkipped?: number | null;
 };
 
 let readProvenanceColumn: boolean | null = null;
@@ -74,7 +85,9 @@ async function detectTablesAcrossPages(
         "you find, extract it exactly as printed: give a short label if the page has a caption or title " +
         "for it (otherwise omit the label), the column headers in order, and every data row as an array " +
         "of cell values in that same column order, using numbers where a cell is numeric and strings " +
-        "otherwise. Skip anything with fewer than 2 data rows. Do not summarize, reformat, or invent " +
+        "otherwise. When a group row spans several columns above the column headers (a banner such as " +
+        "Wave 1 over Yes and No), give each column's group in column_groups, in the same order. " +
+        "Skip anything with fewer than 2 data rows. Do not summarize, reformat, or invent " +
         "values; the numbers in your rows must match what's on the page exactly, since a statistical " +
         "check runs against them afterward.",
       tool_choice: { type: "tool", name: "record_tables" },
@@ -96,6 +109,11 @@ async function detectTablesAcrossPages(
                       description: "The table's caption or title, if the page has one.",
                     },
                     headers: { type: "array", items: { type: "string" } },
+                    column_groups: {
+                      type: "array",
+                      items: { type: ["string", "null"] },
+                      description: "Each column's group from a row spanning several columns above the headers, or null.",
+                    },
                     rows: {
                       type: "array",
                       items: { type: "array", items: { type: ["string", "number", "null"] } },
@@ -128,40 +146,16 @@ async function detectTablesAcrossPages(
     // fails the read like any other unfinished part.
     if (!Array.isArray(rawTables)) return { unfinished: "The reading of the document's tables returned no list of tables." };
 
-    const tables: ExtractedTable[] = [];
-    for (const raw of rawTables as Record<string, unknown>[]) {
-      const pageNumber = typeof raw.page_number === "number" ? raw.page_number : null;
-      const label = typeof raw.label === "string" && raw.label.trim() !== "" ? raw.label.trim() : null;
-      const headers = Array.isArray(raw.headers)
-        ? raw.headers.filter((h): h is string => typeof h === "string")
-        : [];
-      const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
-
-      if (headers.length === 0 || rawRows.length === 0) continue;
-
-      const rows = rawRows
-        .filter((row): row is unknown[] => Array.isArray(row))
-        .map((row) => {
-          const record: Record<string, TableCell> = {};
-          headers.forEach((header, index) => {
-            const cell = row[index];
-            setCell(record, header, typeof cell === "string" || typeof cell === "number" ? cell : null);
-          });
-          return record;
-        });
-
-      if (rows.length === 0) continue;
-
-      tables.push({ label, sourcePage: pageNumber, headers, rows });
-    }
-    return tables;
+    const pages = new Set(chunk.map((p) => p.pageNumber));
+    const tables = (rawTables as Record<string, unknown>[]).map((raw) => shapeTable(raw, pages)).filter((t): t is ShapedTable => t !== null);
+    return { firstPage: chunk[0].pageNumber, lastPage: chunk[chunk.length - 1].pageNumber, tables };
   });
 
-  const unfinished = chunkResults.flatMap((r) => (Array.isArray(r) ? [] : [r.unfinished]));
+  const unfinished = chunkResults.flatMap((r) => ("unfinished" in r ? [r.unfinished] : []));
   if (unfinished.length > 0) {
     throw new Error(`${unfinished.length} of ${chunks.length} part(s) of this document could not be read for tables, so no tables were stored: ${unfinished[0]}`);
   }
-  return chunkResults.flatMap((r) => (Array.isArray(r) ? r : []));
+  return joinAcrossParts(chunkResults.flatMap((r) => ("unfinished" in r ? [] : [r])));
 }
 
 /**
@@ -214,21 +208,32 @@ export async function extractAndStoreDocumentTables(
   let extracted: ExtractedTable[];
   let provenance: TableReadProvenance | null = null;
 
-  // The layout decides how the file is read (a columns-as-cases file is flipped by the reader). A
-  // setting that cannot be read fails the read: guessing an orientation would store the wrong table.
+  // The layout decides how the file is read (a columns-as-cases file is flipped by the reader), and the header row
+  // choice which row names the variables. A setting that cannot be read fails the read: guessing an orientation or a
+  // header would store the wrong table.
   let layout: TableReadProvenance["layout"] = "rows_are_cases";
+  let headerRowsSkipped: number | null = null;
   if (document.ingestion_type === "raw") {
     const setup = await loadDataSetupWithStatus(tenantId, documentId);
     if (!setup.ok) {
       throw new Error(`This file's layout setting could not be read (${setup.error}), so it was not read. Try again.`);
     }
     layout = setup.setup.layout;
+    headerRowsSkipped = setup.setup.headerRowsSkipped;
+  }
+  // Only CSV, TSV, text and Excel files have a header row. A choice saved for another format is refused, as every
+  // calculation refuses it (_read_raw_uncached), rather than ignored here and the table stored a different way.
+  if (headerRowsSkipped !== null && !isPlainTableFileName(lowerName)) {
+    throw new Error(
+      "This file's header row is set, but only CSV, TSV, text and Excel files have a header row. Set the header row " +
+        "back to detected automatically for this file.",
+    );
   }
 
   if (isPlainTableFileName(lowerName)) {
     // The one reader (parseTable.ts): the engine reads the file, applying the layout, so the stored
     // table is exactly what every calculation reads. Nothing is flipped or retyped here.
-    let parsed = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet, layout });
+    let parsed = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: document.selected_sheet, layout, headerRowsSkipped });
     // IMP-SHIP-001 (Codex round 2, "a losing publisher must adopt that choice and reparse
     // before returning, caching or saving data"): find out which sheet is ACTUALLY
     // authoritative after attempting to persist this read's own choice. If a dictionary
@@ -243,10 +248,10 @@ export async function extractAndStoreDocumentTables(
       parsed.sheetName,
     );
     if (authoritative !== parsed.sheetName) {
-      parsed = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative, layout });
+      parsed = await parseTableDocument(document.storage_path, document.source_filename, { selectedSheet: authoritative, layout, headerRowsSkipped });
     }
     extracted = [{ label: null, sourcePage: null, headers: parsed.headers, rows: parsed.rows }];
-    provenance = { reader: parsed.reader, sheet: parsed.sheetName, layout, encoding: parsed.encoding, dateColumns: parsed.dateColumns };
+    provenance = { reader: parsed.reader, sheet: parsed.sheetName, layout, encoding: parsed.encoding, dateColumns: parsed.dateColumns, naCodeColumns: parsed.naCodeColumns, titleRows: parsed.titleRows, headerRowsSkipped };
     // Codex round 3, "preserve the qualification through extraction": an identifier column whose
     // Excel format the engine cannot reproduce is blank in preview and calculation alike, and is
     // recorded so the Import screen shows a recovery message instead of importing it silently.
@@ -377,6 +382,17 @@ export async function extractAndStoreDocumentTables(
         params,
       );
       ids.push(result.rows[0].id);
+    }
+    // What the reading of a document's tables adjusted (documentTableShape.ts: groups named, a table joined across
+    // parts, a page the document lacks, rows longer or shorter than the columns), recorded with the tables, in the
+    // same transaction, for the Import screen and review.
+    const adjusted = extracted.flatMap((t, index) => (t.notes && t.notes.length > 0 ? [{ tableId: ids[index], label: t.label, notes: t.notes }] : []));
+    if (adjusted.length > 0) {
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'document_table_reading_notes', $3)`, [
+        tenantId,
+        runId,
+        JSON.stringify({ documentId, tables: adjusted }),
+      ]);
     }
     return ids;
   });

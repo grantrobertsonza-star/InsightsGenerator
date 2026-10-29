@@ -40,6 +40,12 @@ export type DataSetup = {
    * null means "never decided" (see DataDesignChoice above) - the default for every document,
    * including every one saved before this field existed. */
   design: DataDesignChoice | null;
+  /** The header row of a CSV, TSV or Excel data file (Grant's decision 9, second part): how many rows holding text
+   * lie above the header, all set aside as title rows. null means detected automatically by the engine
+   * (_leading_title_rows), the default for every document, including every one saved before this field existed. A
+   * structure setting like `layout`: every engine read of the file passes it, and changing it asks for acceptance
+   * again (dataSetupRebase.ts). */
+  headerRowsSkipped: number | null;
 };
 
 export const DEFAULT_DATA_SETUP: DataSetup = {
@@ -51,6 +57,7 @@ export const DEFAULT_DATA_SETUP: DataSetup = {
   waveDate: null,
   waveIncluded: true,
   design: null,
+  headerRowsSkipped: null,
 };
 
 /**
@@ -91,6 +98,34 @@ export const METHOD_LABEL: Record<DataMethod, string> = {
   other: "Other",
 };
 
+/** The most rows a header row choice sets aside: the Import screen offers rows 1 to 15. The engine's own bound
+ * (_HEADER_ROWS_SKIPPED_MAX, api/parse-stats-file.py) is the same; headerRowChoice.test.ts keeps them equal. */
+export const HEADER_ROWS_SKIPPED_MAX = 14;
+
+/**
+ * A header row choice as sent by a client or read from storage: null (detected automatically) or a whole number from 0
+ * to HEADER_ROWS_SKIPPED_MAX. Anything else is invalid, never read as 0 and never as detection; the save action refuses
+ * it (dataSetupActions.ts) before anything is written.
+ */
+export function parseHeaderRowsSkipped(value: unknown): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === null || value === undefined) return { ok: true, value: null };
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= HEADER_ROWS_SKIPPED_MAX) return { ok: true, value };
+  return {
+    ok: false,
+    error: `The header row must be a row from 1 to ${HEADER_ROWS_SKIPPED_MAX + 1}, or detected automatically.`,
+  };
+}
+
+/**
+ * CSV, TSV, delimited text (.txt) and Excel: the files the engine's one plain-table reader reads
+ * (TABLE_EXTS in api/parse-stats-file.py), and so the files with a header row to choose. Asked only of table
+ * documents, so a .txt transcript or brief never reaches it. Kept here, with no server import, so the Import screen
+ * uses the same rule; parseTable.ts re-exports it.
+ */
+export function isPlainTableFileName(filename: string): boolean {
+  return /\.(csv|tsv|txt|xlsx|xls)$/i.test(filename);
+}
+
 function normaliseDesign(value: unknown): DataDesignChoice | null {
   if (value == null || typeof value !== "object") return null;
   const v = value as Partial<DataDesignChoice>;
@@ -127,5 +162,9 @@ export function normaliseDataSetup(value: unknown): DataSetup {
     waveDate: normaliseWaveDate(v.waveDate),
     waveIncluded: v.waveIncluded !== false,
     design: normaliseDesign(v.design),
+    // Only the save action writes this field, and it refuses an invalid value first; a stored value that is somehow
+    // invalid (a hand edit) reads as detected automatically, the behaviour every file had before the choice existed,
+    // and the save action refuses to write it back.
+    headerRowsSkipped: ((r) => (r.ok ? r.value : null))(parseHeaderRowsSkipped(v.headerRowsSkipped)),
   };
 }

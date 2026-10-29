@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
 import { useBandColumns } from "./BandColumns";
 import { saveRunContextFromForm } from "@/lib/runContextActions";
@@ -77,6 +77,29 @@ export default function RunContextForm({
     if (rereadRef.current) rereadRef.current.value = "";
   }
   const rereadFill = result?.fill?.status === "filled" && result.fill.reread ? result.fill : null;
+  // Filled without a click (Grant, 29 October 2026: "I imported a brief into the brand tracker, but objectives were
+  // not extracted automatically"): a project with no business problem, no objectives and no fill yet, whose imported
+  // documents include exactly one brief (and at most one proposal), is filled from them when this form first shows,
+  // through the same save as the Save button (blank fields only; a failure is recorded and shown with its retry). Once
+  // a fill has run or failed, or anything is written, the page no longer meets the condition, so it never repeats.
+  const importedBriefs = documents.filter((d) => d.role === "brief");
+  const importedProposals = documents.filter((d) => d.role === "proposal");
+  const autoFill =
+    !businessProblem?.trim() && !objective?.trim() && lastFill === null && !failedFill && importedBriefs.length === 1 && importedProposals.length <= 1
+      ? { brief: importedBriefs[0], proposal: importedProposals[0] ?? null }
+      : null;
+  const autoRan = useRef(false);
+  const [autoFilling, setAutoFilling] = useState<string | null>(null);
+  useEffect(() => {
+    if (!autoFill || autoRan.current || result) return;
+    autoRan.current = true;
+    if (briefRef.current) briefRef.current.value = autoFill.brief.id;
+    if (proposalRef.current) proposalRef.current.value = autoFill.proposal?.id ?? "";
+    setAutoFilling([autoFill.brief.filename, autoFill.proposal?.filename].filter(Boolean).join(" and "));
+    formRef.current?.requestSubmit();
+    if (briefRef.current) briefRef.current.value = "";
+    if (proposalRef.current) proposalRef.current.value = "";
+  }, [autoFill, result]);
   const canRetry = !!failure && [failure.briefDocumentId, failure.proposalDocumentId].some((id) => !!id && documentIds.has(id));
   const skipped = result ? [
     ...(result.alreadyInProject > 0 ? [`${result.alreadyInProject} already in this project`] : []),
@@ -98,6 +121,11 @@ export default function RunContextForm({
             Choose an imported brief and/or proposal and we will fill in whichever fields below you leave blank when you save. Text you type yourself always wins. Add files under Import data.
             The choice applies to one save, so it shows Not used again afterwards; choose a document again to fill again.
           </p>
+          {autoFilling && !result && (
+            <p role="status" className="mt-1.5 text-xs font-medium text-sky-800" data-testid="brief-auto-fill">
+              {`Filling in the business problem and objectives from ${autoFilling}, imported as the brief...`}
+            </p>
+          )}
           {failure && (
             <div role="alert" className="mt-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800" data-testid="brief-fill-failed">
               <p>{failedFillText(failure)}</p>

@@ -38,7 +38,7 @@ const FAKE_DICT = {
   sets: [],
 } as never;
 
-const BASE_SETUP: DataSetup = { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, waveDate: null, waveIncluded: true, design: null };
+const BASE_SETUP: DataSetup = { unit: "respondents", layout: "rows_are_cases", method: "survey", accepted: false, wave: null, waveDate: null, waveIncluded: true, design: null, headerRowsSkipped: null };
 const OK_SETUP_STATUS: { ok: true; setup: DataSetup } = { ok: true, setup: BASE_SETUP };
 const FAILED_SETUP_STATUS = (error: string): { ok: false; setup: DataSetup; error: string } => ({
   ok: false,

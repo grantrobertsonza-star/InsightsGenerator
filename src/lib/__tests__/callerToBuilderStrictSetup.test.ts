@@ -69,7 +69,7 @@ vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequest
 
 vi.setConfig({ testTimeout: 20000 });
 
-const FAILED_SETUP = { ok: false as const, setup: { unit: "respondents" as const, layout: "rows_are_cases" as const, method: "survey" as const, accepted: false, wave: null, waveDate: null, waveIncluded: true, design: null }, error: "permission denied for table documents" };
+const FAILED_SETUP = { ok: false as const, setup: { unit: "respondents" as const, layout: "rows_are_cases" as const, method: "survey" as const, accepted: false, wave: null, waveDate: null, waveIncluded: true, design: null, headerRowsSkipped: null }, error: "permission denied for table documents" };
 
 function mockDocumentRead() {
   vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) =>

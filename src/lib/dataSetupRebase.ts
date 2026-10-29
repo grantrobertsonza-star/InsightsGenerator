@@ -3,7 +3,7 @@
 // moment). The edit is re-applied on top of what is saved when the other save changed none of the fields this edit
 // changed; it is still a conflict, shown as before, when both changed the same field.
 //
-// Acceptance is of a structure (what a case is, layout, method), so it is judged in both directions (Codex E1-F02):
+// Acceptance is of a structure (what a case is, layout, header row, method), so it is judged in both directions (Codex E1-F02):
 //   - this edit changes the structure: the result asks for acceptance again, whatever the other save accepted;
 //   - the other save changed the structure and this edit accepts: the acceptance was given to the structure this
 //     researcher saw, not the one now saved, so it is a conflict and the latest version is shown to be reviewed.
@@ -14,8 +14,22 @@ import type { DataSetup } from "./dataSetupShared";
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /** The fields an acceptance is given to: changing any of them means the file must be reviewed and accepted again. */
-export const SETUP_STRUCTURE_KEYS = ["unit", "layout", "method"] as const satisfies readonly (keyof DataSetup)[];
+export const SETUP_STRUCTURE_KEYS = ["unit", "layout", "headerRowsSkipped", "method"] as const satisfies readonly (keyof DataSetup)[];
+/** The fields that decide how the file is read: changing either reads the stored table again. */
+const SETUP_READ_KEYS = ["layout", "headerRowsSkipped"] as const satisfies readonly (keyof DataSetup)[];
 const sameStructure = (a: DataSetup, b: DataSetup) => SETUP_STRUCTURE_KEYS.every((k) => same(a[k], b[k]));
+
+/** Whether going from one set-up to another changes what the data is, which asks for acceptance again. The one rule
+ * the Import screen's save and the rebase use. */
+export function setupStructureChanged(from: DataSetup, to: DataSetup): boolean {
+  return !sameStructure(from, to);
+}
+
+/** Whether going from one set-up to another changes how the file is read (the layout or the header row), so the
+ * stored table is read again. */
+export function setupReadChanged(from: DataSetup, to: DataSetup): boolean {
+  return SETUP_READ_KEYS.some((k) => !same(from[k], to[k]));
+}
 
 export function rebaseSetupEdit(previous: DataSetup, next: DataSetup, current: DataSetup): DataSetup | null {
   const keys = Object.keys(next) as (keyof DataSetup)[];
@@ -42,7 +56,7 @@ export type SetupEditOutcome =
 /**
  * Saves a set-up edit made from `previous` (the version the researcher saw), compare-and-swap; on a conflict, applies
  * the edit once more on top of what is saved when rebaseSetupEdit allows it, and otherwise reports the conflict with
- * what is saved, never the edit. `savedOver` is the version the saved setup replaced (for "was the layout changed").
+ * what is saved, never the edit. `savedOver` is the version the saved setup replaced (for "must the file be read again").
  * The Setup tab calls this through saveDataSetupAction; tests call it with saveDataSetup itself.
  */
 export async function saveSetupEdit(save: SaveSetup, previous: DataSetup, next: DataSetup): Promise<SetupEditOutcome> {

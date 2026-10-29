@@ -1,6 +1,28 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchE1R on top of BatchE1 `7e09578c`): repairs of Codex's E1 review: E1-F01 (CSM company changes only for the same company in both waves), E1-F02 (an acceptance is of the structure the researcher saw), E1-F03 (Update table atomic, retry converges), E1-F04 (Read again re-checks automatic codebook confirmations). No migration.
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchT2 on top of BatchE1R `4b14f3c9`): T1's second part ("NA" in a column of country codes kept missing and warned, decision 5; title rows above a header set aside and named, decision 9 first part; Objectives filled from the one imported brief; Word, PDF and PowerPoint tables, path B; D2b part 3), Analytics workspaces staying open through a refresh, and decision 9 second part (the header row chosen on the Import screen; table reader 2026.10.29b, dictionary version 17). No migration.
+
+## Claude: batch T2, main copy (2026-10-29, night)
+
+Implemented, ready for review, on top of BatchE1R (`4b14f3c9`). One package of three parts, each with its handover:
+- T1's second part: `claude/batchT1-handover-2026-10-29.md`, sections three to seven ("NA" in a column of country
+  codes; title rows; Objectives filled from a brief; path B; D2b part 3), and the last section, Analytics workspaces
+  staying open through a refresh (Grant: the Brand tracking dashboard closed by itself; `useKeptOpen`).
+- Decision 9, second part: `claude/batchHR-handover-2026-10-29.md` (the header row chosen on the Import screen). The
+  header row is one of the setup's structure fields, so E1-F02's acceptance rule covers it.
+- The table reader is now `engine-plain-2026.10.29b` and the dictionary version 17, so stored tables and cached
+  dictionaries read earlier are checked against a fresh read, or rebuilt, once. Conformance L1: 324 pass, 0 fail,
+  24 questions. L3: every dataset identical to the previous run.
+No migration.
+
+Gates on the exact tree:
+- On `e8f26e3`: `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py`
+  all passed; library 344 files (342 passed, 2 skipped), 2,575 tests passed, 91 skipped, 0 failed; browser suite
+  148 passed, 1 skipped, 1 failed; smoke 1 passed; objective review acceptance passed.
+- The one failure was the new `header-row-choice.check.mjs` on its first run: the feature worked (the screenshot shows
+  the table read by row 4) but the check looked for the preview's headers by a role the table does not use. The check
+  now reads the header cells (`81c8487`, a test-only change) and passes on the same stack (1 passed).
+- The earlier T2 run (before the rebase on E1R) found two check faults, fixed in `89987b3`; both pass in this run.
 
 ## Claude: batch E1R, main copy (2026-10-29, night)
 

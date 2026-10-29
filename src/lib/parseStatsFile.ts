@@ -521,6 +521,10 @@ export type VariableDictionary = {
    * dictionary was computed, so a cached copy can be told apart from a stale one read under
    * a different orientation. Absent on dictionaries cached before this was tracked. */
   layout?: string | null;
+  /** The document's header row choice (DataSetup.headerRowsSkipped) in effect when this dictionary was computed: a
+   * cached copy read under another header row names other variables and is stale. Absent on dictionaries cached
+   * before the choice existed, all read with the header detected automatically, so absent is read as null. */
+  headerRowsSkipped?: number | null;
   /** An Excel workbook whose label sheets (or codebook) declared two different labels for the
    * same variable or the same value code, and where each came from. Present only when such a
    * conflict was found; capped at 50 entries. IMP-015 (version 7+): neither label is applied -
@@ -750,6 +754,10 @@ export type CrosstabProvenance = {
    * provenance recorded sourceFile/sourceDocumentId but nothing naming which sheet of a
    * multi-sheet workbook the saved numbers came from. */
   selectedSheet?: string | null;
+  /** The header row choice the file was read under (DataSetup.headerRowsSkipped, decision 9): null when detected
+   * automatically. Absent on tables built before it was recorded (all read with detection). Provenance only: a table
+   * is not marked stale by it, the same as for the layout. */
+  headerRowsSkipped?: number | null;
 };
 /** Whole-table association test of one question against one banner variable (first-order Rao-Scott). */
 /** Whole-table test of one answer against one banner variable, with association measures from the weighted table. */

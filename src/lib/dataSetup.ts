@@ -1,5 +1,5 @@
 import { withTenant, withTenantRead } from "./db";
-import { normaliseDataSetup, DEFAULT_DATA_SETUP, type DataSetup } from "./dataSetupShared";
+import { isPlainTableFileName, normaliseDataSetup, DEFAULT_DATA_SETUP, type DataSetup } from "./dataSetupShared";
 import { cellValue, setCell, type TableCell } from "./rowCells";
 
 type Cell = TableCell;
@@ -124,8 +124,25 @@ export async function saveDataSetup(
   documentId: string,
   setup: DataSetup,
   expected?: ExpectedPreviousSetup,
-): Promise<{ saved: true } | { saved: false; current: DataSetup | null; notFound?: boolean }> {
+): Promise<{ saved: true } | { saved: false; current: DataSetup | null; notFound?: boolean; refused?: string }> {
   return withTenant(tenantId, async (client) => {
+    // A header row choice (decision 9) only applies to a CSV, TSV, text or Excel file; every reader refuses it for any
+    // other format, so it is refused here rather than saved where nothing could read the file. Read in this
+    // transaction, scoped to the run, before the write below.
+    if (normaliseDataSetup(setup).headerRowsSkipped !== null) {
+      const f = await client.query<{ source_filename: string }>(
+        "select source_filename from documents where id = $1 and run_id = $2",
+        [documentId, runId],
+      );
+      if (f.rowCount === 0) return { saved: false, current: null, notFound: true };
+      if (!isPlainTableFileName(f.rows[0].source_filename)) {
+        return {
+          saved: false,
+          current: null,
+          refused: "Only CSV, TSV, text and Excel files have a header row to choose; this file names its variables itself.",
+        };
+      }
+    }
     if (expected) {
       const r = await client.query<{ data_setup: unknown }>(
         "select data_setup from documents where id = $1 and run_id = $2 for update",

@@ -200,7 +200,14 @@ describe.skipIf(!HAVE_DB)("Parts 2 and 3: stored tables (disposable database, re
   /** A faithful answer: every truth table whose page is in this call, exactly as printed. */
   const faithful = (tables: (Spec & { page: number })[]) => (_tool: string, content: string) => {
     const seen = pagesIn(content);
-    return { tables: tables.filter((t) => seen.includes(t.page)).map((t) => ({ page_number: t.page, label: t.caption, headers: t.headers, rows: t.rows })) };
+    // A printed group row spans its columns (merged cells: "Wave 1", "" over Yes, No); the schema asks for each
+    // column's group, so a faithful answer carries each group over the columns it spans.
+    const groupsOf = (g?: string[]) => {
+      if (!g) return undefined;
+      let current: string | null = null;
+      return g.map((x) => (x ? (current = x) : current));
+    };
+    return { tables: tables.filter((t) => seen.includes(t.page)).map((t) => ({ page_number: t.page, label: t.caption, headers: t.headers, ...(t.group_row ? { column_groups: groupsOf(t.group_row) } : {}), rows: t.rows })) };
   };
   async function stored(doc: string) {
     return q("select table_index, label, source_page, headers, rows from document_tables where document_id = $1 order by table_index", [doc]);
@@ -296,8 +303,12 @@ describe.skipIf(!HAVE_DB)("Parts 2 and 3: stored tables (disposable database, re
     const doc = await tableDoc("DOC-01", cases["DOC-01"].file);
     const r = await attempt(doc);
     const t = await stored(doc);
+    // Flagged: the reading's notes are recorded with the tables (trace document_table_reading_notes, 29 October 2026).
+    const notes = (await q("select detail from trace where run_id = $1 and event = 'document_table_reading_notes' and detail->>'documentId' = $2", [run, doc]))
+      .flatMap((x) => ((x.detail as { tables: { notes: string[] }[] }).tables ?? []).flatMap((tb) => tb.notes));
+    const flagged = notes.some((n) => /more cells than there are columns/.test(n)) && notes.some((n) => /fewer cells than there are columns/.test(n));
     add("B-06", "ragged_rows_flagged", "research", "a row whose length does not match the headers is refused or flagged",
-      r.ok ? { stored: t.length, rows: t[0]?.rows } : r.error, !r.ok, "S3", "Extra cells are dropped and missing cells become blank with no record.");
+      r.ok ? { stored: t.length, notes } : r.error, !r.ok || flagged, "S3", "Extra cells are dropped and missing cells become blank; both are now recorded with the table.");
   });
 
   it("B-07 image-only PDF uploaded as a table document", async () => {

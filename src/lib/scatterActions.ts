@@ -74,7 +74,7 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
   // The layout decides how the file is read, so a failed lookup must not fall back to a default.
   if (!setupStatus.ok) throw new Error(`This file's saved set-up could not be read: ${setupStatus.error}`);
   const basis = scatterBasis(
-    { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha: content.sha, layout: setupStatus.setup.layout, overlay },
+    { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha: content.sha, layout: setupStatus.setup.layout, headerRowsSkipped: setupStatus.setup.headerRowsSkipped, overlay },
     [xVar, yVar, weightVar],
   );
   const cols = await runStatsTool<Columns>("columns", doc.storage_path, doc.source_filename, {
@@ -84,6 +84,7 @@ async function readPairs(tenantId: string, runId: string, documentId: string, xV
     groupVar: null,
     overlay,
     layout: setupStatus.setup.layout,
+    headerRowsSkipped: setupStatus.setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
   });
   const xInfo = cols.predictors[0];
@@ -133,12 +134,14 @@ type BasisInputs = {
   selectedSheet: string | null;
   contentSha: string | null;
   layout: unknown;
+  /** The header row choice (decision 9); null when detected automatically. */
+  headerRowsSkipped: number | null;
   overlay: LabelOverlay | null;
 };
 
 /**
  * IR-01 (Codex, 2026-10-20): what a posted correlation was computed from, as one hash: the stored
- * file (its path, recorded content hash and chosen sheet), the saved layout, and the questionnaire
+ * file (its path, recorded content hash and chosen sheet), the saved layout and header row choice, and the questionnaire
  * labels for the three variables used (the columns tool reads "no usable answer" codes from them).
  * Labels of other variables are left out, so correcting an unrelated question does not make this
  * finding look out of date. Variable names, never labels, identify the finding itself.
@@ -150,7 +153,12 @@ function scatterBasis(inputs: BasisInputs, variables: (string | null)[]): string
     ? { variableLabels: pick(inputs.overlay.variableLabels), valueLabels: pick(inputs.overlay.valueLabels) }
     : null;
   return createHash("sha256")
-    .update(canonicalJson({ file: inputs.storagePath, sheet: inputs.selectedSheet, content: inputs.contentSha, layout: inputs.layout ?? null, overlay }))
+    // The header row choice is added only when set, so a correlation posted before the choice existed (read with the
+    // header detected automatically) keeps its basis and is not reported as changed.
+    .update(canonicalJson({
+      file: inputs.storagePath, sheet: inputs.selectedSheet, content: inputs.contentSha, layout: inputs.layout ?? null, overlay,
+      ...(inputs.headerRowsSkipped !== null ? { headerRowsSkipped: inputs.headerRowsSkipped } : {}),
+    }))
     .digest("hex");
 }
 
@@ -425,7 +433,7 @@ export async function scatterFindingStatusAction(
       // cannot be compared, so this is unknown rather than current or changed.
       if (setupStatus.ok && content.column === !posted.without_hash) {
         const now = scatterBasis(
-          { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha: content.sha, layout: setupStatus.setup.layout, overlay },
+          { storagePath: doc.storage_path, selectedSheet: doc.selected_sheet, contentSha: content.sha, layout: setupStatus.setup.layout, headerRowsSkipped: setupStatus.setup.headerRowsSkipped, overlay },
           [xVar, yVar, weightVar],
         );
         current = now === posted.basis;

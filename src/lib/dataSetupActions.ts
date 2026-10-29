@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { loadDataSetup, loadDataSetupWithStatus, saveDataSetup, type ExpectedPreviousSetup } from "./dataSetup";
 import { extractAndStoreDocumentTables } from "./documentTables";
-import { normaliseDataSetup, type DataSetup } from "./dataSetupShared";
+import { normaliseDataSetup, parseHeaderRowsSkipped, type DataSetup } from "./dataSetupShared";
 import { requireTenantId } from "./requestContext";
 
 /**
@@ -45,9 +45,15 @@ export async function saveDataSetupAction(
   expected?: ExpectedPreviousSetup,
 ): Promise<{ ok: true } | { ok: false; error: string; conflict?: boolean; current?: DataSetup | null }> {
   const TENANT_ID = await requireTenantId();
+  // The header row choice is checked here, before anything is written: normaliseDataSetup reads an invalid stored
+  // value as detected automatically, which must never be how an invalid request is saved. Whether the file has a
+  // header row at all is checked on the write (saveDataSetup), in the same transaction.
+  const header = parseHeaderRowsSkipped((setup as Partial<DataSetup> | null)?.headerRowsSkipped);
+  if (!header.ok) return { ok: false, error: header.error };
   // No revalidatePath, same as the transcript set-up: the row keeps its own state.
   try {
     const r = await saveDataSetup(TENANT_ID, runId, documentId, normaliseDataSetup(setup), expected);
+    if (!r.saved && r.refused) return { ok: false, error: r.refused };
     if (!r.saved) {
       return {
         ok: false,

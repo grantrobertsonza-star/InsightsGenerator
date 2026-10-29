@@ -1,6 +1,6 @@
 import { runEngineConversion } from "./parseStatsFile";
 import type { TableCell } from "./rowCells";
-import type { DataSetup } from "./dataSetupShared";
+import { isPlainTableFileName, type DataSetup } from "./dataSetupShared";
 
 /**
  * One reader for CSV, TSV and Excel files (Grant, 24 October 2026; Codex TP500-F01/F02, IP1000-F01 to
@@ -23,6 +23,11 @@ export type ParsedTable = {
   encoding: string | null;
   /** Variables holding calendar values, stored as ISO text ("2024-01-01", "2024-01-01T10:30:00"). */
   dateColumns: string[];
+  /** Columns of short letter codes (country codes) in which "NA" was read as missing (Grant's decision 5): "NA" is
+   * also Namibia's code, so the Import screen says how it was read. */
+  naCodeColumns: string[];
+  /** Title rows set aside above the header (decision 9), their text. */
+  titleRows: string[];
   /** The engine reader that produced this table (TABLE_READER in the engine). */
   reader: string;
 };
@@ -46,14 +51,7 @@ export class SheetSelectionLostError extends Error {
   }
 }
 
-/**
- * CSV, TSV, delimited text (.txt) and Excel: the files the engine's one plain-table reader reads
- * (TABLE_EXTS in api/parse-stats-file.py). Asked only of table documents, so a .txt transcript or
- * brief never reaches it.
- */
-export function isPlainTableFileName(filename: string): boolean {
-  return /\.(csv|tsv|txt|xlsx|xls)$/i.test(filename);
-}
+export { isPlainTableFileName };
 
 type EngineTable = Partial<ParsedTable> & {
   sheetSelectionLost?: { documentSheetName: string; availableSheets: string[] };
@@ -64,18 +62,20 @@ const isCell = (v: unknown) => v === null || typeof v === "string" || typeof v =
 /**
  * Reads a CSV, TSV or Excel document through the engine. `selectedSheet` is the persisted sheet choice,
  * used as given (a missing one raises SheetSelectionLostError); `layout` is the document's data layout,
- * applied by the engine (a columns-as-cases file comes back flipped, one row per case). The answer is
+ * applied by the engine (a columns-as-cases file comes back flipped, one row per case); `headerRowsSkipped` is the
+ * document's header row choice (null: detected automatically), applied by the engine the same way. The answer is
  * checked before use: an answer that is not a table (wrong shape, a row that is not an object holding a
  * plain value for every header) fails the read instead of being stored as an empty or partial table.
  */
 export async function parseTableDocument(
   storagePath: string,
   sourceFilename: string,
-  options: { selectedSheet?: string | null; layout?: DataSetup["layout"] } = {},
+  options: { selectedSheet?: string | null; layout?: DataSetup["layout"]; headerRowsSkipped?: DataSetup["headerRowsSkipped"] } = {},
 ): Promise<ParsedTable> {
   const answer = await runEngineConversion<EngineTable>("table", storagePath, sourceFilename, {
     selectedSheet: options.selectedSheet ?? null,
     layout: options.layout ?? "rows_are_cases",
+    headerRowsSkipped: options.headerRowsSkipped ?? null,
   });
   if (answer?.sheetSelectionLost) {
     throw new SheetSelectionLostError(answer.sheetSelectionLost.documentSheetName, answer.sheetSelectionLost.availableSheets ?? []);
@@ -97,6 +97,8 @@ export async function parseTableDocument(
     unsupportedIdentifierColumns: Array.isArray(answer.unsupportedIdentifierColumns) ? answer.unsupportedIdentifierColumns : [],
     encoding: typeof answer.encoding === "string" ? answer.encoding : null,
     dateColumns: Array.isArray(answer.dateColumns) ? answer.dateColumns : [],
+    naCodeColumns: Array.isArray(answer.naCodeColumns) ? answer.naCodeColumns : [],
+    titleRows: Array.isArray(answer.titleRows) ? answer.titleRows : [],
     reader: answer.reader!,
   };
 }

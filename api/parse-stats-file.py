@@ -424,7 +424,12 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
 # table from any other reader (the retired TypeScript preview reader, or an older engine read) is checked
 # against a fresh read before it is shown (importPreviewIdentity.ts).
 # c: Excel cells read without merging TRUE with 1 or FALSE with 0 (CAL-R1-F03).
-TABLE_READER = "engine-plain-2026.10.26c"
+# 2026.10.29a: title rows above the header set aside (decision 9); batch 55's reading repairs (whole numbers beyond
+# 2^53 as exact text, a skipped empty row no longer making whole numbers decimal, the data sheet by filled cells), so a
+# table stored before them is checked against a fresh read.
+# 2026.10.29b: a zero-padded identifier below title rows keeps its own padding (it was read from the row two above), and
+# the researcher's header row choice is applied (decision 9, second part).
+TABLE_READER = "engine-plain-2026.10.29b"
 # The same for SPSS, Stata, SAS, R and Parquet tables (convert). 2026.10.27: R and Parquet whole numbers
 # beyond 2^53 kept exact as text (B38-F01); an R or Parquet table stored without this name was read
 # before that, may hold rounded identifiers, and is checked against a fresh read (B40-F01).
@@ -444,8 +449,8 @@ def _json_cell(v):
 def read_table(file_bytes: bytes, source_filename: str, args=None) -> dict:
     """The stored preview of a CSV, TSV or Excel file: exactly the table every calculation reads
     (_read_raw, the same cached read the dictionary and cross tabs use), one object per case keyed by
-    canonical variable name. args: layout ("rows_are_cases" or "columns_are_cases") and selectedSheet
-    (the persisted sheet choice, if any). A persisted sheet that is gone is answered as
+    canonical variable name. args: layout ("rows_are_cases" or "columns_are_cases"), selectedSheet
+    (the persisted sheet choice, if any) and headerRowsSkipped (the header row choice, None for detection). A persisted sheet that is gone is answered as
     sheetSelectionLost rather than raised, so the app can show its own recovery message."""
     args = args or {}
     ext = os.path.splitext(source_filename.lower())[1]
@@ -455,7 +460,7 @@ def read_table(file_bytes: bytes, source_filename: str, args=None) -> dict:
     if layout not in (None, "rows_are_cases", "columns_are_cases"):
         raise ValueError(f"Unknown data layout {layout!r}.")
     try:
-        df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None)
+        df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None, args.get("headerRowsSkipped"))
     except SheetSelectionLostError as exc:
         return {"sheetSelectionLost": {"documentSheetName": exc.document_sheet_name, "availableSheets": exc.available_sheets}}
     headers = [str(c) for c in df.columns]
@@ -468,6 +473,8 @@ def read_table(file_bytes: bytes, source_filename: str, args=None) -> dict:
         "unsupportedIdentifierColumns": list(meta.unsupported_identifier_columns),
         "encoding": meta.encoding,
         "dateColumns": list(meta.date_columns),
+        "naCodeColumns": list(getattr(meta, "na_code_columns", None) or []),
+        "titleRows": list(getattr(meta, "title_rows", None) or []),
         "reader": TABLE_READER,
     }
 
@@ -507,7 +514,11 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 #     entry's answer codes can be checked against what the data holds before its link is confirmed
 #     automatically (CB1); cached CSV, TSV and Excel dictionaries are rebuilt (minimumDictionaryVersion 16 for those;
 #     other formats keep their minimum, and a codebook link to a variable without listed codes is not automatic).
-DICTIONARY_VERSION = 16
+# 17: a zero-padded identifier below title rows set aside above the header (decision 9) is read from its own row (the
+#     format check read the sheet from row 2 whatever the header's row), and the header row choice is applied;
+#     cached CSV, TSV and Excel dictionaries are rebuilt (minimumDictionaryVersion 17 for those), which also rebuilds
+#     a dictionary cached before title rows were set aside.
+DICTIONARY_VERSION = 17
 # The most distinct values a variable's "codes" list carries: a coded question has far fewer; a measure (age,
 # income in rand) has more and is listed as None.
 CODES_MAX = 60
@@ -554,7 +565,7 @@ class _PlainMeta:
     An Excel workbook can carry them on other sheets; see _excel_labels and
     _excel_codebook."""
 
-    def __init__(self, labels=None, value_labels=None, used=None, mr_sets=None, variable_measure=None, missing_ranges=None, label_conflicts=None, unsupported_identifier_columns=None, data_sheet=None, encoding=None, date_columns=None):
+    def __init__(self, labels=None, value_labels=None, used=None, mr_sets=None, variable_measure=None, missing_ranges=None, label_conflicts=None, unsupported_identifier_columns=None, data_sheet=None, encoding=None, date_columns=None, na_code_columns=None, title_rows=None):
         self.column_names_to_labels = labels or {}
         self.variable_value_labels = value_labels or {}
         self.sheets = used or {}
@@ -584,6 +595,10 @@ class _PlainMeta:
         self.data_sheet = data_sheet
         self.encoding = encoding
         self.date_columns = date_columns or []
+        # Columns of short letter codes in which "NA" was read as missing (_na_in_code_column).
+        self.na_code_columns = na_code_columns or []
+        # The text of title rows set aside above the header (_leading_title_rows, decision 9).
+        self.title_rows = title_rows or []
 
 
 # Delimited text files: CSV, TSV, and .txt exports (survey archives such as the Berkeley IGS Poll ship
@@ -1112,7 +1127,7 @@ def _sheet_data_size(xl, sheet_name) -> tuple:
     return (cells, rows)
 
 
-def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
+def _apply_zero_padded_id_formats(path, sheet_name, headers, df, header_sheet_row=1):
     """IMP-SHIP-002: reconstructs a plain zero-padded display value (e.g. "0007" for the
     stored number 7, formatted "0000") that pandas' own dtype=str forcing cannot - pandas
     only ever sees the underlying numeric value, never the Excel format code. Also
@@ -1121,7 +1136,8 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
     unsupported-state response" rather than this pipeline silently guessing at formats
     it cannot faithfully reproduce (thousands separators, conditional/text sections,
     non-digit placeholders). Returns the set of such column names; an empty set means
-    every id-like column was either unformatted, zero-padding, or already literal text."""
+    every id-like column was either unformatted, zero-padding, or already literal text.
+    header_sheet_row is the header's row on the sheet (1-based; below row 1 when title rows were set aside above it)."""
     id_positions = [i for i, h in enumerate(headers) if _is_id_like_header(h)]
     unsupported: set[str] = set()
     if not id_positions:
@@ -1152,12 +1168,12 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
     # workbook streams its XML: ws.cell(row, column) re-scans the sheet from the top on every
     # call, so the earlier per-column, per-row lookups cost rows x rows and a 1,000-case,
     # 97-column workbook hit the statistics worker's 5-minute limit (Codex real-data check,
-    # 2026-10-19: csm_Wave1_Baseline.xlsx). iter_rows reads each row once, in order. Same row
-    # alignment as before (row 1 is the header this file already consumed; data row i is sheet
-    # row i + 2) and the same per-cell rules.
+    # 2026-10-19: csm_Wave1_Baseline.xlsx). iter_rows reads each row once, in order. Data row i
+    # is sheet row header_sheet_row + 1 + i (title rows set aside above the header, decision 9, move
+    # it down) and the same per-cell rules.
     first_col, last_col = min(id_positions) + 1, max(id_positions) + 1
     try:
-        rows = ws.iter_rows(min_row=2, max_row=len(df) + 1, min_col=first_col, max_col=last_col)
+        rows = ws.iter_rows(min_row=header_sheet_row + 1, max_row=header_sheet_row + len(df), min_col=first_col, max_col=last_col)
         for row_i, row in enumerate(rows):
             if row_i >= len(df):
                 break
@@ -1198,11 +1214,11 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
     return unsupported
 
 
-def _apply_zero_padded_id_formats_flipped(path, sheet_name, df):
+def _apply_zero_padded_id_formats_flipped(path, sheet_name, df, header_sheet_row=1):
     """_apply_zero_padded_id_formats for the columns-as-cases layout: an identifier is a row (its name in the first
     column) and its cases are the columns after it. The same per-cell rule: a zero-padding format gives the padded
     digits; any other non-General number format on an identifier cell blanks it and names the variable, never a
-    guess. Body row i is sheet row i + 2 (row 1 is the header row)."""
+    guess. Body row i is sheet row header_sheet_row + 1 + i (the header row is lower when title rows are set aside)."""
     body_rows = df.attrs.get("body_rows", {})
     ids = {name: row for name, row in body_rows.items() if _is_id_like_header(name)}
     unsupported: set[str] = set()
@@ -1222,7 +1238,7 @@ def _apply_zero_padded_id_formats_flipped(path, sheet_name, df):
         return unsupported
     try:
         for name, body_i in ids.items():
-            sheet_row = body_i + 2
+            sheet_row = header_sheet_row + 1 + body_i
             col = list(df.columns).index(name)
             for row in ws.iter_rows(min_row=sheet_row, max_row=sheet_row, min_col=2, max_col=len(df) + 1):
                 for case_i, cell in enumerate(row):
@@ -1370,7 +1386,23 @@ def _as_numbers(present):
     return out
 
 
-def _typed_series(name, values, date_columns):
+# A column of short letter codes (country or region codes such as ZA, NG, US) whose cells read "NA" (Grant's decision
+# 5, 29 October 2026: "NA" stays missing, with a warning): "NA" is Namibia's code as well as pandas' missing token, so
+# the reading is said rather than guessed. At least three different codes, and four in five of the values that remain
+# are two or three capital letters.
+_SHORT_CODE_RE = re.compile(r"^[A-Z]{2,3}$")
+
+
+def _na_in_code_column(raw_values, typed_present):
+    if not any(isinstance(v, str) and v.strip() == "NA" for v in raw_values):
+        return False
+    texts = [v for v in typed_present if isinstance(v, str)]
+    if len(texts) != len(typed_present) or len(set(texts)) < 3:
+        return False
+    return sum(1 for v in texts if _SHORT_CODE_RE.match(v.strip())) >= 0.8 * len(texts)
+
+
+def _typed_series(name, values, date_columns, na_code_columns=None):
     """Types one variable from its cells, the same way in both layouts:
       - missing cells (_is_missing_cell) are missing;
       - calendar cells become ISO text, and the variable is listed in date_columns;
@@ -1396,6 +1428,8 @@ def _typed_series(name, values, date_columns):
         cells.append(v)
     if has_date:
         date_columns.add(name)
+    if na_code_columns is not None and _na_in_code_column(values, [v for v in cells if v is not None]):
+        na_code_columns.add(name)
     if _is_id_like_header(name):
         return pd.Series([None if v is None else (v if isinstance(v, str) else _literal_text(v)) for v in cells], dtype=object)
     present = [v for v in cells if v is not None]
@@ -1526,23 +1560,62 @@ def _sniff_delimiter(text: str, ragged: bool = False) -> str:
     return unreadable[0] if unreadable else ","
 
 
-def _csv_grid(text: str, sep: str):
+def _csv_grid(text: str, sep: str, header_rows_skipped=None):
     """The file's rows as lists of literal text. Quoted fields, doubled quotes and line breaks inside
     quotes are read as written. Malformed quoting (a quoted value never closed, or text after a closing
     quote) and a row with more values than the header row are refused with the line, before anything is
     published (IP1000-F04): a guessed row is never imported. A short row is padded with missing values;
-    surplus trailing empty values (a trailing delimiter) are dropped. Blank lines are skipped."""
+    surplus trailing empty values (a trailing delimiter) are dropped. Blank lines are skipped.
+
+    With header_rows_skipped set (the researcher's header row, decision 9), the header is the (n+1)th row holding
+    text and the header's width is taken from it; the rows above it are kept as written, whatever their width, for
+    _read_plain to set aside (_chosen_title_rows), and a file without that many rows is left for it to refuse."""
     csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
     reader = csv.reader(io.StringIO(text, newline=""), delimiter=sep, strict=True)
     grid = []
     width = None
+    # Title rows above the header (decision 9, _leading_title_rows) hold at most one value, so the header's width is
+    # taken from the first row holding two or more; the title rows are kept for _read_plain to set aside. A file whose
+    # first rows never hold two values is read from its first row, as before.
+    pending = []
+
+    def start(rows):
+        nonlocal width
+        width = len(rows[-1])
+        for r in rows:
+            grid.append(r[:width] if len(r) > width else r + [None] * (width - len(r)))
+
+    above = 0  # rows holding text seen above a chosen header
+
     try:
         for row in reader:
             if not row:
                 continue
-            if width is None:
-                width = len(row)
+            if width is None and header_rows_skipped is not None:
                 grid.append(row)
+                if any(c.strip() for c in row):
+                    if above == header_rows_skipped:
+                        width = len(row)
+                    else:
+                        above += 1
+                continue
+            if width is None:
+                pending.append(row)
+                if sum(1 for c in row if c.strip()) >= 2 or len(pending) > _TITLE_ROWS_MAX:
+                    if len(pending) > _TITLE_ROWS_MAX:
+                        first, rest = pending[0], pending[1:]
+                        pending = [first]
+                        start(pending)
+                        for r in rest:
+                            if len(r) > width and any(c.strip() for c in r[width:]):
+                                raise ValueError(
+                                    f"A line of this CSV file has {len(r)} values but its header row has {width} "
+                                    "columns, so its values cannot be matched to their columns. Nothing was "
+                                    "imported; fix the file and upload it again."
+                                )
+                            grid.append(r[:width] if len(r) > width else r + [None] * (width - len(r)))
+                    else:
+                        start(pending)
                 continue
             if len(row) > width:
                 if any(c.strip() for c in row[width:]):
@@ -1560,6 +1633,16 @@ def _csv_grid(text: str, sep: str):
             f"This CSV file could not be read near line {reader.line_num} ({exc}): a quoted value may be "
             "missing its closing quotation mark. Nothing was imported; fix the file and upload it again."
         ) from exc
+    if width is None and pending:
+        # Never two values in a row: one variable, read from the first row as before.
+        width = len(pending[0])
+        for r in pending:
+            if len(r) > width and any(c.strip() for c in r[width:]):
+                raise ValueError(
+                    f"A line of this CSV file has {len(r)} values but its header row has {width} columns, so its "
+                    "values cannot be matched to their columns. Nothing was imported; fix the file and upload it again."
+                )
+            grid.append(r[:width] if len(r) > width else r + [None] * (width - len(r)))
     return grid
 
 
@@ -1652,18 +1735,18 @@ def _excel_sheet_grid(xl, sheet_name):
     return [r + [""] * (width - len(r)) for r in data]
 
 
-def _typed_frame(headers, body, date_columns):
+def _typed_frame(headers, body, date_columns, na_code_columns=None):
     """Rows-as-cases: one variable per column."""
     import pandas as pd
 
     columns = {}
     for i, h in enumerate(headers):
-        columns[h] = _typed_series(h, [row[i] if i < len(row) else None for row in body], date_columns)
+        columns[h] = _typed_series(h, [row[i] if i < len(row) else None for row in body], date_columns, na_code_columns)
     df = pd.DataFrame(columns, index=pd.RangeIndex(len(body))) if columns else pd.DataFrame(index=pd.RangeIndex(len(body)))
     return df
 
 
-def _flipped_frame(headers, body, date_columns):
+def _flipped_frame(headers, body, date_columns, na_code_columns=None):
     """Columns-as-cases: each row is a variable whose name is its first cell, each further column a case.
     The name is the first cell's literal text (_literal_text: "NaN", "None", "01" and "TRUE" are names, not
     values); a blank one becomes "Variable n". A row with no name and no values is skipped. Repeated
@@ -1682,14 +1765,73 @@ def _flipped_frame(headers, body, date_columns):
         kept.append((name, values))
         kept_rows.append(body_i)
     names = _dedupe_header_names([name or f"Variable {i + 1}" for i, (name, _) in enumerate(kept)])
-    columns = {name: _typed_series(name, values, date_columns) for name, (_, values) in zip(names, kept)}
+    columns = {name: _typed_series(name, values, date_columns, na_code_columns) for name, (_, values) in zip(names, kept)}
     df = pd.DataFrame(columns, index=pd.RangeIndex(n_cases)) if columns else pd.DataFrame(index=pd.RangeIndex(n_cases))
     # Which body row each variable came from, for the identifier formats (_apply_zero_padded_id_formats_flipped).
     df.attrs["body_rows"] = dict(zip(names, kept_rows))
     return df
 
 
-def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=None):
+# Title rows above a table's header (Grant's decision 9, 29 October 2026: exported tables often start with a title, a
+# date or a note): up to this many leading rows holding at most one filled cell are left out, when the row after them
+# holds two or more. A table whose rows never hold two filled cells (one variable) is read as it is.
+_TITLE_ROWS_MAX = 14
+
+
+def _filled_cells(row):
+    """How many cells of a row hold written text. Any written text counts, "NA" included: a header may name a variable
+    NA (names are literal, _literal_text)."""
+    return sum(1 for v in row if v is not None and _literal_text(v).strip() != "")
+
+
+def _leading_title_rows(grid):
+    """The leading rows of a grid that are a title above its header, by the rule above: [] when none."""
+    titles = []
+    for row in grid[: _TITLE_ROWS_MAX + 1]:
+        if _filled_cells(row) >= 2:
+            return titles
+        titles.append(row)
+    return []
+
+
+# The researcher's own header row (decision 9, second part, chosen on the Import screen and saved in the document's
+# data setup as headerRowsSkipped): the number of rows holding written text above the header. None means detected
+# automatically (_leading_title_rows). The Import screen offers rows 1 to 15, the same bound detection looks within.
+_HEADER_ROWS_SKIPPED_MAX = _TITLE_ROWS_MAX
+
+
+def _header_rows_skipped_arg(value):
+    """The header row choice as sent by the app: None (detected automatically) or a whole number from 0 to
+    _HEADER_ROWS_SKIPPED_MAX. Anything else is refused, never read as 0 or as detection."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > _HEADER_ROWS_SKIPPED_MAX:
+        raise ValueError(
+            f"The header row setting {value!r} is not one this reader accepts: choose a header row from 1 to "
+            f"{_HEADER_ROWS_SKIPPED_MAX + 1} on the Import screen, or set it to be detected automatically."
+        )
+    return value
+
+
+def _chosen_title_rows(grid, header_rows_skipped):
+    """The rows above the researcher's chosen header: every row before the (n+1)th row holding written text, blank
+    rows included, where n is header_rows_skipped. A choice below the last row holding text is refused with how many
+    such rows the file has; it is never moved to the last row."""
+    seen = 0
+    for i, row in enumerate(grid):
+        if _filled_cells(row) == 0:
+            continue
+        if seen == header_rows_skipped:
+            return grid[:i]
+        seen += 1
+    raise ValueError(
+        f"The header row is set to row {header_rows_skipped + 1}, but this file has only {seen} row(s) with anything "
+        "written in them, so it was not read. Choose another header row on the Import screen, or set it to be "
+        "detected automatically."
+    )
+
+
+def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=None, header_rows_skipped=None):
     """CSV, TSV and Excel case-level files: one row per case and a header row of names, or (layout
     "columns_are_cases") one row per variable and a column per case. No variable labels or value labels
     exist in the data itself, so names stand in for labels and coded answers stay as they are; an Excel
@@ -1698,7 +1840,11 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
     This is the only reader of these files (see _typed_series): the stored preview and every calculation
     use what it returns. Cells are read as written (CSV text, or Excel's own cell values), names are their
     literal text, repeated names are allocated by _dedupe_header_names in both layouts, and each variable
-    is typed by _typed_series. The meta records the sheet read, a CSV's encoding and the date columns."""
+    is typed by _typed_series. The meta records the sheet read, a CSV's encoding and the date columns.
+
+    header_rows_skipped is the researcher's header row choice (_header_rows_skipped_arg): None detects title rows
+    above the header (_leading_title_rows); a number n reads the (n+1)th row holding text as the header and sets
+    aside every row above it, whatever those rows hold. Either way the set-aside text is recorded as title_rows."""
     import pandas as pd
 
     unsupported_id_formats: set[str] = set()  # CSV has no cell-format concept; only Excel can populate this
@@ -1710,7 +1856,7 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         with open(path, "rb") as fh:
             text, encoding = _decode_plain_text(fh.read())
         sep = "\t" if ext == ".tsv" else _sniff_delimiter(text)
-        grid = _csv_grid(text, sep)
+        grid = _csv_grid(text, sep, header_rows_skipped)
         if ext == ".txt" and (not grid or max(len(r) for r in grid) < 2):
             # A CSV with one column is a table with one variable; a .txt with no delimiter is far more
             # likely prose or a fixed-width export, which would be read as one column of whole lines.
@@ -1752,23 +1898,36 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
             xl.close()
             raise
     try:
+        row_text = lambda row: " ".join(_literal_text(v).strip() for v in row if _literal_text(v).strip())  # noqa: E731
+        if header_rows_skipped is None:
+            set_aside = _leading_title_rows(grid)
+            title_rows = [row_text(row) for row in set_aside]
+        else:
+            # Blank rows between the chosen rows are set aside too, but only rows with text are named.
+            set_aside = _chosen_title_rows(grid, header_rows_skipped)
+            title_rows = [t for t in (row_text(row) for row in set_aside) if t]
+        grid = grid[len(set_aside):]
+        # The header's row on the sheet (1-based): an Excel grid holds every sheet row from row 1, blank ones included
+        # (_excel_sheet_grid), so the identifier format checks below read the cells of the same rows.
+        header_sheet_row = len(set_aside) + 1
         if grid:
             headers = _dedupe_header_names([_literal_text(v).strip() for v in grid[0]])
             body = grid[1:]
         else:
             headers, body = [], []
         date_columns: set[str] = set()
+        na_code_columns: set[str] = set()
         if layout == "columns_are_cases":
-            df = _flipped_frame(headers, body, date_columns)
+            df = _flipped_frame(headers, body, date_columns, na_code_columns)
             if xl is not None:
                 # The same identifier formats as rows-as-cases (batch 55, conformance F2): an identifier row
                 # formatted 0000 gives 0007, not 7, so both layouts give the same identifiers.
-                unsupported_id_formats = _apply_zero_padded_id_formats_flipped(path, data_sheet, df)
+                unsupported_id_formats = _apply_zero_padded_id_formats_flipped(path, data_sheet, df, header_sheet_row)
         else:
-            df = _typed_frame(headers, body, date_columns)
+            df = _typed_frame(headers, body, date_columns, na_code_columns)
             if xl is not None:
-                # Body row i is sheet row i + 2 here (row 1 is the header), the alignment this check reads.
-                unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
+                # Body row i is sheet row header_sheet_row + 1 + i, the alignment this check reads.
+                unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df, header_sheet_row)
             # A row with nothing but blank or missing cells is not a case.
             before = len(df)
             df = df.dropna(how="all")
@@ -1788,6 +1947,8 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
             data_sheet=data_sheet,
             encoding=encoding,
             date_columns=sorted(date_columns),
+            na_code_columns=sorted(na_code_columns),
+            title_rows=title_rows,
         )
         if xl is not None and len(sheets) > 1 and layout != "columns_are_cases":
             numeric_cols = {c for c in df.columns if df[c].dtype.kind in "fiu"}
@@ -1837,7 +1998,7 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
             meta = _PlainMeta(
                 labs, vlabs, used, mr_sets, label_conflicts=conflicts,
                 unsupported_identifier_columns=sorted(unsupported_id_formats),
-                data_sheet=data_sheet, encoding=encoding, date_columns=sorted(date_columns),
+                data_sheet=data_sheet, encoding=encoding, date_columns=sorted(date_columns), na_code_columns=sorted(na_code_columns), title_rows=title_rows,
             )
         elif xl is not None and len(sheets) > 1:
             # Columns-as-cases: label sheets name the original (pre-flip) columns, which are cases here,
@@ -1861,8 +2022,9 @@ _READ_CACHE_FILES = 2
 _READ_CACHE_MAX_MB = 400
 
 
-def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None):
+def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None, header_rows_skipped=None):
     _check_import_limits(file_bytes)
+    header_rows_skipped = _header_rows_skipped_arg(header_rows_skipped)
     ext = os.path.splitext(source_filename.lower())[1]
     # layout is part of the cache key too: the same bytes read once with no layout set and once
     # with "columns_are_cases" are two different tables, not the same one served twice.
@@ -1870,10 +2032,15 @@ def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None
     # before a sheet choice was persisted, or read under a DIFFERENT persisted choice, must never
     # be served back for a call that now names a sheet, or a stale cache entry could silently
     # reintroduce the preview/calculation sheet-disagreement this column exists to prevent.
-    key = hashlib.sha1(file_bytes).hexdigest() + ext + (f"|{layout}" if layout else "") + (f"|sheet={selected_sheet}" if selected_sheet else "")
+    # The header row choice (decision 9) is part of the key for the same reason: a different header row is a different
+    # table (other names, other cases), so a read under detection is never served for a chosen row, or the reverse.
+    key = (
+        hashlib.sha1(file_bytes).hexdigest() + ext + (f"|{layout}" if layout else "") + (f"|sheet={selected_sheet}" if selected_sheet else "")
+        + (f"|header={header_rows_skipped}" if header_rows_skipped is not None else "")
+    )
     hit = _READ_CACHE.get(key)
     if hit is None:
-        df, meta = _read_raw_uncached(file_bytes, source_filename, None, layout, selected_sheet)
+        df, meta = _read_raw_uncached(file_bytes, source_filename, None, layout, selected_sheet, header_rows_skipped)
         _check_import_limits(file_bytes, len(df))
         size_mb = float(df.memory_usage(deep=False).sum()) / (1024 * 1024)
         if size_mb > _READ_CACHE_MAX_MB:
@@ -1896,7 +2063,7 @@ def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None
             # silently stopped reporting a conflict it had reported moments before.
             list(getattr(meta, "label_conflicts", None) or []),
             list(getattr(meta, "unsupported_identifier_columns", None) or []),
-            (getattr(meta, "data_sheet", None), getattr(meta, "encoding", None), list(getattr(meta, "date_columns", None) or [])),
+            (getattr(meta, "data_sheet", None), getattr(meta, "encoding", None), list(getattr(meta, "date_columns", None) or []), list(getattr(meta, "na_code_columns", None) or []), list(getattr(meta, "title_rows", None) or [])),
         )
         _READ_CACHE[key] = hit
     df, labels, vlabels, sheets, mr_sets, measure, missing_ranges, label_conflicts, unsupported_identifier_columns, read_facts = hit
@@ -1909,6 +2076,8 @@ def _read_raw(file_bytes: bytes, source_filename: str, usecols=None, layout=None
             data_sheet=read_facts[0],
             encoding=read_facts[1],
             date_columns=list(read_facts[2]),
+            na_code_columns=list(read_facts[3]),
+            title_rows=list(read_facts[4]),
         ),
         usecols,
     )
@@ -1920,7 +2089,7 @@ def _slice_read(df, meta, usecols):
     return df.copy(), meta
 
 
-def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None):
+def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, layout=None, selected_sheet=None, header_rows_skipped=None):
     ext = os.path.splitext(source_filename.lower())[1]
     reader = READERS.get(ext)
     if reader is None and ext in TABLE_EXTS:
@@ -1928,11 +2097,20 @@ def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, la
             tmp.write(file_bytes)
             tmp_path = tmp.name
         try:
-            return _read_plain(tmp_path, ext, usecols, layout, selected_sheet)
+            return _read_plain(tmp_path, ext, usecols, layout, selected_sheet, header_rows_skipped)
         finally:
             _remove_quietly(tmp_path)
     if reader is None:
         raise ValueError(f"Unsupported data file extension: {ext or '(none)'}")
+    if header_rows_skipped is not None:
+        # SPSS, Stata, SAS, R and Parquet files name their variables in the file itself and have no header row, so a
+        # header row choice cannot apply. Refused like the flipped layout below, rather than ignored, so every caller
+        # reads the file the one way its setup says.
+        raise ValueError(
+            "This file's header row is set, but only CSV, TSV, delimited text (.txt) and Excel files have a header "
+            "row. SPSS (.sav), Stata (.dta), SAS (.sas7bdat, .xpt), R and Parquet files name their variables "
+            "themselves. Set the header row back to detected automatically for this file."
+        )
     if layout == "columns_are_cases":
         # The flip _read_plain applies for a plain CSV/Excel file assumes a lone key column of
         # case identifiers and no pre-existing variable/value labels to re-target. An SPSS/Stata/
@@ -2179,7 +2357,7 @@ def _apply_reversals(df, meta, reversals):
             missing[derived] = missing[src]
 
 
-def _read(file_bytes: bytes, source_filename: str, usecols=None, overlay=None, layout=None, selected_sheet=None):
+def _read(file_bytes: bytes, source_filename: str, usecols=None, overlay=None, layout=None, selected_sheet=None, header_rows_skipped=None):
     # A derived (reversed) variable is not a column of the file: read its source instead, then derive it.
     reversals = _reversals_of(overlay)
     requested = list(usecols) if usecols is not None else None
@@ -2192,7 +2370,7 @@ def _read(file_bytes: bytes, source_filename: str, usecols=None, overlay=None, l
                 if c not in wanted:
                     wanted.append(c)
         usecols = wanted
-    df, meta = _read_raw(file_bytes, source_filename, usecols, layout, selected_sheet)
+    df, meta = _read_raw(file_bytes, source_filename, usecols, layout, selected_sheet, header_rows_skipped)
     _apply_overlay(df, meta, overlay)
     _apply_reversals(df, meta, reversals)
     # A reversed variable asked for by name that could not be built fails here, with its reason, rather
@@ -2378,7 +2556,7 @@ def _observed_codes(col) -> list | None:
 
 
 def dictionary(file_bytes: bytes, source_filename: str, args: dict | None = None) -> dict:
-    df, meta = _read(file_bytes, source_filename, layout=(args or {}).get("layout"), selected_sheet=(args or {}).get("selectedSheet"))
+    df, meta = _read(file_bytes, source_filename, layout=(args or {}).get("layout"), selected_sheet=(args or {}).get("selectedSheet"), header_rows_skipped=(args or {}).get("headerRowsSkipped"))
     n = len(df)
     labels = meta.column_names_to_labels or {}
     value_labels = meta.variable_value_labels or {}
@@ -2782,7 +2960,7 @@ def value_labels(file_bytes: bytes, source_filename: str, args=None) -> dict:
     (_format_code: 1.0 is "1"); a variable without labels is absent. At most 500 codes per variable, with
     `cut` naming the variables that had more."""
     args = args or {}
-    df, meta = _read(file_bytes, source_filename, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
+    df, meta = _read(file_bytes, source_filename, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
     labels = meta.variable_value_labels or {}
     out, cut = {}, []
     for name in df.columns:
@@ -2796,10 +2974,10 @@ def value_labels(file_bytes: bytes, source_filename: str, args=None) -> dict:
     return {"valueLabels": out, "cut": cut}
 
 
-def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=None, layout=None, selected_sheet=None) -> dict:
+def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=None, layout=None, selected_sheet=None, header_rows_skipped=None) -> dict:
     """Answer categories of one variable (label and unweighted count), in code
     order, for building groups such as top-2 box."""
-    df, meta = _read(file_bytes, source_filename, usecols=[variable], overlay=overlay, layout=layout, selected_sheet=selected_sheet)
+    df, meta = _read(file_bytes, source_filename, usecols=[variable], overlay=overlay, layout=layout, selected_sheet=selected_sheet, header_rows_skipped=header_rows_skipped)
     vl = (meta.variable_value_labels or {}).get(variable)
     dec = _decode(df[variable], vl)
     cats = _ordered_categories(dec.dropna(), vl, include_unobserved=True)
@@ -4570,14 +4748,14 @@ def respondent_quality(file_bytes: bytes, source_filename: str, args=None) -> di
     variable is found), and the cases with the most flags. Unweighted counts of cases. Also, per
     battery, the items that may be worded in the opposite direction (reversal suggestions, import step
     3) and, for items the researcher confirmed as reversed, respondents who gave the same answer across
-    items worded in opposite directions. args: layout, selectedSheet, overlay (labels and confirmed
+    items worded in opposite directions. args: layout, selectedSheet, headerRowsSkipped, overlay (labels and confirmed
     reversals, as for every calculation)."""
     import numpy as np
     import pandas as pd
 
     args = args or {}
     layout = args.get("layout")
-    df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None)
+    df, meta = _read_raw(file_bytes, source_filename, None, layout if layout == "columns_are_cases" else None, args.get("selectedSheet") or None, args.get("headerRowsSkipped"))
     # Labels from a linked codebook or questionnaire help the wording cue; the frame is a copy, so the
     # cached read is untouched. Reversed items are judged on the original columns, not derived ones.
     if args.get("overlay"):
@@ -4725,10 +4903,21 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     if group_var in (outcome, *predictors):
         group_var = None  # can't segment by the outcome or a predictor itself
     wanted = list(dict.fromkeys([outcome] + predictors + ([weight_var] if weight_var else []) + ([group_var] if group_var else [])))
-    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
+    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
+    missing_ranges = getattr(meta, "missing_ranges", None) or {}
     n_rows = len(df)
+
+    def non_answers(var):
+        """The variable's non-answer codes by the answer-domain owner (_non_answer_codes): labelled don't know,
+        refused, not applicable, and declared user-missing codes."""
+        out = set()
+        for k in _non_answer_codes(vlabels.get(var) or {}, missing_ranges.get(var), True):
+            n = _num_or_none(k)
+            if n is not None:
+                out.add(float(n))
+        return out
 
     def numeric(var):
         raw = df[var]
@@ -4736,9 +4925,9 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         answered = int(raw.notna().sum())
         if answered > 0 and int(np.isfinite(s).sum()) < 0.5 * answered:
             return None, "the answers are text, not numbers"
-        dk = [k for k, v in (vlabels.get(var) or {}).items() if _DK_RE.match(str(v).strip())]
+        dk = non_answers(var)
         if dk:
-            s = np.where(np.isin(s, np.array([float(k) for k in dk])), np.nan, s)
+            s = np.where(np.isin(s, np.array(sorted(dk))), np.nan, s)
         if not np.isfinite(s).any():
             return None, "no usable answers"
         return s, None
@@ -4753,8 +4942,14 @@ def driver_columns(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 lab = vl.get(c) if c in vl else vl.get(int(c)) if float(c).is_integer() else None
                 if lab is not None:
                     shown[str(int(c)) if float(c).is_integer() else str(c)] = str(lab)
+        # The top of the answer scale (D2b, importance against performance; the same rule as the dashboard's boxes,
+        # D3AR-F01): with an answer list, the highest declared substantive answer or observed answer, so a declared
+        # top nobody chose still counts and a non-answer (6 = Don't know) never does; without one, the highest answer
+        # observed, said so (scaleStated false).
+        declared = [float(n) for n in (_num_or_none(k) for k in vl.keys()) if n is not None and float(n) not in non_answers(var)]
+        top = max(declared + [float(finite.max())]) if declared else float(finite.max())
         return {"name": var, "label": labels.get(var) or var, "min": float(finite.min()), "max": float(finite.max()),
-                "distinct": len(codes), "valueLabels": shown}
+                "distinct": len(codes), "valueLabels": shown, "scaleTop": top, "scaleStated": bool(declared)}
 
     skipped = []
     y_arr, why = numeric(outcome)
@@ -5206,7 +5401,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     set_refs = sorted({v[4:] for v in column_vars if v.startswith("set:")})
     set_members: dict = {}
     if set_refs:
-        full_df, full_meta = _read(file_bytes, source_filename, usecols=None, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
+        full_df, full_meta = _read(file_bytes, source_filename, usecols=None, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
         for key in set_refs:
             members = _resolve_set_vars(full_df, full_meta, key)
             if len(members) < 2:
@@ -5215,7 +5410,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
     set_wanted = [name for v in column_vars if v.startswith("set:") for name, _ in set_members[v[4:]]]
     plain_column_vars = [v for v in column_vars if not v.startswith("set:")]
     wanted = list(dict.fromkeys(plain_column_vars + set_wanted + row_vars + ([weight_var] if weight_var else []) + [v for v in (psu_var, strata_var) if v] + filter_vars))
-    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
+    df, meta = _read(file_bytes, source_filename, usecols=wanted, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"), header_rows_skipped=args.get("headerRowsSkipped"))
     labels = meta.column_names_to_labels or {}
     vlabels = meta.variable_value_labels or {}
     n_rows = len(df)
@@ -6545,7 +6740,7 @@ class handler(BaseHTTPRequestHandler):
                 self._send_json(200, {"result": dictionary(file_bytes, source_filename, body.get("args") or {})})
                 return
             if action == "categories":
-                self._send_json(200, {"result": categories(file_bytes, source_filename, (body.get("args") or {})["variable"], (body.get("args") or {}).get("overlay"), (body.get("args") or {}).get("layout"), (body.get("args") or {}).get("selectedSheet"))})
+                self._send_json(200, {"result": categories(file_bytes, source_filename, (body.get("args") or {})["variable"], (body.get("args") or {}).get("overlay"), (body.get("args") or {}).get("layout"), (body.get("args") or {}).get("selectedSheet"), (body.get("args") or {}).get("headerRowsSkipped"))})
                 return
             if action == "columns":
                 self._send_json(200, {"result": driver_columns(file_bytes, source_filename, body.get("args") or {})})

@@ -1,4 +1,5 @@
 import { withTenant } from "./db";
+import { performanceScales, predictorPerformance, type PerformanceMeasure } from "./driverPerformance";
 import { recordHumanReview } from "./findingProvenance";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { runStatsTool } from "./parseStatsFile";
@@ -37,7 +38,17 @@ export type DriverSegment = {
 };
 
 /** `variable` is the predictor's code (absent on reports saved before 24 October 2026). */
-export type DriverPerformance = { name: string; variable?: string; mean: number | null; topTwo: number | null };
+export type DriverPerformance = {
+  name: string;
+  variable?: string;
+  mean: number | null;
+  topTwo: number | null;
+  /** D2b (absent on reports saved before 29 October 2026): the figure the performance axis reads, and the scale top
+   * the top two counted from (driverPerformance.ts). */
+  measure?: PerformanceMeasure;
+  scaleTop?: number | null;
+  scaleStated?: boolean | null;
+};
 
 /**
  * What respondents said about how important a predictor is. `name` is the predictor's display name,
@@ -56,6 +67,8 @@ export type DriverReport = {
   result: DriverResult;
   /** Where each predictor stands today, for the importance against performance view. Joined to rows by `variable`. */
   performance: DriverPerformance[];
+  /** D2b: "mixed" when the predictors are not on one scale, so one performance axis needs a caution; absent on older reports. */
+  performanceScales?: "same" | "mixed";
   /** Stated importance for the predictors that had an importance question paired with them. */
   stated?: DriverStated[];
   groupVariable?: string | null;
@@ -75,7 +88,7 @@ export type DriverProvenance = { documentId: string; overridesSnapshot: unknown;
 
 type Columns = {
   outcome: { name: string; label: string; min: number; max: number; distinct: number; valueLabels: Record<string, string> };
-  predictors: { name: string; label: string; min: number; max: number; distinct: number }[];
+  predictors: { name: string; label: string; min: number; max: number; distinct: number; scaleTop?: number; scaleStated?: boolean }[];
   y: (number | null)[];
   x: (number | null)[][];
   weights: (number | null)[] | null;
@@ -124,6 +137,7 @@ export async function runDriverAnalysisFor(
     groupVar: request.groupVar ?? null,
     overlay,
     layout: setup.layout,
+    headerRowsSkipped: setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
   });
 
@@ -161,50 +175,24 @@ export async function runDriverAnalysisFor(
   if ("error" in result) throw new Error(result.error);
   const resultWithCodes = withCodes(result);
 
-  const performance: DriverPerformance[] = cols.predictors.map((p, j) => {
-    const vals: number[] = [];
-    const ws: number[] = [];
-    cols.x.forEach((row, i) => {
-      const v = row[j];
-      if (v === null || !Number.isFinite(y[i])) return;
-      vals.push(v);
-      ws.push(weights ? (Number.isFinite(weights[i]) ? weights[i] : 0) : 1);
-    });
-    const smallScale = p.distinct >= 3 && p.distinct <= 11;
-    const topTwo = smallScale && vals.length > 0
-      ? (() => {
-          const cut = p.max - 1;
-          const sw = ws.reduce((a, b) => a + b, 0);
-          return sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
-        })()
-      : null;
-    const mean = vals.length > 0 ? wMean(vals, ws) : NaN;
-    return { name: names[j], variable: p.name, mean: Number.isFinite(mean) ? mean : null, topTwo };
-  });
-
-  // Same performance calc as above, restricted to one segment's rows.
-  const performanceFor = (idx: Set<number>): DriverPerformance[] =>
+  // One rule for the file and for each segment (driverPerformance.ts).
+  const performanceOf = (inRow: (i: number) => boolean): DriverPerformance[] =>
     cols.predictors.map((p, j) => {
       const vals: number[] = [];
       const ws: number[] = [];
       cols.x.forEach((row, i) => {
-        if (!idx.has(i)) return;
+        if (!inRow(i)) return;
         const v = row[j];
         if (v === null || !Number.isFinite(y[i])) return;
         vals.push(v);
         ws.push(weights ? (Number.isFinite(weights[i]) ? weights[i] : 0) : 1);
       });
-      const smallScale = p.distinct >= 3 && p.distinct <= 11;
-      const topTwo = smallScale && vals.length > 0
-        ? (() => {
-            const cut = p.max - 1;
-            const sw = ws.reduce((a, b) => a + b, 0);
-            return sw > 0 ? vals.reduce((a, v, i) => a + (v >= cut ? ws[i] : 0), 0) / sw : null;
-          })()
-        : null;
-      const mean = vals.length > 0 ? wMean(vals, ws) : NaN;
-      return { name: names[j], variable: p.name, mean: Number.isFinite(mean) ? mean : null, topTwo };
+      return { name: names[j], variable: p.name, ...predictorPerformance(p, vals, ws) };
     });
+  const performance = performanceOf(() => true);
+
+  // Same performance calc as above, restricted to one segment's rows.
+  const performanceFor = (idx: Set<number>): DriverPerformance[] => performanceOf((i) => idx.has(i));
 
   // Stated importance needs a second read (the importance questions themselves aren't in cols), fetched once
   // and then sliced per segment the same way y/x/weights are, so each segment compares derived against stated
@@ -222,6 +210,7 @@ export async function runDriverAnalysisFor(
       groupVar: request.groupVar ?? null,
       overlay,
       layout: setup.layout,
+      headerRowsSkipped: setup.headerRowsSkipped,
       selectedSheet: doc.selected_sheet,
     });
     const w2 = c2.weights ? c2.weights.map(nan) : null;
@@ -297,6 +286,7 @@ export async function runDriverAnalysisFor(
     skipped: cols.skipped,
     result: resultWithCodes,
     performance,
+    performanceScales: performanceScales(performance.map((x) => ({ mean: x.mean, topTwo: x.topTwo, measure: x.measure ?? "mean", scaleTop: x.scaleTop ?? null, scaleStated: x.scaleStated ?? null })), cols.predictors),
     groupVariable: cols.group?.name ?? null,
     groupLabel: cols.group?.label ?? null,
     segments,

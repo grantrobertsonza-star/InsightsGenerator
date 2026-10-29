@@ -281,6 +281,9 @@ async function buildVariableDictionaryForSetup(
     // reused; a dictionary cached before layout was tracked (layout undefined) is treated
     // as matching only the default orientation, same as a file whose setup was never touched.
     const cachedLayout = cached?.layout ?? "rows_are_cases";
+    // The same for the header row choice (decision 9): another header row names other variables. A dictionary cached
+    // before the choice existed was read with the header detected automatically, so it matches only that.
+    const cachedHeaderRowsSkipped = cached?.headerRowsSkipped ?? null;
     // IMP-SHIP-001 (Codex round 2): a cache entry is only safe to reuse when it was built
     // against the sheet that is CURRENTLY authoritative. If something IS persisted, the
     // cache must name that exact sheet - including a cache entry from before sheet
@@ -307,7 +310,7 @@ async function buildVariableDictionaryForSetup(
     // IMP-015: version 7 shows conflicting label definitions as conflicts; an older cache may
     // carry a silently chosen label, so it is recomputed.
     // A cache that gives two question sets one key predates unique set keys: rebuilt (variableSetKeys.ts).
-    if (cached && cached.sets && !hasRepeatedSetKeys(cached.sets) && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && sheetMatches) {
+    if (cached && cached.sets && !hasRepeatedSetKeys(cached.sets) && (cached.version ?? 0) >= minimumDictionaryVersion(setup.layout, doc.source_filename) && cachedLayout === setup.layout && cachedHeaderRowsSkipped === setup.headerRowsSkipped && sheetMatches) {
       dictionary = cached;
     }
   } catch {
@@ -317,9 +320,11 @@ async function buildVariableDictionaryForSetup(
   if (!dictionary) {
     dictionary = await runStatsTool<VariableDictionary>("dictionary", doc.storage_path, doc.source_filename, {
       layout: setup.layout,
+      headerRowsSkipped: setup.headerRowsSkipped,
       selectedSheet: doc.selected_sheet,
     });
     dictionary.layout = setup.layout;
+    dictionary.headerRowsSkipped = setup.headerRowsSkipped;
     // IMP-SHIP-001 (Codex round 2): this may be the first read to ever touch this document (a
     // Table document whose findings were never extracted, only used for Cross tabs) - if so,
     // find out which sheet actually became authoritative, which may not be the one this call
@@ -332,9 +337,11 @@ async function buildVariableDictionaryForSetup(
       if (authoritative !== resolvedSheet) {
         dictionary = await runStatsTool<VariableDictionary>("dictionary", doc.storage_path, doc.source_filename, {
           layout: setup.layout,
+          headerRowsSkipped: setup.headerRowsSkipped,
           selectedSheet: authoritative,
         });
         dictionary.layout = setup.layout;
+        dictionary.headerRowsSkipped = setup.headerRowsSkipped;
       }
     }
     assertImportCaseCount(dictionary.nCases);
@@ -409,6 +416,7 @@ export async function loadCategories(
     variable,
     overlay,
     layout: setup.layout,
+    headerRowsSkipped: setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
   });
 }
@@ -608,6 +616,7 @@ export async function computeCrosstab(tenantId: string, runId: string, documentI
     correction: request.correction ?? "fdr",
     overlay,
     layout: setup.layout,
+    headerRowsSkipped: setup.headerRowsSkipped,
     typeOverrides,
     selectedSheet: doc.selected_sheet,
   });
@@ -632,6 +641,7 @@ export async function computeCrosstab(tenantId: string, runId: string, documentI
         correction: request.correction ?? "fdr",
         overlay,
         layout: setup.layout,
+        headerRowsSkipped: setup.headerRowsSkipped,
         typeOverrides,
         selectedSheet: authoritativeSheet,
       });
@@ -643,7 +653,7 @@ export async function computeCrosstab(tenantId: string, runId: string, documentI
     );
   }
 
-  return { result, doc, overlay, overrides, authoritativeSheet };
+  return { result, doc, overlay, overrides, authoritativeSheet, headerRowsSkipped: setup.headerRowsSkipped };
 }
 
 /** Adds one table to the draft set (computeCrosstab, then saved). No findings are made until the set is committed. */
@@ -669,7 +679,7 @@ export async function buildCrosstab(
   } = {},
 ): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; alreadyCopied?: true; replaced?: boolean; alreadyReplaced?: true }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
-  const { result, doc, overlay, overrides, authoritativeSheet } = await computeCrosstab(tenantId, runId, documentId, request);
+  const { result, doc, overlay, overrides, authoritativeSheet, headerRowsSkipped } = await computeCrosstab(tenantId, runId, documentId, request);
 
   // IMP-003 / ANA-BRAND-002: this flat `headers`/`rows` projection (the saved table's plain
   // SQL-friendly columns, used for CSV/export and simple table rendering - separate from the
@@ -736,6 +746,7 @@ export async function buildCrosstab(
     // against, confirmed/published above - null for a CSV/stats file, which has no sheet
     // concept.
     selectedSheet: authoritativeSheet,
+    headerRowsSkipped,
   };
   const source = request.starter ? "starter" : (request.source ?? "workspace");
   const stored = {

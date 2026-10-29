@@ -65,7 +65,7 @@ export type ImportQualityTable = {
   unsupportedIdentifierColumns?: string[];
   /** How the file was read (document_tables.read_provenance): a CSV/TSV read as Windows-1252 or UTF-16
    * text rather than UTF-8, and the variables holding calendar dates (stored as ISO dates). */
-  readNotes?: { encoding: string | null; dateColumns: string[] };
+  readNotes?: { encoding: string | null; dateColumns: string[]; naCodeColumns?: string[]; titleRows?: string[] };
   /** IMP-015: variables whose label sheets disagree about what a code (or the variable) means.
    * The engine shows such codes with every competing label instead of choosing one. */
   labelConflicts?: { variable: string; kind: "variable_label" | "value_label"; value?: string | number }[];
@@ -142,11 +142,13 @@ export function ValueLabelsRow({
 const ENCODING_NAME: Record<string, string> = { "windows-1252": "Windows-1252 (Western European)", "utf-16": "UTF-16" };
 
 /** How the file was read, where that is worth knowing before trusting text and dates. */
-function ReadNotes({ notes }: { notes?: { encoding: string | null; dateColumns: string[] } }) {
+function ReadNotes({ notes }: { notes?: { encoding: string | null; dateColumns: string[]; naCodeColumns?: string[]; titleRows?: string[] } }) {
   if (!notes) return null;
   const legacy = notes.encoding && notes.encoding !== "utf-8" ? ENCODING_NAME[notes.encoding] ?? notes.encoding : null;
   const dates = notes.dateColumns;
-  if (!legacy && dates.length === 0) return null;
+  const naCodes = notes.naCodeColumns ?? [];
+  const titles = notes.titleRows ?? [];
+  if (!legacy && dates.length === 0 && naCodes.length === 0 && titles.length === 0) return null;
   return (
     <div data-testid="read-notes" className="space-y-1 rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-muted">
       {legacy && (
@@ -162,6 +164,24 @@ function ReadNotes({ notes }: { notes?: { encoding: string | null; dateColumns: 
           {dates.length > 6 ? ` and ${dates.length - 6} more` : ""}{" "}
           {dates.length === 1 ? "holds" : "hold"} dates, read as calendar dates (year-month-day, with the time of day where
           the cell has one) in the preview and in every calculation. No time zone is applied.
+        </p>
+      )}
+      {titles.length > 0 && (
+        <p data-testid="read-title-rows">
+          {titles.length === 1 ? "The first row" : `The first ${titles.length} rows`} above the header
+          {titles.some((t) => t) ? <> (<strong>{titles.filter((t) => t).slice(0, 3).map((t) => `"${t.slice(0, 80)}"`).join(", ")}</strong>)</> : ""}{" "}
+          {titles.length === 1 ? "was read as a title and left out" : "were read as a title and left out"}: the header is the
+          first row holding two or more names. If a row left out holds data, delete the title rows from the file and upload it again.
+        </p>
+      )}
+      {naCodes.length > 0 && (
+        <p data-testid="read-na-codes" className="text-amber-800">
+          {naCodes.length === 1 ? "The variable " : "The variables "}
+          <strong>{naCodes.slice(0, 6).map((c) => `"${c}"`).join(", ")}</strong>
+          {naCodes.length > 6 ? ` and ${naCodes.length - 6} more` : ""}{" "}
+          {naCodes.length === 1 ? "holds" : "hold"} short codes, and cells reading &ldquo;NA&rdquo; were read as missing. If
+          &ldquo;NA&rdquo; is a code here (Namibia&rsquo;s country code, for example), those cases are not counted: change
+          the cells to another code, or to &ldquo;Namibia&rdquo;, and upload the file again.
         </p>
       )}
     </div>

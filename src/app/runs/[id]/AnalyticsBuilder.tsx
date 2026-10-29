@@ -15,6 +15,7 @@ import {
 import NpsVisual from "./NpsVisual";
 import ResizableSplit from "./ResizableSplit";
 import WaveTrackingPanel from "./WaveTrackingPanel";
+import { useKeptOpen } from "./useKeptOpen";
 import CsmAnalyticsPanel from "./CsmAnalyticsPanel";
 import BrandHealthAnalyticsPanel from "./BrandHealthAnalyticsPanel";
 import TrackerDashboardPanel, { type TrackerDashboardKind } from "./TrackerDashboardPanel";
@@ -129,13 +130,16 @@ export default function AnalyticsBuilder({
    */
   layout?: "card" | "grid";
 }) {
-  const [tool, setTool] = useState<"driver" | "nps" | "chart" | "wave" | null>(null);
+  // An open workspace survives the file's Analytics being unmounted by a refresh while a wave is read again
+  // (useKeptOpen).
+  const place = `${runId}:${documentId}:${layout}:${part}`;
+  const [tool, setTool] = useKeptOpen<"driver" | "nps" | "chart" | "wave" | null>(`${place}:tool`, null);
   const [showClustering, setShowClustering] = useState(false);
   const [crosstabOpen, setCrosstabOpen] = useState(false);
-  const [csmOpen, setCsmOpen] = useState(false);
-  const [brandHealthOpen, setBrandHealthOpen] = useState(false);
+  const [csmOpen, setCsmOpen] = useKeptOpen(`${place}:csm`, false);
+  const [brandHealthOpen, setBrandHealthOpen] = useKeptOpen(`${place}:brandHealth`, false);
   // The automatic tracker dashboards (D3): separate tools, featured at the top of the Analytics page.
-  const [trackerOpen, setTrackerOpen] = useState<TrackerDashboardKind | null>(null);
+  const [trackerOpen, setTrackerOpen] = useKeptOpen<TrackerDashboardKind | null>(`${place}:tracker`, null);
   const waves = waveFiles?.length ?? 0;
   const open = (id: ToolId) => (id === "csm" ? setCsmOpen(true) : id === "brand" ? setBrandHealthOpen(true) : setTool(id));
   // What each tool does, as its workspace does it (checked against the tools, 2026-10-20, instead of

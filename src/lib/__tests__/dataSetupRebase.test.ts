@@ -30,12 +30,13 @@ describe("a set-up edit that met a concurrent save", () => {
 
   describe("Codex E1-F02: an acceptance is of the structure the researcher saw", () => {
     const cols = (s: DataSetup): DataSetup => ({ ...s, layout: "columns_are_cases" as DataSetup["layout"] });
-    const other: Record<"unit" | "layout" | "method", (s: DataSetup) => DataSetup> = {
+    const other: Record<"unit" | "layout" | "method" | "headerRowsSkipped", (s: DataSetup) => DataSetup> = {
+      headerRowsSkipped: (s) => ({ ...s, headerRowsSkipped: 2 }),
       unit: (s) => ({ ...s, unit: (s.unit === "respondents" ? "businesses" : "respondents") as DataSetup["unit"] }),
       layout: cols,
       method: (s) => ({ ...s, method: (s.method === "survey" ? "panel" : "survey") as DataSetup["method"] }),
     };
-    for (const field of ["unit", "layout", "method"] as const) {
+    for (const field of ["unit", "layout", "method", "headerRowsSkipped"] as const) {
       it(`${field} changed elsewhere, then this view accepts: a conflict, so the changed structure is shown, not accepted`, () => {
         expect(rebaseSetupEdit(base, accepted, other[field](base))).toBeNull();
       });

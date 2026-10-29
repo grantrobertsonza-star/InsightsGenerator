@@ -4,7 +4,7 @@
   "fail": 0,
   "question": 24
  },
- "seconds": 3.0,
+ "seconds": 3.3,
  "results": [
   {
    "id": "D-SEP-comma.csv",
@@ -92,7 +92,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-QSEP-comma",
@@ -136,7 +136,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-DQ-comma",
@@ -180,7 +180,7 @@
      }
     ]
    },
-   "seconds": 0.004
+   "seconds": 0.008
   },
   {
    "id": "D-NLQ-comma",
@@ -268,7 +268,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.004
   },
   {
    "id": "D-SEP-semicolon.txt",
@@ -312,7 +312,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.004
   },
   {
    "id": "D-QSEP-semicolon",
@@ -356,7 +356,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.004
   },
   {
    "id": "D-DQ-semicolon",
@@ -400,7 +400,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NLQ-semicolon",
@@ -444,7 +444,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.004
   },
   {
    "id": "D-SEP-tab.csv",
@@ -488,7 +488,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-SEP-tab.txt",
@@ -532,7 +532,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-QSEP-tab",
@@ -620,7 +620,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NLQ-tab",
@@ -664,7 +664,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-SEP-pipe.csv",
@@ -708,7 +708,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-SEP-pipe.txt",
@@ -752,7 +752,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.004
   },
   {
    "id": "D-QSEP-pipe",
@@ -840,7 +840,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NLQ-pipe",
@@ -884,7 +884,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.005
   },
   {
    "id": "D-SEP-tsv",
@@ -1004,7 +1004,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.006
   },
   {
    "id": "D-SEP-cr",
@@ -1048,7 +1048,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-SEP-nofinaleol",
@@ -1092,7 +1092,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.005
   },
   {
    "id": "D-QUOTE-crlf-inside",
@@ -1120,7 +1120,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-QUOTE-midfield",
@@ -1166,7 +1166,7 @@
    "actual": {
     "error": "ValueError: This CSV file could not be read near line 3 (unexpected end of data): a quoted value may be missing its closing quotation mark. Nothing was imported; fix the file and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-QUOTE-after-close",
@@ -1180,7 +1180,7 @@
    "actual": {
     "error": "ValueError: This CSV file could not be read near line 2 (',' expected after '\"'): a quoted value may be missing its closing quotation mark. Nothing was imported; fix the file and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-QUOTE-semi-unclosed",
@@ -1194,7 +1194,7 @@
    "actual": {
     "error": "ValueError: This CSV file could not be read near line 3 (unexpected end of data): a quoted value may be missing its closing quotation mark. Nothing was imported; fix the file and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-DELIM-ambig-comma-semi",
@@ -1208,7 +1208,7 @@
    "actual": {
     "error": "ValueError: This file's values could be separated by commas or by semicolons, and both read as a complete table, so its columns cannot be told apart safely. Nothing was imported; save it again with one separator (for example as \"CSV UTF-8\" or tab-delimited text) and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-DELIM-ambig-comma-pipe",
@@ -1222,7 +1222,7 @@
    "actual": {
     "error": "ValueError: This file's values could be separated by commas or by pipes, and both read as a complete table, so its columns cannot be told apart safely. Nothing was imported; save it again with one separator (for example as \"CSV UTF-8\" or tab-delimited text) and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-DELIM-ambig-tab-semi",
@@ -1236,7 +1236,7 @@
    "actual": {
     "error": "ValueError: This file's values could be separated by semicolons or by tabs, and both read as a complete table, so its columns cannot be told apart safely. Nothing was imported; save it again with one separator (for example as \"CSV UTF-8\" or tab-delimited text) and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-DELIM-more-full-rows",
@@ -1268,7 +1268,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-DELIM-semi-shortrow",
@@ -1308,7 +1308,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-DELIM-semicolon-in-values",
@@ -1372,7 +1372,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-DELIM-decimal-comma-header-comma",
@@ -1386,7 +1386,7 @@
    "actual": {
     "error": "ValueError: This file's values could be separated by commas or by semicolons, and both read as a complete table, so its columns cannot be told apart safely. Nothing was imported; save it again with one separator (for example as \"CSV UTF-8\" or tab-delimited text) and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-SURPLUS-nonempty",
@@ -1432,7 +1432,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.004
   },
   {
    "id": "D-SURPLUS-semi-nonempty",
@@ -1446,7 +1446,7 @@
    "actual": {
     "error": "ValueError: Line 3 of this CSV file has 3 values but its header row has 2 columns, so its values cannot be matched to their columns. Nothing was imported; fix the file and upload it again."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-SHORT-padded",
@@ -1486,7 +1486,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.008
   },
   {
    "id": "D-SINGLE-csv",
@@ -1532,7 +1532,7 @@
    "actual": {
     "error": "ValueError: This text file has no tab, comma, semicolon or pipe between its values, so it was not read as a data table. If it is a fixed-width export, save it as CSV or tab-delimited text and upload it again; if it is a transcript or document, upload it as that type instead."
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "D-SINGLE-csv-text-commas-quoted",
@@ -1561,7 +1561,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-ENC-utf8-lf",
@@ -1593,7 +1593,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.005
   },
   {
    "id": "D-ENC-utf8-crlf",
@@ -1625,7 +1625,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-ENC-utf8bom-lf",
@@ -1689,7 +1689,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-ENC-utf16le-bom-lf",
@@ -1941,7 +1941,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-ENC-macroman",
@@ -2254,7 +2254,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "D-BLANK-whitespace-line",
@@ -2318,7 +2318,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "D-HEADER-only",
@@ -2362,7 +2362,7 @@
     "nrows": 0,
     "rows": []
    },
-   "seconds": 0.001
+   "seconds": 0.002
   },
   {
    "id": "D-NAME-literal-tokens",
@@ -2394,7 +2394,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NAME-trimmed",
@@ -2480,7 +2480,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NAME-dup-after-trim",
@@ -2536,7 +2536,7 @@
      }
     ]
    },
-   "seconds": 0.004
+   "seconds": 0.003
   },
   {
    "id": "D-NAME-unicode-long",
@@ -2626,7 +2626,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NAME-trailing-sep-header",
@@ -2747,7 +2747,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-02-_5",
@@ -2834,7 +2834,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-05-0_1",
@@ -2863,7 +2863,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.002
   },
   {
    "id": "D-NUM-06-2_50",
@@ -2892,7 +2892,7 @@
      }
     ]
    },
-   "seconds": 0.004
+   "seconds": 0.002
   },
   {
    "id": "D-NUM-07-_0_5",
@@ -3095,7 +3095,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.002
   },
   {
    "id": "D-NUM-14-_2_5E_3",
@@ -3182,7 +3182,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-17-9007199254740992_0",
@@ -3298,7 +3298,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-21-00_5",
@@ -3327,7 +3327,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-22-_2",
@@ -3385,7 +3385,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-24-1_234",
@@ -3733,7 +3733,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.002
   },
   {
    "id": "D-NUM-36-1_000",
@@ -4255,7 +4255,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-54-1_234_5",
@@ -4284,7 +4284,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-big-makes-column-text",
@@ -4316,7 +4316,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-big-distinct",
@@ -4381,7 +4381,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-mixed-text",
@@ -4448,7 +4448,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-padded-space",
@@ -4512,7 +4512,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-european-thousands-dot",
@@ -4544,7 +4544,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-NUM-whitespace-text",
@@ -4609,7 +4609,7 @@
      }
     ]
    },
-   "seconds": 0.005
+   "seconds": 0.002
   },
   {
    "id": "D-MISS-token-01-_N_A_N_A",
@@ -4645,7 +4645,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-MISS-token-02-_NA",
@@ -4681,7 +4681,7 @@
      }
     ]
    },
-   "seconds": 0.005
+   "seconds": 0.002
   },
   {
    "id": "D-MISS-token-03-_1_IND",
@@ -5545,7 +5545,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-MISS-notoken-06-N_A_",
@@ -5581,7 +5581,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-MISS-notoken-07-missing",
@@ -5653,7 +5653,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-MISS-notoken-09-_VALUE_",
@@ -5689,7 +5689,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-MISS-notoken-10-99",
@@ -5826,7 +5826,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "D-MISS-name-not-token",
@@ -6396,7 +6396,7 @@
      }
     ]
    },
-   "seconds": 0.002
+   "seconds": 0.003
   },
   {
    "id": "L-FLIP-names-literal",
@@ -6574,7 +6574,7 @@
      }
     ]
    },
-   "seconds": 0.001
+   "seconds": 0.002
   },
   {
    "id": "L-FLIP-id-row",
@@ -6836,7 +6836,7 @@
      }
     ]
    },
-   "seconds": 0.099
+   "seconds": 0.112
   },
   {
    "id": "X-xlsx-date",
@@ -6870,7 +6870,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-datetime",
@@ -6901,7 +6901,7 @@
      }
     ]
    },
-   "seconds": 0.008
+   "seconds": 0.009
   },
   {
    "id": "X-xlsx-bool",
@@ -6933,7 +6933,7 @@
      }
     ]
    },
-   "seconds": 0.012
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-bool-mixed-01",
@@ -6968,7 +6968,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-mixed-text-number",
@@ -7000,7 +7000,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-text-001",
@@ -7029,7 +7029,7 @@
      }
     ]
    },
-   "seconds": 0.012
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-na-tokens",
@@ -7069,7 +7069,7 @@
      }
     ]
    },
-   "seconds": 0.013
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-blank-row-middle",
@@ -7098,7 +7098,7 @@
      }
     ]
    },
-   "seconds": 0.007
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-ragged",
@@ -7165,7 +7165,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-header-date",
@@ -7223,7 +7223,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-multi-sheet-most-rows",
@@ -7255,7 +7255,7 @@
      }
     ]
    },
-   "seconds": 0.013
+   "seconds": 0.009
   },
   {
    "id": "X-xlsx-dict-sheet-larger",
@@ -7287,7 +7287,7 @@
      }
     ]
    },
-   "seconds": 0.014
+   "seconds": 0.01
   },
   {
    "id": "X-xlsx-value-label-sheet",
@@ -7319,7 +7319,7 @@
      }
     ]
    },
-   "seconds": 0.014
+   "seconds": 0.011
   },
   {
    "id": "X-xlsx-selected-sheet",
@@ -7347,7 +7347,7 @@
      }
     ]
    },
-   "seconds": 0.01
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-selected-sheet-gone",
@@ -7371,7 +7371,7 @@
     "nrows": 0,
     "rows": []
    },
-   "seconds": 0.004
+   "seconds": 0.003
   },
   {
    "id": "X-xlsx-flip",
@@ -7453,7 +7453,7 @@
      }
     ]
    },
-   "seconds": 0.007
+   "seconds": 0.011
   },
   {
    "id": "X-xls-base",
@@ -7497,7 +7497,7 @@
      }
     ]
    },
-   "seconds": 0.008
+   "seconds": 0.011
   },
   {
    "id": "X-xls-date",
@@ -7562,7 +7562,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-bool",
@@ -7661,7 +7661,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-text-001",
@@ -7730,7 +7730,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-blank-row-middle",
@@ -7794,7 +7794,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-header-types",
@@ -7826,7 +7826,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-header-date",
@@ -7854,7 +7854,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-dup-names",
@@ -7884,7 +7884,7 @@
      }
     ]
    },
-   "seconds": 0.003
+   "seconds": 0.004
   },
   {
    "id": "X-xls-multi-sheet-most-rows",
@@ -7948,7 +7948,7 @@
      }
     ]
    },
-   "seconds": 0.005
+   "seconds": 0.006
   },
   {
    "id": "X-xls-value-label-sheet",
@@ -7980,7 +7980,7 @@
      }
     ]
    },
-   "seconds": 0.005
+   "seconds": 0.006
   },
   {
    "id": "X-xls-selected-sheet",
@@ -8008,7 +8008,7 @@
      }
     ]
    },
-   "seconds": 0.004
+   "seconds": 0.005
   },
   {
    "id": "X-xls-selected-sheet-gone",
@@ -8149,7 +8149,7 @@
      }
     ]
    },
-   "seconds": 0.007
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-date-formatted-number",
@@ -8177,7 +8177,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-number-no-date-format",
@@ -8203,7 +8203,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-time-only",
@@ -8231,7 +8231,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.009
   },
   {
    "id": "X-xlsx-date-with-text",
@@ -8262,7 +8262,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-text-date",
@@ -8288,7 +8288,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.009
   },
   {
    "id": "X-xlsx-formula-cached",
@@ -8323,7 +8323,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.009
   },
   {
    "id": "X-xlsx-formula-nocache",
@@ -8355,7 +8355,7 @@
      }
     ]
    },
-   "seconds": 0.007
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-error-cells",
@@ -8475,7 +8475,7 @@
      }
     ]
    },
-   "seconds": 0.01
+   "seconds": 0.012
   },
   {
    "id": "X-xlsx-title-rows",
@@ -8488,30 +8488,26 @@
    "errors": [],
    "actual": {
     "headers": [
-     "Customer survey 2024",
-     ""
+     "id",
+     "q1"
     ],
     "encoding": null,
     "dateColumns": [],
     "sheetName": "Data",
     "unsupportedIdentifierColumns": [],
-    "nrows": 3,
+    "nrows": 2,
     "rows": [
      {
-      "Customer survey 2024": "'id'",
-      "": "'q1'"
+      "id": "'001'",
+      "q1": "5"
      },
      {
-      "Customer survey 2024": "'001'",
-      "": "5"
-     },
-     {
-      "Customer survey 2024": "'002'",
-      "": "4"
+      "id": "'002'",
+      "q1": "4"
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.012
   },
   {
    "id": "X-xlsx-leading-blank-row",
@@ -8524,26 +8520,22 @@
    "errors": [],
    "actual": {
     "headers": [
-     "",
-     " (2)"
+     "a",
+     "b"
     ],
     "encoding": null,
     "dateColumns": [],
     "sheetName": "Data",
     "unsupportedIdentifierColumns": [],
-    "nrows": 2,
+    "nrows": 1,
     "rows": [
      {
-      "": "'a'",
-      " (2)": "'b'"
-     },
-     {
-      "": "1",
-      " (2)": "2"
+      "a": "1",
+      "b": "2"
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-leading-blank-col",
@@ -8573,7 +8565,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-id-zero-pad",
@@ -8609,7 +8601,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.013
   },
   {
    "id": "X-xlsx-id-other-format",
@@ -8643,7 +8635,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.011
   },
   {
    "id": "X-xlsx-id-text-format",
@@ -8677,7 +8669,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.01
   },
   {
    "id": "X-xlsx-nonid-zero-pad",
@@ -8706,7 +8698,7 @@
      }
     ]
    },
-   "seconds": 0.008
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-id-general",
@@ -8738,7 +8730,7 @@
      }
     ]
    },
-   "seconds": 0.014
+   "seconds": 0.011
   },
   {
    "id": "X-xlsx-id-zero-pad-offset",
@@ -8774,7 +8766,7 @@
      }
     ]
    },
-   "seconds": 0.01
+   "seconds": 0.011
   },
   {
    "id": "X-xlsx-dict-only-name",
@@ -8829,7 +8821,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.01
   },
   {
    "id": "X-xlsx-whitespace-cell",
@@ -8865,7 +8857,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-big-int",
@@ -8901,7 +8893,7 @@
      }
     ]
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-big-int-double",
@@ -8930,7 +8922,7 @@
      }
     ]
    },
-   "seconds": 0.007
+   "seconds": 0.006
   },
   {
    "id": "X-xls-big-int",
@@ -8988,7 +8980,7 @@
      }
     ]
    },
-   "seconds": 0.007
+   "seconds": 0.008
   },
   {
    "id": "X-xlsx-empty-sheet",
@@ -9071,7 +9063,7 @@
      }
     ]
    },
-   "seconds": 0.012
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-flip-big-int",
@@ -9105,7 +9097,7 @@
      }
     ]
    },
-   "seconds": 0.009
+   "seconds": 0.006
   },
   {
    "id": "X-xlsx-flip-id-zero-pad",
@@ -9139,7 +9131,7 @@
      }
     ]
    },
-   "seconds": 0.014
+   "seconds": 0.011
   },
   {
    "id": "X-xlsx-number-and-text-1",
@@ -9187,7 +9179,7 @@
    "actual": {
     "error": "ValueError: Unsupported flipped workbook: separate Codebook/metadata sheet \"Codebook\" declares weights or multiple-response sets. No analytical result was produced. Re-export as one row per respondent with the Codebook definitions retained, then upload again and verify the weight and multiple-response setup. Full support for this combination is pending verification."
    },
-   "seconds": 0.006
+   "seconds": 0.007
   },
   {
    "id": "X-xlsx-flip-codebook-mr",
@@ -9203,7 +9195,7 @@
    "actual": {
     "error": "ValueError: Unsupported flipped workbook: separate Codebook/metadata sheet \"Codebook\" declares weights or multiple-response sets. No analytical result was produced. Re-export as one row per respondent with the Codebook definitions retained, then upload again and verify the weight and multiple-response setup. Full support for this combination is pending verification."
    },
-   "seconds": 0.007
+   "seconds": 0.006
   },
   {
    "id": "X-xlsx-flip-labels-only",
@@ -9237,7 +9229,7 @@
      }
     ]
    },
-   "seconds": 0.01
+   "seconds": 0.009
   },
   {
    "id": "X-xlsx-flip-codebook-weight-role",
@@ -9438,7 +9430,7 @@
      ]
     }
    },
-   "seconds": 0.005
+   "seconds": 0.004
   },
   {
    "id": "S-sav-weight",
@@ -9501,7 +9493,7 @@
      ]
     }
    },
-   "seconds": 0.008
+   "seconds": 0.007
   },
   {
    "id": "S-sav-flip-refused",
@@ -9990,7 +9982,7 @@
      ]
     }
    },
-   "seconds": 0.01
+   "seconds": 0.006
   },
   {
    "id": "S-dta-flip-refused",
@@ -10053,7 +10045,7 @@
      ]
     }
    },
-   "seconds": 0.005
+   "seconds": 0.003
   },
   {
    "id": "S-dta-blank-string",
@@ -10108,7 +10100,7 @@
      ]
     }
    },
-   "seconds": 0.004
+   "seconds": 0.003
   },
   {
    "id": "S-dta-long-string",
@@ -10149,7 +10141,7 @@
      ]
     }
    },
-   "seconds": 0.004
+   "seconds": 0.003
   },
   {
    "id": "S-xpt-base",
@@ -10212,7 +10204,7 @@
      ]
     }
    },
-   "seconds": 0.009
+   "seconds": 0.006
   },
   {
    "id": "S-xpt-sysmiss",
@@ -10369,7 +10361,7 @@
      ]
     }
    },
-   "seconds": 0.01
+   "seconds": 0.007
   },
   {
    "id": "S-xpt-flip-refused",
@@ -10894,7 +10886,7 @@
      ]
     }
    },
-   "seconds": 0.004
+   "seconds": 0.003
   },
   {
    "id": "S-zsav-string-user-missing",
@@ -11170,7 +11162,7 @@
      ]
     }
    },
-   "seconds": 0.003
+   "seconds": 0.002
   },
   {
    "id": "S-dta-long-labels",
@@ -11211,7 +11203,7 @@
      ]
     }
    },
-   "seconds": 0.003
+   "seconds": 0.002
   },
   {
    "id": "S-xpt-v5-names",
@@ -11340,7 +11332,7 @@
      ]
     }
    },
-   "seconds": 0.003
+   "seconds": 0.002
   },
   {
    "id": "S-truncated-sav",
@@ -11370,7 +11362,7 @@
     "calc_error": "ReadstatError: Unable to read from file",
     "preview_error": "ReadstatError: Unable to read from file"
    },
-   "seconds": 0.0
+   "seconds": 0.001
   },
   {
    "id": "LIM-csv-cases-at",
@@ -11405,7 +11397,7 @@
      }
     ]
    },
-   "seconds": 0.252
+   "seconds": 0.308
   },
   {
    "id": "LIM-csv-cases-over",
@@ -11419,7 +11411,7 @@
    "actual": {
     "error": "ValueError: This file exceeds the supported 100,000 case limit. Split it into smaller files, then retry; no partial result was published."
    },
-   "seconds": 0.16
+   "seconds": 0.171
   },
   {
    "id": "LIM-csv-flip-cases-over",
@@ -11435,7 +11427,7 @@
    "actual": {
     "error": "ValueError: This file exceeds the supported 100,000 case limit. Split it into smaller files, then retry; no partial result was published."
    },
-   "seconds": 0.245
+   "seconds": 0.311
   },
   {
    "id": "LIM-csv-cases-blank-rows",
@@ -11470,7 +11462,7 @@
      }
     ]
    },
-   "seconds": 0.402
+   "seconds": 0.497
   },
   {
    "id": "LIM-sav-cases-at",
@@ -11500,7 +11492,7 @@
      ]
     }
    },
-   "seconds": 0.528
+   "seconds": 0.492
   },
   {
    "id": "LIM-sav-cases-over",
@@ -11515,7 +11507,7 @@
     "calc_error": "ValueError: This file exceeds the supported 100,000 case limit. Split it into smaller files, then retry; no partial result was published.",
     "preview_error": "ValueError: This file exceeds the supported 100,000 case limit. Split it into smaller files, then retry; no partial result was published."
    },
-   "seconds": 0.171
+   "seconds": 0.181
   },
   {
    "id": "LIM-bytes-at",

@@ -48,7 +48,7 @@ wb.save(sys.argv[1])
       await page.getByRole("button", { name: /^Import data/ }).first().click();
     };
     const stored = async (runId) => (await db.query(
-      "select t.rows, t.read_provenance, d.id from document_tables t join documents d on d.id = t.document_id where d.run_id = $1 and t.table_index = 0",
+      "select t.headers, t.rows, t.read_provenance, d.id from document_tables t join documents d on d.id = t.document_id where d.run_id = $1 and t.table_index = 0",
       [runId],
     )).rows[0];
 
@@ -85,6 +85,29 @@ wb.save(sys.argv[1])
     const datedQuality = await openSource(page, "dated.xlsx", "Data quality");
     await expect(datedQuality.getByTestId("read-dates")).toContainText('"Observation date"');
     if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-dates.png") });
+
+    // 3b. Country codes with NA (Grant's decision 5): read as missing, and the Data quality tab says so.
+    writeFileSync(path.join(dir, "countries.csv"), "id,country,score\n1,ZA,3\n2,NA,4\n3,NG,5\n4,US,2\n5,KE,1\n");
+    const coded = await ui.createRun({ name: `one-reader-na-${Date.now()}` });
+    await ui.upload(coded, path.join(dir, "countries.csv"), "table");
+    await openImport(coded);
+    await expect.poll(async () => (await stored(coded.id))?.rows?.length ?? 0, { timeout: 90_000 }).toBe(5);
+    await openImport(coded);
+    const codedQuality = await openSource(page, "countries.csv", "Data quality");
+    await expect(codedQuality.getByTestId("read-na-codes")).toContainText('"country"');
+    if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-na-codes.png") });
+
+    // 3c. Title rows above the header (decision 9): left out of the table, and named on the Data quality tab.
+    writeFileSync(path.join(dir, "titled.csv"), "Brand tracker wave 1\nExported 1 October 2026\n\nid,q1,q2\n1,2,3\n2,3,4\n");
+    const titled = await ui.createRun({ name: `one-reader-title-${Date.now()}` });
+    await ui.upload(titled, path.join(dir, "titled.csv"), "table");
+    await openImport(titled);
+    await expect.poll(async () => (await stored(titled.id))?.rows?.length ?? 0, { timeout: 90_000 }).toBe(2);
+    expect((await stored(titled.id)).headers).toEqual(["id", "q1", "q2"]);
+    await openImport(titled);
+    const titledQuality = await openSource(page, "titled.csv", "Data quality");
+    await expect(titledQuality.getByTestId("read-title-rows")).toContainText("Brand tracker wave 1");
+    if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-title-rows.png") });
 
     // 4. A table the retired reader stored: codes as numbers, no provenance.
     await db.query(

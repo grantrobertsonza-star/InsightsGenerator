@@ -3573,7 +3573,12 @@ export default async function RunPage({
         previewError: importPreviewIdentities.get(t.document_id)?.error,
         unsupportedIdentifierColumns: unsupportedIdentifierColumnsByDoc.get(t.document_id) ?? [],
         readNotes: t.read_provenance
-          ? { encoding: t.read_provenance.encoding ?? null, dateColumns: Array.isArray(t.read_provenance.dateColumns) ? t.read_provenance.dateColumns : [] }
+          ? {
+              encoding: t.read_provenance.encoding ?? null,
+              dateColumns: Array.isArray(t.read_provenance.dateColumns) ? t.read_provenance.dateColumns : [],
+              naCodeColumns: Array.isArray(t.read_provenance.naCodeColumns) ? t.read_provenance.naCodeColumns : [],
+              titleRows: Array.isArray(t.read_provenance.titleRows) ? t.read_provenance.titleRows : [],
+            }
           : undefined,
         labelConflicts: labelDiagnosticsByDoc.get(t.document_id)?.conflicts ?? [],
         unmatchedLabelVariables: labelDiagnosticsByDoc.get(t.document_id)?.unmatched ?? [],

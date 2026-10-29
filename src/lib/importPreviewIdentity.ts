@@ -6,7 +6,7 @@ import { cellValue, type TableCell } from "./rowCells";
 
 /** The engine reader whose stored tables are shown without a fresh read (TABLE_READER in
  * api/parse-stats-file.py; engineTableReader.test.ts keeps the two equal). */
-export const ENGINE_TABLE_READER = "engine-plain-2026.10.26c";
+export const ENGINE_TABLE_READER = "engine-plain-2026.10.29b";
 /** The engine reader of SPSS, Stata, SAS, R and Parquet tables (STATS_READER; engineTableReader.test.ts). */
 export const ENGINE_STATS_READER = "engine-stats-2026.10.27";
 /**
@@ -29,16 +29,17 @@ type StoredPreview = {
 
 export type ImportPreviewIdentity = { error: string | null };
 
-type Provenance = { reader?: unknown; sheet?: unknown; layout?: unknown };
+type Provenance = { reader?: unknown; sheet?: unknown; layout?: unknown; headerRowsSkipped?: unknown };
 
 /**
  * Whether each stored CSV/TSV/Excel table may be shown as the file's data. A stored table must be what
- * the engine's one reader reads from the file now (parseTable.ts), under the document's persisted sheet
- * and layout:
- *  - a table whose read_provenance names the current engine reader, that sheet and that layout is that
+ * the engine's one reader reads from the file now (parseTable.ts), under the document's persisted sheet,
+ * layout and header row choice:
+ *  - a table whose read_provenance names the current engine reader, that sheet, that layout and that header row
+ *    choice (absent read as detected automatically, the only read before the choice existed) is that
  *    read, and is shown after a structural check (every sampled row holds its own value for every header);
  *  - any other table (read by the retired TypeScript preview reader, by an earlier engine reader, before
- *    migration 0116, or under another sheet or layout) is compared value by value with a fresh engine
+ *    migration 0116, or under another sheet, layout or header row) is compared value by value with a fresh engine
  *    read, and withheld with a recovery notice when they differ. That is how a preview the old reader
  *    stored with different names, codes or dates (Codex TP500/IP1000) stops being shown.
  * R and Parquet tables are checked the same way against the engine's conversion (B40-F01, checkStatsTable).
@@ -113,6 +114,7 @@ export async function loadImportPreviewIdentities(
     const isWorkbook = /\.(xlsx|xls)$/i.test(doc.source_filename);
     if (isWorkbook && !doc.selected_sheet) { result.set(id, recovery("the workbook has no confirmed data sheet")); return; }
     let layout: "rows_are_cases" | "columns_are_cases" = "rows_are_cases";
+    let headerRowsSkipped: number | null = null;
     if (doc.ingestion_type === "raw") {
       const setup = await loadDataSetupWithStatus(tenantId, doc.id);
       if (!setup.ok) {
@@ -120,12 +122,13 @@ export async function loadImportPreviewIdentities(
         return;
       }
       layout = setup.setup.layout;
+      headerRowsSkipped = setup.setup.headerRowsSkipped;
     }
     const stored = tables.filter((t) => t.document_id === id && t.table_index < 100);
     const structurallyWhole = stored.every(wholeTable);
     const current = stored.every((t) => {
       const p = (t.read_provenance ?? null) as Provenance | null;
-      return !!p && p.reader === ENGINE_TABLE_READER && p.layout === layout &&
+      return !!p && p.reader === ENGINE_TABLE_READER && p.layout === layout && (p.headerRowsSkipped ?? null) === headerRowsSkipped &&
         (isWorkbook ? p.sheet === doc.selected_sheet : true);
     });
     if (current) {
@@ -133,7 +136,7 @@ export async function loadImportPreviewIdentities(
       return;
     }
     try {
-      const parsed = await parseTableDocument(doc.storage_path, doc.source_filename, { selectedSheet: doc.selected_sheet, layout });
+      const parsed = await parseTableDocument(doc.storage_path, doc.source_filename, { selectedSheet: doc.selected_sheet, layout, headerRowsSkipped });
       const matches = structurallyWhole && stored.every((t) => sameAsRead(t, parsed));
       result.set(id, matches ? { error: null } : recovery(
         isWorkbook

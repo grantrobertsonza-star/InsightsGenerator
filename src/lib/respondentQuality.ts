@@ -35,7 +35,7 @@ export type RespondentQuality = {
   notes: string[];
 };
 
-/** The engine's respondent checks for one raw data file, read with its saved layout and sheet. */
+/** The engine's respondent checks for one raw data file, read with its saved layout, header row and sheet. */
 export async function loadRespondentQuality(tenantId: string, runId: string, documentId: string): Promise<RespondentQuality> {
   // The overlay gives labels for the wording cue and the confirmed reversed items (reverseCoding.ts).
   const [doc, setup, overlay] = await Promise.all([loadDocumentFile(tenantId, runId, documentId), loadDataSetupWithStatus(tenantId, documentId), overlayFor(tenantId, runId, documentId)]);
@@ -43,6 +43,7 @@ export async function loadRespondentQuality(tenantId: string, runId: string, doc
   if (!setup.ok) throw new Error(`This file's layout setting could not be read (${setup.error}), so its respondents were not checked. Try again.`);
   return runStatsTool<RespondentQuality>("respondent_quality", doc.storage_path, doc.source_filename, {
     layout: setup.setup.layout,
+    headerRowsSkipped: setup.setup.headerRowsSkipped,
     selectedSheet: doc.selected_sheet,
     overlay,
   });

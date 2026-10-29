@@ -973,5 +973,110 @@ _bw = _wb({"Respondents": (pd.DataFrame({"brand": [1, 2, 3, 2]}), 0, True), "Cod
 check("label sheet headed value_label: codes take their value labels", [c["label"] for c in psf.categories(_bw, "w5.xlsx", "brand")["categories"]] == ["Toyota", "BMW", "Haval"], str(psf.categories(_bw, "w5.xlsx", "brand")["categories"]))
 check("label sheet headed value_label: the variable keeps its own label", {v["name"]: v["label"] for v in psf.dictionary(_bw, "w5.xlsx")["variables"]}["brand"] == "First choice brand")
 
+# D2b (29 October 2026): driver columns drop non-answers by the answer-domain owner and report each predictor's scale
+# top: the highest declared substantive answer (a declared 5 nobody chose counts; 6 = Don't know never does).
+_lab2 = pd.DataFrame({"variable": ["sat"] * 6, "label": ["Satisfaction"] * 6, "value": [1, 2, 3, 4, 5, 6], "value_label": ["Very poor", "Poor", "Fair", "Good", "Very good", "Don't know"]})
+_dw = _wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3, 4, 5, 2], "sat": [1, 2, 3, 4, 6, 2]}), 0, True), "Labels": (_lab2, 0, True)})
+_dc = psf.driver_columns(_dw, "d.xlsx", {"outcome": "y", "predictors": ["sat"]})
+_sat = _dc["predictors"][0]
+check("D2b: driver columns drop 6 = Don't know", [r[0] for r in _dc["x"]] == [1.0, 2.0, 3.0, 4.0, None, 2.0], str(_dc["x"]))
+check("D2b: the scale top is the declared 5, unchosen, never the non-answer 6", _sat.get("scaleTop") == 5.0 and _sat.get("scaleStated") is True and _sat["max"] == 4.0, str(_sat))
+_dn = psf.driver_columns(_wb({"Respondents": (pd.DataFrame({"y": [1, 2, 3], "q": [1, 2, 4]}), 0, True)}), "n.xlsx", {"outcome": "y", "predictors": ["q"]})["predictors"][0]
+check("D2b: without an answer list the scale top is the highest answer, said so", _dn.get("scaleTop") == 4.0 and _dn.get("scaleStated") is False, str(_dn))
+
+# Decision 9 (29 October 2026): title rows above a CSV, TSV or Excel header. First part: up to 14 leading rows holding
+# at most one written value are set aside by detection. Second part: the researcher's header row (headerRowsSkipped,
+# the number of rows holding text above the header) replaces detection, the rows above it are named as title rows, a
+# row past the end of the file is refused, and the choice is part of the read cache key.
+import openpyxl as _oxl
+
+
+def _title_book(rows, id_format=None):
+    """A workbook whose one sheet holds these rows from row 1 (None is an empty cell); id_format is applied to the
+    first column of every row after the first row starting with "id"."""
+    wb = _oxl.Workbook()
+    ws = wb.active
+    ws.title = "Data"
+    below_header = False
+    for r, row in enumerate(rows, start=1):
+        for c, v in enumerate(row, start=1):
+            if v is not None:
+                cell = ws.cell(row=r, column=c, value=v)
+                if id_format and below_header and c == 1:
+                    cell.number_format = id_format
+        if row and row[0] == "id":
+            below_header = True
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+_hr_csv = b"Brand survey 2026\nFieldwork: October\nid,brand,score\n1,1,5\n2,2,6\n"
+_hr = psf.read_table(_hr_csv, "hr.csv")
+check("decision 9: a CSV's two title rows are detected (unchanged)", _hr["headers"] == ["id", "brand", "score"] and _hr["titleRows"] == ["Brand survey 2026", "Fieldwork: October"] and len(_hr["rows"]) == 2, str(_hr["headers"]))
+_hrx_b = _title_book([["Brand survey 2026"], ["Fieldwork: October"], ["id", "brand", "score"], [1, 1, 5], [2, 2, 6]])
+_hrx = psf.read_table(_hrx_b, "hr.xlsx")
+check("decision 9: an Excel sheet's two title rows are detected (unchanged)", _hrx["headers"] == ["id", "brand", "score"] and _hrx["titleRows"] == ["Brand survey 2026", "Fieldwork: October"] and len(_hrx["rows"]) == 2, str(_hrx["headers"]))
+_hr2 = psf.read_table(_hr_csv, "hr.csv", {"headerRowsSkipped": 2})
+check("decision 9: header row 3 chosen gives the same table as detection", _hr2["headers"] == _hr["headers"] and _hr2["rows"] == _hr["rows"] and _hr2["titleRows"] == _hr["titleRows"])
+_hr0 = psf.read_table(_hrx_b, "hr0.xlsx", {"headerRowsSkipped": 0})
+check("decision 9: header row 1 chosen over a one-cell title takes the title as the header (the choice wins over detection)", _hr0["headers"][0] == "Brand survey 2026" and _hr0["titleRows"] == [] and len(_hr0["rows"]) == 4, str(_hr0["headers"]))
+_hr0c = psf.read_table(b"Report title,,\nid,brand,score\n1,1,5\n", "hr0.csv", {"headerRowsSkipped": 0})
+check("decision 9: a CSV's chosen header row 1 gives its width and its names", _hr0c["headers"][0] == "Report title" and len(_hr0c["headers"]) == 3 and len(_hr0c["rows"]) == 2, str(_hr0c["headers"]))
+try:
+    psf.read_table(_hr_csv, "hr0.csv", {"headerRowsSkipped": 0})
+    _narrow = "read"
+except ValueError as exc:
+    _narrow = str(exc)
+check("decision 9: a CSV's chosen one-value header row with wider rows below is refused naming the line, not guessed", "Line 3" in _narrow and "header row has 1 columns" in _narrow, _narrow)
+_long = b"Brand survey 2026\nPrepared by,Acme Research\nNote: weighted\nid,brand,score\n1,1,5\n2,2,6\n3,1,4\n"
+try:
+    psf.read_table(_long, "long.csv")
+    _long_auto = "read"
+except ValueError as exc:
+    _long_auto = str(exc)
+check("decision 9: detection misses a preamble with a two-value line (the case a chosen header row is for)", "header row has 2 columns" in _long_auto, _long_auto)
+_hr3 = psf.read_table(_long, "long.csv", {"headerRowsSkipped": 3})
+check("decision 9: header row 4 chosen reads the table under a preamble detection misses, and names the rows above it", _hr3["headers"] == ["id", "brand", "score"] and _hr3["titleRows"] == ["Brand survey 2026", "Prepared by Acme Research", "Note: weighted"] and [r["score"] for r in _hr3["rows"]] == [5, 6, 4], str(_hr3))
+_hr3x = psf.read_table(_title_book([["Brand survey 2026"], ["Prepared by", "Acme Research"], [None], ["Note: weighted"], ["id", "brand", "score"], [1, 1, 5], [2, 2, 6]]), "long.xlsx", {"headerRowsSkipped": 3})
+check("decision 9: in Excel the chosen row counts rows holding text, and a blank row above it is set aside unnamed", _hr3x["headers"] == ["id", "brand", "score"] and _hr3x["titleRows"] == ["Brand survey 2026", "Prepared by Acme Research", "Note: weighted"] and len(_hr3x["rows"]) == 2, str(_hr3x))
+for _bad_bytes, _bad_name in ((_long, "past.csv"), (_hrx_b, "past.xlsx")):
+    try:
+        psf.read_table(_bad_bytes, _bad_name, {"headerRowsSkipped": 9})
+        _past = "read"
+    except ValueError as exc:
+        _past = str(exc)
+    check(f"decision 9: a header row past the end of {_bad_name} is refused, never moved to the last row", "header row is set to row 10" in _past and "only" in _past, _past)
+_bad_values = []
+for _bad in (-1, 15, 1.5, True, "2"):
+    try:
+        psf.read_table(_hr_csv, "hr.csv", {"headerRowsSkipped": _bad})
+        _bad_values.append(_bad)
+    except ValueError:
+        pass
+check("decision 9: a header row setting that is not a whole number from 0 to 14 is refused", _bad_values == [], str(_bad_values))
+_sav_buf = os.path.join(tmp, "hr.sav")
+pyreadstat.write_sav(pd.DataFrame({"a": [1.0, 2.0]}), _sav_buf)
+try:
+    psf.dictionary(open(_sav_buf, "rb").read(), "hr.sav", {"headerRowsSkipped": 0})
+    _sav_msg = "read"
+except ValueError as exc:
+    _sav_msg = str(exc)
+check("decision 9: a header row set on an SPSS file is refused with the reason", "only CSV, TSV" in _sav_msg, _sav_msg)
+check("decision 9: an SPSS file with the header row detected automatically reads as before", psf.dictionary(open(_sav_buf, "rb").read(), "hr.sav", {"headerRowsSkipped": None})["nCases"] == 2)
+# The cache key: the same bytes read under two choices, in either order, give two tables, never the cached one.
+psf._READ_CACHE.clear()
+_k_auto = psf.dictionary(_hrx_b, "k.xlsx")
+_k_zero = psf.dictionary(_hrx_b, "k.xlsx", {"headerRowsSkipped": 0})
+_k_auto_again = psf.dictionary(_hrx_b, "k.xlsx")
+check("decision 9: the header row choice is part of the read cache key", [v["name"] for v in _k_auto["variables"]] == ["id", "brand", "score"] and [v["name"] for v in _k_zero["variables"]][0] == "Brand survey 2026" and [v["name"] for v in _k_auto_again["variables"]] == ["id", "brand", "score"], str([v["name"] for v in _k_zero["variables"]]))
+check("decision 9: categories and cross tabs read the chosen header row too", [(c["label"], c["n"]) for c in psf.categories(_long, "long.csv", "brand", None, None, None, 3)["categories"]] == [("1", 2), ("2", 1)] and psf.crosstab(_long, "long.csv", {"columnVars": [], "rowItems": [{"key": "brand", "label": "Brand", "vars": ["brand"]}], "headerRowsSkipped": 3})["total"]["n"] == 3)
+# An identifier formatted 0000 below title rows: the format check reads the identifier cells of the rows read as cases
+# (before, it read the sheet from row 2 whatever the header's row, so the title rows moved every identifier by two).
+_pad = psf.read_table(_title_book([["Respondents"], ["Wave 1"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad.xlsx")
+check("decision 9: a zero-padded identifier below two title rows keeps its own padding", [r["id"] for r in _pad["rows"]] == ["0007", "0012"], str(_pad["rows"]))
+_pad3 = psf.read_table(_title_book([["Respondents"], ["Prepared by", "Acme"], ["id", "score"], [7, 5], [12, 6]], id_format="0000"), "pad3.xlsx", {"headerRowsSkipped": 2})
+check("decision 9: a zero-padded identifier below a chosen header row keeps its own padding", [r["id"] for r in _pad3["rows"]] == ["0007", "0012"], str(_pad3["rows"]))
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)
