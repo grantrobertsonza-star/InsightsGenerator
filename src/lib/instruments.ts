@@ -6,8 +6,9 @@ import { withTenant, withTenantRead } from "./db";
 import type { PoolClient } from "pg";
 import { extractDocumentText } from "./extractFindings";
 import { loadVariableDictionary } from "./crosstabs";
-import { codeFamily, codebookWordingMatches, matchItems, wordingIdentical, type ConfirmedCodebookEntry } from "./instrumentMatch";
+import { answerCodesFit, codeFamily, codebookWordingMatches, matchableCode, matchItems, wordingIdentical, type ConfirmedCodebookEntry } from "./instrumentMatch";
 import { parseRouting, type Routing } from "./routingParse";
+import type { DataFileMatch } from "./instrumentMatchMessage";
 import { deriveGotoRouting } from "./gotoRouting";
 import { buildLabelOverlay, type LabelOverlay } from "./labelOverlay";
 import { isPlainTableFileName } from "./parseTable";
@@ -603,10 +604,25 @@ async function storeInstrumentRows(
     if (!metaStored && rows.some((r) => r.questionMeta)) questionMetaNotStored = true;
     const metaOf = (r: ReadRow) => (r.questionMeta ? JSON.stringify(r.questionMeta) : null);
     const matchedIds = new Set<string>();
+    // Batch 56 (conformance L052): an item whose wording changed but whose code did not is the same item. A codebook
+    // entry's identity is its variable name; matching only on code plus wording deleted a confirmed entry (and its
+    // confirmed link, and the meanings resting on it) when its label was reworded. The code alone is used only
+    // when it names one item among those not matched by code and wording, in the file on record and in this read,
+    // so two items sharing a code are never merged.
+    const codeKey = (code: string | null) => (code ?? "").trim().toLowerCase();
+    const exactIds = new Set(rows.map((r) => existingByKey.get(itemKey(r.code, r.text))).filter((x): x is string => !!x));
+    const unmatchedRows = rows.filter((r) => !existingByKey.has(itemKey(r.code, r.text)));
+    const tally = (xs: string[]) => xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map<string, number>());
+    const rowCodes = tally(unmatchedRows.map((r) => codeKey(r.code)).filter(Boolean));
+    const freeExisting = existing.rows.filter((e) => !exactIds.has(e.id));
+    const existingCodes = tally(freeExisting.map((e) => codeKey(e.code)).filter(Boolean));
+    const byCodeOnly = new Map(
+      freeExisting.filter((e) => codeKey(e.code) && existingCodes.get(codeKey(e.code)) === 1 && rowCodes.get(codeKey(e.code)) === 1).map((e) => [codeKey(e.code), e.id] as const),
+    );
 
     for (let n = 0; n < rows.length; n++) {
       const r = rows[n];
-      const existingId = existingByKey.get(itemKey(r.code, r.text));
+      const existingId = existingByKey.get(itemKey(r.code, r.text)) ?? byCodeOnly.get(codeKey(r.code));
       if (existingId) {
         matchedIds.add(existingId);
         // IMP-012: an item this row matches was already on file, and this row's OWN
@@ -676,21 +692,31 @@ export async function suggestInstrumentLinks(
   runId: string,
   instrumentId: string,
   dataDocumentId: string,
-): Promise<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean }> {
+  /** False when matching one of several data files (a codebook shared by waves): the default target is left as it is. */
+  options: { setTarget?: boolean } = {},
+): Promise<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean; autoConfirmed: number; autoUnavailable: boolean }> {
   const dictionary = await loadVariableDictionary(tenantId, runId, dataDocumentId);
+  const observedCodes = new Map(dictionary.variables.map((v) => [v.name, v.codes ?? null]));
   let suggestedNew = 0;
   let fromCodebook = 0;
   let codebookUnavailable = false;
+  let autoConfirmed = 0;
+  let autoUnavailable = false;
   await withTenant(tenantId, async (client) => {
     // IS-F03: both files are locked and checked as active files of this project before anything is
     // deleted or written, and the questions are read here, from this project only, under the lock.
     const { instrumentType } = await lockLinkDocuments(client, tenantId, runId, instrumentId, [dataDocumentId]);
-    const items = (
-      await client.query<{ id: string; code: string | null; item_text: string }>(
-        "select id, code, item_text from instrument_items where document_id = $1 and run_id = $2 order by item_order",
+    const itemRows = (
+      await client.query<{ id: string; code: string | null; item_text: string; response_options: ItemOption[] | null }>(
+        "select id, code, item_text, response_options from instrument_items where document_id = $1 and run_id = $2 order by item_order",
         [instrumentId, runId],
       )
-    ).rows.map((i) => ({ id: i.id, code: i.code, text: i.item_text }));
+    ).rows;
+    const items = itemRows.map((i) => ({ id: i.id, code: i.code, text: i.item_text }));
+    const optionsOf = new Map(itemRows.map((i) => [i.id, i.response_options]));
+    const decisions = await linkDecisionsAvailable(client);
+    // A link the researcher decided (migration 0133) is never deleted, upgraded or confirmed by matching.
+    const notResearcher = decisions ? " and instrument_links.decided_by is distinct from 'researcher'" : "";
     // Grid rows (method 'grid', batch 53) are suggested only once migration 0130 allows the method; before
     // it, matching is as it was. A grid's stem and rows are often only in the codebook (the IGS data file
     // has no labels; its codebook says "Q5_1 Regardless of whom ... - Tony Thurmond"), so for a
@@ -708,9 +734,31 @@ export async function suggestInstrumentLinks(
       for (const r of cb.rows) gridLabels.set(r.variable, [...(gridLabels.get(r.variable) ?? []), r.item_text]);
     }
     const candidates = matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label })), { grids, gridLabels });
+    // CB1 (Grant, 29 October 2026): a codebook entry named exactly as one variable, whose answer codes include
+    // every code that variable holds, is confirmed without a click (decided_by 'automatic'). Matching again
+    // re-checks every such link: one that no longer fits goes back to a suggestion below. Before migration 0133
+    // nothing is confirmed this way and `autoUnavailable` says so.
+    const automatic = new Set<string>();
+    if (instrumentType === "codebook") {
+      if (!decisions) autoUnavailable = true;
+      else
+        for (const c of candidates)
+          if (c.method === "code" && c.confidence === 1 && answerCodesFit(optionsOf.get(c.itemId), observedCodes.get(c.variable))) automatic.add(`${c.itemId}|${c.variable}`);
+    }
+    if (decisions) {
+      const confirmedByRule = await client.query<{ id: string; item_id: string; variable: string }>(
+        `select l.id, l.item_id, l.variable from instrument_links l join instrument_items i on i.id = l.item_id
+          where i.document_id = $1 and l.data_document_id = $2 and l.status = 'confirmed' and l.decided_by = 'automatic'`,
+        [instrumentId, dataDocumentId],
+      );
+      for (const l of confirmedByRule.rows) {
+        if (automatic.has(`${l.item_id}|${l.variable}`)) continue;
+        await client.query("update instrument_links set status = 'suggested', decided_by = null where id = $1 and decided_by = 'automatic'", [l.id]);
+      }
+    }
     await client.query(
       `delete from instrument_links where status = 'suggested' and data_document_id = $2
-         and item_id in (select id from instrument_items where document_id = $1)`,
+         and item_id in (select id from instrument_items where document_id = $1)${notResearcher}`,
       [instrumentId, dataDocumentId],
     );
     // A variable the researcher has already confirmed for a question of THIS document (by hand or by
@@ -763,7 +811,7 @@ export async function suggestInstrumentLinks(
              values ($1,$2,$3,$4,$5,'codebook',1,'confirmed',$6)
              on conflict (item_id, data_document_id, variable) do update
                set method = 'codebook', confidence = 1, status = 'confirmed', basis_item_id = excluded.basis_item_id
-               where instrument_links.status = 'suggested'`,
+               where instrument_links.status = 'suggested'${notResearcher}`,
             [tenantId, runId, m.itemId, dataDocumentId, m.variable, m.basisItemId],
           );
           if (r.rowCount) {
@@ -774,8 +822,24 @@ export async function suggestInstrumentLinks(
       }
     }
     for (const c of candidates) {
+      if (!automatic.has(`${c.itemId}|${c.variable}`)) continue;
       if (taken.has(c.variable) && taken.get(c.variable) !== c.itemId) continue;
-      // Everything starts as a suggestion. Confirming is the researcher's step.
+      const r = await client.query(
+        `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status, decided_by)
+         values ($1,$2,$3,$4,$5,'code',1,'confirmed','automatic')
+         on conflict (item_id, data_document_id, variable) do update
+           set method = 'code', confidence = 1, status = 'confirmed', decided_by = 'automatic'
+           where instrument_links.status = 'suggested'${notResearcher}`,
+        [tenantId, runId, c.itemId, dataDocumentId, c.variable],
+      );
+      if (r.rowCount) {
+        autoConfirmed += 1;
+        taken.set(c.variable, c.itemId);
+      }
+    }
+    for (const c of candidates) {
+      if (taken.has(c.variable) && taken.get(c.variable) !== c.itemId) continue;
+      // Everything else starts as a suggestion. Confirming it is the researcher's step.
       const r = await client.query(
         `insert into instrument_links (tenant_id, run_id, item_id, data_document_id, variable, method, confidence, status)
          values ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -784,10 +848,12 @@ export async function suggestInstrumentLinks(
       );
       if (r.rowCount) suggestedNew += 1;
     }
-    const target = await client.query("update documents set instrument_for = $1 where id = $2 and run_id = $3 and tenant_id = $4 and kind = 'instrument'", [dataDocumentId, instrumentId, runId, tenantId]);
-    if (target.rowCount !== 1) throw new Error("That questionnaire or codebook is not in this project. Nothing was changed.");
+    if (options.setTarget !== false) {
+      const target = await client.query("update documents set instrument_for = $1 where id = $2 and run_id = $3 and tenant_id = $4 and kind = 'instrument'", [dataDocumentId, instrumentId, runId, tenantId]);
+      if (target.rowCount !== 1) throw new Error("That questionnaire or codebook is not in this project. Nothing was changed.");
+    }
   });
-  return { suggested: suggestedNew, fromCodebook, codebookUnavailable };
+  return { suggested: suggestedNew, fromCodebook, codebookUnavailable, autoConfirmed, autoUnavailable };
 }
 
 /**
@@ -844,6 +910,102 @@ export async function chooseMatchTarget(tenantId: string, runId: string, instrum
     (second === undefined || (best.matched - second.matched >= CLEAR_LEAD_ITEMS && best.matched >= second.matched * CLEAR_LEAD_RATIO));
   if (clear) return { kind: "chosen", dataDocumentId: best.dataDocumentId, reason: "best", matched: best.matched };
   return { kind: "choose", candidates: scored };
+}
+
+/**
+ * A codebook matched to every data file of the project it describes (CB1, Grant 29 October 2026: linking the
+ * codebook should not be manual for each wave). A file is matched when it is plainly described by the codebook
+ * (sharesCodebookNames); a file sharing only a few names, such as Q1 in another study, is left alone and reported.
+ * Each file goes through suggestInstrumentLinks, so the same rules apply: entries whose codes fit are confirmed
+ * automatically, the rest suggested, and the researcher's own decisions are never changed.
+ *
+ * `onlyUnlinked`: only files with no link from this codebook yet (a wave added after the codebook was matched).
+ * The codebook's default file is set only when it has none. Each file's outcome is returned, including one that
+ * failed (its dictionary could not be read, or it was removed meanwhile); one failure does not stop the others,
+ * and nothing is reported as matched that was not.
+ */
+/** The kind of an active instrument of this project (questionnaire, codebook, guide); refused when it is not one. */
+export async function instrumentTypeOf(tenantId: string, runId: string, instrumentId: string): Promise<string | null> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query<{ instrument_type: string | null }>(
+      "select instrument_type from documents where id = $1 and run_id = $2 and kind = 'instrument' and removed_at is null",
+      [instrumentId, runId],
+    );
+    if (r.rows.length === 0) throw new Error("That questionnaire or codebook is not in this project.");
+    return r.rows[0].instrument_type;
+  });
+}
+
+/**
+ * A data file is described by a codebook when at least half of the codebook's named entries (and at least three,
+ * or all of them in a smaller codebook) are exactly the names of its variables. Waves of one tracker share nearly
+ * every name; another study may share a handful ("Q1", "Age") by chance, and matching it would confirm the wrong
+ * question wherever the codes happen to fit.
+ */
+export function sharesCodebookNames(names: number, coded: number): boolean {
+  return coded > 0 && names >= Math.min(3, coded) && names * 2 >= coded;
+}
+
+export async function matchCodebookToDataFiles(
+  tenantId: string,
+  runId: string,
+  instrumentId: string,
+  options: { onlyUnlinked?: boolean } = {},
+): Promise<{ files: DataFileMatch[]; suggested: number; autoConfirmed: number; autoUnavailable: boolean }> {
+  const { files, hasTarget } = await withTenantRead(tenantId, async (client) => {
+    const doc = await client.query<{ instrument_type: string | null; instrument_for: string | null }>(
+      "select instrument_type, instrument_for from documents where id = $1 and run_id = $2 and kind = 'instrument' and removed_at is null",
+      [instrumentId, runId],
+    );
+    if (doc.rows.length === 0) throw new Error("That codebook is not in this project.");
+    if (doc.rows[0].instrument_type !== "codebook") throw new Error("Only a codebook is matched to every data file; choose the data file for a questionnaire.");
+    const raw = await client.query<{ id: string; source_filename: string; linked: boolean }>(
+      `select d.id, d.source_filename,
+              exists (select 1 from instrument_links l join instrument_items i on i.id = l.item_id
+                       where l.data_document_id = d.id and i.document_id = $2) as linked
+         from documents d where d.run_id = $1 and d.kind = 'table' and d.ingestion_type = 'raw' and d.removed_at is null
+        order by d.uploaded_at, d.id`,
+      [runId, instrumentId],
+    );
+    return { files: raw.rows.filter((f) => !options.onlyUnlinked || !f.linked), hasTarget: doc.rows[0].instrument_for !== null };
+  });
+  const items = (await getInstrumentItems(tenantId, instrumentId)).map((i) => ({ id: i.id, code: i.code, text: i.text }));
+  const coded = items.filter((i) => matchableCode(i.code) !== "").length;
+  const named = await mapWithConcurrency(files, 2, async (f) => {
+    try {
+      const dictionary = await loadVariableDictionary(tenantId, runId, f.id);
+      const exact = matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label }))).filter((c) => c.method === "code" && c.confidence === 1);
+      return { f, names: new Set(exact.map((c) => c.itemId)).size, error: null as string | null };
+    } catch (e) {
+      return { f, names: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  const out: DataFileMatch[] = [];
+  let suggested = 0;
+  let autoConfirmed = 0;
+  let autoUnavailable = false;
+  let targetSet = hasTarget;
+  for (const { f, names, error } of named) {
+    if (error !== null) {
+      out.push({ dataDocumentId: f.id, filename: f.source_filename, status: "failed", error });
+      continue;
+    }
+    if (!sharesCodebookNames(names, coded)) {
+      out.push({ dataDocumentId: f.id, filename: f.source_filename, status: "few_names", names, coded });
+      continue;
+    }
+    try {
+      const r = await suggestInstrumentLinks(tenantId, runId, instrumentId, f.id, { setTarget: !targetSet });
+      targetSet = true;
+      suggested += r.suggested;
+      autoConfirmed += r.autoConfirmed;
+      autoUnavailable ||= r.autoUnavailable;
+      out.push({ dataDocumentId: f.id, filename: f.source_filename, status: "matched", suggested: r.suggested, autoConfirmed: r.autoConfirmed });
+    } catch (e) {
+      out.push({ dataDocumentId: f.id, filename: f.source_filename, status: "failed", error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { files: out, suggested, autoConfirmed, autoUnavailable };
 }
 
 export async function getInstrumentItems(tenantId: string, instrumentId: string): Promise<InstrumentItem[]> {
@@ -938,6 +1100,14 @@ async function gridLinksAvailable(client: PoolClient): Promise<boolean> {
   return r.rows[0]?.ok === true;
 }
 
+/** Migration 0133: who decided a link (decided_by), needed before anything is confirmed without a click. */
+async function linkDecisionsAvailable(client: PoolClient): Promise<boolean> {
+  const r = await client.query<{ ok: boolean }>(
+    `select exists (select 1 from information_schema.columns where table_name = 'instrument_links' and column_name = 'decided_by') as ok`,
+  );
+  return r.rows[0]?.ok === true;
+}
+
 async function codebookLinksAvailable(client: PoolClient): Promise<boolean> {
   const r = await client.query<{ ok: boolean }>(
     `select exists (select 1 from information_schema.columns where table_name = 'instrument_links' and column_name = 'basis_item_id') as ok`,
@@ -995,6 +1165,8 @@ export type InstrumentSummary = {
   readFailure?: string;
   /** The data files it has suggested or confirmed links to (several waves can share one questionnaire), oldest upload first. */
   linkedDataDocumentIds: string[];
+  /** CB1: active raw data files with no link of any status from it (a wave added since it was matched). */
+  unlinkedDataFiles: number;
 };
 
 export async function getInstrumentSummaries(tenantId: string, runId: string): Promise<Map<string, InstrumentSummary>> {
@@ -1009,7 +1181,7 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
         out.set(d.id, {
           documentId: d.id, type: d.instrument_type, forDocumentId: d.instrument_for,
           items: 0, withRouting: 0, fromJumps: 0, statedRoutingText: 0, links: { suggested: 0, confirmed: 0, rejected: 0 }, itemsToCheck: 0,
-          linkedDataDocumentIds: [],
+          linkedDataDocumentIds: [], unlinkedDataFiles: 0,
         });
       }
       if (out.size === 0) return;
@@ -1044,6 +1216,18 @@ export async function getInstrumentSummaries(tenantId: string, runId: string): P
         [runId],
       );
       for (const r of linkedFiles.rows) out.get(r.document_id)?.linkedDataDocumentIds.push(r.data_document_id);
+      const unlinked = await client.query<{ document_id: string; n: string }>(
+        `select x.id as document_id, count(d.id) as n
+           from documents x join documents d on d.run_id = x.run_id and d.kind = 'table' and d.ingestion_type = 'raw' and d.removed_at is null
+          where x.run_id = $1 and x.kind = 'instrument'
+            and not exists (select 1 from instrument_links l join instrument_items i on i.id = l.item_id where i.document_id = x.id and l.data_document_id = d.id)
+          group by x.id`,
+        [runId],
+      );
+      for (const r of unlinked.rows) {
+        const s = out.get(r.document_id);
+        if (s) s.unlinkedDataFiles = Number(r.n);
+      }
       const toCheck = await client.query<{ document_id: string; n: string }>(
         `select i.document_id, count(distinct l.item_id) as n
          from instrument_links l join instrument_items i on i.id = l.item_id
@@ -1224,7 +1408,8 @@ async function variableTakenBy(client: PoolClient, dataDocumentId: string, varia
  * Sets one link's status (Confirm or Reject on the review table). Confirming goes through the
  * shared rule above with the data file locked; a variable taken by another question is refused with
  * that question named (InstrumentLinkTakenError) and nothing changes. Rejecting, or returning a link
- * to suggested, never conflicts. The link must belong to this project; repeating a status is a no-op.
+ * to suggested, never conflicts. The link must belong to this project; repeating a status changes nothing but
+ * records the researcher as its decider (CB1), so matching again leaves it alone.
  */
 export async function setInstrumentLinkStatus(tenantId: string, runId: string, linkId: string, status: LinkStatus): Promise<void> {
   await withTenant(tenantId, async (client) => {
@@ -1246,11 +1431,15 @@ export async function setInstrumentLinkStatus(tenantId: string, runId: string, l
       );
       const l = link.rows[0];
       if (!l) throw new Error("That link is not in this project.");
-      if (l.status === "confirmed") return;
-      const taken = await variableTakenBy(client, found.rows[0].data_document_id, l.variable, l.item_id);
-      if (taken) throw new InstrumentLinkTakenError(taken);
+      if (l.status !== "confirmed") {
+        const taken = await variableTakenBy(client, found.rows[0].data_document_id, l.variable, l.item_id);
+        if (taken) throw new InstrumentLinkTakenError(taken);
+      }
     }
-    await client.query("update instrument_links set status = $1 where id = $2 and run_id = $3", [status, linkId, runId]);
+    // CB1: the researcher's decision is recorded (migration 0133), so matching again never changes it, including
+    // confirming a link matching had confirmed by itself.
+    const decided = (await linkDecisionsAvailable(client)) ? ", decided_by = 'researcher'" : "";
+    await client.query(`update instrument_links set status = $1${decided} where id = $2 and run_id = $3`, [status, linkId, runId]);
   });
 }
 
@@ -1268,6 +1457,9 @@ export async function confirmInstrumentLinks(
   minConfidence: number,
   /** One question only ("Confirm all N" on a grid or a family, batch 53): every suggestion of that question. */
   itemId: string | null = null,
+  /** With itemId: only that question's suggestions in this data file, the one the review shows (several waves can
+   * share one codebook, and "Confirm all N" names the N links on screen, never another wave's). */
+  dataDocumentId: string | null = null,
 ): Promise<{ confirmed: number; refused: { variable: string; reason: string }[] }> {
   return withTenant(tenantId, async (client) => {
     const pending = async () =>
@@ -1277,8 +1469,9 @@ export async function confirmInstrumentLinks(
            from instrument_links l join instrument_items i on i.id = l.item_id
            where l.run_id = $1 and i.run_id = $1 and i.document_id = $2 and l.status = 'suggested' and l.confidence >= $3
              and ($4::uuid is null or l.item_id = $4::uuid)
+             and ($5::uuid is null or l.data_document_id = $5::uuid)
            order by l.confidence desc, i.item_order, l.id`,
-          [runId, instrumentId, minConfidence, itemId],
+          [runId, instrumentId, minConfidence, itemId, dataDocumentId],
         )
       ).rows;
     // IS-F03: the questionnaire and every data file are locked and checked as active files of this
@@ -1286,6 +1479,7 @@ export async function confirmInstrumentLinks(
     await lockLinkDocuments(client, tenantId, runId, instrumentId, (await pending()).map((c) => c.data_document_id));
     let confirmed = 0;
     const refused: { variable: string; reason: string }[] = [];
+    const decided = (await linkDecisionsAvailable(client)) ? ", decided_by = 'researcher'" : "";
     // Read again under the locks, then decide in order of confidence: an earlier confirmation in
     // this batch counts as taken for the ones after it.
     for (const c of await pending()) {
@@ -1294,7 +1488,7 @@ export async function confirmInstrumentLinks(
         refused.push({ variable: c.variable, reason: taken });
         continue;
       }
-      const r = await client.query("update instrument_links set status = 'confirmed' where id = $1 and status = 'suggested'", [c.id]);
+      const r = await client.query(`update instrument_links set status = 'confirmed'${decided} where id = $1 and status = 'suggested'`, [c.id]);
       confirmed += r.rowCount ?? 0;
     }
     return { confirmed, refused };

@@ -1,6 +1,6 @@
 import type { ArchiveReason } from "./findingArchive";
 import { withTenant } from "./db";
-import { computeTablePatterns, type TableScanCoverage } from "./tableComputation";
+import type { TableScanCoverage } from "./tableComputation";
 import { publishTableFindings, type TablePublicationOutcome } from "./tableFindingPublication";
 import { generateFindingsFromBannerPlan } from "./generateFindingsFromBannerPlan";
 
@@ -119,7 +119,14 @@ export async function generateFindingsFromTable(
     if (locked.rows.length !== 1 || locked.rows[0].ingestion_type !== "aggregated") {
       throw new Error("This table is no longer in this project (or is no longer a summary table), so nothing was changed.");
     }
-    const { patterns, scan } = computeTablePatterns(locked.rows[0].headers as string[], locked.rows[0].rows as Record<string, string | number | null>[]);
+    // Grant, 29 October 2026 (batch 57): the open pattern scan does not run on an uploaded summary table. It reads
+    // rows as cases, but in banner and indicator tables they are answer categories, totals, bases and country-years,
+    // so it reported artefacts such as "Total is an outlier" and "TIME_PERIOD correlates with OBS_VALUE" as accepted
+    // findings. Publishing no patterns retires earlier scan findings nobody acted on; any a researcher reviewed,
+    // edited, noted or built an insight on are kept (the shared replacement policy). Claims are still checked against
+    // the table (claimTableChecks), which is a separate feature.
+    const patterns: Parameters<typeof publishTableFindings>[1]["patterns"] = [];
+    const scan = undefined;
     const published = await publishTableFindings(client, {
       tenantId,
       runId,
@@ -132,7 +139,7 @@ export async function generateFindingsFromTable(
     // recorded with the outcome so "nothing found" is never confused with "not looked at" or "capped".
     await client.query(
       `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'table_findings_scan', $3)`,
-      [tenantId, runId, JSON.stringify({ documentTableId, scan, published })],
+      [tenantId, runId, JSON.stringify({ documentTableId, scan: { off: "uploaded summary tables are not scanned (Grant, 29 October 2026)" }, published })],
     );
     return { scan, published };
   });

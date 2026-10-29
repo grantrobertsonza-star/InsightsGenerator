@@ -1,0 +1,6249 @@
+{
+ "summary": {
+  "all": {
+   "checks": 240,
+   "pass": 158,
+   "fail": 82
+  },
+  "by_basis": {
+   "contract": {
+    "checks": 44,
+    "pass": 44,
+    "fail": 0
+   },
+   "research": {
+    "checks": 196,
+    "pass": 114,
+    "fail": 82
+   }
+  },
+  "by_runner": {
+   "aggregated": {
+    "checks": 240,
+    "pass": 158,
+    "fail": 82
+   }
+  },
+  "failures_by_severity": {
+   "S1": 0,
+   "S2": 55,
+   "S3": 27
+  },
+  "cases": 21,
+  "cases_all_pass": 0
+ },
+ "checks": [
+  {
+   "case": "AGG-01",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Count",
+    "Percent"
+   ],
+   "actual": [
+    "Response",
+    "Count",
+    "Percent"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "6 of 6",
+   "actual": {
+    "matched": 5,
+    "firstMisses": [
+     {
+      "row": "Don't know",
+      "col": "Count",
+      "table": 0,
+      "want": "50 count",
+      "got": "50 percent"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Count": 1000,
+    "Percent": 1000
+   },
+   "actual": {
+    "Count": null,
+    "Percent": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 60%; the table gives 60 for Yes / Percent. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 1000
+   },
+   "actual": {
+    "withBase": 0,
+    "smallest": null
+   },
+   "pass": false,
+   "severity": "S3",
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "1 of 1 percentage columns add to 100% (within 3 points for rounding).",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-01",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Count",
+    "Percent"
+   ],
+   "actual": [
+    "Response",
+    "Count",
+    "Percent"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "6 of 6",
+   "actual": {
+    "matched": 5,
+    "firstMisses": [
+     {
+      "row": "Don't know",
+      "col": "Count",
+      "table": 0,
+      "want": "50 count",
+      "got": "50 percent"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Count": 1000,
+    "Percent": 1000
+   },
+   "actual": {
+    "Count": null,
+    "Percent": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 60%; the table gives 60 for Yes / Percent. Matches within rounding. (Read as a percentage: the table labels its figures as percentages and this column holds values from 0 to 1, read as proportions.)"
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 1000
+   },
+   "actual": {
+    "withBase": 0,
+    "smallest": null
+   },
+   "pass": false,
+   "severity": "S3",
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "no percentage check ran",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-02",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Count",
+    "Percent"
+   ],
+   "actual": [
+    "Response",
+    "Count",
+    "Percent"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "6 of 6",
+   "actual": {
+    "matched": 5,
+    "firstMisses": [
+     {
+      "row": "Don't know",
+      "col": "Count",
+      "table": 0,
+      "want": "50 count",
+      "got": "50 percent"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Count": 1000,
+    "Percent": 1000
+   },
+   "actual": {
+    "Count": null,
+    "Percent": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 60%; the table gives 60 for Yes / Percent. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 1000
+   },
+   "actual": {
+    "withBase": 0,
+    "smallest": null
+   },
+   "pass": false,
+   "severity": "S3",
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "1 of 1 percentage columns add to 100% (within 3 points for rounding).",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-03",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "actual": [
+    "",
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "column_groups",
+   "basis": "research",
+   "expected": [
+    "Gender",
+    "Age"
+   ],
+   "actual": [],
+   "pass": false,
+   "severity": "S2",
+   "note": "Group (banner variable) identity of each column",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "30 of 30",
+   "actual": {
+    "matched": 30,
+    "firstMisses": []
+   },
+   "pass": true,
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "actual": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "pass": true,
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 34%; the table gives 34 for Very satisfied / Male. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "claim:c_level_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Stated 40%; the table gives 26 for Very satisfied / Female, a difference of -14."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "claim:c_gap",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Very satisfied: Male 34 vs Female 26, gap 8 (95% interval 2.3 to 13.7), claim says Male higher."
+   },
+   "pass": true,
+   "note": "34% of 480 against 26% of 520: gap 8 points, se 2.89 (unpooled, tableClaims method), 95% interval 2.3 to 13.7",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "claim:c_gap_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Very satisfied: Male 34 vs Female 26, gap 8 (95% interval 2.3 to 13.7), claim says Female higher. The claim says the difference is significant; this re-derived test does not confirm it. Weights and design effects are not visible in a summary table, so this is an approximation."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "claim:c_net",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 70%; the table gives 70 for Net: Satisfied / Total. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables.",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-04",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "actual": [
+    "",
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "column_groups",
+   "basis": "research",
+   "expected": [
+    "Gender",
+    "Age"
+   ],
+   "actual": [],
+   "pass": false,
+   "severity": "S2",
+   "note": "Group (banner variable) identity of each column",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "30 of 30",
+   "actual": {
+    "matched": 30,
+    "firstMisses": []
+   },
+   "pass": true,
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "significance_letters",
+   "basis": "research",
+   "expected": "5 lettered cells keep their letters as a separate significance mark",
+   "actual": "5 keep the letters inside the cell text; none is parsed as significance",
+   "pass": false,
+   "severity": "S3",
+   "note": "Letters survive only as text inside the value; nothing reads them as a significance result.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "actual": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "pass": true,
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 34%; the table gives 34 for Very satisfied / Male. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "claim:c_level_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Stated 40%; the table gives 26 for Very satisfied / Female, a difference of -14."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "claim:c_gap",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Very satisfied: Male 34 vs Female 26, gap 8 (95% interval 2.3 to 13.7), claim says Male higher."
+   },
+   "pass": true,
+   "note": "34% of 480 against 26% of 520: gap 8 points, se 2.89 (unpooled, tableClaims method), 95% interval 2.3 to 13.7",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "claim:c_gap_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Very satisfied: Male 34 vs Female 26, gap 8 (95% interval 2.3 to 13.7), claim says Female higher. The claim says the difference is significant; this re-derived test does not confirm it. Weights and design effects are not visible in a summary table, so this is an approximation."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "claim:c_net",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 70%; the table gives 70 for Net: Satisfied / Total. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "0 of 2 percentage columns add to 100% (within 3 points for rounding). 2 are further off, which is normal for multiple-response or partial tables.",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-05",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "actual": [
+    "Table 2: Q2 Overall satisfaction",
+    "",
+    " (2)",
+    " (3)",
+    " (4)",
+    " (5)",
+    " (6)",
+    " (7)"
+   ],
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "column_groups",
+   "basis": "research",
+   "expected": [
+    "Gender",
+    "Age"
+   ],
+   "actual": [],
+   "pass": false,
+   "severity": "S2",
+   "note": "Group (banner variable) identity of each column",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "title is a column name",
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "30 of 30",
+   "actual": {
+    "matched": 0,
+    "firstMisses": [
+     {
+      "row": "Very satisfied",
+      "col": "Total",
+      "table": 0,
+      "want": "30 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "Male",
+      "table": 0,
+      "want": "34 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "Female",
+      "table": 0,
+      "want": "26 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "18-34",
+      "table": 0,
+      "want": "38 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "35-54",
+      "table": 0,
+      "want": "28 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "55+",
+      "table": 0,
+      "want": "20 percent",
+      "got": "row Very satisfied, col not found"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "actual": {
+    "Total": null,
+    "Male": null,
+    "Female": null,
+    "18-34": null,
+    "35-54": null,
+    "55+": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Male\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "claim:c_level_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "claim:c_gap",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Could not find two distinct columns for \"Male\" and \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "34% of 480 against 26% of 520: gap 8 points, se 2.89 (unpooled, tableClaims method), 95% interval 2.3 to 13.7",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "claim:c_gap_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Could not find two distinct columns for \"Male\" and \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "claim:c_net",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Total\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "no percentage check ran",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-06",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 2,
+   "actual": 1,
+   "pass": false,
+   "severity": "S2",
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female"
+   ],
+   "actual": [
+    "Table 1: Q1 Aware of Brand X",
+    "",
+    " (2)",
+    " (3)"
+   ],
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "title is a column name",
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "18 of 18",
+   "actual": {
+    "matched": 0,
+    "firstMisses": [
+     {
+      "row": "Yes",
+      "col": "Total",
+      "table": 0,
+      "want": "60 percent",
+      "got": "row Yes, col not found"
+     },
+     {
+      "row": "Yes",
+      "col": "Male",
+      "table": 0,
+      "want": "64 percent",
+      "got": "row Yes, col not found"
+     },
+     {
+      "row": "Yes",
+      "col": "Female",
+      "table": 0,
+      "want": "56 percent",
+      "got": "row Yes, col not found"
+     },
+     {
+      "row": "No",
+      "col": "Total",
+      "table": 0,
+      "want": "35 percent",
+      "got": "row No, col not found"
+     },
+     {
+      "row": "No",
+      "col": "Male",
+      "table": 0,
+      "want": "31 percent",
+      "got": "row No, col not found"
+     },
+     {
+      "row": "No",
+      "col": "Female",
+      "table": 0,
+      "want": "39 percent",
+      "got": "row No, col not found"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520
+   },
+   "actual": {
+    "Total": null,
+    "Male": null,
+    "Female": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "claim:c_table2",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Table 2 row Yes, Female = 49%. Table 1 also has a row Yes (Female 56%).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 2,
+   "actual": 1,
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 293
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 293
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-07",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female"
+   ],
+   "actual": [
+    "",
+    "Total",
+    "Male",
+    "Female"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "12 of 12",
+   "actual": {
+    "matched": 12,
+    "firstMisses": []
+   },
+   "pass": true,
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520
+   },
+   "actual": {
+    "Total": null,
+    "Male": null,
+    "Female": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "claim:c_pct_from_counts",
+   "basis": "contract",
+   "expected": "supports_or_silent",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Stated 34%; the table gives 163 for Very satisfied / Male, which it does not show as a percentage (it may be a count), so the stated figure is not compared."
+   },
+   "pass": true,
+   "note": "tableClaims.ts: where the measure is unclear the result is silent, never a guess",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 480
+   },
+   "actual": {
+    "withBase": 0,
+    "smallest": null
+   },
+   "pass": false,
+   "severity": "S3",
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-08",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 3,
+    "unsound": [
+     "Total value of 1000 at row 5. Value 1000 is 6.7 SD from the comparison mean of 250. Descriptive heuristic, not a formal outlier test.",
+     "Male value of 480 at row 5. Value 480 is 6.6 SD from the comparison mean of 120. Descriptive heuristic, not a formal outlier test.",
+     "Female value of 520 at row 5. Value 520 is 6.5 SD from the comparison mean of 130. Descriptive heuristic, not a formal outlier test."
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female"
+   ],
+   "actual": [
+    "",
+    "Total",
+    "Male",
+    "Female"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "dash_star_values",
+   "basis": "research",
+   "expected": "'-' read as 0, '*' as between 0 and 0.5",
+   "actual": [
+    {
+     "cell": "Brand C|Total",
+     "want": "0 < x < 0.5",
+     "got": null
+    },
+    {
+     "cell": "Brand C|Male",
+     "want": "0 < x < 0.5",
+     "got": null
+    },
+    {
+     "cell": "Brand C|Female",
+     "want": 0,
+     "got": null
+    },
+    {
+     "cell": "Brand D|Male",
+     "want": 0,
+     "got": null
+    },
+    {
+     "cell": "Brand D|Female",
+     "want": "0 < x < 0.5",
+     "got": null
+    }
+   ],
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "claim:c_dash_zero",
+   "basis": "contract",
+   "expected": "supports_or_silent",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "The cell for Brand D / Male is empty."
+   },
+   "pass": true,
+   "note": "tableClaims.ts: where the measure is unclear the result is silent, never a guess",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 480
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 480
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-09",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Count",
+    "Percent"
+   ],
+   "actual": [
+    "Response",
+    "Count",
+    "Percent"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "6 of 6",
+   "actual": {
+    "matched": 5,
+    "firstMisses": [
+     {
+      "row": "Don't know",
+      "col": "Count",
+      "table": 0,
+      "want": "50 count",
+      "got": "50 percent"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Count": 1000,
+    "Percent": 1000
+   },
+   "actual": {
+    "Count": null,
+    "Percent": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 60; the table gives 60 for Yes / Percent. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 1000
+   },
+   "actual": {
+    "withBase": 0,
+    "smallest": null
+   },
+   "pass": false,
+   "severity": "S3",
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "no percentage check ran",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-10",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-11",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-11",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 2,
+   "actual": 1,
+   "pass": false,
+   "severity": "S2",
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-11",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-11",
+   "check": "claim:c_sheet1",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No row matching \"Yes\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-11",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 2,
+   "actual": 1,
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-11",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "actual": [
+    "Table 2: Q2 Overall satisfaction",
+    "",
+    " (2)",
+    " (3)",
+    " (4)",
+    " (5)",
+    " (6)"
+   ],
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "column_groups",
+   "basis": "research",
+   "expected": [
+    "Gender",
+    "Age"
+   ],
+   "actual": [],
+   "pass": false,
+   "severity": "S2",
+   "note": "Group (banner variable) identity of each column",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "title is a column name",
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "30 of 30",
+   "actual": {
+    "matched": 0,
+    "firstMisses": [
+     {
+      "row": "Very satisfied",
+      "col": "Total",
+      "table": 0,
+      "want": "30 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "Male",
+      "table": 0,
+      "want": "34 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "Female",
+      "table": 0,
+      "want": "26 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "18-34",
+      "table": 0,
+      "want": "38 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "35-54",
+      "table": 0,
+      "want": "28 percent",
+      "got": "row Very satisfied, col not found"
+     },
+     {
+      "row": "Very satisfied",
+      "col": "55+",
+      "table": 0,
+      "want": "20 percent",
+      "got": "row Very satisfied, col not found"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "significance_letters",
+   "basis": "research",
+   "expected": "5 lettered cells keep their letters as a separate significance mark",
+   "actual": "0 keep the letters inside the cell text; none is parsed as significance",
+   "pass": false,
+   "severity": "S3",
+   "note": "Letters survive only as text inside the value; nothing reads them as a significance result.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "actual": {
+    "Total": null,
+    "Male": null,
+    "Female": null,
+    "18-34": null,
+    "35-54": null,
+    "55+": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Male\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "claim:c_level_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "claim:c_gap",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Could not find two distinct columns for \"Male\" and \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "34% of 480 against 26% of 520: gap 8 points, se 2.89 (unpooled, tableClaims method), 95% interval 2.3 to 13.7",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "claim:c_gap_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Could not find two distinct columns for \"Male\" and \"Female\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "claim:c_net",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No column matching \"Total\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "no percentage check ran",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-16",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "actual": [
+    "",
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "column_groups",
+   "basis": "research",
+   "expected": [
+    "Gender",
+    "Age"
+   ],
+   "actual": [],
+   "pass": false,
+   "severity": "S2",
+   "note": "Group (banner variable) identity of each column",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "30 of 30",
+   "actual": {
+    "matched": 30,
+    "firstMisses": []
+   },
+   "pass": true,
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "actual": {
+    "Total": 1000,
+    "Male": 490,
+    "Female": 510,
+    "18-34": 380,
+    "35-54": 360,
+    "55+": 260
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 34%; the table gives 34 for Very satisfied / Male. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "claim:c_level_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Stated 40%; the table gives 26 for Very satisfied / Female, a difference of -14."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "claim:c_gap",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Very satisfied: Male 34 vs Female 26, gap 8 (95% interval 2.3 to 13.7), claim says Male higher."
+   },
+   "pass": true,
+   "note": "34% of 480 against 26% of 520: gap 8 points, se 2.89 (unpooled, tableClaims method), 95% interval 2.3 to 13.7",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "claim:c_gap_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Very satisfied: Male 34 vs Female 26, gap 8 (95% interval 2.3 to 13.7), claim says Female higher. The claim says the difference is significant; this re-derived test does not confirm it. Weights and design effects are not visible in a summary table, so this is an approximation."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "claim:c_net",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 70%; the table gives 70 for Net: Satisfied / Total. Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables.",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-17",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "tables",
+   "pass": true,
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Total",
+    "Male",
+    "Female",
+    "18-34",
+    "35-54",
+    "55+"
+   ],
+   "actual": [
+    "",
+    "Total (n=1000)",
+    "Male (n=480)",
+    "Female (n=520)",
+    "18-34 (n=400)",
+    "35-54 (n=350)",
+    "55+ (n=250)"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "column_groups",
+   "basis": "research",
+   "expected": [
+    "Gender",
+    "Age"
+   ],
+   "actual": [],
+   "pass": false,
+   "severity": "S2",
+   "note": "Group (banner variable) identity of each column",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "title_not_a_column",
+   "basis": "research",
+   "expected": "title kept as the table label, not a column name",
+   "actual": "not a column name",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "30 of 30",
+   "actual": {
+    "matched": 30,
+    "firstMisses": []
+   },
+   "pass": true,
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "base_per_column",
+   "basis": "research",
+   "expected": {
+    "Total": 1000,
+    "Male": 480,
+    "Female": 520,
+    "18-34": 400,
+    "35-54": 350,
+    "55+": 250
+   },
+   "actual": {
+    "Total": null,
+    "Male": null,
+    "Female": null,
+    "18-34": null,
+    "35-54": null,
+    "55+": null
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "The base tableClaims uses for the interval and the low-base rule.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "claim:c_level_ok",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 34%; the table gives 34 for Very satisfied / Male (n=480). Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "claim:c_level_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "against"
+    ],
+    "summary": "Stated 40%; the table gives 26 for Very satisfied / Female (n=520), a difference of -14."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "claim:c_gap",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Very satisfied: Male (n=480) 34 vs Female (n=520) 26, but a base is missing or under 30, so the gap cannot be tested from this table."
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "34% of 480 against 26% of 520: gap 8 points, se 2.89 (unpooled, tableClaims method), 95% interval 2.3 to 13.7",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "claim:c_gap_wrong",
+   "basis": "research",
+   "expected": "against",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Very satisfied: Male (n=480) 34 vs Female (n=520) 26, but a base is missing or under 30, so the gap cannot be tested from this table."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "claim:c_net",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "supports"
+    ],
+    "summary": "Stated 70%; the table gives 70 for Net: Satisfied / Total (n=1000). Matches within rounding."
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "quality_base_found",
+   "basis": "research",
+   "expected": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "actual": {
+    "withBase": 1,
+    "smallest": 250
+   },
+   "pass": true,
+   "note": "Smallest stated base (unweighted). A weighted base also counted as a base inflates the count but not this check.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "quality_percent_columns_checked",
+   "basis": "research",
+   "expected": "percentage columns recognised and checked (nets excluded from the sum)",
+   "actual": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables.",
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-18",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 0,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "indicator",
+   "pass": false,
+   "severity": "S3",
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Value"
+   ],
+   "actual": [
+    "Indicator name",
+    "Value"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "332 of 332",
+   "actual": {
+    "matched": 0,
+    "firstMisses": [
+     {
+      "row": "About one month can be covered using savings, borrowing, selling something, seeking help from friends and family, or other ways, in case household loses its main source of income (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "19.906979 percent",
+      "got": "0.199069794261426 unknown"
+     },
+     {
+      "row": "About two months can be covered using savings, borrowing, selling something, seeking help from friends and family, or other ways, in case household loses its main source of income (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "13.097637 percent",
+      "got": "0.130976374579287 unknown"
+     },
+     {
+      "row": "Accessed government services/info online in past three months (% internet users, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "43.030891 percent",
+      "got": "0.430308914239738 unknown"
+     },
+     {
+      "row": "Accessed government services/info online in past three months (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "29.660855 percent",
+      "got": "0.296608548179782 unknown"
+     },
+     {
+      "row": "Accessed online info to learn/train/educate in past three months (% internet users, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "61.299127 percent",
+      "got": "0.612991267954211 unknown"
+     },
+     {
+      "row": "Accessed online info to learn/train/educate in past three months (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "42.420193 percent",
+      "got": "0.424201925500411 unknown"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "claim:c_account",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "Stated 81%; the table gives 0.81 for Account (%, age 15+) / Value, which it does not show as a percentage (it may be a count), so the stated figure is not compared."
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "0.8113 is a proportion; the label says %; 81.1% rounds to 81%.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "quality_no_base_reported",
+   "basis": "research",
+   "expected": "no base n stated; base described in each label",
+   "actual": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted.",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-12",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 23,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "indicator",
+   "pass": false,
+   "severity": "S3",
+   "note": "csvLooksLikeTables rule (upload-type-suggestions.md); file renamed to a neutral name",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "tables_found",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "note": "The engine path always stores one table per file.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "column_headers",
+   "basis": "research",
+   "expected": [
+    "Value"
+   ],
+   "actual": [
+    "Topic",
+    "Sub Topic 1",
+    "Sub Topic 2",
+    "Indicator name",
+    "Value"
+   ],
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "column_resolution_never_wrong",
+   "basis": "contract",
+   "expected": "each label resolves to its own column or to none",
+   "actual": "none resolved to another column",
+   "pass": true,
+   "note": "tableClaims.ts: where the table does not settle it the result is silent, never a guess (matchLabel loose matching)",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "cells_by_identity",
+   "basis": "research",
+   "expected": "332 of 332",
+   "actual": {
+    "matched": 0,
+    "firstMisses": [
+     {
+      "row": "Can use WhatsApp on basic text phone (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "4.107144 percent",
+      "got": "row not found, col Value"
+     },
+     {
+      "row": "Own a mobile phone (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "86.973263 percent",
+      "got": "row not found, col Value"
+     },
+     {
+      "row": "Someone in household owns a mobile phone (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "4.753208 percent",
+      "got": "row not found, col Value"
+     },
+     {
+      "row": "Used personal SIM card in someone else's phone (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "1.870803 percent",
+      "got": "row not found, col Value"
+     },
+     {
+      "row": "Used someone else's phone and family member sets rules for use (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "0.985214 percent",
+      "got": "row not found, col Value"
+     },
+     {
+      "row": "Used someone else's phone in past three months (%, age 15+)",
+      "col": "Value",
+      "table": 0,
+      "want": "4.954083 percent",
+      "got": "row not found, col Value"
+     }
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "note": "Looked up the way a claim check looks them up (tableClaims.fromGeneric/resolveRow/resolveCol).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "claim:c_phone",
+   "basis": "research",
+   "expected": "supports",
+   "actual": {
+    "stances": [
+     "silent"
+    ],
+    "summary": "No row matching \"Own a mobile phone (%, age 15+)\" in \"label\"."
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "quality_table_count",
+   "basis": "research",
+   "expected": 1,
+   "actual": 1,
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "quality_no_base_reported",
+   "basis": "research",
+   "expected": "no base n stated; base described in each label",
+   "actual": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted.",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-13",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding uses a base/total/net row as a data point or a title/blank name as a variable",
+   "actual": {
+    "generated": 23,
+    "unsound": []
+   },
+   "pass": true,
+   "note": "These are stored as accepted findings (generateFindingsFromTable).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "engine_shape",
+   "basis": "contract",
+   "expected": {
+    "rows": 607,
+    "columns": 42
+   },
+   "actual": {
+    "rows": 607,
+    "columns": 42
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "engine_values",
+   "basis": "contract",
+   "expected": [
+    {
+     "dims": {
+      "REF_AREA": "AFG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_03",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": "2015"
+     },
+     "labels": {
+      "REF_AREA": "Afghanistan",
+      "INDICATOR": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX": "Female",
+      "AGE": "All age ranges or no breakdown by age",
+      "URBANISATION": "Not applicable",
+      "UNIT_MEASURE": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1": "Timelapse: Three years preceding the survey",
+      "COMP_BREAKDOWN_2": "Not Applicable",
+      "COMP_BREAKDOWN_3": "Not Applicable"
+     },
+     "value": 42.3
+    },
+    {
+     "dims": {
+      "REF_AREA": "AFG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_05",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": "2015"
+     },
+     "labels": {
+      "REF_AREA": "Afghanistan",
+      "INDICATOR": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX": "Female",
+      "AGE": "All age ranges or no breakdown by age",
+      "URBANISATION": "Not applicable",
+      "UNIT_MEASURE": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1": "Timelapse: Five years preceding the survey",
+      "COMP_BREAKDOWN_2": "Not Applicable",
+      "COMP_BREAKDOWN_3": "Not Applicable"
+     },
+     "value": 42.4
+    },
+    {
+     "dims": {
+      "REF_AREA": "AFG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_02",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": "2015"
+     },
+     "labels": {
+      "REF_AREA": "Afghanistan",
+      "INDICATOR": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX": "Female",
+      "AGE": "All age ranges or no breakdown by age",
+      "URBANISATION": "Not applicable",
+      "UNIT_MEASURE": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1": "Timelapse: Two years preceding the survey",
+      "COMP_BREAKDOWN_2": "Not Applicable",
+      "COMP_BREAKDOWN_3": "Not Applicable"
+     },
+     "value": 43.8
+    },
+    {
+     "dims": {
+      "REF_AREA": "ALB",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_03",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": "2008"
+     },
+     "labels": {
+      "REF_AREA": "Albania",
+      "INDICATOR": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX": "Female",
+      "AGE": "All age ranges or no breakdown by age",
+      "URBANISATION": "Not applicable",
+      "UNIT_MEASURE": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1": "Timelapse: Three years preceding the survey",
+      "COMP_BREAKDOWN_2": "Not Applicable",
+      "COMP_BREAKDOWN_3": "Not Applicable"
+     },
+     "value": 39.3
+    },
+    {
+     "dims": {
+      "REF_AREA": "ALB",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_05",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": "2008"
+     },
+     "labels": {
+      "REF_AREA": "Albania",
+      "INDICATOR": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX": "Female",
+      "AGE": "All age ranges or no breakdown by age",
+      "URBANISATION": "Not applicable",
+      "UNIT_MEASURE": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1": "Timelapse: Five years preceding the survey",
+      "COMP_BREAKDOWN_2": "Not Applicable",
+      "COMP_BREAKDOWN_3": "Not Applicable"
+     },
+     "value": 34.1
+    }
+   ],
+   "actual": "first observations compared by identity",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "indicator",
+   "pass": false,
+   "severity": "S3",
+   "note": "Aggregated indicators with no Total/Base row and percentages as plain numbers.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "row_identity_kept",
+   "basis": "research",
+   "expected": "607 distinct rows identified by REF_AREA, INDICATOR, SEX, AGE, URBANISATION, UNIT_MEASURE, COMP_BREAKDOWN_1, COMP_BREAKDOWN_2, COMP_BREAKDOWN_3, TIME_PERIOD",
+   "actual": "71 row(s): AFG | ALB | ARM",
+   "pass": false,
+   "severity": "S2",
+   "note": "fromGeneric takes the first column as the row label and keeps the first row per label.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "constant_columns_ignored",
+   "basis": "research",
+   "expected": "constant metadata columns (STRUCTURE, DATABASE_ID, DECIMALS ...) not offered as data columns",
+   "actual": {
+    "offered": 35,
+    "of": 35
+   },
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "claim:c_second_obs",
+   "basis": "contract",
+   "expected": "supports_or_silent",
+   "actual": {
+    "stance": "silent",
+    "summary": "No row matching \"datastructure\" in \"label\"."
+   },
+   "pass": true,
+   "note": "Row 2 of the file is 42.4. The view collapses every row onto the constant first column, so the only row a model can name is 'datastructure', which holds row 1 (42.3).",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-19",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding treats a dimension (year, country) or a metadata column as a measure",
+   "actual": {
+    "generated": 25,
+    "onMetadata": [
+     "TIME_PERIOD and OBS_VALUE move together across 607 rows (r=0.47, p=0, false discovery rate q=<0.001 across the 5 tests run on this table). descriptive association only; not evidence of causation",
+     "TIME_PERIOD value of 2025 at row 469. Value 2025 is 2.3 SD from the comparison mean of 2010.73. Descriptive heuristic, not a formal outlier test.",
+     "TIME_PERIOD value of 2025 at row 470. Value 2025 is 2.3 SD from the comparison mean of 2010.73. Descriptive heuristic, not a formal outlier test."
+    ]
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "engine_shape",
+   "basis": "contract",
+   "expected": {
+    "rows": 607,
+    "columns": 67
+   },
+   "actual": {
+    "rows": 607,
+    "columns": 67
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "engine_values",
+   "basis": "contract",
+   "expected": [
+    {
+     "row": 0,
+     "year": "2011",
+     "value": 84.4
+    },
+    {
+     "row": 1,
+     "year": "2014",
+     "value": 55.2
+    },
+    {
+     "row": 2,
+     "year": "2011",
+     "value": 80.6
+    },
+    {
+     "row": 3,
+     "year": "2012",
+     "value": 34.2
+    },
+    {
+     "row": 4,
+     "year": "2008",
+     "value": 41
+    }
+   ],
+   "actual": "first observations compared by identity",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "tables",
+   "actual": "indicator",
+   "pass": false,
+   "severity": "S3",
+   "note": "Aggregated indicators with no Total/Base row and percentages as plain numbers.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "row_identity_kept",
+   "basis": "research",
+   "expected": "213 distinct rows identified by REF_AREA, INDICATOR, SEX, AGE, URBANISATION, UNIT_MEASURE, COMP_BREAKDOWN_1, COMP_BREAKDOWN_2, COMP_BREAKDOWN_3",
+   "actual": "71 row(s): COG | TCD | MOZ",
+   "pass": false,
+   "severity": "S2",
+   "note": "fromGeneric takes the first column as the row label and keeps the first row per label.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "constant_columns_ignored",
+   "basis": "research",
+   "expected": "constant metadata columns (STRUCTURE, DATABASE_ID, DECIMALS ...) not offered as data columns",
+   "actual": {
+    "offered": 35,
+    "of": 35
+   },
+   "pass": false,
+   "severity": "S3",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-20",
+   "check": "generated_findings_sound",
+   "basis": "research",
+   "expected": "no generated finding treats a dimension (year, country) or a metadata column as a measure",
+   "actual": {
+    "generated": 25,
+    "onMetadata": []
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "CB-01",
+   "check": "suggested_type",
+   "basis": "research",
+   "expected": "codebook",
+   "actual": "raw",
+   "pass": false,
+   "severity": "S3",
+   "note": "File named DATADICT; name rule matches 'data dictionary' and 'datadictionary' only.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "CB-01",
+   "check": "codebook_variables",
+   "basis": "research",
+   "expected": {
+    "count": 41,
+    "headerRowNotAVariable": true
+   },
+   "actual": {
+    "count": 42,
+    "includesHeader": true
+   },
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "CB-01",
+   "check": "codebook_labels_from_label_column",
+   "basis": "research",
+   "expected": "labels from VARIABLE_LABEL",
+   "actual": [
+    {
+     "variable": "STRUCTURE",
+     "got": "",
+     "want": "STRUCTURE"
+    },
+    {
+     "variable": "STRUCTURE_ID",
+     "got": "",
+     "want": "STRUCTURE_ID"
+    },
+    {
+     "variable": "ACTION",
+     "got": "",
+     "want": "ACTION"
+    },
+    {
+     "variable": "FREQ",
+     "got": "Time interval at which observations occur over a given time period.",
+     "want": "Frequency of observation"
+    }
+   ],
+   "pass": false,
+   "severity": "S2",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-14",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-14",
+   "check": "engine_equals_hand_reading",
+   "basis": "contract",
+   "expected": {
+    "headers": [
+     "TransactionID",
+     "StoreType",
+     "BasketValue"
+    ],
+    "rows": 60
+   },
+   "actual": {
+    "headers": [
+     "TransactionID",
+     "StoreType",
+     "BasketValue"
+    ],
+    "rows": 60
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-14",
+   "check": "case_level_file_recognised",
+   "basis": "research",
+   "expected": "refused or flagged as case-level data when uploaded as Tables",
+   "actual": "stored as an aggregated table; the open scan would store 3 accepted generated findings",
+   "pass": false,
+   "severity": "S3",
+   "note": "No contract: ingestion_type comes from the upload slot only.",
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-15",
+   "check": "engine_reads",
+   "basis": "contract",
+   "expected": "a table",
+   "actual": "a table",
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-15",
+   "check": "engine_equals_hand_reading",
+   "basis": "contract",
+   "expected": {
+    "headers": [
+     "Gender",
+     "FavouriteProduct"
+    ],
+    "rows": 150
+   },
+   "actual": {
+    "headers": [
+     "Gender",
+     "FavouriteProduct"
+    ],
+    "rows": 150
+   },
+   "pass": true,
+   "runner": "aggregated"
+  },
+  {
+   "case": "AGG-15",
+   "check": "case_level_file_recognised",
+   "basis": "research",
+   "expected": "refused or flagged as case-level data when uploaded as Tables",
+   "actual": "stored as an aggregated table; the open scan would store 0 accepted generated findings",
+   "pass": false,
+   "severity": "S3",
+   "note": "No contract: ingestion_type comes from the upload slot only.",
+   "runner": "aggregated"
+  }
+ ],
+ "observations": {
+  "aggregated": {
+   "AGG-01": {
+    "sheet": "Sheet1",
+    "headers": [
+     "Response",
+     "Count",
+     "Percent"
+    ],
+    "firstRows": [
+     {
+      "Response": "Yes",
+      "Count": 600,
+      "Percent": "60%"
+     },
+     {
+      "Response": "No",
+      "Count": 350,
+      "Percent": "35%"
+     },
+     {
+      "Response": "Don't know",
+      "Count": 50,
+      "Percent": "5%"
+     },
+     {
+      "Response": "Total",
+      "Count": 1000,
+      "Percent": "100%"
+     }
+    ]
+   },
+   "AGG-01.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "1 of 1 percentage columns add to 100% (within 3 points for rounding)."
+    },
+    {
+     "id": "totals",
+     "label": "Totals add up",
+     "status": "pass",
+     "detail": "1 count columns checked against their total row, all within 1%."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-01.patterns": [],
+   "AGG-01.digest": [
+    {
+     "column": "Response",
+     "kind": "categorical"
+    },
+    {
+     "column": "Count",
+     "kind": "categorical"
+    },
+    {
+     "column": "Percent",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-02": {
+    "sheet": "Q1",
+    "headers": [
+     "Response",
+     "Count",
+     "Percent"
+    ],
+    "firstRows": [
+     {
+      "Response": "Yes",
+      "Count": 600,
+      "Percent": 0.6
+     },
+     {
+      "Response": "No",
+      "Count": 350,
+      "Percent": 0.35
+     },
+     {
+      "Response": "Don't know",
+      "Count": 50,
+      "Percent": 0.05
+     },
+     {
+      "Response": "Total",
+      "Count": 1000,
+      "Percent": 1
+     }
+    ]
+   },
+   "AGG-02.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "totals",
+     "label": "Totals add up",
+     "status": "pass",
+     "detail": "2 count columns checked against their total row, all within 1%."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-02.patterns": [],
+   "AGG-02.digest": [
+    {
+     "column": "Response",
+     "kind": "categorical"
+    },
+    {
+     "column": "Count",
+     "kind": "categorical"
+    },
+    {
+     "column": "Percent",
+     "kind": "numeric"
+    }
+   ],
+   "AGG-03": {
+    "sheet": "Q1",
+    "headers": [
+     "Response",
+     "Count",
+     "Percent"
+    ],
+    "firstRows": [
+     {
+      "Response": "Yes",
+      "Count": 600,
+      "Percent": "60%"
+     },
+     {
+      "Response": "No",
+      "Count": 350,
+      "Percent": "35%"
+     },
+     {
+      "Response": "Don't know",
+      "Count": 50,
+      "Percent": "5%"
+     },
+     {
+      "Response": "Total",
+      "Count": 1000,
+      "Percent": "100%"
+     }
+    ]
+   },
+   "AGG-03.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "1 of 1 percentage columns add to 100% (within 3 points for rounding)."
+    },
+    {
+     "id": "totals",
+     "label": "Totals add up",
+     "status": "pass",
+     "detail": "1 count columns checked against their total row, all within 1%."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-03.patterns": [],
+   "AGG-03.digest": [
+    {
+     "column": "Response",
+     "kind": "categorical"
+    },
+    {
+     "column": "Count",
+     "kind": "categorical"
+    },
+    {
+     "column": "Percent",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-04": {
+    "sheet": "Sheet1",
+    "headers": [
+     "",
+     "Total",
+     "Male",
+     "Female",
+     "18-34",
+     "35-54",
+     "55+"
+    ],
+    "firstRows": [
+     {
+      "": "Base",
+      "Total": "1000",
+      "Male": "480",
+      "Female": "520",
+      "18-34": "400",
+      "35-54": "350",
+      "55+": "250"
+     },
+     {
+      "": "Very satisfied",
+      "Total": "30%",
+      "Male": "34%",
+      "Female": "26%",
+      "18-34": "38%",
+      "35-54": "28%",
+      "55+": "20%"
+     },
+     {
+      "": "Satisfied",
+      "Total": "40%",
+      "Male": "38%",
+      "Female": "42%",
+      "18-34": "37%",
+      "35-54": "42%",
+      "55+": "42%"
+     },
+     {
+      "": "Dissatisfied",
+      "Total": "20%",
+      "Male": "18%",
+      "Female": "22%",
+      "18-34": "17%",
+      "35-54": "20%",
+      "55+": "25%"
+     }
+    ]
+   },
+   "AGG-04.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 6 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "warn",
+     "detail": "Nothing says whether the figures or bases are weighted. If they are weighted, an unweighted base is needed to judge precision."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-04.patterns": [],
+   "AGG-04.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female",
+     "kind": "categorical"
+    },
+    {
+     "column": "18-34",
+     "kind": "categorical"
+    },
+    {
+     "column": "35-54",
+     "kind": "categorical"
+    },
+    {
+     "column": "55+",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-05": {
+    "sheet": "Sheet1",
+    "headers": [
+     "",
+     "Total",
+     "Male",
+     "Female",
+     "18-34",
+     "35-54",
+     "55+"
+    ],
+    "firstRows": [
+     {
+      "": "Base",
+      "Total": "1000",
+      "Male": "480",
+      "Female": "520",
+      "18-34": "400",
+      "35-54": "350",
+      "55+": "250"
+     },
+     {
+      "": "Very satisfied",
+      "Total": "30%",
+      "Male": "34%C",
+      "Female": "26%",
+      "18-34": "38%EF",
+      "35-54": "28%F",
+      "55+": "20%"
+     },
+     {
+      "": "Satisfied",
+      "Total": "40%",
+      "Male": "38%",
+      "Female": "42%",
+      "18-34": "37%",
+      "35-54": "42%",
+      "55+": "42%"
+     },
+     {
+      "": "Dissatisfied",
+      "Total": "20%",
+      "Male": "18%",
+      "Female": "22%",
+      "18-34": "17%",
+      "35-54": "20%",
+      "55+": "25%D"
+     }
+    ]
+   },
+   "AGG-05.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 6 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "warn",
+     "detail": "Nothing says whether the figures or bases are weighted. If they are weighted, an unweighted base is needed to judge precision."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "0 of 2 percentage columns add to 100% (within 3 points for rounding). 2 are further off, which is normal for multiple-response or partial tables."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-05.patterns": [],
+   "AGG-05.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female",
+     "kind": "categorical"
+    },
+    {
+     "column": "18-34",
+     "kind": "categorical"
+    },
+    {
+     "column": "35-54",
+     "kind": "categorical"
+    },
+    {
+     "column": "55+",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-06": {
+    "sheet": "Q2",
+    "headers": [
+     "Table 2: Q2 Overall satisfaction",
+     "",
+     " (2)",
+     " (3)",
+     " (4)",
+     " (5)",
+     " (6)",
+     " (7)"
+    ],
+    "firstRows": [
+     {
+      "Table 2: Q2 Overall satisfaction": null,
+      "": "Total",
+      " (2)": "Gender",
+      " (3)": null,
+      " (4)": null,
+      " (5)": "Age",
+      " (6)": null,
+      " (7)": null
+     },
+     {
+      "Table 2: Q2 Overall satisfaction": null,
+      "": "Total",
+      " (2)": "Male",
+      " (3)": "Female",
+      " (4)": null,
+      " (5)": "18-34",
+      " (6)": "35-54",
+      " (7)": "55+"
+     },
+     {
+      "Table 2: Q2 Overall satisfaction": null,
+      "": "(A)",
+      " (2)": "(B)",
+      " (3)": "(C)",
+      " (4)": null,
+      " (5)": "(D)",
+      " (6)": "(E)",
+      " (7)": "(F)"
+     },
+     {
+      "Table 2: Q2 Overall satisfaction": "Weighted base",
+      "": 1000,
+      " (2)": 490,
+      " (3)": 510,
+      " (4)": null,
+      " (5)": 380,
+      " (6)": 360,
+      " (7)": 260
+     }
+    ]
+   },
+   "AGG-06.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 12 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "Weighted and unweighted bases are both mentioned in 1 table."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings, 1 with an empty column. Check the preview."
+    }
+   ],
+   "AGG-06.patterns": [],
+   "AGG-06.digest": [
+    {
+     "column": "Table 2: Q2 Overall satisfaction",
+     "kind": "categorical"
+    },
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": " (2)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (3)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (4)",
+     "kind": "skipped"
+    },
+    {
+     "column": " (5)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (6)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (7)",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-07": {
+    "sheet": "Tables",
+    "headers": [
+     "Table 1: Q1 Aware of Brand X",
+     "",
+     " (2)",
+     " (3)"
+    ],
+    "firstRows": [
+     {
+      "Table 1: Q1 Aware of Brand X": null,
+      "": "Total",
+      " (2)": "Male",
+      " (3)": "Female"
+     },
+     {
+      "Table 1: Q1 Aware of Brand X": "Base",
+      "": 1000,
+      " (2)": 480,
+      " (3)": 520
+     },
+     {
+      "Table 1: Q1 Aware of Brand X": "Yes",
+      "": "60%",
+      " (2)": "64%",
+      " (3)": "56%"
+     },
+     {
+      "Table 1: Q1 Aware of Brand X": "No",
+      "": "35%",
+      " (2)": "31%",
+      " (3)": "39%"
+     }
+    ]
+   },
+   "AGG-07.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 293, median 500, largest 1,000 across 6 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "warn",
+     "detail": "Nothing says whether the figures or bases are weighted. If they are weighted, an unweighted base is needed to judge precision."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-07.patterns": [],
+   "AGG-07.digest": [
+    {
+     "column": "Table 1: Q1 Aware of Brand X",
+     "kind": "categorical"
+    },
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": " (2)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (3)",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-08": {
+    "sheet": "Sheet1",
+    "headers": [
+     "",
+     "Total",
+     "Male",
+     "Female"
+    ],
+    "firstRows": [
+     {
+      "": "Very satisfied",
+      "Total": 300,
+      "Male": 163,
+      "Female": 137
+     },
+     {
+      "": "Satisfied",
+      "Total": 400,
+      "Male": 182,
+      "Female": 218
+     },
+     {
+      "": "Dissatisfied",
+      "Total": 200,
+      "Male": 86,
+      "Female": 114
+     },
+     {
+      "": "Very dissatisfied",
+      "Total": 100,
+      "Male": 49,
+      "Female": 51
+     }
+    ]
+   },
+   "AGG-08.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "totals",
+     "label": "Totals add up",
+     "status": "pass",
+     "detail": "3 count columns checked against their total row, all within 1%."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-08.patterns": [
+    {
+     "type": "outlier",
+     "text": "Total value of 1000 at row 5. Value 1000 is 6.7 SD from the comparison mean of 250. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Male value of 480 at row 5. Value 480 is 6.6 SD from the comparison mean of 120. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Female value of 520 at row 5. Value 520 is 6.5 SD from the comparison mean of 130. Descriptive heuristic, not a formal outlier test."
+    }
+   ],
+   "AGG-08.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-09": {
+    "sheet": "Sheet1",
+    "headers": [
+     "",
+     "Total",
+     "Male",
+     "Female"
+    ],
+    "firstRows": [
+     {
+      "": "Base",
+      "Total": "1000",
+      "Male": "480",
+      "Female": "520"
+     },
+     {
+      "": "Brand A",
+      "Total": "52%",
+      "Male": "55%",
+      "Female": "49%"
+     },
+     {
+      "": "Brand B",
+      "Total": "47%",
+      "Male": "45%",
+      "Female": "51%"
+     },
+     {
+      "": "Brand C",
+      "Total": "*",
+      "Male": "*",
+      "Female": "-"
+     }
+    ]
+   },
+   "AGG-09.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 480, median 520, largest 1,000 across 3 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "warn",
+     "detail": "Nothing says whether the figures or bases are weighted. If they are weighted, an unweighted base is needed to judge precision."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-09.patterns": [],
+   "AGG-09.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-10": {
+    "sheet": "Q1",
+    "headers": [
+     "Response",
+     "Count",
+     "Percent"
+    ],
+    "firstRows": [
+     {
+      "Response": "Yes",
+      "Count": 600,
+      "Percent": 60
+     },
+     {
+      "Response": "No",
+      "Count": 350,
+      "Percent": 35
+     },
+     {
+      "Response": "Don't know",
+      "Count": 50,
+      "Percent": 5
+     },
+     {
+      "Response": "Total",
+      "Count": 1000,
+      "Percent": 100
+     }
+    ]
+   },
+   "AGG-10.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "totals",
+     "label": "Totals add up",
+     "status": "pass",
+     "detail": "2 count columns checked against their total row, all within 1%."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-10.patterns": [],
+   "AGG-10.digest": [
+    {
+     "column": "Response",
+     "kind": "categorical"
+    },
+    {
+     "column": "Count",
+     "kind": "categorical"
+    },
+    {
+     "column": "Percent",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-11": {
+    "sheet": "Q2 Satisfaction",
+    "headers": [
+     "",
+     "Total",
+     "Male",
+     "Female",
+     "18-34",
+     "35-54",
+     "55+"
+    ],
+    "firstRows": [
+     {
+      "": "Base",
+      "Total": 1000,
+      "Male": 480,
+      "Female": 520,
+      "18-34": 400,
+      "35-54": 350,
+      "55+": 250
+     },
+     {
+      "": "Very satisfied",
+      "Total": "30%",
+      "Male": "34%",
+      "Female": "26%",
+      "18-34": "38%",
+      "35-54": "28%",
+      "55+": "20%"
+     },
+     {
+      "": "Satisfied",
+      "Total": "40%",
+      "Male": "38%",
+      "Female": "42%",
+      "18-34": "37%",
+      "35-54": "42%",
+      "55+": "42%"
+     },
+     {
+      "": "Dissatisfied",
+      "Total": "20%",
+      "Male": "18%",
+      "Female": "22%",
+      "18-34": "17%",
+      "35-54": "20%",
+      "55+": "25%"
+     }
+    ]
+   },
+   "AGG-11.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 6 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "warn",
+     "detail": "Nothing says whether the figures or bases are weighted. If they are weighted, an unweighted base is needed to judge precision."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-11.patterns": [],
+   "AGG-11.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female",
+     "kind": "categorical"
+    },
+    {
+     "column": "18-34",
+     "kind": "categorical"
+    },
+    {
+     "column": "35-54",
+     "kind": "categorical"
+    },
+    {
+     "column": "55+",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-16": {
+    "sheet": "Sheet1",
+    "headers": [
+     "Table 2: Q2 Overall satisfaction",
+     "",
+     " (2)",
+     " (3)",
+     " (4)",
+     " (5)",
+     " (6)"
+    ],
+    "firstRows": [
+     {
+      "Table 2: Q2 Overall satisfaction": "Base: All respondents",
+      "": null,
+      " (2)": null,
+      " (3)": null,
+      " (4)": null,
+      " (5)": null,
+      " (6)": null
+     },
+     {
+      "Table 2: Q2 Overall satisfaction": null,
+      "": "Total",
+      " (2)": "Gender",
+      " (3)": null,
+      " (4)": "Age",
+      " (5)": null,
+      " (6)": null
+     },
+     {
+      "Table 2: Q2 Overall satisfaction": null,
+      "": "Total",
+      " (2)": "Male",
+      " (3)": "Female",
+      " (4)": "18-34",
+      " (5)": "35-54",
+      " (6)": "55+"
+     },
+     {
+      "Table 2: Q2 Overall satisfaction": null,
+      "": "(A)",
+      " (2)": "(B)",
+      " (3)": "(C)",
+      " (4)": "(D)",
+      " (5)": "(E)",
+      " (6)": "(F)"
+     }
+    ]
+   },
+   "AGG-16.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 12 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "Weighted and unweighted bases are both mentioned in 1 table."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-16.patterns": [],
+   "AGG-16.digest": [
+    {
+     "column": "Table 2: Q2 Overall satisfaction",
+     "kind": "categorical"
+    },
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": " (2)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (3)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (4)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (5)",
+     "kind": "categorical"
+    },
+    {
+     "column": " (6)",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-17": {
+    "sheet": "Sheet1",
+    "headers": [
+     "",
+     "Total",
+     "Male",
+     "Female",
+     "18-34",
+     "35-54",
+     "55+"
+    ],
+    "firstRows": [
+     {
+      "": "Weighted base",
+      "Total": "1000",
+      "Male": "490",
+      "Female": "510",
+      "18-34": "380",
+      "35-54": "360",
+      "55+": "260"
+     },
+     {
+      "": "Unweighted base",
+      "Total": "1000",
+      "Male": "480",
+      "Female": "520",
+      "18-34": "400",
+      "35-54": "350",
+      "55+": "250"
+     },
+     {
+      "": "Very satisfied",
+      "Total": "30%",
+      "Male": "34%",
+      "Female": "26%",
+      "18-34": "38%",
+      "35-54": "28%",
+      "55+": "20%"
+     },
+     {
+      "": "Satisfied",
+      "Total": "40%",
+      "Male": "38%",
+      "Female": "42%",
+      "18-34": "37%",
+      "35-54": "42%",
+      "55+": "42%"
+     }
+    ]
+   },
+   "AGG-17.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 12 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "Weighted and unweighted bases are both mentioned in 1 table."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-17.patterns": [],
+   "AGG-17.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female",
+     "kind": "categorical"
+    },
+    {
+     "column": "18-34",
+     "kind": "categorical"
+    },
+    {
+     "column": "35-54",
+     "kind": "categorical"
+    },
+    {
+     "column": "55+",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-18": {
+    "sheet": "Sheet1",
+    "headers": [
+     "",
+     "Total (n=1000)",
+     "Male (n=480)",
+     "Female (n=520)",
+     "18-34 (n=400)",
+     "35-54 (n=350)",
+     "55+ (n=250)"
+    ],
+    "firstRows": [
+     {
+      "": "Very satisfied",
+      "Total (n=1000)": "30%",
+      "Male (n=480)": "34%",
+      "Female (n=520)": "26%",
+      "18-34 (n=400)": "38%",
+      "35-54 (n=350)": "28%",
+      "55+ (n=250)": "20%"
+     },
+     {
+      "": "Satisfied",
+      "Total (n=1000)": "40%",
+      "Male (n=480)": "38%",
+      "Female (n=520)": "42%",
+      "18-34 (n=400)": "37%",
+      "35-54 (n=350)": "42%",
+      "55+ (n=250)": "42%"
+     },
+     {
+      "": "Dissatisfied",
+      "Total (n=1000)": "20%",
+      "Male (n=480)": "18%",
+      "Female (n=520)": "22%",
+      "18-34 (n=400)": "17%",
+      "35-54 (n=350)": "20%",
+      "55+ (n=250)": "25%"
+     },
+     {
+      "": "Very dissatisfied",
+      "Total (n=1000)": "10%",
+      "Male (n=480)": "10%",
+      "Female (n=520)": "10%",
+      "18-34 (n=400)": "8%",
+      "35-54 (n=350)": "10%",
+      "55+ (n=250)": "13%"
+     }
+    ]
+   },
+   "AGG-18.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "pass",
+     "detail": "All 1 tables state a base."
+    },
+    {
+     "id": "base_sizes",
+     "label": "Base sizes",
+     "status": "pass",
+     "detail": "Smallest 250, median 440, largest 1,000 across 6 stated bases. 0 under 30 and 0 under 10. Figures on bases under 30 are shown as indicative only in the cross tab tool, and under 10 are not reported."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "warn",
+     "detail": "Nothing says whether the figures or bases are weighted. If they are weighted, an unweighted base is needed to judge precision."
+    },
+    {
+     "id": "percent_sums",
+     "label": "Percentages add up",
+     "status": "pass",
+     "detail": "0 of 6 percentage columns add to 100% (within 3 points for rounding). 6 are further off, which is normal for multiple-response or partial tables."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "warn",
+     "detail": "1 with blank or generic headings. Check the preview."
+    }
+   ],
+   "AGG-18.patterns": [],
+   "AGG-18.digest": [
+    {
+     "column": "",
+     "kind": "categorical"
+    },
+    {
+     "column": "Total (n=1000)",
+     "kind": "categorical"
+    },
+    {
+     "column": "Male (n=480)",
+     "kind": "categorical"
+    },
+    {
+     "column": "Female (n=520)",
+     "kind": "categorical"
+    },
+    {
+     "column": "18-34 (n=400)",
+     "kind": "categorical"
+    },
+    {
+     "column": "35-54 (n=350)",
+     "kind": "categorical"
+    },
+    {
+     "column": "55+ (n=250)",
+     "kind": "categorical"
+    }
+   ],
+   "AGG-12": {
+    "sheet": "Sheet1",
+    "headers": [
+     "Indicator name",
+     "Value"
+    ],
+    "firstRows": [
+     {
+      "Indicator name": "About one month can be covered using savings, borrowing, selling something, seeking help from friends and family, or other ways, in case household loses its main source of income (%, age 15+)",
+      "Value": 0.199069794261426
+     },
+     {
+      "Indicator name": "About two months can be covered using savings, borrowing, selling something, seeking help from friends and family, or other ways, in case household loses its main source of income (%, age 15+)",
+      "Value": 0.130976374579287
+     },
+     {
+      "Indicator name": "Accessed government services/info online in past three months (% internet users, age 15+)",
+      "Value": 0.430308914239738
+     },
+     {
+      "Indicator name": "Accessed government services/info online in past three months (%, age 15+)",
+      "Value": 0.296608548179782
+     }
+    ]
+   },
+   "AGG-12.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-12.patterns": [
+    {
+     "type": "outlier",
+     "text": "Value value of 0.899095960782971 at row 27. Value 0.899095960782971 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.912247657638177 at row 41. Value 0.912247657638177 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.897059133145248 at row 170. Value 0.897059133145248 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.910641418341875 at row 277. Value 0.910641418341875 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.906265284931748 at row 323. Value 0.906265284931748 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.869732627120313 at row 155. Value 0.869732627120313 is 2.5 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8697289468698144 at row 218. Value 0.8697289468698144 is 2.5 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.877795198216134 at row 261. Value 0.877795198216134 is 2.5 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.841559529088836 at row 29. Value 0.841559529088836 is 2.4 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8621827403002291 at row 201. Value 0.8621827403002291 is 2.4 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.851983220576305 at row 209. Value 0.851983220576305 is 2.4 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8312074029683714 at row 81. Value 0.8312074029683714 is 2.3 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8285203530544735 at row 256. Value 0.8285203530544735 is 2.3 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.833832796672554 at row 275. Value 0.833832796672554 is 2.3 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.811259662052011 at row 7. Value 0.811259662052011 is 2.2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.793411551862004 at row 42. Value 0.793411551862004 is 2.2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8026274539037164 at row 240. Value 0.8026274539037164 is 2.2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.784330264359328 at row 10. Value 0.784330264359328 is 2.1 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.780201596552687 at row 171. Value 0.780201596552687 is 2.1 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.7670449914844266 at row 254. Value 0.7670449914844266 is 2.1 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.759077669148674 at row 20. Value 0.759077669148674 is 2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.7529615552680159 at row 195. Value 0.7529615552680159 is 2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.763447123818114 at row 262. Value 0.763447123818114 is 2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    }
+   ],
+   "AGG-12.digest": [
+    {
+     "column": "Indicator name",
+     "kind": "skipped"
+    },
+    {
+     "column": "Value",
+     "kind": "numeric"
+    }
+   ],
+   "AGG-13": {
+    "sheet": "Sheet1",
+    "headers": [
+     "Topic",
+     "Sub Topic 1",
+     "Sub Topic 2",
+     "Indicator name",
+     "Value"
+    ],
+    "firstRows": [
+     {
+      "Topic": 2024,
+      "Sub Topic 1": "Digital connectivity",
+      "Sub Topic 2": "Access",
+      "Indicator name": "Can use WhatsApp on basic text phone (%, age 15+)",
+      "Value": 0.0410714412241798
+     },
+     {
+      "Topic": 2024,
+      "Sub Topic 1": "Digital connectivity",
+      "Sub Topic 2": "Access",
+      "Indicator name": "Own a mobile phone (%, age 15+)",
+      "Value": 0.869732627120313
+     },
+     {
+      "Topic": 2024,
+      "Sub Topic 1": "Digital connectivity",
+      "Sub Topic 2": "Access",
+      "Indicator name": "Someone in household owns a mobile phone (%, age 15+)",
+      "Value": 0.0475320820448526
+     },
+     {
+      "Topic": 2024,
+      "Sub Topic 1": "Digital connectivity",
+      "Sub Topic 2": "Access",
+      "Indicator name": "Used personal SIM card in someone else's phone (%, age 15+)",
+      "Value": 0.0187080345040864
+     }
+    ]
+   },
+   "AGG-13.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-13.patterns": [
+    {
+     "type": "outlier",
+     "text": "Value value of 0.899095960782971 at row 10. Value 0.899095960782971 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.897059133145248 at row 18. Value 0.897059133145248 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.912247657638177 at row 40. Value 0.912247657638177 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.910641418341875 at row 95. Value 0.910641418341875 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.906265284931748 at row 99. Value 0.906265284931748 is 2.6 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.869732627120313 at row 2. Value 0.869732627120313 is 2.5 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.877795198216134 at row 24. Value 0.877795198216134 is 2.5 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8697289468698144 at row 273. Value 0.8697289468698144 is 2.5 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.841559529088836 at row 12. Value 0.841559529088836 is 2.4 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8621827403002291 at row 176. Value 0.8621827403002291 is 2.4 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.851983220576305 at row 264. Value 0.851983220576305 is 2.4 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.833832796672554 at row 93. Value 0.833832796672554 is 2.3 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8312074029683714 at row 127. Value 0.8312074029683714 is 2.3 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8285203530544735 at row 199. Value 0.8285203530544735 is 2.3 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.793411551862004 at row 41. Value 0.793411551862004 is 2.2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.811259662052011 at row 106. Value 0.811259662052011 is 2.2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.8026274539037164 at row 188. Value 0.8026274539037164 is 2.2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.780201596552687 at row 19. Value 0.780201596552687 is 2.1 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.784330264359328 at row 108. Value 0.784330264359328 is 2.1 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.7670449914844266 at row 287. Value 0.7670449914844266 is 2.1 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.759077669148674 at row 8. Value 0.759077669148674 is 2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.763447123818114 at row 25. Value 0.763447123818114 is 2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    },
+    {
+     "type": "outlier",
+     "text": "Value value of 0.7529615552680159 at row 170. Value 0.7529615552680159 is 2 SD from the comparison mean of 0.24. Descriptive heuristic, not a formal outlier test."
+    }
+   ],
+   "AGG-13.digest": [
+    {
+     "column": "Topic",
+     "kind": "categorical"
+    },
+    {
+     "column": "Sub Topic 1",
+     "kind": "categorical"
+    },
+    {
+     "column": "Sub Topic 2",
+     "kind": "categorical"
+    },
+    {
+     "column": "Indicator name",
+     "kind": "skipped"
+    },
+    {
+     "column": "Value",
+     "kind": "numeric"
+    }
+   ],
+   "AGG-19": {
+    "sheet": "Sheet1",
+    "headers": [
+     "STRUCTURE",
+     "STRUCTURE_ID",
+     "ACTION",
+     "FREQ",
+     "REF_AREA",
+     "INDICATOR",
+     "SEX",
+     "AGE",
+     "URBANISATION",
+     "UNIT_MEASURE",
+     "COMP_BREAKDOWN_1",
+     "COMP_BREAKDOWN_2",
+     "COMP_BREAKDOWN_3",
+     "TIME_PERIOD",
+     "OBS_VALUE",
+     "AGG_METHOD",
+     "UNIT_TYPE",
+     "DECIMALS",
+     "DATABASE_ID",
+     "TIME_FORMAT",
+     "COMMENT_OBS",
+     "UNIT_MULT",
+     "OBS_STATUS",
+     "OBS_CONF",
+     "FREQ_LABEL",
+     "REF_AREA_LABEL",
+     "INDICATOR_LABEL",
+     "SEX_LABEL",
+     "AGE_LABEL",
+     "URBANISATION_LABEL",
+     "UNIT_MEASURE_LABEL",
+     "COMP_BREAKDOWN_1_LABEL",
+     "COMP_BREAKDOWN_2_LABEL",
+     "COMP_BREAKDOWN_3_LABEL",
+     "AGG_METHOD_LABEL",
+     "UNIT_TYPE_LABEL",
+     "DECIMALS_LABEL",
+     "DATABASE_ID_LABEL",
+     "TIME_FORMAT_LABEL",
+     "UNIT_MULT_LABEL",
+     "OBS_STATUS_LABEL",
+     "OBS_CONF_LABEL"
+    ],
+    "firstRows": [
+     {
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "AFG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_03",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": 2015,
+      "OBS_VALUE": 42.3,
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2015",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Afghanistan",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Three years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     },
+     {
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "AFG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_05",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": 2015,
+      "OBS_VALUE": 42.4,
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2015",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Afghanistan",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Five years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     },
+     {
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "AFG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_02",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": 2015,
+      "OBS_VALUE": 43.8,
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2015",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Afghanistan",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Two years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     },
+     {
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "ALB",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_03",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "TIME_PERIOD": 2008,
+      "OBS_VALUE": 39.3,
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2008-09",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Albania",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Three years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     }
+    ]
+   },
+   "AGG-19.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-19.patterns": [
+    "TIME_PERIOD and OBS_VALUE move together across 607 rows (r=0.47, p=0, false discovery rate q=<0.001 across the 5 tests run on this table). descriptive association only; not evidence of causation",
+    "OBS_VALUE value of 10.3 at row 142. Value 10.3 is -2.9 SD from the comparison mean of 70.78. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 10.4 at row 143. Value 10.4 is -2.9 SD from the comparison mean of 70.78. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 10.2 at row 144. Value 10.2 is -2.9 SD from the comparison mean of 70.78. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 17.8 at row 13. Value 17.8 is -2.6 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 17.9 at row 14. Value 17.9 is -2.6 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 16.8 at row 145. Value 16.8 is -2.6 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 17 at row 146. Value 17 is -2.6 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 17.5 at row 147. Value 17.5 is -2.6 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 18.8 at row 10. Value 18.8 is -2.5 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 19.2 at row 11. Value 19.2 is -2.5 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 19.5 at row 12. Value 19.5 is -2.5 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 19.5 at row 15. Value 19.5 is -2.5 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 19.9 at row 451. Value 19.9 is -2.5 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 19.4 at row 453. Value 19.4 is -2.5 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 21.9 at row 258. Value 21.9 is -2.4 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 20.7 at row 259. Value 20.7 is -2.4 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 20.6 at row 452. Value 20.6 is -2.4 SD from the comparison mean of 70.76. Descriptive heuristic, not a formal outlier test.",
+    "TIME_PERIOD value of 2025 at row 469. Value 2025 is 2.3 SD from the comparison mean of 2010.73. Descriptive heuristic, not a formal outlier test.",
+    "TIME_PERIOD value of 2025 at row 470. Value 2025 is 2.3 SD from the comparison mean of 2010.73. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 22.6 at row 28. Value 22.6 is -2.3 SD from the comparison mean of 70.75. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 22.9 at row 260. Value 22.9 is -2.3 SD from the comparison mean of 70.75. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 23.6 at row 390. Value 23.6 is -2.3 SD from the comparison mean of 70.75. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 22.7 at row 391. Value 22.7 is -2.3 SD from the comparison mean of 70.75. Descriptive heuristic, not a formal outlier test.",
+    "OBS_VALUE value of 24 at row 392. Value 24 is -2.3 SD from the comparison mean of 70.75. Descriptive heuristic, not a formal outlier test."
+   ],
+   "AGG-20": {
+    "sheet": "Sheet1",
+    "headers": [
+     "STRUCTURE",
+     "STRUCTURE_ID",
+     "ACTION",
+     "FREQ",
+     "REF_AREA",
+     "INDICATOR",
+     "SEX",
+     "AGE",
+     "URBANISATION",
+     "UNIT_MEASURE",
+     "COMP_BREAKDOWN_1",
+     "COMP_BREAKDOWN_2",
+     "COMP_BREAKDOWN_3",
+     "AGG_METHOD",
+     "UNIT_TYPE",
+     "DECIMALS",
+     "DATABASE_ID",
+     "TIME_FORMAT",
+     "COMMENT_OBS",
+     "UNIT_MULT",
+     "OBS_STATUS",
+     "OBS_CONF",
+     "FREQ_LABEL",
+     "REF_AREA_LABEL",
+     "INDICATOR_LABEL",
+     "SEX_LABEL",
+     "AGE_LABEL",
+     "URBANISATION_LABEL",
+     "UNIT_MEASURE_LABEL",
+     "COMP_BREAKDOWN_1_LABEL",
+     "COMP_BREAKDOWN_2_LABEL",
+     "COMP_BREAKDOWN_3_LABEL",
+     "AGG_METHOD_LABEL",
+     "UNIT_TYPE_LABEL",
+     "DECIMALS_LABEL",
+     "DATABASE_ID_LABEL",
+     "TIME_FORMAT_LABEL",
+     "UNIT_MULT_LABEL",
+     "OBS_STATUS_LABEL",
+     "OBS_CONF_LABEL",
+     "1999",
+     "2000",
+     "2001",
+     "2002",
+     "2003",
+     "2004",
+     "2005",
+     "2006",
+     "2007",
+     "2008",
+     "2009",
+     "2010",
+     "2011",
+     "2012",
+     "2013",
+     "2014",
+     "2015",
+     "2016",
+     "2017",
+     "2018",
+     "2019",
+     "2020",
+     "2021",
+     "2022",
+     "2023",
+     "2024",
+     "2025"
+    ],
+    "firstRows": [
+     {
+      "1999": null,
+      "2000": null,
+      "2001": null,
+      "2002": null,
+      "2003": null,
+      "2004": null,
+      "2005": null,
+      "2006": null,
+      "2007": null,
+      "2008": null,
+      "2009": null,
+      "2010": null,
+      "2011": 84.4,
+      "2012": null,
+      "2013": null,
+      "2014": null,
+      "2015": null,
+      "2016": null,
+      "2017": null,
+      "2018": null,
+      "2019": null,
+      "2020": null,
+      "2021": null,
+      "2022": null,
+      "2023": null,
+      "2024": null,
+      "2025": null,
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "COG",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_03",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2011-12",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Congo, Rep.",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Three years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     },
+     {
+      "1999": null,
+      "2000": null,
+      "2001": null,
+      "2002": null,
+      "2003": null,
+      "2004": null,
+      "2005": null,
+      "2006": null,
+      "2007": null,
+      "2008": null,
+      "2009": null,
+      "2010": null,
+      "2011": null,
+      "2012": null,
+      "2013": null,
+      "2014": 55.2,
+      "2015": null,
+      "2016": null,
+      "2017": null,
+      "2018": null,
+      "2019": null,
+      "2020": null,
+      "2021": null,
+      "2022": null,
+      "2023": null,
+      "2024": null,
+      "2025": null,
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "TCD",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_05",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2014-15",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Chad",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Five years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     },
+     {
+      "1999": null,
+      "2000": null,
+      "2001": null,
+      "2002": null,
+      "2003": null,
+      "2004": null,
+      "2005": null,
+      "2006": null,
+      "2007": null,
+      "2008": null,
+      "2009": null,
+      "2010": null,
+      "2011": 80.6,
+      "2012": null,
+      "2013": null,
+      "2014": null,
+      "2015": null,
+      "2016": null,
+      "2017": null,
+      "2018": null,
+      "2019": null,
+      "2020": null,
+      "2021": null,
+      "2022": null,
+      "2023": null,
+      "2024": null,
+      "2025": null,
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "MOZ",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_03",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2011",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Mozambique",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Three years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     },
+     {
+      "1999": null,
+      "2000": null,
+      "2001": null,
+      "2002": null,
+      "2003": null,
+      "2004": null,
+      "2005": null,
+      "2006": null,
+      "2007": null,
+      "2008": null,
+      "2009": null,
+      "2010": null,
+      "2011": null,
+      "2012": 34.2,
+      "2013": null,
+      "2014": null,
+      "2015": null,
+      "2016": null,
+      "2017": null,
+      "2018": null,
+      "2019": null,
+      "2020": null,
+      "2021": null,
+      "2022": null,
+      "2023": null,
+      "2024": null,
+      "2025": null,
+      "STRUCTURE": "datastructure",
+      "STRUCTURE_ID": "WB.DATA360:DS_DATA360(1.3)",
+      "ACTION": "I",
+      "FREQ": "A",
+      "REF_AREA": "TJK",
+      "INDICATOR": "RH_ANCC_W_IRN",
+      "SEX": "F",
+      "AGE": "_T",
+      "URBANISATION": "_Z",
+      "UNIT_MEASURE": "PT_W_SUB",
+      "COMP_BREAKDOWN_1": "ANCC_IRN_02",
+      "COMP_BREAKDOWN_2": "_Z",
+      "COMP_BREAKDOWN_3": "_Z",
+      "AGG_METHOD": "_Z",
+      "UNIT_TYPE": "RATIO",
+      "DECIMALS": 1,
+      "DATABASE_ID": "DHS_SD",
+      "TIME_FORMAT": 602,
+      "COMMENT_OBS": "DHS, 2012",
+      "UNIT_MULT": 0,
+      "OBS_STATUS": "A",
+      "OBS_CONF": "PU",
+      "FREQ_LABEL": "Annual",
+      "REF_AREA_LABEL": "Tajikistan",
+      "INDICATOR_LABEL": "Percentage of women with a live birth (or stillbirth) preceding the survey who received iron during antenatal care",
+      "SEX_LABEL": "Female",
+      "AGE_LABEL": "All age ranges or no breakdown by age",
+      "URBANISATION_LABEL": "Not applicable",
+      "UNIT_MEASURE_LABEL": "Percentage of women in the same subgroup",
+      "COMP_BREAKDOWN_1_LABEL": "Timelapse: Two years preceding the survey",
+      "COMP_BREAKDOWN_2_LABEL": "Not Applicable",
+      "COMP_BREAKDOWN_3_LABEL": "Not Applicable",
+      "AGG_METHOD_LABEL": "Not Applicable",
+      "UNIT_TYPE_LABEL": "Ratio",
+      "DECIMALS_LABEL": "One",
+      "DATABASE_ID_LABEL": "Survey Based Indicators",
+      "TIME_FORMAT_LABEL": "CCYY",
+      "UNIT_MULT_LABEL": "Units",
+      "OBS_STATUS_LABEL": "Normal value",
+      "OBS_CONF_LABEL": "Public"
+     }
+    ]
+   },
+   "AGG-20.quality": [
+    {
+     "id": "tables",
+     "label": "Tables read",
+     "status": "pass",
+     "detail": "1 table read, 1 with at least two columns and two rows."
+    },
+    {
+     "id": "base",
+     "label": "Base stated",
+     "status": "fail",
+     "detail": "No table shows a base (a Base or n row or column, or n= in a heading). Without one, differences cannot be tested and small groups cannot be spotted."
+    },
+    {
+     "id": "weighting",
+     "label": "Weighting stated",
+     "status": "pass",
+     "detail": "No weighting language found, and no bases to qualify."
+    },
+    {
+     "id": "duplicates",
+     "label": "Duplicate tables",
+     "status": "pass",
+     "detail": "No repeated tables."
+    },
+    {
+     "id": "extraction",
+     "label": "Extraction damage",
+     "status": "pass",
+     "detail": "No tiny tables, blank headings, empty columns or repeated heading rows."
+    }
+   ],
+   "AGG-20.patterns": [
+    "2015 value of 42.3 at row 285. Value 42.3 is -3.2 SD from the comparison mean of 81.58. Descriptive heuristic, not a formal outlier test.",
+    "2015 value of 42.4 at row 478. Value 42.4 is -3.2 SD from the comparison mean of 81.58. Descriptive heuristic, not a formal outlier test.",
+    "2011 value of 16.8 at row 509. Value 16.8 is -3 SD from the comparison mean of 72.97. Descriptive heuristic, not a formal outlier test.",
+    "2013 value of 28.8 at row 403. Value 28.8 is -3 SD from the comparison mean of 83.27. Descriptive heuristic, not a formal outlier test.",
+    "2013 value of 29.2 at row 531. Value 29.2 is -3 SD from the comparison mean of 83.25. Descriptive heuristic, not a formal outlier test.",
+    "2013 value of 29.1 at row 578. Value 29.1 is -3 SD from the comparison mean of 83.26. Descriptive heuristic, not a formal outlier test.",
+    "2015 value of 43.8 at row 547. Value 43.8 is -3 SD from the comparison mean of 81.53. Descriptive heuristic, not a formal outlier test.",
+    "2011 value of 17 at row 390. Value 17 is -2.9 SD from the comparison mean of 72.97. Descriptive heuristic, not a formal outlier test.",
+    "2011 value of 17.5 at row 569. Value 17.5 is -2.9 SD from the comparison mean of 72.94. Descriptive heuristic, not a formal outlier test.",
+    "2019 value of 59.3 at row 385. Value 59.3 is -2.8 SD from the comparison mean of 89.76. Descriptive heuristic, not a formal outlier test.",
+    "2019 value of 60 at row 510. Value 60 is -2.7 SD from the comparison mean of 89.73. Descriptive heuristic, not a formal outlier test.",
+    "2019 value of 60.9 at row 56. Value 60.9 is -2.6 SD from the comparison mean of 89.68. Descriptive heuristic, not a formal outlier test.",
+    "2006 value of 22.6 at row 281. Value 22.6 is -2.5 SD from the comparison mean of 63.17. Descriptive heuristic, not a formal outlier test.",
+    "2010 value of 29.3 at row 62. Value 29.3 is -2.5 SD from the comparison mean of 77.18. Descriptive heuristic, not a formal outlier test.",
+    "2010 value of 30.2 at row 169. Value 30.2 is -2.5 SD from the comparison mean of 77.15. Descriptive heuristic, not a formal outlier test.",
+    "2010 value of 29.2 at row 494. Value 29.2 is -2.5 SD from the comparison mean of 77.18. Descriptive heuristic, not a formal outlier test.",
+    "2012 value of 33.3 at row 527. Value 33.3 is -2.4 SD from the comparison mean of 72.75. Descriptive heuristic, not a formal outlier test.",
+    "2012 value of 32.7 at row 562. Value 32.7 is -2.4 SD from the comparison mean of 72.76. Descriptive heuristic, not a formal outlier test.",
+    "2006 value of 24.8 at row 358. Value 24.8 is -2.3 SD from the comparison mean of 63.1. Descriptive heuristic, not a formal outlier test.",
+    "2012 value of 34.2 at row 4. Value 34.2 is -2.3 SD from the comparison mean of 72.73. Descriptive heuristic, not a formal outlier test.",
+    "2017 value of 44.1 at row 525. Value 44.1 is -2.3 SD from the comparison mean of 76.9. Descriptive heuristic, not a formal outlier test.",
+    "2003 value of 38.3 at row 221. Value 38.3 is -2.2 SD from the comparison mean of 63.36. Descriptive heuristic, not a formal outlier test.",
+    "2017 value of 45.8 at row 302. Value 45.8 is -2.2 SD from the comparison mean of 76.84. Descriptive heuristic, not a formal outlier test.",
+    "2006 value of 27.2 at row 69. Value 27.2 is -2.1 SD from the comparison mean of 63.02. Descriptive heuristic, not a formal outlier test.",
+    "2017 value of 47.1 at row 421. Value 47.1 is -2.1 SD from the comparison mean of 76.8. Descriptive heuristic, not a formal outlier test."
+   ],
+   "CB-01": {
+    "items": [
+     {
+      "variable": "VARIABLE_ID",
+      "label": "VARIABLE_DESCRIPTION",
+      "options": [],
+      "note": null,
+      "unreadValues": null,
+      "section": null,
+      "sheet": null
+     },
+     {
+      "variable": "STRUCTURE",
+      "label": "",
+      "options": [],
+      "note": null,
+      "unreadValues": null,
+      "section": null,
+      "sheet": null
+     },
+     {
+      "variable": "STRUCTURE_ID",
+      "label": "",
+      "options": [],
+      "note": null,
+      "unreadValues": null,
+      "section": null,
+      "sheet": null
+     },
+     {
+      "variable": "ACTION",
+      "label": "",
+      "options": [],
+      "note": null,
+      "unreadValues": null,
+      "section": null,
+      "sheet": null
+     },
+     {
+      "variable": "FREQ",
+      "label": "Time interval at which observations occur over a given time period.",
+      "options": [],
+      "note": null,
+      "unreadValues": null,
+      "section": null,
+      "sheet": null
+     }
+    ]
+   },
+   "AGG-14": {
+    "sheet": "Sheet1",
+    "headers": [
+     "TransactionID",
+     "StoreType",
+     "BasketValue"
+    ],
+    "firstRows": [
+     {
+      "TransactionID": "TXN-1000",
+      "StoreType": "Rural",
+      "BasketValue": 148.95
+     },
+     {
+      "TransactionID": "TXN-1001",
+      "StoreType": "Urban",
+      "BasketValue": 270.19
+     },
+     {
+      "TransactionID": "TXN-1002",
+      "StoreType": "Urban",
+      "BasketValue": 284.62
+     },
+     {
+      "TransactionID": "TXN-1003",
+      "StoreType": "Urban",
+      "BasketValue": 217.45
+     }
+    ]
+   },
+   "AGG-14.patterns": [
+    "StoreType \"Urban\" averages 270.59 on BasketValue (n=34), versus 230.33 for \"Rural\" (n=26): a gap of 40.26 (t=2.69, false discovery rate q=0.0093 across the 1 tests run on this table).",
+    "BasketValue value of 126.44 at row 18. Value 126.44 is -2.2 SD from the comparison mean of 255.3. Descriptive heuristic, not a formal outlier test.",
+    "BasketValue value of 134.76 at row 50. Value 134.76 is -2 SD from the comparison mean of 255.15. Descriptive heuristic, not a formal outlier test."
+   ],
+   "AGG-15": {
+    "sheet": "Sheet1",
+    "headers": [
+     "Gender",
+     "FavouriteProduct"
+    ],
+    "firstRows": [
+     {
+      "Gender": "Female",
+      "FavouriteProduct": "Product N"
+     },
+     {
+      "Gender": "Female",
+      "FavouriteProduct": "Product K"
+     },
+     {
+      "Gender": "Female",
+      "FavouriteProduct": "Product L"
+     },
+     {
+      "Gender": "Female",
+      "FavouriteProduct": "Product C"
+     }
+    ]
+   },
+   "AGG-15.patterns": []
+  }
+ }
+}

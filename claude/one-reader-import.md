@@ -39,7 +39,7 @@ copy and read back, as `convert` does) and refuses an answer that is not a compl
   (`_excel_sheet_grid`, which converts each cell as pandas' openpyxl and xlrd readers do but does not
   build a DataFrame from them, because that step merged TRUE with 1 and FALSE with 0 in a column holding
   both, CAL-R1-F03; blank rows kept, rows padded to the widest). Sheet choice: the persisted `selected_sheet`, else the non-dictionary
-  sheet with the most real data rows; a persisted sheet that is gone is answered as
+  sheet holding the most filled cells below its first row (batch 55; before, the most rows, which chose a pivot-output sheet over the respondents); a persisted sheet that is gone is answered as
   `sheetSelectionLost` (the app raises `SheetSelectionLostError`), never substituted.
 - **Names.** Literal text (`_literal_text`), trimmed; allocated by `_dedupe_header_names` in both layouts
   (`claude/column-names-and-preview-identity.md`). Excel number cells as names are written without

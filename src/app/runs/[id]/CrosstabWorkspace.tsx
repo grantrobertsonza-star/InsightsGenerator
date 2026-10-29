@@ -1,5 +1,7 @@
 "use client";
 
+import { waveCopyMessage } from "@/lib/waveCopyMessage";
+import { builderChoicesFrom } from "@/lib/tableDefinitionEdit";
 import { tableMethodStatus } from "@/lib/tableMethod";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -17,8 +19,7 @@ import {
   loadVariablesAction,
   setCrosstabTextAction,
   summarizeCrosstabAction,
-  replicateCrosstabsToWaveAction,
-} from "@/lib/crosstabActions";
+  replicateCrosstabsToWaveAction, loadTableDefinitionAction, replaceDraftCrosstabAction } from "@/lib/crosstabActions";
 import { listWaveFilesAction, type WaveFile } from "@/lib/waveTrackingActions";
 import type { CrosstabInsights } from "@/lib/crosstabInsights";
 import { QuickCharts, Histogram, buildRCode } from "./CrosstabExtras";
@@ -198,12 +199,19 @@ export default function CrosstabWorkspace({
   const [waveFiles, setWaveFiles] = useState<WaveFile[]>([]);
   const [copyFrom, setCopyFrom] = useState("");
   const [copying, setCopying] = useState(false);
+  // A saved table being edited in Build table (Grant, 29 October 2026): its id and title, and whether Update table
+  // may replace it (a draft of this file, not one panel of a layered set). A table's definition loads inside this
+  // workspace's transition, and every Edit, Stop editing, Add and Update button waits while it runs (busy /
+  // isPending), so a slow load cannot land over a later choice.
+  const [editing, setEditing] = useState<{ tableId: string; label: string; replaceable: boolean } | null>(null);
 
   const refreshList = (added?: string, showIfNoChoiceSince?: number) =>
     startTransition(async () => {
       const r = await listCrosstabsAction(runId, documentId);
       if (!r.ok) return setError(r.error);
       setItems(r.items);
+      // The menu's Cross tabs count (saved tables) and the file chooser's table counts are drawn by the server.
+      router.refresh();
       if (added) setLastAdded(added);
       if (showIfNoChoiceSince !== undefined) setViewState((p) => (p.choices === showIfNoChoiceSince ? { ...p, view: "tables" } : p));
     });
@@ -310,10 +318,15 @@ export default function CrosstabWorkspace({
       const r = await replicateCrosstabsToWaveAction(runId, copyFrom, documentId);
       setCopying(false);
       if (!r.ok) return setError(r.error);
-      const skippedText = r.skipped.length
-        ? ` ${r.skipped.length} could not be rebuilt here: ${r.skipped.map((s) => `${s.label} (${s.reason})`).join("; ")}`
-        : "";
-      setMessage(`Copied ${r.built} table(s) from that wave as drafts.${skippedText}`);
+      const from = otherWaves.find((w) => w.documentId === copyFrom);
+      const said = waveCopyMessage(r, from ? `${from.wave} (${from.filename})` : "That wave");
+      if (said.tone === "error") setError(said.text);
+      else setMessage(said.text);
+      // The copies keep the way their originals were made, so All tables is where every one of them is listed.
+      if (said.showTables) {
+        setEntry("all");
+        chooseView("tables");
+      }
       refreshList();
     });
   }
@@ -662,7 +675,47 @@ export default function CrosstabWorkspace({
     }
   }
 
-  function addTable(over?: { columnVars: string[]; rowItems: CrosstabRowItem[]; filters?: CrosstabFilter[] }) {
+  function editTable(it: CrosstabListItem) {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const r = await loadTableDefinitionAction(runId, it.id);
+      if (!r.ok) return setError(r.error);
+      if (!r.definition.request) return setError(`"${it.label}" was saved before tables kept their definition, so it cannot be edited. Build it here instead.`);
+      const c = builderChoicesFrom(r.definition.request, (n) => (n.startsWith("set:") ? setByKeyTop.has(n.slice(4)) : byName.has(n)));
+      setColumnVars(c.columnVars);
+      setRowItems(c.rowItems);
+      setNets(c.nets);
+      setFilters(c.filters);
+      setColGroups(c.columnGroups);
+      setCorrection(c.correction);
+      setExcludeDk(c.excludeDk);
+      setCellPrefs((p) => ({ ...p, mean: c.meanRows }));
+      setLayerVar(c.layerVariable);
+      const replaceable = r.definition.status === "draft" && r.definition.documentId === documentId && !it.layerGroup && !c.layerVariable;
+      setEditing({ tableId: it.id, label: it.label, replaceable });
+      setEntry("build");
+      chooseView("build");
+      const next = replaceable
+        ? "Change what you need, then press Update table to replace the draft, or Add table to set to keep both."
+        : "Change what you need, then press Add table to set. The saved table stays as it is.";
+      const left = c.missing.length ? ` Not in this file, so left out: ${c.missing.join(", ")}.` : "";
+      setMessage(`Editing "${it.label}". ${next}${left} The weight and survey design are this file's own settings.`);
+    });
+  }
+
+  function stopEditing() {
+    setEditing(null);
+    setColumnVars([]);
+    setRowItems([]);
+    setNets([]);
+    setFilters([]);
+    setColGroups({});
+    setLayerVar("");
+    setMessage(null);
+  }
+
+  function addTable(over?: { columnVars: string[]; rowItems: CrosstabRowItem[]; filters?: CrosstabFilter[] }, replace?: string) {
     const choicesAtAdd = viewState.choices;
     const fl = over?.filters ?? filters;
     let cv = over?.columnVars ?? columnVars;
@@ -690,10 +743,22 @@ export default function CrosstabWorkspace({
         ...(designOk ? { design: { psu: psuVar || null, strata: strataVar || null } } : {}),
         columnGroups: Object.fromEntries(Object.entries(colGroups).filter(([k, g]) => cv.includes(k) && g.length)),
       };
+      if (!layerVar && replace) {
+        const r = await replaceDraftCrosstabAction(runId, documentId, replace, { ...base, ...(fl.length ? { filters: fl } : {}) });
+        if (!r.ok) return setError(r.error);
+        const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => s.variable).join(", ")}.` : "";
+        setMessage(r.replaced ? `Updated the table (${r.questions} question(s)).${skipped}` : `Added the edited table (${r.questions} question(s)). The earlier one had been committed or deleted meanwhile, so it was left as it is.${skipped}`);
+        setEditing(null);
+        setRowItems([]);
+        setNets([]);
+        refreshList(r.tableId, choicesAtAdd);
+        return;
+      }
       if (!layerVar) {
         const r = await addCrosstabAction(runId, documentId, { ...base, ...(fl.length ? { filters: fl } : {}) });
         if (!r.ok) return setError(r.error);
         const skipped = r.skipped.length ? ` Skipped: ${r.skipped.map((s) => s.variable).join(", ")}.` : "";
+        setEditing(null);
         setMessage(`Added a table with ${r.questions} question(s).${skipped}`);
         setRowItems([]);
         setNets([]);
@@ -793,11 +858,22 @@ export default function CrosstabWorkspace({
         ? `Delete this table and its ${it.findings} finding(s)?`
         : "Delete this table?";
     if (!window.confirm(warn)) return;
+    // Grant, 29 October 2026: after deleting every table, the earlier "Committed 5 table(s)" note was still shown, with
+    // a red error from a second delete of a table already gone. Each delete clears earlier notes and says what it did;
+    // a refusal is checked against the current list, so a table that is no longer there reads as already deleted
+    // rather than as a failure (the server still refuses it, as it must for another project's table).
+    setError(null);
+    setMessage(null);
     startTransition(async () => {
       const r = await deleteCrosstabAction(runId, it.id);
-      if (!r.ok) return setError(r.error);
-      refreshList();
+      const listed = await listCrosstabsAction(runId, documentId);
+      if (listed.ok) setItems(listed.items);
       router.refresh();
+      if (!r.ok) {
+        if (listed.ok && !listed.items.some((x) => x.id === it.id)) return setMessage(`"${it.label}" had already been deleted.`);
+        return setError(r.error);
+      }
+      setMessage(it.status === "committed" && it.findings > 0 ? `Deleted "${it.label}" and its ${it.findings} finding(s).` : `Deleted "${it.label}".`);
     });
   }
 
@@ -1067,6 +1143,8 @@ export default function CrosstabWorkspace({
             <>
               <select
                 value={copyFrom}
+                aria-label="Copy tables from"
+                data-testid="crosstab-copy-from"
                 onChange={(e) => setCopyFrom(e.target.value)}
                 title="Rebuild this wave's crosstabs from the same banner, rows and filters saved on another wave"
                 className="rounded-lg border border-border px-2 py-1.5 text-xs"
@@ -1357,6 +1435,21 @@ export default function CrosstabWorkspace({
                 {modeName}: {visible.length} table{visible.length === 1 ? "" : "s"}
                 {entry !== "all" && items.length > visible.length ? ` (${items.length} in all)` : ""}
               </span>
+              {visible.length > 0 && (() => {
+                // Export all (Grant, 29 October 2026): the tables listed here, in this order, one sheet or slide set each
+                // with a Contents sheet; All tables, or a list too long for a link, exports this file's saved tables.
+                const base = `/api/runs/${runId}/crosstab/export?`;
+                const scope = entry === "all" || visible.length > 150 ? `documentId=${documentId}` : `tableIds=${visible.map((v) => v.id).join(",")}`;
+                return (
+                  <span className="flex flex-wrap items-center gap-2 text-xs" data-testid="crosstab-export-all">
+                    <span className="text-muted">{entry === "all" || visible.length > 150 ? "Export every table of this file:" : `Export these ${visible.length}:`}</span>
+                    {/* Named for what they export, so "PowerPoint" alone still finds a single table's own link. */}
+                    <a className="font-medium text-primary hover:underline" aria-label="Export all to Excel" href={`${base}${scope}`}>Excel</a>
+                    <a className="font-medium text-primary hover:underline" aria-label="Export all to PowerPoint" href={`${base}${scope}&format=pptx`}>PowerPoint</a>
+                    <a className="font-medium text-primary hover:underline" aria-label="Export all to PDF" href={`${base}${scope}&format=pdf`} title="Needs LibreOffice installed on this computer">PDF</a>
+                  </span>
+                );
+              })()}
               {entry === "all" && drafts.length > 0 && (
                 <button
                   type="button"
@@ -1395,6 +1488,8 @@ export default function CrosstabWorkspace({
                     stats={statPrefs}
                     scrollTo={lastAdded === it.id}
                     onDelete={() => remove(it)}
+                    onEdit={() => editTable(it)}
+                    busy={isPending}
                     layerBadge={it.layerCategory ?? undefined}
                   />
                 </div>
@@ -1719,6 +1814,25 @@ export default function CrosstabWorkspace({
               >
                 {isPending ? "Working..." : layerVar ? "Add layered tables to set" : "Add table to set"}
               </button>
+              {editing?.replaceable && !layerVar && (
+                <button
+                  type="button"
+                  onClick={() => addTable(undefined, editing.tableId)}
+                  disabled={isPending || (columnVars.length === 0 && rowItems.length === 0 && nets.length === 0)}
+                  className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                  data-testid="crosstab-update-table"
+                >
+                  Update table
+                </button>
+              )}
+              {editing && (
+                <span className="text-[11px] text-slate-600" data-testid="crosstab-editing">
+                  {`Editing "${editing.label}". `}
+                  <button type="button" className="font-medium text-primary hover:underline disabled:opacity-50" onClick={stopEditing} disabled={isPending}>
+                    Stop editing
+                  </button>
+                </span>
+              )}
               {columnVars.length === 0 && rowItems.length === 0 && nets.length === 0 && (
                 <span className="text-[11px] text-slate-600">Choose rows or columns in the variable list first.</span>
               )}
@@ -1968,6 +2082,8 @@ function TableCard({
   stats,
   scrollTo,
   onDelete,
+  onEdit,
+  busy = false,
   layerBadge,
 }: {
   runId: string;
@@ -1979,6 +2095,10 @@ function TableCard({
   stats: StatPrefs;
   scrollTo: boolean;
   onDelete: () => void;
+  /** Edit in Build table: the table's choices loaded into the builder of this file. */
+  onEdit?: () => void;
+  /** Another action of the workspace is running (a delete among them): Delete waits, so one click never deletes twice. */
+  busy?: boolean;
   /** This table's layer category, shown as a small chip beside its title when it is one panel of a layered set. */
   layerBadge?: string;
 }) {
@@ -2142,10 +2262,23 @@ function TableCard({
         >
           {loadingInsights ? "Reading table..." : showInsights ? "Hide AI Insights" : "AI Insights"}
         </button>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={busy}
+            title="Load this table's columns, rows, nets and filters into Build table, to change them for this file"
+            className="rounded border border-border px-2 py-0.5 text-[11px] hover:border-slate-400 disabled:opacity-50"
+            data-testid="crosstab-edit-table"
+          >
+            Edit in Build table
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}
-          className="rounded border border-border px-2 py-0.5 text-[11px] text-danger hover:border-danger"
+          disabled={busy}
+          className="rounded border border-border px-2 py-0.5 text-[11px] text-danger hover:border-danger disabled:opacity-50"
         >
           Delete
         </button>

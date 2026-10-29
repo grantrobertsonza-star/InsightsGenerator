@@ -8,6 +8,7 @@ vi.mock("@/lib/documentOpenActions", () => ({ openDocumentAction: vi.fn() }));
 vi.mock("@/app/DeleteDocumentButton", () => ({ default: () => null }));
 vi.mock("@/app/useHydrated", async () => await import("../../app/useHydrated"));
 vi.mock("@/lib/dataSetupShared", async () => await import("../dataSetupShared"));
+vi.mock("@/lib/dataSetupRebase", async () => await import("../dataSetupRebase"));
 vi.mock("@/lib/displayDate", async () => await import("../displayDate"));
 vi.mock("@/lib/importSources", async () => await import("../importSources"));
 vi.mock("@/lib/rowCells", async () => await import("../rowCells"));

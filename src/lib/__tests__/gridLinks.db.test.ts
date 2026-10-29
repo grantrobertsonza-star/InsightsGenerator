@@ -123,6 +123,29 @@ for (const stoppedBefore of [null] as const) {
         // A question of another questionnaire confirms nothing here.
         expect(await confirmInstrumentLinks(tenant, p.run, p.questionnaire, 0, "00000000-0000-0000-0000-000000000000")).toEqual({ confirmed: 0, refused: [] });
       });
+
+      it("Confirm all in one wave's review confirms that wave's rows only; the other wave's stay suggestions (Grant, 29 October 2026)", async () => {
+        const p = await project(db, tenant);
+        const wave2 = (
+          await db.pool.query(
+            `insert into documents (tenant_id, run_id, kind, ingestion_type, source_filename, storage_path, data_setup, variable_dictionary)
+             values ($1, $2, 'table', 'raw', 'poll-w2.sav', $3, $4, $5) returning id`,
+            [tenant, p.run, `${tenant}/${p.run}/poll-w2.sav`, JSON.stringify({ layout: "rows_are_cases", unit: "respondents", method: "survey", accepted: true }), JSON.stringify(DICTIONARY)],
+          )
+        ).rows[0].id as string;
+        const { suggestInstrumentLinks, confirmInstrumentLinks, getInstrumentLinks } = await import("../instruments");
+        await suggestInstrumentLinks(tenant, p.run, p.questionnaire, p.data);
+        await suggestInstrumentLinks(tenant, p.run, p.questionnaire, wave2);
+        const statuses = async (file: string) =>
+          (await getInstrumentLinks(tenant, p.questionnaire)).filter((l) => l.itemId === p.a && l.dataDocumentId === file).map((l) => l.status);
+        expect(await statuses(wave2)).toEqual(["suggested", "suggested", "suggested"]);
+        expect(await confirmInstrumentLinks(tenant, p.run, p.questionnaire, 0, p.a, p.data)).toMatchObject({ confirmed: 3 });
+        expect(await statuses(p.data)).toEqual(["confirmed", "confirmed", "confirmed"]);
+        expect(await statuses(wave2)).toEqual(["suggested", "suggested", "suggested"]);
+        // The other wave is confirmed from its own review.
+        expect(await confirmInstrumentLinks(tenant, p.run, p.questionnaire, 0, p.a, wave2)).toMatchObject({ confirmed: 3 });
+        expect(await statuses(wave2)).toEqual(["confirmed", "confirmed", "confirmed"]);
+      });
     }
   });
 }

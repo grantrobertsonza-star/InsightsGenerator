@@ -2,7 +2,7 @@
 // (dataFileFormats.db.test.ts, fixtures/sas).
 // R (.rds, .RData, .rda) and Parquet (pandas, Polars, Spark, R arrow) since 26 October 2026, read by
 // the engine through pyreadr and fastparquet (dataFileFormats.db.test.ts, fixtures/r).
-const STATS_FILE_EXTENSIONS = [".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"] as const;
+const STATS_FILE_EXTENSIONS = [".sav", ".zsav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"] as const;
 
 /** True for SPSS, Stata, SAS, R and Parquet file names. Safe to import in client code. */
 export function isStatsFileName(fileName: string): boolean {

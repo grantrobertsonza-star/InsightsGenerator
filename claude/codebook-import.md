@@ -241,3 +241,39 @@ Tests: `codebookWordingMatch.test.ts` (Grant's two texts, close wording, too sho
 `codebookWordingLinks.db.test.ts` (real database: linked with its basis, idempotent, withdrawn with the
 codebook entry and restored, a researcher's rejection kept, deleted basis), `codebookWordingLinksPre0125
 .db.test.ts`, `e2e/ui/codebook-questionnaire-links.check.mjs`.
+
+## A codebook linked to every wave, confirmed where the codes fit (CB1, 29 October 2026)
+
+Grant: "a link of codebook is manual for each wave, i think it should be automatic". Before CB1 every codebook
+entry was only suggested, one data file at a time, and with several waves nothing was matched until the
+researcher chose a file.
+
+- **Which files.** `matchCodebookToDataFiles` matches a codebook to every active raw data file it describes:
+  - at least half of the codebook's named entries are exactly variable names in the file, and at least three
+    (all of them in a smaller codebook), per `sharesCodebookNames`;
+  - another study sharing a few names ("Q1", "age") is left alone and reported as such;
+  - each file's outcome (matched, too few names, failed) is returned and shown, so a partial result never reads
+    as complete, and one failure does not stop the others;
+  - the codebook's default file is set only when it has none.
+- **Waves added later.** `InstrumentSummary.unlinkedDataFiles` counts files with no link from the codebook. The
+  page matches those once per page (`matchCodebookToNewDataFilesAction`, `onlyUnlinked`).
+- **Confirmed without a click.** `suggestInstrumentLinks` confirms an entry automatically when both hold:
+  - its code is exactly one variable's name (the matcher's unique exact-code rule, confidence 1);
+  - its answer list covers every code the variable holds in the data (`answerCodesFit` against the dictionary's
+    `codes`, which the engine records from version 16).
+
+  Such a link is stored as method `code`, `decided_by = 'automatic'`. Unknown is never a fit, and the entry stays
+  a suggestion when:
+  - the entry has no answer list;
+  - the variable is a measure, text, has decimals or has more than 60 values;
+  - the dictionary predates the codes.
+- **Re-checked.** Every match re-checks the automatic links: one whose name or codes no longer fit goes back to
+  a suggestion.
+- **The researcher's decisions.** Any status the researcher sets records `decided_by = 'researcher'`:
+  - matching never deletes, upgrades or confirms such a link, including one the researcher returned to a
+    suggestion;
+  - "Choose" by hand stores method `manual`, which the re-check never touches.
+- **Before migration 0133.** Nothing is confirmed automatically and the match note says so. Waves are still
+  matched, as suggestions.
+- **Not yet.** A questionnaire item is linked through the codebook by identical wording (batch 49), not yet by
+  the codebook's question number.

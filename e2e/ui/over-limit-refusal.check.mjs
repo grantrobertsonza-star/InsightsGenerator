@@ -11,7 +11,7 @@
 //      file is deleted, the corrected 100,000-case file imports with 100,000 stored rows.
 import { expect, test } from "@playwright/test";
 import { addFiles } from "./helpers/addFiles.mjs";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -40,6 +40,7 @@ test("one byte and one case over the limits are refused visibly, stay refused af
   page.on("dialog", (d) => d.accept());
   const db = new pg.Client({ connectionString: target.databaseUrlWithoutCredentials.replace("postgres://", "postgres://postgres@") });
   await db.connect();
+  let dir = null;
   try {
     const { bind } = await import(pathToFileURL(path.resolve("e2e/adapter/golden-thread-adapter.mjs")).href);
     const ui = await bind({ page, target, testInfo });
@@ -54,7 +55,8 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     };
     // Written to disk first: Playwright refuses an in-memory file over 50 MB, and the byte limit is
     // 100 MB since 2026-10-19.
-    const dir = mkdtempSync(path.join(tmpdir(), "limits-"));
+    // Removed in finally: each run writes about 200 MB here, and leaving it filled the test machine's disk (29 Oct).
+    dir = mkdtempSync(path.join(tmpdir(), "limits-"));
     const upload = async (name, buffer) => {
       const file = path.join(dir, name);
       writeFileSync(file, buffer);
@@ -102,5 +104,6 @@ test("one byte and one case over the limits are refused visibly, stay refused af
     await expect(page.getByText(/exceeds the supported 100,000 case limit/)).toHaveCount(0);
   } finally {
     await db.end();
+    if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -61,8 +61,11 @@ test("a codebook is read, matched by name and gives the data file its labels", a
   await expect(card.getByText("Variables read")).toBeVisible({ timeout: 3 * 60_000 });
   const confirm = card.getByRole("button", { name: "Confirm same-code matches" });
   await expect(confirm).toBeEnabled({ timeout: 3 * 60_000 });
+  // CB1: party_reg's answer list covers every code in the data, so it is confirmed without a click; ID and the
+  // weight (no answer list) wait for the researcher.
+  await expect(card).toContainText("1 confirmed automatically");
   await confirm.click();
-  await expect(card.getByText(/Confirmed 3 same-code matches/)).toBeVisible({ timeout: 60_000 });
+  await expect(card.getByText(/Confirmed 2 same-code matches/)).toBeVisible({ timeout: 60_000 });
   if (SHOT) await page.screenshot({ path: SHOT.replace(".png", "-codebook.png") });
 
   const table = await ui.buildTable(run, { row: "party_reg" });

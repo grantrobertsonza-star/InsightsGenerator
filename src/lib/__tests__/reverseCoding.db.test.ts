@@ -243,14 +243,14 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("import step 3: reverse-coded 
     await expect(loadCategories(tenant, run, doc, "Q1_3_r")).rejects.toThrow(/Q1_3_r \(from Q1_3\) could not be built: The file already has a column named Q1_3_r/);
     // Recovery: undoing the reversal reads the file's own column again.
     expect(await (await actions()).removeReversalAction(run, doc, "Q1_3")).toMatchObject({ ok: true });
-    expect((await loadCategories(tenant, run, doc, "Q1_3_r")).categories.map((c) => c.label)).toEqual(["0.0"]);
+    expect((await loadCategories(tenant, run, doc, "Q1_3_r")).categories.map((c) => c.label)).toEqual(["0"]);
   });
 
   it("names the derived variable Q1_3_r2 when the file already has a Q1_3_r column", async () => {
     const doc = await file(designed(true).bytes);
     expect(await (await actions()).confirmReversalAction(run, doc, "Q1_3")).toEqual({ ok: true, derived: "Q1_3_r2" });
     const { loadCategories } = await import("../crosstabs");
-    expect((await loadCategories(tenant, run, doc, "Q1_3_r")).categories.map((c) => c.label)).toEqual(["0.0"]); // the file's own column, untouched
+    expect((await loadCategories(tenant, run, doc, "Q1_3_r")).categories.map((c) => c.label)).toEqual(["0"]); // the file's own column, untouched
     expect((await loadCategories(tenant, run, doc, "Q1_3_r2")).categories.length).toBeGreaterThan(2);
   });
 

@@ -78,6 +78,20 @@ describe.skipIf(!TEST_DATABASE_URL)("table findings computed again (real databas
     ))[0].id as string;
     return { run, doc, tableId };
   }
+  // Since 29 October 2026 (Grant, batch 57) an uploaded summary table is not scanned, so these cases drive the shared
+  // publication step (publishTableFindings, the rule the banner-plan route also uses) directly with the scan's patterns,
+  // in one transaction with the table locked, as the scan route did. The policy under test is unchanged.
+  async function scanAndPublish(run: string, tableId: string) {
+    const { withTenant } = await import("../db");
+    const { computeTablePatterns } = await import("../tableComputation");
+    const { publishTableFindings } = await import("../tableFindingPublication");
+    return withTenant(tenant, async (client) => {
+      const t = (await client.query("select headers, rows from document_tables where id = $1 and run_id = $2 for update", [tableId, run])).rows[0];
+      const { patterns } = computeTablePatterns(t.headers, t.rows);
+      const publication = await publishTableFindings(client, { tenantId: tenant, runId: run, tableId, patterns, onlyReplacePending: false, archiveReason: "manual_reextract" });
+      return { publication };
+    });
+  }
   const findings = (run: string) =>
     q("select id, finding_text, theme, status, researcher_note, pattern_type, stated_stats from findings where run_id = $1 order by created_at, id", [run]);
   const xy = <T extends { stated_stats: Record<string, unknown>; pattern_type: string }>(rows: T[]) =>
@@ -85,30 +99,28 @@ describe.skipIf(!TEST_DATABASE_URL)("table findings computed again (real databas
 
   it("an unchanged retry keeps ids, note, theme and status, adds nothing, and does not bring back a rejection", async () => {
     const { run, tableId } = await table(rowsFor(3));
-    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
     const { setFindingNote, setFindingTheme, setFindingStatus } = await import("../findingActions");
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const before = await findings(run);
     expect(before.length).toBeGreaterThan(1);
     const [noted, rejected] = before;
     expect((await setFindingNote(run, noted.id, "Interpretation A")).ok).toBe(true);
     expect((await setFindingTheme(run, noted.id, "Researcher theme")).ok).toBe(true);
     expect((await setFindingStatus(run, rejected.id, "rejected")).ok).toBe(true);
-    const result = await generateFindingsFromTable(tenant, run, tableId);
+    const result = await scanAndPublish(run, tableId);
     const after = await findings(run);
     expect(after.map((r) => r.id)).toEqual(before.map((r) => r.id));
     expect(after.find((r) => r.id === noted.id)).toMatchObject({ researcher_note: "Interpretation A", theme: "Researcher theme" });
     expect(after.find((r) => r.id === rejected.id)?.status).toBe("rejected");
     expect(result.publication).toMatchObject({ inserted: 0, retired: 0, keptAndTagged: 0 });
     // Retrying once more is still a no-op.
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     expect((await findings(run)).map((r) => r.id)).toEqual(before.map((r) => r.id));
   });
 
   it("dependent links survive an unchanged retry: an insight and a report finding grounded on it", async () => {
     const { run, tableId } = await table(rowsFor(3));
-    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const [withInsight, grounding] = await findings(run);
     const insight = (await q(
       "insert into insights (tenant_id, run_id, finding_id, headline, observation, tension, implication) values ($1, $2, $3, 'h', 'o', 't', 'i') returning id",
@@ -119,16 +131,15 @@ describe.skipIf(!TEST_DATABASE_URL)("table findings computed again (real databas
       "insert into findings (tenant_id, run_id, origin, finding_text, source_document_id, status, grounded_by_finding_id) values ($1, $2, 'stated', 'Report says so.', $3, 'accepted', $4) returning id",
       [tenant, run, report, grounding.id],
     ))[0].id;
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     expect(await q("select finding_id from insights where id = $1", [insight])).toEqual([{ finding_id: withInsight.id }]);
     expect(await q("select grounded_by_finding_id from findings where id = $1", [stated])).toEqual([{ grounded_by_finding_id: grounding.id }]);
   });
 
   it("a source change: the annotated finding keeps its old figures and is tagged superseded; the untouched one is replaced and archived", async () => {
     const { run, tableId } = await table(rowsFor(3));
-    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
     const { setFindingNote } = await import("../findingActions");
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const before = await findings(run);
     const old = xy(before)[0];
     const untouched = before.find((r) => r.pattern_type === "relationship" && r.stated_stats.variable1 === "Y" && r.stated_stats.variable2 === "W")!;
@@ -136,7 +147,7 @@ describe.skipIf(!TEST_DATABASE_URL)("table findings computed again (real databas
     expect((await setFindingNote(run, old.id, "Strong link, worth acting on")).ok).toBe(true);
     const supportBefore = (await q("select finding_support_parts($1) as p", [old.id]))[0].p;
     await q("update document_tables set rows = $1 where id = $2", [JSON.stringify(rowsFor(-2)), tableId]);
-    const result = await generateFindingsFromTable(tenant, run, tableId);
+    const result = await scanAndPublish(run, tableId);
     const after = await findings(run);
     const kept = after.find((r) => r.id === old.id)!;
     expect(kept.finding_text).toBe(old.finding_text);
@@ -159,53 +170,65 @@ describe.skipIf(!TEST_DATABASE_URL)("table findings computed again (real databas
 
   it("a comparison that no longer yields a finding: annotated one kept and tagged not reproduced", async () => {
     const { run, tableId } = await table(rowsFor(3));
-    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
     const { setFindingStatus } = await import("../findingActions");
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const old = xy(await findings(run))[0];
     expect((await setFindingStatus(run, old.id, "accepted")).ok).toBe(true);
     const flat = rowsFor(3).map((r, i) => ({ ...r, Y: (i * 7) % 5 }));
     await q("update document_tables set rows = $1 where id = $2", [JSON.stringify(flat), tableId]);
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const kept = (await findings(run)).find((r) => r.id === old.id)!;
     expect(kept.stated_stats.caveats).toContain("not_reproduced_on_recomputation");
     expect(kept.stated_stats.supersededByFindingId).toBeUndefined();
     // The data goes back: the finding is reproduced word for word, and the tag is cleared.
     await q("update document_tables set rows = $1 where id = $2", [JSON.stringify(rowsFor(3)), tableId]);
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const back = (await findings(run)).find((r) => r.id === old.id)!;
     expect(back.stated_stats.caveats).not.toContain("not_reproduced_on_recomputation");
   });
 
   it("a failure part way through rolls back everything; a retry then succeeds", async () => {
     const { run, tableId } = await table(rowsFor(3));
-    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     const before = await findings(run);
     await q("update document_tables set rows = $1 where id = $2", [JSON.stringify(rowsFor(-2)), tableId]);
     const fn = "fail_" + randomUUID().replaceAll("-", "");
     await q(`create function ${fn}() returns trigger language plpgsql as $$ begin raise exception 'injected failure'; end $$`);
     await q(`create trigger ${fn} before insert on findings for each row when (new.run_id = '${run}'::uuid) execute function ${fn}()`);
     try {
-      await expect(generateFindingsFromTable(tenant, run, tableId)).rejects.toThrow(/injected failure/);
+      await expect(scanAndPublish(run, tableId)).rejects.toThrow(/injected failure/);
     } finally {
       await q(`drop trigger ${fn} on findings; drop function ${fn}()`);
     }
     expect(await findings(run)).toEqual(before);
     expect(await q("select 1 from finding_history where run_id = $1", [run])).toHaveLength(0);
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     expect(xy(await findings(run))[0].stated_stats.r).toBeLessThan(0);
   });
 
   it("findings from before review tracking withhold the replacement with a message", async () => {
     const { run, tableId } = await table(rowsFor(3));
-    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
-    await generateFindingsFromTable(tenant, run, tableId);
+    await scanAndPublish(run, tableId);
     await q("update findings set provenance_tracked = false where run_id = $1", [run]);
     const before = await findings(run);
     await q("update document_tables set rows = $1 where id = $2", [JSON.stringify(rowsFor(-2)), tableId]);
-    await expect(generateFindingsFromTable(tenant, run, tableId)).rejects.toThrow(/predates? review tracking.*Nothing was replaced/);
+    await expect(scanAndPublish(run, tableId)).rejects.toThrow(/predates? review tracking.*Nothing was replaced/);
     expect(await findings(run)).toEqual(before);
+  });
+
+  it("batch 57 (Grant, 29 October 2026): an uploaded summary table is not scanned; untouched earlier scan findings are retired, a noted one is kept", async () => {
+    const { run, tableId } = await table(rowsFor(3));
+    await scanAndPublish(run, tableId);
+    const before = await findings(run);
+    expect(before.length).toBeGreaterThan(1);
+    const { setFindingNote } = await import("../findingActions");
+    expect((await setFindingNote(run, before[0].id, "Keep this one")).ok).toBe(true);
+    const { generateFindingsFromTable } = await import("../generateFindingsFromTable");
+    const r = await generateFindingsFromTable(tenant, run, tableId);
+    expect(r.kept).toBe(0);
+    const after = await findings(run);
+    expect(after.map((f) => f.id)).toEqual([before[0].id]);
+    expect((await q("select detail->'scan'->>'off' as off from trace where run_id = $1 and event = 'table_findings_scan' order by occurred_at desc limit 1", [run]))[0].off).toMatch(/not scanned/);
   });
 
   it("a table of another project is refused and nothing changes", async () => {

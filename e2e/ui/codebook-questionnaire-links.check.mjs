@@ -6,7 +6,8 @@
 //   1. The questionnaire's q1a arrives confirmed through the codebook ("Identical to codebook Q1"), and
 //      the match says so. Its tab is "Questionnaire links"; the codebook's is "Codebook links".
 //   2. The links column names the data file; a suggestion's buttons say what is being confirmed
-//      ("Confirm: Q1 is Q1", "Not Q1").
+//      ("Confirm: Q2 is Q2", "Not Q2"). Since CB1, Q1 (its answer list covers every code in the data) is confirmed
+//      automatically; Q2's data holds a code its list does not name (3), so it stays a suggestion.
 //   3. A codebook entry with no column reads "No variable named ... in poll.txt".
 import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
@@ -27,7 +28,7 @@ const CODEBOOK_Q1 = "California will be holding a statewide primary election on 
 
 function fixtures() {
   const dir = mkdtempSync(path.join(tmpdir(), "cbq-"));
-  writeFileSync(path.join(dir, "poll.txt"), "ID\tQ1\tQ2\n1\t1\t2\n2\t2\t1\n3\t3\t2\n4\t1\t1\n");
+  writeFileSync(path.join(dir, "poll.txt"), "ID\tQ1\tQ2\n1\t1\t2\n2\t2\t1\n3\t3\t3\n4\t1\t1\n");
   const cb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(cb, XLSX.utils.aoa_to_sheet([
     ["VARIABLE NAME", "VARIABLE LABEL", "VALUES"],
@@ -67,12 +68,13 @@ test("a questionnaire question worded like a confirmed codebook entry is linked 
   const cbCard = page.getByRole("tabpanel", { name: "Codebook links", exact: true });
   const confirm = cbCard.getByRole("button", { name: "Confirm same-code matches" });
   await expect(confirm).toBeEnabled({ timeout: 3 * 60_000 });
+  await expect(cbCard).toContainText("1 confirmed automatically");
   // The rows are listed under Review matches (the card opens on its counts).
   await cbCard.getByRole("button", { name: "Review matches" }).click();
   // A suggestion's buttons say what is being confirmed.
-  const q1Row = cbCard.locator('[data-item-code="Q1"]');
-  await expect(q1Row.getByRole("button", { name: "Confirm: Q1 is Q1", exact: true })).toBeVisible();
-  await expect(q1Row.getByRole("button", { name: "Not Q1", exact: true })).toBeVisible();
+  const q2Row = cbCard.locator('[data-item-code="Q2"]');
+  await expect(q2Row.getByRole("button", { name: "Confirm: Q2 is Q2", exact: true })).toBeVisible();
+  await expect(q2Row.getByRole("button", { name: "Not Q2", exact: true })).toBeVisible();
   await confirm.click();
   await expect(cbCard.getByText(/Confirmed \d+ same-code match/)).toBeVisible({ timeout: 60_000 });
   await expect(cbCard.getByTestId("links-variable-heading")).toHaveText("Variable in poll.txt");

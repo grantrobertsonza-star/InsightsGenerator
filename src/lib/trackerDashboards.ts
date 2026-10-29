@@ -45,6 +45,8 @@ export type TrackerDashboardView = {
   scope: "programme" | "project";
   /** Which programme's (or project's) choices these are; sent back with every save and reset (scopeKeyOf). */
   scopeKey: string;
+  /** The programme's and project's names: what a client brand or company is suggested from (prefilledFocalBrand). */
+  scopeNames: string[];
   /** False before migration 0132: choices cannot be saved (TRACKER_DASHBOARDS_UNAVAILABLE). */
   storageAvailable: boolean;
   labelsCut: string[];
@@ -133,6 +135,7 @@ export async function loadTrackerDashboard(tenantId: string, runId: string, docu
     resetAt: row?.reset_at ? row.reset_at.toISOString() : null,
     scope: programId ? "programme" : "project",
     scopeKey: scopeKeyOf(programId, runId),
+    scopeNames: names.filter((n): n is string => typeof n === "string" && n.length > 0),
     storageAvailable: available,
     labelsCut: input.labelsCut,
   };
@@ -176,7 +179,10 @@ export async function saveTrackerChoices(
     // A choice this file cannot support may still be saved unchanged: it was made against a wave that had it,
     // and resaving other choices from this wave must not drop it.
     const stored = normaliseChoices((await storedRow(client, tenantId, programId, runId))?.choices);
-    const problems = choiceProblems(choices, rec, new Set(input.variables.map((v) => v.name)), input.weightVar, stored);
+    // The company question the saved choices would use: the one chosen now, else the recogniser's.
+    const companyVar = choices.csm && Object.prototype.hasOwnProperty.call(choices.csm, "company") ? choices.csm.company : rec.csm.company;
+    const companyLabels = input.variables.find((v) => v.name === companyVar)?.valueLabels;
+    const problems = choiceProblems(choices, rec, new Set(input.variables.map((v) => v.name)), input.weightVar, stored, companyLabels ? new Set(Object.keys(companyLabels)) : null);
     if (problems.length) return { saved: false, reason: "invalid", problems } as const;
     const values = [JSON.stringify(choices), runId, documentId, by, JSON.stringify(suggestionRecord(rec, input.weightVar))];
     let written;

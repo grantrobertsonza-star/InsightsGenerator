@@ -7,6 +7,9 @@ import {
   buildCrosstab,
   commitCrosstabs,
   deleteCrosstab,
+  loadTableDefinition,
+  replaceDraftCrosstab,
+  type TableDefinition,
   deleteDraftCrosstabs,
   listCrosstabs,
   loadCategories,
@@ -165,7 +168,7 @@ export async function replicateCrosstabsToWaveAction(
   runId: string,
   sourceDocumentId: string,
   targetDocumentId: string,
-): Promise<{ ok: true; built: number; skipped: { label: string; reason: string }[] } | Fail> {
+): Promise<{ ok: true; tables: number; built: number; alreadyCopied: number; skipped: { label: string; reason: string }[] } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const r = await replicateCrosstabsToWave(TENANT_ID, runId, sourceDocumentId, targetDocumentId);
@@ -260,6 +263,35 @@ export async function askCrosstabAction(
       .filter((e) => e.request.trim().length > 0)
       .slice(-ASK_MEMORY_REQUESTS);
     return { ok: true, plan: await planCrosstabFromText(TENANT_ID, runId, documentId, text, { earlier: list }) };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+/** A saved table's definition, for editing in Build table. */
+export async function loadTableDefinitionAction(runId: string, tableId: string): Promise<{ ok: true; definition: TableDefinition } | Fail> {
+  const TENANT_ID = await requireTenantId();
+  if (!/^[0-9a-f-]{36}$/i.test(tableId)) return { ok: false, error: "That table is not in this project." };
+  try {
+    return { ok: true, definition: await loadTableDefinition(TENANT_ID, runId, tableId) };
+  } catch (error) {
+    return { ok: false, error: explain(error) };
+  }
+}
+
+/** "Update table": replaces an edited draft with the table its edited definition builds (replaceDraftCrosstab). */
+export async function replaceDraftCrosstabAction(
+  runId: string,
+  documentId: string,
+  oldTableId: string,
+  request: CrosstabRequest,
+): Promise<{ ok: true; tableId: string; questions: number; skipped: { variable: string; reason: string }[]; replaced: boolean } | Fail> {
+  const TENANT_ID = await requireTenantId();
+  if (!/^[0-9a-f-]{36}$/i.test(oldTableId)) return { ok: false, error: "That table is not in this project." };
+  try {
+    const r = await replaceDraftCrosstab(TENANT_ID, runId, documentId, oldTableId, request);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
   } catch (error) {
     return { ok: false, error: explain(error) };
   }

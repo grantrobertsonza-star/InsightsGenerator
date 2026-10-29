@@ -13,12 +13,14 @@ import { FUNNEL_STAGES, type FunnelStage, type TrackerRecognition } from "./trac
 export const TRACKER_ROLE_RULES = "d1-2026-10-29";
 
 const STAGES: readonly string[] = FUNNEL_STAGES;
-const CSM_SINGLE = ["overallSatisfaction", "recommend0to10", "likelyToStay", "likelyToSwitch"] as const;
+const CSM_SINGLE = ["overallSatisfaction", "recommend0to10", "likelyToStay", "likelyToSwitch", "company"] as const;
 type CsmSingle = (typeof CSM_SINGLE)[number];
 
 export type TrackerChoices = {
   /** The client's brand, by its code in the brand list. */
   focalBrandCode?: string;
+  /** The client's company in the CSM company question (D3b), by its answer code. */
+  focalCompanyCode?: string;
   /** The answer codes the researcher confirmed are not brands (replaces the suggested set when given). */
   nonBrandCodes?: string[];
   /** A question's funnel stage by its group, or null for "not a funnel stage". */
@@ -64,13 +66,22 @@ export function prefilledFocalBrand(brands: { code: string; label: string }[], n
  * choice cannot be saved (empty when all can). A new or changed choice about something this file does not have
  * is refused; one unchanged from `stored` (made against a wave that had it) is kept.
  */
-export function choiceProblems(choices: TrackerChoices, rec: TrackerRecognition, variableNames: Set<string>, weightVar: string | null, stored: TrackerChoices = {}): string[] {
+export function choiceProblems(
+  choices: TrackerChoices,
+  rec: TrackerRecognition,
+  variableNames: Set<string>,
+  weightVar: string | null,
+  stored: TrackerChoices = {},
+  /** The answer codes of the company question these choices use, or null when it has no answer list (D3b). */
+  companyCodes: Set<string> | null = null,
+): string[] {
   const problems: string[] = [];
   // Unchanged from the stored choices: kept even when this wave's file cannot apply it (resolveDashboard says so).
   const keptCodes = new Set(stored.nonBrandCodes ?? []);
   const keptVariables = new Set([...Object.values(stored.csm ?? {}).flat().filter((v): v is string => typeof v === "string")]);
   const codes = new Set([...(rec.frame?.brands ?? []), ...(rec.frame?.nonBrandCodes ?? [])].map((c) => c.code));
   if (choices.focalBrandCode !== undefined && choices.focalBrandCode !== stored.focalBrandCode && !rec.frame?.brands.some((b) => b.code === choices.focalBrandCode)) problems.push(`Brand code ${choices.focalBrandCode} is not in this file's brand list.`);
+  if (choices.focalCompanyCode !== undefined && choices.focalCompanyCode !== stored.focalCompanyCode && !companyCodes?.has(choices.focalCompanyCode)) problems.push(`Company code ${choices.focalCompanyCode} is not an answer of this file's company question.`);
   for (const c of choices.nonBrandCodes ?? []) if (!codes.has(c) && !keptCodes.has(c)) problems.push(`Answer code ${c} is not in this file's brand list.`);
   const groups = new Set(rec.measures.map((m) => m.group));
   for (const [group, stage] of Object.entries(choices.stages ?? {})) {
@@ -97,6 +108,7 @@ export function normaliseChoices(raw: unknown): TrackerChoices {
   const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined);
   const out: TrackerChoices = {};
   if (typeof o.focalBrandCode === "string") out.focalBrandCode = o.focalBrandCode;
+  if (typeof o.focalCompanyCode === "string" && o.focalCompanyCode.length <= 50) out.focalCompanyCode = o.focalCompanyCode;
   const nb = strs(o.nonBrandCodes);
   if (nb) out.nonBrandCodes = nb;
   if (o.stages && typeof o.stages === "object" && !Array.isArray(o.stages)) {
@@ -174,13 +186,13 @@ export function resolveDashboard(
     if (missing.length) needsChoice.push({ id: "csm:drivers", text: `Driver${missing.length === 1 ? "" : "s"} ${missing.join(", ")}, chosen in an earlier wave, ${missing.length === 1 ? "is" : "are"} not in this file.` });
     drivers = { variables: choices.csm.drivers.filter((d) => variableNames.has(d)), source: "chosen" };
   }
-  const csm = { overallSatisfaction: pick("overallSatisfaction"), recommend0to10: pick("recommend0to10"), likelyToStay: pick("likelyToStay"), likelyToSwitch: pick("likelyToSwitch"), drivers };
+  const csm = { overallSatisfaction: pick("overallSatisfaction"), recommend0to10: pick("recommend0to10"), likelyToStay: pick("likelyToStay"), likelyToSwitch: pick("likelyToSwitch"), company: pick("company"), drivers };
 
   // A CSM question is answered by an applicable choice of its role (Codex D2A-F04): a variable this file has, or an
   // intentional "none". A carried choice this file cannot apply keeps the question open (its own needs-a-choice
   // entry says why). A question whether a partly labelled list is 0 to 10 is answered only by choosing that very
   // variable as the recommend question, never by choosing another.
-  const CSM_QUESTION_ROLE: Record<string, CsmSingle> = { "csm:satisfaction": "overallSatisfaction", "csm:recommend": "recommend0to10", "csm:stay": "likelyToStay", "csm:switch": "likelyToSwitch" };
+  const CSM_QUESTION_ROLE: Record<string, CsmSingle> = { "csm:satisfaction": "overallSatisfaction", "csm:recommend": "recommend0to10", "csm:stay": "likelyToStay", "csm:switch": "likelyToSwitch", "csm:company": "company" };
   const applicable = (role: CsmSingle) => choices.csm !== undefined && Object.prototype.hasOwnProperty.call(choices.csm, role) && (choices.csm[role] === null || variableNames.has(choices.csm[role] as string));
   const csmAnswered = (id: string) => {
     if (CSM_QUESTION_ROLE[id]) return applicable(CSM_QUESTION_ROLE[id]);
@@ -225,5 +237,6 @@ const CSM_ROLE_TEXT: Record<CsmSingle, string> = {
   recommend0to10: "likelihood to recommend (0 to 10)",
   likelyToStay: "likelihood to stay",
   likelyToSwitch: "likelihood to switch",
+  company: "the company each customer rates",
 };
 

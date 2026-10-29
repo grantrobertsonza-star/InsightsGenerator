@@ -43,6 +43,10 @@ export type BrandOverviewFigures = {
   stages: StageFigures[];
   /** Stages the overview would show but cannot: two questions claim it, and the researcher has not chosen. */
   unresolvedStages: FunnelStage[];
+  /** Why stages with a question have no figures, when none can be counted (Grant, 29 October 2026: a question chosen
+   * for awareness "saves but doesn't update the tile"): no brand list, or no chosen question asked about a listed
+   * brand. Null when figures were calculated or no stage has a question. */
+  noFigures: string | null;
 };
 
 /** The code of a yes/no variable that means "selected" (see the file comment); null when it cannot be told. */
@@ -123,9 +127,17 @@ export async function brandOverviewFigures(
   const { shown, unresolved } = overviewMeasures(rec, dashboard);
   const brandCodes = new Set(dashboard.brands.map((b) => b.code));
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
-  const base: Omit<BrandOverviewFigures, "stages" | "effectiveBase"> = { documentId, weighted: weightVar !== null, weightVar, unresolvedStages: unresolved };
+  const base: Omit<BrandOverviewFigures, "stages" | "effectiveBase" | "noFigures"> = { documentId, weighted: weightVar !== null, weightVar, unresolvedStages: unresolved };
   const rowVars = shown.flatMap(({ measure }) => measure.byBrand.filter((b) => brandCodes.has(b.code)).map((b) => b.variable));
-  if (rowVars.length === 0) return { ...base, stages: [], effectiveBase: null };
+  if (rowVars.length === 0) {
+    const noFigures =
+      shown.length === 0
+        ? null
+        : dashboard.brands.length === 0
+          ? "A question is chosen, but no brand list was found in this file, so there is nothing to count. Link the codebook on Import so the brand names are read, or check the file has its answer labels."
+          : "A question is chosen, but it is not asked about any brand in this file's brand list. Check the brand list under Customise, or choose another question.";
+    return { ...base, stages: [], effectiveBase: null, noFigures };
+  }
   const [dict, setup] = await Promise.all([loadVariableDictionaryWithStatus(tenantId, runId, documentId), loadDataSetupWithStatus(tenantId, documentId)]);
   if (!dict.ok) throw new Error(`The data file's variables could not be read: ${dict.error}`);
   if (!setup.ok) throw new Error(`The data file's set-up could not be read: ${setup.error}`);
@@ -140,6 +152,7 @@ export async function brandOverviewFigures(
   });
   return {
     ...base,
+    noFigures: null,
     stages: sharesFromResult(result, shown, new Map(variables.map((v) => [v.name, v])), brandCodes),
     effectiveBase: weightVar ? result.total?.nEff ?? null : null,
   };

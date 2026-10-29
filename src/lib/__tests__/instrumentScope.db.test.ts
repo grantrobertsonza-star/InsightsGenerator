@@ -15,6 +15,9 @@
 //      refused, and nothing is confirmed.
 //   4. Wrong tenant refused; a legitimate codebook of this project linked to two waves still works.
 //   5. IS-F06 end to end: a codebook entry q1 with columns q1 and Q1 is bulk-confirmed to q1 only.
+// CB1 (29 October 2026): q1's answer list (1, 2, 3) covers every code in the data, so matching confirms it
+// automatically (decided_by 'automatic'); id has no answer list and stays a suggestion. The refusals below are
+// unchanged: a removed or foreign codebook is refused before any status is set, automatic or not.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -133,10 +136,12 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("a link counts only while both
     await expect(confirmInstrumentLinks(tenant, run, cb, 0.9)).rejects.toThrow(/not in this project/);
     expect(await base(run, data)).toBe(4);
 
-    // Restored: the links come back with the file, as suggestions, and confirming them applies the codebook.
+    // Restored: the links come back with the file as they were (q1 confirmed by the codes rule, id a suggestion),
+    // so the codebook's meanings apply again; confirming the rest confirms id.
     await restoreDocumentFromBin(tenant, run, removalId);
-    expect((await linksOf(cb)).map((l) => [l.variable, l.status])).toEqual([["id", "suggested"], ["q1", "suggested"]]);
-    expect(await confirmInstrumentLinks(tenant, run, cb, 0.9)).toMatchObject({ confirmed: 2 });
+    expect((await linksOf(cb)).map((l) => [l.variable, l.status])).toEqual([["id", "suggested"], ["q1", "confirmed"]]);
+    expect(await base(run, data)).toBe(2);
+    expect(await confirmInstrumentLinks(tenant, run, cb, 0.9)).toMatchObject({ confirmed: 1 });
     expect(await base(run, data)).toBe(2);
 
     // Removed again after confirming: its confirmed meaning stops counting at once.
@@ -152,6 +157,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("a link counts only while both
     const cb = await stored(run, "instrument", "cb.csv", CODEBOOK);
     await readInstrumentItems(tenant, run, cb);
     await suggestInstrumentLinks(tenant, run, cb, data);
+    const before = (await linksOf(cb)).map((l) => [l.variable, l.status]);
+    expect(before).toEqual([["id", "suggested"], ["q1", "confirmed"]]);
     // Another connection holds the codebook's row, as a removal does, and moves it out while the
     // confirmation waits for that lock.
     const remover = new pg.Client({ connectionString: db.url });
@@ -174,7 +181,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("a link counts only while both
     } finally {
       await remover.end();
     }
-    expect((await linksOf(cb)).every((l) => l.status === "suggested")).toBe(true);
+    expect((await linksOf(cb)).map((l) => [l.variable, l.status])).toEqual(before);
   });
 
   it("4. another tenant is refused; one codebook of this project linked to two waves still works", async () => {
@@ -190,7 +197,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("a link counts only while both
     expect(await linksOf(cb)).toEqual([]);
     await suggestInstrumentLinks(tenant, run, cb, w1);
     await suggestInstrumentLinks(tenant, run, cb, w2);
-    expect(await confirmInstrumentLinks(tenant, run, cb, 0.9)).toMatchObject({ confirmed: 4 });
+    // q1 is confirmed by the codes rule in both waves; confirming the rest confirms id in each.
+    expect(await confirmInstrumentLinks(tenant, run, cb, 0.9)).toMatchObject({ confirmed: 2 });
     expect(await base(run, w1)).toBe(2);
     expect(await base(run, w2)).toBe(2);
     // Retried: nothing new, no duplicates.

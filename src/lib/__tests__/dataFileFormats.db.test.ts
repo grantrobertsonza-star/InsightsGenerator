@@ -190,9 +190,9 @@ pyreadstat.write_xport(df, sys.argv[1], column_labels=["Region of residence", "S
     expect(t.headers).toEqual(["Region of residence", "Satisfaction score", "Respondent name"]);
     expect(t.rows.map((x) => x["Satisfaction score"])).toEqual([7.5, 8, null, 6.25]);
     expect(t.rows.map((x) => x["Respondent name"])).toEqual(["a", "b", "c", "d"]);
-    // An unlabelled whole-number code in any statistics file is listed as "1.0" (its raw code is "1");
-    // the same as .sav and .dta today, so not changed here.
-    expect(await categories(doc, "REGION")).toEqual({ "1.0": 2, "2.0": 1, "3.0": 1 });
+    // An unlabelled whole-number code is listed as "1", as its raw code (batch 55, import test library L3 D8: it was
+    // "1.0"; saved groups naming "1.0" still find it).
+    expect(await categories(doc, "REGION")).toEqual({ "1": 2, "2": 1, "3": 1 });
     const labels = Object.fromEntries((await dictionary(doc)).variables.map((v) => [v.name, v.label]));
     expect(labels).toMatchObject({ REGION: "Region of residence", SCORE: "Satisfaction score" });
   });

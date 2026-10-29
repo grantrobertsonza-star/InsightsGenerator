@@ -1,6 +1,39 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD3aR2 on top of 755e3c4d): repairs Codex's D3aR review: D3AR-F01 a box's scale top on a labelled question is the top of the engine's own answers (declared answers kept, non-answers such as 6 = Don't know dropped), so 1 to 5 with 6 = Don't know gives 40%; D3AR-F02 the lone {0: No} inference applies only when every observed code is 0 or 1, so {0: No} with 0/2 is unavailable with the reason, never 0%. Implemented, ready for independent review. No new migration; 0131 and 0132 still to apply. **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchE1 on top of 919a3b54): CB1 (codebooks matched to every wave and confirmed automatically where the answer list covers the data; migration 0133), D3b (the brand and CSM dashboards redesigned, CSM by company), batches 55 to 57 (data reading, codebook layouts, claims against aggregated tables; scan off; '-' and '*' read as values), D2b parts 1 and 2 (NPS group against the rest; promoter model checked), the Cross tabs count, Copy here and Edit in Build table, the codebook links review per wave, the Setup save race, U1 (upload progress), T1 (export all tables; non-answer labels by the engine's rule). Implemented, ready for independent review. Migrations 0131, 0132 and 0133 to apply. **NOT READY for release.**
+
+## Claude: batch E1, main copy (2026-10-29, evening)
+
+Implemented, ready for review, on top of `919a3b54`. One package of the batches built today after D3aR2, in the order
+they stack; each keeps its own handover:
+- CB1: `claude/batchCB1-handover-2026-10-29.md` (migration 0133 `instrument_links.decided_by`).
+- D3b: `claude/batchD3b-handover-2026-10-29.md`.
+- Batches 55 to 57, D2b parts 1 and 2, the Cross tabs and codebook links fixes, the Setup save race:
+  `claude/batch55-57-handover-2026-10-29.md`.
+- U1, upload progress: commits only (see below).
+- T1, export all tables and non-answer labels: `claude/batchT1-handover-2026-10-29.md` (first two sections).
+
+Gates on the combined tree (T1 on U1 on 55-57 on D3b on CB1 on D3aR2):
+- `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed.
+- Library: 334 files, 2,520 passed, 91 skipped, 0 failed, no errors. This is the run on the tree with T1's second
+  part; the first-part run had two failures, both fixed and rerun: a mounted test that did not resolve the new Setup
+  rule, and a database hook timing out under load.
+- Browser suite: 145 passed, 1 skipped, 2 failed; smoke 1 passed.
+  - `mean-tick.check.mjs`: the new Export all links were also named "PowerPoint", so the check found them first.
+    They are now named "Export all to PowerPoint" (and Excel, PDF).
+  - `upload-progress.check.mjs`: its two 60 MB files were identical, so the second was recognised and not sent, and
+    60 MB of short rows exceeded the case limit. The files now differ and stay under it. With the fixture fixed the
+    check found a real fault: the first request's "Sending and saving" line was set inside the transition before its
+    first await, so it never showed while that request ran. The first request's files are now named before the
+    upload starts (`AddFilesPanel.tsx`); the check failed on the tree without this and passes with it.
+  - Both, with `crosstab-wave-copy` and `crosstabs-entry`, were rerun on the fixed tree (see the package note).
+- Each intermediate tree (CB1, D3b, 55-57) passed typecheck, lint and the self-test.
+- The browser suite and the library suite ran on the combined tree only, not on each intermediate tree.
+- U1's development-mode timing (the 120 MB upload with and without the fix) is not yet measured: its run used the
+  identical-file fixture and was stopped.
+
+Not in this package: T1's second part (NA warning, title rows, Objectives fill from a brief, path B, D2b part 3),
+which follows as its own package; the Objectives prototypes (layout fold, wave selector), shown to Grant first.
 
 ## Claude: batch D3aR2, main copy (2026-10-29)
 

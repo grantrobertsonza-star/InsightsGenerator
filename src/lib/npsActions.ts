@@ -15,6 +15,9 @@ import { requireTenantId } from "./requestContext";
 
 export type NpsSegment = {
   name: string;
+  /** The group variable's answer code for this segment (a company, D3b): its identity; `name` is its label. Absent
+   * on a wave segment and on results saved before 29 October 2026. */
+  code?: string;
   /** ANA-NPS-002: kept for existing callers - this is the effective (Kish) base, same number `n`
    * has always held. Prefer rawN/weightedBase/effectiveN below for anything that needs to tell
    * these apart; this field alone cannot. */
@@ -38,6 +41,10 @@ export type NpsSegment = {
   designExact: boolean;
   /** Share choosing each point 0-10 within this segment, same shape as NpsResult.scale, so the full ring/breakdown view can be drawn per segment too. */
   scale: { value: number; pct: number }[];
+  /** D2b: this group's NPS against everyone else answering in the group variable (points), with the difference's
+   * standard error and Benjamini-Hochberg adjusted p across the groups. Null when the engine could not compute it (a
+   * group or its complement with no base); absent on segments from waves and on results saved before 29 October. */
+  versusRest?: { difference: number; se: number; p: number | null; pAdjusted: number | null; method: "design" | "with_replacement" } | null;
   // Overnight queue, package 4: a demographic group split (the other producer of NpsSegment,
   // below) shares one file and one resolved design across every segment, so these three stay
   // meaningful only at the whole-result level there and these fields are left undefined for
@@ -266,8 +273,16 @@ export async function runNpsAction(
             .filter((x): x is { value: number; pct: number } => x.value !== null && x.value >= 0 && x.value <= 10)
             .sort((a, b) => a.value - b.value);
           const { suppressed: _segSuppressed, ...segNpsFields } = segNps;
+          const t = q.npsGroupTests?.columns?.[i] ?? null;
+          const versusRest = q.npsGroupTests
+            ? t
+              ? { difference: t.difference, se: t.se, p: t.p, pAdjusted: t.pAdjusted ?? null, method: q.npsGroupTests.method }
+              : null
+            : undefined;
           return {
             name: c.name,
+            ...(c.rawCode !== undefined ? { code: c.rawCode } : {}),
+            ...(versusRest !== undefined ? { versusRest } : {}),
             n: Math.round(nI),
             rawN: segBase.n,
             weightedBase: segBase.w,

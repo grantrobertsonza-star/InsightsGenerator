@@ -87,8 +87,9 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("the separator of a delimited 
     const t = await imported(doc);
     expect(t.headers).toEqual(["a", "b", "c"]);
     expect(t.rows).toEqual(SHORT_ROW);
-    // c holds a missing value, so it is read as decimal numbers and its codes are spelled "3.0".
-    expect(await categories(doc, "c")).toEqual({ "3.0": 1, "8.0": 1 });
+    // c holds a missing value, so it is read as decimal numbers; its whole-number codes are still listed as "3" and
+    // "8" (batch 55, L3 D8).
+    expect(await categories(doc, "c")).toEqual({ "3": 1, "8": 1 });
     // Reading it again gives the same table.
     expect(await imported(doc)).toEqual(t);
   });

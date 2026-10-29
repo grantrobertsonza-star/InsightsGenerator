@@ -1,6 +1,6 @@
 // Grid (battery) questions (batch 53; Grant, 28 October 2026, May 2026 IGS Poll). Real browser on the
 // disposable stack. The data file has no labels; the codebook's entries Q5_1 to Q5_3 are the grid's stem, a
-// note, a dash and the row, and are confirmed by name; the questionnaire's question q5a is the stem with a
+// note, a dash and the row, and are confirmed by name (automatically since CB1: their answer lists cover the data); the questionnaire's question q5a is the stem with a
 // code that names no column, and its rows are listed in a randomised order in the form.
 //   1. q5a's suggestions are the three columns, each "Grid row", in the data file's column order.
 //   2. "Confirm all 3 for q5a" confirms them in one action, and says so; the summary column is not offered.
@@ -57,10 +57,10 @@ test("a grid question's rows are suggested from the codebook's stem and confirme
   await addFiles(page, path.join(dir, "poll_codebook.xlsx"), "Codebook");
   await selectSource(page, "poll_codebook.xlsx");
   const cbCard = page.getByRole("tabpanel", { name: "Codebook links", exact: true });
-  const confirmSame = cbCard.getByRole("button", { name: "Confirm same-code matches" });
-  await expect(confirmSame).toBeEnabled({ timeout: 3 * 60_000 });
-  await confirmSame.click();
-  await expect(cbCard.getByText(/Confirmed \d+ same-code match/)).toBeVisible({ timeout: 60_000 });
+  // CB1: every entry's answer list covers the codes in the data, so all four are confirmed without a click and
+  // nothing is left for Confirm same-code matches.
+  await expect(cbCard).toContainText("4 confirmed automatically", { timeout: 3 * 60_000 });
+  await expect(cbCard.getByRole("button", { name: "Confirm same-code matches" })).toHaveCount(0);
 
   await addFiles(page, path.join(dir, "poll_questionnaire.xlsx"), "Questionnaire");
   await selectSource(page, "poll_questionnaire.xlsx");

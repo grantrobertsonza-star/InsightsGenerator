@@ -82,6 +82,7 @@ describe("CSM relationship pack (spec section 3.2)", () => {
       likelyToStay: "continue5",
       likelyToSwitch: "switch_0to10",
       drivers: ["company_driver_d01", "company_driver_d02", "company_driver_d03", "company_driver_d04", "company_driver_d05", "company_driver_d06"],
+      company: "company",
     });
   });
   it("the importance battery (R4) is not taken as the drivers", () => {

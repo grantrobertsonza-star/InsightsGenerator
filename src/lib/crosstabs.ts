@@ -21,6 +21,8 @@ import {
   type VariableDictionary,
 } from "./parseStatsFile";
 import { setCell } from "./rowCells";
+import { CURRENT_DICTIONARY_VERSION } from "./dictionaryVersion";
+export { CURRENT_DICTIONARY_VERSION };
 
 const MAX_FINDINGS_PER_QUESTION = 3;
 const MAX_FINDINGS_PER_TABLE = 40;
@@ -236,13 +238,16 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * 13 changed which decimal spellings stay text; version 14 reads Excel logical cells apart from 1 and 0
  * (CAL-R1-F03), so an Excel file needs 14 and a CSV/TSV file 13. Version 15 reads a label sheet headed
  * "value_label" by that column (it used to give every code the variable's label), so an Excel file needs 15.
+ * Version 16 lists each coded variable's observed codes (CB1: a codebook entry's answer codes are checked against
+ * them before its link is confirmed automatically). A CSV, TSV or Excel file, which usually carries no labels of its
+ * own and gets them from a codebook, needs 16; other formats keep their older minimum, and a codebook link to a
+ * variable whose codes are not listed is left for the researcher to confirm.
  * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
-  if (/\.(?:xlsx|xls)$/i.test(sourceFilename)) return 15;
-  if (/\.(?:csv|tsv|txt)$/i.test(sourceFilename)) return 13;
+  if (/\.(?:xlsx|xls|csv|tsv|txt)$/i.test(sourceFilename)) return CURRENT_DICTIONARY_VERSION;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;
 }
@@ -652,8 +657,14 @@ export async function buildCrosstab(
     status?: "draft" | "evidence";
     /** The Research assistant question this table was built for and the exact request's key, so a retry of that question reuses it. */
     assistantRequest?: { id: string; key: string };
+    /** "Copy here": the other wave's table this one rebuilds. A file holds one copy of a table: a second copy
+     * (a repeated click, a retried request) returns the copy already saved. */
+    copiedFrom?: string;
+    /** "Update table" on an edited copy: the replacement keeps its original's copiedFrom, so Copy here still sees the
+     * table as copied. No check for an existing copy (the copy being replaced is still there until it is retired). */
+    keepCopiedFrom?: string;
   } = {},
-): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
+): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; alreadyCopied?: true }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
   const { result, doc, overlay, overrides, authoritativeSheet } = await computeCrosstab(tenantId, runId, documentId, request);
 
@@ -736,7 +747,9 @@ export async function buildCrosstab(
     // above) so the same definition can be replayed on another wave's file later.
     savedRequest: request,
     ...(options.assistantRequest ? { assistantRequest: options.assistantRequest } : {}),
+    ...(options.copiedFrom || options.keepCopiedFrom ? { copiedFrom: options.copiedFrom ?? options.keepCopiedFrom } : {}),
   };
+  let alreadyCopied = false;
 
   const tableId = await withTenant(tenantId, async (client) => {
     // Table numbers are per file, taken as the highest so far plus one. Two tables saved at once
@@ -748,6 +761,17 @@ export async function buildCrosstab(
     // confirms the file still exists in this run before anything is written.
     const owner = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update", [documentId, runId, tenantId]);
     if (owner.rows.length === 0) throw new Error("That data file was not found in this project, so the table was not saved.");
+    if (options.copiedFrom) {
+      // Under the file's lock, so two copies started at once save one table.
+      const copy = await client.query<{ id: string }>(
+        "select id from document_tables where document_id = $1 and run_id = $2 and crosstab->>'copiedFrom' = $3 limit 1",
+        [documentId, runId, options.copiedFrom],
+      );
+      if (copy.rows[0]) {
+        alreadyCopied = true;
+        return copy.rows[0].id;
+      }
+    }
     const next = await client.query<{ next: number }>(
       "select coalesce(max(table_index) + 1, $2)::int as next from document_tables where document_id = $1 and table_index >= $2",
       [documentId, FIRST_CROSSTAB_INDEX],
@@ -807,7 +831,7 @@ export async function buildCrosstab(
       throw error;
     }
   });
-  return { tableId, questions: result.questions.length, skipped: result.skipped };
+  return { tableId, questions: result.questions.length, skipped: result.skipped, ...(alreadyCopied ? { alreadyCopied: true as const } : {}) };
 }
 
 /**
@@ -818,48 +842,105 @@ export async function buildCrosstab(
  * analysis already recompute live across every wave file, but a crosstab is a stored table tied
  * to one document, so a new wave needs its own copy built from the same definition. Skips a table
  * with no saved request (built before this existed) or whose variables are not all present in the
- * new file, and reports why.
+ * new file, and reports why. A table already copied to that file (by its original's id, kept as
+ * crosstab.copiedFrom) is counted, not built again, so a repeated click or a retried request adds nothing
+ * (Grant, 29 October 2026). tables: how many the source file holds, so "nothing to copy" can be said.
  */
 export async function replicateCrosstabsToWave(
   tenantId: string,
   runId: string,
   sourceDocumentId: string,
   targetDocumentId: string,
-): Promise<{ built: number; skipped: { label: string; reason: string }[] }> {
+): Promise<{ tables: number; built: number; alreadyCopied: number; skipped: { label: string; reason: string }[] }> {
+  if (sourceDocumentId === targetDocumentId) throw new Error("Choose another wave to copy tables from.");
   const rows = await withTenant(tenantId, async (client) => {
-    const r = await client.query<{ id: string; label: string | null; saved_request: CrosstabRequest | null }>(
-      `select id, label, crosstab->'savedRequest' as saved_request
-       from document_tables
-       where run_id = $1 and document_id = $2 and crosstab is not null
-         and (crosstab->>'version')::int = 2
-         and coalesce(crosstab_status, 'committed') <> 'evidence'
-       order by table_index`,
-      [runId, sourceDocumentId],
+    // A table's original is itself, or the table it was copied from: copying a copy back to the original's wave, or
+    // on to a third wave, is recognised as the same table.
+    const r = await client.query<{ id: string; original: string; label: string | null; saved_request: CrosstabRequest | null; copied: boolean }>(
+      `select t.id, o.original, t.label, t.crosstab->'savedRequest' as saved_request,
+              exists (select 1 from document_tables c
+                       where c.document_id = $3 and c.run_id = $1 and (c.id::text = o.original or c.crosstab->>'copiedFrom' = o.original)) as copied
+       from document_tables t cross join lateral (select coalesce(t.crosstab->>'copiedFrom', t.id::text) as original) o
+       where t.run_id = $1 and t.document_id = $2 and t.crosstab is not null
+         and (t.crosstab->>'version')::int = 2
+         and coalesce(t.crosstab_status, 'committed') <> 'evidence'
+       order by t.table_index`,
+      [runId, sourceDocumentId, targetDocumentId],
     );
     return r.rows;
   });
   let built = 0;
+  let alreadyCopied = 0;
   const skipped: { label: string; reason: string }[] = [];
   for (const row of rows) {
     const label = row.label ?? "Crosstab";
+    if (row.copied) {
+      alreadyCopied += 1;
+      continue;
+    }
     if (!row.saved_request) {
       skipped.push({ label, reason: "Built before tables could be replayed on another wave; rebuild it here first." });
       continue;
     }
     try {
-      await buildCrosstab(
+      const r = await buildCrosstab(
         tenantId,
         runId,
         targetDocumentId,
         { ...row.saved_request, source: row.saved_request.source ?? "workspace" },
-        { status: "draft" },
+        { status: "draft", copiedFrom: row.original },
       );
-      built += 1;
+      if (r.alreadyCopied) alreadyCopied += 1;
+      else built += 1;
     } catch (error) {
       skipped.push({ label, reason: error instanceof Error ? error.message : String(error) });
     }
   }
-  return { built, skipped };
+  return { tables: rows.length, built, alreadyCopied, skipped };
+}
+
+/** A saved table's definition, to be edited in Build table (Grant, 29 October 2026: change what is needed for this
+ * wave instead of building from scratch). request is null for a table saved before requests were kept. */
+export type TableDefinition = { id: string; documentId: string; label: string; status: string; request: CrosstabRequest | null; copiedFrom: string | null };
+
+export async function loadTableDefinition(tenantId: string, runId: string, tableId: string): Promise<TableDefinition> {
+  return withTenantRead(tenantId, async (client) => {
+    const r = await client.query<{ id: string; document_id: string; label: string | null; status: string | null; request: CrosstabRequest | null; copied_from: string | null }>(
+      `select id, document_id, label, crosstab_status as status, crosstab->'savedRequest' as request, crosstab->>'copiedFrom' as copied_from
+       from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and crosstab is not null`,
+      [tableId, runId, tenantId],
+    );
+    const row = r.rows[0];
+    if (!row) throw new Error("That table is not in this project (it may have been deleted), so it cannot be edited.");
+    return { id: row.id, documentId: row.document_id, label: row.label ?? "Crosstab", status: row.status ?? "committed", request: row.request, copiedFrom: row.copied_from };
+  });
+}
+
+/**
+ * "Update table": an edited draft is replaced by the table its edited definition builds. Staged: the new table is
+ * built first, then the old one is removed only if it is still a draft of this file (nothing committed from it); if
+ * it was committed or deleted meanwhile it is left as it is and the result says so, so a reviewed table is never
+ * removed by an edit. The new table keeps the old one's copiedFrom. A failed build changes nothing.
+ */
+export async function replaceDraftCrosstab(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  oldTableId: string,
+  request: CrosstabRequest,
+): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; replaced: boolean }> {
+  const old = await loadTableDefinition(tenantId, runId, oldTableId);
+  if (old.documentId !== documentId) throw new Error("That table belongs to another data file, so it was not replaced. Add the edited table instead.");
+  if (old.status !== "draft") throw new Error("Only a draft can be replaced. This table is committed: add the edited table as a new one.");
+  const built = await buildCrosstab(tenantId, runId, documentId, request, { status: "draft", ...(old.copiedFrom ? { keepCopiedFrom: old.copiedFrom } : {}) });
+  const replaced = await withTenant(tenantId, async (client) => {
+    const r = await client.query(
+      "delete from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and document_id = $4 and crosstab_status = 'draft' and crosstab is not null",
+      [oldTableId, runId, tenantId, documentId],
+    );
+    return (r.rowCount ?? 0) === 1;
+  });
+  return { ...built, replaced };
 }
 
 /** Sets the title (stored as the table label) and the caption (stored in the table JSON) the researcher wrote. */

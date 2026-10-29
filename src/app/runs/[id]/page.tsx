@@ -5156,7 +5156,15 @@ export default async function RunPage({
     // generate mode generateDecisionCandidates reads insights, and says so when none exist yet.
     { id: "decisions", group: "Prepare", label: "Business decisions" },
     { id: "overview-analyse", group: "Analyse", label: "Analyse overview" },
-    { id: "crosstabs", group: "Analyse", label: "Cross tabs", badge: documents.filter((d) => d.kind === "table").length },
+    // The count is the project's saved tables (drafts and committed, as "All tables" lists them), not its data files
+    // (Grant, 29 October 2026: a "3" stayed beside Cross tabs after every table was deleted). Tables made for one
+    // answer only ("evidence") are not listed in Cross tabs and are left out by the query that loads these.
+    {
+      id: "crosstabs",
+      group: "Analyse",
+      label: "Cross tabs",
+      badge: [...documentTablesByDocument.values()].flat().filter((t) => t.table_index >= 100).length,
+    },
     { id: "analytics", group: "Analyse", label: "Analytics" },
     { id: "coding", group: "Analyse", label: "Coding", badge: documents.filter((d) => d.kind === "transcript").length },
     { id: "reports", group: "Analyse", label: "Secondary analysis", badge: documents.filter((d) => d.kind === "report").length },

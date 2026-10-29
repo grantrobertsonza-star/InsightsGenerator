@@ -17,6 +17,7 @@ import { PYTHON } from "./helpers/pythonEngine";
 // layout (oneReaderImport.test.ts); this file keeps its original identifier and exactness checks.
 // Skipped, with the reason printed, without python3 + pandas/openpyxl/pyreadstat.
 import { describe, expect, it } from "vitest";
+import { CURRENT_DICTIONARY_VERSION } from "../dictionaryVersion";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -164,7 +165,7 @@ print(json.dumps(out))
     for (const k of ["full", "gap", "mixed_sign", "edge"]) {
       const flipped = byCase(k);
       const rows = out[`${k}/rows_are_cases`];
-      expect(flipped.version).toBe(15);
+      expect(flipped.version).toBe(CURRENT_DICTIONARY_VERSION);
       for (const [c] of flipped.codes) expect(c.startsWith("-") && k !== "mixed_sign" && k !== "edge", `${k}: ${c}`).toBe(false);
       // Same values and type as the rows-as-cases read (a blank cell is missing in both layouts now;
       // the filter only keeps this check independent of how an empty code is listed).

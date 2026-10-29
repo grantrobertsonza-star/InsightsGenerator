@@ -2,7 +2,7 @@
 
 import { matchOutcomeMessage } from "@/lib/instrumentMatchMessage";
 import { useEffect, useSyncExternalStore } from "react";
-import { instrumentReadInFlightAction, matchInstrumentAutomaticallyAction, readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
+import { instrumentReadInFlightAction, matchCodebookToNewDataFilesAction, matchInstrumentAutomaticallyAction, readInstrumentAction, setInstrumentTargetAction } from "@/lib/instrumentActions";
 import type { InstrumentSummary } from "@/lib/instruments";
 
 /**
@@ -23,6 +23,10 @@ import type { InstrumentSummary } from "@/lib/instruments";
  * server allows one read per document at a time (IR-05); a page told that a read is already under
  * way shows so and checks back every few seconds, without starting a read of its own, until the
  * other read ends and the page is refreshed with its result.
+ *
+ * CB1: a codebook is matched to every data file it describes, and, once matched, to each data file added
+ * later (a new wave), once per page for each new set of files. A file it does not describe is left alone
+ * quietly; a file that could not be matched is reported on the card.
  */
 const IN_FLIGHT_POLL_MS = 5000;
 const waitForOtherRead = async (runId: string, documentId: string) => {
@@ -78,13 +82,21 @@ export function useInstrumentAutoStart({
     const links = summary.links.suggested + summary.links.confirmed + summary.links.rejected;
     const matchKey = `${documentId}:match:${target || "auto"}`;
     const needsMatch = !isGuide && summary.items > 0 && links === 0;
-    const key = needsRead ? `${documentId}:read` : needsMatch ? matchKey : null;
+    const newWaves = summary.type === "codebook" && summary.items > 0 && links > 0 && summary.unlinkedDataFiles > 0;
+    const wavesKey = `${documentId}:waves:${summary.linkedDataDocumentIds.join(",")}:${summary.unlinkedDataFiles}`;
+    const key = needsRead ? `${documentId}:read` : needsMatch ? matchKey : newWaves ? wavesKey : null;
     if (!key || begun.has(key)) return;
     begun.add(key);
     // Reading leads on to matching in the same run; a later match of the same file is not repeated.
     if (needsRead && !isGuide) begun.add(matchKey);
     setState(documentId, { running: true, error: null, message: null });
     void (async () => {
+      if (key === wavesKey) {
+        const w = await matchCodebookToNewDataFilesAction(runId, documentId).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while matching the codebook to new data files. Use Match again." }));
+        if (!w.ok) return setState(documentId, { running: false, error: w.error, message: null });
+        const worthSaying = w.files.some((f) => f.status !== "few_names");
+        return setState(documentId, { running: false, error: null, message: worthSaying ? matchOutcomeMessage(w) : null });
+      }
       if (needsRead) {
         const r = await readInstrumentAction(runId, documentId).catch(() => ({ ok: false as const, error: "The connection to the server was interrupted while reading. Use Read again." }));
         if (!r.ok && "inFlight" in r && r.inFlight) {
@@ -107,10 +119,11 @@ export function useInstrumentAutoStart({
           return setState(documentId, { running: false, error: null, message: `More than one data file could be this one's (${counts}). Choose the data file on its card and use Match; a questionnaire shared by several waves can be matched to each.` });
         }
         if ("none" in m) return setState(documentId, { running: false, error: null, message: null });
+        if ("files" in m) return setState(documentId, { running: false, error: null, message: matchOutcomeMessage(m) });
         return setState(documentId, { running: false, error: null, message: matchOutcomeMessage(m) });
       }
       setState(documentId, { running: false, error: null, message: null });
     })();
-  }, [enabled, summary.items, summary.readFailure, summary.links.suggested, summary.links.confirmed, summary.links.rejected, isGuide, target, runId, documentId]);
+  }, [enabled, summary.items, summary.readFailure, summary.links.suggested, summary.links.confirmed, summary.links.rejected, summary.type, summary.unlinkedDataFiles, summary.linkedDataDocumentIds, isGuide, target, runId, documentId]);
   return state;
 }

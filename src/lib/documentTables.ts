@@ -124,7 +124,9 @@ async function detectTablesAcrossPages(
       throw error;
     }
     const rawTables = finished.tables;
-    if (!Array.isArray(rawTables)) return [];
+    // An answer without its list of tables is not an answer that there are none (batch 57, conformance B-04): it
+    // fails the read like any other unfinished part.
+    if (!Array.isArray(rawTables)) return { unfinished: "The reading of the document's tables returned no list of tables." };
 
     const tables: ExtractedTable[] = [];
     for (const raw of rawTables as Record<string, unknown>[]) {
@@ -299,7 +301,9 @@ export async function extractAndStoreDocumentTables(
     // extractFindings.ts), so this reuses exactly that, then looks for
     // tables in the resulting page text instead of prose claims.
     const { pages } = await extractDocumentText(document.storage_path, document.source_filename, documentId);
-    if (pages.length === 0) {
+    // Pages with no text at all are images (a scanned PDF): refused here, before any model call, rather than sent
+    // to the model and reported as having no tables (batch 57, conformance B-07).
+    if (pages.length === 0 || pages.every((p) => p.text.trim() === "")) {
       throw new Error(
         "No page text could be extracted from this file, so no tables could be found in it. If it's a " +
           "scanned or image-based PDF, table extraction from scans isn't supported yet."

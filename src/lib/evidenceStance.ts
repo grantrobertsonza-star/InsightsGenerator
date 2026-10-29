@@ -107,7 +107,15 @@ const Z = 1.96;
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-/** Exact match first, then one label containing the other. Null when nothing fits or two fit equally. */
+/** Every word of one is a whole word of the other ("very satisfied" within "very satisfied overall"). Containment by
+ * characters matched "55" with "5" and "18 34" with "8" (batch 57, conformance AGG-06/16: the claim's 55+ resolved to
+ * the 18-34 column), so words, and numbers, are compared whole. */
+function wordsWithin(shorter: string, longer: string): boolean {
+  const have = new Set(longer.split(" "));
+  return shorter.split(" ").every((w) => have.has(w));
+}
+
+/** Exact match first, then one label whose words contain the other's. Null when nothing fits or two fit equally. */
 export function matchLabel(labels: string[], wanted: string): string | null {
   const w = norm(wanted);
   if (!w) return null;
@@ -115,7 +123,7 @@ export function matchLabel(labels: string[], wanted: string): string | null {
   if (exact.length === 1) return exact[0];
   const loose = labels.filter((l) => {
     const n = norm(l);
-    return n.length > 0 && (n.includes(w) || w.includes(n));
+    return n.length > 0 && (wordsWithin(w, n) || wordsWithin(n, w));
   });
   return loose.length === 1 ? loose[0] : null;
 }

@@ -37,6 +37,11 @@ const btn = "rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-m
 const primary = "flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-hover disabled:opacity-60";
 const primarySmall = "flex w-fit items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-primary-hover disabled:opacity-60";
 
+/** Time since the upload started, as "0:42" or "12:05". */
+const elapsedText = (ms: number) => {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+};
 const sizeText = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} KB`);
 
 /**
@@ -59,6 +64,16 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Grant, 29 October 2026: saving a 60 MB file "seems to take quite long" with nothing to show for it. The upload
+  // goes in requests (batches) a server action answers only when done, so progress is known per request: what is
+  // stored, what is being sent and saved now, and how long it has taken. Never a made-up byte count.
+  const [progress, setProgress] = useState<{ total: number; stored: number; current: string[]; currentBytes: number; startedAt: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!progress) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [progress]);
   const nextKey = useRef(1);
   const inputRef = useRef<HTMLInputElement>(null);
   // The list as it stands when an upload returns: files chosen while it ran are still in it.
@@ -114,6 +129,19 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
     const dropped = new Set(tooLarge.map((p) => p.key));
     setMessage(null);
     setError(null);
+    const totalBytes = batches.flat().reduce((n, p) => n + p.size, 0);
+    let storedBytes = 0;
+    // The first request's files are named here, outside the transition: an update made inside `start` before its
+    // first await is held back until the whole upload finishes, so naming them in the loop alone left "Sending and
+    // saving" missing for the first (often the only) request. Later requests are named in the loop, after an await.
+    const first = batches.find((b) => b.length > 0) ?? [];
+    setProgress({
+      total: totalBytes,
+      stored: 0,
+      current: first.map((p) => p.file.name),
+      currentBytes: first.reduce((n, p) => n + p.size, 0),
+      startedAt: Date.now(),
+    });
     start(async () => {
       const added: string[] = [];
       const repeats: string[] = [];
@@ -153,8 +181,12 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
           if (selectionUnconfirmed && !outputSetId) data.set("outputSelectionUnconfirmed", "1");
         }
         let result: Awaited<ReturnType<typeof uploadDocumentsAction>>;
+        const batchBytes = items.reduce((n, p) => n + p.file.size, 0);
+        setProgress((g) => g && { ...g, current: items.map((p) => p.file.name), currentBytes: batchBytes });
         try {
           result = await uploadDocumentsAction(runId, data);
+          storedBytes += batchBytes;
+          setProgress((g) => g && { ...g, stored: storedBytes, current: [], currentBytes: 0 });
         } catch {
           // No answer from the server: whether these files were stored is not known, so the reader is told
           // to look rather than told they failed or succeeded.
@@ -187,6 +219,7 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
       }
       if (problems.length > 0) setError(problems.join(" ") + (added.length === 0 ? repeatText : ""));
       setPicked(rest);
+      setProgress(null);
     });
   }
 
@@ -317,6 +350,32 @@ export default function AddFilesPanel({ runId }: { runId: string }) {
               </button>
             )}
           </div>
+          {progress && (
+            <div className="flex flex-col gap-1" data-testid="upload-progress">
+              <div
+                role="progressbar"
+                aria-label="Upload progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress.total > 0 ? Math.round((progress.stored / progress.total) * 100) : 0}
+                className="relative h-2 w-full overflow-hidden rounded-full bg-slate-100"
+              >
+                <div className="absolute inset-y-0 left-0 bg-primary transition-all" style={{ width: `${progress.total > 0 ? (progress.stored / progress.total) * 100 : 0}%` }} />
+                {progress.currentBytes > 0 && (
+                  <div
+                    className="absolute inset-y-0 animate-pulse bg-primary/40"
+                    style={{ left: `${(progress.stored / progress.total) * 100}%`, width: `${(progress.currentBytes / progress.total) * 100}%` }}
+                  />
+                )}
+              </div>
+              <p className="text-[11px] text-muted" aria-live="polite">
+                Stored {progress.stored === 0 ? "0" : sizeText(progress.stored)} of {sizeText(progress.total)}.
+                {progress.current.length > 0 &&
+                  ` Sending and saving ${progress.current.join(", ")} (${sizeText(progress.currentBytes)}); a large file is stored and its variables read before it counts as stored.`}{" "}
+                {elapsedText(now - progress.startedAt)}
+              </p>
+            </div>
+          )}
           <p className="text-[10px] text-muted">
             Not sure how to lay a file out?{" "}
             <Link href="/knowledge/preparing-files" target="_blank" className="font-medium text-primary hover:underline">

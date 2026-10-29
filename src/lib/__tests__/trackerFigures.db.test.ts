@@ -159,4 +159,19 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("D3 brand overview figures aga
     }
     expect((await loadBrandOverview(tenant, run, docs[1])).previous.status).toBe("ok");
   });
+
+  it("the brand dashboard's timeline: the client's share at each stage in each wave equals the reference", async () => {
+    const { loadBrandOverview } = await import("../trackerOverview");
+    const o = await loadBrandOverview(tenant, run, docs[1], "brand");
+    expect(o.timeline.map((p) => [p.wave, p.waveDate])).toEqual([["Wave 1", "2026-02"], ["Wave 2", "2026-06"]]);
+    const bmw = o.view.dashboard.brands.find((b) => b.label === "BMW")!.code;
+    o.timeline.forEach((p, i) => {
+      for (const [stage, metric] of Object.entries(METRIC)) {
+        const share = p.stages?.find((s) => s.stage === stage)?.byBrand.find((b) => b.code === bmw)?.share;
+        expect(share, `${p.wave} ${stage}`).toBeCloseTo(REF.find((r) => r.wave === i + 1 && r.weighting === "weighted" && r.metric === metric && r.brand === "BMW")!.expected, 6);
+      }
+    });
+    expect(o.csm).toEqual([]);
+  });
 });
+

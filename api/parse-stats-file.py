@@ -158,8 +158,8 @@ def _r_and_parquet_frame(df, data_sheet=None, usecols=None, factor_codes=False):
 
 def read_r_file(path, usecols=None, **_ignored):
     """An R data file: .rds (one object) or .RData/.rda (named objects), read by pyreadr, which reads R's
-    serialisation format without running R code. The data frame with the most rows is used (as the
-    worksheet with the most data rows is, for a workbook) and named as the read's sheet; a file holding
+    serialisation format without running R code. The data frame with the most rows is used (a workbook's
+    data sheet is the one holding the most filled cells, _sheet_data_size) and named as the read's sheet; a file holding
     no data frame is refused."""
     import pyreadr
     import pandas as pd
@@ -183,6 +183,9 @@ def read_parquet_file(path, usecols=None, **_ignored):
 
 READERS = {
     ".sav": pyreadstat.read_sav,
+    # Compressed SPSS (batch 55, conformance F3): the same reader; refused before although the rest of the engine
+    # already treated .zsav as SPSS.
+    ".zsav": pyreadstat.read_sav,
     ".dta": pyreadstat.read_dta,
     ".sas7bdat": pyreadstat.read_sas7bdat,
     # SAS transport (XPORT), the format SAS datasets are usually exchanged and archived in.
@@ -355,12 +358,14 @@ def _remove_quietly(path: str) -> None:
         pass
 
 
-def _sas_blanks_missing(ext, data):
-    """SAS has no separate missing value for a character variable: a blank is missing (SAS's own
-    definition of a missing character value). pyreadstat returns it as "", which would otherwise be
-    counted as an answer of its own. Applied in place, by both readers of a statistics file (convert,
-    for the stored preview, and _read_raw_uncached, for every calculation), so they agree."""
-    if ext not in (".sas7bdat", ".xpt"):
+def _blank_text_missing(ext, data):
+    """A blank text answer is no answer, in every statistics format (Grant's decision 6, 29 October 2026). SAS has no
+    separate missing value for a character variable, so a blank is missing by its own definition; SPSS and Stata store
+    an unanswered text question as "" too, which was counted as an answer of its own (and in bases) while the same
+    blank in CSV, Excel and SAS was missing (batch 55, library L1 S-sav-blank-string, S-dta-blank-string). Applied in
+    place, by both readers of a statistics file (convert, for the stored preview, and _read_raw_uncached, for every
+    calculation), so they agree. R and Parquet keep their own NA, which is already missing."""
+    if ext not in (".sas7bdat", ".xpt", ".sav", ".zsav", ".dta"):
         return
     import pandas as pd
 
@@ -386,7 +391,7 @@ def convert(file_bytes: bytes, source_filename: str) -> dict:
         df, meta = reader(tmp_path)
     finally:
         _remove_quietly(tmp_path)
-    _sas_blanks_missing(ext, df)
+    _blank_text_missing(ext, df)
 
     variable_labels = meta.column_names_to_labels or {}
     _check_import_limits(file_bytes, len(df))
@@ -498,7 +503,14 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 15: a workbook's label sheet headed with underscores ("value_label") is read by its value-label column, not
 #     its variable-label column (_classify_header); cached Excel dictionaries are rebuilt (minimum 15 for
 #     .xlsx/.xls; other formats did not change).
-DICTIONARY_VERSION = 15
+# 16: each numeric variable with at most CODES_MAX distinct whole-number values lists them ("codes"), so a codebook
+#     entry's answer codes can be checked against what the data holds before its link is confirmed
+#     automatically (CB1); cached CSV, TSV and Excel dictionaries are rebuilt (minimumDictionaryVersion 16 for those;
+#     other formats keep their minimum, and a codebook link to a variable without listed codes is not automatic).
+DICTIONARY_VERSION = 16
+# The most distinct values a variable's "codes" list carries: a coded question has far fewer; a measure (age,
+# income in rand) has more and is listed as None.
+CODES_MAX = 60
 ENGINE_VERSION = "2026.10.28-2"  # unrounded figures saved as countExact/pctExact/seExact; derived figures computed from them
 # The version of the rules that decide a table's figures and flags, recorded in every table's notes as
 # methodVersion. A table recorded with a different version (or none: built before this was recorded) was
@@ -527,9 +539,11 @@ SIG_LEVEL = 0.05
 # "DontKnow", "Not_applicable" or "NoAnswer", and before batch 47 those stayed in as answers and banner
 # columns even with non-answers excluded (Grant, 27 October 2026: a "DontKnow" column in the UsedIVR banner).
 _SEP = r"[\s_-]*"
+# Grant's decision 7 (29 October 2026): "Not sure" is no usable answer; "Don't know which mobile networks ..." names
+# what is not known, so it is an answer (a lookahead keeps such a label out), as is "Don't know about ..." and the like.
 _DK_RE = re.compile(
-    rf"^(don['\u2019\u2018`]?t{_SEP}know|do{_SEP}not{_SEP}know|dk\b|refus|prefer{_SEP}not{_SEP}to{_SEP}(say|answer)|no{_SEP}response|no{_SEP}answer"
-    rf"|not{_SEP}applicable|n/?a\b|not{_SEP}stated|unknown|missing)",
+    rf"^((don['\u2019\u2018`]?t|do{_SEP}not){_SEP}know(?!\s+(which|what|who|whom|whose|how|where|when|whether|if|about|with|of|any)\b)|dk\b|refus|prefer{_SEP}not{_SEP}to{_SEP}(say|answer)|no{_SEP}response|no{_SEP}answer"
+    rf"|not{_SEP}sure|unsure|not{_SEP}applicable|n/?a\b|not{_SEP}stated|unknown|missing)",
     re.IGNORECASE,
 )
 _WEIGHT_RE = re.compile(r"weight|wgt|\bwt\b", re.IGNORECASE)
@@ -595,9 +609,9 @@ def _open_workbook(path):
     return pd.ExcelFile(path, engine=engine)
 
 _DICT_SHEET_RE = re.compile(r"variable|dictionary|codebook|label|metadata|legend|value|code|lookup|readme|notes|schema", re.I)
-_VAR_COL_RE = re.compile(r"^(variable( name)?|var( name)?|name|column( name)?|field( name)?|item|question ?id|qid|var ?id|code ?name)$", re.I)
-_LABEL_COL_RE = re.compile(r"^((variable|question|var|item) )?(label|description|text|title|wording)$|^question$", re.I)
-_VALUE_COL_RE = re.compile(r"^(value|code|key|answer ?code|option ?code|category ?code|numeric value)$", re.I)
+_VAR_COL_RE = re.compile(r"^(variable( name)?|var( ?name)?|indicator( name)?|name|column( name)?|field( name)?|item|question ?id|qid|var ?id|code ?name)$", re.I)
+_LABEL_COL_RE = re.compile(r"^((variable|question|var|item) ?)?(label|lab|description|text|title|wording)$|^question$", re.I)
+_VALUE_COL_RE = re.compile(r"^(value|code|key|value ?code|answer ?code|option ?code|category ?code|numeric value)$", re.I)
 _VLABEL_COL_RE = re.compile(r"^(value ?label|code ?label|answer|answer ?label|category|option|response|meaning|label of value|value ?description|value ?text)$", re.I)
 
 
@@ -798,20 +812,25 @@ _CB_SET_RE = re.compile(r"multiple[ _-]?response|mr ?set|multi.?response|questio
 # "0=Not selected; 1=Selected" or "0=None of listed brands used. 1=Platō Coffee.
 # 2=Mugg & Bean", splitting on whichever separator (; or .) sits before the
 # next code, so either style of codebook punctuation reads the same way.
-_CODE_ENTRY_RE = re.compile(r"(-?\d+)\s*=\s*(.*?)(?=(?:[;.]\s*[A-Za-z0-9-]+\s*=)|$)")
 
 
 def _parse_code_entries(text):
-    """"0=Not selected; 1=Selected" -> {0.0: "Not selected", 1.0: "Selected"}."""
-    out = {}
+    """"0=Not selected; 1=Selected" -> {0.0: "Not selected", 1.0: "Selected"}, read by the one answer-list reader
+    (_cb_list), as a codebook file is (batch 55, conformance L3 D2 to D5: this reader had its own pattern, which glued
+    "1=Very dissatisfied to 5=Very satisfied" into one label for 1 and a continuous probability's notes into labels).
+    A cell the reader cannot read whole gives no labels rather than wrong ones; text codes are not numeric labels."""
     if text is None:
-        return out
-    for m in _CODE_ENTRY_RE.finditer(str(text)):
-        label = m.group(2).strip(" ;.\u2013-")
+        return {}
+    pairs, unread = _cb_list(_cb_text(text))
+    if unread:
+        return {}
+    out = {}
+    for code, label in pairs:
+        label = label.strip(" ;.\u2013-")
         if not label:
             continue
         try:
-            out[float(m.group(1))] = label
+            out[float(code)] = label
         except ValueError:
             continue
     return out
@@ -1077,16 +1096,20 @@ def _is_blank_or_na_token(value) -> bool:
     return text == "" or text in _NA_STRING_TOKENS
 
 
-def _count_data_rows(xl, sheet_name) -> int:
+def _sheet_data_size(xl, sheet_name) -> tuple:
+    """How much data a sheet holds below its first row, for choosing the data sheet: (filled cells, rows with any
+    filled cell). Ranked by filled cells first (batch 55, conformance L3 D1): a survey export with 115 respondents
+    across 75 questions (5,277 cells) is the data, not the analysis sheet beside it with 173 short rows of pivot
+    output (374 cells), which the earlier rule (most rows) chose. Formatting with no value is not data."""
     raw = xl.parse(sheet_name, header=None)
     if raw.shape[0] <= 1:
-        return 0
-    body = raw.iloc[1:]
-    count = 0
-    for _, row in body.iterrows():
-        if any(not _is_blank_or_na_token(v) for v in row):
-            count += 1
-    return count
+        return (0, 0)
+    cells = rows = 0
+    for _, row in raw.iloc[1:].iterrows():
+        filled = sum(1 for v in row if not _is_blank_or_na_token(v))
+        cells += filled
+        rows += 1 if filled else 0
+    return (cells, rows)
 
 
 def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
@@ -1170,6 +1193,51 @@ def _apply_zero_padded_id_formats(path, sheet_name, headers, df):
                     # threaded to the UI's import-quality panel) is what explains why.
                     unsupported.add(headers[col_idx])
                     df.iat[row_i, col_idx] = None
+    finally:
+        wb.close()
+    return unsupported
+
+
+def _apply_zero_padded_id_formats_flipped(path, sheet_name, df):
+    """_apply_zero_padded_id_formats for the columns-as-cases layout: an identifier is a row (its name in the first
+    column) and its cases are the columns after it. The same per-cell rule: a zero-padding format gives the padded
+    digits; any other non-General number format on an identifier cell blanks it and names the variable, never a
+    guess. Body row i is sheet row i + 2 (row 1 is the header row)."""
+    body_rows = df.attrs.get("body_rows", {})
+    ids = {name: row for name, row in body_rows.items() if _is_id_like_header(name)}
+    unsupported: set[str] = set()
+    if not ids:
+        return unsupported
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb[sheet_name]
+    except Exception as exc:
+        if os.path.splitext(str(path))[1].lower() in (".xlsx", ".xlsm"):
+            raise ValueError(
+                f"Could not check the Excel number formats of the identifier row(s) {', '.join(ids)}, so leading zeros "
+                "(for example 0007) cannot be confirmed and identifiers could merge. Read the file again; if it keeps "
+                f"failing, re-save the workbook or store the identifiers as text. ({type(exc).__name__})"
+            ) from exc
+        return unsupported
+    try:
+        for name, body_i in ids.items():
+            sheet_row = body_i + 2
+            col = list(df.columns).index(name)
+            for row in ws.iter_rows(min_row=sheet_row, max_row=sheet_row, min_col=2, max_col=len(df) + 1):
+                for case_i, cell in enumerate(row):
+                    if case_i >= len(df):
+                        break
+                    fmt = getattr(cell, "number_format", None) or ""
+                    value = getattr(cell, "value", None)
+                    if not isinstance(value, (int, float)) or isinstance(value, bool) or GENERAL_FORMAT_RE.match(fmt or "General"):
+                        continue
+                    if _ZERO_PAD_FORMAT_RE.match(fmt):
+                        if int(value) == value:
+                            df.iat[case_i, col] = str(int(value)).zfill(len(fmt))
+                    else:
+                        unsupported.add(name)
+                        df.iat[case_i, col] = None
     finally:
         wb.close()
     return unsupported
@@ -1341,6 +1409,12 @@ def _typed_series(name, values, date_columns):
         present = [v for v in cells if v is not None]
     numbers = None if has_date else _as_numbers(present)
     if numbers is None:
+        # A whole number beyond 2^53 makes the variable text (_as_numbers refused it), and every number cell is then
+        # its exact digits (batch 55, conformance F1): kept as Python ints, Excel's 9007199254740993 and ...992 went
+        # out as JSON numbers, which the app reads as doubles, so the stored preview merged two identifiers the
+        # calculation kept apart. Without such a value, mixed text and number cells keep their own types, as before.
+        if any(isinstance(v, int) and not isinstance(v, bool) and abs(v) > _MAX_EXACT_WHOLE for v in present):
+            return pd.Series([v if v is None or isinstance(v, str) else _literal_text(v) for v in cells], dtype=object)
         return pd.Series(cells, dtype=object)
     it = iter(numbers)
     typed = [None if v is None else next(it) for v in cells]
@@ -1599,16 +1673,20 @@ def _flipped_frame(headers, body, date_columns):
     import pandas as pd
 
     n_cases = max(len(headers) - 1, 0)
-    kept = []
-    for row in body:
+    kept, kept_rows = [], []
+    for body_i, row in enumerate(body):
         name = _literal_text(row[0] if row else None).strip()
         values = [row[j] if j < len(row) else None for j in range(1, n_cases + 1)]
         if not name and all(_is_missing_cell(v) for v in values):
             continue
         kept.append((name, values))
+        kept_rows.append(body_i)
     names = _dedupe_header_names([name or f"Variable {i + 1}" for i, (name, _) in enumerate(kept)])
     columns = {name: _typed_series(name, values, date_columns) for name, (_, values) in zip(names, kept)}
-    return pd.DataFrame(columns, index=pd.RangeIndex(n_cases)) if columns else pd.DataFrame(index=pd.RangeIndex(n_cases))
+    df = pd.DataFrame(columns, index=pd.RangeIndex(n_cases)) if columns else pd.DataFrame(index=pd.RangeIndex(n_cases))
+    # Which body row each variable came from, for the identifier formats (_apply_zero_padded_id_formats_flipped).
+    df.attrs["body_rows"] = dict(zip(names, kept_rows))
+    return df
 
 
 def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=None):
@@ -1657,14 +1735,14 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
             # IMP-SHIP-001: a sheet choice already persisted for this document (documents.selected_sheet)
             # is used directly. If it no longer names a sheet in this workbook, SheetSelectionLostError is
             # raised rather than another sheet substituted. None/"" (nothing persisted yet) is the first
-            # read and resolves by the ranking rule: the non-dictionary sheet with the most data rows.
+            # read and resolves by the ranking rule: the non-dictionary sheet holding the most data (_sheet_data_size).
             if selected_sheet:
                 if selected_sheet not in sheets:
                     raise SheetSelectionLostError(selected_sheet, sheets)
                 data_sheet = selected_sheet
             else:
                 candidates = [n for n in sheets if not _DICT_SHEET_RE.search(n)] or sheets
-                data_sheet = max(candidates, key=lambda n: _count_data_rows(xl, n))
+                data_sheet = max(candidates, key=lambda n: _sheet_data_size(xl, n))
             if layout == "columns_are_cases":
                 _refuse_flipped_codebook_metadata(xl, [n for n in sheets if n != data_sheet])
             # Every cell arrives as Excel holds it (text, number, logical or calendar value), unnamed and
@@ -1682,13 +1760,29 @@ def _read_plain(path: str, ext: str, usecols=None, layout=None, selected_sheet=N
         date_columns: set[str] = set()
         if layout == "columns_are_cases":
             df = _flipped_frame(headers, body, date_columns)
+            if xl is not None:
+                # The same identifier formats as rows-as-cases (batch 55, conformance F2): an identifier row
+                # formatted 0000 gives 0007, not 7, so both layouts give the same identifiers.
+                unsupported_id_formats = _apply_zero_padded_id_formats_flipped(path, data_sheet, df)
         else:
             df = _typed_frame(headers, body, date_columns)
             if xl is not None:
                 # Body row i is sheet row i + 2 here (row 1 is the header), the alignment this check reads.
                 unsupported_id_formats = _apply_zero_padded_id_formats(path, data_sheet, headers, df)
             # A row with nothing but blank or missing cells is not a case.
+            before = len(df)
             df = df.dropna(how="all")
+            if len(df) < before:
+                # Typing ran over every row, so the dropped empty row's missing cells made a whole-number variable
+                # decimal (1.0, 3.0; batch 55, conformance F4). Each decimal variable is typed again from the cells of
+                # the rows kept, by the same rule; an identifier text or a padded identifier is not touched.
+                kept = list(df.index)
+                for j, name in enumerate(df.columns):
+                    if df[name].dtype.kind != "f":
+                        continue
+                    retyped = _typed_series(name, [body[i][j] if j < len(body[i]) else None for i in kept], set())
+                    if retyped.dtype.kind == "i":
+                        df[name] = retyped.set_axis(df.index)
         meta = _PlainMeta(
             unsupported_identifier_columns=sorted(unsupported_id_formats),
             data_sheet=data_sheet,
@@ -1867,7 +1961,7 @@ def _read_raw_uncached(file_bytes: bytes, source_filename: str, usecols=None, la
             # change every denominator and statistic, whereas only the audit needs the ranges.
             _, declared = reader(tmp_path, metadataonly=True, user_missing=True)
             meta.missing_ranges = declared.missing_ranges
-        _sas_blanks_missing(ext, data)
+        _blank_text_missing(ext, data)
         return data, meta
     finally:
         _remove_quietly(tmp_path)
@@ -2268,6 +2362,21 @@ def _audit(df, meta, variables, value_labels):
     return out
 
 
+def _observed_codes(col) -> list | None:
+    """The distinct values a numeric variable holds, as code strings ("1", "99") in numeric order, when there are at
+    most CODES_MAX and every one is a whole number; None otherwise (a measure, or decimals). Missing values are not
+    codes. Used to check a codebook's answer codes against the data (CB1)."""
+    vals = col.dropna().unique()
+    if len(vals) == 0 or len(vals) > CODES_MAX:
+        return None
+    out = []
+    for v in sorted(float(x) for x in vals):
+        if not v.is_integer():
+            return None
+        out.append(str(int(v)))
+    return out
+
+
 def dictionary(file_bytes: bytes, source_filename: str, args: dict | None = None) -> dict:
     df, meta = _read(file_bytes, source_filename, layout=(args or {}).get("layout"), selected_sheet=(args or {}).get("selectedSheet"))
     n = len(df)
@@ -2300,6 +2409,7 @@ def dictionary(file_bytes: bytes, source_filename: str, args: dict | None = None
                 "isFlag": is_flag,
                 "text": bool(not numeric and not value_labels.get(name)),
                 "setKey": mr_sets.get(name) or (m.group(1) if m else None),
+                "codes": _observed_codes(col) if numeric else None,
             }
         )
     # Multiple-response sets: two or more yes/no option variables sharing a
@@ -2697,7 +2807,8 @@ def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=N
     return {
         "variable": variable,
         "label": (meta.column_names_to_labels or {}).get(variable) or variable,
-        "categories": [{"label": str(c), "n": int(counts.get(c, 0))} for c in cats][:200],
+        # An unlabelled code is its one text form (1, not 1.0; batch 55, conformance L3 D8); a label is itself.
+        "categories": [{"label": c if isinstance(c, str) else _code_text(c), "n": int(counts.get(c, 0))} for c in cats][:200],
     }
 
 
@@ -2720,8 +2831,14 @@ _CB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.$#@]{0,63}$")
 _CB_NAME_MAX = 256
 # One "<code>=" in an answer list: the code is a quoted text, or a run of characters with no space,
 # comma, "=" or quotation mark ("1", "01", "-9", "1.5", "1e0", "AA", "A_B", "C-D").
-_CB_CODE_AT = re.compile(r"""\s*(?:"([^"]*)"|'([^']*)'|([^\s=,"']+))\s*=\s*""")
-_CB_NEXT_CODE = re.compile(r""",\s*(?:"[^"]*"|'[^']*'|[^\s=,"']+)\s*=""")
+_CB_CODE_AT = re.compile(r"""\s*(?:"([^"]*)"|'([^']*)'|([^\s=,;"']+))\s*=\s*""")
+# Answers are separated by a comma or a semicolon ("0=Not selected; 1=Selected", Grant's tracker workbooks).
+_CB_NEXT_CODE = re.compile(r"""[,;]\s*(?:"[^"]*"|'[^']*'|[^\s=,;"']+)\s*=""")
+
+
+# How far down a header row is looked for (batch 56, conformance E054): codebooks put up to a dozen title, version and
+# contact rows above it; the header is the first row naming a variable and a label column.
+_CB_HEADER_ROWS = 15
 
 
 def _cb_text(v):
@@ -2750,6 +2867,9 @@ def _cb_list(text):
     unread is True when the cell has an "=" yet is not such a list, so the item is reported as not fully
     read rather than silently given no answers; text with no "=" ("as is") is not an answer list."""
     text = text.strip()
+    if "=" not in text:
+        alt = _cb_list_without_equals(text)
+        return (alt, False) if alt else ([], False)
     pairs, at = [], 0
     while at < len(text):
         m = _CB_CODE_AT.match(text, at)
@@ -2764,19 +2884,68 @@ def _cb_list(text):
             label = text[at + 1:close]
             at = close + 1
             rest = text[at:].lstrip()
-            if rest and not rest.startswith(","):
+            if rest and not rest[0] in ",;":
                 return [], True
             at = len(text) - len(rest) + (1 if rest else 0)
         else:
             nxt = _CB_NEXT_CODE.search(text, at)
             end = nxt.start() if nxt else len(text)
-            label = text[at:end].strip().rstrip(",").strip()
+            label = text[at:end].strip().rstrip(",;").strip()
+            # A range written with both ends labelled, "1=Very dissatisfied to 5=Very satisfied", labels the two end
+            # points and nothing between (Grant's decision 8, 29 October 2026; the codes between keep no label).
+            ends = re.fullmatch(r"(.+?)\s+(?:to|through|thru|-|\u2013)\s+(-?\d+)\s*=\s*([^=]+)", label)
+            if ends:
+                pairs.append((_cb_code(code), ends.group(1).strip()))
+                code, label = ends.group(2), ends.group(3).strip()
+                at = end + 1 if nxt else len(text)
+                pairs.append((_cb_code(code), label))
+                continue
             if "=" in label:
                 # "1=Yes 2=No": codes not separated by commas; never read as one label "Yes 2=No".
                 return [], True
             at = end + 1 if nxt else len(text)
         pairs.append((_cb_code(code), label))
     return pairs, False
+
+
+# Other ways codebooks write an answer list in one cell (batch 56, conformance L2 E095 to E098): SPSS Variable View's
+# "{1, Yes}, {2, No}", and "1. Yes, 2. No", "1: Yes", "1) Yes", "1 - Yes", "1 Yes". A part starts with a whole-number
+# code; the cell is split only before ", <code><separator>", so a label may hold a comma.
+_CB_BRACE_PAIR = re.compile(r"""\{\s*("[^"]*"|'[^']*'|[^{},]+?)\s*,\s*("[^"]*"|'[^']*'|[^{}]*?)\s*\}""")
+_CB_ALT_SEPARATORS = (
+    (r"\s*:\s*|\s*\)\s*|\.\s+", False),  # "1: Yes", "1) Yes", "1. Yes" (a dot needs a space after it: "1.5" is a number)
+    (r"\s+[-\u2013]\s+", False),  # "1 - Yes"
+    (r"\s+", True),  # "1 Yes": only with consecutive codes (below)
+)
+
+
+def _cb_unquote(t):
+    t = t.strip()
+    return t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t
+
+
+def _cb_list_without_equals(text):
+    """An answer list written without "=", as [(code, label)], or None when the cell is not one.
+
+    Every part of the cell must fit one notation, and there must be at least two answers: a single "18 years and
+    older" is a label, not code 18. Without any separator ("1 Yes, 2 No") the codes must also run consecutively
+    (1, 2, 3 or 0, 1, 2): "5 or more, 3 to 4" is a list of labels, not codes 5 and 3."""
+    t = text.strip()
+    braces = _CB_BRACE_PAIR.findall(t)
+    if braces and _CB_BRACE_PAIR.sub("", t).strip(" ,;") == "":
+        return [(_cb_code(_cb_unquote(c)), _cb_unquote(l)) for c, l in braces] if len(braces) >= 2 else None
+    for sep, needs_run in _CB_ALT_SEPARATORS:
+        parts = re.split(r"\s*[,;]\s*(?=-?\d+(?:" + sep + r")\S)", t)
+        if len(parts) < 2:
+            continue
+        matched = [re.match(r"^(-?\d+)(?:" + sep + r")(\S.*)$", p.strip()) for p in parts]
+        if not all(matched):
+            continue
+        codes = [int(m.group(1)) for m in matched]
+        if needs_run and codes != list(range(codes[0], codes[0] + len(codes))):
+            continue
+        return [(_cb_code(m.group(1)), _cb_unquote(m.group(2).strip().rstrip(",;").strip())) for m in matched]
+    return None
 
 
 def _cb_pairs(text):
@@ -2859,6 +3028,50 @@ def _cb_meta(row, cols):
     return out
 
 
+def _cb_headerless_long(rows, width, sheet):
+    """A codebook with one row per answer and no header row (batch 56, conformance E037), or None when the sheet is
+    not plainly one. Read by content: the names column holds name-like cells and repeats (or is left blank) down a
+    variable's answer rows; the codes column holds whole numbers only; within a variable the answer label changes
+    from row to row while the variable's label does not. Anything less clear is left to the other readers."""
+    if width < 3 or len(rows) < 3:
+        return None
+    def name_cell(c):
+        return bool(c) and bool(_CB_NAME_RE.match(c))
+    for name_col in range(width):
+        cells = [r[name_col] for r in rows]
+        if sum(1 for c in cells if name_cell(c)) < 2 or any(c and not name_cell(c) for c in cells) or not cells[0]:
+            continue
+        groups, cur = [], None
+        for r in rows:
+            if r[name_col] and (cur is None or r[name_col] != cur[0]):
+                cur = (r[name_col], [])
+                groups.append(cur)
+            cur[1].append(r)
+        if not any(len(g[1]) >= 2 for g in groups) or len({g[0] for g in groups}) != len(groups):
+            continue
+        others = [c for c in range(width) if c != name_col]
+        code_cols = [c for c in others if all(re.fullmatch(r"-?\d+", r[c]) for r in rows if r[c]) and sum(1 for r in rows if r[c]) >= 2]
+        if len(code_cols) != 1:
+            continue
+        code_col = code_cols[0]
+        rest = [c for c in others if c != code_col]
+        multi = [g for g in groups if len(g[1]) >= 2]
+        changes = lambda c: all(len({r[c] for r in g[1] if r[c]}) == len([r for r in g[1] if r[c]]) for g in multi)
+        steady = lambda c: all(len({r[c] for r in g[1] if r[c]}) <= 1 for g in multi)
+        vlabels = [c for c in rest if changes(c) and not steady(c)]
+        vlabel_col = vlabels[0] if len(vlabels) == 1 else None
+        if vlabel_col is None:
+            continue
+        label_col = next((c for c in rest if c != vlabel_col and steady(c)), None)
+        items = []
+        for name, grp in groups:
+            label = next((r[label_col] for r in grp if label_col is not None and r[label_col]), "")
+            options = [{"code": _cb_code(r[code_col]), "label": r[vlabel_col]} for r in grp if r[code_col]]
+            items.append({"variable": name, "label": label, "options": options, "note": None, "section": None, "sheet": sheet})
+        return items
+    return None
+
+
 def _cb_sheet_items(grid, sheet):
     """Items from one sheet's grid, or [] when the sheet is not a codebook table."""
     rows = [[_cb_text(c) for c in r] for r in grid]
@@ -2867,9 +3080,23 @@ def _cb_sheet_items(grid, sheet):
         return []
     width = max(len(r) for r in rows)
     rows = [r + [""] * (width - len(r)) for r in rows]
+    # A sheet listing multiple-response sets ("Set", "Label", "Variables": $Q13, News sources, Q13_1 Q13_2) describes
+    # groups, not variables; read as a codebook its labels became variables (batch 56, conformance E122).
+    for r in rows[:_CB_HEADER_ROWS]:
+        heads = {re.sub(r"[_\-]+", " ", c.lower()).strip() for c in r if c}
+        if heads & {"set", "set name", "mr set", "multiple response set", "response set"} and heads & {"variables", "members", "variable list"}:
+            return []
     # One row per value, by header names.
-    for h in range(min(6, len(rows))):
+    for h in range(min(_CB_HEADER_ROWS, len(rows))):
         pos = _classify_header([c.lower() for c in rows[h]])
+        # SPSS DISPLAY DICTIONARY's "Variable Values" table heads only the code and label columns ("", "Value",
+        # "Label"); the names are in the unheaded first column, once per variable (batch 56, conformance E040).
+        if pos["var"] is None and pos["value"] is not None and pos["value"] > 0 and (pos["label"] is not None or pos["vlabel"] is not None) and rows[h][0] == "" and rows[h + 1:h + 2] and rows[h + 1][0]:
+            pos["var"] = 0
+        # Its other version heads the names column "Value" and leaves the codes column blank ("Value", "", "Label";
+        # conformance E115): the names are first, then the codes.
+        elif pos["var"] is None and pos["value"] == 0 and len(rows[h]) > 2 and rows[h][1] == "" and (pos["label"] is not None or pos["vlabel"] is not None) and rows[h + 1:h + 2] and rows[h + 1][0] and rows[h + 1][1]:
+            pos["var"], pos["value"] = 0, 1
         if pos["var"] is not None and pos["value"] is not None and (pos["vlabel"] is not None or pos["label"] is not None):
             items, order, last = {}, [], None
             vl = pos["vlabel"] if pos["vlabel"] is not None else pos["label"]
@@ -2888,6 +3115,11 @@ def _cb_sheet_items(grid, sheet):
                 if code != "":
                     # The code as written (B36-F01): "1.0" and "1" are matched to the column when applied.
                     items[name]["options"].append({"code": code, "label": r[vl]})
+            # One row per answer means a variable repeats over its answers. When none does and no column is headed
+            # as the answers' label, each row is a variable and the "code" column is something else (the Findex
+            # question map's "Key" column, its "Question" the wording): read it as one row per variable (batch 56).
+            if pos["vlabel"] is None and len(order) >= 2 and all(len(items[n]["options"]) <= 1 for n in order):
+                break
             return [items[n] for n in order]
     # One row per variable, by content: the name column holds name-like cells, the values column
     # "<code>=" lists, the label column the longest text of the rest.
@@ -2896,11 +3128,15 @@ def _cb_sheet_items(grid, sheet):
     # prose document can have two). With a header naming a variable and a label column, one variable
     # under it is enough (B36-F05, Codex: a valid one-variable codebook was refused).
     found = next(
-        ((i, pos) for i, pos in ((i, _classify_header([c.lower() for c in r])) for i, r in enumerate(rows[: min(6, len(rows))])) if pos["var"] is not None and pos["label"] is not None),
+        ((i, pos) for i, pos in ((i, _classify_header([c.lower() for c in r])) for i, r in enumerate(rows[: min(_CB_HEADER_ROWS, len(rows))])) if pos["var"] is not None and pos["label"] is not None),
         (None, None),
     )
     header_row, header = found
     headed = header is not None
+    if not headed:
+        long_items = _cb_headerless_long(rows, width, sheet)
+        if long_items is not None:
+            return long_items
     if len(body) < (2 if headed else 3):
         return []
 
@@ -2930,10 +3166,13 @@ def _cb_sheet_items(grid, sheet):
         if header_row is not None else set()
     )
     others = [c for c in range(width) if c != name_col and c not in not_values]
+    # The column the header names as the label is never the values column: question wording can itself read like a
+    # numbered list ("1. An account can be used to ..., 2. ..."; batch 56, the Findex question map).
+    header_label = header["label"] if header is not None and name_col == header["var"] else None
     # The values column holds answer lists, read or not (an unreadable list still marks its column, so
     # the item is reported incomplete rather than its list taken for a label; IS-F04).
     is_list = lambda x: bool(_cb_list(x)[0]) or _cb_list(x)[1]
-    values_col = max(others, key=lambda c: (share(c, is_list), share(c, lambda x: bool(_cb_pairs(x)))), default=None)
+    values_col = max((c for c in others if c != header_label), key=lambda c: (share(c, is_list), share(c, lambda x: bool(_cb_pairs(x)))), default=None)
     if values_col is not None and share(values_col, is_list) < 0.2:
         values_col = None
     label_candidates = [c for c in others if c != values_col]
@@ -2947,11 +3186,45 @@ def _cb_sheet_items(grid, sheet):
         _cb_meta_columns([c.lower() for c in rows[header_row]], rows[header_row + 1:], {name_col, label_col, values_col})
         if header_row is not None else {}
     )
-    items, section = [], None
+    # Answer codes written across columns (batch 56, conformance E127, E128): the header names each code ("1", "2",
+    # "9", the cells under it their labels), or pairs of columns "Code1", "Label1", "Code2", "Label2".
+    across = []
+    if header_row is not None:
+        head = [c.strip() for c in rows[header_row]]
+        free = [c for c in range(width) if c not in (name_col, label_col, values_col)]
+        coded = [c for c in free if re.fullmatch(r"-?\d+", head[c])]
+        if len(coded) >= 2:
+            across = [("header", c, head[c]) for c in coded]
+        else:
+            codes_at = {m.group(2): c for c in free if (m := re.fullmatch(r"(code|value) ?(\d+)", head[c], re.I))}
+            labels_at = {m.group(2): c for c in free if (m := re.fullmatch(r"(label|value label) ?(\d+)", head[c], re.I))}
+            across = [("pair", codes_at[k], labels_at[k]) for k in sorted(codes_at, key=int) if k in labels_at]
+
+    def across_options(r):
+        out = []
+        for kind, c, other in across:
+            if kind == "header" and r[c]:
+                out.append({"code": _cb_code(other), "label": r[c]})
+            elif kind == "pair" and r[c]:
+                out.append({"code": _cb_code(r[c]), "label": r[other]})
+        return out
+
+    items, section, last_items = [], None, []
     for i, r in enumerate(rows):
         # The header row and anything above it are never variables (IS-F07, Codex: "VARIABLE NAME, LABEL"
         # was read as a variable "LABEL", and the next row's label taken for its name).
         if header_row is not None and i <= header_row:
+            continue
+        # A row with no name holding answer codes belongs to the variable above it (an "indented" codebook: the
+        # variable row, then one code per row under it; batch 56, conformance E129).
+        if not r[name_col] and values_col is not None and r[values_col] and last_items:
+            more, more_unread = _cb_list(r[values_col])
+            for it in last_items:
+                it["options"].extend({"code": c, "label": l} for c, l in more)
+                if more:
+                    it["note"] = None
+                if more_unread:
+                    it["unreadValues"] = r[values_col]
             continue
         filled = [c for c in r if c]
         # One filled cell that is not name-like is a section heading, not a variable without a label.
@@ -2963,18 +3236,21 @@ def _cb_sheet_items(grid, sheet):
             continue
         values = r[values_col] if values_col is not None else ""
         pairs, unread = _cb_list(values) if values else ([], False)
+        extra = across_options(r)
+        last_items = []
         for name in names:
-            items.append({
+            last_items.append({
                 "variable": name,
                 "label": r[label_col],
-                "options": [{"code": c, "label": l} for c, l in pairs],
-                "note": None if pairs or not values else values,
+                "options": [{"code": c, "label": l} for c, l in pairs] + [dict(o) for o in extra],
+                "note": None if pairs or extra or not values else values,
                 # An answer list that could not be read (IS-F04): the read is reported incomplete.
                 "unreadValues": values if unread else None,
                 "section": section,
                 "sheet": sheet,
                 **_cb_meta(r, meta_cols),
             })
+        items.extend(last_items)
     return items
 
 
@@ -3144,7 +3420,16 @@ def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
         used.append(name)
         for it in found:
             if it["variable"] in seen:
-                continue  # first description of a variable wins; a repeat is not a second item
+                # A repeat is not a second item. The first description wins, and a later sheet only fills in what
+                # it left empty: SPSS exports put the labels on a "Variable Information" sheet and the answer
+                # codes on a "Variable Values" sheet (batch 56, conformance E115), which must make one item.
+                first = next(x for x in items if x["variable"] == it["variable"])
+                if not first.get("options") and it.get("options"):
+                    first["options"] = it["options"]
+                    first["note"] = None
+                if not first.get("label") and it.get("label"):
+                    first["label"] = it["label"]
+                continue
             seen.add(it["variable"])
             items.append(it)
     if not items:
@@ -3252,7 +3537,9 @@ def _xlsform_items(grids):
         if not name:
             continue
         parts = kind.split()
-        options = lists.get(parts[-1], []) if parts[0] in ("select_one", "select_multiple") and len(parts) > 1 else []
+        # The list is the word after select_one / select_multiple; XLSForm allows " or_other" after it (batch 56,
+        # conformance X004: "select_one yn or_other" looked up a list named "or_other" and kept no answers).
+        options = lists.get(parts[1], []) if parts[0] in ("select_one", "select_multiple") and len(parts) > 1 else []
         items.append({
             "variable": name,
             "label": r[l].strip() or name,
@@ -5699,7 +5986,9 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             def _label_of_code(c):
                 if r_labels and c in r_labels:
                     return str(r_labels[c])
-                return str(c)
+                # An unlabelled code is shown as its one text form: 1, not 1.0 when the column also holds blanks
+                # (batch 55, conformance L3 D8).
+                return _code_text(c)
 
             rows = []
             for cat in cats:
@@ -5734,6 +6023,10 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             _label_to_codes: dict = {}
             for _cat in cats:
                 _label_to_codes.setdefault(_label_of_code(_cat), set()).add(_cat)
+                # A group saved before unlabelled codes were shown as 1 (not 1.0) named them "1.0": that spelling
+                # still finds the same code, so a saved NET or score keeps its members on rebuild (batch 55).
+                if not (r_labels and _cat in r_labels) and str(_cat) != _label_of_code(_cat):
+                    _label_to_codes.setdefault(str(_cat), set()).add(_cat)
 
             def _resolve_group_labels(label_set, g_label, which):
                 resolved = set()
@@ -5867,14 +6160,15 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                 and 0 in cat_k.values()
                 and 10 in cat_k.values()
             )
-            if is_nps_scale and dsg is not None:
-                d = np.zeros(n_rows, dtype=float)
+            d = np.zeros(n_rows, dtype=float)
+            if is_nps_scale:
                 for cat, k in cat_k.items():
                     sel = np.array([x == cat for x in ident_arr], dtype=bool)
                     if 0 <= k <= 6:
                         d[sel] = -1.0
                     elif k in (9, 10):
                         d[sel] = 1.0
+            if is_nps_scale and dsg is not None:
                 contrast_total = None
                 n_t, sw_t, neff_t = base_stats(r_valid)
                 if sw_t > 0:
@@ -5892,6 +6186,52 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
                     else:
                         contrast_cols.append(None)
                 q_single["npsContrastSe"] = {"total": contrast_total, "columns": contrast_cols}
+            if is_nps_scale and K >= 2:
+                # D2b (plan-auto-dashboards, NPS page "Compare groups"): each banner column's NPS against everyone
+                # else in the same banner variable (the complement, as every column test here), as a difference of
+                # two domain means of d (+1 promoter, -1 detractor, 0 passive), in points. Its variance is the
+                # domain contrast's Taylor-linearised variance: each case contributes w(d - mean of its side) /
+                # weighted base of its side, with opposite signs for the two sides, totalled by PSU within strata
+                # (the survey design when there is one; otherwise every case is its own PSU, the with-replacement
+                # estimator). Groups sharing PSUs are handled because both sides are totalled in one pass. The
+                # family of comparisons in a banner variable is corrected by Benjamini-Hochberg; the unadjusted p is
+                # kept. Not computed for a column, or its complement, with no weighted base.
+                d2 = d
+                dsg_nps = dsg if dsg is not None else _Design.build(df, None, None, n_rows)
+                tests = []
+                for k_col in range(K):
+                    g = r_valid & col_masks[k_col]
+                    rest = r_valid & block_any[block_of_col[k_col]] & ~col_masks[k_col]
+                    _, sw_g, _ = base_stats(g)
+                    _, sw_r, _ = base_stats(rest)
+                    if sw_g <= 0 or sw_r <= 0:
+                        tests.append(None)
+                        continue
+                    m_g = float((wv[g] * d2[g]).sum() / sw_g)
+                    m_r = float((wv[rest] * d2[rest]).sum() / sw_r)
+                    u = np.where(g, wv * (d2 - m_g) / sw_g, 0.0) - np.where(rest, wv * (d2 - m_r) / sw_r, 0.0)
+                    se_diff = math.sqrt(dsg_nps.var_totals(dsg_nps.totals(u)))
+                    diff = m_g - m_r
+                    z = diff / se_diff if se_diff > 0 else None
+                    tests.append({
+                        "block": block_of_col[k_col],
+                        "nps": round(m_g * 100, 4),
+                        "restNps": round(m_r * 100, 4),
+                        "difference": round(diff * 100, 4),
+                        "se": round(se_diff * 100, 4),
+                        "z": None if z is None else round(z, 4),
+                        "p": None if z is None else _p_two_sided(z),
+                    })
+                for b in sorted(set(block_of_col)):
+                    idx = [k for k in range(K) if block_of_col[k] == b and tests[k] is not None and tests[k]["p"] is not None]
+                    adj = _adjust_p([tests[k]["p"] for k in idx], "fdr") if idx else []
+                    for k, pa in zip(idx, adj):
+                        tests[k]["pAdjusted"] = pa
+                q_single["npsGroupTests"] = {
+                    "method": "design" if dsg is not None else "with_replacement",
+                    "correction": "fdr",
+                    "columns": tests,
+                }
             if raw.dtype.kind in "fiu" and _is_ordered_scale(rv, r_labels, getattr(meta, "variable_measure", None), raw):
                 # A coded scale (for example 1 to 5): mean, spread and range of the codes, don't know excluded.
                 # Not for nominal categories such as gender or province, where a mean of the codes means nothing.

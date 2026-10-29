@@ -20,6 +20,7 @@ import { spawnSync } from "node:child_process";
 import * as XLSX from "xlsx";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 import { PYTHON } from "./helpers/pythonEngine";
+import { CURRENT_DICTIONARY_VERSION } from "../dictionaryVersion";
 
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("@/lib/requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
@@ -175,7 +176,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     // The dictionary is rebuilt at the current version (DICTIONARY_VERSION) with four distinct values.
     expect(await numericFlag(doc, "big")).toBe(false);
     expect(await categories(doc, "big")).toEqual(counts);
-    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("15");
+    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe(String(CURRENT_DICTIONARY_VERSION));
     // Reading the file again while it is unreadable fails and keeps the earlier table, still withheld.
     const { extractAndStoreDocumentTables } = await import("../documentTables");
     const original = (await q("select storage_path from documents where id = $1", [doc]))[0].storage_path;

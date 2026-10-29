@@ -108,6 +108,7 @@ describe("CSM from raw files", () => {
       likelyToStay: "continue5",
       likelyToSwitch: "switch_0to10",
       drivers: ["company_driver_d01", "company_driver_d02", "company_driver_d03", "company_driver_d04", "company_driver_d05", "company_driver_d06"],
+      company: "company",
     });
     expect(r.questions).toEqual([]);
   });
@@ -137,6 +138,50 @@ describe("the packs' workbooks with their own Codebook and Labels sheets", () =>
       likelyToStay: "continue5",
       likelyToSwitch: "switch_0to10",
       drivers: ["company_driver_d01", "company_driver_d02", "company_driver_d03", "company_driver_d04", "company_driver_d05", "company_driver_d06"],
+      company: "company",
     });
+  });
+});
+
+// CB1 (Grant's BMW Master_Codebook, 29 October 2026): labels with no separator between question and brand
+// ("Prompted resolved recognition Toyota"). The words every member's label shares at its start and end are the
+// question; the rest is the brand, as written, multi-word names included.
+describe("brands named at the end of labels with no separator (Master_Codebook)", () => {
+  const BRANDS = ["Toyota", "BMW", "Land Rover", "Volkswagen", "Haval"];
+  const QUESTIONS = ["Prompted resolved recognition", "Consideration for next purchase", "Ever owned or driven"];
+  const PREFIX = ["aware", "consider", "owned"];
+  const variables: RoleVariable[] = PREFIX.flatMap((p, qi) => BRANDS.map((b, bi) => ({ name: `${p}_b0${bi + 1}`, label: `${QUESTIONS[qi]} ${b}`, numeric: true })));
+  it("five brands by code, named from the labels' varying words", () => {
+    expect(recogniseTracker(variables).frame?.brands).toEqual(BRANDS.map((label, i) => ({ code: `b0${i + 1}`, label })));
+  });
+  it("a shared word at the end (\"Toyota brand\") is the question, not part of the name", () => {
+    const vs = variables.map((v) => ({ ...v, label: `${v.label} brand` }));
+    expect(recogniseTracker(vs).frame?.brands.map((b) => b.label)).toEqual(BRANDS);
+  });
+  it("two items left with the same words are not names, and numbered codes alone are not brands: no list is guessed", () => {
+    const vs = variables.map((v) => ({ ...v, label: v.name.endsWith("b02") ? v.label.replace("BMW", "Toyota") : v.label }));
+    expect(recogniseTracker(vs).frame ?? null).toBeNull();
+  });
+});
+
+// D3b (Grant, 29 October 2026: "splitting by company, for example per bank"): the company each customer rates.
+describe("the company each customer rates (CSM files only)", () => {
+  const base = raw("banking_csm_relationship_workbook");
+  it("a second company question is asked about, never guessed", () => {
+    const extra: RoleVariable = { name: "prev_bank", label: "Previous main bank", numeric: true, valueLabels: { "1": "FNB", "2": "Absa", "3": "Capitec" } };
+    const r = recogniseTracker([...base, extra]);
+    expect(r.csm.company).toBeNull();
+    expect(r.questions.find((q) => q.id === "csm:company")?.text).toMatch(/company .*prev_bank/);
+  });
+  it("a rating that names the bank, a scale list or a yes/no flag is not the company", () => {
+    const vars: RoleVariable[] = [
+      ...base.filter((v) => v.name !== "company"),
+      { name: "bank_trust", label: "How much do you trust your bank", numeric: true, valueLabels: { "1": "Not at all", "2": "Somewhat", "3": "Completely" } },
+      { name: "bank_quality", label: "Your bank overall", numeric: true, valueLabels: { "1": "Poor", "2": "Good", "3": "Excellent" } },
+      { name: "has_bank", label: "Has a bank account", numeric: true, valueLabels: { "0": "No", "1": "Yes" } },
+    ];
+    const r = recogniseTracker(vars);
+    expect(r.csm.company).toBeNull();
+    expect(r.questions.some((q) => q.id === "csm:company")).toBe(false);
   });
 });

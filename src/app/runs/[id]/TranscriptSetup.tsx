@@ -1,5 +1,6 @@
 "use client";
 
+import { rebaseSetupEdit } from "@/lib/dataSetupRebase";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction, withdrawTranscriptSetupAction } from "@/lib/codingAnalysisActions";
@@ -590,6 +591,21 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
     setWaveText(choice.wave ?? "");
   }
 
+  // The table was built the old way: read it again with the new layout.
+  async function readAgainForLayout() {
+    setLayoutChanged(true);
+    const rr = await readDataFileAction(runId, row.documentId);
+    if (rr.ok) {
+      setLayoutChanged(false);
+      router.refresh();
+    } else {
+      setReadError(rr.error);
+      // The stored table was read the old way and the file cannot be read the new way: refresh so the
+      // Preview tab withholds that table with the reason and its recovery, as it will after a reload.
+      router.refresh();
+    }
+  }
+
   // Changing the structure puts the file back to "needs review": what was
   // checked is no longer what will be read.
   async function save(next: DataSetup) {
@@ -602,25 +618,29 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
     const r = await saveDataSetupAction(runId, row.documentId, next, { kind: "value", setup: previous });
     setPending(false);
     if (r.ok) {
-      if (layoutDiffers) {
-        // The table was built the old way: read it again with the new layout.
-        setLayoutChanged(true);
-        const rr = await readDataFileAction(runId, row.documentId);
-        if (rr.ok) {
-          setLayoutChanged(false);
-          router.refresh();
-        } else {
-          setReadError(rr.error);
-          // The stored table was read the old way and the file cannot be read the new way: refresh so the
-          // Preview tab withholds that table with the reason and its recovery, as it will after a reload.
-          router.refresh();
-        }
-      }
+      if (layoutDiffers) await readAgainForLayout();
     } else if (r.conflict) {
-      // This file's set-up changed elsewhere (another save still in flight, or another
-      // tab) while this edit was being made. Show what's actually saved rather than the
-      // edit that lost the race, so the two don't keep clobbering each other silently.
-      setChoice(r.current ?? previous);
+      // This file's set-up changed elsewhere (another save still in flight, or another tab) while this edit was
+      // being made. When that save changed none of the fields this edit changed (the first-view acceptance
+      // landing as a wave label is typed), the edit is applied once more on top of what is saved, checked against
+      // it; otherwise, or when that also meets a change, what is saved is shown with the reason, never the edit
+      // that lost the race over another's work.
+      const rebased = r.current ? rebaseSetupEdit(previous, next, r.current) : null;
+      if (rebased && r.current) {
+        setChoice(rebased);
+        setPending(true);
+        const again = await saveDataSetupAction(runId, row.documentId, rebased, { kind: "value", setup: r.current });
+        setPending(false);
+        if (again.ok) {
+          if (rebased.layout !== r.current.layout) await readAgainForLayout();
+          return;
+        }
+        if (!again.conflict) {
+          setChoice(r.current);
+          return setError(again.error);
+        }
+        setChoice(again.current ?? r.current);
+      } else setChoice(r.current ?? previous);
       setError("This file's set-up changed elsewhere just now; showing the latest version. Make your change again if it's still needed.");
     } else setError(r.error);
   }

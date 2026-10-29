@@ -1,0 +1,9453 @@
+[
+ {
+  "id": "E001",
+  "title": "wide codebook, CSV, standard header",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading: CSV read by the engine",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E002",
+  "title": "wide codebook, XLSX",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading: Excel",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E003",
+  "title": "wide codebook, TSV",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading: TSV",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E004",
+  "title": "wide codebook, tab-delimited .txt",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading: delimited text",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E005",
+  "title": "wide codebook, semicolon-delimited .csv (answer lists hold commas)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Delimiter: documents take the candidate that splits the most rows",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E006",
+  "title": "wide codebook, pipe-delimited .txt",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Delimiter",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E007",
+  "title": "wide codebook, CSV with UTF-8 byte-order mark",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Encoding",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E008",
+  "title": "wide codebook, CSV in UTF-16 with BOM",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Encoding",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E009",
+  "title": "wide codebook, Windows-1252 CSV (curly apostrophe, accents)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Encoding",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Café visit",
+    "opts": [
+     [
+      "1",
+      "Don’t know"
+     ],
+     [
+      "2",
+      "Señor"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E010",
+  "title": "wide codebook, CSV with CRLF line ends",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Quoting",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E011",
+  "title": "JSON list of variable objects, values as {code: label}",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md JSON: a list of variable objects",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E012",
+  "title": "JSON {variables: [...]}, values as [{value, label}] with numeric values",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md JSON: values as [{value, label}]",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E013",
+  "title": "JSON object keyed by variable name, values as [[code, label]]",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md JSON: object keyed by variable name",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E014",
+  "title": "JSON Frictionless Table Schema (fields, title, categories)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md JSON: fields (Frictionless)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E015",
+  "title": "JSON keyed by name with a plain label string",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md JSON: or a label",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E016",
+  "title": "JSON codes '01' and '1' are two codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F02/B36-F01 codes as written",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "L",
+    "opts": [
+     [
+      "01",
+      "Refused"
+     ],
+     [
+      "1",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E017",
+  "title": "JSON large integer code 9007199254740993 not rounded",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F02 large codes",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "L",
+    "opts": [
+     [
+      "9007199254740993",
+      "Big"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E018",
+  "title": "JSON numeric code 1.0 is the code 1 (a number, not text)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md _cb_code: a cell that is a number is written as that number",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "L",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E019",
+  "title": "JSON negative and decimal codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md codes as written",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "L",
+    "opts": [
+     [
+      "-1",
+      "Not asked"
+     ],
+     [
+      "1.5",
+      "Half"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E020",
+  "title": "JSON that is not JSON is refused",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md A file with no codebook table is refused",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "This JSON codebook could not be read (Expecting value: line 1 column 16 (char 15))."
+ },
+ {
+  "id": "E021",
+  "title": "JSON with no variables is refused, naming what was expected",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md refused with what was expected",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "No variables were found in this JSON codebook. Expected a list of variables (each with a name, a label and optionally its values), or an object keyed by variable name."
+ },
+ {
+  "id": "E022",
+  "title": "JSON duplicate variable: first description wins",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md The first description of a variable wins",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "First",
+    "opts": [
+     [
+      "1",
+      "A"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E023",
+  "title": "JSON section/group key kept as section",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md JSON shapes (section)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "L",
+    "opts": [],
+    "unread": false,
+    "section": "Demographics",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E030",
+  "title": "long codebook, variable repeated on each row (CSV)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md One row per value ... read by its header names",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfaction",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "99",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E031",
+  "title": "long codebook, variable written once then blank (CSV)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md with the variable repeated or blank",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfaction",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "99",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E032",
+  "title": "long codebook, XLSX with numeric code cells (1, 2, 98, -1, 1.5)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md codes as written; an Excel number cell is that number",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "L",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "-1",
+      "Not asked"
+     ],
+     [
+      "1.5",
+      "Half"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E033",
+  "title": "long codebook, header Name/Code/Label (Label is the value label)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md long layout by header names",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E034",
+  "title": "long codebook, leading-zero codes as text",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md B36-F01 codes as written",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "",
+    "opts": [
+     [
+      "01",
+      "Refused"
+     ],
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "001",
+      "Other"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E035",
+  "title": "long codebook under two title rows",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F07 title rows never variables",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfaction",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "99",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E036",
+  "title": "long codebook, columns in a different order (Value label, Value, Variable label, Variable)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md read by header names, not position",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfaction",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "99",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E037",
+  "title": "long codebook with no header row",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md (headerless long layout not described)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfaction",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "99",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E038",
+  "title": "long codebook, header 'Variable Name, Value Code, Value Label'",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md long layout read by header names; requirement 1: unknown never silently empty",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Agree"
+     ],
+     [
+      "2",
+      "Disagree"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E039",
+  "title": "long codebook in XLSX with the variable cell merged down its value rows",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md variable repeated or blank",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E040",
+  "title": "long codebook, SPSS DISPLAY DICTIONARY 'Variable Values' export (blank first header cell)",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1 and 7; common SPSS export shape",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "",
+    "opts": [
+     [
+      "1",
+      "Agree"
+     ],
+     [
+      "2",
+      "Disagree"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E041",
+  "title": "long codebook, variable listed with no codes (empty value cell) keeps no options",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md long layout",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E050",
+  "title": "wide codebook with no header row (3+ rows, name column by content)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Without such a header, the column of name-like cells",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E051",
+  "title": "wide codebook with no header and only two rows is refused",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md three or more rows are needed without a header",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "No codebook table was found in this file: a column of variable names with their labels (and optionally their answer codes, such as 1=Yes, 2=No), or one row per answer code. If it is a questionnaire or a document, upload it as that type, or as a Word or PDF codebook."
+ },
+ {
+  "id": "E052",
+  "title": "one variable under a 'VARIABLE NAME, VARIABLE LABEL' header is read",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md B36-F05 / IS-F07",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q_2028",
+    "label": "Satisfaction",
+    "opts": [
+     [
+      "1",
+      "Low"
+     ],
+     [
+      "2",
+      "High"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E053",
+  "title": "two title rows above the header are not variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F07",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E054",
+  "title": "seven title rows above the header: header and titles are not variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F07: the header row, and any title rows above it, are never variables",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E055",
+  "title": "header written the wrong way round (IGS: 'VARIABLE LABEL' over the names)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F05 columns",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E056",
+  "title": "columns in another order: Label, Values, Variable",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md the names column is the one a header row names",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E057",
+  "title": "header 'Name, Description, Codes'",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md columns by header",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E058",
+  "title": "header 'Question ID, Question text, Response options'",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md columns by header",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E059",
+  "title": "unrecognised header 'Varname, Description, Value labels' is not read as a variable",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F07: the header row is never a variable",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E060",
+  "title": "unrecognised header 'Var, Lab, Vals' is not read as a variable",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F07",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E061",
+  "title": "section heading rows (one filled cell, not name-like) become sections",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md A row with one filled cell is a section heading",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": "Section A: Service",
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfied",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": "Section A: Service",
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": "Section B: About you",
+    "routing": null
+   },
+   {
+    "v": "sex",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": "Section B: About you",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E062",
+  "title": "a one-word upper-case section heading ('DEMOGRAPHICS') between variables",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "clause": "claude/codebook-import.md 'One filled cell that is not name-like is a section heading' (silent on name-like headings)",
+  "severity": null,
+  "detail": "names: expected ['q1', 'age', 'sex'] got ['q1', 'DEMOGRAPHICS', 'age', 'sex']; age.section: expected 'DEMOGRAPHICS' got None; sex.section: expected 'DEMOGRAPHICS' got None",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "DEMOGRAPHICS",
+    "label": "",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "sex",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E063",
+  "title": "one name cell listing several names 'white, black, asian' gives each the row's label and values",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md a name cell listing several names gives each the row's label and values",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "white",
+    "label": "Race (summary)",
+    "opts": [
+     [
+      "0",
+      "No"
+     ],
+     [
+      "1",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "black",
+    "label": "Race (summary)",
+    "opts": [
+     [
+      "0",
+      "No"
+     ],
+     [
+      "1",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "asian",
+    "label": "Race (summary)",
+    "opts": [
+     [
+      "0",
+      "No"
+     ],
+     [
+      "1",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E064",
+  "title": "a header naming the label column takes it even when a notes column is longer",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md The label column is the header's",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfied",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Return",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E070",
+  "title": "'1=Yes, 2=No, 9=Don't know' (apostrophe in label)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E071",
+  "title": "spaces around '=' and before commas",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E072",
+  "title": "no space after commas",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E073",
+  "title": "trailing comma",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E074",
+  "title": "'1=Yes; 2=No' semicolon-separated list",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md unread lists; semicolons not described",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E075",
+  "title": "one code per line inside the cell ('1=Yes' newline '2=No')",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md unread lists; line-separated lists not described",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": true,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E076",
+  "title": "'1=Yes 2=No' without separators is an unread list",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04 '1=Yes 2=No' is an unread list",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": true,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E077",
+  "title": "'=Yes' is an unread list",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": true,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E078",
+  "title": "double-quoted text codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "A",
+      "Agree"
+     ],
+     [
+      "D",
+      "Disagree"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E079",
+  "title": "single-quoted text codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "A",
+      "Agree"
+     ],
+     [
+      "D",
+      "Disagree"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E080",
+  "title": "quoted labels holding commas",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes, often"
+     ],
+     [
+      "2",
+      "No, never"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E081",
+  "title": "leading-zero codes kept as written",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "01",
+      "Yes"
+     ],
+     [
+      "02",
+      "No"
+     ],
+     [
+      "10",
+      "Other"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E082",
+  "title": "'01' and '1' are two codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F02",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "01",
+      "Refused"
+     ],
+     [
+      "1",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E083",
+  "title": "large integer code not rounded",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F02",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "9007199254740993",
+      "Big"
+     ],
+     [
+      "1",
+      "Small"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E084",
+  "title": "negative codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "-1",
+      "Not asked"
+     ],
+     [
+      "-9",
+      "Refused"
+     ],
+     [
+      "1",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E085",
+  "title": "decimal codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "0.5",
+      "Half"
+     ],
+     [
+      "1.5",
+      "One and a half"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E086",
+  "title": "exponent spelling kept as its own code",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04 '1e0'",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1e0",
+      "One"
+     ],
+     [
+      "2",
+      "Two"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E087",
+  "title": "missing/non-answer codes 98, 99 kept as answer codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "98",
+      "Don't know"
+     ],
+     [
+      "99",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E088",
+  "title": "text codes DK, RF, Y",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "DK",
+      "Don't know"
+     ],
+     [
+      "RF",
+      "Refused"
+     ],
+     [
+      "Y",
+      "Yes"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E089",
+  "title": "text codes with _ and -",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "A_B",
+      "Yes"
+     ],
+     [
+      "C-D",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E090",
+  "title": "unquoted labels holding commas and an apostrophe",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Answer lists (_cb_list)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes, I agree"
+     ],
+     [
+      "2",
+      "No, I don't"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E091",
+  "title": "label holding '=' ('Score >= 5')",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md a label may hold a comma but not ', <code>='",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": true,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E092",
+  "title": "'as is' is not a list (no options, not unread)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Text without '=' ('as is') is not a list",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E093",
+  "title": "'1 thru 58' gives no answer list and is not unread",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md values written another way ('1 thru 58') give no answer list",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E094",
+  "title": "range '0-7' gives no answer list",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md values written another way",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E095",
+  "title": "SPSS Variable View style '{1, Yes}, {2, No}'",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1: unknown never silently empty",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E096",
+  "title": "'1. Yes, 2. No' (dot instead of '=')",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E097",
+  "title": "'1: Yes, 2: No' (colon instead of '=')",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E098",
+  "title": "'1 Yes, 2 No' (no separator)",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Question one",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Question two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E100",
+  "title": "names with spaces, dots, underscore, CJK, digits kept as written",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F05 names kept exactly as written",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Age years",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1.a",
+    "label": "Part a",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "_Q1",
+    "label": "Underscore",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "回答",
+    "label": "Answer",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "123",
+    "label": "Numeric name",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q 1",
+    "label": "Spaced",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E101",
+  "title": "names with leading/trailing spaces are trimmed as the data reader trims",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Names: trimmed",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "One",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Three",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E102",
+  "title": "duplicate name in one sheet: first description wins",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md The first description of a variable wins",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "First",
+    "opts": [
+     [
+      "1",
+      "A"
+     ],
+     [
+      "2",
+      "B"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E103",
+  "title": "names differing only in case (Q1, q1) are two variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md names kept exactly as written",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Q1",
+    "label": "Upper",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Lower",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E104",
+  "title": "XLSX numeric name cell 123 is the name '123'",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Excel number cells as names are written without '.0'",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "123",
+    "label": "Numeric name",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E105",
+  "title": "a range in a name cell 'Q5_1 to Q5_8'",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "clause": "claude/codebook-import.md names kept as written (IS-F05) vs. a range of names",
+  "severity": null,
+  "detail": "names: expected ['Q4', 'Q5_1', 'Q5_2', 'Q5_3', 'Q5_4', 'Q5_5', 'Q5_6', 'Q5_7', 'Q5_8', 'Q6'] got ['Q4', 'Q5_1 to Q5_8', 'Q6']; Q5_1: missing; Q5_2: missing; Q5_3: missing; Q5_4: missing; Q5_5: missing; Q5_6: missing; Q5_7: missing; Q5_8: missing",
+  "actual": [
+   {
+    "v": "Q4",
+    "label": "Four",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_1 to Q5_8",
+    "label": "Opinion of candidates",
+    "opts": [
+     [
+      "1",
+      "Favourable"
+     ],
+     [
+      "2",
+      "Unfavourable"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q6",
+    "label": "Six",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E110",
+  "title": "variables sheet then values sheet: labels from one, answer codes from the other",
+  "kind": "question",
+  "status": "QUESTION-agrees",
+  "clause": "claude/codebook-import.md 'The first description of a variable wins' vs. a two-sheet dictionary",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E111",
+  "title": "values sheet first, then variables sheet",
+  "kind": "question",
+  "status": "QUESTION-agrees",
+  "clause": "claude/codebook-import.md first description wins",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E112",
+  "title": "a notes sheet of prose beside the codebook sheet is skipped and named",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md sheets that are not codebook tables are named in skippedSheets",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E113",
+  "title": "the same variable on two sheets: first sheet's description wins",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md The first description of a variable wins",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "From A",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Two",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Three",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E114",
+  "title": "a study-information sheet of key/value rows (Project, Fieldwork, Sample)",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "clause": "claude/codebook-import.md three rows without a header make a codebook",
+  "severity": null,
+  "detail": "names: expected ['id', 'q1', 'q2', 'region'] got ['Project', 'Fieldwork', 'Sample', 'Method', 'id', 'q1', 'q2', 'region']; sheets: expected ['Codebook'] got ['Study', 'Codebook']; skippedSheets: expected ['Study'] got []",
+  "actual": [
+   {
+    "v": "Project",
+    "label": "Customer survey 2026",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fieldwork",
+    "label": "1 to 20 May 2026",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Sample",
+    "label": "1,000 adults",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Method",
+    "label": "Online panel",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "id",
+    "label": "Respondent identifier",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q1",
+    "label": "Would you recommend us to a friend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Overall satisfaction with the service",
+    "opts": [
+     [
+      "1",
+      "Very satisfied"
+     ],
+     [
+      "2",
+      "Satisfied"
+     ],
+     [
+      "3",
+      "Dissatisfied"
+     ],
+     [
+      "4",
+      "Very dissatisfied"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "region",
+    "label": "Region of residence",
+    "opts": [
+     [
+      "1",
+      "North"
+     ],
+     [
+      "2",
+      "South"
+     ],
+     [
+      "3",
+      "East"
+     ],
+     [
+      "4",
+      "West"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E115",
+  "title": "SPSS DISPLAY DICTIONARY export: 'Variable Information' + 'Variable Values' sheets",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1 and 7; SPSS export shape",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E120",
+  "title": "multiple-response set column: variables read correctly",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Q13_1",
+    "label": "Sources: Local TV",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q13_2",
+    "label": "Sources: Newspapers",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q13_3",
+    "label": "Sources: Podcasts",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q14",
+    "label": "Direction of the country",
+    "opts": [
+     [
+      "1",
+      "Right"
+     ],
+     [
+      "2",
+      "Wrong"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E121",
+  "title": "multiple-response set column: the set ($Q13 = Q13_1..Q13_3) is kept on the items",
+  "kind": "feature",
+  "status": "GAP-supported",
+  "clause": "feature gap: multiple-response sets in a codebook",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Q13_1",
+    "label": "Sources: Local TV",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q13_2",
+    "label": "Sources: Newspapers",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q13_3",
+    "label": "Sources: Podcasts",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q14",
+    "label": "Direction of the country",
+    "opts": [
+     [
+      "1",
+      "Right"
+     ],
+     [
+      "2",
+      "Wrong"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E122",
+  "title": "multiple-response sets sheet ('$Q13', 'Q13_1 Q13_2 Q13_3') is not read as variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md sheets that are not codebook tables are skipped",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Q13_1",
+    "label": "Sources: Local TV",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q13_2",
+    "label": "Sources: Newspapers",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q13_3",
+    "label": "Sources: Podcasts",
+    "opts": [
+     [
+      "1",
+      "Selected"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q14",
+    "label": "Direction of the country",
+    "opts": [
+     [
+      "1",
+      "Right"
+     ],
+     [
+      "2",
+      "Wrong"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E123",
+  "title": "missing-values column: answers still read with their codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "8",
+      "Don't know"
+     ],
+     [
+      "9",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Income band",
+    "opts": [
+     [
+      "1",
+      "Low"
+     ],
+     [
+      "2",
+      "High"
+     ],
+     [
+      "-1",
+      "Not asked"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Return",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E124",
+  "title": "missing-values column: declared missing codes are kept on the items",
+  "kind": "feature",
+  "status": "GAP-unsupported",
+  "clause": "feature gap: declared missing codes in a codebook",
+  "severity": null,
+  "detail": "q1: no 'missing' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); q2: no 'missing' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable'])",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "8",
+      "Don't know"
+     ],
+     [
+      "9",
+      "Refused"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Income band",
+    "opts": [
+     [
+      "1",
+      "Low"
+     ],
+     [
+      "2",
+      "High"
+     ],
+     [
+      "-1",
+      "Not asked"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Return",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E125",
+  "title": "grid Q5_1..Q5_8 sharing a stem: eight items, each with its own label and codes",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md each variable is an item",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Q5_1",
+    "label": "Q5_1 Is your opinion of each candidate favorable or unfavorable? - Thurmond",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_2",
+    "label": "Q5_2 Is your opinion of each candidate favorable or unfavorable? - Villaraigosa",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_3",
+    "label": "Q5_3 Is your opinion of each candidate favorable or unfavorable? - Porter",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_4",
+    "label": "Q5_4 Is your opinion of each candidate favorable or unfavorable? - Becerra",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_5",
+    "label": "Q5_5 Is your opinion of each candidate favorable or unfavorable? - Mahan",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_6",
+    "label": "Q5_6 Is your opinion of each candidate favorable or unfavorable? - Steyer",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_7",
+    "label": "Q5_7 Is your opinion of each candidate favorable or unfavorable? - Bianco",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_8",
+    "label": "Q5_8 Is your opinion of each candidate favorable or unfavorable? - Hilton",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E126",
+  "title": "grid Q5_1..Q5_8 grouped as one grid question",
+  "kind": "known",
+  "status": "KNOWN-absent",
+  "clause": "planned batch 53 (grid detection)",
+  "severity": null,
+  "detail": "Q5_1: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_2: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_3: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_4: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_5: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', ",
+  "actual": [
+   {
+    "v": "Q5_1",
+    "label": "Q5_1 Is your opinion of each candidate favorable or unfavorable? - Thurmond",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_2",
+    "label": "Q5_2 Is your opinion of each candidate favorable or unfavorable? - Villaraigosa",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_3",
+    "label": "Q5_3 Is your opinion of each candidate favorable or unfavorable? - Porter",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_4",
+    "label": "Q5_4 Is your opinion of each candidate favorable or unfavorable? - Becerra",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_5",
+    "label": "Q5_5 Is your opinion of each candidate favorable or unfavorable? - Mahan",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_6",
+    "label": "Q5_6 Is your opinion of each candidate favorable or unfavorable? - Steyer",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_7",
+    "label": "Q5_7 Is your opinion of each candidate favorable or unfavorable? - Bianco",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Q5_8",
+    "label": "Q5_8 Is your opinion of each candidate favorable or unfavorable? - Hilton",
+    "opts": [
+     [
+      "1",
+      "Favorable"
+     ],
+     [
+      "2",
+      "Unfavorable"
+     ],
+     [
+      "3",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E127",
+  "title": "values across columns: Variable, Label, 1, 2, 9 (codes as column headers)",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1 and 7 (values across columns not described)",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfied",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Return",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ],
+     [
+      "9",
+      "Don't know"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E128",
+  "title": "values across columns in code/label pairs: Code1, Label1, Code2, Label2",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1 and 7",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Satisfied",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Return",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E129",
+  "title": "answer codes one per row under a wide variable row (Excel 'indented' codebook)",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1 and 7",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Gender",
+    "opts": [
+     [
+      "1",
+      "Male"
+     ],
+     [
+      "2",
+      "Female"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Return",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "E130",
+  "title": "empty CSV is refused",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md A file with no codebook table is refused",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "No codebook table was found in this file: a column of variable names with their labels (and optionally their answer codes, such as 1=Yes, 2=No), or one row per answer code. If it is a questionnaire or a document, upload it as that type, or as a Word or PDF codebook."
+ },
+ {
+  "id": "E131",
+  "title": "header-only CSV is refused",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "No codebook table was found in this file: a column of variable names with their labels (and optionally their answer codes, such as 1=Yes, 2=No), or one row per answer code. If it is a questionnaire or a document, upload it as that type, or as a Word or PDF codebook."
+ },
+ {
+  "id": "E132",
+  "title": "a questionnaire's prose saved as CSV is refused",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "No codebook table was found in this file: a column of variable names with their labels (and optionally their answer codes, such as 1=Yes, 2=No), or one row per answer code. If it is a questionnaire or a document, upload it as that type, or as a Word or PDF codebook."
+ },
+ {
+  "id": "E133",
+  "title": "CSV with an unclosed quotation mark is refused with where",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md B36-F03 (one-reader quoting)",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "This file's quoting is not valid near line 4 (unexpected end of data), so it was not read: a quotation mark is not closed, or text follows a closing one. Correct it and read the file again."
+ },
+ {
+  "id": "E134",
+  "title": "a PDF sent to the table codebook reader is refused naming the type",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Word/PDF codebooks are read by the model",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "A codebook is read as a table from CSV, text, Excel or JSON files, not .pdf files."
+ },
+ {
+  "id": "E135",
+  "title": "bytes that are neither UTF-8, UTF-16 nor Windows-1252 text are refused",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/one-reader-import.md Encoding: refused, naming the byte",
+  "severity": null,
+  "detail": "",
+  "actual": null,
+  "error": "This file is neither UTF-8 nor Windows-1252 text (byte 25 cannot be read). Save it again as \"CSV UTF-8\" and upload it again; nothing was imported."
+ },
+ {
+  "id": "X001",
+  "title": "XLSForm: questions, choice lists, group as section, relevant kept, notes/metadata skipped",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md XLSForm read without the model",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": "Service",
+    "routing": null
+   },
+   {
+    "v": "q2",
+    "label": "Which brands have you used?",
+    "opts": [
+     [
+      "a",
+      "Alpha"
+     ],
+     [
+      "b",
+      "Beta"
+     ]
+    ],
+    "unread": false,
+    "section": "Service",
+    "routing": "${q1} = '1'"
+   },
+   {
+    "v": "age",
+    "label": "Age in years",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "X002",
+  "title": "XLSForm with 'label::English (en)' columns",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md XLSForm",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "q3",
+    "label": "Any comments?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "X003",
+  "title": "XLSForm select_one naming a list missing from choices",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "clause": "requirement 1: unknown never silently empty",
+  "severity": null,
+  "detail": "q1: expected flagged unread with no options; got [] unread=False",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Would you recommend us?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "X004",
+  "title": "XLSForm 'select_one yn or_other' keeps the yn list",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md its choice list as options",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "q1",
+    "label": "Recommend?",
+    "opts": [
+     [
+      "1",
+      "Yes"
+     ],
+     [
+      "2",
+      "No"
+     ]
+    ],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "X005",
+  "title": "a spreadsheet questionnaire that is not an XLSForm is returned as text for the model reader",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Any other spreadsheet's sheets are turned into text, row by row",
+  "severity": null,
+  "detail": "",
+  "actual": [],
+  "error": null
+ },
+ {
+  "id": "IGS01",
+  "title": "IGS codebook: 266 variables in order; header, blank and section rows are not variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F05 (Berkeley IGS layout), IS-F07",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS02",
+  "title": "IGS codebook: sections, labels, answer lists and non-lists by hand reading",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md Reading",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS03",
+  "title": "IGS codebook: Q3 ballot, 62 codes with labels holding commas and quotation marks",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04 unquoted label runs to the next ', <code>='",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS04",
+  "title": "IGS codebook: row 39 'white, black, latino, asian, natam, other' gives six variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md a name cell listing several names",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS05",
+  "title": "IGS codebook: row 39 values '1=white and no other race; Black, ...' (a description, not an answer list)",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "clause": "claude/codebook-import.md _cb_list reads it as one code '1'",
+  "severity": null,
+  "detail": "white: expected flagged unread with no options; got [('1', 'white and no other race; Black, Latino, Asian/Pac Isl., Native American; other/refused')] unread=False; black: expected flagged unread with no options; got [('1', 'white and no other race; Black, Latino, Asian/Pac Isl., Native American; other/refused')] unread=False; latino: expected flagged unread with no options; got [('1', 'white and no other race; Black, Latino, Asian/Pac Isl., Native American; other/refused')] unread=False; asian: expected flagged unread with no options; got [('1', 'white and no other race; Black, Latino, Asian/P",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS06",
+  "title": "IGS codebook: grid Q5_1..Q5_8 read as eight items with the candidate in each label",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md each variable is an item",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS07",
+  "title": "IGS codebook: grid 5A (Q5_1..Q5_8) grouped as one grid question",
+  "kind": "known",
+  "status": "KNOWN-absent",
+  "clause": "planned batch 53",
+  "severity": null,
+  "detail": "Q5_1: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_2: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_3: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_4: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Q5_5: no 'grid' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', ",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS08",
+  "title": "IGS codebook as CSV (same cells) reads the same 266 variables",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "cross-format agreement",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "IGS09",
+  "title": "IGS codebook: the read is complete (no unread answer lists)",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F04 incompleteItems",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "AGE",
+    "label": "Age (from PDI listing)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "party_reg",
+    "label": "Party registration",
+    "opts": [
+     [
+      "1",
+      "Democrat"
+     ],
+     [
+      "2",
+      "No Party Preference"
+     ],
+     [
+      "3",
+      "Other Party"
+     ],
+     [
+      "4",
+      "Republican"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "CNTY",
+    "label": "CNTY (county)",
+    "opts": [],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "SEX",
+    "label": "sex (from PDI listing)",
+    "opts": [
+     [
+      "1",
+      "Female"
+     ],
+     [
+      "2",
+      "Male"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F12",
+    "label": "F12 (2018 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F13",
+    "label": "F13 (2018 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F14",
+    "label": "F14 (2020 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F15",
+    "label": "F15 (2020 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F16",
+    "label": "F16 (2021 recall election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F17",
+    "label": "F17 (2022 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F18",
+    "label": "F18 (2022 general election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   },
+   {
+    "v": "F19",
+    "label": "F19 (2024 primary election voting)",
+    "opts": [
+     [
+      "1",
+      "Absentee voter"
+     ],
+     [
+      "2",
+      "Non-voter"
+     ],
+     [
+      "3",
+      "Precinct voter"
+     ]
+    ],
+    "unread": false,
+    "section": "ESSENTIAL VARIABLES FROM PDI RECORD",
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "FX01",
+  "title": "Findex map: the header row 'Indicator Name | Filter | Question | Key' is not a variable",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F07: the header row is never a variable",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Fin1",
+    "label": "An account can be used to keep or save money, to make or receive payments, or to receive wages, government payments, or financial help. Do you currently have an account at a bank, [insert all financial institutions], or similar formal financial institution? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin2",
+    "label": "[Insert local terminology for a/an ATM/debit card] is a card connected to an account that allows you to withdraw money or buy things, and the money is taken out of that account right away. Do you, personally, have [insert local terminology for a/an ATM/debit card]? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin3",
+    "label": "Thinking ONLY about your account at a bank or similar financial institution, in the past 12 months, did you use a card or a mobile phone to make payments, buy things, or to send or receive money using your account? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin4",
+    "label": "Thinking about the first account you opened, did you open it to receive a wage or salary payment or money from the government? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin5",
+    "label": "In a typical month, how often is money deposited into your personal account(s)? This includes cash or electronic deposits, or any time money is put into your account. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin6",
+    "label": "In a typical month, how often is money sent from or taken out of your personal account(s)? This includes cash withdrawals or electronic payments. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin7",
+    "label": "In the past 12 months, has money been put into or taken out of your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin8",
+    "label": "Is there typically any money kept in your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9A",
+    "label": "In the past 12 months, have you received any information about your account balance from your bank, such as through email, SMS, or a text message on your mobile phone?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9B",
+    "label": "In the past 12 months, have you personally checked the balance of the account(s) you have at a bank or similar financial institution using a mobile phone or computer? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin10",
+    "label": "A credit card is a card that allows you to borrow money in order to make payments or buy things, and you can pay the balance off later. Do you, personally, have a credit card?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin11_0",
+    "label": "Do you have a card that you can add money to and use to send and receive money or make purchases at a variety of places?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "FX02",
+  "title": "Findex map: the legend tables (Key, 1..8 / 1..4) and the note rows are not variables",
+  "kind": "question",
+  "status": "QUESTION-differs",
+  "clause": "contracts silent on footer tables; hand reading: a legend, not variables",
+  "severity": null,
+  "detail": "read as variables: ['Key', '1', '2', '3', '4', '5', '6', '7', '8']",
+  "actual": [
+   {
+    "v": "Fin1",
+    "label": "An account can be used to keep or save money, to make or receive payments, or to receive wages, government payments, or financial help. Do you currently have an account at a bank, [insert all financial institutions], or similar formal financial institution? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin2",
+    "label": "[Insert local terminology for a/an ATM/debit card] is a card connected to an account that allows you to withdraw money or buy things, and the money is taken out of that account right away. Do you, personally, have [insert local terminology for a/an ATM/debit card]? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin3",
+    "label": "Thinking ONLY about your account at a bank or similar financial institution, in the past 12 months, did you use a card or a mobile phone to make payments, buy things, or to send or receive money using your account? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin4",
+    "label": "Thinking about the first account you opened, did you open it to receive a wage or salary payment or money from the government? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin5",
+    "label": "In a typical month, how often is money deposited into your personal account(s)? This includes cash or electronic deposits, or any time money is put into your account. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin6",
+    "label": "In a typical month, how often is money sent from or taken out of your personal account(s)? This includes cash withdrawals or electronic payments. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin7",
+    "label": "In the past 12 months, has money been put into or taken out of your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin8",
+    "label": "Is there typically any money kept in your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9A",
+    "label": "In the past 12 months, have you received any information about your account balance from your bank, such as through email, SMS, or a text message on your mobile phone?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9B",
+    "label": "In the past 12 months, have you personally checked the balance of the account(s) you have at a bank or similar financial institution using a mobile phone or computer? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin10",
+    "label": "A credit card is a card that allows you to borrow money in order to make payments or buy things, and you can pay the balance off later. Do you, personally, have a credit card?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin11_0",
+    "label": "Do you have a card that you can add money to and use to send and receive money or make purchases at a variety of places?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "FX03",
+  "title": "Findex map: the 157 question names in order (105 Findex, 52 Connectivity), trimmed, inner spaces kept",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md IS-F05 names as written; one-reader names trimmed",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Fin1",
+    "label": "An account can be used to keep or save money, to make or receive payments, or to receive wages, government payments, or financial help. Do you currently have an account at a bank, [insert all financial institutions], or similar formal financial institution? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin2",
+    "label": "[Insert local terminology for a/an ATM/debit card] is a card connected to an account that allows you to withdraw money or buy things, and the money is taken out of that account right away. Do you, personally, have [insert local terminology for a/an ATM/debit card]? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin3",
+    "label": "Thinking ONLY about your account at a bank or similar financial institution, in the past 12 months, did you use a card or a mobile phone to make payments, buy things, or to send or receive money using your account? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin4",
+    "label": "Thinking about the first account you opened, did you open it to receive a wage or salary payment or money from the government? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin5",
+    "label": "In a typical month, how often is money deposited into your personal account(s)? This includes cash or electronic deposits, or any time money is put into your account. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin6",
+    "label": "In a typical month, how often is money sent from or taken out of your personal account(s)? This includes cash withdrawals or electronic payments. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin7",
+    "label": "In the past 12 months, has money been put into or taken out of your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin8",
+    "label": "Is there typically any money kept in your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9A",
+    "label": "In the past 12 months, have you received any information about your account balance from your bank, such as through email, SMS, or a text message on your mobile phone?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9B",
+    "label": "In the past 12 months, have you personally checked the balance of the account(s) you have at a bank or similar financial institution using a mobile phone or computer? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin10",
+    "label": "A credit card is a card that allows you to borrow money in order to make payments or buy things, and you can pay the balance off later. Do you, personally, have a credit card?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin11_0",
+    "label": "Do you have a card that you can add money to and use to send and receive money or make purchases at a variety of places?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "FX04",
+  "title": "Findex map: each label is the Question column",
+  "kind": "contract",
+  "status": "PASS",
+  "clause": "claude/codebook-import.md the label column is the header's, else the longest remaining text",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Fin1",
+    "label": "An account can be used to keep or save money, to make or receive payments, or to receive wages, government payments, or financial help. Do you currently have an account at a bank, [insert all financial institutions], or similar formal financial institution? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin2",
+    "label": "[Insert local terminology for a/an ATM/debit card] is a card connected to an account that allows you to withdraw money or buy things, and the money is taken out of that account right away. Do you, personally, have [insert local terminology for a/an ATM/debit card]? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin3",
+    "label": "Thinking ONLY about your account at a bank or similar financial institution, in the past 12 months, did you use a card or a mobile phone to make payments, buy things, or to send or receive money using your account? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin4",
+    "label": "Thinking about the first account you opened, did you open it to receive a wage or salary payment or money from the government? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin5",
+    "label": "In a typical month, how often is money deposited into your personal account(s)? This includes cash or electronic deposits, or any time money is put into your account. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin6",
+    "label": "In a typical month, how often is money sent from or taken out of your personal account(s)? This includes cash withdrawals or electronic payments. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin7",
+    "label": "In the past 12 months, has money been put into or taken out of your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin8",
+    "label": "Is there typically any money kept in your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9A",
+    "label": "In the past 12 months, have you received any information about your account balance from your bank, such as through email, SMS, or a text message on your mobile phone?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9B",
+    "label": "In the past 12 months, have you personally checked the balance of the account(s) you have at a bank or similar financial institution using a mobile phone or computer? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin10",
+    "label": "A credit card is a card that allows you to borrow money in order to make payments or buy things, and you can pay the balance off later. Do you, personally, have a credit card?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin11_0",
+    "label": "Do you have a card that you can add money to and use to send and receive money or make purchases at a variety of places?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "FX05",
+  "title": "Findex map: the Filter column (routing such as Fin42 = \"yes\") is not read as answer codes",
+  "kind": "gap",
+  "status": "PASS",
+  "clause": "requirement 1 and 6 (a skip condition is not an answer meaning); CB values column by content",
+  "severity": null,
+  "detail": "",
+  "actual": [
+   {
+    "v": "Fin1",
+    "label": "An account can be used to keep or save money, to make or receive payments, or to receive wages, government payments, or financial help. Do you currently have an account at a bank, [insert all financial institutions], or similar formal financial institution? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin2",
+    "label": "[Insert local terminology for a/an ATM/debit card] is a card connected to an account that allows you to withdraw money or buy things, and the money is taken out of that account right away. Do you, personally, have [insert local terminology for a/an ATM/debit card]? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin3",
+    "label": "Thinking ONLY about your account at a bank or similar financial institution, in the past 12 months, did you use a card or a mobile phone to make payments, buy things, or to send or receive money using your account? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin4",
+    "label": "Thinking about the first account you opened, did you open it to receive a wage or salary payment or money from the government? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin5",
+    "label": "In a typical month, how often is money deposited into your personal account(s)? This includes cash or electronic deposits, or any time money is put into your account. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin6",
+    "label": "In a typical month, how often is money sent from or taken out of your personal account(s)? This includes cash withdrawals or electronic payments. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin7",
+    "label": "In the past 12 months, has money been put into or taken out of your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin8",
+    "label": "Is there typically any money kept in your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9A",
+    "label": "In the past 12 months, have you received any information about your account balance from your bank, such as through email, SMS, or a text message on your mobile phone?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9B",
+    "label": "In the past 12 months, have you personally checked the balance of the account(s) you have at a bank or similar financial institution using a mobile phone or computer? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin10",
+    "label": "A credit card is a card that allows you to borrow money in order to make payments or buy things, and you can pay the balance off later. Do you, personally, have a credit card?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin11_0",
+    "label": "Do you have a card that you can add money to and use to send and receive money or make purchases at a variety of places?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ },
+ {
+  "id": "FX06",
+  "title": "Findex map: the Filter column kept as each question's routing text",
+  "kind": "feature",
+  "status": "GAP-unsupported",
+  "clause": "feature gap: routing column in a codebook (XLSForm 'relevant' is kept)",
+  "severity": null,
+  "detail": "Fin3: no 'routing' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable']); Fin43A: no 'routing' information on the item (keys: ['label', 'note', 'options', 'section', 'sheet', 'unreadValues', 'variable'])",
+  "actual": [
+   {
+    "v": "Fin1",
+    "label": "An account can be used to keep or save money, to make or receive payments, or to receive wages, government payments, or financial help. Do you currently have an account at a bank, [insert all financial institutions], or similar formal financial institution? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin2",
+    "label": "[Insert local terminology for a/an ATM/debit card] is a card connected to an account that allows you to withdraw money or buy things, and the money is taken out of that account right away. Do you, personally, have [insert local terminology for a/an ATM/debit card]? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin3",
+    "label": "Thinking ONLY about your account at a bank or similar financial institution, in the past 12 months, did you use a card or a mobile phone to make payments, buy things, or to send or receive money using your account? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin4",
+    "label": "Thinking about the first account you opened, did you open it to receive a wage or salary payment or money from the government? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin5",
+    "label": "In a typical month, how often is money deposited into your personal account(s)? This includes cash or electronic deposits, or any time money is put into your account. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin6",
+    "label": "In a typical month, how often is money sent from or taken out of your personal account(s)? This includes cash withdrawals or electronic payments. Weekly, monthly, or less than once a month?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin7",
+    "label": "In the past 12 months, has money been put into or taken out of your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin8",
+    "label": "Is there typically any money kept in your personal account(s)?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9A",
+    "label": "In the past 12 months, have you received any information about your account balance from your bank, such as through email, SMS, or a text message on your mobile phone?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin9B",
+    "label": "In the past 12 months, have you personally checked the balance of the account(s) you have at a bank or similar financial institution using a mobile phone or computer? Yes or no?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin10",
+    "label": "A credit card is a card that allows you to borrow money in order to make payments or buy things, and you can pay the balance off later. Do you, personally, have a credit card?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   },
+   {
+    "v": "Fin11_0",
+    "label": "Do you have a card that you can add money to and use to send and receive money or make purchases at a variety of places?",
+    "opts": [],
+    "unread": false,
+    "section": null,
+    "routing": null
+   }
+  ],
+  "error": null
+ }
+]

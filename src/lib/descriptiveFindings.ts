@@ -1,4 +1,5 @@
 import type { CrosstabResult, CrosstabRow } from "./parseStatsFile";
+import { isNonAnswerLabel } from "./nonAnswerLabel";
 import { exactSe, exactTotalPct } from "./crosstabExact";
 
 /**
@@ -32,7 +33,11 @@ const Z = 1.96;
 const MAX_PER_TABLE = 40;
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
-const DK = /don.?t know|dk\b|refus|not applicable|n\/a|prefer not|unsure|none of the above|other \(/i;
+// Answers left out of a scale's boxes and of the leading answers: non-answers by the engine's rule (isNonAnswerLabel,
+// so "Not sure" counts, as in every base), and "None of the above" and "Other (...)", which are answers but sit outside
+// any ordering of the substantive ones.
+const OUTSIDE_RANKING = /none of the above|other \(/i;
+const notRanked = (label: string) => isNonAnswerLabel(label) || OUTSIDE_RANKING.test(label);
 const NEGATIVE = /\b(dis\w+|unlikely|unsatisfied|poor|bad|never|unimportant|difficult|not at all|not very|low|worst|negative)\b/i;
 const POSITIVE = /\b(agree|satisfied|good|excellent|likely|important|extremely|very|always|often|high|best|positive|easy)\b/i;
 
@@ -329,7 +334,7 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
     if (nps) continue; // recognised as an 11-point NPS scale, but suppressed: unavailable, not wrong
 
     // Ordered scale with a readable direction: top-two and bottom-two box.
-    const scale = answers.filter((r) => !DK.test(r.label));
+    const scale = answers.filter((r) => !notRanked(r.label));
     if (scale.length >= 4 && scale.length <= 7) {
       let topTwo: CrosstabRow[] | null = null;
       let bottomTwo: CrosstabRow[] | null = null;
@@ -387,7 +392,7 @@ export function levelFindings(result: CrosstabResult): WideFinding[] {
     }
 
     // Anything else: the leading answers.
-    const ranked = [...answers].filter((r) => !DK.test(r.label)).sort((a, b) => (exactTotalPct(b) ?? 0) - (exactTotalPct(a) ?? 0));
+    const ranked = [...answers].filter((r) => !notRanked(r.label)).sort((a, b) => (exactTotalPct(b) ?? 0) - (exactTotalPct(a) ?? 0));
     if (ranked.length === 0) continue;
     const top = ranked[0];
     const topExact = exactTotalPct(top) as number;

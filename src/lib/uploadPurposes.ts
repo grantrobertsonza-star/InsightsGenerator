@@ -26,11 +26,11 @@ export const UPLOAD_PURPOSES: UploadPurpose[] = [
   { id: "brief", label: "Brief", field: "briefFiles", extensions: [".pdf", ".docx", ".txt"], hint: "The research brief: context, and checked in Research quality review." },
   { id: "proposal", label: "Proposal", field: "proposalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "A research proposal: context, and checked in Research quality review." },
   { id: "technical", label: "Technical document", field: "technicalFiles", extensions: [".pdf", ".docx", ".txt"], hint: "Methodology, fieldwork, sampling, weighting or analysis notes: read by the Research assistant." },
-  { id: "raw", label: "Raw data", field: "rawTableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: `One row per respondent. CSV, tab-delimited text, Excel, SPSS, Stata, SAS, R or Parquet. ${LIMITS_CAPTION}.` },
+  { id: "raw", label: "Raw data", field: "rawTableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".zsav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: `One row per respondent. CSV, tab-delimited text, Excel, SPSS, Stata, SAS, R or Parquet. ${LIMITS_CAPTION}.` },
   // Grant, 2026-10-28: published statistics are one row per area, indicator and year, never one row
   // per respondent; read as series over time (indicatorData.ts), never as cases.
   { id: "indicator", label: "Indicator data", field: "indicatorFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls"], hint: `Published statistics by country or region and year, for example World Bank, IMF, OECD or Stats SA: read as series over time, not as respondents. ${INDICATOR_LIMITS_CAPTION}.` },
-  { id: "tables", label: "Tables", field: "tableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: "Already aggregated: totals or percentages." },
+  { id: "tables", label: "Tables", field: "tableFiles", extensions: [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".sav", ".zsav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"], hint: "Already aggregated: totals or percentages." },
   { id: "output", label: "Statistical output", field: "outputFiles", extensions: [".zip", ".csv", ".tsv", ".xlsx", ".xls", ".txt", ".md", ".docx"], hint: "A zip of models, clusters and logs." },
   { id: "transcript", label: "Qual data", field: "transcriptFiles", extensions: null, hint: "Transcripts, coded or uncoded." },
   { id: "report", label: "Report", field: "reportFiles", extensions: null, hint: "PDF, Word or PowerPoint, read for the findings it states." },
@@ -198,7 +198,7 @@ export function suggestPurposeFor(filename: string, csvSample?: string | null): 
   const fits = (s: PurposeSuggestion): PurposeSuggestion =>
     purposeMismatch(filename, s.id) === null ? s : { id: "report", reason: "Suggested: a report takes any file" };
 
-  if ([".sav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"].includes(ext)) return { id: "raw", reason: "Suggested: SPSS, Stata, SAS, R and Parquet files are one row per respondent" };
+  if ([".sav", ".zsav", ".dta", ".sas7bdat", ".xpt", ".rds", ".rdata", ".rda", ".parquet"].includes(ext)) return { id: "raw", reason: "Suggested: SPSS, Stata, SAS, R and Parquet files are one row per respondent" };
   if (ext === ".zip") return { id: "output", reason: "Suggested: a zip is statistical output" };
   // Codebooks and spreadsheet questionnaires are named as such far more often than not (Grant, 2026-10-26).
   if (/codebook|code book|data dictionary|datadictionary|variable list|variable labels|\bdictionary\b/.test(name) && purposeMismatch(filename, "codebook") === null) {

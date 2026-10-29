@@ -67,6 +67,10 @@ export type CsmRoles = {
   likelyToStay: string | null;
   likelyToSwitch: string | null;
   drivers: string[];
+  /** The company each customer rates (their main bank, insurer, network), for figures by company (D3b); null when
+   * the file has none or two questions could be it (then a question). Looked for only in a file with CSM roles and
+   * no brand list. */
+  company: string | null;
 };
 
 export type TrackerRecognition = {
@@ -277,7 +281,7 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
     }
   }
 
-  const csm = recogniseCsm(usable, questions);
+  const csm = recogniseCsm(usable, questions, !!brandFrame);
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
@@ -410,7 +414,7 @@ export function scaleTop(v: RoleVariable): number | null {
  * relationship measure the others (call centre, agent, IVR) are parts of. A raw file without answer labels
  * (D2) is read from its wording, its names' words when it has no labels, and the scale its wording states.
  */
-function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["questions"]): CsmRoles {
+function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["questions"], hasBrandFrame: boolean): CsmRoles {
   // Ratings only: a scale question or an answer list of three or more answers; without answer labels, a number
   // with three to eleven values. A yes/no flag that mentions switching ("Makes switching simple") is an
   // attribute, not a likelihood to switch.
@@ -475,5 +479,34 @@ function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["
   }
   if (batteries.length > 1 && batteries[0].length === batteries[1].length) questions.push({ id: "csm:drivers", text: `Which ratings are the drivers: ${batteries.map((g) => `${batteryName(g)} (${g.length})`).join(", ")}?` });
   const drivers = batteries.length === 1 || (batteries.length > 1 && batteries[0].length > batteries[1].length) ? batteries[0].map((v) => v.name) : [];
-  return { overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch, drivers };
+  // A file with a brand list compares brands through that list (and its brand names, "Standard Bank", would read as
+  // companies here), so the company is looked for only in a CSM file without one.
+  const company = !hasBrandFrame && [overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch].some(Boolean) ? companyOf(variables, new Set([...roles, ...drivers].filter((x): x is string => typeof x === "string")), questions) : null;
+  return { overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch, drivers, company };
+}
+
+/** Words that name the organisation a customer is with. */
+const COMPANY_WORDS = /\b(company|bank|provider|insurer|network|operator|supplier|retailer|institution)\b/i;
+/** Words of a rating, never of "which company": a question with these is a measure, not the company. */
+const RATING_WORDS = /\b(satisf\w*|recommend\w*|likel\w*|rate|rating|switch\w*|continue|stay|trust\w*|fair\w*|expectation\w*|agree\w*|importan\w*|complain\w*|experience)\b/i;
+/** Answer labels of a scale (an ordered rating), never a list of companies. */
+const SCALE_LABELS = /\b(poor|excellent|good|bad|agree|disagree|satisfied|dissatisfied|likely|unlikely|definitely|probably|better|worse|important|never|always)\b/i;
+
+/**
+ * The company each customer rates (D3b, Grant: "splitting by company, for example per bank"): a single-choice
+ * question whose wording names a company, bank, provider, insurer or network and is not a rating, with an answer
+ * list of names (two or more answers that are not a scale), or, without answer labels, a coded question that is not
+ * a stated scale. Two candidates are a question, never a guess.
+ */
+function companyOf(variables: RoleVariable[], taken: Set<string>, questions: TrackerRecognition["questions"]): string | null {
+  const found = variables.filter((v) => {
+    if (taken.has(v.name) || !v.numeric || v.weightLike || v.text || v.questionType === "multiple_response" || v.questionType === "scale" || v.questionType === "continuous") return false;
+    const w = wordingOf(v);
+    if (!COMPANY_WORDS.test(w) || RATING_WORDS.test(w) || isYesNo(v)) return false;
+    const names = Object.entries(v.valueLabels ?? {}).filter(([, l]) => !NON_BRAND.test(l.trim()));
+    if (v.valueLabels) return names.length >= 2 && !names.some(([, l]) => SCALE_LABELS.test(l));
+    return scaleTop(v) === null && v.distinct !== undefined && v.distinct >= 2 && v.distinct <= 60;
+  });
+  if (found.length > 1) questions.push({ id: "csm:company", text: `Which question is the company each customer rates: ${found.map((v) => `${v.name} ("${wordingOf(v)}")`).join(" or ")}?` });
+  return found.length === 1 ? found[0].name : null;
 }

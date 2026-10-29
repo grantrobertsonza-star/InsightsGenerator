@@ -463,6 +463,9 @@ export type VariableInfo = {
   text?: boolean;
   setKey?: string | null;
   inSet?: string;
+  /** The distinct whole-number values the variable holds, as code strings, when there are at most 60 (dictionary
+   * version 16); null for a measure or decimals; absent from an older dictionary. */
+  codes?: string[] | null;
 };
 /** A multiple-response question: yes/no option variables that share a name stem. */
 export type SetKind = "multi" | "grid" | "battery";
@@ -808,6 +811,14 @@ export type CrosstabResult = {
      * in descriptiveFindings.ts prefers this over its own SRS/avg-design-effect fallback whenever
      * it's available. */
     npsContrastSe?: { total: number | null; columns: (number | null)[] };
+    /** D2b: each banner column's NPS against the rest of its banner variable, in points, with the domain contrast's
+     * standard error (design-based, or with-replacement without a design) and Benjamini-Hochberg adjusted p across the
+     * columns of one banner variable. Present for a 0 to 10 scale with two or more columns. */
+    npsGroupTests?: {
+      method: "design" | "with_replacement";
+      correction: "fdr";
+      columns: ({ block: number; nps: number; restNps: number; difference: number; se: number; z: number | null; p: number | null; pAdjusted?: number } | null)[];
+    };
   }[];
   notes?: {
     test: string;

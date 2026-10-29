@@ -26,6 +26,9 @@ export type ChartSeries = {
    * one-decimal display value (0 for a suppressed cell, as drawn). Absent on series built elsewhere
    * (wave tracking), which summarizeSeries reads from pct. */
   bars: { label: string; pct: number; share?: number | null; rawCode?: string }[];
+  /** The banner column's answer code when the series is one category of a group variable (a company, D3b): the
+   * series' identity; `name` is its label, for presentation only. Absent on an ungrouped series. */
+  code?: string;
 };
 
 export type ChartResult = {
@@ -193,6 +196,7 @@ export async function runDistributionAction(
         name: c.name,
         n: Math.round(n),
         bars: answers.map((r) => ({ label: r.label, pct: r.pct[i] !== null && r.pct[i] !== undefined ? round1(r.pct[i] as number) : 0, share: exactPct(r, i), rawCode: r.rawCode })),
+        ...(c.rawCode !== undefined ? { code: c.rawCode } : {}),
       };
     });
 

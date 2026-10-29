@@ -17,6 +17,12 @@
 // not-applicable answers are outside the base, as in a Cross tab.
 // Bases: the box tiles carry the distribution's effective base (the number answering when unweighted, Kish's
 // effective base when weighted), the NPS tile the number answering.
+//
+// By company (D3b, Grant: "splitting by company, for example per bank"): when the file has a company question (the
+// company each customer rates), each tile also carries its figure per company, by the company's answer code, from
+// the same owner split by that question. The all-customers figure is still the owner's own unsplit reading, so it
+// equals the tile without a company. A company whose figure the owner withholds (a small base) is listed with no
+// figure, never dropped or shown as 0. Driver priority is for all customers only.
 import { runDistributionAction } from "./chartActions";
 import { runNpsAction } from "./npsActions";
 import { runDriverAnalysisFor } from "./drivers";
@@ -29,8 +35,13 @@ export type CsmTileId = (typeof CSM_TILES)[number];
 
 type Missing = { id: CsmTileId; status: "missing"; reason: string };
 type Failed = { id: CsmTileId; status: "failed"; variable: string; error: string };
-export type CsmBoxFigure = { id: "satisfaction" | "stay" | "switch"; status: "ok"; variable: string; label: string; mean: number | null; box: number | null; boxCodes: string; effectiveBase: number };
-export type CsmNpsFigure = { id: "recommend"; status: "ok"; variable: string; label: string; nps: number; lo: number; hi: number; promoters: number; detractors: number; base: number };
+export type CompanyBox = { code: string; label: string; mean: number | null; box: number | null; effectiveBase: number | null };
+export type CompanyNps = { code: string; label: string; nps: number | null; lo: number | null; hi: number | null; base: number | null };
+/** byCompany: null without a company question; "failed" with the reason when the split could not be calculated. */
+export type CsmBoxFigure = { id: "satisfaction" | "stay" | "switch"; status: "ok"; variable: string; label: string; mean: number | null; /** The highest answer code of the scale (5 on a 1 to 5 scale), for "mean / scale". */ scaleTop: number | null; box: number | null; boxCodes: string; effectiveBase: number; byCompany: CompanyBox[] | { failed: string } | null };
+export type CsmNpsFigure = { id: "recommend"; status: "ok"; variable: string; label: string; nps: number; lo: number; hi: number; promoters: number; passives: number; detractors: number; base: number; byCompany: CompanyNps[] | { failed: string } | null };
+/** The company question and its companies (answer code and label), in code order. */
+export type CsmCompanies = { variable: string; companies: { code: string; label: string }[] };
 export type CsmDriverFigure = { id: "drivers"; status: "ok"; variable: string; label: string; method: string; rSquared: number; n: number; rows: { variable: string; label: string; share: number; rank: number }[] };
 export type CsmTile = Missing | Failed | CsmBoxFigure | CsmNpsFigure | CsmDriverFigure;
 
@@ -50,8 +61,9 @@ const NO_ROLE: Record<CsmTileId, string> = {
 
 /**
  * The codes a box counts (Codex D3A-F01), from the top of the question's scale (boxScaleTop: the engine's declared
- * substantive answers, else the range its wording or name states), never from the answers the data happens to hold: likely to switch on a 0 to 10
- * scale is 8, 9 and 10; any other box is the top two codes. Null when the scale is not stated.
+ * substantive answers, else the range its wording or name states), never from the answers the data happens to hold:
+ * likely to switch on a 0 to 10 scale is 8, 9 and 10; any other box is the top two codes. Null when the scale is not
+ * stated. The same codes count for every company.
  */
 export function boxCodesFor(id: "satisfaction" | "stay" | "switch", top: number | null): { codes: number[]; text: string } | null {
   if (top === null) return null;
@@ -75,19 +87,59 @@ export function boxScaleTop(series: { bars: { rawCode?: string | null }[] }, rol
   return roleVariable ? scaleTop(roleVariable) : null;
 }
 
-async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null, roleVariable: RoleVariable | undefined): Promise<CsmTile> {
-  const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
+async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null, roleVariable: RoleVariable | undefined, company: CsmCompanies | null): Promise<CsmTile> {
+  // The unsplit distribution comes first: its answers fix the scale top (boxScaleTop), and so the box codes and the
+  // "mean / scale" divisor.
+  const [r, split] = await Promise.all([
+    runDistributionAction(runId, documentId, variable, weightVar, null, "compute"),
+    company ? runDistributionAction(runId, documentId, variable, weightVar, company.variable, "compute") : Promise.resolve(null),
+  ]);
   if (!r.ok) return { id, status: "failed", variable, error: r.error };
   const series = r.result.series[0];
   if (!series) return { id, status: "failed", variable, error: "This question has no answers to read." };
-  const box = boxCodesFor(id, boxScaleTop(series, roleVariable));
+  const top = boxScaleTop(series, roleVariable);
+  const box = boxCodesFor(id, top);
   if (!box) return { id, status: "failed", variable, error: `The scale of ${variable} is not stated (no answer list, and its wording or name gives no range such as "0 to 10"), so its top box cannot be fixed. Add its labels (a codebook or labels file), or choose another question.` };
-  const share = shareOfCodes(series, box.codes);
   const mean = id === "switch" ? null : summarizeSeries(series, "mean");
-  return { id, status: "ok", variable, label: r.result.label, mean: mean?.exact ?? null, box: share.exact, boxCodes: box.text, effectiveBase: series.n };
+  let byCompany: CsmBoxFigure["byCompany"] = null;
+  if (company && split) {
+    if (!split.ok) byCompany = { failed: split.error };
+    else {
+      const byCode = new Map(split.result.series.filter((x) => x.code !== undefined).map((x) => [x.code as string, x]));
+      byCompany = company.companies.map(({ code, label }) => {
+        const x = byCode.get(code);
+        if (!x) return { code, label, mean: null, box: null, effectiveBase: null };
+        return { code, label, mean: id === "switch" ? null : summarizeSeries(x, "mean").exact, box: shareOfCodes(x, box.codes).exact, effectiveBase: x.n };
+      });
+    }
+  }
+  return { id, status: "ok", variable, label: r.result.label, mean: mean?.exact ?? null, scaleTop: top, box: shareOfCodes(series, box.codes).exact, boxCodes: box.text, effectiveBase: series.n, byCompany };
 }
 
-export async function csmOverviewFigures(tenantId: string, runId: string, documentId: string, dashboard: ResolvedDashboard, variables: RoleVariable[]): Promise<CsmTile[]> {
+async function npsTile(runId: string, documentId: string, variable: string, weightVar: string | null, company: CsmCompanies | null): Promise<CsmTile> {
+  const [r, split] = await Promise.all([
+    runNpsAction(runId, documentId, variable, weightVar, null, undefined, "compute"),
+    company ? runNpsAction(runId, documentId, variable, weightVar, company.variable, undefined, "compute") : Promise.resolve(null),
+  ]);
+  if (!r.ok) return { id: "recommend", status: "failed", variable, error: r.error };
+  const x = r.result;
+  let byCompany: CsmNpsFigure["byCompany"] = null;
+  if (company && split) {
+    if (!split.ok) byCompany = { failed: split.error };
+    else {
+      // The NPS tool leaves out a segment whose score it withholds (a suppressed scale point); that company is
+      // listed with no score.
+      const byCode = new Map((split.result.segments ?? []).filter((g) => g.code !== undefined).map((g) => [g.code as string, g]));
+      byCompany = company.companies.map(({ code, label }) => {
+        const g = byCode.get(code);
+        return g ? { code, label, nps: g.nps, lo: g.lo, hi: g.hi, base: g.rawN } : { code, label, nps: null, lo: null, hi: null, base: null };
+      });
+    }
+  }
+  return { id: "recommend", status: "ok", variable, label: x.label, nps: x.nps, lo: x.lo, hi: x.hi, promoters: x.promoters, passives: x.passives, detractors: x.detractors, base: x.rawN, byCompany };
+}
+
+export async function csmOverviewFigures(tenantId: string, runId: string, documentId: string, dashboard: ResolvedDashboard, variables: RoleVariable[], company: CsmCompanies | null = null): Promise<CsmTile[]> {
   const byName = new Map(variables.map((v) => [v.name, v]));
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const varOf = (id: Exclude<CsmTileId, "drivers">) => dashboard.csm[ROLE[id]].variable;
@@ -114,13 +166,88 @@ export async function csmOverviewFigures(tenantId: string, runId: string, docume
     }
     const variable = varOf(id);
     if (!variable) return { id, status: "missing", reason: NO_ROLE[id] };
-    if (id === "recommend") {
-      const r = await runNpsAction(runId, documentId, variable, weightVar, null, undefined, "compute");
-      if (!r.ok) return { id, status: "failed", variable, error: r.error };
-      const x = r.result;
-      return { id, status: "ok", variable, label: x.label, nps: x.nps, lo: x.lo, hi: x.hi, promoters: x.promoters, detractors: x.detractors, base: x.rawN };
-    }
-    return boxTile(id, runId, documentId, variable, weightVar, byName.get(variable));
+    if (id === "recommend") return npsTile(runId, documentId, variable, weightVar, company);
+    return boxTile(id, runId, documentId, variable, weightVar, byName.get(variable), company);
   };
   return Promise.all(CSM_TILES.map(tile));
+}
+
+export type CsmChange = { id: CsmTileId; /** null: all customers. */ code: string | null; current: number | null; previous: number | null; changePp: number | null; /** Box tiles: the change in the mean (scale points), when both waves have one. */ meanChange?: number | null; reason?: string };
+
+/** The headline reading a change compares: the box share for a box tile, the score for NPS (both in points). */
+function headline(t: CsmTile): number | null {
+  if (t.status !== "ok") return null;
+  if (t.id === "recommend") return t.nps;
+  if (t.id === "drivers") return null;
+  return t.box;
+}
+function meanOf(t: CsmTile, code: string | null): number | null {
+  if (t.status !== "ok" || t.id === "drivers" || t.id === "recommend") return null;
+  if (code === null) return t.mean;
+  return Array.isArray(t.byCompany) ? ((t.byCompany as CompanyBox[]).find((c) => c.code === code)?.mean ?? null) : null;
+}
+const meanDiff = (a: number | null, b: number | null) => (a !== null && b !== null ? a - b : null);
+function companyHeadlines(t: CsmTile): Map<string, number | null> {
+  if (t.status !== "ok" || t.id === "drivers" || !Array.isArray(t.byCompany)) return new Map();
+  return new Map((t.byCompany as (CompanyBox | CompanyNps)[]).map((c) => [c.code, "nps" in c ? c.nps : c.box]));
+}
+
+/**
+ * This wave's CSM headlines against the previous wave's, for all customers and each company (by answer code), in
+ * points, unrounded, with no significance claim. Compared only when both waves read the same question (by variable
+ * name): a tile whose question differs, is missing or failed in either wave has no change, with the reason.
+ */
+export function csmChangesAgainst(current: CsmTile[], previous: CsmTile[] | null, noPrevious: string): CsmChange[] {
+  const out: CsmChange[] = [];
+  for (const t of current) {
+    if (t.id === "drivers") continue;
+    const p = previous?.find((x) => x.id === t.id) ?? null;
+    const cur = headline(t);
+    const codes = [...companyHeadlines(t).keys()];
+    const unavailable = (reason: string) => {
+      out.push({ id: t.id, code: null, current: cur, previous: null, changePp: null, reason });
+      for (const code of codes) out.push({ id: t.id, code, current: companyHeadlines(t).get(code) ?? null, previous: null, changePp: null, reason });
+    };
+    if (!previous) { unavailable(noPrevious); continue; }
+    if (!p || p.status !== "ok" || t.status !== "ok") { unavailable("Not available in one of the two waves."); continue; }
+    if (p.variable !== t.variable) { unavailable(`The previous wave used a different question (${p.variable}).`); continue; }
+    const prev = headline(p);
+    out.push({ id: t.id, code: null, current: cur, previous: prev, changePp: cur !== null && prev !== null ? cur - prev : null, meanChange: meanDiff(meanOf(t, null), meanOf(p, null)) });
+    const prevBy = companyHeadlines(p);
+    for (const [code, value] of companyHeadlines(t)) {
+      const pv = prevBy.get(code) ?? null;
+      out.push({ id: t.id, code, current: value, previous: pv, changePp: value !== null && pv !== null ? value - pv : null, meanChange: meanDiff(meanOf(t, code), meanOf(p, code)), ...(value === null || pv === null ? { reason: prevBy.has(code) ? "Not available in one of the two waves." : "This company was not in the previous wave." } : {}) });
+    }
+  }
+  return out;
+}
+
+/** One driver's performance for "Service attributes": its mean on its own scale (`summarizeSeries`), or why not. */
+export type AttributeMean = { variable: string; label: string; mean: number | null; scaleTop: number | null; effectiveBase: number | null; error?: string };
+
+/**
+ * The drivers' means (CSM "Service attributes", Grant's preview), each from the distribution owner and
+ * `summarizeSeries`, as CSM Analytics reads an attribute, with the dashboard's weight. A driver that cannot be read
+ * is listed with the reason, never dropped or shown as 0.
+ */
+export async function csmAttributeMeans(runId: string, documentId: string, drivers: string[], weightVar: string | null): Promise<AttributeMean[]> {
+  return Promise.all(
+    drivers.map(async (variable) => {
+      const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
+      if (!r.ok) return { variable, label: variable, mean: null, scaleTop: null, effectiveBase: null, error: r.error };
+      const series = r.result.series[0];
+      if (!series) return { variable, label: r.result.label, mean: null, scaleTop: null, effectiveBase: null, error: "No answers to read." };
+      const codes = series.bars.map((b) => Number(b.rawCode ?? NaN)).filter(Number.isFinite);
+      return { variable, label: r.result.label, mean: summarizeSeries(series, "mean").exact, scaleTop: codes.length ? Math.max(...codes) : null, effectiveBase: series.n };
+    }),
+  );
+}
+
+/** Overall satisfaction's mean in one wave file, for the trend (the same reading as the satisfaction tile). */
+export async function satisfactionMean(runId: string, documentId: string, variable: string, weightVar: string | null): Promise<{ mean: number | null; effectiveBase: number | null; error?: string }> {
+  const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
+  if (!r.ok) return { mean: null, effectiveBase: null, error: r.error };
+  const series = r.result.series[0];
+  if (!series) return { mean: null, effectiveBase: null, error: "No answers to read." };
+  return { mean: summarizeSeries(series, "mean").exact, effectiveBase: series.n };
 }

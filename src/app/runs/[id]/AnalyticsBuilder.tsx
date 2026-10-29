@@ -17,7 +17,7 @@ import ResizableSplit from "./ResizableSplit";
 import WaveTrackingPanel from "./WaveTrackingPanel";
 import CsmAnalyticsPanel from "./CsmAnalyticsPanel";
 import BrandHealthAnalyticsPanel from "./BrandHealthAnalyticsPanel";
-import TrackerDashboardPanel from "./TrackerDashboardPanel";
+import TrackerDashboardPanel, { type TrackerDashboardKind } from "./TrackerDashboardPanel";
 import type { WaveFile } from "@/lib/waveTrackingActions";
 import { ChartCustomizePanel, type LegendPos } from "./ChartCustomize";
 import CrosstabWorkspace from "./CrosstabWorkspace";
@@ -104,7 +104,7 @@ function suggestImportance(pred: VariableInfo, candidates: VariableInfo[]): stri
  * Crosstabs tile alone or the analytics tiles alone (Cross tabs itself opens its workspace directly,
  * CrosstabsSection).
  */
-type ToolId = "driver" | "nps" | "chart" | "wave" | "csm" | "brand" | "tracker";
+type ToolId = "driver" | "nps" | "chart" | "wave" | "csm" | "brand";
 
 export default function AnalyticsBuilder({
   runId,
@@ -134,9 +134,10 @@ export default function AnalyticsBuilder({
   const [crosstabOpen, setCrosstabOpen] = useState(false);
   const [csmOpen, setCsmOpen] = useState(false);
   const [brandHealthOpen, setBrandHealthOpen] = useState(false);
-  const [trackerOpen, setTrackerOpen] = useState(false);
+  // The automatic tracker dashboards (D3): separate tools, featured at the top of the Analytics page.
+  const [trackerOpen, setTrackerOpen] = useState<TrackerDashboardKind | null>(null);
   const waves = waveFiles?.length ?? 0;
-  const open = (id: ToolId) => (id === "csm" ? setCsmOpen(true) : id === "brand" ? setBrandHealthOpen(true) : id === "tracker" ? setTrackerOpen(true) : setTool(id));
+  const open = (id: ToolId) => (id === "csm" ? setCsmOpen(true) : id === "brand" ? setBrandHealthOpen(true) : setTool(id));
   // What each tool does, as its workspace does it (checked against the tools, 2026-10-20, instead of
   // the old blanket "uncorrected, simple random sampling" warning).
   const tools: { id: ToolId; name: string; text: string; unavailable?: string }[] = [
@@ -163,10 +164,19 @@ export default function AnalyticsBuilder({
       name: "Brand Health Analytics",
       text: "Name the brand variable and which brand is ours, map the funnel, attributes, loyalty and category entry points once, then get a benchmark against every other brand in the file.",
     },
+  ];
+  // Grant, 29 October 2026: the automatic brand and CSM dashboards are their own tools ("hardly ever analysed
+  // together"), prominent on the Analytics page; Brand Health and CSM Analytics stay below for ad hoc work.
+  const dashboards: { kind: TrackerDashboardKind; name: string; text: string }[] = [
     {
-      id: "tracker",
-      name: "Tracker dashboard",
-      text: "A brand dashboard set up from the file itself: your brand's funnel with the change since the previous wave, and how it compares with other brands. Choices are kept for the whole programme.",
+      kind: "brand",
+      name: "Brand tracking dashboard",
+      text: "Built from the file itself: your brand's funnel with the change since the previous wave, the brands compared, and each stage across waves.",
+    },
+    {
+      kind: "csm",
+      name: "CSM dashboard",
+      text: "Built from the file itself: satisfaction, NPS, likely to stay and switch with their change since the previous wave, the trend, service attributes and driver priority.",
     },
   ];
   const closeLabel = layout === "grid" ? "All analytics" : "Close";
@@ -175,6 +185,24 @@ export default function AnalyticsBuilder({
     <div className={layout === "grid" ? "flex flex-col gap-4" : "rounded-lg border border-border bg-white p-3 text-xs"} data-testid={layout === "grid" ? "analytics-tools" : undefined}>
       {layout === "grid" ? (
         <>
+          <section aria-label="Tracker dashboards" data-testid="tracker-dashboards">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Tracker dashboards</h3>
+            <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {dashboards.map((d) => (
+                <li key={d.kind}>
+                  <button
+                    type="button"
+                    onClick={() => setTrackerOpen(d.kind)}
+                    className="flex h-full w-full flex-col items-start gap-1.5 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 text-left shadow-sm transition hover:border-blue-400 focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    <span className="text-base font-semibold text-foreground">{d.name}</span>
+                    <span className="text-xs leading-relaxed text-slate-600">{d.text}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <h3 className="-mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Analyses</h3>
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Analyses">
             {tools.map((t) => (
               <li key={t.id}>
@@ -219,6 +247,17 @@ export default function AnalyticsBuilder({
         )}
         {part !== "crosstabs" && (
         <>
+        {dashboards.map((d) => (
+          <button
+            key={d.kind}
+            type="button"
+            onClick={() => setTrackerOpen(d.kind)}
+            className="flex min-w-[170px] flex-1 basis-[170px] flex-col items-start gap-1 rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-left transition hover:border-primary/50"
+          >
+            <p className="font-medium text-foreground">{d.name}</p>
+            <p className="text-[11px] text-muted">{d.text}</p>
+          </button>
+        ))}
         {tools
           .filter((t) => !t.unavailable)
           .map((t) => (
@@ -287,11 +326,12 @@ export default function AnalyticsBuilder({
       )}
       {trackerOpen && (
         <TrackerDashboardPanel
-          key={`${runId}:${documentId}`}
+          key={`${runId}:${documentId}:${trackerOpen}`}
+          kind={trackerOpen}
           runId={runId}
           documentId={documentId}
           filename={filename}
-          onClose={() => setTrackerOpen(false)}
+          onClose={() => setTrackerOpen(null)}
           closeLabel={closeLabel}
         />
       )}

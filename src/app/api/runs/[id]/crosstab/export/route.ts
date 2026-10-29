@@ -248,26 +248,44 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id: runId } = await params;
   const sp = new URL(request.url).searchParams;
   const tableId = sp.get("tableId");
+  // Export all (Grant, 29 October 2026: "we also need to be able to export all tables not just one at a time"): the
+  // tables listed on screen, in their screen order. Ids only; each is still checked to be a table of this run below.
+  const tableIdsRaw = sp.get("tableIds");
+  const tableIds = tableIdsRaw === null ? null : tableIdsRaw.split(",").filter(Boolean);
+  // Or every saved table of one data file (All tables; a long list would not fit in a link).
+  const documentId = sp.get("documentId");
   const allowed = ["col", "row", "n", "count", "letters", "resp", "residual"] as const;
   const asked = (sp.get("measures") ?? "col,n,letters").split(",").filter((m): m is (typeof allowed)[number] => (allowed as readonly string[]).includes(m));
   const opts: ExportOpts = { measures: asked.length > 0 ? asked : ["col"], net: sp.get("net") !== "0" };
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuid.test(runId) || (tableId && !uuid.test(tableId))) {
+  if (!uuid.test(runId) || (tableId && !uuid.test(tableId)) || (documentId && !uuid.test(documentId)) || (tableIds && (tableIds.length === 0 || tableIds.length > 500 || !tableIds.every((x) => uuid.test(x))))) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
   const data = await withTenant(TENANT_ID, async (client) => {
     const run = await client.query<{ project_name: string | null }>("select project_name from runs where id = $1", [runId]);
     if (run.rows.length === 0) return null;
-    const tables = await client.query<{ id: string; label: string | null; crosstab: (CrosstabResult & { version?: number }) | null }>(
-      `select id, label, crosstab from document_tables
-       where run_id = $1 and crosstab is not null and coalesce(crosstab_status, 'committed') <> 'evidence' ${tableId ? "and id = $2" : ""}
-       order by document_id, table_index`,
-      tableId ? [runId, tableId] : [runId],
+    const tables = await client.query<{ id: string; label: string | null; source_file: string | null; crosstab: (CrosstabResult & { version?: number }) | null }>(
+      `select t.id, t.label, d.source_filename as source_file, t.crosstab from document_tables t join documents d on d.id = t.document_id
+       where t.run_id = $1 and t.crosstab is not null and coalesce(t.crosstab_status, 'committed') <> 'evidence'
+         ${tableId ? "and t.id = $2" : tableIds ? "and t.id = any($2::uuid[])" : documentId ? "and t.document_id = $2" : ""}
+       order by t.document_id, t.table_index`,
+      tableId ? [runId, tableId] : tableIds ? [runId, tableIds] : documentId ? [runId, documentId] : [runId],
     );
-    return { name: run.rows[0].project_name, tables: tables.rows };
+    // A table named in tableIds that is not a saved table of this run (deleted meanwhile, another project's) is
+    // refused by name count, never silently left out of an export that claims to hold them all.
+    if (tableIds && tables.rows.length !== new Set(tableIds).size) return { name: run.rows[0].project_name, tables: tables.rows, missing: new Set(tableIds).size - tables.rows.length };
+    const order = tableIds ? new Map(tableIds.map((x, i) => [x, i])) : null;
+    const rows = order ? [...tables.rows].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)) : tables.rows;
+    return { name: run.rows[0].project_name, tables: rows, missing: 0 };
   });
   if (!data) return NextResponse.json({ error: "Run not found" }, { status: 404 });
+  if (data.missing > 0) {
+    return NextResponse.json(
+      { error: `${data.missing} of the tables to export ${data.missing === 1 ? "is" : "are"} no longer saved in this project (deleted meanwhile?). Reload the page and export again.` },
+      { status: 409 },
+    );
+  }
   // Batch 48: mean=0 when the researcher unticked Mean on the table; its Mean-tick rows are left out of
   // every format, as on screen. Defined mean groups are kept.
   const hideMeanTickRows = sp.get("mean") === "0";
@@ -321,9 +339,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   const wb = XLSX.utils.book_new();
-  const used = new Set<string>();
-  for (const t of usable) {
-    XLSX.utils.book_append_sheet(wb, tableSheet(t.label ?? "Crosstab", t.crosstab as CrosstabResult, opts), sheetName(t.label ?? "Crosstab", used));
+  const used = new Set<string>(["contents"]);
+  const sheets = usable.map((t) => ({ t, name: sheetName(t.label ?? "Crosstab", used) }));
+  // Several tables: a Contents sheet first, so a workbook of many tables says which sheet holds which (a sheet name
+  // is cut to 28 characters) and which data file each came from.
+  if (sheets.length > 1) {
+    const contents: Cell[][] = [["Tables in this workbook"], [], ["#", "Sheet", "Table", "Data file"]];
+    sheets.forEach(({ t, name }, i) => contents.push([i + 1, name, t.label ?? "Crosstab", t.source_file ?? ""]));
+    const ws = XLSX.utils.aoa_to_sheet(contents);
+    sheets.forEach(({ name }, i) => {
+      const cell = ws[XLSX.utils.encode_cell({ r: 3 + i, c: 1 })];
+      if (cell) cell.l = { Target: `#'${name}'!A1` };
+    });
+    XLSX.utils.book_append_sheet(wb, ws, "Contents");
+  }
+  for (const { t, name } of sheets) {
+    XLSX.utils.book_append_sheet(wb, tableSheet(t.label ?? "Crosstab", t.crosstab as CrosstabResult, opts), name);
   }
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
   return new NextResponse(new Uint8Array(buffer), {

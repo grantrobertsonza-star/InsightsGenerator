@@ -342,3 +342,25 @@ export function gridRowMatches(items: ItemLike[], variables: VariableLike[], mor
   }
   return out;
 }
+
+// ---- Codebook entries confirmed without a click (CB1) ----
+
+/** One spelling per answer code: a whole number in any spelling ("1", "01", "1.0") is the number; other text is trimmed. */
+function answerCode(code: string): string {
+  const t = code.trim();
+  return /^[+-]?\d+(?:\.0+)?$/.test(t) ? String(Number(t)) : t;
+}
+
+/**
+ * Whether a codebook entry's answer list covers a variable's data (CB1, Grant 29 October 2026): every code the
+ * variable holds (the dictionary's `codes`, missing values excluded) is one of the entry's answer codes. The entry
+ * may list codes nobody chose. Unknown is never a fit: no answer list, or no observed codes (a measure, text,
+ * decimals, more than the engine lists, or a dictionary built before codes were recorded), leaves the link for the
+ * researcher to confirm.
+ */
+export function answerCodesFit(options: { code: string }[] | null | undefined, observed: string[] | null | undefined): boolean {
+  if (!observed || observed.length === 0) return false;
+  const listed = new Set((options ?? []).map((o) => answerCode(String(o.code ?? ""))).filter((c) => c !== ""));
+  if (listed.size === 0) return false;
+  return observed.every((c) => listed.has(answerCode(c)));
+}

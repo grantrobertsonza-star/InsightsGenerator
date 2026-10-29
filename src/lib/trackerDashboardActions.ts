@@ -27,11 +27,12 @@ export async function loadTrackerDashboardAction(runId: string, documentId: stri
   }
 }
 
-/** D3: the brand overview of one wave file (figures computed, nothing saved). */
-export async function loadBrandOverviewAction(runId: string, documentId: string): Promise<{ ok: true; overview: BrandOverview } | Fail> {
+/** D3: one wave file's brand or CSM dashboard (figures computed, nothing saved). */
+export async function loadBrandOverviewAction(runId: string, documentId: string, kindRaw: unknown): Promise<{ ok: true; overview: BrandOverview } | Fail> {
   const ctx = await requireRequestContext();
+  if (kindRaw !== "brand" && kindRaw !== "csm") return { ok: false, error: "Choose the brand or the CSM dashboard." };
   try {
-    return { ok: true, overview: await loadBrandOverview(ctx.tenantId, runId, documentId) };
+    return { ok: true, overview: await loadBrandOverview(ctx.tenantId, runId, documentId, kindRaw) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

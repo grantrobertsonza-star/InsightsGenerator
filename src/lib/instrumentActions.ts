@@ -16,6 +16,8 @@ import {
   readInstrumentItems,
   suggestInstrumentLinks,
   chooseMatchTarget,
+  matchCodebookToDataFiles,
+  instrumentTypeOf,
   type InstrumentItem,
   type InstrumentLink,
   AUTO_CONFIRM_MIN,
@@ -23,6 +25,7 @@ import {
 import { getGuideCoverage, type GuideReport } from "./guides";
 import { loadLabelDocumentation, type LabelDocumentation } from "./labelDocumentation";
 import { requireTenantId } from "./requestContext";
+import type { DataFileMatch } from "./instrumentMatchMessage";
 
 type Fail = { ok: false; error: string };
 type Ok<T = object> = { ok: true } & T;
@@ -77,7 +80,7 @@ export async function setInstrumentTargetAction(
   runId: string,
   instrumentId: string,
   dataDocumentId: string,
-): Promise<Ok<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean }> | Fail> {
+): Promise<Ok<{ suggested: number; fromCodebook: number; codebookUnavailable: boolean; autoConfirmed: number; autoUnavailable: boolean }> | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, dataDocumentId);
@@ -89,22 +92,56 @@ export async function setInstrumentTargetAction(
 }
 
 /**
- * The first match after a read, with no data file chosen yet (chooseMatchTarget): matched to the file
- * that clearly fits, or, when several fit equally (waves of one tracker) or a file cannot be compared,
- * nothing is matched and the files are returned for the researcher to choose.
+ * The first match after a read, with no data file chosen yet. A codebook is matched to every data file it
+ * describes (matchCodebookToDataFiles, CB1: every wave, without a click), with each file's outcome. A
+ * questionnaire goes to the file that clearly fits (chooseMatchTarget), or, when several fit equally (waves of
+ * one tracker) or a file cannot be compared, nothing is matched and the files are returned for the researcher
+ * to choose.
  */
 export async function matchInstrumentAutomaticallyAction(
   runId: string,
   instrumentId: string,
-): Promise<Ok<{ matchedTo: string; suggested: number; fromCodebook: number; codebookUnavailable: boolean } | { choose: { dataDocumentId: string; filename: string; matched: number | null; error?: string }[] } | { none: true }> | Fail> {
+): Promise<
+  | Ok<
+      | { matchedTo: string; suggested: number; fromCodebook: number; codebookUnavailable: boolean; autoConfirmed: number; autoUnavailable: boolean }
+      | { files: DataFileMatch[]; suggested: number; autoConfirmed: number; autoUnavailable: boolean }
+      | { choose: { dataDocumentId: string; filename: string; matched: number | null; error?: string }[] }
+      | { none: true }
+    >
+  | Fail
+> {
   const TENANT_ID = await requireTenantId();
   try {
+    if ((await instrumentTypeOf(TENANT_ID, runId, instrumentId)) === "codebook") {
+      const r = await matchCodebookToDataFiles(TENANT_ID, runId, instrumentId);
+      revalidatePath(`/runs/${runId}`);
+      if (r.files.length === 0) return { ok: true, none: true };
+      return { ok: true, ...r };
+    }
     const choice = await chooseMatchTarget(TENANT_ID, runId, instrumentId);
     if (choice.kind === "none") return { ok: true, none: true };
     if (choice.kind === "choose") return { ok: true, choose: choice.candidates };
     const r = await suggestInstrumentLinks(TENANT_ID, runId, instrumentId, choice.dataDocumentId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, matchedTo: choice.dataDocumentId, ...r };
+  } catch (e) {
+    return { ok: false, error: explain(e) };
+  }
+}
+
+/**
+ * CB1: a codebook already matched is matched to the data files added since (a new wave), without a click. Only
+ * files with no link from this codebook are touched; each file's outcome is returned.
+ */
+export async function matchCodebookToNewDataFilesAction(
+  runId: string,
+  instrumentId: string,
+): Promise<Ok<{ files: DataFileMatch[]; suggested: number; autoConfirmed: number; autoUnavailable: boolean }> | Fail> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const r = await matchCodebookToDataFiles(TENANT_ID, runId, instrumentId, { onlyUnlinked: true });
+    if (r.files.some((f) => f.status === "matched")) revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
   } catch (e) {
     return { ok: false, error: explain(e) };
   }
@@ -179,11 +216,14 @@ export async function confirmQuestionLinksAction(
   runId: string,
   instrumentId: string,
   itemId: string,
+  /** The data file whose links the review shows: only its suggestions are confirmed. */
+  dataDocumentId: string,
 ): Promise<Ok<{ confirmed: number; refused: { variable: string; reason: string }[] }> | Fail> {
   const TENANT_ID = await requireTenantId();
   if (!/^[0-9a-f-]{36}$/i.test(itemId)) return { ok: false, error: "That question is not in this questionnaire." };
+  if (!/^[0-9a-f-]{36}$/i.test(dataDocumentId)) return { ok: false, error: "Choose the data file first." };
   try {
-    const r = await confirmInstrumentLinks(TENANT_ID, runId, instrumentId, 0, itemId);
+    const r = await confirmInstrumentLinks(TENANT_ID, runId, instrumentId, 0, itemId, dataDocumentId);
     revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
   } catch (e) {

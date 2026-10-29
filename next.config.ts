@@ -24,6 +24,14 @@ const nextConfig: NextConfig = {
     // above, so the proxy never truncates an upload the action itself accepts. Cost: the body is
     // held in memory twice while the proxy runs.
     proxyClientMaxBodySize: "100mb",
+    // Development only (Codex's diagnosis, docs/upload-120mb-diagnosis-2026-10-29.md): `next dev` keeps a cache of
+    // server fetches across hot reloads, and builds each cache key from the whole request body, including the
+    // storage upload of a data file. For a 60 MB file that took about 50 seconds and gigabytes of memory, during
+    // which the storage service closed its idle connection; Next then sent the upload on that closed connection and
+    // it failed with ECONNRESET. With the cache off the upload is sent at once. `next build`/`next start` never use
+    // this cache, so production is unaffected. Cost: in development, server fetches (model calls included) are not
+    // reused across hot reloads.
+    serverComponentsHmrCache: false,
   },
   // The public landing page is a self-contained HTML file in public/ (inline styles and logo), served
   // at /home without the app shell. src/proxy.ts excludes /home and /home.html from the sign-in

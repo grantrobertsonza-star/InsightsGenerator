@@ -55,6 +55,7 @@ import { parseTableDocument, SheetSelectionLostError } from "../parseTable";
 import { resolveAuthoritativeSheet } from "../crosstabs";
 import { withTenant, withTenantRead } from "../db";
 import { ENGINE_TABLE_READER } from "../importPreviewIdentity";
+import { CURRENT_DICTIONARY_VERSION } from "../dictionaryVersion";
 
 // Round 4's caller-level tests dynamically import ../documentTables and ../crosstabs for the
 // first time inside the test body; that first-time transform of their (now heavily-mocked,
@@ -575,8 +576,8 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
         storage_path: freshPath(),
         source_filename: "fixture.xlsx",
         selected_sheet: null,
-        // The current Excel version (crosstabs.minimumDictionaryVersion: 15 for a workbook), so the cache is valid.
-        variable_dictionary: { version: 15, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        // The current Excel version (crosstabs.minimumDictionaryVersion), so the cache is valid.
+        variable_dictionary: { version: CURRENT_DICTIONARY_VERSION, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     vi.mocked(withTenant).mockImplementation(async (_tenantId, cb) => cb(client() as never));
@@ -620,8 +621,8 @@ describe("round 4: loadVariableDictionary caller-level tests (criterion 3)", () 
         storage_path: freshPath(),
         source_filename: "fixture.xlsx",
         selected_sheet: null,
-        // The current Excel version (crosstabs.minimumDictionaryVersion: 15 for a workbook), so the cache is valid.
-        variable_dictionary: { version: 15, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
+        // The current Excel version (crosstabs.minimumDictionaryVersion), so the cache is valid.
+        variable_dictionary: { version: CURRENT_DICTIONARY_VERSION, sets: {}, sheets: { data: "Alpha" }, layout: "rows_are_cases", variables: {} },
       },
     });
     // Another reader already published "Beta" as authoritative for this document moments

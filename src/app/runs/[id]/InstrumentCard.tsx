@@ -178,8 +178,12 @@ export default function InstrumentCard({
     else setError(r.error);
   }
 
+  // The links column is one data file's (Grant, 29 October 2026: with three waves linked, each question listed
+  // respondent_id three times under one file's heading). Another wave's links are reviewed by choosing it above.
+  const shownLinks = (review?.links ?? []).filter((l) => !target || l.dataDocumentId === target);
+  const otherFiles = new Set((review?.links ?? []).filter((l) => target && l.dataDocumentId !== target).map((l) => l.dataDocumentId)).size;
   const linksByItem = new Map<string, InstrumentLink[]>();
-  for (const l of review?.links ?? []) linksByItem.set(l.itemId, [...(linksByItem.get(l.itemId) ?? []), l]);
+  for (const l of shownLinks) linksByItem.set(l.itemId, [...(linksByItem.get(l.itemId) ?? []), l]);
   // A question's links in the data file's column order (Grant, 28 October 2026: a family listed C1_11, C1_7,
   // C1_8, C1_36 because its links share one confidence); names in reading order until the file's list loads.
   const position = new Map((variables?.forTarget === target ? variables.list : []).map((v, n) => [v.name, n]));
@@ -356,11 +360,19 @@ export default function InstrumentCard({
               </button>
             ))}
           </div>
-          <div className="max-h-96 overflow-auto rounded-lg border border-border">
+          {otherFiles > 0 && (
+            <p className="text-[11px] text-muted" data-testid="links-other-files">
+              {`Showing the links to ${targetName}. This ${noun} also has links to ${otherFiles} other data ${otherFiles === 1 ? "file" : "files"}: choose one under Data file to check them.`}
+            </p>
+          )}
+          {/* Taller, and resizable by its lower corner (Grant, 29 October 2026: "very cramped"); a short list keeps its
+              own height. */}
+          <div className={`${rows.length > 8 ? "h-[70vh]" : ""} min-h-32 resize-y overflow-auto rounded-lg border border-border`} data-testid="links-table">
             {/* Fixed columns (Grant, 2026-10-20: the buttons were squeezed into a narrow last column and
-                stacked): the links column is wide enough for a usual variable, its method and both buttons on
-                one line, and the question wraps instead. With long names the buttons move under the variable
-                rather than over it. */}
+                stacked): the links column takes 45% of the width (29 October 2026: it was a fixed 22rem on a wide
+                screen, so each button wrapped to its own line), enough for a usual variable, its method and both
+                buttons on one line, and the question wraps instead. With long names the buttons move under the
+                variable rather than over it. */}
             <table className="w-full min-w-[640px] table-fixed text-left">
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -369,7 +381,7 @@ export default function InstrumentCard({
                       into the question (Grant, 28 October 2026, Findex codebook). */}
                   <th className="w-36 px-2 py-1.5">Code</th>
                   <th className="px-2 py-1.5">Question</th>
-                  <th className="w-[22rem] px-2 py-1.5" data-testid="links-variable-heading">Variable in {targetName}</th>
+                  <th className="w-[45%] px-2 py-1.5" data-testid="links-variable-heading">Variable in {targetName}</th>
                 </tr>
               </thead>
               <tbody>
@@ -413,7 +425,7 @@ export default function InstrumentCard({
                               className="mb-1 rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50"
                               data-testid="item-confirm-all"
                               disabled={pending}
-                              onClick={() => run(() => confirmQuestionLinksAction(runId, documentId, i.id), (r) => questionConfirmedMessage(i.code, r))}
+                              onClick={() => run(() => confirmQuestionLinksAction(runId, documentId, i.id, target), (r) => questionConfirmedMessage(i.code, r))}
                             >
                               {`Confirm all ${suggested.length} for ${i.code || "this question"}`}
                             </button>

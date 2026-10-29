@@ -92,15 +92,30 @@ export function nameFamilies(variables: RoleVariable[]): NameFamily[] {
 
 /** The part of each member's label that differs between members ("awareness: Kora Coffee" -> "Kora Coffee"). */
 function varyingLabels(family: NameFamily, byName: Map<string, RoleVariable>): Map<string, string> | null {
-  const split = family.members.map((m) => {
+  const labels = family.members.map((m) => {
     const v = byName.get(m.variable)!;
-    return v.label && v.label.trim() !== v.name ? v.label.split(/\s*:\s*|\s+[-–]\s+/).map((s) => s.trim()) : null;
+    return v.label && v.label.trim() !== v.name ? v.label.trim() : null;
   });
-  if (split.some((s) => !s) || new Set(split.map((s) => s!.length)).size !== 1) return null;
-  const n = split[0]!.length;
-  const varying = [...Array(n).keys()].filter((i) => new Set(split.map((s) => s![i].toLowerCase())).size > 1);
-  if (varying.length !== 1) return null;
-  return new Map(family.members.map((m, i) => [m.code, split[i]![varying[0]]]));
+  if (labels.some((l) => !l)) return null;
+  const split = labels.map((l) => l!.split(/\s*:\s*|\s+[-–]\s+/).map((s) => s.trim()));
+  if (new Set(split.map((s) => s.length)).size === 1 && split[0].length > 1) {
+    const n = split[0].length;
+    const varying = [...Array(n).keys()].filter((i) => new Set(split.map((s) => s[i].toLowerCase())).size > 1);
+    if (varying.length === 1) return new Map(family.members.map((m, i) => [m.code, split[i][varying[0]]]));
+    return null;
+  }
+  // No separator (CB1, Grant's BMW codebook: "Prompted resolved recognition Toyota", "... Volkswagen"): the words
+  // every member's label shares at its start and its end are the question; what is left is the item's name.
+  const words = labels.map((l) => l!.split(/\s+/));
+  const same = (i: (w: string[]) => string | undefined) => new Set(words.map((w) => i(w)?.toLowerCase())).size === 1 && i(words[0]) !== undefined;
+  let head = 0;
+  while (same((w) => (head < w.length - 1 ? w[head] : undefined))) head += 1;
+  let tail = 0;
+  while (same((w) => (w.length - 1 - tail > head ? w[w.length - 1 - tail] : undefined))) tail += 1;
+  const rest = words.map((w) => w.slice(head, w.length - tail).join(" "));
+  // The question must be stated (some shared words) and every item named, each differently.
+  if (head + tail === 0 || rest.some((r) => !r) || new Set(rest.map((r) => r.toLowerCase())).size !== rest.length) return null;
+  return new Map(family.members.map((m, i) => [m.code, rest[i]]));
 }
 
 /**

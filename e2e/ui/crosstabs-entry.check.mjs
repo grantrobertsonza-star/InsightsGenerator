@@ -8,6 +8,7 @@
 //      switches to View tables (full width, no inner scroll box), where the cell pane stays in view on
 //      scrolling; Build table brings the variable list back (Grant, 27 October 2026).
 //   5. The variable pane collapses and expands.
+//   6. The menu's Cross tabs count is the saved tables; deleting the last one clears it with no error shown.
 import { expect, test } from "@playwright/test";
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -122,6 +123,19 @@ test("Cross tabs: direct entry, file chooser, kept state, contextual cell pane",
     await page.getByRole("button", { name: "Expand left panel" }).filter({ visible: true }).click();
     await expect(ws.getByPlaceholder("Search name or label")).toBeVisible();
     if (process.env.SHOT) await section.screenshot({ path: process.env.SHOT });
+
+    // 6. (Grant, 29 October 2026) The Cross tabs count in the menu is the saved tables, not the data files; deleting
+    //    the last table says so, clears earlier notes, shows no error, and the count goes.
+    const navCount = page.getByRole("button", { name: /^Cross tabs/ }).first();
+    await expect(navCount).toHaveText(/Cross tabs\s*1$/);
+    await ws.getByRole("tab", { name: /^View tables/ }).click();
+    page.once("dialog", (d) => d.accept());
+    await ws.getByRole("button", { name: "Delete", exact: true }).first().click();
+    await expect(ws.getByText(/^Deleted ".*"\.$/)).toBeVisible({ timeout: 60_000 });
+    await expect(ws.getByText(/not in this project/)).toHaveCount(0);
+    await expect(ws.getByRole("tab", { name: /^View tables 0$/ })).toBeVisible();
+    await expect(navCount).toHaveText(/^Cross tabs$/, { timeout: 60_000 });
+    expect(Number((await db.query("select count(*) from document_tables where run_id=$1 and table_index >= 100", [run.id])).rows[0].count)).toBe(0);
   } finally {
     await db.end();
   }
