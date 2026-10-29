@@ -24,6 +24,16 @@ describe("processing state", () => {
     expect(processingState({ kind: "report", processingStatus: null, preview: { kind: "text", length: 0 } })).toBe("failed");
     expect(processingState({ kind: "evidence", processingStatus: null, preview: { kind: "text", length: 0 } })).toBe("not_read");
   });
+  it("indicator data by its published read, never by text it does not have (Codex NEW10K-F03)", () => {
+    // Published: the read sets "ready"; its text preview is empty and must not count as a failure.
+    expect(processingState({ kind: "indicator", processingStatus: "ready", preview: { kind: "text", length: 0 } })).toBe("read");
+    expect(processingState({ kind: "indicator", processingStatus: "ready", preview: null })).toBe("read");
+    // A first read the reader refused stays "Read failed"; one never read is not read yet.
+    expect(processingState({ kind: "indicator", processingStatus: "failed", preview: { kind: "text", length: 0 } })).toBe("failed");
+    expect(processingState({ kind: "indicator", processingStatus: null, preview: { kind: "text", length: 0 } })).toBe("not_read");
+    // The report rule is unchanged: a report with no text is a failed read.
+    expect(processingState({ kind: "report", processingStatus: "ready", preview: { kind: "text", length: 0 } })).toBe("failed");
+  });
   it("questionnaires by whether their questions were read; output sets as read", () => {
     expect(processingState({ kind: "instrument", processingStatus: null, preview: null, instrumentRead: false })).toBe("not_read");
     expect(processingState({ kind: "instrument", processingStatus: null, preview: null, instrumentRead: true })).toBe("read");

@@ -59,7 +59,11 @@ several, or with no English note; a column that is neither a known Data360 colum
 a label partner, a year, nor a code-style name (capitals, digits, underscores), such as an OECD
 "Reference area" label column; a missing REF_AREA or INDICATOR code on a row; a value that is not a plain
 decimal number (`_STRICT_NUMBER`: "1,234" could be a thousands separator or a decimal comma); a period
-that is not a year or a year with a quarter, half, week or month; two values for one series, area and
+that is not a year or a year with a quarter, half, week, month or date, or whose month, week or date does not
+exist (month 00 or 13, week 00 or 54, 2023-02-29: `_ind_period_in_calendar`, mirrored by
+`indicatorPeriodValid` in `src/lib/indicatorLayouts.ts`, which the server also applies to every stored period
+and the chart uses before it fills a time axis, so a period is never moved to another date; batch 68,
+Codex NEW10K-F01); two values for one series, area and
 period (long rows, or two wide rows filling the same year); a label and value table naming one indicator
 twice; a series with two units or two unit multipliers (named with its codes and both units); a
 recognised file with no values; several sheets of indicator data in one workbook (choosing is not
@@ -121,7 +125,14 @@ OECD Data Explorer SDMX-CSV ("Filtered data" and "Unfiltered data" downloads, on
   OBS_CONF. Source: STRUCTURE_NAME (STRUCTURE_ID).
 - A blank OBS_VALUE is absent. When CONF_STATUS is C it is withheld as confidential: listed in
   `provenance.withheld` ([series key, area, period]), shown as "Withheld (confidential)" in the table, said
-  under the chart, written to the CSV with no value, never zero.
+  under the chart, written to the CSV with no value, never zero. An area whose every cell in a series is
+  withheld is still offered for that series (catalogue `areaCodes`, with `withheldOnlyAreaCodes`), and the
+  area heading counts it apart: "1 with values, 1 with every value withheld as confidential" (batch 68,
+  Codex NEW10K-F02). An area of another series is never offered.
+- Status: an Indicator data file is "Read" when its read is published (the stored status "ready"), whatever
+  its text preview (it has none); a first read the reader refused is "Read failed"; a failed reread keeps
+  the previous version and its "Read" (`processingState` in `src/lib/importSources.ts`; batch 68, Codex
+  NEW10K-F03).
 - The reference information download is read as notes (layout `oecd_notes`; below).
 
 OECD reference information (notes):

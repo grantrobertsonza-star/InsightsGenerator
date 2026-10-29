@@ -11,7 +11,7 @@ import type { IndicatorObservation, IndicatorSeriesSummary } from "../indicatorD
 
 const series: IndicatorSeriesSummary = {
   id: "s", key: "k", indicatorCode: "X", indicatorLabel: "X", breakdowns: [], unitCode: "PT", unitLabel: "Percent", unitMult: 0,
-  valueScale: null, baseDescription: null, groups: null, observationCount: 5, areaCodes: ["ZAF", "KEN"],
+  valueScale: null, baseDescription: null, groups: null, observationCount: 5, areaCodes: ["ZAF", "KEN"], withheldOnlyAreaCodes: [],
 };
 const obs: IndicatorObservation[] = [
   { areaCode: "ZAF", period: "2019", valueText: "10", status: "A", note: null },

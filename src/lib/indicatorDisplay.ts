@@ -3,6 +3,7 @@
 // wording, and the CSV of what is shown. Pure rules, shared by the Indicator data view and its tests;
 // nothing here changes a stored value.
 import { csvField, csvNumberField } from "./csvField";
+import { indicatorPeriodValid } from "./indicatorLayouts";
 import type { IndicatorArea, IndicatorBreakdown, IndicatorNote, IndicatorObservation, IndicatorSeriesSummary } from "./indicatorData";
 
 /** An indicator's identity: its code, or its label where the file gives no code (label and value tables). */
@@ -105,8 +106,11 @@ export function areaName(code: string | null, areas: IndicatorArea[]): string {
  * from the first to the last with every period of that frequency in between, so a period with no value
  * is a gap in the line, never zero and never skipped silently. A series is one frequency (frequency is
  * one of its breakdowns), so periods of different frequencies are not mixed on one axis; if they were,
- * or for any other spelling, the axis is the observed periods in order. A period the file does not
- * state comes last, as "Not stated".
+ * or for any other spelling, the axis is the observed periods in order. The axis is filled only when
+ * every period is a real one (indicatorPeriodValid): a month 13 stored before the engine refused it would
+ * otherwise be counted as January of the next year and its value lost from the chart (Codex NEW10K-F01),
+ * so such a period stays on the axis as written, with its value. A period the file does not state comes
+ * last, as "Not stated".
  */
 export function periodAxis(periods: (string | null)[]): (string | null)[] {
   const stated = [...new Set(periods.filter((p): p is string => p !== null))].sort();
@@ -119,7 +123,7 @@ export function periodAxis(periods: (string | null)[]): (string | null)[] {
     [/^([0-9]{4})-([0-9]{2})$/, 12, (y, m) => `${y}-${String(m).padStart(2, "0")}`],
   ];
   for (const [re, per, text] of forms) {
-    if (stated.length === 0 || !stated.every((p) => re.test(p))) continue;
+    if (stated.length === 0 || !stated.every((p) => re.test(p) && indicatorPeriodValid(p))) continue;
     const index = (p: string) => {
       const m = re.exec(p)!;
       return Number(m[1]) * per + (per === 1 ? 0 : Number(m[2]) - 1);

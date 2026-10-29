@@ -26,7 +26,7 @@ import { runEngineConversion } from "./parseStatsFile";
 export const INDICATOR_NOT_AVAILABLE_MESSAGE =
   "Indicator data is not available yet: it needs the database update 0126_indicator_observations.sql.";
 
-import { INDICATOR_LAYOUTS, INDICATOR_LAYOUT_LABEL, MAX_INDICATOR_AREAS, type IndicatorLayout } from "./indicatorLayouts";
+import { INDICATOR_LAYOUTS, INDICATOR_LAYOUT_LABEL, MAX_INDICATOR_AREAS, indicatorPeriodValid, type IndicatorLayout } from "./indicatorLayouts";
 export { INDICATOR_LAYOUTS, INDICATOR_LAYOUT_LABEL, MAX_INDICATOR_AREAS, type IndicatorLayout };
 
 export type IndicatorBreakdown = { dimension: string; code: string; label: string | null };
@@ -123,6 +123,7 @@ export function validateIndicatorResult(raw: unknown): EngineIndicatorResult {
     if (!Number.isInteger(si) || (si as number) < 0 || (si as number) >= series.length) fail("an observation of an unknown series");
     if (!Number.isInteger(ai) || (ai as number) < 0 || (ai as number) >= areas.length) fail("an observation of an unknown area");
     if (!textOrNull(period) || !textOrNull(status) || !textOrNull(note)) fail("a malformed observation");
+    if (period !== null && !indicatorPeriodValid(period as string)) fail(`a period that is not a real year, quarter, half, week, month or date (${String(period)})`);
     if (!isText(value) || !STRICT_NUMBER.test(value)) fail(`a value that is not a plain number (${String(value)})`);
     const k = JSON.stringify([si, ai, period]);
     if (seen.has(k)) fail("two values for one observation");
@@ -324,9 +325,23 @@ export type IndicatorSeriesSummary = {
   baseDescription: string | null;
   groups: IndicatorGroup[] | null;
   observationCount: number;
-  /** Areas with at least one value in this series (null: an area the file does not state). */
+  /**
+   * Areas that can be chosen for this series (null: an area the file does not state): those with at least
+   * one value, and those the publisher withheld as confidential for it (Codex NEW10K-F02: a country whose
+   * every cell was withheld disappeared from the selector, so the researcher could not see that it was
+   * withheld). An area of another series is never included.
+   */
   areaCodes: (string | null)[];
+  /** Among areaCodes, those with no value at all in this series, only withheld cells. */
+  withheldOnlyAreaCodes: (string | null)[];
 };
+
+/** The areas a series offers: those with values, then those with only withheld cells (NEW10K-F02). */
+export function selectableAreas(withValues: (string | null)[], withheld: Set<string | null> | undefined): { areaCodes: (string | null)[]; withheldOnlyAreaCodes: (string | null)[] } {
+  const has = new Set(withValues);
+  const withheldOnly = [...(withheld ?? [])].filter((a) => !has.has(a));
+  return { areaCodes: [...withValues, ...withheldOnly], withheldOnlyAreaCodes: withheldOnly };
+}
 
 export type IndicatorCatalogue =
   | { state: "unavailable"; message: string }
@@ -408,6 +423,13 @@ export async function loadIndicatorCatalogue(tenantId: string, runId: string, do
       );
       notes = found.rows.map((x) => ({ fileName: x.source_filename, key: x.note_key, keyLabels: x.key_labels, period: x.period, field: x.field, fieldLabel: x.field_label, text: x.note_text }));
     }
+    // Confidential cells (CONF_STATUS C with no value) are recorded with the read, not as observations.
+    const withheldAreas = new Map<string, Set<string | null>>();
+    for (const w of Array.isArray(read.provenance.withheld) ? (read.provenance.withheld as unknown[]) : []) {
+      if (!Array.isArray(w) || typeof w[0] !== "string") continue;
+      const area = typeof w[1] === "string" ? w[1] : null;
+      withheldAreas.set(w[0], (withheldAreas.get(w[0]) ?? new Set()).add(area));
+    }
     return {
       state: "ready",
       readId: read.read_id,
@@ -431,7 +453,7 @@ export async function loadIndicatorCatalogue(tenantId: string, runId: string, do
         baseDescription: x.base_description,
         groups: x.groups,
         observationCount: x.observation_count,
-        areaCodes: x.area_codes,
+        ...selectableAreas(x.area_codes, withheldAreas.get(x.series_key)),
       })),
       lastFailure: read.failure && read.failed_at ? { failure: read.failure, failedAt: read.failed_at.toISOString() } : null,
       notes,

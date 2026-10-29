@@ -54,6 +54,11 @@ export function processingState(f: ProcessingFacts): ProcessingState {
   if (f.processingStatus === "failed") return "failed";
   if (f.processingStatus === "incomplete") return "partly_read";
   if (f.kind === "output") return "read";
+  // Indicator data is read into published series, not text: its success is the stored status the read
+  // sets when it publishes (a failed first read set "failed" above; a failed reread keeps the previous
+  // version and its "ready"). Its text preview is always empty, which the text rule below would call a
+  // failure (Codex NEW10K-F03: a published indicator file showed "Read failed").
+  if (f.kind === "indicator") return f.processingStatus === "ready" ? "read" : "not_read";
   // A failed latest read is "Read failed", not "Not read yet": the read ran, and its reason is on the card.
   if (f.kind === "instrument") return f.instrumentReadFailed && !f.instrumentRead ? "failed" : f.instrumentRead ? "read" : "not_read";
   if (!f.preview) return f.processingStatus === "ready" ? "read" : "not_read";

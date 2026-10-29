@@ -32,7 +32,7 @@ const base: Omit<IndicatorSeriesSummary, "id" | "key" | "breakdowns"> = {
   baseDescription: null,
   groups: null,
   observationCount: 2,
-  areaCodes: ["USA", "ZAF"],
+  areaCodes: ["USA", "ZAF"], withheldOnlyAreaCodes: [],
 };
 const b = (dimension: string, code: string, label: string | null = null) => ({ dimension, code, label });
 const series: IndicatorSeriesSummary[] = [
@@ -83,6 +83,10 @@ describe("values as shown", () => {
 
 describe("the time axis", () => {
   it("runs every year from the first to the last, so a missing year is a gap", () => {
+    // Codex NEW10K-F01: a month 13 stored before the engine refused it stays on the axis as written, with
+    // its value, never moved to January of the next year; real months still fill their gaps.
+    expect(periodAxis(["2024-M12", "2024-M13"])).toEqual(["2024-M12", "2024-M13"]);
+    expect(periodAxis(["2024-M11", "2025-M01"])).toEqual(["2024-M11", "2024-M12", "2025-M01"]);
     expect(periodAxis(["2016", "2011", "2016", "2005"])).toEqual(["2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016"]);
     expect(periodAxis(["2015-Q2", "2015-Q1"])).toEqual(["2015-Q1", "2015-Q2"]);
     // Quarters and months run through every period too (IMF and OECD), across a year boundary.
@@ -110,6 +114,10 @@ describe("the time axis", () => {
     expect(at("Congo", "2012")).toBeNull();
     // A real zero in the file stays zero.
     expect(at("Congo", "2014")).toBe(0);
+  });
+  it("a stored month 13 keeps its value on the chart at its own period (Codex NEW10K-F01)", () => {
+    const pts = chartPoints([{ areaCode: "ZAF", period: "2024-M13", valueText: "50", status: null, note: null }], ["ZAF"], [{ code: "ZAF", label: "South Africa" }], series[0]);
+    expect(pts.map((p) => [p.period, p.value])).toEqual([["2024-M13", 50]]);
   });
 });
 

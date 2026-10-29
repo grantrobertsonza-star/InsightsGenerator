@@ -3190,9 +3190,33 @@ def _ind_value(text, where):
     return text
 
 
+def _ind_period_in_calendar(text):
+    """Whether a period that has the SDMX shape (_IND_PERIOD) names a real calendar period: months 01 to 12,
+    ISO weeks 01 to 53 and dates that exist. The shape alone let 2024-M13 and 2024-M00 through, and the
+    chart's time axis then counted month 13 as January of the next year, so the stored value was never
+    drawn (Codex NEW10K-F01). Mirrored by indicatorPeriodInCalendar in src/lib/indicatorLayouts.ts."""
+    m = re.match(r"^([0-9]{4})-(?:M([0-9]{2})|W([0-9]{2})|([0-9]{2})(?:-([0-9]{2}))?)$", text)
+    if not m:
+        return True  # a year, a quarter (Q1 to Q4) or a half (S1, S2): the shape already limits them
+    year, month_m, week, month, day = m.groups()
+    if week is not None:
+        return 1 <= int(week) <= 53
+    month_number = int(month_m if month_m is not None else month)
+    if not 1 <= month_number <= 12:
+        return False
+    if day is not None:
+        try:
+            datetime.date(int(year), month_number, int(day))
+        except ValueError:
+            return False
+    return True
+
+
 def _ind_period(text, where):
     if not _IND_PERIOD.match(text):
         raise ValueError(f"{where} has the period {text!r}, which is not a year or a year with a quarter, half or month (2015, 2015-Q1, 2015-03, 2015-M03), so this file was not read.")
+    if not _ind_period_in_calendar(text):
+        raise ValueError(f"{where} has the period {text!r}, which is not a real month, week or date (months run from 01 to 12), so this file was not read. Correct the period and read the file again.")
     return text
 
 

@@ -279,6 +279,45 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("indicator data: upload, read,
     expect(stale).toMatchObject({ ok: false, stale: true });
   });
 
+  it("a country whose every value is withheld as confidential can still be chosen; another series' areas are not offered (Codex NEW10K-F02)", async () => {
+    const { loadIndicatorObservations } = await lib();
+    // Built from the OECD fixture's first row: ZAF has a value, KEN only a confidential (C) cell with no value,
+    // and a second measure has GBR alone.
+    const lines = fixture("OECD_FDI_INC_AGGR_filtered_slice.csv").toString("utf8").split("\n");
+    const head = lines[0];
+    const cols = head.split(",");
+    const cellsOf = (l: string) => (l.match(/("(?:[^"]|"")*"|[^,]*)(?:,|$)/g) ?? []).map((c) => c.replace(/,$/, ""));
+    const template = cellsOf(lines[1]).slice(0, cols.length);
+    const row = (area: string, measure: string, value: string, conf: string) => {
+      const c = [...template];
+      c[cols.indexOf("REF_AREA")] = area;
+      c[cols.indexOf("Reference area")] = area;
+      c[cols.indexOf("MEASURE")] = measure;
+      c[cols.indexOf("TIME_PERIOD")] = "2024-Q1";
+      c[cols.indexOf("OBS_VALUE")] = value;
+      c[cols.indexOf("CONF_STATUS")] = conf;
+      return c.join(",");
+    };
+    const file = [head, row("ZAF", "T_D4P_F", "50", "F"), row("KEN", "T_D4P_F", "", "C"), row("GBR", "OTHER_M", "7", "F")].join("\n") + "\n";
+    expect(await upload("oecd_withheld_only.csv", Buffer.from(file, "utf8"))).toMatchObject({ ok: true });
+    const id = await docId("oecd_withheld_only.csv");
+    const c = await ready(id);
+    const total = c.series.find((s) => s.indicatorCode === "T_D4P_F")!;
+    expect(total.areaCodes).toEqual(["ZAF", "KEN"]);
+    expect(total.withheldOnlyAreaCodes).toEqual(["KEN"]);
+    const other = c.series.find((s) => s.indicatorCode === "OTHER_M")!;
+    expect(other.areaCodes).toEqual(["GBR"]);
+    expect(other.withheldOnlyAreaCodes).toEqual([]);
+    // Choosing KEN gives no value (withheld, never zero); its withheld cell stays in the read's provenance.
+    const r = await loadIndicatorObservations(tenant, run, id, { readId: c.readId, seriesId: total.id, areaCodes: ["KEN"] });
+    expect(r).toMatchObject({ ok: true, observations: [] });
+    expect(c.provenance.withheld).toEqual([[total.key, "KEN", "2024-Q1"]]);
+    // A reread gives the same choices.
+    expect(await (await lib()).readIndicatorDocument(tenant, run, id)).toMatchObject({ ok: true });
+    const again = (await ready(id)).series.find((s) => s.indicatorCode === "T_D4P_F")!;
+    expect([again.areaCodes, again.withheldOnlyAreaCodes]).toEqual([["ZAF", "KEN"], ["KEN"]]);
+  });
+
   it("a failed reread keeps the previous version and says so; the next good read clears the failure", async () => {
     const { readIndicatorDocument } = await lib();
     const id = await docId("DHS_SD.csv");
@@ -309,7 +348,26 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("indicator data: upload, read,
     expect((await ready(id)).readId).toBe(before.readId);
     expect(await counts(id)).toMatchObject({ series: 3, obs: values.size });
     expect(await storedValues(id)).toEqual(values);
-    // 3. Recovery: the next read publishes and clears the failure.
+    // 3. Codex NEW10K-F01: the file now holds an impossible month. The reread is refused naming it, and the
+    // previous version stays in use with its values.
+    // Every cell of this fixture is quoted, so the first row's period is changed by position in its cells.
+    const text = Buffer.from(bytes).toString("utf8").split("\n");
+    const cellsOf = (l: string) => (l.match(/"((?:[^"]|"")*)"/g) ?? []).map((c) => c.slice(1, -1));
+    const t = cellsOf(text[0]).indexOf("TIME_PERIOD");
+    const cells = cellsOf(text[1]);
+    expect(cells[t]).toMatch(/^[0-9]{4}$/);
+    cells[t] = `${cells[t]}-M13`;
+    text[1] = cells.map((c) => `"${c}"`).join(",");
+    storage.objects.set(key, new Uint8Array(Buffer.from(text.join("\n"), "utf8")));
+    rmSync(path.join(tmpdir(), `stats-src-${createHash("sha1").update(key).digest("hex")}`), { force: true });
+    const badMonth = await readIndicatorDocument(tenant, run, id);
+    expect(badMonth).toMatchObject({ ok: false, previousVersionKept: true });
+    expect((await ready(id)).lastFailure?.failure).toMatch(/-M13', which is not a real month/);
+    expect((await ready(id)).readId).toBe(before.readId);
+    expect(await storedValues(id)).toEqual(values);
+    storage.objects.set(key, bytes);
+    rmSync(path.join(tmpdir(), `stats-src-${createHash("sha1").update(key).digest("hex")}`), { force: true });
+    // 4. Recovery: the next read publishes and clears the failure.
     expect(await readIndicatorDocument(tenant, run, id)).toMatchObject({ ok: true });
     expect((await ready(id)).lastFailure).toBeNull();
   });

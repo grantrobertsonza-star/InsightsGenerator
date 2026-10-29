@@ -235,7 +235,7 @@ export default function IndicatorDataPanel({ runId, documentId }: { runId: strin
           {chosen && <SeriesFacts series={chosen} skip={varying} />}
         </div>
         <fieldset className="flex flex-col gap-1">
-          <legend className="text-muted">{`Areas (up to ${MAX_INDICATOR_AREAS}; ${areaList.length} with values for this series)`}</legend>
+          <legend className="text-muted" data-testid="indicator-area-legend">{areaLegend(areaList.length, chosen?.withheldOnlyAreaCodes.length ?? 0)}</legend>
           {areaList.length > 8 && <input value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} placeholder="Find an area" aria-label="Find an area" className="rounded-lg border border-border px-2 py-1" />}
           <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto" data-testid="indicator-areas">
             {visibleAreas.map((a) => {
@@ -278,6 +278,14 @@ function SeriesFacts({ series, skip }: { series: IndicatorSeriesSummary; skip: S
 }
 
 type ReadyCatalogue = Extract<Extract<IndicatorCatalogueResult, { ok: true }>["catalogue"], { state: "ready" }>;
+
+/** The area selector's heading: how many areas the series offers, and how many of them have only withheld values. */
+function areaLegend(offered: number, withheldOnly: number): string {
+  const withValues = offered - withheldOnly;
+  const parts = [`${withValues} with values`];
+  if (withheldOnly > 0) parts.push(`${withheldOnly} with every value withheld as confidential`);
+  return `Areas (up to ${MAX_INDICATOR_AREAS}; ${parts.join(", ")} for this series)`;
+}
 
 function IndicatorResult({ series, areaCodes, catalogue, observations }: { series: IndicatorSeriesSummary; areaCodes: (string | null)[]; catalogue: ReadyCatalogue; observations: import("@/lib/indicatorData").IndicatorObservation[] }) {
   const containerRef = useRef<HTMLDivElement | null>(null);

@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { STRICT_NUMBER, validateIndicatorResult } from "../indicatorData";
+import { indicatorPeriodValid } from "../indicatorLayouts";
 import { UPLOAD_PURPOSES, sampleLooksLikeIndicatorData, suggestPurposeFor } from "../uploadPurposes";
 import { IMPORT_LIMITS, INDICATOR_VALUES_LIMIT_MESSAGE } from "../importLimits";
 import { PYTHON } from "./helpers/pythonEngine";
@@ -88,6 +89,70 @@ describe("mirrors of the engine rules", () => {
     const r = spawnSync(PYTHON, ["-c", script, ...csvFixtures], { encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
     expect(JSON.parse(r.stdout.trim())).toEqual(suggested);
+  });
+
+  // Codex NEW10K-F01: months 00 and 13 had the SDMX shape, were stored, and the chart moved month 13 to the
+  // next January with no value. The engine, the server and the chart now share one calendar rule.
+  const PERIODS: [string, boolean][] = [
+    ["2024", true], ["2024-Q1", true], ["2024-Q4", true], ["2024-S2", true],
+    ["2024-M01", true], ["2024-M12", true], ["2024-01", true], ["2024-12", true],
+    ["2024-M00", false], ["2024-M13", false], ["2024-00", false], ["2024-13", false], ["2024-M99", false],
+    ["2024-W01", true], ["2024-W53", true], ["2024-W00", false], ["2024-W54", false],
+    ["2024-02-29", true], ["2023-02-29", false], ["2024-04-31", false], ["2024-12-31", true],
+    ["2024-Q5", false], ["FY2024", false], ["2024-M1", false], ["", false],
+  ];
+  it("one calendar rule for periods: engine and server agree, months run 01 to 12", () => {
+    expect(PERIODS.map(([p]) => [p, indicatorPeriodValid(p)])).toEqual(PERIODS);
+    if (!engineOk) return;
+    const script = [
+      "import importlib.util, json, sys",
+      "spec = importlib.util.spec_from_file_location('p', 'api/parse-stats-file.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)",
+      "out = []",
+      "for p in json.loads(sys.argv[1]):",
+      "    try:",
+      "        m._ind_period(p, 'x'); out.append([p, True])",
+      "    except ValueError:",
+      "        out.append([p, False])",
+      "print(json.dumps(out))",
+    ].join("\n");
+    const r = spawnSync(PYTHON, ["-c", script, JSON.stringify(PERIODS.map(([p]) => p))], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout.trim())).toEqual(PERIODS);
+  });
+
+  it("a file with month 13 or month 00 is refused by the engine, naming the period; months 01 and 12 are read", () => {
+    if (!engineOk) return;
+    const file = (period: string) => `FREQ,REF_AREA,INDICATOR,UNIT_MEASURE,TIME_PERIOD,OBS_VALUE\nM,ZAF,ACCESS,PT,${period},50\n`;
+    const script = [
+      "import importlib.util, json, sys",
+      "spec = importlib.util.spec_from_file_location('p', 'api/parse-stats-file.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)",
+      "out = {}",
+      "for name, text in json.loads(sys.argv[1]).items():",
+      "    try:",
+      "        r = m.indicator_observations(text.encode(), name + '.csv'); out[name] = [o[2] for o in r['observations']]",
+      "    except ValueError as e:",
+      "        out[name] = str(e)",
+      "print(json.dumps(out))",
+    ].join("\n");
+    const files = { m13: file("2024-M13"), m00: file("2024-M00"), m12: file("2024-M12"), m01: file("2025-M01") };
+    const r = spawnSync(PYTHON, ["-c", script, JSON.stringify(files)], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const out = JSON.parse(r.stdout.trim());
+    expect(out.m13).toMatch(/'2024-M13', which is not a real month/);
+    expect(out.m00).toMatch(/'2024-M00', which is not a real month/);
+    expect(out.m12).toEqual(["2024-M12"]);
+    expect(out.m01).toEqual(["2025-M01"]);
+  });
+
+  it("the server refuses a stored period the engine would refuse", () => {
+    const answer = (period: string) => ({
+      reader: "x", layout: "sdmx_long", provenance: {},
+      series: [{ key: "s", indicatorCode: "ACCESS", indicatorLabel: null, breakdowns: [], unitCode: null, unitLabel: null, baseDescription: null, unitMult: null, valueScale: null, groups: null }],
+      areas: [{ code: "ZAF", label: null }],
+      observations: [[0, 0, period, "50", null, null]],
+    });
+    expect(() => validateIndicatorResult(answer("2024-M13"))).toThrow(/not a real year, quarter, half, week, month or date \(2024-M13\)/);
+    expect(() => validateIndicatorResult(answer("2024-M12"))).not.toThrow();
   });
 
   it("the values limit message is the engine's, word for word, and the upload hint states the limit", () => {
