@@ -1,8 +1,11 @@
 // The public landing page (public/home.html, served at /home), in a real browser on the disposable stack.
 //   - a signed-out visitor sees the landing page at /home rather than being sent to sign in;
-//   - its "Sign in" button leads into the app ("/"), which for a signed-out visitor is the sign-in page;
+//   - its "Sign in" link and its "Explore the platform" button lead into the app ("/"), which for a
+//     signed-out visitor is the sign-in page (Grant, 28 October 2026: the landing page replaced, and
+//     "Explore the platform" is the way into the app); the module tags read "a · b · c";
 //   - signed in, the main menu lists "Home" directly above "Dashboard", in the full menu and the strip,
-//     and following it opens the landing page, whose "Sign in" returns to the dashboard.
+//     and following it opens the landing page, whose "Explore the platform" and "Sign in" return to the
+//     dashboard.
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -25,7 +28,16 @@ test("a signed-out visitor sees the landing page, and its Sign in leads into the
   const signIn = page.getByRole("link", { name: "Sign in" }).first();
   await expect(signIn).toBeVisible();
   await expect(signIn).toHaveAttribute("href", "/");
+  const explore = page.getByRole("link", { name: "Explore the platform" });
+  await expect(explore).toBeVisible();
+  await expect(explore).toHaveAttribute("href", "/");
+  const tags = await page.locator(".module-tags").allInnerTexts();
+  expect(tags.length).toBeGreaterThan(0);
+  for (const t of tags) expect(t, `module tags "${t}"`).not.toContain("?");
   if (shot) await page.screenshot({ path: shot.replace(/\.png$/, "-landing.png") });
+  await explore.click();
+  await page.waitForURL((url) => url.pathname === "/login");
+  await page.goto(at("/home"), { waitUntil: "networkidle" });
   await signIn.click();
   await page.waitForURL((url) => url.pathname === "/login");
   await context.close();
@@ -55,6 +67,10 @@ test("signed in, Home sits above Dashboard and opens the landing page", async ({
   await menu.getByRole("link", { name: "Home" }).click();
   await page.waitForURL((url) => url.pathname === "/home");
   await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible();
+  await page.getByRole("link", { name: "Explore the platform" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  await expect(page.locator("#global-rail-content").getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await page.goto(at("/home"), { waitUntil: "networkidle" });
   await page.getByRole("link", { name: "Sign in" }).first().click();
   await page.waitForURL((url) => url.pathname === "/");
   await expect(page.locator("#global-rail-content").getByRole("link", { name: "Dashboard" })).toBeVisible();
