@@ -3,11 +3,19 @@
 // signed-in tenant; the project, file and revision are checked again inside the write.
 import { revalidatePath } from "next/cache";
 import { requireRequestContext } from "./requestContext";
-import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
+import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type ExpectedDashboard, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
 
 type Fail = { ok: false; error: string };
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const validRevision = (r: unknown): r is number | null => r === null || (Number.isInteger(r) && (r as number) >= 1);
+/** The scope and revision the screen read, checked at the boundary (a scope key and a revision of 1 or more, or null). */
+function expectedFrom(raw: unknown): ExpectedDashboard | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { scope, revision } = raw as { scope?: unknown; revision?: unknown };
+  if (typeof scope !== "string" || !/^(programme|project):[0-9a-f-]{36}$/i.test(scope)) return null;
+  if (revision !== null && !(Number.isInteger(revision) && (revision as number) >= 1)) return null;
+  return { scope, revision: revision as number | null };
+}
+const STALE = "The dashboard's saved state is not valid. Reload and try again.";
 
 export async function loadTrackerDashboardAction(runId: string, documentId: string): Promise<{ ok: true; view: TrackerDashboardView } | Fail> {
   const ctx = await requireRequestContext();
@@ -18,11 +26,12 @@ export async function loadTrackerDashboardAction(runId: string, documentId: stri
   }
 }
 
-export async function saveTrackerChoicesAction(runId: string, documentId: string, expectedRevision: number | null, choices: unknown): Promise<({ ok: true } & SaveResult) | Fail> {
+export async function saveTrackerChoicesAction(runId: string, documentId: string, expectedRaw: unknown, choices: unknown): Promise<({ ok: true } & SaveResult) | Fail> {
   const ctx = await requireRequestContext();
-  if (!validRevision(expectedRevision)) return { ok: false, error: "The dashboard's revision is not valid. Reload and try again." };
+  const expected = expectedFrom(expectedRaw);
+  if (!expected) return { ok: false, error: STALE };
   try {
-    const r = await saveTrackerChoices(ctx.tenantId, runId, documentId, expectedRevision, choices, ctx.email ?? ctx.userId);
+    const r = await saveTrackerChoices(ctx.tenantId, runId, documentId, expected, choices, ctx.email ?? ctx.userId);
     if (r.saved) revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
   } catch (e) {
@@ -30,11 +39,12 @@ export async function saveTrackerChoicesAction(runId: string, documentId: string
   }
 }
 
-export async function resetTrackerChoicesAction(runId: string, expectedRevision: number): Promise<({ ok: true } & SaveResult) | Fail> {
+export async function resetTrackerChoicesAction(runId: string, expectedRaw: unknown): Promise<({ ok: true } & SaveResult) | Fail> {
   const ctx = await requireRequestContext();
-  if (!validRevision(expectedRevision) || expectedRevision === null) return { ok: false, error: "The dashboard's revision is not valid. Reload and try again." };
+  const expected = expectedFrom(expectedRaw);
+  if (!expected || expected.revision === null) return { ok: false, error: STALE };
   try {
-    const r = await resetTrackerChoices(ctx.tenantId, runId, expectedRevision, ctx.email ?? ctx.userId);
+    const r = await resetTrackerChoices(ctx.tenantId, runId, expected, ctx.email ?? ctx.userId);
     if (r.saved) revalidatePath(`/runs/${runId}`);
     return { ok: true, ...r };
   } catch (e) {

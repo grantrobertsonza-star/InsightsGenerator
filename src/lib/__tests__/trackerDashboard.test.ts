@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { choiceProblems, normaliseChoices, prefilledFocalBrand, resolveDashboard } from "../trackerDashboard";
-import { recogniseTracker, type RoleVariable } from "../trackerRoles";
+import { FUNNEL_STAGES, recogniseTracker, type RoleVariable } from "../trackerRoles";
 
 const pack = (name: string): RoleVariable[] => JSON.parse(readFileSync(path.join(process.cwd(), "fixtures", "tracker-roles", `${name}.json`), "utf8"));
 const bmw = pack("bmw_car");
@@ -108,5 +108,70 @@ describe("what is saved", () => {
     expect(choiceProblems({ focalBrandCode: "96" }, rec, names, "weight")).toEqual(["Brand code 96 is not in this file's brand list."]);
     expect(choiceProblems({ stages: { consider: "loyalty" as never } }, rec, names, "weight")).toEqual(['"loyalty" is not a funnel stage.']);
     expect(choiceProblems({ stages: { nope: "awareness" } }, rec, names, "weight")).toEqual(["Question nope is not a per-brand question in this file."]);
+  });
+});
+
+// ---- Codex review of D2a (29 October 2026) ----
+
+describe("D2A-F02: every stage the recogniser gives can be saved", () => {
+  it("each stage in the one list is accepted for a per-brand question; an unknown one is refused", () => {
+    for (const stage of FUNNEL_STAGES) expect(choiceProblems({ stages: { consider: stage } }, rec, names, "weight")).toEqual([]);
+    expect(choiceProblems({ stages: { consider: "loyalty" as never } }, rec, names, "weight")).toEqual(['"loyalty" is not a funnel stage.']);
+  });
+  it("trial and frequent use, chosen for a question, are applied when the dashboard is worked out again", () => {
+    const d = resolveDashboard(rec, names, "weight", normaliseChoices(JSON.parse(JSON.stringify({ stages: { consider: "trial", shortlist: "frequent_usage" } }))));
+    expect(d.stages.find((s) => s.group === "consider")).toMatchObject({ stage: "trial", source: "chosen" });
+    expect(d.stages.find((s) => s.group === "shortlist")).toMatchObject({ stage: "frequent_usage", source: "chosen" });
+  });
+});
+
+describe("D2A-F03: an unchanged weighting choice does not block saving from a wave without a weight", () => {
+  it("kept unchanged: other edits save; the wave's results are unweighted and say so", () => {
+    expect(choiceProblems({ weighted: true, focalBrandCode: "8" }, rec, names, null, { weighted: true })).toEqual([]);
+    const d = resolveDashboard(rec, names, null, { weighted: true, focalBrandCode: "8" });
+    expect([d.weighted, d.weightSource]).toEqual([false, "chosen"]);
+    expect(d.needsChoice.map((n) => n.id)).toContain("weight");
+  });
+  it("a new weighting choice on a wave without a weight is still refused", () => {
+    expect(choiceProblems({ weighted: true }, rec, names, null, {})).toEqual(["This file has no weight, so it cannot be weighted."]);
+    expect(choiceProblems({ weighted: true }, rec, names, null, { weighted: false })).toEqual(["This file has no weight, so it cannot be weighted."]);
+  });
+  it("a later wave with a weight applies the programme's weighted choice again", () => {
+    const d = resolveDashboard(rec, names, "weight", { weighted: true });
+    expect([d.weighted, d.weightSource, d.needsChoice.some((n) => n.id === "weight")]).toEqual([true, "chosen", false]);
+  });
+});
+
+describe("D2A-F04: choosing a CSM role answers its question", () => {
+  const scale = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [String(i), String(i)]));
+  const sat = { "1": "Very dissatisfied", "2": "Dissatisfied", "3": "Neutral", "4": "Satisfied", "5": "Very satisfied" };
+  const vars: RoleVariable[] = [
+    { name: "sat_company", label: "Overall satisfaction with the company", valueLabels: sat, numeric: true },
+    { name: "sat_bank", label: "Overall satisfaction with the bank", valueLabels: sat, numeric: true },
+    { name: "rec_company", label: "Recommend the company to a friend", valueLabels: scale, numeric: true },
+    { name: "rec_app", label: "Recommend the app to a friend", valueLabels: scale, numeric: true },
+    { name: "rec_partial", label: "Recommend the branch", valueLabels: { "0": "Not at all likely", "10": "Extremely likely" }, numeric: true },
+    { name: "stay_a", label: "Likely to continue with the bank", valueLabels: sat, numeric: true },
+    { name: "stay_b", label: "Likely to stay with the bank", valueLabels: sat, numeric: true },
+    { name: "switch_a", label: "Likely to switch provider", valueLabels: sat, numeric: true },
+    { name: "switch_b", label: "Might switch to a competitor", valueLabels: sat, numeric: true },
+  ];
+  const r = recogniseTracker(vars);
+  const vn = new Set(vars.map((v) => v.name));
+  const open = (c: Parameters<typeof resolveDashboard>[3]) => resolveDashboard(r, vn, null, c).needsChoice.map((n) => n.id);
+  it("each ambiguity is asked when nothing is chosen", () => {
+    expect(open({})).toEqual(expect.arrayContaining(["csm:satisfaction", "csm:recommend", "csm:stay", "csm:switch", "csm:recommend-scale:rec_partial"]));
+  });
+  it("an applicable choice, or an intentional none, answers each", () => {
+    const ids = open({ csm: { overallSatisfaction: "sat_company", recommend0to10: "rec_company", likelyToStay: "stay_a", likelyToSwitch: null } });
+    for (const id of ["csm:satisfaction", "csm:recommend", "csm:stay", "csm:switch"]) expect(ids).not.toContain(id);
+  });
+  it("a carried choice this file lacks keeps the question and says why", () => {
+    const ids = open({ csm: { recommend0to10: "rec_gone" } });
+    expect(ids).toEqual(expect.arrayContaining(["csm:recommend", "csm:recommend0to10"]));
+  });
+  it("a partly labelled list stays asked about unless that very variable is chosen", () => {
+    expect(open({ csm: { recommend0to10: "rec_company" } })).toContain("csm:recommend-scale:rec_partial");
+    expect(open({ csm: { recommend0to10: "rec_partial" } })).not.toContain("csm:recommend-scale:rec_partial");
   });
 });

@@ -80,12 +80,14 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
     await db?.drop();
   });
   const lib = () => import("../trackerDashboards");
+  const inProgramme = (revision: number | null) => ({ scope: `programme:${program}`, revision });
 
   it("first view: the suggestion, weighted by default, the main brand pre-filled and still asked", async () => {
     const { loadTrackerDashboard } = await lib();
     const v = await loadTrackerDashboard(tenant, wave1.run, wave1.doc);
     expect(v.storageAvailable).toBe(true);
     expect(v.scope).toBe("programme");
+    expect(v.scopeKey).toBe(`programme:${program}`);
     expect(v.revision).toBeNull();
     expect(v.recognition.type).toBe("brand");
     expect([v.dashboard.weighted, v.dashboard.weightVar, v.dashboard.weightSource]).toEqual([true, "weight", "default"]);
@@ -95,7 +97,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
 
   it("a save on wave 1 is the programme's: wave 2 shows it and says where it came from", async () => {
     const { loadTrackerDashboard, saveTrackerChoices } = await lib();
-    const saved = await saveTrackerChoices(tenant, wave1.run, wave1.doc, null, { focalBrandCode: "8", weighted: false, stages: { repeat12: null } }, "grant@example.com");
+    const saved = await saveTrackerChoices(tenant, wave1.run, wave1.doc, inProgramme(null), { focalBrandCode: "8", weighted: false, stages: { repeat12: null } }, "grant@example.com");
     expect(saved).toEqual({ saved: true, revision: 1 });
     const v = await loadTrackerDashboard(tenant, wave2.run, wave2.doc);
     expect(v.revision).toBe(1);
@@ -109,11 +111,11 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
 
   it("compare-and-swap: a second first save and a stale save are refused with the current choices; nothing changes", async () => {
     const { saveTrackerChoices } = await lib();
-    const first = await saveTrackerChoices(tenant, wave2.run, wave2.doc, null, { focalBrandCode: "1" }, "other");
+    const first = await saveTrackerChoices(tenant, wave2.run, wave2.doc, inProgramme(null), { focalBrandCode: "1" }, "other");
     expect(first).toMatchObject({ saved: false, reason: "conflict", current: { revision: 1, choices: { focalBrandCode: "8" } } });
-    const ok = await saveTrackerChoices(tenant, wave2.run, wave2.doc, 1, { focalBrandCode: "8", weighted: true }, "grant@example.com");
+    const ok = await saveTrackerChoices(tenant, wave2.run, wave2.doc, inProgramme(1), { focalBrandCode: "8", weighted: true }, "grant@example.com");
     expect(ok).toEqual({ saved: true, revision: 2 });
-    const stale = await saveTrackerChoices(tenant, wave1.run, wave1.doc, 1, { focalBrandCode: "2" }, "other");
+    const stale = await saveTrackerChoices(tenant, wave1.run, wave1.doc, inProgramme(1), { focalBrandCode: "2" }, "other");
     expect(stale).toMatchObject({ saved: false, reason: "conflict", current: { revision: 2, choices: { focalBrandCode: "8", weighted: true } } });
     expect((await q("select revision, choices from tracker_dashboards"))[0]).toEqual({ revision: 2, choices: { focalBrandCode: "8", weighted: true } });
   });
@@ -124,8 +126,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
     const a = await project("A", p2, "1");
     const b = await project("B", p2, "2");
     const results = await Promise.all([
-      saveTrackerChoices(tenant, a.run, a.doc, null, { focalBrandCode: "3" }, "a"),
-      saveTrackerChoices(tenant, b.run, b.doc, null, { focalBrandCode: "4" }, "b"),
+      saveTrackerChoices(tenant, a.run, a.doc, { scope: `programme:${p2}`, revision: null }, { focalBrandCode: "3" }, "a"),
+      saveTrackerChoices(tenant, b.run, b.doc, { scope: `programme:${p2}`, revision: null }, { focalBrandCode: "4" }, "b"),
     ]);
     expect(results.filter((r) => r.saved)).toHaveLength(1);
     expect(results.filter((r) => !r.saved && r.reason === "conflict")).toHaveLength(1);
@@ -134,7 +136,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
 
   it("choices are checked on the server; nothing invalid is saved", async () => {
     const { saveTrackerChoices } = await lib();
-    const r = await saveTrackerChoices(tenant, wave1.run, wave1.doc, 2, { focalBrandCode: "96", stages: { consider: "loyalty" }, csm: { recommend0to10: "nope" } }, "x");
+    const r = await saveTrackerChoices(tenant, wave1.run, wave1.doc, inProgramme(2), { focalBrandCode: "96", stages: { consider: "loyalty" }, csm: { recommend0to10: "nope" } }, "x");
     expect(r).toEqual({
       saved: false,
       reason: "invalid",
@@ -147,19 +149,19 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker dashboard choices per
     const { saveTrackerChoices, loadTrackerDashboard } = await lib();
     const alone = await project("Ad hoc", null, null);
     expect((await loadTrackerDashboard(tenant, alone.run, alone.doc)).scope).toBe("project");
-    expect(await saveTrackerChoices(tenant, alone.run, alone.doc, null, { focalBrandCode: "1" }, "x")).toEqual({ saved: true, revision: 1 });
+    expect(await saveTrackerChoices(tenant, alone.run, alone.doc, { scope: `project:${alone.run}`, revision: null }, { focalBrandCode: "1" }, "x")).toEqual({ saved: true, revision: 1 });
     expect((await loadTrackerDashboard(tenant, wave1.run, wave1.doc)).choices.focalBrandCode).toBe("8");
-    await expect(saveTrackerChoices(tenant, alone.run, wave1.doc, 1, { focalBrandCode: "1" }, "x")).rejects.toThrow(/not found for this run|no longer in this project/);
+    await expect(saveTrackerChoices(tenant, alone.run, wave1.doc, { scope: `project:${alone.run}`, revision: 1 }, { focalBrandCode: "1" }, "x")).rejects.toThrow(/not found for this run|no longer in this project/);
     const other = randomUUID();
     await q("insert into tenants (id, name) values ($1, 'Other')", [other]);
-    await expect(saveTrackerChoices(other, wave1.run, wave1.doc, 2, {}, "x")).rejects.toThrow();
+    await expect(saveTrackerChoices(other, wave1.run, wave1.doc, inProgramme(2), {}, "x")).rejects.toThrow();
     expect((await q("select revision from tracker_dashboards where program_id = $1", [program]))[0].revision).toBe(2);
   });
 
   it("Reset to suggested: choices cleared and kept as previous; suggestions apply again; a stale reset is refused", async () => {
     const { resetTrackerChoices, loadTrackerDashboard } = await lib();
-    expect(await resetTrackerChoices(tenant, wave1.run, 1, "grant@example.com")).toMatchObject({ saved: false, reason: "conflict", current: { revision: 2 } });
-    expect(await resetTrackerChoices(tenant, wave1.run, 2, "grant@example.com")).toEqual({ saved: true, revision: 3 });
+    expect(await resetTrackerChoices(tenant, wave1.run, inProgramme(1), "grant@example.com")).toMatchObject({ saved: false, reason: "conflict", current: { revision: 2 } });
+    expect(await resetTrackerChoices(tenant, wave1.run, inProgramme(2), "grant@example.com")).toEqual({ saved: true, revision: 3 });
     const row = (await q("select choices, previous_choices, reset_at is not null as reset from tracker_dashboards where program_id = $1", [program]))[0];
     expect(row).toEqual({ choices: {}, previous_choices: { focalBrandCode: "8", weighted: true }, reset: true });
     const v = await loadTrackerDashboard(tenant, wave2.run, wave2.doc);

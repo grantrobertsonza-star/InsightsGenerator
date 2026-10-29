@@ -52,7 +52,11 @@ export type PerBrandMeasure = {
   stageReason: string | null;
 };
 
-export type FunnelStage = "unaided_awareness" | "awareness" | "consideration" | "shortlist" | "first_choice" | "trial" | "usage" | "frequent_usage" | "acquisition" | "repeat" | "rejection" | "advertising" | "word_of_mouth" | "moment";
+/** Every stage a per-brand question can have: the one list for recognition, saving and the screens (Codex
+ * D2A-F02: a second list in trackerDashboard.ts had not been given trial and frequent use, so they could not be
+ * saved). */
+export const FUNNEL_STAGES = ["unaided_awareness", "awareness", "consideration", "shortlist", "first_choice", "trial", "usage", "frequent_usage", "acquisition", "repeat", "rejection", "advertising", "word_of_mouth", "moment"] as const;
+export type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
 /** A brand-by-item grid: one group per item (an attribute, a buying situation), each with a variable per brand. */
 export type BrandGrid = { kind: "associations" | "moments"; items: { group: string; item: string; byBrand: { code: string; variable: string }[] }[] };

@@ -7,12 +7,12 @@
 // kept, never dropped. Weighting (Grant: "weight by default"): weighted whenever the file has a weight,
 // unless the researcher chose unweighted.
 // Pure: no reads or writes. Persistence is trackerDashboards.ts.
-import type { FunnelStage, TrackerRecognition } from "./trackerRoles";
+import { FUNNEL_STAGES, type FunnelStage, type TrackerRecognition } from "./trackerRoles";
 
 /** Which recognition rules produced a suggestion, recorded with saved choices. Raise when trackerRoles.ts changes. */
 export const TRACKER_ROLE_RULES = "d1-2026-10-29";
 
-const STAGES: readonly FunnelStage[] = ["unaided_awareness", "awareness", "consideration", "shortlist", "first_choice", "usage", "acquisition", "repeat", "rejection", "advertising", "word_of_mouth", "moment"];
+const STAGES: readonly string[] = FUNNEL_STAGES;
 const CSM_SINGLE = ["overallSatisfaction", "recommend0to10", "likelyToStay", "likelyToSwitch"] as const;
 type CsmSingle = (typeof CSM_SINGLE)[number];
 
@@ -83,7 +83,10 @@ export function choiceProblems(choices: TrackerChoices, rec: TrackerRecognition,
     if (v && !variableNames.has(v) && !keptVariables.has(v)) problems.push(`${v} is not a variable in this file.`);
   }
   for (const v of choices.csm?.drivers ?? []) if (!variableNames.has(v) && !keptVariables.has(v)) problems.push(`${v} is not a variable in this file.`);
-  if (choices.weighted === true && !weightVar) problems.push("This file has no weight, so it cannot be weighted.");
+  // An unchanged "weighted" choice made on a wave with a weight is kept on a wave without one (Codex D2A-F03): this
+  // wave's results are unweighted and say so (resolveDashboard), and the programme's preference applies again to a
+  // later wave that has a weight. Only a new choice of weighting is refused here.
+  if (choices.weighted === true && !weightVar && stored.weighted !== true) problems.push("This file has no weight, so it cannot be weighted.");
   if ((choices.hidden ?? []).some((h) => typeof h !== "string" || h.length > 100) || (choices.hidden?.length ?? 0) > 200) problems.push("The hidden charts list is not valid.");
   return problems;
 }
@@ -173,14 +176,25 @@ export function resolveDashboard(
   }
   const csm = { overallSatisfaction: pick("overallSatisfaction"), recommend0to10: pick("recommend0to10"), likelyToStay: pick("likelyToStay"), likelyToSwitch: pick("likelyToSwitch"), drivers };
 
+  // A CSM question is answered by an applicable choice of its role (Codex D2A-F04): a variable this file has, or an
+  // intentional "none". A carried choice this file cannot apply keeps the question open (its own needs-a-choice
+  // entry says why). A question whether a partly labelled list is 0 to 10 is answered only by choosing that very
+  // variable as the recommend question, never by choosing another.
+  const CSM_QUESTION_ROLE: Record<string, CsmSingle> = { "csm:satisfaction": "overallSatisfaction", "csm:recommend": "recommend0to10", "csm:stay": "likelyToStay", "csm:switch": "likelyToSwitch" };
+  const applicable = (role: CsmSingle) => choices.csm !== undefined && Object.prototype.hasOwnProperty.call(choices.csm, role) && (choices.csm[role] === null || variableNames.has(choices.csm[role] as string));
+  const csmAnswered = (id: string) => {
+    if (CSM_QUESTION_ROLE[id]) return applicable(CSM_QUESTION_ROLE[id]);
+    if (id === "csm:drivers") return choices.csm?.drivers !== undefined && choices.csm.drivers.every((d) => variableNames.has(d));
+    if (id.startsWith("csm:recommend-scale:")) return applicable("recommend0to10") && choices.csm!.recommend0to10 === id.slice("csm:recommend-scale:".length);
+    return false;
+  };
   // The recogniser's open questions, less the ones a choice answers.
   const answered = (id: string) =>
     (id === "focal-brand" && choices.focalBrandCode !== undefined) ||
     (id === "non-brand-codes" && choices.nonBrandCodes !== undefined) ||
     (id.startsWith("measure:") && choices.stages !== undefined && Object.prototype.hasOwnProperty.call(choices.stages, id.slice(8))) ||
     (id.startsWith("stage:") && stagesSettled(id.slice(6) as FunnelStage, stages)) ||
-    (id === "csm:satisfaction" && choices.csm?.overallSatisfaction !== undefined) ||
-    (id === "csm:drivers" && choices.csm?.drivers !== undefined);
+    csmAnswered(id);
   const open = rec.questions.filter((q) => !answered(q.id) && !needsChoice.some((n) => n.id === q.id));
 
   const weightChosen = choices.weighted !== undefined;

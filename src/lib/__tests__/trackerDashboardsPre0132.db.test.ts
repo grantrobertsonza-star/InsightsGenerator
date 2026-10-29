@@ -64,7 +64,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("before migration 0132 (real d
     const { loadTrackerDashboard, saveTrackerChoices, resetTrackerChoices, TRACKER_DASHBOARDS_UNAVAILABLE } = await import("../trackerDashboards");
     const v = await loadTrackerDashboard(tenant, run, doc);
     expect([v.storageAvailable, v.revision, v.recognition.type, v.dashboard.focalBrand?.code]).toEqual([false, null, "brand", "8"]);
-    expect(await saveTrackerChoices(tenant, run, doc, null, { focalBrandCode: "8" }, "x")).toEqual({ saved: false, reason: "unavailable", message: TRACKER_DASHBOARDS_UNAVAILABLE });
-    expect(await resetTrackerChoices(tenant, run, 1, "x")).toEqual({ saved: false, reason: "unavailable", message: TRACKER_DASHBOARDS_UNAVAILABLE });
+    expect(await saveTrackerChoices(tenant, run, doc, { scope: `project:${run}`, revision: null }, { focalBrandCode: "8" }, "x")).toEqual({ saved: false, reason: "unavailable", message: TRACKER_DASHBOARDS_UNAVAILABLE });
+    expect(await resetTrackerChoices(tenant, run, { scope: `project:${run}`, revision: 1 }, "x")).toEqual({ saved: false, reason: "unavailable", message: TRACKER_DASHBOARDS_UNAVAILABLE });
   });
 });

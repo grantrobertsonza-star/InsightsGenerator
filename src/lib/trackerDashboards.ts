@@ -3,7 +3,9 @@
 // every read (trackerInput.ts, trackerRoles.ts); only the researcher's choices are stored, and they are
 // applied to each wave by trackerDashboard.ts.
 // Guarantees:
-//   - a save or reset is a compare-and-swap on `revision`: a caller that last saw another revision is told so
+//   - a save or reset is a compare-and-swap on the scope and `revision` the screen read (Codex D2A-F01: on the
+//     revision alone, a view of programme A saved after its project moved to programme B, at an equal revision,
+//     replaced B's choices); a project moved since the view is a conflict that changes neither programme; a caller that last saw another revision is told so
 //     and given the current choices, and nothing is written; "no row yet" is its own expected state, and two
 //     first saves cannot both win (the scope's unique index);
 //   - the project and the file are checked inside the same transaction as the write, with the project's row
@@ -40,14 +42,24 @@ export type TrackerDashboardView = {
   choicesFrom: { runId: string | null; documentId: string | null; thisWave: boolean; at: string | null; by: string | null } | null;
   resetAt: string | null;
   scope: "programme" | "project";
+  /** Which programme's (or project's) choices these are; sent back with every save and reset (scopeKeyOf). */
+  scopeKey: string;
   /** False before migration 0132: choices cannot be saved (TRACKER_DASHBOARDS_UNAVAILABLE). */
   storageAvailable: boolean;
   labelsCut: string[];
 };
 
+/** What the screen last read: the scope and its revision (null: nothing saved there yet). */
+export type ExpectedDashboard = { scope: string; revision: number | null };
+
+/** A scope's stable identity: its programme, or the project when it is in none. */
+export function scopeKeyOf(programId: string | null, runId: string): string {
+  return programId ? `programme:${programId}` : `project:${runId}`;
+}
+
 export type SaveResult =
   | { saved: true; revision: number }
-  | { saved: false; reason: "conflict"; current: { revision: number | null; choices: TrackerChoices } }
+  | { saved: false; reason: "conflict"; moved?: true; current: { scope: string; revision: number | null; choices: TrackerChoices } }
   | { saved: false; reason: "invalid"; problems: string[] }
   | { saved: false; reason: "unavailable"; message: string };
 
@@ -81,6 +93,17 @@ async function storedRow(client: PoolClient, tenantId: string, programId: string
   return r.rows[0] ?? null;
 }
 
+/** A refused save or reset: the scope the project is in now, with its revision and choices, so the screen reloads. */
+async function conflict(client: PoolClient, tenantId: string, programId: string | null, runId: string, moved = false): Promise<SaveResult> {
+  const current = await storedRow(client, tenantId, programId, runId);
+  return {
+    saved: false,
+    reason: "conflict",
+    ...(moved ? { moved: true as const } : {}),
+    current: { scope: scopeKeyOf(programId, runId), revision: current?.revision ?? null, choices: normaliseChoices(current?.choices) },
+  };
+}
+
 async function documentInRun(client: PoolClient, runId: string, documentId: string) {
   const r = await client.query("select 1 from documents where id = $1 and run_id = $2", [documentId, runId]);
   if (r.rowCount !== 1) throw new Error("That data file is no longer in this project. Nothing was changed.");
@@ -108,6 +131,7 @@ export async function loadTrackerDashboard(tenantId: string, runId: string, docu
       : null,
     resetAt: row?.reset_at ? row.reset_at.toISOString() : null,
     scope: programId ? "programme" : "project",
+    scopeKey: scopeKeyOf(programId, runId),
     storageAvailable: available,
     labelsCut: input.labelsCut,
   };
@@ -128,16 +152,17 @@ function suggestionRecord(rec: TrackerRecognition, weightVar: string | null) {
 
 /**
  * Saves the researcher's choices for the programme (replacing the stored set), made while viewing this wave's
- * file. `expectedRevision` is the revision the screen last read (null: nothing saved yet).
+ * file. `expected` is the scope and revision the screen last read (revision null: nothing saved there yet).
  */
 export async function saveTrackerChoices(
   tenantId: string,
   runId: string,
   documentId: string,
-  expectedRevision: number | null,
+  expected: ExpectedDashboard,
   rawChoices: unknown,
   by: string | null,
 ): Promise<SaveResult> {
+  const expectedRevision = expected.revision;
   const choices = normaliseChoices(rawChoices);
   const input = await loadRoleInput(tenantId, runId, documentId);
   const rec = recogniseTracker(input.variables);
@@ -145,6 +170,8 @@ export async function saveTrackerChoices(
     if (!(await storageAvailable(client))) return { saved: false, reason: "unavailable", message: TRACKER_DASHBOARDS_UNAVAILABLE } as const;
     const { programId } = await scopeOf(client, tenantId, runId, true);
     await documentInRun(client, runId, documentId);
+    // Checked under the project's lock: a project moved to another programme since the view writes nowhere.
+    if (scopeKeyOf(programId, runId) !== expected.scope) return await conflict(client, tenantId, programId, runId, true);
     // A choice this file cannot support may still be saved unchanged: it was made against a wave that had it,
     // and resaving other choices from this wave must not drop it.
     const stored = normaliseChoices((await storedRow(client, tenantId, programId, runId))?.choices);
@@ -169,16 +196,17 @@ export async function saveTrackerChoices(
       );
     }
     if (written.rowCount === 1) return { saved: true, revision: written.rows[0].revision } as const;
-    const current = await storedRow(client, tenantId, programId, runId);
-    return { saved: false, reason: "conflict", current: { revision: current?.revision ?? null, choices: normaliseChoices(current?.choices) } } as const;
+    return await conflict(client, tenantId, programId, runId);
   });
 }
 
 /** Reset to suggested: clears the programme's choices and keeps them as previous_choices. */
-export async function resetTrackerChoices(tenantId: string, runId: string, expectedRevision: number, by: string | null): Promise<SaveResult> {
+export async function resetTrackerChoices(tenantId: string, runId: string, expected: ExpectedDashboard, by: string | null): Promise<SaveResult> {
+  const expectedRevision = expected.revision;
   return withTenant(tenantId, async (client) => {
     if (!(await storageAvailable(client))) return { saved: false, reason: "unavailable", message: TRACKER_DASHBOARDS_UNAVAILABLE } as const;
     const { programId } = await scopeOf(client, tenantId, runId, true);
+    if (scopeKeyOf(programId, runId) !== expected.scope) return await conflict(client, tenantId, programId, runId, true);
     const written = await client.query<{ revision: number }>(
       `update tracker_dashboards
           set previous_choices = choices, choices = '{}'::jsonb, reset_at = now(), choices_by = $4, choices_at = null,
@@ -187,7 +215,6 @@ export async function resetTrackerChoices(tenantId: string, runId: string, expec
       [tenantId, programId ?? runId, expectedRevision, by],
     );
     if (written.rowCount === 1) return { saved: true, revision: written.rows[0].revision } as const;
-    const current = await storedRow(client, tenantId, programId, runId);
-    return { saved: false, reason: "conflict", current: { revision: current?.revision ?? null, choices: normaliseChoices(current?.choices) } } as const;
+    return await conflict(client, tenantId, programId, runId);
   });
 }
