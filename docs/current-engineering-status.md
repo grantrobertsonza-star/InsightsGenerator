@@ -1,6 +1,15 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD2aR and BatchUI1 on top of c8bfac21, which Codex reviewed on 29 October: D1-F01 closed, D2A-F01 to F04 found): D2aR repairs D2A-F01 (saves and resets bound to the scope read), F02 (one stage list), F03 (unchanged weighting kept), F04 (CSM choices answer their questions); UI1 makes chart legends and titles fit, puts NPS and drivers in a resizable split and the importance quadrant at full width; implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchUI1R on top of 6d00545d, which Codex reviewed on 29 October: D2A-F01 to F04 closed, UI1-F01 found): UI1R repairs UI1-F01 (an open tab follows a split saved in another tab); implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+
+## Claude: batch UI1R, main copy (2026-10-29)
+
+Implemented, ready for review, one commit on top of `6d00545d`. Handover `claude/batchUI1R-handover-2026-10-29.md`:
+UI1-F01, the split follows a value saved, changed or removed in another tab; other keys ignored. The browser check
+uses a second real tab and failed on the UI1 code (received 33). Gates on `0504ebf`: tsc and eslint clean; self-test
+passed; library 2,377 passed, 91 skipped, 0 failed; browser 141 passed, 1 skipped, 1 failed (this check's own last
+step referenced a variable the page does not have; corrected in the check, then it and chart-legend-fit passed);
+smoke 1 passed. No migration.
 
 ## Claude: batches D2aR and UI1, main copy (2026-10-29)
 

@@ -5,12 +5,13 @@
 // Guarantees:
 //   - a save or reset is a compare-and-swap on the scope and `revision` the screen read (Codex D2A-F01: on the
 //     revision alone, a view of programme A saved after its project moved to programme B, at an equal revision,
-//     replaced B's choices); a project moved since the view is a conflict that changes neither programme; a caller that last saw another revision is told so
+//     replaced B's choices); a project moved since the view is a conflict that changes neither programme, and
+//     returns the scope it is in now so the screen reloads; a caller that last saw another revision is told so
 //     and given the current choices, and nothing is written; "no row yet" is its own expected state, and two
 //     first saves cannot both win (the scope's unique index);
 //   - the project and the file are checked inside the same transaction as the write, with the project's row
-//     locked, so a project moved to another programme meanwhile writes to the programme it is in now, and a
-//     project or file that is gone is refused;
+//     locked: a save made after a reload goes to the programme the project is in then; a stale one is refused
+//     (above); a project or file that is gone is refused;
 //   - choices are checked against this wave's suggestion and variables on the server, never trusted from the
 //     screen;
 //   - before migration 0132 the suggestion still shows, and saving is refused with that reason.

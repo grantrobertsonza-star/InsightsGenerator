@@ -6,6 +6,7 @@
 //      mouse to about a third narrows it; it stays after a reload of the result (browser storage).
 //   3. The importance quadrant fills its pane's width (it was a thumbnail beside its legend).
 //   4. At 1100 wide the panes stack and there is no divider.
+//   Also (Codex UI1-F01): a split saved in another open tab reaches this view; removing it returns to half.
 import { expect, test } from "@playwright/test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,6 +95,29 @@ test("NPS and drivers share a resizable split, and the quadrant fills its pane",
   const fw = (await right.getByTestId("quadrant-frame").boundingBox()).width;
   expect(qw).toBeGreaterThan(fw * 0.9);
   if (process.env.SHOT) await ws.screenshot({ path: process.env.SHOT });
+
+  // Codex UI1-F01: a split saved in another tab reaches this open view, even after this tab has moved it itself; a
+  // removed setting returns it to half; other keys change nothing. The second tab is a real page of the same site,
+  // so its storage writes reach this one as the browser's own storage events.
+  const key = "analytics-split:nps-drivers";
+  const tab2 = await page.context().newPage();
+  await tab2.goto(run.url, { waitUntil: "domcontentloaded" });
+  await tab2.evaluate((k) => window.localStorage.setItem(k, "40"), key);
+  await expect(split).toHaveAttribute("data-split", "40");
+  await tab2.evaluate(() => window.localStorage.setItem("some-other-setting", "70"));
+  await page.waitForTimeout(500);
+  await expect(split).toHaveAttribute("data-split", "40");
+  await tab2.evaluate((k) => window.localStorage.removeItem(k), key);
+  await expect(split).toHaveAttribute("data-split", "50");
+  // This tab moves it again; both tabs agree, and a later change in the other tab still arrives.
+  await handle.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(split).toHaveAttribute("data-split", "45");
+  expect(await tab2.evaluate((k) => window.localStorage.getItem(k), key)).toBe("45");
+  // The value is passed in: the function runs in the page, where this check's own variables do not exist.
+  await tab2.evaluate(([k, v]) => window.localStorage.setItem(k, v), [key, String(dragged)]);
+  await expect(split).toHaveAttribute("data-split", String(dragged));
+  await tab2.close();
 
   // The split is kept for this browser: a reload shows the same proportion once the result is back.
   await page.reload({ waitUntil: "networkidle" });

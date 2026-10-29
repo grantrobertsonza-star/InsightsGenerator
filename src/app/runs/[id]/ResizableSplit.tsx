@@ -27,9 +27,19 @@ function readSplit(key: string): number {
 }
 
 // The split as an external store: this browser's saved value, with an in-memory fallback when storage is
-// blocked, and listeners told of every change (including from another tab).
+// blocked, and listeners told of every change, including one saved in another tab (Codex UI1-F01: the in-memory
+// value used to win over another tab's change, so an open view never followed it).
 const memorySplit = new Map<string, number>();
 const listeners = new Set<() => void>();
+/** Another tab saved or removed a split (or cleared storage): drop this tab's in-memory copy so the saved value is
+ * read again, then tell the views. Other keys are ignored. With storage blocked no such event arrives, and the
+ * in-memory value stands. */
+function onStorage(e: StorageEvent) {
+  if (e.key === null) memorySplit.clear();
+  else if (e.key.startsWith(KEY_PREFIX)) memorySplit.delete(e.key.slice(KEY_PREFIX.length));
+  else return;
+  listeners.forEach((l) => l());
+}
 const splitStore = {
   get: (key: string) => memorySplit.get(key) ?? readSplit(key),
   set: (key: string, v: number) => {
@@ -42,11 +52,11 @@ const splitStore = {
     listeners.forEach((l) => l());
   },
   subscribe: (l: () => void) => {
+    if (listeners.size === 0) window.addEventListener("storage", onStorage);
     listeners.add(l);
-    window.addEventListener("storage", l);
     return () => {
       listeners.delete(l);
-      window.removeEventListener("storage", l);
+      if (listeners.size === 0) window.removeEventListener("storage", onStorage);
     };
   },
 };
