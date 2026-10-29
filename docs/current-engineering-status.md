@@ -1,6 +1,21 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchE1 on top of 919a3b54): CB1 (codebooks matched to every wave and confirmed automatically where the answer list covers the data; migration 0133), D3b (the brand and CSM dashboards redesigned, CSM by company), batches 55 to 57 (data reading, codebook layouts, claims against aggregated tables; scan off; '-' and '*' read as values), D2b parts 1 and 2 (NPS group against the rest; promoter model checked), the Cross tabs count, Copy here and Edit in Build table, the codebook links review per wave, the Setup save race, U1 (upload progress), T1 (export all tables; non-answer labels by the engine's rule). Implemented, ready for independent review. Migrations 0131, 0132 and 0133 to apply. **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchE1R on top of BatchE1 `7e09578c`): repairs of Codex's E1 review: E1-F01 (CSM company changes only for the same company in both waves), E1-F02 (an acceptance is of the structure the researcher saw), E1-F03 (Update table atomic, retry converges), E1-F04 (Read again re-checks automatic codebook confirmations). No migration.
+
+## Claude: batch E1R, main copy (2026-10-29, night)
+
+Implemented, ready for review, on top of `7e09578c` (BatchE1). Handover `claude/batchE1R-handover-2026-10-29.md`;
+review `docs/independent-e1-review-2026-10-29.md`. No migration.
+
+Gates on the exact tree:
+- `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed.
+- Library: 339 files (337 passed, 2 skipped), 2,540 tests passed, 91 skipped, 0 failed
+  (`TEST_DATABASE_URL=... npx vitest run src/lib/__tests__ --pool=forks`, with commit signing turned off for the
+  test's own throwaway git repositories, which this container's signing setup otherwise refuses).
+- Browser suite (`npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1`, disposable stack, production
+  build): 147 passed, 1 skipped, 0 failed. Smoke (`npx playwright test`): 1 passed. Objective review acceptance
+  script: passed.
+- One full run on this exact tree (`d7561f2`), answering the E1 review's gate-provenance note.
 
 ## Claude: batch E1, main copy (2026-10-29, evening)
 

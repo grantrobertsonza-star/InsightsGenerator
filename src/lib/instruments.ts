@@ -164,6 +164,11 @@ export type InstrumentReadResult = {
   /** D2: the codebook gave question numbers, types or sets, but they could not be stored because migration
    * 0131 is not applied. Absent when there was nothing to store or it was stored. */
   questionMetaNotStored?: boolean;
+  /** Codex E1-F04: codebook entries confirmed without a click whose answer list or name changed in this read. Their
+   * automatic confirmations were withdrawn when the read was saved and checked again against every linked data file
+   * (matchCodebookToDataFiles): `reconfirmed` of them fit again. "failed": the check could not run, so they stay
+   * suggestions until the codebook is matched again. Absent when no automatic confirmation was affected. */
+  automaticRecheck?: { withdrawn: number; status: "done"; reconfirmed: number } | { withdrawn: number; status: "failed"; error: string };
 };
 
 /** How long a claim on a read stands before another session may take it over (an abandoned read). */
@@ -254,8 +259,9 @@ async function claimSuperseded(client: PoolClient, runId: string, documentId: st
 
 export async function readInstrumentItems(tenantId: string, runId: string, documentId: string): Promise<InstrumentReadResult> {
   const doc = await claimInstrumentRead(tenantId, runId, documentId);
+  let result: InstrumentReadResult & { automaticWithdrawn?: { itemId: string; dataDocumentId: string }[] };
   try {
-    return await readClaimedInstrument(tenantId, runId, documentId, doc);
+    result = await readClaimedInstrument(tenantId, runId, documentId, doc);
   } catch (e) {
     // Best effort: if even this write fails, the claim lapses after INSTRUMENT_READ_CLAIM_MINUTES.
     await releaseInstrumentRead(tenantId, runId, documentId, doc.claimId).catch(() => {});
@@ -271,6 +277,28 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
       );
     }
     throw e;
+  }
+  const { automaticWithdrawn = [], ...read } = result;
+  if (automaticWithdrawn.length === 0) return read;
+  const withdrawn = automaticWithdrawn.length;
+  // The withdrawn confirmations are checked again by the matching owner, on every data file the codebook describes:
+  // an entry whose answer list still covers every code the variable holds is confirmed automatically again, one that
+  // no longer does stays a suggestion. Until this runs (or if it fails) they are suggestions, never confirmed.
+  try {
+    await matchCodebookToDataFiles(tenantId, runId, documentId);
+    // Counted by entry and data file: matching replaces a suggestion's row, so the withdrawn rows' ids do not last.
+    const reconfirmed = await withTenantRead(tenantId, async (client) => {
+      const r = await client.query<{ n: number }>(
+        `select count(*)::int as n from instrument_links l
+           join unnest($2::uuid[], $3::uuid[]) as w(item_id, data_document_id) on w.item_id = l.item_id and w.data_document_id = l.data_document_id
+          where l.run_id = $1 and l.status = 'confirmed' and l.decided_by = 'automatic'`,
+        [runId, automaticWithdrawn.map((w) => w.itemId), automaticWithdrawn.map((w) => w.dataDocumentId)],
+      );
+      return r.rows[0]?.n ?? 0;
+    });
+    return { ...read, automaticRecheck: { withdrawn, status: "done", reconfirmed } };
+  } catch (e) {
+    return { ...read, automaticRecheck: { withdrawn, status: "failed", error: e instanceof Error ? e.message : String(e) } };
   }
 }
 
@@ -595,10 +623,19 @@ async function storeInstrumentRows(
     // database identity - and so keeps every instrument_links row pointing
     // at it (those cascade-delete with their item) - instead of a blind
     // delete-then-reinsert handing every item a fresh id on every reread.
-    const existing = await client.query<{ id: string; code: string | null; item_text: string }>(
-      "select id, code, item_text from instrument_items where document_id = $1",
+    const existing = await client.query<{ id: string; code: string | null; item_text: string; response_options: unknown }>(
+      "select id, code, item_text, response_options from instrument_items where document_id = $1",
       [documentId],
     );
+    const existingById = new Map(existing.rows.map((e) => [e.id, e] as const));
+    // Codex E1-F04: a codebook entry confirmed without a click was confirmed because its answer list covered every
+    // code its variable holds (answerCodesFit, at matching). An entry whose answer list or name changes here no longer
+    // has that check behind it, so its automatic confirmations are withdrawn in this same transaction and checked
+    // again after it (readInstrumentItems). A researcher's own confirmation or rejection is never touched.
+    const decisionsStored = await linkDecisionsAvailable(client);
+    const automaticWithdrawn: { itemId: string; dataDocumentId: string }[] = [];
+    const sortedJson = (v: unknown) =>
+      JSON.stringify(v ?? null, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
     const existingByKey = new Map(existing.rows.map((r) => [itemKey(r.code, r.item_text), r.id] as const));
     const metaStored = await questionMetaAvailable(client);
     if (!metaStored && rows.some((r) => r.questionMeta)) questionMetaNotStored = true;
@@ -634,6 +671,14 @@ async function storeInstrumentRows(
         // but in a degraded form - the existing row's full data is preserved instead of
         // being replaced by a partial one.
         if (r.truncated) continue;
+        const before = existingById.get(existingId);
+        if (decisionsStored && before && (sortedJson(before.response_options) !== sortedJson(r.options) || codeKey(before.code) !== codeKey(r.code))) {
+          const withdrawn = await client.query<{ item_id: string; data_document_id: string }>(
+            "update instrument_links set status = 'suggested', decided_by = null where item_id = $1 and status = 'confirmed' and decided_by = 'automatic' returning item_id, data_document_id",
+            [existingId],
+          );
+          automaticWithdrawn.push(...withdrawn.rows.map((w) => ({ itemId: w.item_id, dataDocumentId: w.data_document_id })));
+        }
         const params = [n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page, existingId];
         await client.query(
           `update instrument_items
@@ -670,9 +715,16 @@ async function storeInstrumentRows(
     // Coverage belongs to the persisted item set: a reload must not turn an incomplete reread
     // into an apparently complete questionnaire merely because older confirmed items survived.
     await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_finished',$3)", [tenantId, runId, JSON.stringify({ documentId, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems, claimId: doc.claimId })]);
-    return Number(r.rows[0]?.n ?? rows.length);
+    return { n: Number(r.rows[0]?.n ?? rows.length), automaticWithdrawn };
   });
-  return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems, ...(questionMetaNotStored ? { questionMetaNotStored } : {}) };
+  return {
+    count: count.n,
+    complete,
+    failedChunks,
+    incompleteItems: invalidItems + truncatedOptionItems,
+    ...(questionMetaNotStored ? { questionMetaNotStored } : {}),
+    ...(count.automaticWithdrawn.length > 0 ? { automaticWithdrawn: count.automaticWithdrawn } : {}),
+  };
 }
 
 /**

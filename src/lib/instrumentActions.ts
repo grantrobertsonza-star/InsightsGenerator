@@ -19,6 +19,7 @@ import {
   matchCodebookToDataFiles,
   instrumentTypeOf,
   type InstrumentItem,
+  type InstrumentReadResult,
   type InstrumentLink,
   AUTO_CONFIRM_MIN,
 } from "./instruments";
@@ -40,12 +41,12 @@ const explain = (e: unknown) => {
 export async function readInstrumentAction(
   runId: string,
   documentId: string,
-): Promise<Ok<{ items: number; complete: boolean; failedChunks: number; incompleteItems: number; questionMetaNotStored?: boolean }> | (Fail & { inFlight?: true })> {
+): Promise<Ok<{ items: number; complete: boolean; failedChunks: number; incompleteItems: number; questionMetaNotStored?: boolean; automaticRecheck?: InstrumentReadResult["automaticRecheck"] }> | (Fail & { inFlight?: true })> {
   const TENANT_ID = await requireTenantId();
   try {
     const r = await readInstrumentItems(TENANT_ID, runId, documentId);
     revalidatePath(`/runs/${runId}`);
-    return { ok: true, items: r.count, complete: r.complete, failedChunks: r.failedChunks, incompleteItems: r.incompleteItems, ...(r.questionMetaNotStored ? { questionMetaNotStored: true } : {}) };
+    return { ok: true, items: r.count, complete: r.complete, failedChunks: r.failedChunks, incompleteItems: r.incompleteItems, ...(r.questionMetaNotStored ? { questionMetaNotStored: true } : {}), ...(r.automaticRecheck ? { automaticRecheck: r.automaticRecheck } : {}) };
   } catch (e) {
     // Another session holds the read (IR-05): nothing was paid for and nothing failed, so it is not
     // recorded as a failure; the caller shows that a read is under way.

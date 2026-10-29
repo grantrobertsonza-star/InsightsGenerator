@@ -158,6 +158,27 @@ export async function brandOverviewFigures(
   };
 }
 
+/**
+ * The identity rule for a code compared across two waves (a brand, or a CSM company): the code is the same thing in both
+ * only when both waves' answer lists name it and the names agree (trimmed, ignoring case). A code reused for another
+ * name, or missing from either list, is not the same thing, so no change is computed for it. Returns null when the code
+ * names the same thing in both waves, else the reason, worded with `noun` ("Brand", "Company") and the list's name.
+ */
+export function codeNamesDiffer(
+  code: string,
+  current: { code: string; label: string }[],
+  previous: { code: string; label: string }[],
+  noun: string,
+  listName: string,
+): string | null {
+  const name = (list: { code: string; label: string }[], c: string) => list.find((x) => x.code === c)?.label.trim().toLowerCase();
+  const now = name(current, code);
+  const then = name(previous, code);
+  if (now && then && now === then) return null;
+  const was = previous.find((x) => x.code === code)?.label;
+  return was ? `${noun} code ${code} was ${was} in the previous wave, so it is not compared.` : `${noun} code ${code} is not in the previous wave's ${listName}.`;
+}
+
 export type StageChange = { stage: FunnelStage; code: string; current: number | null; previous: number | null; changePp: number | null; reason?: string };
 
 /**
@@ -173,19 +194,14 @@ export function changesAgainst(
 ): StageChange[] {
   const key = (stage: string, variable: string, code: string) => `${stage}|${variable}|${code}`;
   const prev = new Map((previous ?? []).flatMap((s) => s.byBrand.map((b) => [key(s.stage, b.variable, b.code), b] as const)));
-  const name = (list: { code: string; label: string }[] | undefined, code: string) => list?.find((b) => b.code === code)?.label.trim().toLowerCase();
   return current.flatMap((s) =>
     s.byBrand.map((b): StageChange => {
       if (!previous) return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: "No earlier wave." };
       const p = prev.get(key(s.stage, b.variable, b.code));
       if (!p) return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: "Not asked about this brand in the previous wave." };
       if (brands) {
-        const now = name(brands.current, b.code);
-        const then = name(brands.previous, b.code);
-        if (!now || !then || now !== then) {
-          const was = brands.previous.find((x) => x.code === b.code)?.label;
-          return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: was ? `Brand code ${b.code} was ${was} in the previous wave, so it is not compared.` : `Brand code ${b.code} is not in the previous wave's brand list.` };
-        }
+        const differs = codeNamesDiffer(b.code, brands.current, brands.previous, "Brand", "brand list");
+        if (differs) return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: differs };
       }
       const changePp = b.share !== null && p.share !== null ? b.share - p.share : null;
       return { stage: s.stage, code: b.code, current: b.share, previous: p.share, changePp, ...(changePp === null ? { reason: "Not available in one of the two waves." } : {}) };

@@ -55,7 +55,16 @@ const btnPrimary =
  */
 /** D2: a codebook's question numbers, types and sets are read but not kept until migration 0131 is applied. */
 function metaNote(r: Record<string, unknown>): string {
-  return r.questionMetaNotStored ? " The question numbers, types and sets it gives were not saved: the database needs migration 0131." : "";
+  return (r.questionMetaNotStored ? " The question numbers, types and sets it gives were not saved: the database needs migration 0131." : "") + recheckNote(r);
+}
+
+/** Codex E1-F04: entries confirmed without a click whose answer list changed were checked again against every wave. */
+function recheckNote(r: Record<string, unknown>): string {
+  const c = r.automaticRecheck as { withdrawn: number; status: "done"; reconfirmed: number } | { withdrawn: number; status: "failed"; error: string } | undefined;
+  if (!c) return "";
+  const n = `${c.withdrawn} automatic link${c.withdrawn === 1 ? "" : "s"}`;
+  if (c.status === "failed") return ` ${n} whose answer list changed could not be checked again (${c.error}), so they are suggestions until you match the codebook again.`;
+  return ` ${n} whose answer list changed ${c.withdrawn === 1 ? "was" : "were"} checked again against every wave: ${c.reconfirmed} still fit and ${c.reconfirmed === 1 ? "is" : "are"} confirmed; the rest are suggestions to review.`;
 }
 
 function confirmedMessage(r: Record<string, unknown>): string {

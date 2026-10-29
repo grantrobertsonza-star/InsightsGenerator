@@ -663,8 +663,11 @@ export async function buildCrosstab(
     /** "Update table" on an edited copy: the replacement keeps its original's copiedFrom, so Copy here still sees the
      * table as copied. No check for an existing copy (the copy being replaced is still there until it is retired). */
     keepCopiedFrom?: string;
+    /** "Update table": the draft this table replaces (replaceDraftCrosstab). The new table and the removal of that
+     * draft are one transaction, and the new table records the draft it replaced, so a retry finds it. */
+    replacesDraft?: string;
   } = {},
-): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; alreadyCopied?: true }> {
+): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; alreadyCopied?: true; replaced?: boolean; alreadyReplaced?: true }> {
   // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
   const { result, doc, overlay, overrides, authoritativeSheet } = await computeCrosstab(tenantId, runId, documentId, request);
 
@@ -748,8 +751,11 @@ export async function buildCrosstab(
     savedRequest: request,
     ...(options.assistantRequest ? { assistantRequest: options.assistantRequest } : {}),
     ...(options.copiedFrom || options.keepCopiedFrom ? { copiedFrom: options.copiedFrom ?? options.keepCopiedFrom } : {}),
+    ...(options.replacesDraft ? { replacedDraft: options.replacesDraft } : {}),
   };
   let alreadyCopied = false;
+  let replaced: boolean | undefined;
+  let alreadyReplaced = false;
 
   const tableId = await withTenant(tenantId, async (client) => {
     // Table numbers are per file, taken as the highest so far plus one. Two tables saved at once
@@ -770,6 +776,24 @@ export async function buildCrosstab(
       if (copy.rows[0]) {
         alreadyCopied = true;
         return copy.rows[0].id;
+      }
+    }
+    if (options.replacesDraft) {
+      // Under the file's lock, so a retry and a second Update of the same draft take turns (Codex E1-F03). A table
+      // already recorded as this draft's replacement means the update was saved before: the same edit (a retry after
+      // a failure or a lost answer) gets that table, never a second one; a different edit is refused, because the
+      // draft it was made from has already been updated.
+      const earlier = await client.query<{ id: string; request: unknown }>(
+        "select id, crosstab->'savedRequest' as request from document_tables where document_id = $1 and run_id = $2 and tenant_id = $3 and crosstab->>'replacedDraft' = $4 limit 1",
+        [documentId, runId, tenantId, options.replacesDraft],
+      );
+      if (earlier.rows[0]) {
+        if (canonicalJson(earlier.rows[0].request) !== canonicalJson(request)) {
+          throw new Error("This draft was already updated with another edit (in another tab, or a moment ago). Reload Cross tabs to see the updated table, and edit that one.");
+        }
+        alreadyReplaced = true;
+        replaced = true;
+        return earlier.rows[0].id;
       }
     }
     const next = await client.query<{ next: number }>(
@@ -812,6 +836,15 @@ export async function buildCrosstab(
           JSON.stringify({ design: request.design ?? null }),
         ],
       );
+      if (options.replacesDraft) {
+        // In the same transaction as the new table: the old draft goes only if it is still a draft of this file
+        // (nothing committed from it), and if this fails the new table is not kept either.
+        const removed = await client.query(
+          "delete from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and document_id = $4 and crosstab_status = 'draft' and crosstab is not null",
+          [options.replacesDraft, runId, tenantId, documentId],
+        );
+        replaced = (removed.rowCount ?? 0) === 1;
+      }
       return inserted.rows[0].id;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -831,7 +864,14 @@ export async function buildCrosstab(
       throw error;
     }
   });
-  return { tableId, questions: result.questions.length, skipped: result.skipped, ...(alreadyCopied ? { alreadyCopied: true as const } : {}) };
+  return {
+    tableId,
+    questions: result.questions.length,
+    skipped: result.skipped,
+    ...(alreadyCopied ? { alreadyCopied: true as const } : {}),
+    ...(replaced !== undefined ? { replaced } : {}),
+    ...(alreadyReplaced ? { alreadyReplaced: true as const } : {}),
+  };
 }
 
 /**
@@ -917,10 +957,12 @@ export async function loadTableDefinition(tenantId: string, runId: string, table
 }
 
 /**
- * "Update table": an edited draft is replaced by the table its edited definition builds. Staged: the new table is
- * built first, then the old one is removed only if it is still a draft of this file (nothing committed from it); if
- * it was committed or deleted meanwhile it is left as it is and the result says so, so a reviewed table is never
- * removed by an edit. The new table keeps the old one's copiedFrom. A failed build changes nothing.
+ * "Update table": an edited draft is replaced by the table its edited definition builds. The new table is built, then
+ * saved and the old draft removed in one transaction (buildCrosstab's replacesDraft), so a failure leaves the old
+ * draft alone and no new table (Codex E1-F03). The old draft is removed only if it is still a draft of this file
+ * (nothing committed from it); if it was committed or deleted meanwhile it is left as it is and the result says so,
+ * so a reviewed table is never removed by an edit. The new table keeps the old one's copiedFrom and records the draft
+ * it replaced: retrying the same edit, after a failure or a lost answer, returns that table rather than a second one.
  */
 export async function replaceDraftCrosstab(
   tenantId: string,
@@ -929,18 +971,29 @@ export async function replaceDraftCrosstab(
   oldTableId: string,
   request: CrosstabRequest,
 ): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[]; replaced: boolean }> {
-  const old = await loadTableDefinition(tenantId, runId, oldTableId);
-  if (old.documentId !== documentId) throw new Error("That table belongs to another data file, so it was not replaced. Add the edited table instead.");
-  if (old.status !== "draft") throw new Error("Only a draft can be replaced. This table is committed: add the edited table as a new one.");
-  const built = await buildCrosstab(tenantId, runId, documentId, request, { status: "draft", ...(old.copiedFrom ? { keepCopiedFrom: old.copiedFrom } : {}) });
-  const replaced = await withTenant(tenantId, async (client) => {
+  let old: TableDefinition | null = null;
+  try {
+    old = await loadTableDefinition(tenantId, runId, oldTableId);
+  } catch (error) {
+    // The draft is gone. When it went because this edit replaced it (a retry whose first answer was lost), the build
+    // below finds that replacement under the file's lock and returns it; otherwise it is a real "not found".
+    if (!(await hasRecordedReplacement(tenantId, runId, documentId, oldTableId))) throw error;
+  }
+  if (old && old.documentId !== documentId) throw new Error("That table belongs to another data file, so it was not replaced. Add the edited table instead.");
+  if (old && old.status !== "draft") throw new Error("Only a draft can be replaced. This table is committed: add the edited table as a new one.");
+  const keepCopiedFrom = old?.copiedFrom ?? undefined;
+  const built = await buildCrosstab(tenantId, runId, documentId, request, { status: "draft", replacesDraft: oldTableId, ...(keepCopiedFrom ? { keepCopiedFrom } : {}) });
+  return { tableId: built.tableId, questions: built.questions, skipped: built.skipped, replaced: built.replaced ?? false };
+}
+
+async function hasRecordedReplacement(tenantId: string, runId: string, documentId: string, oldTableId: string): Promise<boolean> {
+  return withTenantRead(tenantId, async (client) => {
     const r = await client.query(
-      "delete from document_tables where id = $1 and run_id = $2 and tenant_id = $3 and document_id = $4 and crosstab_status = 'draft' and crosstab is not null",
-      [oldTableId, runId, tenantId, documentId],
+      "select 1 from document_tables where document_id = $1 and run_id = $2 and tenant_id = $3 and crosstab->>'replacedDraft' = $4 limit 1",
+      [documentId, runId, tenantId, oldTableId],
     );
-    return (r.rowCount ?? 0) === 1;
+    return r.rows.length > 0;
   });
-  return { ...built, replaced };
 }
 
 /** Sets the title (stored as the table label) and the caption (stored in the table JSON) the researcher wrote. */

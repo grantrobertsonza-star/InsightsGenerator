@@ -27,6 +27,7 @@ import { runDistributionAction } from "./chartActions";
 import { runNpsAction } from "./npsActions";
 import { runDriverAnalysisFor } from "./drivers";
 import { shareOfCodes, summarizeSeries } from "./csmMetrics";
+import { codeNamesDiffer } from "./trackerFigures";
 import { scaleTop, type RoleVariable } from "./trackerRoles";
 import type { ResolvedDashboard } from "./trackerDashboard";
 
@@ -196,9 +197,28 @@ function companyHeadlines(t: CsmTile): Map<string, number | null> {
  * This wave's CSM headlines against the previous wave's, for all customers and each company (by answer code), in
  * points, unrounded, with no significance claim. Compared only when both waves read the same question (by variable
  * name): a tile whose question differs, is missing or failed in either wave has no change, with the reason.
+ *
+ * A company's figures are compared only when the code is the same company in both waves (Codex E1-F01): both waves'
+ * company questions are given (`companies`), they are the same question (by variable name), and the code names the
+ * same company in both answer lists (`codeNamesDiffer`, the rule the brand funnel uses). A code reused for another
+ * company, a changed company question, or a wave whose companies are not known gives no change (box or mean) for that
+ * company, with the reason. The all-customer row does not depend on the company question and is compared as before.
  */
-export function csmChangesAgainst(current: CsmTile[], previous: CsmTile[] | null, noPrevious: string): CsmChange[] {
+export function csmChangesAgainst(
+  current: CsmTile[],
+  previous: CsmTile[] | null,
+  noPrevious: string,
+  companies: { current: CsmCompanies | null; previous: CsmCompanies | null } | null = null,
+): CsmChange[] {
   const out: CsmChange[] = [];
+  // Why no company of this wave can be compared at all, or null when each code is to be checked by name.
+  const noCompanyComparison = (() => {
+    if (!companies?.current || !companies.previous) return "Which company each code named in one of the two waves is not known, so companies are not compared.";
+    if (companies.current.variable !== companies.previous.variable) return `The previous wave used a different company question (${companies.previous.variable}), so companies are not compared.`;
+    return null;
+  })();
+  const companyDiffers = (code: string) =>
+    noCompanyComparison ?? codeNamesDiffer(code, companies!.current!.companies, companies!.previous!.companies, "Company", "company list");
   for (const t of current) {
     if (t.id === "drivers") continue;
     const p = previous?.find((x) => x.id === t.id) ?? null;
@@ -215,6 +235,11 @@ export function csmChangesAgainst(current: CsmTile[], previous: CsmTile[] | null
     out.push({ id: t.id, code: null, current: cur, previous: prev, changePp: cur !== null && prev !== null ? cur - prev : null, meanChange: meanDiff(meanOf(t, null), meanOf(p, null)) });
     const prevBy = companyHeadlines(p);
     for (const [code, value] of companyHeadlines(t)) {
+      const differs = companyDiffers(code);
+      if (differs) {
+        out.push({ id: t.id, code, current: value, previous: null, changePp: null, meanChange: null, reason: differs });
+        continue;
+      }
       const pv = prevBy.get(code) ?? null;
       out.push({ id: t.id, code, current: value, previous: pv, changePp: value !== null && pv !== null ? value - pv : null, meanChange: meanDiff(meanOf(t, code), meanOf(p, code)), ...(value === null || pv === null ? { reason: prevBy.has(code) ? "Not available in one of the two waves." : "This company was not in the previous wave." } : {}) });
     }

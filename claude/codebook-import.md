@@ -268,7 +268,11 @@ researcher chose a file.
   - the variable is a measure, text, has decimals or has more than 60 values;
   - the dictionary predates the codes.
 - **Re-checked.** Every match re-checks the automatic links: one whose name or codes no longer fit goes back to
-  a suggestion.
+  a suggestion. Read again re-checks them too (Codex E1-F04): an entry whose answer list or name changes in the
+  read has its automatic confirmations withdrawn in the same transaction that saves the new items, so its new
+  meaning is never used as confirmed unchecked; after the read, `matchCodebookToDataFiles` checks them on every
+  wave, confirming again where the list still covers the codes. If that check fails they stay suggestions and Read
+  again says so; a failed read changes nothing.
 - **The researcher's decisions.** Any status the researcher sets records `decided_by = 'researcher'`:
   - matching never deletes, upgrades or confirms such a link, including one the researcher returned to a
     suggestion;

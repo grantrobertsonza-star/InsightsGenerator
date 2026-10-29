@@ -8,8 +8,8 @@
 //   - the brand list is codes 1 to 10 with Other (96) and None (98) set aside, BMW is code 8;
 //   - each funnel stage has all ten brands by code; 12 buying situations and 10 attributes are brand grids;
 //   - the file's weight is the dashboards' default weight;
-// and the boundary: the pack's Master_Codebook.csv alone gives question numbers but no answer labels, so no
-// brand list is found and none is guessed.
+// and the pack's Master_Codebook.csv alone: question numbers and labels but no answer lists, so the brands are named
+// from the confirmed labels (owner's laptop, 29 October 2026: the label overlay's code prefix had hidden them).
 // Skipped, with the reason, without a test database or python3 + pandas/openpyxl.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -114,7 +114,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker roles from an importe
     expect(anthropic.messages.create).not.toHaveBeenCalled();
   });
 
-  it("the pack's Master_Codebook.csv alone: question numbers kept, no answer labels, so no brand list is guessed", async () => {
+  it("the pack's Master_Codebook.csv alone: question numbers kept, no answer lists, brands named from the confirmed labels", async () => {
     await q("delete from instrument_links where run_id = $1", [run]);
     const { codebook, data, read } = await linked("Master_Codebook.csv", pack("Master_Codebook.csv"));
     expect(read).toMatchObject({ count: 494, complete: true });
@@ -124,7 +124,14 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("tracker roles from an importe
     const { loadRoleInput } = await import("../trackerInput");
     const { recogniseTracker } = await import("../trackerRoles");
     const r = recogniseTracker((await loadRoleInput(tenant, run, data)).variables);
-    expect(r.frame).toBeNull();
-    expect(r.type).not.toBe("brand");
+    // The codebook gives no answer lists, but its confirmed labels name each brand ("aware_b01. Prompted resolved
+    // recognition Toyota"): the brands are read from the labels (recogniseFromNames), coded by the variable names'
+    // b01 to b10, as on the owner's laptop once the links are confirmed. The label overlay's leading "aware_b01. "
+    // used to hide the brand names (wordingOfLabel), so the dashboard said the brands were not named.
+    expect(r.type).toBe("brand");
+    expect(r.frame?.brands.map((b) => [b.code, b.label])).toEqual(BRANDS.map((b, i) => [`b${String(i + 1).padStart(2, "0")}`, b]));
+    expect(r.questions.some((x) => x.id === "brand-names")).toBe(false);
+    const aware = r.measures.find((m) => m.label === "Prompted resolved recognition");
+    expect(aware?.byBrand.map((b) => b.variable)).toEqual(BRANDS.map((_, i) => `aware_b${String(i + 1).padStart(2, "0")}`));
   });
 });

@@ -29,7 +29,7 @@ export function roleVariablesFrom(
     const questionType = meta && meta.questionType !== undefined ? meta.questionType : readerMulti ? "multiple_response" : v.text ? "text" : null;
     return {
       name: v.name,
-      label: v.label,
+      label: wordingOfLabel(v.name, v.label),
       ...(valueLabels[v.name] ? { valueLabels: valueLabels[v.name] } : {}),
       questionId: meta?.questionId ?? null,
       questionType: questionType ?? null,
@@ -41,6 +41,18 @@ export function roleVariablesFrom(
       distinct: v.nDistinct,
     };
   });
+}
+
+/**
+ * The question's own wording, for role recognition: a label taken from a confirmed codebook or questionnaire entry is
+ * shown as "aware_b01. Prompted resolved recognition Toyota" (labelOverlay puts the entry's code in front), and that
+ * code differs per brand, so the brand names read from the labels (trackerNameFamilies.varyingLabels) found no shared
+ * wording and a named brand list read as unnamed (owner's BMW tracker, 29 October 2026). Only a leading copy of the
+ * variable's own name is removed; any other label is kept as it is. Screens and tables keep the full label.
+ */
+export function wordingOfLabel(name: string, label: string): string {
+  const prefix = `${name}. `;
+  return label.toLowerCase().startsWith(prefix.toLowerCase()) && label.length > prefix.length ? label.slice(prefix.length) : label;
 }
 
 /** The strongest confirmed codebook entry's question fields per variable (the loader's order: LABEL_SOURCE_ORDER). */

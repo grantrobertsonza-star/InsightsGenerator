@@ -133,6 +133,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
   let previous: PreviousWave;
   let previousStages = null;
   let previousCsm: CsmTile[] | null = null;
+  let previousCompanies: CsmCompanies | null = null;
   let previousBrands: { code: string; label: string }[] = [];
   const timeline: TimelinePoint[] = [];
   const satOf = (tiles: CsmTile[]) => {
@@ -148,6 +149,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
       previousStages = prev.figures.stages;
       previousBrands = prev.view.dashboard.brands;
       previousCsm = prev.csm;
+      previousCompanies = prev.company && "companies" in prev.company ? prev.company : null;
       previous = { status: "ok", documentId: p.documentId, wave: p.wave, filename: p.filename };
     } catch (e) {
       previous = { status: "failed", documentId: p.documentId, wave: p.wave, filename: p.filename, error: e instanceof Error ? e.message : String(e) };
@@ -193,6 +195,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
     csm,
     previous.status === "ok" ? previousCsm : null,
     previous.status === "failed" ? "The previous wave's figures could not be read." : previous.status === "none" ? previous.reason : "",
+    { current: company && "companies" in company ? company : null, previous: previousCompanies },
   );
   // The recognition is the server's working detail; the screen needs only the resolved dashboard.
   const { recognition: _recognition, ...rest } = view;
