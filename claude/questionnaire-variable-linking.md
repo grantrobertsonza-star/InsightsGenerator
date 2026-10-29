@@ -28,11 +28,29 @@ EN20_1 at full confidence). Labels and wording are used only when no code route 
 3. Other stems: a letter suffix (EN20a, EN20r1) or a single suffixed variable, 0.85 (0.8 alone), as
    these may be separate questions.
 4. A variable label that starts with the code: 0.9.
-5. Wording overlap: at most 0.89, one variable per item.
+5. Grid rows (batch 53, `gridRowMatches`, method `grid`, migration 0130; Grant 28 October 2026, May 2026 IGS
+   Poll): a grid asks one question (the stem) about several rows, with one single-choice column per row. A
+   column's label is read as stem and row: the leading column name set aside, the row after the last dash with
+   spaces around it (`gridRowOf`). For a questionnaire the wording of each column's confirmed codebook entry is
+   read as well, since a data file often has no labels and only the codebook says "Q5_1 Regardless of whom ...
+   - Tony Thurmond". When the item's question (its text up to the first question mark, `normalisedWording`) is
+   the stem of two or more columns, exactly or followed by a note ("(already voted)"), each column is suggested
+   at 0.92 when that grid fits that item only and the item that grid only; otherwise at 0.8. Codes may differ
+   ("5A" and Q5_1); rows match by their labels, never by position (fieldwork may randomise them). Derived
+   columns ("(summary)", "Combines ...", a name ending `_summary`) are never rows. Questions under five words
+   are too short to call a stem the same. Before migration 0130 the method is not allowed and no grid link is
+   made, so matching is as it was.
+6. Wording overlap: at most 0.89, one variable per item.
 Each variable goes to the highest-confidence item, so a family member cannot be taken by another
 question's wording or label route, while an item with that exact code still wins.
 
-**Confirming.** "Confirm same-code matches" confirms suggestions at or above `AUTO_CONFIRM_MIN` 0.9:
+**Confirm all for one question** (batch 53): a question with two or more suggestions (a grid's rows or a
+family) shows "Confirm all N for <code>", which confirms every suggestion of that question through the same
+rule as Confirm (`confirmInstrumentLinks` with the item; a column another question already has stays a
+suggestion and is named). A question's links are listed in the data file's column order.
+
+**Confirming.** "Confirm same-code matches" confirms suggestions at or above `AUTO_CONFIRM_MIN` 0.9 (grid rows at
+0.92 included):
 exact codes, families and label-code matches; wording and other stems stay for the researcher (the
 button's tooltip says so). Every confirmation path uses `variableTakenBy` under the data file's lock:
 a variable confirmed for one question is refused for another, with that question named.
@@ -57,7 +75,8 @@ SKIP TO EN31") is read per linked variable by `buildStatedRouting` as for grid q
 shown in the quality checks and does not change figures.
 
 **Tests.** `instrumentMatch.test.ts`, `instrumentFamilyMatch.test.ts` (pure),
-`instrumentFamilyLink.db.test.ts`, `instrumentManualLink.db.test.ts`,
+`instrumentFamilyLink.db.test.ts`, `instrumentManualLink.db.test.ts`, `gridRows.test.ts`, `gridLinks.db.test.ts`,
+`gridLinksPre0130.db.test.ts`, browser `grid-question-links`,
 `instrumentConfirmCollision.db.test.ts` (real PostgreSQL), browser `questionnaire-manual-link` and
 `questionnaire-family-link`.
 

@@ -6,6 +6,7 @@ import {
   chooseInstrumentLinkAction,
   chooseInstrumentLinkFamilyAction,
   confirmLinksAction,
+  confirmQuestionLinksAction,
   guideCoverageAction,
   loadInstrumentReviewAction,
   readInstrumentAction,
@@ -29,6 +30,7 @@ const methodLabel: Record<InstrumentLink["method"], string> = {
   wording: "Wording",
   manual: "Chosen by you",
   codebook: "Identical to codebook",
+  grid: "Grid row",
 };
 
 const btn =
@@ -55,6 +57,14 @@ function confirmedMessage(r: Record<string, unknown>): string {
   const confirmed = Number(r.confirmed ?? 0);
   const refused = Array.isArray(r.refused) ? (r.refused as { reason: string }[]) : [];
   const head = `Confirmed ${confirmed} same-code ${confirmed === 1 ? "match" : "matches"}.`;
+  if (refused.length === 0) return head;
+  return `${head} ${refused.length} left as ${refused.length === 1 ? "a suggestion" : "suggestions"}: ${refused[0].reason}`;
+}
+
+function questionConfirmedMessage(code: string | null, r: Record<string, unknown>): string {
+  const confirmed = Number(r.confirmed ?? 0);
+  const refused = Array.isArray(r.refused) ? (r.refused as { reason: string }[]) : [];
+  const head = `Confirmed ${confirmed} ${confirmed === 1 ? "link" : "links"} for ${code || "this question"}.`;
   if (refused.length === 0) return head;
   return `${head} ${refused.length} left as ${refused.length === 1 ? "a suggestion" : "suggestions"}: ${refused[0].reason}`;
 }
@@ -165,6 +175,12 @@ export default function InstrumentCard({
 
   const linksByItem = new Map<string, InstrumentLink[]>();
   for (const l of review?.links ?? []) linksByItem.set(l.itemId, [...(linksByItem.get(l.itemId) ?? []), l]);
+  // A question's links in the data file's column order (Grant, 28 October 2026: a family listed C1_11, C1_7,
+  // C1_8, C1_36 because its links share one confidence); names in reading order until the file's list loads.
+  const position = new Map((variables?.forTarget === target ? variables.list : []).map((v, n) => [v.name, n]));
+  for (const ls of linksByItem.values()) {
+    ls.sort((a, b) => (position.get(a.variable) ?? Infinity) - (position.get(b.variable) ?? Infinity) || byCode(a.variable, b.variable));
+  }
   // Variables already confirmed for a question of this data file, with that question's code: they
   // cannot be chosen for another one (chooseInstrumentLink refuses it too).
   const itemCode = new Map((review?.items ?? []).map((i) => [i.id, i.code ?? i.text.slice(0, 30)]));
@@ -380,6 +396,22 @@ export default function InstrumentCard({
                             <p className="mb-1 text-[10px] text-muted" data-testid="item-family">
                               {`Multiple-response family: ${family[0]} to ${family[family.length - 1]} (${family.length} variables)`}
                             </p>
+                          ) : null;
+                        })()}
+                        {(() => {
+                          // A grid or a family is one question: its suggestions are confirmed with one action
+                          // (each through the same rule as Confirm, so a column another question has stays).
+                          const suggested = (linksByItem.get(i.id) ?? []).filter((l) => l.status === "suggested");
+                          return suggested.length >= 2 ? (
+                            <button
+                              type="button"
+                              className="mb-1 rounded-md border border-border bg-white px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-slate-50 disabled:opacity-50"
+                              data-testid="item-confirm-all"
+                              disabled={pending}
+                              onClick={() => run(() => confirmQuestionLinksAction(runId, documentId, i.id), (r) => questionConfirmedMessage(i.code, r))}
+                            >
+                              {`Confirm all ${suggested.length} for ${i.code || "this question"}`}
+                            </button>
                           ) : null;
                         })()}
                         {(linksByItem.get(i.id) ?? []).slice(0, allLinksFor.has(i.id) ? undefined : 6).map((l) => (

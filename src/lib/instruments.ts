@@ -36,7 +36,7 @@ export type InstrumentLink = {
   itemId: string;
   dataDocumentId: string;
   variable: string;
-  method: "code" | "stem" | "wording" | "manual" | "codebook";
+  method: "code" | "stem" | "wording" | "manual" | "codebook" | "grid";
   confidence: number;
   status: LinkStatus;
   /** Batch 49, method 'codebook' only: the codebook entry's code it was linked through, and whether that
@@ -651,7 +651,23 @@ export async function suggestInstrumentLinks(
         [instrumentId, runId],
       )
     ).rows.map((i) => ({ id: i.id, code: i.code, text: i.item_text }));
-    const candidates = matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label })));
+    // Grid rows (method 'grid', batch 53) are suggested only once migration 0130 allows the method; before
+    // it, matching is as it was. A grid's stem and rows are often only in the codebook (the IGS data file
+    // has no labels; its codebook says "Q5_1 Regardless of whom ... - Tony Thurmond"), so for a
+    // questionnaire the wording of each column's confirmed codebook entry is read as well.
+    const grids = await gridLinksAvailable(client);
+    const gridLabels = new Map<string, string[]>();
+    if (grids && instrumentType !== "codebook" && (await codebookLinksAvailable(client))) {
+      const cb = await client.query<{ variable: string; item_text: string }>(
+        `select l.variable, i.item_text
+           from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
+          where l.run_id = $1 and l.data_document_id = $2 and l.status = 'confirmed' and d.instrument_type = 'codebook' and d.id <> $3
+            and ${LINK_ENDS_ACTIVE("l")}`,
+        [runId, dataDocumentId, instrumentId],
+      );
+      for (const r of cb.rows) gridLabels.set(r.variable, [...(gridLabels.get(r.variable) ?? []), r.item_text]);
+    }
+    const candidates = matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label })), { grids, gridLabels });
     await client.query(
       `delete from instrument_links where status = 'suggested' and data_document_id = $2
          and item_id in (select id from instrument_items where document_id = $1)`,
@@ -772,7 +788,8 @@ export async function chooseMatchTarget(tenantId: string, runId: string, instrum
   const scored = await mapWithConcurrency(files, 2, async (f) => {
     try {
       const dictionary = await loadVariableDictionary(tenantId, runId, f.id);
-      const matched = new Set(matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label }))).map((c) => c.itemId)).size;
+      // Scoring which data file a questionnaire describes writes nothing, so grid rows count here too.
+      const matched = new Set(matchItems(items, dictionary.variables.map((v) => ({ name: v.name, label: v.label })), { grids: true }).map((c) => c.itemId)).size;
       return { dataDocumentId: f.id, filename: f.source_filename, matched };
     } catch (e) {
       return { dataDocumentId: f.id, filename: f.source_filename, matched: null, error: e instanceof Error ? e.message : String(e) };
@@ -863,6 +880,15 @@ async function lockLinkDocuments(
 }
 
 /** Whether migration 0125 (links through the codebook) is applied; checked, never assumed. */
+/** Whether migration 0130 has been applied: the link method check allows 'grid'. */
+async function gridLinksAvailable(client: PoolClient): Promise<boolean> {
+  const r = await client.query<{ ok: boolean }>(
+    `select exists (select 1 from pg_constraint where conrelid = 'instrument_links'::regclass and contype = 'c'
+                     and pg_get_constraintdef(oid) like '%''grid''%') as ok`,
+  );
+  return r.rows[0]?.ok === true;
+}
+
 async function codebookLinksAvailable(client: PoolClient): Promise<boolean> {
   const r = await client.query<{ ok: boolean }>(
     `select exists (select 1 from information_schema.columns where table_name = 'instrument_links' and column_name = 'basis_item_id') as ok`,
@@ -1188,6 +1214,8 @@ export async function confirmInstrumentLinks(
   runId: string,
   instrumentId: string,
   minConfidence: number,
+  /** One question only ("Confirm all N" on a grid or a family, batch 53): every suggestion of that question. */
+  itemId: string | null = null,
 ): Promise<{ confirmed: number; refused: { variable: string; reason: string }[] }> {
   return withTenant(tenantId, async (client) => {
     const pending = async () =>
@@ -1196,8 +1224,9 @@ export async function confirmInstrumentLinks(
           `select l.id, l.item_id, l.data_document_id, l.variable
            from instrument_links l join instrument_items i on i.id = l.item_id
            where l.run_id = $1 and i.run_id = $1 and i.document_id = $2 and l.status = 'suggested' and l.confidence >= $3
+             and ($4::uuid is null or l.item_id = $4::uuid)
            order by l.confidence desc, i.item_order, l.id`,
-          [runId, instrumentId, minConfidence],
+          [runId, instrumentId, minConfidence, itemId],
         )
       ).rows;
     // IS-F03: the questionnaire and every data file are locked and checked as active files of this

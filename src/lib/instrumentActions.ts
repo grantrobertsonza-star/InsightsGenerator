@@ -169,6 +169,28 @@ export async function confirmLinksAction(
   }
 }
 
+/**
+ * "Confirm all N" for one question (batch 53: a grid's rows or a multiple-response family, 27 clicks for
+ * FinScope's C1 otherwise): every suggestion of that question, through the same rule as Confirm (IR-04), so a
+ * variable another question already has stays a suggestion and is named in `refused`. The question must be one
+ * of this questionnaire's in this project (the query joins on both).
+ */
+export async function confirmQuestionLinksAction(
+  runId: string,
+  instrumentId: string,
+  itemId: string,
+): Promise<Ok<{ confirmed: number; refused: { variable: string; reason: string }[] }> | Fail> {
+  const TENANT_ID = await requireTenantId();
+  if (!/^[0-9a-f-]{36}$/i.test(itemId)) return { ok: false, error: "That question is not in this questionnaire." };
+  try {
+    const r = await confirmInstrumentLinks(TENANT_ID, runId, instrumentId, 0, itemId);
+    revalidatePath(`/runs/${runId}`);
+    return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: explain(e) };
+  }
+}
+
 /** How well the sessions in this run followed a guide. Computed from the stored text, nothing is saved. */
 export async function guideCoverageAction(runId: string, guideId: string, onlyDocumentId?: string): Promise<Ok<{ report: GuideReport }> | Fail> {
   const TENANT_ID = await requireTenantId();

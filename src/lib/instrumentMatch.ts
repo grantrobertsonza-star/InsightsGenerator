@@ -5,7 +5,7 @@
 export type ItemLike = { id: string; code: string | null; text: string };
 export type VariableLike = { name: string; label: string };
 
-export type MatchMethod = "code" | "stem" | "wording";
+export type MatchMethod = "code" | "stem" | "wording" | "grid";
 export type MatchCandidate = {
   itemId: string;
   variable: string;
@@ -105,7 +105,13 @@ export function codeFamily(code: string | null | undefined, variableNames: strin
   return members.length >= 2 ? members.slice(0, STEM_CAP) : [];
 }
 
-export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchCandidate[] {
+export function matchItems(
+  items: ItemLike[],
+  variables: VariableLike[],
+  /** grids: suggest grid rows (needs migration 0130); gridLabels: more wording per variable for grid rows only
+   * (its confirmed codebook entries), so the ordinary wording match is unchanged. */
+  options: { grids?: boolean; gridLabels?: Map<string, string[]> } = {},
+): MatchCandidate[] {
   const out: MatchCandidate[] = [];
   const names = variables.map((v) => v.name);
 
@@ -117,6 +123,7 @@ export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchC
   });
 
   const best = new Map<string, MatchCandidate>(); // by variable, highest confidence wins
+  const gridRows = options.grids ? gridRowMatches(items, variables, options.gridLabels) : new Map<string, GridRowMatch>();
 
   const offer = (c: MatchCandidate) => {
     const cur = best.get(c.variable);
@@ -154,6 +161,12 @@ export function matchItems(items: ItemLike[], variables: VariableLike[]): MatchC
       }
     }
     if (matched) continue;
+
+    const rows = gridRows.get(item.id);
+    if (rows) {
+      for (const r of rows.variables) offer({ itemId: item.id, variable: r, method: "grid", confidence: rows.confidence });
+      continue;
+    }
 
     const it = tokens(item.text);
     if (it.size < 2) continue;
@@ -258,6 +271,74 @@ export function codebookWordingMatches(items: ItemLike[], entries: ConfirmedCode
     const es = byWording.get(w);
     if (!es || es.length !== 1 || its.length !== 1) continue;
     out.push({ itemId: its[0].id, variable: es[0].variable, basisItemId: es[0].itemId, basisCode: es[0].code });
+  }
+  return out;
+}
+
+
+// ---- Grid (battery) questions (batch 53) ----
+
+/**
+ * A grid asks one question (the stem) about several rows (candidates, brands, statements), each answered on
+ * the same scale, and the data has one single-choice column per row (Q5_1 ... Q5_8). In the codebook or the
+ * data labels each row's column is labelled with the stem, a dash, and the row ("Q5_1 Regardless of whom ...
+ * (already voted) - Tony Thurmond, ..."). The questionnaire's code may differ from the columns' ("5A" and
+ * Q5), so neither the exact-code nor the family rule finds them, and no single wording equals stem plus row
+ * (Grant, 28 October 2026, May 2026 IGS Poll). A grid is not a multiple-response question (one yes/no column
+ * per option of "tick all that apply"), which the family rule handles.
+ */
+export type GridRowMatch = { variables: string[]; confidence: number };
+
+/** A column's label as stem and row, or null: the leading column name is set aside, and the row is after the
+ * last dash with spaces around it. Derived columns ("(summary)", "Combines Q5_1 and Q5b_1") are not rows. */
+export function gridRowOf(v: VariableLike): { stem: string; row: string } | null {
+  if (/_summary$/i.test(v.name) || /\(summary\)|\bcombines\b/i.test(v.label)) return null;
+  const label = v.label.normalize("NFKC").trim().replace(new RegExp(`^${esc(v.name)}\\s+`, "i"), "");
+  const m = /^([\s\S]*\S)\s+[-\u2010-\u2015\u2212]\s+(\S[\s\S]*)$/.exec(label);
+  if (!m) return null;
+  return { stem: m[1], row: m[2] };
+}
+
+/**
+ * Grid rows for questionnaire items, by wording: the item's question (its text up to and including the first
+ * question mark, formatting set aside by normalisedWording) is the stem of two or more columns, either exactly
+ * or followed by a note the codebook adds after it ("(already voted)"). Rows are matched by their columns'
+ * labels, never by position, so a randomised row order does not matter. A grid whose stem matches one item
+ * only, and an item that matches one grid only, is suggested at FAMILY_CONFIDENCE (confirmable with "Confirm
+ * same-code matches" and "Confirm all"); anything ambiguous is offered lower for the researcher to choose.
+ * Questions shorter than IDENTICAL_WORDING_MIN_WORDS words are too little text to call a stem the same.
+ */
+export function gridRowMatches(items: ItemLike[], variables: VariableLike[], moreLabels: Map<string, string[]> = new Map()): Map<string, GridRowMatch> {
+  const grids = new Map<string, string[]>();
+  for (const v of variables) {
+    // The column's own label and any confirmed codebook wording for it; a column is one row of each stem once.
+    const stems = new Set<string>();
+    for (const label of [v.label, ...(moreLabels.get(v.name) ?? [])]) {
+      const r = gridRowOf({ name: v.name, label });
+      if (r) stems.add(normalisedWording(r.stem));
+    }
+    for (const stem of stems) grids.set(stem, [...(grids.get(stem) ?? []), v.name]);
+  }
+  for (const [stem, names] of grids) if (names.length < 2) grids.delete(stem);
+  const question = (i: ItemLike) => {
+    const q = i.text.indexOf("?");
+    return normalisedWording(q >= 0 ? i.text.slice(0, q + 1) : i.text, i.code);
+  };
+  const fits = (stem: string, q: string) => stem === q || (stem.startsWith(q) && /^[^\p{L}\p{N}]/u.test(stem.slice(q.length)));
+  const itemsPerGrid = new Map<string, number>();
+  const gridsPerItem = new Map<string, string[]>();
+  for (const i of items) {
+    const q = question(i);
+    if (q.split(" ").filter(Boolean).length < IDENTICAL_WORDING_MIN_WORDS) continue;
+    const found = [...grids.keys()].filter((stem) => fits(stem, q));
+    if (found.length === 0) continue;
+    gridsPerItem.set(i.id, found);
+    for (const stem of found) itemsPerGrid.set(stem, (itemsPerGrid.get(stem) ?? 0) + 1);
+  }
+  const out = new Map<string, GridRowMatch>();
+  for (const [itemId, found] of gridsPerItem) {
+    const unambiguous = found.length === 1 && itemsPerGrid.get(found[0]) === 1;
+    out.set(itemId, { variables: found.flatMap((stem) => grids.get(stem)!).slice(0, STEM_CAP), confidence: unambiguous ? FAMILY_CONFIDENCE : AMBIGUOUS_CODE_CONFIDENCE });
   }
   return out;
 }
