@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { exactPct, exactSe, exactTotalPct } from "./crosstabExact";
 
-import { buildCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { buildCrosstab, computeCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice, type SurveyDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
@@ -131,6 +132,9 @@ export async function runNpsAction(
   // heuristic; passing `{ psu, strata: null }` is a PSU-only design, a defined input path of its
   // own, not gated on a strata variable also being supplied.
   design?: SurveyDesignChoice | null,
+  // "compute": read the score without saving the table it is read from (a dashboard that recalculates each time it
+  // opens, D3); "save" keeps the evidence table, as the NPS tool always has.
+  table: "save" | "compute" = "save",
 ): Promise<{ ok: true; result: NpsResult } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
@@ -168,25 +172,22 @@ export async function runNpsAction(
     const g = groupVar ? dict.variables.find((x) => x.name === groupVar) : null;
     if (groupVar && !g) return { ok: false, error: "That grouping variable was not found in this file." };
 
-    const built = await buildCrosstab(
-      TENANT_ID,
-      runId,
-      documentId,
-      {
-        columnVars: g ? [g.name] : [],
-        rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
-        weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
-        source: "ask",
-        // ANA-NPS-003: an ordinary NPS request previously exposed no design argument at all and
-        // always ran its own blind auto-detect, ignoring any explicit choice a caller supplied -
-        // resolveSurveyDesign (./surveyDesign) now gives this an explicit input path (the
-        // `design` parameter above), with the shared heuristic only as a fallback when no
-        // explicit choice was made, and only when it found an unambiguous PSU candidate.
-        design: resolvedDesign.design ?? undefined,
-      },
-      { status: "evidence" },
-    );
-    const { result } = await loadCrosstab(TENANT_ID, runId, built.tableId);
+    const request: CrosstabRequest = {
+      columnVars: g ? [g.name] : [],
+      rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
+      weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
+      source: "ask",
+      // ANA-NPS-003: an ordinary NPS request previously exposed no design argument at all and
+      // always ran its own blind auto-detect, ignoring any explicit choice a caller supplied -
+      // resolveSurveyDesign (./surveyDesign) now gives this an explicit input path (the
+      // `design` parameter above), with the shared heuristic only as a fallback when no
+      // explicit choice was made, and only when it found an unambiguous PSU candidate.
+      design: resolvedDesign.design ?? undefined,
+    };
+    const { result } =
+      table === "compute"
+        ? await computeCrosstab(TENANT_ID, runId, documentId, request)
+        : await loadCrosstab(TENANT_ID, runId, (await buildCrosstab(TENANT_ID, runId, documentId, request, { status: "evidence" })).tableId);
     if (!result || result.questions.length === 0) return { ok: false, error: "This question could not be tabulated." };
 
     const q = result.questions[0];

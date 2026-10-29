@@ -1,6 +1,15 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchUI1R2 on top of 1318db7a, which Codex reviewed on 29 October: UI1-F01 closed, UI1R-F01 found): UI1R2 repairs UI1R-F01 (a view reopened after another tab saved a split shows that value); implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchR1 and BatchD3a on top of 4437102e): R1 reads a workbook label sheet headed value_label by that column (every code took the variable label and identical labels merged categories; dictionary version 15); D3a adds the Tracker dashboard (brand funnel tiles with change since the previous wave, brand comparison, customer satisfaction tiles, blank tiles with Choose a question and Hide, Customise saved per programme), figures computed without saving tables; implemented, ready for independent review. Migrations 0131 and 0132 still to apply (0132 is needed to save dashboard choices). **NOT READY for release.**
+
+## Claude: batches R1 and D3a, main copy (2026-10-29)
+
+Implemented, ready for review, two commits on top of `4437102e`. Handovers `claude/batchR1-handover-2026-10-29.md`
+(S1: workbook Labels sheet headed value_label; dictionary version 15; tables built before keep merged categories
+until rebuilt) and `claude/batchD3a-handover-2026-10-29.md` (Tracker dashboard; figures from the Cross tab engine,
+the NPS tool and driver analysis, checked against Grant's BMW and banking packs; `computeCrosstab` so opening a
+dashboard saves no table). Gates: library 2,387 passed, 91 skipped, 0 failed on 8337d42; browser suite 142 passed,
+1 skipped, 2 failed (checks corrected since, both now passing); smoke 1. No new migration.
 
 ## Claude: batch UI1R2, main copy (2026-10-29)
 

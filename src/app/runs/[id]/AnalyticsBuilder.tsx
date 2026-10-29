@@ -17,6 +17,7 @@ import ResizableSplit from "./ResizableSplit";
 import WaveTrackingPanel from "./WaveTrackingPanel";
 import CsmAnalyticsPanel from "./CsmAnalyticsPanel";
 import BrandHealthAnalyticsPanel from "./BrandHealthAnalyticsPanel";
+import TrackerDashboardPanel from "./TrackerDashboardPanel";
 import type { WaveFile } from "@/lib/waveTrackingActions";
 import { ChartCustomizePanel, type LegendPos } from "./ChartCustomize";
 import CrosstabWorkspace from "./CrosstabWorkspace";
@@ -103,7 +104,7 @@ function suggestImportance(pred: VariableInfo, candidates: VariableInfo[]): stri
  * Crosstabs tile alone or the analytics tiles alone (Cross tabs itself opens its workspace directly,
  * CrosstabsSection).
  */
-type ToolId = "driver" | "nps" | "chart" | "wave" | "csm" | "brand";
+type ToolId = "driver" | "nps" | "chart" | "wave" | "csm" | "brand" | "tracker";
 
 export default function AnalyticsBuilder({
   runId,
@@ -133,8 +134,9 @@ export default function AnalyticsBuilder({
   const [crosstabOpen, setCrosstabOpen] = useState(false);
   const [csmOpen, setCsmOpen] = useState(false);
   const [brandHealthOpen, setBrandHealthOpen] = useState(false);
+  const [trackerOpen, setTrackerOpen] = useState(false);
   const waves = waveFiles?.length ?? 0;
-  const open = (id: ToolId) => (id === "csm" ? setCsmOpen(true) : id === "brand" ? setBrandHealthOpen(true) : setTool(id));
+  const open = (id: ToolId) => (id === "csm" ? setCsmOpen(true) : id === "brand" ? setBrandHealthOpen(true) : id === "tracker" ? setTrackerOpen(true) : setTool(id));
   // What each tool does, as its workspace does it (checked against the tools, 2026-10-20, instead of
   // the old blanket "uncorrected, simple random sampling" warning).
   const tools: { id: ToolId; name: string; text: string; unavailable?: string }[] = [
@@ -160,6 +162,11 @@ export default function AnalyticsBuilder({
       id: "brand",
       name: "Brand Health Analytics",
       text: "Name the brand variable and which brand is ours, map the funnel, attributes, loyalty and category entry points once, then get a benchmark against every other brand in the file.",
+    },
+    {
+      id: "tracker",
+      name: "Tracker dashboard",
+      text: "A brand dashboard set up from the file itself: your brand's funnel with the change since the previous wave, and how it compares with other brands. Choices are kept for the whole programme.",
     },
   ];
   const closeLabel = layout === "grid" ? "All analytics" : "Close";
@@ -275,6 +282,16 @@ export default function AnalyticsBuilder({
           filename={filename}
           waveFiles={waveFiles}
           onClose={() => setCsmOpen(false)}
+          closeLabel={closeLabel}
+        />
+      )}
+      {trackerOpen && (
+        <TrackerDashboardPanel
+          key={`${runId}:${documentId}`}
+          runId={runId}
+          documentId={documentId}
+          filename={filename}
+          onClose={() => setTrackerOpen(false)}
           closeLabel={closeLabel}
         />
       )}

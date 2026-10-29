@@ -3,6 +3,7 @@
 // signed-in tenant; the project, file and revision are checked again inside the write.
 import { revalidatePath } from "next/cache";
 import { requireRequestContext } from "./requestContext";
+import { loadBrandOverview, type BrandOverview } from "./trackerOverview";
 import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type ExpectedDashboard, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
 
 type Fail = { ok: false; error: string };
@@ -21,6 +22,16 @@ export async function loadTrackerDashboardAction(runId: string, documentId: stri
   const ctx = await requireRequestContext();
   try {
     return { ok: true, view: await loadTrackerDashboard(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** D3: the brand overview of one wave file (figures computed, nothing saved). */
+export async function loadBrandOverviewAction(runId: string, documentId: string): Promise<{ ok: true; overview: BrandOverview } | Fail> {
+  const ctx = await requireRequestContext();
+  try {
+    return { ok: true, overview: await loadBrandOverview(ctx.tenantId, runId, documentId) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

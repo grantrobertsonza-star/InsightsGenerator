@@ -547,19 +547,13 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
 }
 
 /** Adds one table to the draft set. No findings are made until the set is committed. */
-export async function buildCrosstab(
-  tenantId: string,
-  runId: string,
-  documentId: string,
-  request: CrosstabRequest,
-  /** "evidence": built only to answer an objective evidence question, kept out of the draft set so it cannot be committed into findings. */
-  options: {
-    status?: "draft" | "evidence";
-    /** The Research assistant question this table was built for and the exact request's key, so a retry of that question reuses it. */
-    assistantRequest?: { id: string; key: string };
-  } = {},
-): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
-  // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
+/**
+ * One Cross tab computed by the engine, exactly as buildCrosstab computes it (the file's set-up, the researcher's
+ * type corrections, the questionnaire overlay and the authoritative sheet), without saving a table. D3's tracker
+ * dashboard reads its figures this way so that opening a dashboard does not add a table to the file every time;
+ * buildCrosstab calls this and then saves.
+ */
+export async function computeCrosstab(tenantId: string, runId: string, documentId: string, request: CrosstabRequest) {
   if (request.rowItems.length === 0) throw new Error("Choose at least one row variable.");
   if (request.meanRows !== undefined && typeof request.meanRows !== "boolean") throw new Error("The Mean setting must be on or off.");
   // ANA-NPS-003 (Brief 38 repair): this was the exact remaining gap Codex found after Brief 37
@@ -641,6 +635,24 @@ export async function buildCrosstab(
       "None of the chosen rows could be tabulated. " + result.skipped.map((s) => `${s.variable}: ${s.reason}`).join(" "),
     );
   }
+
+  return { result, doc, overlay, overrides, authoritativeSheet };
+}
+
+export async function buildCrosstab(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  request: CrosstabRequest,
+  /** "evidence": built only to answer an objective evidence question, kept out of the draft set so it cannot be committed into findings. */
+  options: {
+    status?: "draft" | "evidence";
+    /** The Research assistant question this table was built for and the exact request's key, so a retry of that question reuses it. */
+    assistantRequest?: { id: string; key: string };
+  } = {},
+): Promise<{ tableId: string; questions: number; skipped: { variable: string; reason: string }[] }> {
+  // No column variable is allowed: the table then describes all respondents (frequencies, means, spread).
+  const { result, doc, overlay, overrides, authoritativeSheet } = await computeCrosstab(tenantId, runId, documentId, request);
 
   // IMP-003 / ANA-BRAND-002: this flat `headers`/`rows` projection (the saved table's plain
   // SQL-friendly columns, used for CSV/export and simple table rendering - separate from the

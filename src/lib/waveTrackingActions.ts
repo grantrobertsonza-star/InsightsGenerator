@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { withTenant, withTenantRead } from "./db";
 import { recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
-import { normaliseDataSetup } from "./dataSetupShared";
-import { projectWaves, waveOrderText, type OrderedWave } from "./waves";
+import { waveOrderText, type OrderedWave } from "./waves";
+import { loadProjectWaves } from "./waveFiles";
 import { runDistributionAction, type ChartResult } from "./chartActions";
 import { runNpsAction, type NpsResult, type NpsSegment } from "./npsActions";
 import { runDriverAnalysisFor, type DriverReport } from "./drivers";
@@ -27,15 +27,7 @@ export type WaveFile = OrderedWave;
 export async function listWaveFilesAction(runId: string): Promise<{ ok: true; files: WaveFile[]; excluded: WaveFile[]; order: string } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    const files = await withTenantRead(TENANT_ID, async (client) => {
-      const r = await client.query<{ id: string; source_filename: string; data_setup: unknown; uploaded_at: Date | string }>(
-        `select id, source_filename, data_setup, uploaded_at from documents
-         where run_id = $1 and kind = 'table' and ingestion_type = 'raw' and data_setup is not null
-         order by uploaded_at asc`,
-        [runId],
-      );
-      return projectWaves(r.rows.map((row) => ({ documentId: row.id, filename: row.source_filename, uploadedAt: row.uploaded_at instanceof Date ? row.uploaded_at.toISOString() : String(row.uploaded_at), setup: normaliseDataSetup(row.data_setup) })));
-    });
+    const files = await loadProjectWaves(TENANT_ID, runId);
     return { ok: true, files: files.included, excluded: files.excluded, order: waveOrderText(files.basis) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

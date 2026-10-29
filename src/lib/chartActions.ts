@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { buildCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import { buildCrosstab, computeCrosstab, loadCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
+import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
@@ -67,6 +68,9 @@ export async function runDistributionAction(
   // distinct here, or an explicit "None" silently gets the default back.
   weightVar: string | null | undefined,
   groupVar: string | null,
+  // "compute": read the distribution without saving the table it is read from (a dashboard that recalculates each
+  // time it opens, D3); "save" keeps the evidence table, as the chart tool always has.
+  table: "save" | "compute" = "save",
 ): Promise<{ ok: true; result: ChartResult } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
@@ -102,20 +106,17 @@ export async function runDistributionAction(
     const setup = setupStatus.setup;
     const resolvedDesign = resolveSurveyDesign(dict, effectiveDesignChoice(setup.design, undefined));
 
-    const built = await buildCrosstab(
-      TENANT_ID,
-      runId,
-      documentId,
-      {
-        columnVars: g ? [g.name] : [],
-        rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
-        weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
-        source: "ask",
-        design: resolvedDesign.design ?? undefined,
-      },
-      { status: "evidence" },
-    );
-    const { result } = await loadCrosstab(TENANT_ID, runId, built.tableId);
+    const request: CrosstabRequest = {
+      columnVars: g ? [g.name] : [],
+      rowItems: [{ key: variable, label: v.label || variable, vars: [variable] }],
+      weightVar: weightVar === undefined ? defaultWeight(dict) : weightVar,
+      source: "ask",
+      design: resolvedDesign.design ?? undefined,
+    };
+    const { result } =
+      table === "compute"
+        ? await computeCrosstab(TENANT_ID, runId, documentId, request)
+        : await loadCrosstab(TENANT_ID, runId, (await buildCrosstab(TENANT_ID, runId, documentId, request, { status: "evidence" })).tableId);
     if (!result || result.questions.length === 0) return { ok: false, error: "This question could not be tabulated." };
 
     const q = result.questions[0];
