@@ -87,28 +87,51 @@ export function overviewMeasures(rec: TrackerRecognition, dashboard: ResolvedDas
   return { shown, unresolved };
 }
 
+/**
+ * The share selecting a yes/no variable, read from one row item of a built Cross tab result (single column, the
+ * total): the unrounded percentage of the selected code (selectedCode) among the variable's valid answers, and the
+ * unweighted count of those answers as the base. Null with the reason when the item is missing from the result, the
+ * selected code cannot be told, there are no valid answers, or the engine suppressed the figure. The one reading of
+ * a yes/no share for the tracker dashboards (brand stages, category moments, moment by brand recall).
+ */
+export function selectedShareOf(result: CrosstabResult, variable: string, v: Pick<RoleVariable, "valueLabels"> | undefined): { share: number | null; base: number | null; reason?: string } {
+  const { share, base, reason } = selectedAnswerOf(result, variable, v);
+  return { share, base, ...(reason !== undefined ? { reason } : {}) };
+}
+
+/**
+ * selectedShareOf with what the share was read from: the selected answer's code (`selectedCode`, by code) and the
+ * unweighted number of respondents giving it (`selectedN`, the row's unweighted cell count). The brand associations
+ * page uses the code and count of each brand's awareness answer to define that brand's aware base. `code` is null
+ * when the selected answer cannot be told; `selectedN` is null when the code is unknown or the engine gave no
+ * unweighted cell count, and 0 when the selected code is known but nobody gave it.
+ */
+export function selectedAnswerOf(
+  result: CrosstabResult,
+  variable: string,
+  v: Pick<RoleVariable, "valueLabels"> | undefined,
+): { code: string | null; selectedN: number | null; share: number | null; base: number | null; reason?: string } {
+  const q = result.questions.find((x) => x.key === variable);
+  if (!q) return { code: null, selectedN: null, share: null, base: null, reason: "This question was not in the table the engine returned." };
+  const rows: CrosstabRow[] = q.rows;
+  const base = rows.find((r) => r.isBase && !r.isEffBase)?.count[0] ?? null;
+  const cats = rows.filter((r) => !r.isBase && !r.isNet && !r.isMean && !r.isScore && r.rawCode !== undefined);
+  const sel = selectedCode(v ?? {}, cats.map((r) => r.rawCode as string));
+  if (sel === null) return { code: null, selectedN: null, share: null, base, reason: "Which answer means selected could not be told from its codes and labels." };
+  const row = cats.find((r) => r.rawCode === sel);
+  const selectedN = row ? (row.nCell?.[0] ?? null) : 0;
+  if (base === null || base === 0) return { code: sel, selectedN, share: null, base, reason: "No valid answers." };
+  const exact = row ? (row.pctExact?.[0] ?? row.pct[0]) : 0;
+  return { code: sel, selectedN, share: exact ?? null, base, ...(exact === null ? { reason: "Suppressed for a small base." } : {}) };
+}
+
 /** Shares of every brand of each stage measure, read from a built Cross tab result (by variable and code). */
 export function sharesFromResult(result: CrosstabResult, measures: { stage: FunnelStage; measure: TrackerRecognition["measures"][number] }[], variables: Map<string, RoleVariable>, brandCodes: Set<string>): StageFigures[] {
-  const byVariable = new Map(result.questions.map((q) => [q.key, q]));
   return measures.map(({ stage, measure }) => ({
     stage,
     group: measure.group,
     label: measure.label,
-    byBrand: measure.byBrand
-      .filter((b) => brandCodes.has(b.code))
-      .map((b) => {
-        const q = byVariable.get(b.variable);
-        if (!q) return { code: b.code, variable: b.variable, share: null, base: null, reason: "This question was not in the table the engine returned." };
-        const rows: CrosstabRow[] = q.rows;
-        const base = rows.find((r) => r.isBase && !r.isEffBase)?.count[0] ?? null;
-        const cats = rows.filter((r) => !r.isBase && !r.isNet && !r.isMean && !r.isScore && r.rawCode !== undefined);
-        const sel = selectedCode(variables.get(b.variable) ?? {}, cats.map((r) => r.rawCode as string));
-        if (sel === null) return { code: b.code, variable: b.variable, share: null, base, reason: "Which answer means selected could not be told from its codes and labels." };
-        if (base === null || base === 0) return { code: b.code, variable: b.variable, share: null, base, reason: "No valid answers." };
-        const row = cats.find((r) => r.rawCode === sel);
-        const exact = row ? (row.pctExact?.[0] ?? row.pct[0]) : 0;
-        return { code: b.code, variable: b.variable, share: exact ?? null, base, ...(exact === null ? { reason: "Suppressed for a small base." } : {}) };
-      }),
+    byBrand: measure.byBrand.filter((b) => brandCodes.has(b.code)).map((b) => ({ code: b.code, variable: b.variable, ...selectedShareOf(result, b.variable, variables.get(b.variable)) })),
   }));
 }
 

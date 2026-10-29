@@ -1,6 +1,36 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchT2 on top of BatchE1R `4b14f3c9`): T1's second part ("NA" in a column of country codes kept missing and warned, decision 5; title rows above a header set aside and named, decision 9 first part; Objectives filled from the one imported brief; Word, PDF and PowerPoint tables, path B; D2b part 3), Analytics workspaces staying open through a refresh, and decision 9 second part (the header row chosen on the Import screen; table reader 2026.10.29b, dictionary version 17). No migration.
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD3c on top of BatchT2): the Brand tracking dashboard's page 02, Moments & needs (category relevance ranked, moment x brand recall for the six most relevant moments), and page 03, Brand associations (pick-any associations on each brand's own aware base), and the Brand Health tool's brand source as a multiple-response set (overlapping brand groups stated; tests across groups withheld). No migration.
+
+## Claude: batch D3c, main copy (2026-10-29, night)
+
+Implemented, ready for review, on top of BatchT2. Two parts, each with its handover:
+- Moments & needs, the Brand tracking dashboard's page 02: `claude/batchM2-handover-2026-10-29.md`. Figures through
+  `computeCrosstab` without saving, read by code, the dashboard's weight; contracts in `claude/d2-design-2026-10-29.md`
+  (D3c). Compared with an independent pandas reading of BMW wave 1: all 12 relevance shares and 60 recall cells to
+  1e-6, weighted and unweighted.
+- Brand associations, the Brand tracking dashboard's page 03: `claude/batchM3-handover-2026-10-29.md`. Each brand on
+  its own aware base; contract D3d in `claude/d2-design-2026-10-29.md`. Compared with an independent pandas reading
+  of BMW wave 1: all 100 cells and every aware base to 1e-6, and BMW's ten values equal the pack's published wave 1
+  table to two decimals.
+- Brand Health with a multiple-response set as the brand source (Grant: "make Brand variable accept a set such as
+  owner_b"): `claude/batchBH-handover-2026-10-29.md`; contract `claude/brand-health.md`. A respondent who selected
+  two brands is in both groups, stated on the screen and in posted findings (caveat `brand_groups_overlap`); tests
+  across brand groups are withheld with the reason.
+No migration.
+
+Gates on the exact tree:
+- On `11b2e2a` (the same code before the rebase onto the applied T2, which added only the header-row check's fix and
+  T2's status): `npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py`
+  all passed; library 350 files (348 passed, 2 skipped), 2,623 tests passed, 91 skipped, 0 failed; browser suite
+  150 passed, 1 skipped, 2 failed; smoke 1 passed; objective review acceptance passed.
+- Failures: `header-row-choice.check.mjs` (the old locator; fixed in T2 by `81c8487`, which this rebased tree has) and
+  `over-limit-refusal.check.mjs` (the one-case-over refusal not shown within 3 minutes). Nothing in this package touches
+  import; the run shared the machine with three builds running their own test suites. It is rerun in the D3e package's
+  full suite, which includes this package's code.
+- U1 measured in development mode (`next dev`, the disposable stack, two 60 MB CSV files through Add files): with
+  `serverComponentsHmrCache: false` the check passed in 50.5 s; without it the first file had not finished saving
+  after 4.3 minutes and the check timed out. Production builds do not use that cache.
 
 ## Claude: batch T2, main copy (2026-10-29, night)
 

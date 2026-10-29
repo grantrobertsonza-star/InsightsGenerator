@@ -4,6 +4,8 @@
 import { revalidatePath } from "next/cache";
 import { requireRequestContext } from "./requestContext";
 import { loadBrandOverview, type BrandOverview } from "./trackerOverview";
+import { loadBrandMoments } from "./trackerMoments";
+import { loadBrandAssociations } from "./trackerAssociations";
 import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type ExpectedDashboard, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
 
 type Fail = { ok: false; error: string };
@@ -33,6 +35,26 @@ export async function loadBrandOverviewAction(runId: string, documentId: string,
   if (kindRaw !== "brand" && kindRaw !== "csm") return { ok: false, error: "Choose the brand or the CSM dashboard." };
   try {
     return { ok: true, overview: await loadBrandOverview(ctx.tenantId, runId, documentId, kindRaw) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Page 02 of the brand dashboard, Moments & needs (figures computed, nothing saved). */
+export async function loadBrandMomentsAction(runId: string, documentId: string): Promise<{ ok: true; moments: Awaited<ReturnType<typeof loadBrandMoments>> } | Fail> {
+  const ctx = await requireRequestContext();
+  try {
+    return { ok: true, moments: await loadBrandMoments(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Page 03 of the brand dashboard, Brand associations (figures computed, nothing saved). */
+export async function loadBrandAssociationsAction(runId: string, documentId: string): Promise<{ ok: true; associations: Awaited<ReturnType<typeof loadBrandAssociations>> } | Fail> {
+  const ctx = await requireRequestContext();
+  try {
+    return { ok: true, associations: await loadBrandAssociations(ctx.tenantId, runId, documentId) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

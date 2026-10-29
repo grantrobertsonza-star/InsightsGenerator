@@ -47,7 +47,9 @@ codebook question fields, and many carry no answer labels at all.
 4. **Brand grids.** A per-brand group whose wording is "<brand> associated with <attribute>" or "<brand> recalled
    for <situation>" is one item of an associations or moments grid.
 5. **Other lists.** A group of three or more yes/no options none of which is a brand (media, purchase journey,
-   stated category moments, channels) is its own list: never brands, never attributes.
+   stated category moments, channels) is its own list: never brands, never attributes. The **category moments**
+   question among them (`categoryMoments`, `findCategoryMoments`, D3c) is the one whose options are the same moments,
+   in the same words, as the moments grid's items; see `claude/d2-design-2026-10-29.md`, D3c Moments & needs.
 6. **CSM roles.** Overall satisfaction (a satisfaction rating of the company, provider or bank, not of a
    channel, with a satisfied end on its answer list); likelihood to recommend on a stated 0 to 10 scale (Codex D1-F01: by `isZeroToTenScale` in
    `src/lib/descriptiveFindings.ts`, the rule the Net Promoter calculation uses: eleven or more answer codes below

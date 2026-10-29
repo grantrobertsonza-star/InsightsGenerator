@@ -12,7 +12,9 @@
 // moved save reloads what is stored instead of overwriting it.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
+import { loadBrandAssociationsAction, loadBrandMomentsAction, loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
+import type { BrandMoments } from "@/lib/trackerMoments";
+import type { BrandAssociations } from "@/lib/trackerAssociations";
 import type { BrandOverview, TimelinePoint } from "@/lib/trackerOverview";
 import type { TrackerChoices } from "@/lib/trackerDashboard";
 import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCsmFigures";
@@ -59,6 +61,8 @@ const CSM_ROLES: { role: CsmRole; label: string }[] = [
   { role: "company", label: "Company each customer rates" },
 ];
 const BRAND_SECTIONS = ["Brand overview", "Moments & needs", "Brand associations", "Advertising & WOM", "Audience & media", "Category overview"];
+/** The brand dashboard's pages built so far, by their place in BRAND_SECTIONS; the others are shown as coming next. */
+const LIVE_SECTIONS = 3;
 
 // A change shown to one decimal: one that rounds to zero is "±0.0", never "−0.0".
 const signed = (v: number, digits = 1) => {
@@ -75,6 +79,13 @@ const waveTick = (p: Pick<TimelinePoint, "wave" | "waveDate">) => {
 };
 
 type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; overview: BrandOverview };
+/** Page 02's figures, loaded when the page is first opened and again after any reload of the dashboard ("idle"). */
+type MomentsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; moments: BrandMoments };
+/** Page 03's figures, loaded the same way as page 02's. */
+type AssociationsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; associations: BrandAssociations };
+/** The compared brands' dot colours on page 03, by their place among the brands compared; the client's brand is blue. */
+const COMPARATOR_COLOURS = ["#d97706", "#059669", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#475569", "#ea580c"];
+const FOCAL_COLOUR = "#2563eb";
 type SaveState = { state: "idle" } | { state: "saving" } | { state: "saved" } | { state: "message"; tone: "error" | "warn"; text: string };
 
 function Card({ title, subtitle, children, testId, className = "" }: { title?: string; subtitle?: ReactNode; children: ReactNode; testId?: string; className?: string }) {
@@ -84,6 +95,17 @@ function Card({ title, subtitle, children, testId, className = "" }: { title?: s
       {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
       <div className={title || subtitle ? "mt-4" : ""}>{children}</div>
     </section>
+  );
+}
+
+/** A part of the page the file does not have, or that cannot be told: said in place of the card's figures, never as
+ * zeros (Grant's design: "Not measured", "Mapping needed"). */
+function UnavailableNote({ state, testId }: { state: { status: "not_measured" | "mapping_needed"; reason: string }; testId: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4" data-testid={testId} data-status={state.status}>
+      <p className="text-sm font-semibold text-slate-700">{state.status === "not_measured" ? "Not measured" : "Mapping needed"}</p>
+      <p className="mt-1 text-xs text-slate-500">{state.reason}</p>
+    </div>
   );
 }
 
@@ -181,12 +203,41 @@ export default function TrackerDashboardPanel({
   const [driverQuery, setDriverQuery] = useState("");
   const [draft, setDraft] = useState<TrackerChoices>({});
   const [save, setSave] = useState<SaveState>({ state: "idle" });
+  // The brand dashboard's page, by its place in BRAND_SECTIONS: 0 Brand overview (the default), 1 Moments & needs,
+  // 2 Brand associations.
+  const [section, setSection] = useState(0);
+  const [moments, setMoments] = useState<MomentsLoad>({ state: "idle" });
+  const [associations, setAssociations] = useState<AssociationsLoad>({ state: "idle" });
   // Only the latest request may update the screen: a slow earlier load (or one for another file) is ignored.
   const latest = useRef(0);
+  const latestMoments = useRef(0);
+  const latestAssociations = useRef(0);
+
+  const loadMoments = useCallback(async () => {
+    const id = ++latestMoments.current;
+    setMoments({ state: "loading" });
+    const r = await loadBrandMomentsAction(runId, documentId);
+    if (id !== latestMoments.current) return;
+    setMoments(r.ok ? { state: "ready", moments: r.moments } : { state: "failed", error: r.error });
+  }, [runId, documentId]);
+
+  const loadAssociations = useCallback(async () => {
+    const id = ++latestAssociations.current;
+    setAssociations({ state: "loading" });
+    const r = await loadBrandAssociationsAction(runId, documentId);
+    if (id !== latestAssociations.current) return;
+    setAssociations(r.ok ? { state: "ready", associations: r.associations } : { state: "failed", error: r.error });
+  }, [runId, documentId]);
 
   const reload = useCallback(async () => {
     const id = ++latest.current;
     setLoad({ state: "loading" });
+    // Pages 02 and 03 depend on the same choices (weighting, brands, the awareness question): any answer still on
+    // its way is dropped, and each page loads again when shown.
+    latestMoments.current += 1;
+    setMoments({ state: "idle" });
+    latestAssociations.current += 1;
+    setAssociations({ state: "idle" });
     const r = await loadBrandOverviewAction(runId, documentId, kind);
     if (id !== latest.current) return;
     if (!r.ok) return setLoad({ state: "failed", error: r.error });
@@ -200,8 +251,22 @@ export default function TrackerDashboardPanel({
     void reload();
     return () => {
       latest.current += 1;
+      latestMoments.current += 1;
+      latestAssociations.current += 1;
     };
   }, [reload]);
+
+  useEffect(() => {
+    // Page 02 is calculated only when it is shown, once per load of the dashboard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (kind === "brand" && section === 1 && moments.state === "idle") void loadMoments();
+  }, [kind, section, moments.state, loadMoments]);
+
+  useEffect(() => {
+    // Page 03 likewise: calculated only when shown, once per load of the dashboard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (kind === "brand" && section === 2 && associations.state === "idle") void loadAssociations();
+  }, [kind, section, associations.state, loadAssociations]);
 
   const overview = load.state === "ready" ? load.overview : null;
   const dashboard = overview?.view.dashboard ?? null;
@@ -477,11 +542,41 @@ export default function TrackerDashboardPanel({
     </>
   );
 
+  // The brand dashboard's chips row, the same on every page (Grant's design). `weighted` is the page's own figures'.
+  const brandChips = (weighted: boolean) => (
+    <div className="flex flex-wrap gap-2.5" data-testid="tracker-chips">
+      <Chip label="Brand" onClick={() => chooseAt("brand")}>{focal?.label ?? "Choose"}</Chip>
+      <Chip label="Wave">{overview?.wave ?? "Not labelled"}</Chip>
+      <Chip label="Compare" onClick={() => setPickingComparators((v) => !v)}>{comparators ? "Selected brands" : "Suggested brands"}</Chip>
+      <Chip label="Weighting" onClick={() => chooseAt("brand")}>{weighted ? "On" : "Off"}</Chip>
+      <Chip label="Segment">All eligible</Chip>
+    </div>
+  );
+  // The brands compared (the Compare chip): one selection for every page, not saved yet.
+  const comparatorPicker = pickingComparators && dashboard && (
+    <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Brands compared">
+      {dashboard.brands.map((b) => {
+        const on = shown.includes(b.code);
+        return (
+          <button
+            key={b.code}
+            type="button"
+            aria-pressed={on}
+            onClick={() => setComparators(on ? shown.filter((c) => c !== b.code) : [...shown, b.code])}
+            className={`rounded-full border px-2.5 py-0.5 text-[11px] ${on ? "border-blue-500 bg-blue-50 text-slate-900" : "border-slate-200 bg-white text-slate-500"}`}
+          >
+            {b.label}
+            {focal?.code === b.code ? " (yours)" : ""}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   // ---- Brand tracking dashboard (preview: "Brand overview") ----------------------------------------------------
   const brandView = overview && dashboard && (() => {
     const blankStages = overview.stageTiles.filter((t) => t.status !== "shown").map((t) => `stage:${t.stage}`);
     const shownStages = overview.figures.stages;
-    const focalName = focal?.label ?? null;
     const base = overview.figures.stages[0]?.byBrand[0]?.base ?? null;
     return (
       <>
@@ -494,13 +589,7 @@ export default function TrackerDashboardPanel({
             Customise dashboard
           </button>
         </div>
-        <div className="flex flex-wrap gap-2.5" data-testid="tracker-chips">
-          <Chip label="Brand" onClick={() => chooseAt("brand")}>{focalName ?? "Choose"}</Chip>
-          <Chip label="Wave">{overview.wave ?? "Not labelled"}</Chip>
-          <Chip label="Compare" onClick={() => setPickingComparators((v) => !v)}>{comparators ? "Selected brands" : "Suggested brands"}</Chip>
-          <Chip label="Weighting" onClick={() => chooseAt("brand")}>{overview.figures.weighted ? "On" : "Off"}</Chip>
-          <Chip label="Segment">All eligible</Chip>
-        </div>
+        {brandChips(overview.figures.weighted)}
         {customising && customise}
         {statusLine}
         <p className="text-xs text-slate-500" data-testid="tracker-basis">
@@ -561,25 +650,7 @@ export default function TrackerDashboardPanel({
             subtitle={`${overview.figures.weighted ? "Weighted" : "Unweighted"}, all eligible respondents${base !== null ? `, n=${base.toLocaleString()} per brand` : ""}. Selected comparators, not a ranking.`}
             testId="tracker-compare"
           >
-            {pickingComparators && (
-              <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Brands compared">
-                {dashboard.brands.map((b) => {
-                  const on = shown.includes(b.code);
-                  return (
-                    <button
-                      key={b.code}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setComparators(on ? shown.filter((c) => c !== b.code) : [...shown, b.code])}
-                      className={`rounded-full border px-2.5 py-0.5 text-[11px] ${on ? "border-blue-500 bg-blue-50 text-slate-900" : "border-slate-200 bg-white text-slate-500"}`}
-                    >
-                      {b.label}
-                      {focal?.code === b.code ? " (yours)" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {comparatorPicker}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {shown.map((code) => {
                 const isFocal = focal?.code === code;
@@ -638,6 +709,276 @@ export default function TrackerDashboardPanel({
               </p>
             )}
           </Card>
+        )}
+      </>
+    );
+  })();
+
+  // ---- Brand tracking dashboard, page 02 "Moments & needs" (Grant's design, 29 October 2026) ------------------
+  const momentsView = overview && dashboard && (() => {
+    const m = moments.state === "ready" ? moments.moments : null;
+    // Columns: the client's brand, then the brands compared (the Compare chip), by code.
+    const columns = [...(focal ? [focal.code] : []), ...shown.filter((c) => c !== focal?.code)];
+    const pct = (v: number) => `${v.toFixed(1)}%`;
+    const nText = (bases: (number | null)[]) => {
+      const known = [...new Set(bases.filter((b): b is number => b !== null))];
+      return known.length === 0 ? "" : known.length === 1 ? `n=${known[0].toLocaleString()}` : `n=${Math.min(...known).toLocaleString()} to ${Math.max(...known).toLocaleString()}`;
+    };
+    const weighting = m ? (m.weighted ? `Weighted by ${m.weightVar}${m.effectiveBase !== null ? `, effective base ${Math.round(m.effectiveBase)}` : ""}` : "Unweighted") : "";
+    return (
+      <>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[2rem] font-bold leading-tight tracking-tight text-slate-900">Moments &amp; needs</h2>
+            <p className="mt-1 text-[15px] text-slate-500">Understand category needs, then see which brands come to mind for each.</p>
+          </div>
+          <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+            Customise dashboard
+          </button>
+        </div>
+        {brandChips(m ? m.weighted : overview.figures.weighted)}
+        {customising && customise}
+        {statusLine}
+        {moments.state === "loading" || moments.state === "idle" ? (
+          <p className="text-sm text-slate-500" role="status">
+            Calculating moments and brand recall from this file...
+          </p>
+        ) : moments.state === "failed" ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" data-testid="tracker-moments-failed">
+            <p>Moments and brand recall could not be calculated: {moments.error}</p>
+            <button type="button" onClick={() => void loadMoments()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
+              Try again
+            </button>
+          </div>
+        ) : (
+          m && (
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+              <Card
+                title="Category moments"
+                subtitle={m.relevance.status === "ok" ? `Personal relevance, multiple response; ${nText(m.relevance.moments.map((x) => x.base))}. ${weighting}.` : "Personal relevance, multiple response."}
+                testId="tracker-moments-relevance"
+              >
+                {m.relevance.status !== "ok" ? (
+                  <UnavailableNote state={m.relevance} testId="tracker-moments-relevance-unavailable" />
+                ) : (
+                  <ol className="flex flex-col gap-2.5">
+                    {m.relevance.moments.map((x) => (
+                      <li key={x.variable} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)_3.5rem] items-center gap-3 text-sm" data-testid="tracker-moment" title={x.reason}>
+                        <span className="truncate text-slate-700">{x.item}</span>
+                        <span className="h-3 rounded bg-slate-100">
+                          <span className="block h-full rounded bg-blue-600" style={{ width: `${Math.max(0, Math.min(100, x.share ?? 0))}%` }} />
+                        </span>
+                        <span className="text-right font-semibold tabular-nums text-slate-900" data-testid="tracker-moment-share">
+                          {x.share === null ? "n/a" : pct(x.share)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </Card>
+              <Card
+                title="Moment x brand recall"
+                subtitle={
+                  m.recall.status === "ok"
+                    ? `Cue-specific recall, not personal relevance. All eligible, ${nText(m.recall.rows.flatMap((r) => r.cells.filter((c) => columns.includes(c.code)).map((c) => c.base)))}. ${weighting}.`
+                    : "Cue-specific recall, not personal relevance."
+                }
+                testId="tracker-moments-recall"
+              >
+                {comparatorPicker}
+                {m.recall.status !== "ok" ? (
+                  <UnavailableNote state={m.recall} testId="tracker-moments-recall-unavailable" />
+                ) : (
+                  (() => {
+                    const rows = m.recall.rows;
+                    const values = rows.flatMap((r) => r.cells.filter((c) => columns.includes(c.code)).map((c) => c.share)).filter((v): v is number => v !== null);
+                    const top = values.length ? Math.max(...values) : 0;
+                    return (
+                      <>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-separate border-spacing-1 text-sm" data-testid="tracker-recall-table">
+                            <thead>
+                              <tr>
+                                <th scope="col" className="text-left text-xs font-medium text-slate-500">
+                                  Moment
+                                </th>
+                                {columns.map((code) => (
+                                  <th key={code} scope="col" className={`px-1 text-center text-xs font-semibold ${code === focal?.code ? "text-blue-700" : "text-slate-700"}`}>
+                                    {brandLabel.get(code) ?? code}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((r) => (
+                                <tr key={r.variable} data-testid="tracker-recall-row">
+                                  <th scope="row" className="max-w-[14rem] truncate pr-2 text-left font-normal text-slate-700" title={`${r.item}: ${pct(r.relevance)} find it relevant`}>
+                                    {r.item}
+                                  </th>
+                                  {columns.map((code) => {
+                                    const c = r.cells.find((x) => x.code === code);
+                                    const v = c?.share ?? null;
+                                    const depth = v === null || top === 0 ? 0 : v / top;
+                                    return (
+                                      <td
+                                        key={code}
+                                        className="rounded-md px-2 py-2 text-center tabular-nums"
+                                        style={v === null ? undefined : { background: `rgba(37, 99, 235, ${(0.08 + 0.82 * depth).toFixed(3)})`, color: depth > 0.55 ? "#ffffff" : "#0f172a" }}
+                                        title={c?.reason ?? `${brandLabel.get(code) ?? code}, ${r.item}`}
+                                        data-testid="tracker-recall-cell"
+                                        data-code={code}
+                                      >
+                                        {v === null ? <span className="text-slate-400">n/a</span> : pct(v)}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="mt-3 text-[11px] text-slate-500">
+                          {rows.length === 6 ? "Six moments" : `${rows.length} moment${rows.length === 1 ? "" : "s"}`} selected by highest category relevance. Darker blue = greater cue-specific brand recall; no statistical comparison implied.
+                          {m.recall.withoutRecall.length > 0 && ` Not shown, as no brand recall was asked for them: ${m.recall.withoutRecall.join(", ")}.`}
+                        </p>
+                      </>
+                    );
+                  })()
+                )}
+              </Card>
+            </div>
+          )
+        )}
+      </>
+    );
+  })();
+
+  // ---- Brand tracking dashboard, page 03 "Brand associations" (Grant's design, 29 October 2026) --------------
+  const associationsView = overview && dashboard && (() => {
+    const a = associations.state === "ready" ? associations.associations : null;
+    // Dots: the client's brand, then the brands compared (the Compare chip), by code; each compared brand keeps its
+    // colour by its place in that selection.
+    const others = shown.filter((c) => c !== focal?.code);
+    const plotted = [...(focal ? [focal.code] : []), ...others];
+    const colourOf = (code: string) => (code === focal?.code ? FOCAL_COLOUR : COMPARATOR_COLOURS[others.indexOf(code) % COMPARATOR_COLOURS.length]);
+    const pct = (v: number) => `${v.toFixed(1)}%`;
+    const weighting = a ? (a.weighted ? `Weighted by ${a.weightVar}` : "Unweighted") : "";
+    const profile = a?.profile.status === "ok" ? a.profile : null;
+    const values = profile ? profile.attributes.flatMap((r) => r.cells.filter((c) => plotted.includes(c.code)).map((c) => c.share)).filter((v): v is number => v !== null) : [];
+    // The axis runs to 80% (Grant's design) unless a figure shown is higher; then to the next 20 above it.
+    const axisMax = Math.min(100, Math.max(80, Math.ceil(Math.max(0, ...values) / 20) * 20));
+    const ticks = Array.from({ length: axisMax / 20 + 1 }, (_, i) => i * 20);
+    return (
+      <>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[2rem] font-bold leading-tight tracking-tight text-slate-900">Brand associations</h2>
+            <p className="mt-1 text-[15px] text-slate-500">Compare what aware respondents associate with each brand.</p>
+          </div>
+          <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+            Customise dashboard
+          </button>
+        </div>
+        {brandChips(a ? a.weighted : overview.figures.weighted)}
+        {customising && customise}
+        {statusLine}
+        {associations.state === "loading" || associations.state === "idle" ? (
+          <p className="text-sm text-slate-500" role="status">
+            Calculating brand associations from this file...
+          </p>
+        ) : associations.state === "failed" ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" data-testid="tracker-associations-failed">
+            <p>Brand associations could not be calculated: {associations.error}</p>
+            <button type="button" onClick={() => void loadAssociations()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
+              Try again
+            </button>
+          </div>
+        ) : (
+          a && (
+            <Card
+              title="Association profile"
+              subtitle={`Pick-any associations. Each brand uses its own awareness base; these are not agreement scores.${profile ? ` ${weighting}.` : ""}`}
+              testId="tracker-associations-profile"
+            >
+              {comparatorPicker}
+              {a.profile.status !== "ok" ? (
+                <UnavailableNote state={a.profile} testId="tracker-associations-unavailable" />
+              ) : (
+                <>
+                  <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-700" aria-label="Legend" data-testid="tracker-associations-legend">
+                    {plotted.map((code) => (
+                      <li key={code} className="flex items-center gap-1.5">
+                        <span className={`inline-block rounded-full ${code === focal?.code ? "h-3 w-3" : "h-2.5 w-2.5"}`} style={{ background: colourOf(code) }} aria-hidden="true" />
+                        <span className={code === focal?.code ? "font-semibold text-slate-900" : ""}>{brandLabel.get(code) ?? code}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] gap-x-3 text-sm">
+                    <span />
+                    <div className="relative h-5 text-[11px] text-slate-400" aria-hidden="true">
+                      {ticks.map((t) => (
+                        <span key={t} className="absolute top-0 -translate-x-1/2 tabular-nums" style={{ left: `${(t / axisMax) * 100}%` }}>
+                          {t}%
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-right text-[11px] font-medium text-slate-500">{focal ? (brandLabel.get(focal.code) ?? focal.code) : ""}</span>
+                    {a.profile.attributes.map((r) => {
+                      const cells = plotted.map((code) => ({ code, cell: r.cells.find((c) => c.code === code) }));
+                      const mine = focal ? r.cells.find((c) => c.code === focal.code) : undefined;
+                      const described = cells.map(({ code, cell }) => `${brandLabel.get(code) ?? code} ${cell?.share === null || cell?.share === undefined ? "n/a" : pct(cell.share)}`).join(", ");
+                      return (
+                        <div key={r.group} className="contents" data-testid="tracker-association-row">
+                          <span className="truncate py-2 text-slate-700" title={r.item}>
+                            {r.item}
+                          </span>
+                          <div className="relative my-auto h-6" role="img" aria-label={`${r.item}: ${described}`}>
+                            <span className="absolute inset-x-0 top-1/2 h-px bg-slate-200" />
+                            {ticks.slice(1, -1).map((t) => (
+                              <span key={t} className="absolute inset-y-1 w-px bg-slate-100" style={{ left: `${(t / axisMax) * 100}%` }} />
+                            ))}
+                            {/* Compared brands first, so the client's dot is drawn on top. */}
+                            {[...cells].reverse().map(({ code, cell }) =>
+                              cell?.share === null || cell?.share === undefined ? null : (
+                                <span
+                                  key={code}
+                                  className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white ${code === focal?.code ? "h-3.5 w-3.5" : "h-2.5 w-2.5"}`}
+                                  style={{ left: `${(Math.min(cell.share, axisMax) / axisMax) * 100}%`, background: colourOf(code) }}
+                                  title={`${brandLabel.get(code) ?? code}: ${pct(cell.share)} of ${cell.base?.toLocaleString() ?? "?"} aware`}
+                                  data-testid="tracker-association-dot"
+                                  data-code={code}
+                                />
+                              ),
+                            )}
+                          </div>
+                          <span className="py-2 text-right font-semibold tabular-nums text-slate-900" data-testid="tracker-association-focal" title={mine?.reason}>
+                            {!mine ? "-" : mine.share === null ? <span className="text-slate-400">n/a</span> : pct(mine.share)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const missing = plotted.flatMap((code) => {
+                      const reasons = [...new Set(a.profile.status === "ok" ? a.profile.attributes.map((r) => r.cells.find((c) => c.code === code)).filter((c) => c && c.share === null).map((c) => c!.reason ?? "Not available.") : [])];
+                      return reasons.length ? [`${brandLabel.get(code) ?? code}: ${reasons.join(" ")}`] : [];
+                    });
+                    return missing.length > 0 && <p className="mt-3 text-[11px] text-slate-500" data-testid="tracker-associations-na">n/a: {missing.join(" ")}</p>;
+                  })()}
+                  <p className="mt-3 text-[11px] text-slate-500" data-testid="tracker-associations-bases">
+                    Aware bases:{" "}
+                    {plotted
+                      .map((code) => {
+                        const b = profile!.bases.find((x) => x.code === code);
+                        return `${brandLabel.get(code) ?? code} ${b?.n === null || b?.n === undefined ? "n/a" : b.n.toLocaleString()}`;
+                      })
+                      .join(" | ")}
+                    . Positioning model appears only when a supported analysis has completed.
+                  </p>
+                </>
+              )}
+            </Card>
+          )
         )}
       </>
     );
@@ -990,17 +1331,25 @@ export default function TrackerDashboardPanel({
             <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Workspace</p>
             <p className="px-2 text-lg font-bold text-slate-900">Brand tracking</p>
             <p className="mb-4 truncate px-2 text-xs text-slate-500">{focal ? `${focal.label} / ${overview?.wave ?? ""}` : filename}</p>
-            {BRAND_SECTIONS.map((s, i) => (
-              <span
-                key={s}
-                aria-current={i === 0 ? "page" : undefined}
-                title={i === 0 ? undefined : "Coming next"}
-                className={`flex items-baseline gap-3 rounded-lg px-3 py-2.5 text-sm ${i === 0 ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-400"}`}
-              >
-                <span className="text-xs font-semibold">{String(i + 1).padStart(2, "0")}</span>
-                {s}
-              </span>
-            ))}
+            {BRAND_SECTIONS.map((s, i) =>
+              i < LIVE_SECTIONS ? (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSection(i)}
+                  aria-current={i === section ? "page" : undefined}
+                  className={`flex items-baseline gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${i === section ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-700 hover:bg-slate-50"}`}
+                >
+                  <span className="text-xs font-semibold">{String(i + 1).padStart(2, "0")}</span>
+                  {s}
+                </button>
+              ) : (
+                <span key={s} title="Coming next" className="flex items-baseline gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400">
+                  <span className="text-xs font-semibold">{String(i + 1).padStart(2, "0")}</span>
+                  {s}
+                </span>
+              ),
+            )}
           </nav>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1018,7 +1367,23 @@ export default function TrackerDashboardPanel({
                 </button>
               </div>
             )}
-            {kind === "brand" ? brandView : csmView}
+            {kind === "brand" && (
+              // The section menu is beside the page on a wide screen; on a narrow one the built pages are tabs here.
+              <div className="flex gap-1.5 lg:hidden" role="group" aria-label="Brand tracking pages">
+                {BRAND_SECTIONS.slice(0, LIVE_SECTIONS).map((s, i) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSection(i)}
+                    aria-pressed={i === section}
+                    className={`rounded-lg border px-3 py-1.5 text-sm ${i === section ? "border-blue-500 bg-blue-50 font-semibold text-blue-700" : "border-slate-200 bg-white text-slate-700"}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : brandView) : csmView}
           </div>
         </div>
       </div>

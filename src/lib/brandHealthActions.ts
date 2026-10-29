@@ -4,13 +4,24 @@ import { revalidatePath } from "next/cache";
 
 import { withTenant } from "./db";
 import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
-import { loadVariableDictionary } from "./crosstabs";
+import { loadVariableDictionary, loadVariableDictionaryWithStatus } from "./crosstabs";
 import { defaultWeight } from "./starterTables";
 import { runDistributionAction, type ChartSeries } from "./chartActions";
 import { runNpsAction } from "./npsActions";
 import type { VariableInfo, VariableSet, VariableDictionary } from "./parseStatsFile";
 import { defaultMetricForScale, summarizeSeries, type CsmMetric } from "./csmMetrics";
-import { categoryAverage, categoryAverageExact, brandHealthFindingKey, matchSetMembersToBrands } from "./brandHealthMetrics";
+import {
+  categoryAverage,
+  categoryAverageExact,
+  brandHealthFindingKey,
+  matchSetMembersToBrands,
+  sectionSplitsByBrandGroups,
+  brandSetMembers,
+  brandGroupsOverlapNote,
+  normaliseBrandHealthMapping,
+  type BrandSetMember,
+} from "./brandHealthMetrics";
+import { selectedCode } from "./trackerFigures";
 import { requireTenantId } from "./requestContext";
 
 export type { CsmMetric };
@@ -28,6 +39,12 @@ export type BrandHealthScore = {
    * category average and gaps are computed from (CT5K-F01). */
   byBrand: { brand: string; value: number | null; exact?: number | null; n: number }[];
   categoryAvg: number | null;
+  /** How respondents were split by brand: "brand_groups" when one question was read within each brand's group
+   * (the brand variable's categories, or with a brand set each member's selected respondents, which overlap);
+   * "brand_columns" when a multiple-response set gave one column per brand, which is not affected by the brand
+   * source. Absent on dashboards saved in findings before brand sets existed (all were brand variable splits or
+   * brand columns, not told apart). */
+  brandSplit?: "brand_groups" | "brand_columns";
 };
 
 export type BrandHealthFunnelStage = BrandHealthScore & { stage: "awareness" | "consideration" | "usage" | "frequent" };
@@ -43,9 +60,15 @@ export type BrandHealthSource = { variable: string; metric?: CsmMetric } | { set
 export type BrandHealthAttributeMapping = BrandHealthSource;
 
 export type BrandHealthMapping = {
-  /** The categorical variable whose values are the brands in the data (eg "which brand do you use most often"). */
+  /** The categorical variable whose values are the brands in the data (eg "which brand do you use most often").
+   * Exactly one of brandVar and brandSet is named once the brand source is chosen. */
   brandVar: string | null;
-  /** One of brandVar's category values: the brand this dashboard reads everything else against. */
+  /** A multiple-response set with one yes/no member per brand (eg owner_b01..owner_b10, set "owner"), named as the
+   * brand source instead of a brand variable (Grant, 29 October 2026). A respondent is in brand X's group when they
+   * selected member X, so the groups overlap. Absent from mappings saved before 29 October 2026, read as null. */
+  brandSet?: string | null;
+  /** The brand this dashboard reads everything else against: with brandVar one of its category labels, with
+   * brandSet one member variable's name (the brand's identity; its label is for display). */
   ourBrand: string | null;
   funnel: {
     awareness?: BrandHealthSource;
@@ -65,8 +88,23 @@ export type BrandHealthDashboard = {
   documentId: string;
   waveLabel: string | null;
   weighted: boolean;
-  brandVar: string;
+  /** The brand source: one of brandVar and brandSet is set. */
+  brandVar: string | null;
+  brandSet: string | null;
+  /** Our brand's display label (with a brand set, the member's brand label; its identity is ourBrandVariable). */
   ourBrand: string;
+  /** With a brand set, our brand's member variable; null with a brand variable. */
+  ourBrandVariable: string | null;
+  /** With a brand set, each brand's member variable and label, in set order; null with a brand variable. */
+  brandMembers: BrandSetMember[] | null;
+  /** True when the brand groups overlap (a brand set): figures split by brand count a respondent in every brand
+   * group they belong to. */
+  groupsOverlap: boolean;
+  /** The sentence the dashboard shows when the groups overlap; null otherwise. */
+  overlapNote: string | null;
+  /** Figures not shown, each with the reason (a figure that cannot be computed, or one that would assume
+   * exclusive brand groups when the groups overlap). */
+  withheld: { figure: string; reason: string }[];
   brands: string[];
   funnel: BrandHealthFunnelStage[];
   /**
@@ -120,6 +158,8 @@ export type BrandHealthDashboard = {
     yVariable: string;
     yLabel: string;
     points: { brand: string; x: number | null; y: number | null }[];
+    /** "brand_groups" when either axis was read within brand groups (see BrandHealthScore.brandSplit). */
+    brandSplit?: "brand_groups" | "brand_columns";
   } | null;
 };
 
@@ -159,6 +199,71 @@ export async function loadBrandCategoriesAction(
   return { ok: true, brands: res.result.series[0]?.bars.map((b) => b.label) ?? [] };
 }
 
+/**
+ * The brand set's brands for the "which brand is ours" picker: each member variable (the brand's identity) with
+ * its brand label (brandHealthMetrics.brandSetMembers). Refused, with the reason, when the set is not a
+ * multiple-response set in this file; a failed read of the file's set-up is reported, never an empty list.
+ */
+export async function loadBrandSetMembersAction(
+  runId: string,
+  documentId: string,
+  setKey: string,
+): Promise<{ ok: true; members: BrandSetMember[]; setLabel: string } | Fail> {
+  const TENANT_ID = await requireTenantId();
+  try {
+    const dictStatus = await loadVariableDictionaryWithStatus(TENANT_ID, runId, documentId);
+    if (!dictStatus.ok) return { ok: false, error: `This file's saved set-up could not be read: ${dictStatus.error}` };
+    const resolved = brandSetMembers(dictStatus.dictionary, setKey);
+    if (!resolved.ok) return resolved;
+    return { ok: true, members: resolved.members, setLabel: resolved.set.label || resolved.set.key };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Who is in each brand's group. With a brand variable: its categories (exclusive groups, one banner). With a brand
+ * set: each member's respondents who gave its selected code (overlapping groups). The selected code is read once
+ * per member, by code, through the tracker rule's owner (trackerFigures.selectedCode: a "Selected"/"Yes" answer
+ * label, or code 1 of a 0/1 variable), never from a label's position.
+ */
+type BrandGroups =
+  | { kind: "variable"; variable: string }
+  | { kind: "set"; setKey: string; setLabel: string; members: (BrandSetMember & { selected: string })[] };
+
+async function resolveBrandSetGroups(
+  runId: string,
+  documentId: string,
+  dict: VariableDictionary,
+  setKey: string,
+  weightVar: string | null,
+): Promise<Extract<BrandGroups, { kind: "set" }> | { error: string }> {
+  const resolved = brandSetMembers(dict, setKey);
+  if (!resolved.ok) return { error: resolved.error };
+  const members: (BrandSetMember & { selected: string })[] = [];
+  for (const m of resolved.members) {
+    const res = await runDistributionAction(runId, documentId, m.variable, weightVar, null, "compute");
+    if (!res.ok) return { error: `The brand set member ${m.variable} (${m.brand}) could not be read: ${res.error}` };
+    const bars = res.result.series[0]?.bars ?? [];
+    const codes = bars.map((b) => b.rawCode).filter((c): c is string => c !== undefined);
+    const valueLabels = Object.fromEntries(bars.filter((b) => b.rawCode !== undefined && b.label !== b.rawCode).map((b) => [b.rawCode as string, b.label]));
+    const selected = selectedCode({ valueLabels }, codes);
+    if (selected === null) {
+      return { error: `Which answer of ${m.variable} (${m.brand}) means the brand was selected cannot be told from its answers, so its brand group cannot be formed.` };
+    }
+    members.push({ ...m, selected });
+  }
+  return { kind: "set", setKey, setLabel: resolved.set.label || resolved.set.key, members };
+}
+
+/**
+ * One shared question read within each brand's group. With a brand variable this is the variable's own banner,
+ * as before. With a brand set, each member is its own banner (respondents who selected it against those who did
+ * not) and only the selected column is kept: brand X's figure is the question's distribution among respondents who
+ * selected member X, weighted by the dashboard's weight with the file's design (runDistributionAction), so a
+ * respondent who selected two brands is in both figures. A brand whose group has nobody answering the question
+ * has no figure (null) on a base of 0, never 0.
+ */
 async function scoreByBrand(
   runId: string,
   documentId: string,
@@ -166,20 +271,37 @@ async function scoreByBrand(
   label: string,
   metric: CsmMetric,
   weightVar: string | null,
-  brandVar: string,
+  groups: BrandGroups,
 ): Promise<BrandHealthScore | { error: string }> {
-  const res = await runDistributionAction(runId, documentId, variable, weightVar, brandVar);
-  if (!res.ok) return { error: res.error };
-  const byBrand = res.result.series.map((s: ChartSeries) => {
-    const sum = summarizeSeries(s, metric);
-    return { brand: s.name, value: sum.value, exact: sum.exact, n: s.n };
-  });
+  let byBrand: BrandHealthScore["byBrand"];
+  if (groups.kind === "variable") {
+    const res = await runDistributionAction(runId, documentId, variable, weightVar, groups.variable);
+    if (!res.ok) return { error: res.error };
+    byBrand = res.result.series.map((s: ChartSeries) => {
+      const sum = summarizeSeries(s, metric);
+      return { brand: s.name, value: sum.value, exact: sum.exact, n: s.n };
+    });
+  } else {
+    byBrand = [];
+    for (const m of groups.members) {
+      const res = await runDistributionAction(runId, documentId, variable, weightVar, m.variable, "compute");
+      if (!res.ok) return { error: res.error };
+      const s = res.result.series.find((x) => x.code === m.selected);
+      if (!s) {
+        byBrand.push({ brand: m.brand, value: null, exact: null, n: 0 });
+        continue;
+      }
+      const sum = summarizeSeries(s, metric);
+      byBrand.push({ brand: m.brand, value: sum.value, exact: sum.exact, n: s.n });
+    }
+  }
   return {
     variable,
     label,
     metric,
     byBrand,
     categoryAvg: categoryAverage(byBrand),
+    brandSplit: "brand_groups",
   };
 }
 
@@ -190,7 +312,8 @@ async function scoreByBrand(
  * matched member's own plain distribution - no groupVar needed, since the brand split is
  * already baked into which column is which. A set covering fewer than the full brand list (eg
  * an attribute battery asked for only 3 of 6 brands, per the codebook) simply scores fewer
- * brands rather than failing.
+ * brands rather than failing. Not affected by the brand source: with a brand set, each column is still read
+ * among everyone who answered it, not within a brand group.
  */
 async function scoreBySet(
   runId: string,
@@ -223,6 +346,7 @@ async function scoreBySet(
     metric,
     byBrand,
     categoryAvg: categoryAverage(byBrand),
+    brandSplit: "brand_columns",
   };
 }
 
@@ -234,7 +358,7 @@ async function scoreSource(
   fallbackLabel: string,
   defaultScalePoints: number,
   weightVar: string | null,
-  brandVar: string,
+  groups: BrandGroups,
   byName: Map<string, VariableInfo>,
   dict: VariableDictionary,
   brandPool: string[],
@@ -244,36 +368,97 @@ async function scoreSource(
   }
   const v = byName.get(source.variable);
   const metric = source.metric ?? defaultMetricForScale(v?.nDistinct ?? defaultScalePoints);
-  return scoreByBrand(runId, documentId, source.variable, v?.label || fallbackLabel, metric, weightVar, brandVar);
+  return scoreByBrand(runId, documentId, source.variable, v?.label || fallbackLabel, metric, weightVar, groups);
+}
+
+/** NPS within each brand's group, through the NPS tool (runNpsAction), split the same way as scoreByBrand. */
+async function loyaltyByBrand(
+  runId: string,
+  documentId: string,
+  variable: string,
+  weightVar: string | null,
+  groups: BrandGroups,
+): Promise<{ byBrand: NonNullable<BrandHealthDashboard["loyalty"]>["byBrand"] } | { error: string }> {
+  if (groups.kind === "variable") {
+    const nps = await runNpsAction(runId, documentId, variable, weightVar, groups.variable);
+    if (!nps.ok) return { error: nps.error };
+    return { byBrand: (nps.result.segments ?? []).map((s) => ({ brand: s.name, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n })) };
+  }
+  const byBrand: NonNullable<BrandHealthDashboard["loyalty"]>["byBrand"] = [];
+  for (const m of groups.members) {
+    const nps = await runNpsAction(runId, documentId, variable, weightVar, m.variable, undefined, "compute");
+    if (!nps.ok) return { error: nps.error };
+    // A brand group the NPS tool could not score (no base, or a suppressed point) has no segment and is left
+    // out, as a brand variable's empty category is.
+    const s = (nps.result.segments ?? []).find((x) => x.code === m.selected);
+    if (s) byBrand.push({ brand: m.brand, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n });
+  }
+  return { byBrand };
+}
+
+/**
+ * The brand source named in a mapping, checked against the file's dictionary: a brand set must be a
+ * multiple-response set of this file, and our brand (when picked) one of its members. Null when acceptable.
+ */
+function brandSourceRefusal(mapping: BrandHealthMapping, dict: VariableDictionary): string | null {
+  if (!mapping.brandSet) return null;
+  const resolved = brandSetMembers(dict, mapping.brandSet);
+  if (!resolved.ok) return resolved.error;
+  if (mapping.ourBrand && !resolved.members.some((m) => m.variable === mapping.ourBrand)) {
+    return `Our brand (${mapping.ourBrand}) is not a member of the brand set "${resolved.set.label || resolved.set.key}".`;
+  }
+  return null;
 }
 
 /**
  * Runs one Brand Health dashboard for one file: the funnel stages, the attribute battery, loyalty
  * (NPS), category entry points (moments) and a two-attribute positioning map, every brand
- * mapped through the file's own brand variable rather than one question per brand. Every step
- * reuses the single-file engines (runDistributionAction, runNpsAction) the other Analytics
- * tools already run on, the same way the CSM module does.
+ * mapped through the file's own brand source (a brand variable, or a brand set whose groups overlap) rather
+ * than one question per brand. Every step reuses the single-file engines (runDistributionAction, runNpsAction)
+ * the other Analytics tools already run on, the same way the CSM module does.
  */
 export async function buildBrandHealthDashboardAction(
   runId: string,
   documentId: string,
-  mapping: BrandHealthMapping,
+  sentMapping: BrandHealthMapping,
   waveLabel?: string | null,
 ): Promise<{ ok: true; dashboard: BrandHealthDashboard } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    if (!mapping.brandVar) return { ok: false, error: "Map the brand variable first: which question in the file holds the brand values." };
+    const parsed = normaliseBrandHealthMapping(sentMapping);
+    if (!parsed.ok) return parsed;
+    const mapping = parsed.mapping;
+    if (!mapping.brandVar && !mapping.brandSet) {
+      return { ok: false, error: "Map the brand variable first: which question in the file holds the brand values, or a multiple-response set with one member per brand." };
+    }
     if (!mapping.ourBrand) return { ok: false, error: "Pick which brand is \"ours\" to compare against the rest." };
 
-    const dict = await loadVariableDictionary(TENANT_ID, runId, documentId);
+    const dictStatus = await loadVariableDictionaryWithStatus(TENANT_ID, runId, documentId);
+    if (!dictStatus.ok) return { ok: false, error: `This file's saved set-up could not be read: ${dictStatus.error}` };
+    const dict = dictStatus.dictionary;
+    const refusal = brandSourceRefusal(mapping, dict);
+    if (refusal) return { ok: false, error: refusal };
     const weightVar = defaultWeight(dict);
     const byName = new Map(dict.variables.map((v) => [v.name, v]));
-    const brandVar = mapping.brandVar;
 
     // Fetched once up front: the full brand list, both as the dashboard's fallback brand order
     // and as the pool a multi-response set's per-brand member columns are matched against.
-    const brandListRes = await loadBrandCategoriesAction(runId, documentId, brandVar, weightVar);
-    const allBrands = brandListRes.ok ? brandListRes.brands : [];
+    let groups: BrandGroups;
+    let allBrands: string[];
+    let ourBrand: string;
+    if (mapping.brandSet) {
+      const resolved = await resolveBrandSetGroups(runId, documentId, dict, mapping.brandSet, weightVar);
+      if ("error" in resolved) return { ok: false, error: resolved.error };
+      groups = resolved;
+      allBrands = resolved.members.map((m) => m.brand);
+      ourBrand = resolved.members.find((m) => m.variable === mapping.ourBrand)!.brand;
+    } else {
+      groups = { kind: "variable", variable: mapping.brandVar! };
+      const brandListRes = await loadBrandCategoriesAction(runId, documentId, mapping.brandVar!, weightVar);
+      allBrands = brandListRes.ok ? brandListRes.brands : [];
+      ourBrand = mapping.ourBrand;
+    }
+    const withheld: BrandHealthDashboard["withheld"] = [];
 
     const sourceLabel = (source: BrandHealthSource, fallback: string): string =>
       "setKey" in source ? dict.sets?.find((s) => s.key === source.setKey)?.label || fallback : byName.get(source.variable)?.label || fallback;
@@ -283,7 +468,7 @@ export async function buildBrandHealthDashboardAction(
     for (const { key, stage, fallbackLabel } of FUNNEL_STAGES) {
       const stageMap = mapping.funnel[key];
       if (!stageMap) continue;
-      const scored = await scoreSource(runId, documentId, stageMap, fallbackLabel, 2, weightVar, brandVar, byName, dict, allBrands);
+      const scored = await scoreSource(runId, documentId, stageMap, fallbackLabel, 2, weightVar, groups, byName, dict, allBrands);
       if ("error" in scored) return { ok: false, error: scored.error };
       funnel.push({ ...scored, stage });
       if (brands.length === 0) brands = scored.byBrand.map((b) => b.brand);
@@ -291,35 +476,50 @@ export async function buildBrandHealthDashboardAction(
 
     const attributes: BrandHealthScore[] = [];
     for (const attr of mapping.attributes) {
-      const scored = await scoreSource(runId, documentId, attr, sourceLabel(attr, "Attribute"), 5, weightVar, brandVar, byName, dict, allBrands);
-      if ("error" in scored) continue; // skip an attribute that can't be tabulated rather than failing the whole dashboard
+      const scored = await scoreSource(runId, documentId, attr, sourceLabel(attr, "Attribute"), 5, weightVar, groups, byName, dict, allBrands);
+      if ("error" in scored) {
+        // An attribute that can't be tabulated is left out rather than failing the whole dashboard, and listed.
+        withheld.push({ figure: sourceLabel(attr, "Attribute"), reason: scored.error });
+        continue;
+      }
       attributes.push(scored);
       if (brands.length === 0) brands = scored.byBrand.map((b) => b.brand);
     }
 
     const moments: BrandHealthScore[] = [];
     for (const m of mapping.moments) {
-      const scored = await scoreSource(runId, documentId, m, sourceLabel(m, "Moment"), 2, weightVar, brandVar, byName, dict, allBrands);
-      if ("error" in scored) continue;
+      const scored = await scoreSource(runId, documentId, m, sourceLabel(m, "Moment"), 2, weightVar, groups, byName, dict, allBrands);
+      if ("error" in scored) {
+        withheld.push({ figure: sourceLabel(m, "Moment"), reason: scored.error });
+        continue;
+      }
       moments.push(scored);
       if (brands.length === 0) brands = scored.byBrand.map((b) => b.brand);
     }
 
     let loyalty: BrandHealthDashboard["loyalty"] = null;
     if (mapping.loyaltyVar) {
-      const nps = await runNpsAction(runId, documentId, mapping.loyaltyVar, weightVar, brandVar);
-      if (nps.ok) {
-        const v = byName.get(mapping.loyaltyVar);
-        loyalty = {
-          variable: mapping.loyaltyVar,
-          label: v?.label || mapping.loyaltyVar,
-          byBrand: (nps.result.segments ?? []).map((s) => ({ brand: s.name, nps: s.nps, promoters: s.promoters, detractors: s.detractors, n: s.n })),
-        };
+      const v = byName.get(mapping.loyaltyVar);
+      const nps = await loyaltyByBrand(runId, documentId, mapping.loyaltyVar, weightVar, groups);
+      if ("error" in nps) {
+        withheld.push({ figure: v?.label || mapping.loyaltyVar, reason: nps.error });
+      } else {
+        loyalty = { variable: mapping.loyaltyVar, label: v?.label || mapping.loyaltyVar, byBrand: nps.byBrand };
         if (brands.length === 0) brands = loyalty.byBrand.map((b) => b.brand);
       }
     }
 
     if (brands.length === 0) brands = allBrands;
+
+    // With overlapping brand groups, a comparison that treats the brand groups as separate samples (a test across
+    // brand groups, an NPS group-versus-rest test adjusted across the groups, or brand shares meant to add up to
+    // the total) would be computed on respondents counted more than once. None is computed or shown.
+    if (groups.kind === "set") {
+      withheld.push({
+        figure: "Tests across brand groups (significance between brands, NPS brand versus the rest)",
+        reason: "The brand groups overlap, so they are not separate samples; a test across them would count some respondents twice. Not computed.",
+      });
+    }
 
     // ANA-BRAND-001: this is deliberately a ratio of two independent marginal rates, not a true
     // conditional conversion (100 x sum_w(stage i-1 AND stage i) / sum_w(stage i-1)). Computing
@@ -382,7 +582,7 @@ export async function buildBrandHealthDashboardAction(
         }
         const v = byName.get(key);
         const metric = defaultMetricForScale(v?.nDistinct ?? 5);
-        const scored = await scoreByBrand(runId, documentId, key, v?.label || key, metric, weightVar, brandVar);
+        const scored = await scoreByBrand(runId, documentId, key, v?.label || key, metric, weightVar, groups);
         return "error" in scored ? null : scored;
       };
       const xScore = await findScore(xVar);
@@ -393,12 +593,15 @@ export async function buildBrandHealthDashboardAction(
           xLabel: xScore.label,
           yVariable: yVar,
           yLabel: yScore.label,
+          brandSplit: xScore.brandSplit === "brand_groups" || yScore.brandSplit === "brand_groups" ? "brand_groups" : "brand_columns",
           points: brands.map((brand) => ({
             brand,
             x: xScore.byBrand.find((b) => b.brand === brand)?.value ?? null,
             y: yScore.byBrand.find((b) => b.brand === brand)?.value ?? null,
           })),
         };
+      } else {
+        withheld.push({ figure: "Positioning map", reason: "One of its two axes could not be tabulated." });
       }
     }
 
@@ -408,8 +611,14 @@ export async function buildBrandHealthDashboardAction(
         documentId,
         waveLabel: waveLabel ?? null,
         weighted: !!weightVar,
-        brandVar,
-        ourBrand: mapping.ourBrand,
+        brandVar: groups.kind === "variable" ? groups.variable : null,
+        brandSet: groups.kind === "set" ? groups.setKey : null,
+        ourBrand,
+        ourBrandVariable: groups.kind === "set" ? mapping.ourBrand : null,
+        brandMembers: groups.kind === "set" ? groups.members.map(({ variable, brand }) => ({ variable, brand })) : null,
+        groupsOverlap: groups.kind === "set",
+        overlapNote: groups.kind === "set" ? brandGroupsOverlapNote(groups.setLabel) : null,
+        withheld,
         brands,
         funnel,
         conversions,
@@ -447,14 +656,19 @@ export async function loadBrandHealthModuleAction(
 ): Promise<{ ok: true; mapping: BrandHealthMapping | null } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
-    const mapping = await withTenant(TENANT_ID, async (client) => {
-      const r = await client.query<{ mapping: BrandHealthMapping }>(
+    const stored = await withTenant(TENANT_ID, async (client) => {
+      const r = await client.query<{ mapping: unknown }>(
         `select mapping from brand_health_modules where run_id = $1 and document_id = $2 limit 1`,
         [runId, documentId],
       );
       return r.rows[0]?.mapping ?? null;
     });
-    return { ok: true, mapping };
+    if (stored === null) return { ok: true, mapping: null };
+    // A mapping saved before brand sets existed reads with brandSet null; an unreadable one is reported, never
+    // replaced by an empty mapping that a later save would write over the researcher's choices.
+    const parsed = normaliseBrandHealthMapping(stored);
+    if (!parsed.ok) return parsed;
+    return { ok: true, mapping: parsed.mapping };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -463,10 +677,22 @@ export async function loadBrandHealthModuleAction(
 export async function saveBrandHealthModuleAction(
   runId: string,
   documentId: string,
-  mapping: BrandHealthMapping,
+  sentMapping: BrandHealthMapping,
 ): Promise<{ ok: true } | Fail> {
   const TENANT_ID = await requireTenantId();
   try {
+    const parsed = normaliseBrandHealthMapping(sentMapping);
+    if (!parsed.ok) return parsed;
+    const mapping = parsed.mapping;
+    // A brand set is checked against this file before it is kept: it must be a multiple-response set here, and our
+    // brand one of its members. A brand variable is saved as before, unchecked here (the dashboard reports a
+    // variable it cannot read when it is built).
+    if (mapping.brandSet) {
+      const dictStatus = await loadVariableDictionaryWithStatus(TENANT_ID, runId, documentId);
+      if (!dictStatus.ok) return { ok: false, error: `This file's saved set-up could not be read, so the brand set could not be checked: ${dictStatus.error}` };
+      const refusal = brandSourceRefusal(mapping, dictStatus.dictionary);
+      if (refusal) return { ok: false, error: refusal };
+    }
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
         `insert into brand_health_modules (tenant_id, run_id, document_id, mapping, updated_at)
@@ -489,7 +715,19 @@ function pctOf(v: number | null): string {
   return v === null ? "-" : `${v}%`;
 }
 
+/** A section's finding text, with the overlap note appended when its brand groups overlap (a brand set), so the
+ * qualification travels with the wording wherever the finding is read. */
 function describeBrandHealthSection(dashboard: BrandHealthDashboard, section: BrandHealthFindingSection): { text: string; theme: string } {
+  const described = describeBrandHealthFigures(dashboard, section);
+  if (!described.text || !groupsOverlapIn(dashboard, section) || !dashboard.overlapNote) return described;
+  return { ...described, text: `${described.text} ${dashboard.overlapNote}` };
+}
+
+function groupsOverlapIn(dashboard: BrandHealthDashboard, section: BrandHealthFindingSection): boolean {
+  return dashboard.groupsOverlap === true && sectionSplitsByBrandGroups(dashboard, section);
+}
+
+function describeBrandHealthFigures(dashboard: BrandHealthDashboard, section: BrandHealthFindingSection): { text: string; theme: string } {
   const base = dashboard.weighted ? "weighted" : "unweighted";
   const ours = (byBrand: { brand: string; value: number | null }[]) => byBrand.find((b) => b.brand === dashboard.ourBrand)?.value ?? null;
   const oursExact = (byBrand: BrandHealthScore["byBrand"]) => {
@@ -557,6 +795,7 @@ export async function addBrandHealthFindingAction(
         documentId,
         waveLabel: dashboard.waveLabel,
         brandVar: dashboard.brandVar,
+        brandSet: dashboard.brandSet ?? null,
         ourBrand: dashboard.ourBrand,
         dashboard,
         caveats: [
@@ -573,6 +812,9 @@ export async function addBrandHealthFindingAction(
           // since even a similar-size pair is a NECESSARY-not-sufficient check, never a validated
           // comparable population (see BrandHealthDashboard['conversions'] own type comment).
           ...(section === "funnel" && dashboard.conversions.length > 0 ? ["stage_ratio_population_comparability_unverified"] : []),
+          // A brand set as the brand source: this section's brand groups overlap (a respondent in two brands'
+          // groups is counted in both), a qualification that must survive into insights and exports.
+          ...(groupsOverlapIn(dashboard, section) ? ["brand_groups_overlap"] : []),
         ],
       });
       if ((existing.rows[0]?.n ?? 0) > 0) {

@@ -9,6 +9,7 @@ import type { WaveFile } from "@/lib/waveTrackingActions";
 import {
   loadBrandHealthCandidatesAction,
   loadBrandCategoriesAction,
+  loadBrandSetMembersAction,
   buildBrandHealthDashboardAction,
   buildBrandHealthWaveDashboardsAction,
   loadBrandHealthModuleAction,
@@ -24,7 +25,14 @@ import {
   type CsmMetric,
 } from "@/lib/brandHealthActions";
 import { defaultMetricForScale, metricLabel } from "@/lib/csmMetrics";
-import { bandVerdict, bandColors, brandHealthFindingKey, categoryAverageExact } from "@/lib/brandHealthMetrics";
+import {
+  bandVerdict,
+  bandColors,
+  brandGroupsOverlapNote,
+  brandHealthFindingKey,
+  categoryAverageExact,
+  sectionSplitsByBrandGroups,
+} from "@/lib/brandHealthMetrics";
 
 const METRICS: CsmMetric[] = ["mean", "top1", "top2", "top3"];
 const FUNNEL_FIELDS: { key: "awareness" | "consideration" | "usage" | "frequent"; label: string }[] = [
@@ -59,8 +67,14 @@ function brandCandidate(v: VariableInfo): boolean {
   return usableFor(v) && v.nDistinct >= 2 && v.nDistinct <= 20;
 }
 
+/** A set the brand source can name: a multiple-response set (a dictionary without set kinds lists every set; the
+ * server refuses one that is not multiple-response, with the reason). */
+function brandSetCandidate(set: VariableSet): boolean {
+  return set.kind === undefined || set.kind === "multi";
+}
+
 function emptyMapping(): BrandHealthMapping {
-  return { brandVar: null, ourBrand: null, funnel: {}, attributes: [], loyaltyVar: null, moments: [], positioning: { xVar: null, yVar: null } };
+  return { brandVar: null, brandSet: null, ourBrand: null, funnel: {}, attributes: [], loyaltyVar: null, moments: [], positioning: { xVar: null, yVar: null } };
 }
 
 /**
@@ -89,7 +103,13 @@ export default function BrandHealthAnalyticsPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [mapping, setMapping] = useState<BrandHealthMapping>(emptyMapping());
-  const [ourBrandOptions, setOurBrandOptions] = useState<string[]>([]);
+  // value: what is saved as ourBrand (a brand variable's category label, or a brand set's member variable);
+  // label: what the researcher reads.
+  const [ourBrandOptions, setOurBrandOptions] = useState<{ value: string; label: string }[]>([]);
+  const [brandOptionsError, setBrandOptionsError] = useState<string | null>(null);
+  const [brandSetLabel, setBrandSetLabel] = useState<string | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [attributes, setAttributes] = useState<Map<string, CsmMetric | "">>(new Map());
   const [moments, setMoments] = useState<Map<string, CsmMetric | "">>(new Map());
   const [filter, setFilter] = useState("");
@@ -112,6 +132,7 @@ export default function BrandHealthAnalyticsPanel({
       }
       setVariables(vars.variables);
       setSets(vars.sets);
+      if (!saved.ok) setSavedError(`The saved mapping could not be loaded: ${saved.error}`);
       if (saved.ok && saved.mapping) {
         const m = saved.mapping;
         setMapping(m);
@@ -124,21 +145,49 @@ export default function BrandHealthAnalyticsPanel({
     };
   }, [runId, documentId]);
 
+  // The "our brand" choices follow the brand source. `active` drops a late answer for a source the researcher has
+  // since changed, so an earlier source's brands never replace the current one's.
   useEffect(() => {
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBrandOptionsError(null);
+    if (mapping.brandSet) {
+      const setKey = mapping.brandSet;
+      (async () => {
+        const res = await loadBrandSetMembersAction(runId, documentId, setKey);
+        if (!active) return;
+        if (res.ok) {
+          setOurBrandOptions(res.members.map((m) => ({ value: m.variable, label: m.brand })));
+          setBrandSetLabel(res.setLabel);
+        } else {
+          setOurBrandOptions([]);
+          setBrandSetLabel(null);
+          setBrandOptionsError(res.error);
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }
+    setBrandSetLabel(null);
     if (!mapping.brandVar) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOurBrandOptions([]);
       return;
     }
+    const brandVar = mapping.brandVar;
     (async () => {
-      const res = await loadBrandCategoriesAction(runId, documentId, mapping.brandVar!, null);
-      if (active && res.ok) setOurBrandOptions(res.brands);
+      const res = await loadBrandCategoriesAction(runId, documentId, brandVar, null);
+      if (!active) return;
+      if (res.ok) setOurBrandOptions(res.brands.map((b) => ({ value: b, label: b })));
+      else {
+        setOurBrandOptions([]);
+        setBrandOptionsError(res.error);
+      }
     })();
     return () => {
       active = false;
     };
-  }, [runId, documentId, mapping.brandVar]);
+  }, [runId, documentId, mapping.brandVar, mapping.brandSet]);
 
   const byName = useMemo(() => new Map(variables.map((v) => [v.name, v])), [variables]);
   const candidates = useMemo(
@@ -146,6 +195,7 @@ export default function BrandHealthAnalyticsPanel({
     [variables, filter],
   );
   const brandCandidates = useMemo(() => variables.filter(brandCandidate), [variables]);
+  const brandSetCandidates = useMemo(() => sets.filter(brandSetCandidate), [sets]);
   const setsByKey = useMemo(() => new Map(sets.map((s) => [s.key, s])), [sets]);
   const filteredSets = useMemo(
     () => sets.filter((s) => !filter || `${s.key} ${s.label}`.toLowerCase().includes(filter.toLowerCase())),
@@ -187,9 +237,11 @@ export default function BrandHealthAnalyticsPanel({
 
   async function save() {
     setSaveStatus("saving");
+    setSaveError(null);
     const res = await saveBrandHealthModuleAction(runId, documentId, currentMapping());
     setSaveStatus(res.ok ? "saved" : "idle");
     if (res.ok) setTimeout(() => setSaveStatus("idle"), 1800);
+    else setSaveError(`The mapping was not saved: ${res.error}`);
   }
 
   async function build() {
@@ -197,7 +249,7 @@ export default function BrandHealthAnalyticsPanel({
     setBuildError(null);
     setDashboards(null);
     const m = currentMapping();
-    if (!m.brandVar || !m.ourBrand) {
+    if ((!m.brandVar && !m.brandSet) || !m.ourBrand) {
       setBuildError("Map the brand variable and pick which brand is \"ours\" first.");
       setBusy(false);
       return;
@@ -234,6 +286,7 @@ export default function BrandHealthAnalyticsPanel({
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-[22rem_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r-2 border-sky-200 bg-sky-50 p-4 text-xs">
           {loadError && <p className="text-red-600">{loadError}</p>}
+          {savedError && <p className="text-red-600">{savedError}</p>}
           {!variables.length && !loadError && <p className="text-muted">Loading the variable list...</p>}
           {toCheck.length > 0 && (
             <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900" data-testid="brand-health-set-check">
@@ -245,31 +298,64 @@ export default function BrandHealthAnalyticsPanel({
 
           <section className="space-y-1.5">
             <p className="font-medium text-foreground">Brand variable</p>
-            <p className="text-[11px] text-muted">The question in this file that holds the brand values (eg &ldquo;which brand do you use most often&rdquo;).</p>
+            <p className="text-[11px] text-muted">
+              The question in this file that holds the brand values (eg &ldquo;which brand do you use most often&rdquo;), or a multiple-response question with one member per brand (eg household ownership).
+            </p>
             <select
-              value={mapping.brandVar ?? ""}
-              onChange={(e) => setMapping((m) => ({ ...m, brandVar: e.target.value || null, ourBrand: null }))}
+              aria-label="Brand variable"
+              value={mapping.brandSet ? `set:${mapping.brandSet}` : (mapping.brandVar ?? "")}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Changing the brand source clears our brand: a brand of one source means nothing in another.
+                setMapping((m) =>
+                  value.startsWith("set:")
+                    ? { ...m, brandVar: null, brandSet: value.slice(4), ourBrand: null }
+                    : { ...m, brandVar: value || null, brandSet: null, ourBrand: null },
+                );
+              }}
               className="w-full rounded-lg border border-border bg-white px-2 py-1.5 text-xs"
             >
               <option value="">None</option>
-              {brandCandidates.map((v) => (
-                <option key={v.name} value={v.name}>
-                  {v.label || v.name}
-                </option>
-              ))}
+              {brandSetCandidates.length > 0 && (
+                <optgroup label="Multiple-response sets (one member per brand)">
+                  {brandSetCandidates.map((set) => (
+                    <option key={set.key} value={`set:${set.key}`}>
+                      {set.label || set.key} ({set.vars.length} brands)
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Plain variables">
+                {brandCandidates.map((v) => (
+                  <option key={v.name} value={v.name}>
+                    {v.label || v.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
-            {mapping.brandVar && (
+            {mapping.brandSet && brandSetLabel && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900" data-testid="brand-health-overlap-note">
+                {brandGroupsOverlapNote(brandSetLabel)}
+              </p>
+            )}
+            {brandOptionsError && (
+              <p className="text-[11px] text-red-600" data-testid="brand-health-brand-error">
+                {brandOptionsError}
+              </p>
+            )}
+            {(mapping.brandVar || mapping.brandSet) && (
               <>
                 <p className="font-medium text-foreground">Our brand</p>
                 <select
+                  aria-label="Our brand"
                   value={mapping.ourBrand ?? ""}
                   onChange={(e) => setMapping((m) => ({ ...m, ourBrand: e.target.value || null }))}
                   className="w-full rounded-lg border border-border bg-white px-2 py-1.5 text-xs"
                 >
                   <option value="">Pick the brand to compare against the rest</option>
                   {ourBrandOptions.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
+                    <option key={b.value} value={b.value}>
+                      {b.label}
                     </option>
                   ))}
                 </select>
@@ -401,6 +487,7 @@ export default function BrandHealthAnalyticsPanel({
           <section className="space-y-1.5">
             <p className="font-medium text-foreground">Loyalty / NPS (optional)</p>
             <select
+              aria-label="Loyalty / NPS"
               value={mapping.loyaltyVar ?? ""}
               onChange={(e) => setMapping((m) => ({ ...m, loyaltyVar: e.target.value || null }))}
               className="w-full rounded-lg border border-border bg-white px-2 py-1.5 text-xs"
@@ -499,6 +586,11 @@ export default function BrandHealthAnalyticsPanel({
               {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "Save mapping"}
             </button>
           </div>
+          {saveError && (
+            <p className="text-[11px] text-red-600" data-testid="brand-health-save-error">
+              {saveError}
+            </p>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -611,15 +703,43 @@ function ScoreRow({ score, ourBrand }: { score: BrandHealthScore; ourBrand: stri
   );
 }
 
+/** The overlap note on a card whose figures split respondents by overlapping brand groups (a brand set). */
+function OverlapNote({ dashboard, section }: { dashboard: BrandHealthDashboard; section: BrandHealthFindingSection }) {
+  if (!dashboard.groupsOverlap || !dashboard.overlapNote || !sectionSplitsByBrandGroups(dashboard, section)) return null;
+  return (
+    <p className="mb-2 text-[10.5px] text-amber-800" data-testid="brand-health-card-overlap">
+      {dashboard.overlapNote}
+    </p>
+  );
+}
+
 function BrandHealthDashboardView({ runId, documentId, dashboard }: { runId: string; documentId: string; dashboard: BrandHealthDashboard }) {
   return (
     <div className="space-y-4">
+      {dashboard.groupsOverlap && dashboard.overlapNote && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="brand-health-dashboard-overlap">
+          {dashboard.overlapNote}
+        </p>
+      )}
+      {dashboard.withheld.length > 0 && (
+        <div className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-foreground" data-testid="brand-health-withheld">
+          <p className="font-medium">Not shown</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {dashboard.withheld.map((w, i) => (
+              <li key={`${i}-${w.figure}`}>
+                {w.figure}: {w.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {dashboard.funnel.length > 0 && (
         <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-foreground">Funnel &middot; {dashboard.ourBrand} vs. {dashboard.brands.length - 1} other brand{dashboard.brands.length - 1 === 1 ? "" : "s"}</p>
             <BrandHealthFindingButton runId={runId} documentId={documentId} dashboard={dashboard} section="funnel" />
           </div>
+          <OverlapNote dashboard={dashboard} section="funnel" />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {dashboard.funnel.map((f) => (
               <ScoreRow key={f.variable} score={f} ourBrand={dashboard.ourBrand} />
@@ -669,6 +789,7 @@ function BrandHealthDashboardView({ runId, documentId, dashboard }: { runId: str
             <p className="text-sm font-semibold text-foreground">Attribute fingerprint</p>
             <BrandHealthFindingButton runId={runId} documentId={documentId} dashboard={dashboard} section="attributes" />
           </div>
+          <OverlapNote dashboard={dashboard} section="attributes" />
           <div className="space-y-2">
             {dashboard.attributes.map((a) => (
               <ScoreRow key={a.variable} score={a} ourBrand={dashboard.ourBrand} />
@@ -683,6 +804,7 @@ function BrandHealthDashboardView({ runId, documentId, dashboard }: { runId: str
             <p className="text-sm font-semibold text-foreground">Loyalty &middot; Net Promoter Score</p>
             <BrandHealthFindingButton runId={runId} documentId={documentId} dashboard={dashboard} section="loyalty" />
           </div>
+          <OverlapNote dashboard={dashboard} section="loyalty" />
           <div className="flex flex-wrap gap-2">
             {dashboard.loyalty.byBrand.map((b) => (
               <div
@@ -705,6 +827,7 @@ function BrandHealthDashboardView({ runId, documentId, dashboard }: { runId: str
             <p className="text-sm font-semibold text-foreground">Category entry points</p>
             <BrandHealthFindingButton runId={runId} documentId={documentId} dashboard={dashboard} section="moments" />
           </div>
+          <OverlapNote dashboard={dashboard} section="moments" />
           <div className="space-y-2">
             {dashboard.moments.map((m) => (
               <ScoreRow key={m.variable} score={m} ourBrand={dashboard.ourBrand} />
@@ -721,6 +844,7 @@ function BrandHealthDashboardView({ runId, documentId, dashboard }: { runId: str
             </p>
             <BrandHealthFindingButton runId={runId} documentId={documentId} dashboard={dashboard} section="positioning" />
           </div>
+          <OverlapNote dashboard={dashboard} section="positioning" />
           <PositioningScatter positioning={dashboard.positioning} ourBrand={dashboard.ourBrand} />
         </div>
       )}

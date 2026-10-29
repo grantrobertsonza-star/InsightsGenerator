@@ -80,10 +80,24 @@ export type TrackerRecognition = {
   grids: BrandGrid[];
   /** Lists whose options are not the brand frame (media, channels, journey steps): never brands or attributes. */
   otherLists: { group: string; label: string; reason: string }[];
+  /** The category moments (stated relevance) question, found beside the moments grid (findCategoryMoments). */
+  categoryMoments: CategoryMoments;
   csm: CsmRoles;
   /** What the researcher must decide; never filled in by a guess. */
   questions: { id: string; text: string }[];
 };
+
+/**
+ * The question asking which category moments (buying situations, needs) are personally relevant: a list of yes/no
+ * options asked once, about no brand. "found": its options in the file's order, each linked to the moments grid's
+ * item for the same moment (`gridGroup`, null when the grid has no item for it); `outside` holds the list's options
+ * that are no moment ("None of these", "Other"), which are never ranked. "ambiguous": two lists qualify, so
+ * neither is used. "not_found": no list qualifies, with the reason. Never guessed from a variable name alone.
+ */
+export type CategoryMoments =
+  | { status: "found"; group: string; label: string; items: { variable: string; item: string; gridGroup: string | null }[]; outside: string[] }
+  | { status: "ambiguous"; candidates: string[]; reason: string }
+  | { status: "not_found"; reason: string };
 
 // ---- Rules ----------------------------------------------------------------------------------------------
 
@@ -285,7 +299,79 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
-  return { type, frame: brandFrame, measures, grids, otherLists, csm, questions };
+  const claimed = new Set([...measures.flatMap((m) => [...m.byBrand.map((b) => b.variable), ...m.outside]), ...grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable)))]);
+  const categoryMoments = findCategoryMoments(usable.filter((v) => !claimed.has(v.name)), grids);
+  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, csm, questions };
+}
+
+/** A moment's wording reduced for comparison: letters and digits only, lower case ("Quiet Time Alone" and "quiet
+ * time alone" agree; so do "Feeling safer on the road" and "Feeling safer on the road."). */
+const momentKey = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/**
+ * The category moments question (Grant's page 02, "Moments & needs"; pack spec M2, `relevant_c01..c12`, MR set
+ * category_situations: stated relevance, not brand links). What identifies it is that its options are the same
+ * moments, in the same words, as the items of the moments grid ("<brand> recalled for <moment>", rule 4): a
+ * researcher reading the questionnaire links the two the same way. A candidate is a group (multiple-response set,
+ * else question ID) of yes/no or multiple-response variables that no brand question or grid has claimed. Its option
+ * wording is the variable's label (after the variable's own name, when the label starts with it); a variable with no label of its own (raw files) is read from its name without
+ * the list's first name part ("Moment_QuietTimeAlone" gives "Quiet Time Alone"). A group qualifies when at least
+ * three of its options, and at least 60% of the grid's items, each match exactly one grid item. One qualifying group
+ * is the question; two are "ambiguous" (neither is used); none is "not_found". The link to the grid is by wording,
+ * the only thing the two questions share; every figure is then read by variable and answer code.
+ */
+export function findCategoryMoments(unclaimed: RoleVariable[], grids: BrandGrid[]): CategoryMoments {
+  const grid = grids.find((g) => g.kind === "moments");
+  if (!grid || grid.items.length === 0)
+    return { status: "not_found", reason: "No brand recall question for moments (\"<brand> recalled for <moment>\") was recognised, so the category moments question cannot be told apart from other lists." };
+  const gridKeyCount = new Map<string, number>();
+  for (const it of grid.items) gridKeyCount.set(momentKey(it.item), (gridKeyCount.get(momentKey(it.item)) ?? 0) + 1);
+  // A grid item whose wording is shared by another grid item cannot be matched to one moment.
+  const gridByKey = new Map(grid.items.filter((it) => gridKeyCount.get(momentKey(it.item)) === 1).map((it) => [momentKey(it.item), it] as const));
+  const sets = new Map<string, RoleVariable[]>();
+  for (const v of unclaimed) {
+    const key = v.group ?? (v.questionId ? `q:${v.questionId}` : null);
+    if (!key || !(v.questionType === "multiple_response" || isYesNo(v))) continue;
+    sets.set(key, [...(sets.get(key) ?? []), v]);
+  }
+  const wordings = (v: RoleVariable) => {
+    // A label that repeats the variable's name before its wording ("relevant_c01. Replacing an unreliable car", as
+    // a CSV with a linked codebook reads) is compared on the wording after the name.
+    const own = v.label ? v.label.trim().replace(new RegExp(`^${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[.:\\-]\\s+`), "") : "";
+    if (own && own !== v.name) return [own];
+    const rest = v.name.split("_").slice(1).join("_");
+    return rest ? [nameWords(rest), wordingOf(v)] : [wordingOf(v)];
+  };
+  const qualifying: Omit<Extract<CategoryMoments, { status: "found" }>, "status">[] = [];
+  for (const [group, members] of sets) {
+    const matchOf = new Map<string, BrandGrid["items"][number]>();
+    const used = new Map<string, number>();
+    for (const v of members) {
+      const hit = wordings(v).map((w) => gridByKey.get(momentKey(w))).find(Boolean);
+      if (hit) {
+        matchOf.set(v.name, hit);
+        used.set(hit.group, (used.get(hit.group) ?? 0) + 1);
+      }
+    }
+    // One option per grid item: two options matching the same item link neither.
+    for (const [name, hit] of matchOf) if ((used.get(hit.group) ?? 0) > 1) matchOf.delete(name);
+    if (matchOf.size < 3 || matchOf.size < Math.ceil(grid.items.length * 0.6)) continue;
+    // "None of these", "Other": answers of the list, not moments (the same words that are never a brand).
+    const isMoment = (v: RoleVariable) => matchOf.has(v.name) || !NON_BRAND.test(clean(wordings(v)[0]));
+    qualifying.push({
+      group,
+      label: members[0].questionId ?? group,
+      outside: members.filter((v) => !isMoment(v)).map((v) => v.name),
+      items: members.filter(isMoment).map((v) => {
+        const hit = matchOf.get(v.name);
+        return { variable: v.name, item: hit ? hit.item : clean(wordings(v)[0]), gridGroup: hit ? hit.group : null };
+      }),
+    });
+  }
+  if (qualifying.length === 1) return { status: "found", ...qualifying[0] };
+  if (qualifying.length > 1)
+    return { status: "ambiguous", candidates: qualifying.map((q) => q.group), reason: `${qualifying.length} lists name the same moments as the brand recall question (${qualifying.map((q) => q.group).join(", ")}), so which one asks about category relevance cannot be told.` };
+  return { status: "not_found", reason: "No yes/no list asked once (about no brand) names the same moments as the brand recall question." };
 }
 
 /**

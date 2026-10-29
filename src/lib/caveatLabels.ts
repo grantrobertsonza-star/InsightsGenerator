@@ -27,6 +27,9 @@ export const CAVEAT_LABELS: Record<string, string> = {
   post_hoc_after_significant_anova: "Post-hoc (after significant ANOVA)",
   insufficient_n_for_test: "Too little data to test",
   stage_ratio_population_comparability_unverified: "Stage ratio: equivalent population not established",
+  // Brand Health with a brand set as the brand source (Grant, 29 October 2026): a respondent in two brands'
+  // groups is counted in both, so the brand groups overlap and do not sum to the total.
+  brand_groups_overlap: "Brand groups overlap (a respondent can be in more than one)",
   survey_design_missing_for_some_cases: "Design info missing for some cases",
   survey_design_candidates_ambiguous: "Design candidates ambiguous",
   // EF-FND-F03 (batch 62, tableFindingPublication.ts): a kept, researcher-annotated table finding whose
@@ -55,6 +58,8 @@ export const EXPORT_CAVEAT_ALLOWLIST: ReadonlySet<string> = new Set([
   "survey_design_missing_for_some_cases",
   "survey_design_candidates_ambiguous",
   "stage_ratio_population_comparability_unverified",
+  // Named by the project owner (29 October 2026): the overlap of brand groups is stated wherever the figures go.
+  "brand_groups_overlap",
 ]);
 
 /**
