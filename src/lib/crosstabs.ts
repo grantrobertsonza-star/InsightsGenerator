@@ -1,5 +1,5 @@
 import { levelFindings, noDifferenceFindings } from "./descriptiveFindings";
-import { tableMethodStatus, type TableMethodStatus } from "./tableMethod";
+import { earlierMethodText, tableMethodStatus, type TableMethodStatus } from "./tableMethod";
 import { exactPct, exactTotalPct } from "./crosstabExact";
 import { withTenant, withTenantRead } from "./db";
 import { hasRepeatedSetKeys } from "./variableSetKeys";
@@ -72,8 +72,11 @@ export type CrosstabListItem = {
    * swallowed lookup failure can produce designStale: false... the actual findings loader also
    * returned false for a legacy null snapshot"). */
   designFreshness: DesignFreshness;
-  /** Batch 47: whether this table was built with the current table method (tableMethod.ts). */
+  /** Batch 47: whether this table was built with the current table method (tableMethod.ts); a workbook table read
+   * before the label reader repair is "earlier" too (R1-F01). */
   methodFreshness: TableMethodStatus;
+  /** Why an "earlier" table is earlier, in words (tableMethod.ts earlierMethodText). */
+  methodReason: string;
 };
 
 /** Brief 37 repair: distinct current/stale/unknown states for a table's or finding's design
@@ -546,7 +549,6 @@ export function crosstabFindings(result: CrosstabResult): CrosstabFinding[] {
     .map((x) => x.f);
 }
 
-/** Adds one table to the draft set. No findings are made until the set is committed. */
 /**
  * One Cross tab computed by the engine, exactly as buildCrosstab computes it (the file's set-up, the researcher's
  * type corrections, the questionnaire overlay and the authoritative sheet), without saving a table. D3's tracker
@@ -639,6 +641,7 @@ export async function computeCrosstab(tenantId: string, runId: string, documentI
   return { result, doc, overlay, overrides, authoritativeSheet };
 }
 
+/** Adds one table to the draft set (computeCrosstab, then saved). No findings are made until the set is committed. */
 export async function buildCrosstab(
   tenantId: string,
   runId: string,
@@ -885,6 +888,8 @@ type CrosstabListRow = {
   layer_category: string | null;
   layer_label: string | null;
   method_version: string | null;
+  source_file: string | null;
+  label_reader: string | null;
   overrides_snapshot?: VariableOverrides | null;
   design_snapshot?: { design: { psu: string | null; strata: string | null } | null } | null;
 };
@@ -904,7 +909,9 @@ async function queryCrosstabList(
               dt.crosstab->>'layerGroup' as layer_group,
               dt.crosstab->>'layerCategory' as layer_category,
               dt.crosstab->>'layerLabel' as layer_label,
-              dt.crosstab->'notes'->>'methodVersion' as method_version
+              dt.crosstab->'notes'->>'methodVersion' as method_version,
+              dt.crosstab->'provenance'->>'sourceFile' as source_file,
+              dt.crosstab->'notes'->>'labelReader' as label_reader
               ${includeSnapshot ? ", dt.overrides_snapshot, dt.design_snapshot" : ""}
        from document_tables dt
        where dt.run_id = $1 and dt.document_id = $2 and dt.table_index >= $3 and dt.crosstab is not null
@@ -1039,7 +1046,8 @@ export async function listCrosstabs(tenantId: string, runId: string, documentId:
         ? canonicalJson(row.overrides_snapshot) !== currentSnapshot
         : false,
     designFreshness: designFreshnessStatus(row.design_snapshot, currentDesignSnapshotStatus),
-    methodFreshness: tableMethodStatus(row.method_version),
+    methodFreshness: tableMethodStatus(row.method_version, { sourceFile: row.source_file, labelReader: row.label_reader }),
+    methodReason: earlierMethodText(row.method_version, { sourceFile: row.source_file, labelReader: row.label_reader }),
   }));
 }
 

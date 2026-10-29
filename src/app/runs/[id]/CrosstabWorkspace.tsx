@@ -1,6 +1,6 @@
 "use client";
 
-import { EARLIER_METHOD_TEXT, tableMethodStatus } from "@/lib/tableMethod";
+import { tableMethodStatus } from "@/lib/tableMethod";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ThreePane } from "./ThreePane";
@@ -2074,7 +2074,7 @@ function TableCard({
             <span
               data-testid="table-method-earlier"
               className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-800"
-              title={`This table was ${EARLIER_METHOD_TEXT}. Its findings and anything built on them are marked until then.`}
+              title={`This table was ${item.methodReason}. Its findings and anything built on them are marked until then.`}
             >
               earlier method
             </span>

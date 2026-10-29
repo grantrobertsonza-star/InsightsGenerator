@@ -96,3 +96,20 @@ affected figure; the record cannot tell those apart without rebuilding.
 Every table built before 27 October 2026 is marked, including ones whose figures a rebuild would not
 change (a table with no 0% or 100% cell and no run-together labels); the record cannot tell those apart
 without rebuilding.
+
+## Workbook tables read before the label reader repair (R1-F01, 29 October 2026)
+
+R1 changed how a workbook's Labels sheet is read without changing the table method. Before R1, a table built from
+an .xlsx or .xls file could name every answer by its question's label ("First choice brand" three times), merging
+answers.
+
+- **What the engine records.** It now records `labelReader` (`LABEL_READER`, "2026.10.29") in every table's notes.
+- **How a table is judged.**
+  - `tableMethodStatus(methodVersion, source)` reports a workbook table without the current label reader as
+    "earlier".
+  - `earlierMethodText` gives the reason in words: rebuild to read the labels sheet correctly.
+  - Tables from other formats are judged on the method version alone, as before.
+  - A caller that cannot name the table's source is also judged on the method version alone.
+- **Where it shows.** The Cross tabs list, the Findings page and insight support status (`method_changed`, with
+  the reason as detail).
+- **What is kept.** Nothing is recalculated; wording, review and the saved table stay until an explicit rebuild.

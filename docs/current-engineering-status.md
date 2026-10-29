@@ -1,6 +1,15 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchR1 and BatchD3a on top of 4437102e): R1 reads a workbook label sheet headed value_label by that column (every code took the variable label and identical labels merged categories; dictionary version 15); D3a adds the Tracker dashboard (brand funnel tiles with change since the previous wave, brand comparison, customer satisfaction tiles, blank tiles with Choose a question and Hide, Customise saved per programme), figures computed without saving tables; implemented, ready for independent review. Migrations 0131 and 0132 still to apply (0132 is needed to save dashboard choices). **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD3aR on top of 49cf6d1b): repairs Codex's R1/D3a review: R1-F01 workbook tables read before the label reader repair report an earlier method with the reason (Cross tabs, findings, insight support); D3A-F01 boxes count the codes the question's stated scale fixes (8 to 10 on 0 to 10), an unstated scale is a failed tile with the reason; D3A-F02 an explicit No or non-answer is never counted as selected; D3A-F03 a wave change compares the same stage, variable and brand code naming the same brand; two stale comments corrected. Implemented, ready for independent review. No new migration; 0131 and 0132 still to apply. **NOT READY for release.**
+
+## Claude: batch D3aR, main copy (2026-10-29)
+
+Implemented, ready for review, on top of `49cf6d1b`. Handover `claude/batchD3aR-handover-2026-10-29.md`; review
+`docs/independent-r1-d3a-review-2026-10-29.md`. Gates on the exact tree (laptop code plus D3aR; `364cc8e`):
+`npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed;
+library 316 files, 2,405 passed, 91 skipped, 0 failed; browser suite 144 passed, 1 skipped, 0 failed; smoke 1 passed.
+The first run of the browser suite failed one check (nps-driver-split): the worktree lacked UI1R/UI1R2, which the
+laptop has; they were added so the tested tree equals the laptop's code, and the full gates were run again.
 
 ## Claude: batches R1 and D3a, main copy (2026-10-29)
 

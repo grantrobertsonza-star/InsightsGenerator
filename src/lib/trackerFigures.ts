@@ -1,15 +1,16 @@
 // D3 (Grant, 28 and 29 October 2026): the figures of an automatic tracker dashboard, from the owners that already
 // compute them, never from the dashboard layer itself:
-//   - per-brand shares (awareness, consideration, ...): one Cross tab per section through buildCrosstab, with the
+//   - per-brand shares (awareness, consideration, ...): one Cross tab per section through computeCrosstab (the
+//     computation buildCrosstab saves, here not saved), with the
 //     dashboard's weight (D2: weighted by default when the file has one) and the file's survey design, every
 //     per-brand variable a row item;
 //   - a share is the unrounded percentage (pctExact) of the answer code that means "selected", read by code, never
 //     by label: the code whose answer label says selected, yes or mentioned; with no labels, code 1 of a variable
-//     whose only answers are 0 and 1. A variable whose selected code cannot be told is "not available" with the
+//     whose only answers are 0 and 1; with only code 0 labelled as its opposite ("No", "Not selected"), code 1. A variable whose selected code cannot be told is "not available" with the
 //     reason, never 0. A brand nobody selected, where the selected code is known, is 0 of a stated base;
 //   - change against the previous wave (the project's wave files, src/lib/waves.ts) is this wave's unrounded share
-//     minus the previous wave's for the same variable name and code, in percentage points, with no significance
-//     claim; a variable missing from the previous wave has no change, said so.
+//     minus the previous wave's for the same stage, variable name and brand code, the code naming the same brand in
+//     both waves, in percentage points, with no significance claim; anything else has no change, said so.
 // The base is the unweighted number of valid answers (the table's base row); the effective base is reported when
 // the figures are weighted. Nothing is saved here: no table, no finding.
 import { computeCrosstab, loadVariableDictionaryWithStatus } from "./crosstabs";
@@ -50,8 +51,10 @@ export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes
   if (labels && Object.keys(labels).length > 0) {
     const yes = Object.entries(labels).filter(([, l]) => /^(selected|yes|mentioned|chosen|ticked|checked)\b/i.test(l.trim()));
     if (yes.length === 1) return yes[0][0];
-    const codes = Object.keys(labels);
-    if (yes.length === 0 && codes.length <= 2 && codes.every((c) => c === "0" || c === "1") && codes.includes("1")) return "1";
+    // No positive label (Codex D3A-F02): code 1 counts as selected only when the labels say what 0 is, as the
+    // opposite of selected ("No", "Not selected", "Not mentioned"), and leave 1 unlabelled. A label on 1, or a 0
+    // labelled anything else ("Not applicable"), is never overruled: the variable is not available, with the reason.
+    if (yes.length === 0 && Object.keys(labels).length === 1 && labels["0"] !== undefined && labels["1"] === undefined && /^(no|not (selected|mentioned|chosen|ticked|checked))$/i.test(labels["0"].trim())) return "1";
     return null;
   }
   return observedCodes.length > 0 && observedCodes.every((c) => c === "0" || c === "1") ? "1" : null;
@@ -134,14 +137,33 @@ export async function brandOverviewFigures(
 
 export type StageChange = { stage: FunnelStage; code: string; current: number | null; previous: number | null; changePp: number | null; reason?: string };
 
-/** This wave's shares against the previous wave's, by variable name and brand code; unrounded, in percentage points. */
-export function changesAgainst(current: StageFigures[], previous: StageFigures[] | null): StageChange[] {
-  const prev = new Map((previous ?? []).flatMap((s) => s.byBrand.map((b) => [`${s.stage}|${b.variable}`, b] as const)));
+/**
+ * This wave's shares against the previous wave's, unrounded, in percentage points. A share is compared only with the
+ * previous wave's share for the same stage, the same variable and the same brand code (Codex D3A-F03), and, when both
+ * waves' brand lists are given, only when that code names the same brand in both (a code reused for another brand is
+ * not comparable). Otherwise there is no change, with the reason.
+ */
+export function changesAgainst(
+  current: StageFigures[],
+  previous: StageFigures[] | null,
+  brands?: { current: { code: string; label: string }[]; previous: { code: string; label: string }[] },
+): StageChange[] {
+  const key = (stage: string, variable: string, code: string) => `${stage}|${variable}|${code}`;
+  const prev = new Map((previous ?? []).flatMap((s) => s.byBrand.map((b) => [key(s.stage, b.variable, b.code), b] as const)));
+  const name = (list: { code: string; label: string }[] | undefined, code: string) => list?.find((b) => b.code === code)?.label.trim().toLowerCase();
   return current.flatMap((s) =>
-    s.byBrand.map((b) => {
-      const p = prev.get(`${s.stage}|${b.variable}`);
+    s.byBrand.map((b): StageChange => {
       if (!previous) return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: "No earlier wave." };
-      if (!p) return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: "Not asked in the previous wave." };
+      const p = prev.get(key(s.stage, b.variable, b.code));
+      if (!p) return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: "Not asked about this brand in the previous wave." };
+      if (brands) {
+        const now = name(brands.current, b.code);
+        const then = name(brands.previous, b.code);
+        if (!now || !then || now !== then) {
+          const was = brands.previous.find((x) => x.code === b.code)?.label;
+          return { stage: s.stage, code: b.code, current: b.share, previous: null, changePp: null, reason: was ? `Brand code ${b.code} was ${was} in the previous wave, so it is not compared.` : `Brand code ${b.code} is not in the previous wave's brand list.` };
+        }
+      }
       const changePp = b.share !== null && p.share !== null ? b.share - p.share : null;
       return { stage: s.stage, code: b.code, current: b.share, previous: p.share, changePp, ...(changePp === null ? { reason: "Not available in one of the two waves." } : {}) };
     }),

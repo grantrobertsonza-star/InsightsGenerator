@@ -511,6 +511,12 @@ ENGINE_VERSION = "2026.10.28-2"  # unrounded figures saved as countExact/pctExac
 # sums, not from counts rounded to one decimal (before: small or fractional weights shifted them, and
 # weights of 1/1024 blanked or inverted them).
 TABLE_METHOD = "2026.10.28"
+# The version of the workbook label reader a table was read with, recorded in every table's notes as labelReader
+# (src/lib/tableMethod.ts, CURRENT_LABEL_READER, which must equal this value; a test checks). "2026.10.29" (R1): a
+# workbook's labels sheet headed "value_label" is read by that column; before, every answer of such a workbook took
+# the question's label and answers with the same label were merged. Only a table from a workbook (.xlsx/.xls) built
+# before this is affected, so only those are reported as built with an earlier method (Codex R1-F01).
+LABEL_READER = "2026.10.29"
 MIN_EFFECTIVE_BASE = 30
 MIN_BASE_SUPPRESS = 10   # unweighted base under this: cell values are not shown (dash)
 MIN_BASE_RELIABLE = 30   # unweighted base under this: figure shown as indicative only, never tested or turned into a finding
@@ -6050,6 +6056,7 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             "correction": correction,
             # The rules this table's figures and flags came from, so a table built before a change is known.
             "methodVersion": TABLE_METHOD,
+            "labelReader": LABEL_READER,
             "meanRows": mean_rows,
             "meanNotAdded": (
                 "No mean row for " + "; ".join(mean_not_added) + ": their answer codes are not a rating scale, so a mean of them would not mean anything."

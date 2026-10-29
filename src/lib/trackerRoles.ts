@@ -387,8 +387,10 @@ function zeroToTen(v: RoleVariable): "yes" | "partial" | "no" {
 }
 
 /** The top of a rating scale: the highest plain code on its answer list below the non-answer codes (98, 99), or
- * for a raw file without answer labels the range its wording states ("0 to 10", "0to10", "(1-5)"). */
-function scaleTop(v: RoleVariable): number | null {
+ * for a raw file without answer labels the range its wording states ("0 to 10", "0to10", "(1-5)"). Never the
+ * highest answer the data happens to hold (Codex D3A-F01: a sparse wave without 8 or 9 would move a top box). Also
+ * read by the CSM tiles (trackerCsmFigures.ts) to fix which codes a box counts. */
+export function scaleTop(v: RoleVariable): number | null {
   const codes = Object.keys(v.valueLabels ?? {}).map(Number).filter((n) => Number.isInteger(n) && n < 90);
   if (codes.length) return Math.max(...codes);
   const stated = /\b(?:0|1)\s*(?:to|-|–)\s*(\d{1,2})\b/i.exec(wordingOf(v));

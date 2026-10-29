@@ -63,16 +63,19 @@ async function figuresFor(tenantId: string, runId: string, documentId: string) {
 
 export async function loadBrandOverview(tenantId: string, runId: string, documentId: string): Promise<BrandOverview> {
   const [{ view, input, figures }, waves] = await Promise.all([figuresFor(tenantId, runId, documentId), loadProjectWaves(tenantId, runId)]);
-  const csm = await csmOverviewFigures(tenantId, runId, documentId, view.dashboard);
+  const csm = await csmOverviewFigures(tenantId, runId, documentId, view.dashboard, input.variables);
   const at = waves.included.findIndex((w) => w.documentId === documentId);
   let previous: PreviousWave;
   let previousStages = null;
+  let previousBrands: { code: string; label: string }[] = [];
   if (at < 0) previous = { status: "none", reason: "This file is not labelled as a wave of this project, so there is no earlier wave to compare with." };
   else if (at === 0) previous = { status: "none", reason: "This is the earliest wave of this project." };
   else {
     const p = waves.included[at - 1];
     try {
-      previousStages = (await figuresFor(tenantId, runId, p.documentId)).figures.stages;
+      const prev = await figuresFor(tenantId, runId, p.documentId);
+      previousStages = prev.figures.stages;
+      previousBrands = prev.view.dashboard.brands;
       previous = { status: "ok", documentId: p.documentId, wave: p.wave, filename: p.filename };
     } catch (e) {
       previous = { status: "failed", documentId: p.documentId, wave: p.wave, filename: p.filename, error: e instanceof Error ? e.message : String(e) };
@@ -80,7 +83,7 @@ export async function loadBrandOverview(tenantId: string, runId: string, documen
   }
   const changes =
     previous.status === "ok"
-      ? changesAgainst(figures.stages, previousStages)
+      ? changesAgainst(figures.stages, previousStages, { current: view.dashboard.brands, previous: previousBrands })
       : changesAgainst(figures.stages, null).map((c) => ({ ...c, reason: previous.status === "failed" ? "The previous wave's figures could not be read." : c.reason }));
   // The recognition is the server's working detail; the screen needs only the resolved dashboard.
   const { recognition: _recognition, ...rest } = view;

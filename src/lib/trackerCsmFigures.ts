@@ -10,15 +10,17 @@
 // user can correct that"): "missing" when no variable has that role (the screen offers a choice), "failed" with the
 // owner's reason when the figure could not be calculated, never a zero or a silently dropped tile.
 //
-// Likely to switch: on a 0 to 10 scale the share answering 8, 9 or 10 (top three codes, the pack's "risk"); on a
-// shorter scale the top two. Don't-know and not-applicable answers are outside the base, as in a Cross tab.
+// Likely to switch: on a 0 to 10 scale the share answering 8, 9 or 10 (the pack's "risk"); on a shorter scale the
+// top two codes. Which codes count comes from the question's stated scale, never from the answers present
+// (boxCodesFor, Codex D3A-F01): an absent code counts 0; an unstated scale is "failed" with the reason. Don't-know and
+// not-applicable answers are outside the base, as in a Cross tab.
 // Bases: the box tiles carry the distribution's effective base (the number answering when unweighted, Kish's
 // effective base when weighted), the NPS tile the number answering.
 import { runDistributionAction } from "./chartActions";
 import { runNpsAction } from "./npsActions";
 import { runDriverAnalysisFor } from "./drivers";
-import { summarizeSeries } from "./csmMetrics";
-import { isZeroToTenScale } from "./descriptiveFindings";
+import { shareOfCodes, summarizeSeries } from "./csmMetrics";
+import { scaleTop, type RoleVariable } from "./trackerRoles";
 import type { ResolvedDashboard } from "./trackerDashboard";
 
 export const CSM_TILES = ["satisfaction", "recommend", "stay", "switch", "drivers"] as const;
@@ -45,19 +47,31 @@ const NO_ROLE: Record<CsmTileId, string> = {
   drivers: "Driver priority needs an overall satisfaction question and at least two driver questions.",
 };
 
-async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null): Promise<CsmTile> {
+/**
+ * The codes a box counts (Codex D3A-F01), from the question's stated scale (scaleTop: its answer list, else the
+ * range its wording or name states), never from the answers the data happens to hold: likely to switch on a 0 to 10
+ * scale is 8, 9 and 10; any other box is the top two codes. Null when the scale is not stated.
+ */
+export function boxCodesFor(id: "satisfaction" | "stay" | "switch", top: number | null): { codes: number[]; text: string } | null {
+  if (top === null) return null;
+  if (id === "switch" && top === 10) return { codes: [8, 9, 10], text: "8 to 10" };
+  return { codes: [top - 1, top], text: "top two" };
+}
+
+async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null, roleVariable: RoleVariable | undefined): Promise<CsmTile> {
+  const box = boxCodesFor(id, roleVariable ? scaleTop(roleVariable) : null);
+  if (!box) return { id, status: "failed", variable, error: `The scale of ${variable} is not stated (no answer list, and its wording or name gives no range such as "0 to 10"), so its top box cannot be fixed. Add its labels (a codebook or labels file), or choose another question.` };
   const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
   if (!r.ok) return { id, status: "failed", variable, error: r.error };
   const series = r.result.series[0];
   if (!series) return { id, status: "failed", variable, error: "This question has no answers to read." };
-  const codes = series.bars.map((b) => Number(b.rawCode ?? NaN));
-  const elevenPoint = id === "switch" && isZeroToTenScale(codes.filter(Number.isFinite));
-  const box = summarizeSeries(series, elevenPoint ? "top3" : "top2");
+  const share = shareOfCodes(series, box.codes);
   const mean = id === "switch" ? null : summarizeSeries(series, "mean");
-  return { id, status: "ok", variable, label: r.result.label, mean: mean?.exact ?? null, box: box.exact, boxCodes: elevenPoint ? "8 to 10" : "top two", effectiveBase: series.n };
+  return { id, status: "ok", variable, label: r.result.label, mean: mean?.exact ?? null, box: share.exact, boxCodes: box.text, effectiveBase: series.n };
 }
 
-export async function csmOverviewFigures(tenantId: string, runId: string, documentId: string, dashboard: ResolvedDashboard): Promise<CsmTile[]> {
+export async function csmOverviewFigures(tenantId: string, runId: string, documentId: string, dashboard: ResolvedDashboard, variables: RoleVariable[]): Promise<CsmTile[]> {
+  const byName = new Map(variables.map((v) => [v.name, v]));
   const weightVar = dashboard.weighted ? dashboard.weightVar : null;
   const varOf = (id: Exclude<CsmTileId, "drivers">) => dashboard.csm[ROLE[id]].variable;
   const tile = async (id: CsmTileId): Promise<CsmTile> => {
@@ -89,7 +103,7 @@ export async function csmOverviewFigures(tenantId: string, runId: string, docume
       const x = r.result;
       return { id, status: "ok", variable, label: x.label, nps: x.nps, lo: x.lo, hi: x.hi, promoters: x.promoters, detractors: x.detractors, base: x.rawN };
     }
-    return boxTile(id, runId, documentId, variable, weightVar);
+    return boxTile(id, runId, documentId, variable, weightVar, byName.get(variable));
   };
   return Promise.all(CSM_TILES.map(tile));
 }

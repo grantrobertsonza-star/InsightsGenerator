@@ -85,3 +85,18 @@ export function csmFindingKey(dashboard: CsmDashboard, section: CsmFindingSectio
   if (section === "loyalty") return dashboard.loyalty?.variable ?? null;
   return dashboard.driver ? [dashboard.driver.request.outcome, ...dashboard.driver.request.predictors].join("|") : null;
 }
+
+/**
+ * The share of a series in the given answer codes (Codex D3A-F01): a box on a stated scale (8 to 10 on 0 to 10; the
+ * top two on a shorter scale) counts exactly those codes, whichever of them the data holds; an absent one is 0. The
+ * base is every answer the series has (non-answer codes are already outside it, as in a Cross tab). A suppressed bar
+ * makes the reading unavailable.
+ */
+export function shareOfCodes(series: ChartSeries, codes: number[]): { value: number | null; exact: number | null; base: number } {
+  const want = new Set(codes);
+  const bars = series.bars.map((b) => ({ code: b.rawCode !== undefined && b.rawCode !== null && b.rawCode !== "" ? Number(b.rawCode) : leadingNumber(b.label), share: b.share !== undefined ? b.share : b.pct }));
+  if (bars.some((b) => b.share === null)) return { value: null, exact: null, base: series.n };
+  const exact = bars.filter((b) => b.code !== null && want.has(b.code)).reduce((a, b) => a + (b.share as number), 0);
+  return { value: round1(exact), exact, base: series.n };
+}
+

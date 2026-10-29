@@ -10,7 +10,7 @@
 // agreed with it; it does not make its sources current. Nothing here writes, deletes or rewrites
 // anything: an insight whose support changed keeps its wording and review decision, and is only
 // shown (and exported) with the change made visible.
-import { EARLIER_METHOD_TEXT, tableMethodStatus } from "./tableMethod";
+import { EARLIER_METHOD_TEXT, earlierMethodText, tableMethodStatus, type TableSource } from "./tableMethod";
 
 export type SupportStatus = "current" | "stale" | "invalid" | "unknown";
 
@@ -87,6 +87,9 @@ export type SupportLinkRow = {
   /** The calculated table's recorded methodVersion (engine notes); null when not recorded. Only read
    * when calculatedTableDocumentId is set. */
   tableMethod?: string | null;
+  /** Where that table was read from and with which label reader: a workbook table read before the label reader
+   * repair counts as earlier too (Codex R1-F01). Absent: judged on the method version alone. */
+  tableSource?: TableSource;
   /**
    * For a finding read from a report (origin 'stated') with a recorded quote: whether that quote
    * appears in the report's CURRENT stored text (quoteMatch.quoteGroundingChecker). "unreadable"
@@ -325,7 +328,7 @@ export function classifyInsightSupport(
     }
     if (link.calculatedTableDocumentId) {
       // Read from the table itself, so it needs no settings lookup and is reported even when that fails.
-      if (tableMethodStatus(link.tableMethod) === "earlier") reasons.push({ kind: "method_changed", ...base });
+      if (tableMethodStatus(link.tableMethod, link.tableSource) === "earlier") reasons.push({ kind: "method_changed", ...base, detail: earlierMethodText(link.tableMethod, link.tableSource) });
       const check = settingsByDocument.get(link.calculatedTableDocumentId);
       if (!check) {
         reasons.push({ kind: "check_failed", ...base, detail: "current survey settings were not resolved" });
@@ -391,7 +394,8 @@ export function describeSupportReason(reason: SupportReason): string {
     case "corrections_changed":
       return `variable corrections for the data behind ${f} changed after it was calculated`;
     case "method_changed":
-      return `the table behind ${f} was ${EARLIER_METHOD_TEXT}`;
+      // detail: the reason in words (earlierMethodText), recorded with the reason since 29 October 2026.
+      return `the table behind ${f} was ${reason.detail ?? EARLIER_METHOD_TEXT}`;
     case "not_recorded":
       return "it was drafted before support tracking, so later changes cannot be detected";
     case "check_failed":

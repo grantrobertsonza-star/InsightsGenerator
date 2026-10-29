@@ -73,7 +73,8 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("D3 CSM tiles against the bank
     const { loadTrackerDashboard } = await import("../trackerDashboards");
     const { csmOverviewFigures } = await import("../trackerCsmFigures");
     const view = await loadTrackerDashboard(tenant, run, doc);
-    const t = await csmOverviewFigures(tenant, run, doc, view.dashboard);
+    const { loadRoleInput } = await import("../trackerInput");
+    const t = await csmOverviewFigures(tenant, run, doc, view.dashboard, (await loadRoleInput(tenant, run, doc)).variables);
     return { view, byId: new Map(t.map((x) => [x.id, x])), t };
   };
 
@@ -126,14 +127,37 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("D3 CSM tiles against the bank
     const key = (await q("select storage_path from documents where id = $1", [docs[1]]))[0].storage_path as string;
     await q("update documents set storage_path = $2 where id = $1", [docs[1], `${key}.missing`]);
     try {
-      const t = await csmOverviewFigures(tenant, run, docs[1], view.dashboard);
+      const t = await csmOverviewFigures(tenant, run, docs[1], view.dashboard, [{ name: "switch_0to10", label: "Likelihood of switching main provider", numeric: true }, { name: "company_csat5", label: "Overall company satisfaction", numeric: true }, { name: "continue5", label: "Intend to continue", numeric: true }]);
       expect(t.every((x) => x.status === "failed" && x.error.length > 0)).toBe(true);
     } finally {
       await q("update documents set storage_path = $2 where id = $1", [docs[1], key]);
     }
-    const t2 = await csmOverviewFigures(tenant, run, docs[1], view.dashboard);
+    const { loadRoleInput } = await import("../trackerInput");
+    const t2 = await csmOverviewFigures(tenant, run, docs[1], view.dashboard, (await loadRoleInput(tenant, run, docs[1])).variables);
     const sat = t2.find((x) => x.id === "satisfaction");
     if (sat?.status !== "ok" || sat.id !== "satisfaction") throw new Error(JSON.stringify(sat));
     expect(sat.box).toBeCloseTo(ref("company_csat5", "t2b", 2).expected, 6);
   });
+
+  it("Codex D3A-F01: sparse switching answers (0 to 7 and 10, no 8 or 9) count only 10 as 8 to 10: 11.11%, not the top two present", async () => {
+    const { loadTrackerDashboard } = await import("../trackerDashboards");
+    const { csmOverviewFigures } = await import("../trackerCsmFigures");
+    const { loadRoleInput } = await import("../trackerInput");
+    const key = `${tenant}/${run}/${randomUUID()}-sparse.csv`;
+    const rows = ["id,company_csat5,switch_0to10,continue5"];
+    let i = 0;
+    for (const sw of [0, 1, 2, 3, 4, 5, 6, 7, 10]) for (let k = 0; k < 10; k++) rows.push(`${++i},${(i % 5) + 1},${sw},${(i % 5) + 1}`);
+    storage.objects.set(key, Buffer.from(rows.join("\n") + "\n"));
+    const doc = (await q(
+      `insert into documents (tenant_id, run_id, kind, ingestion_type, source_filename, storage_path, data_setup) values ($1, $2, 'table', 'raw', 'sparse.csv', $3, $4) returning id`,
+      [tenant, run, key, JSON.stringify({ layout: "rows_are_cases", unit: "respondents", method: "survey", accepted: true })],
+    ))[0].id as string;
+    const view = await loadTrackerDashboard(tenant, run, doc);
+    const t = await csmOverviewFigures(tenant, run, doc, { ...view.dashboard, csm: { ...view.dashboard.csm, likelyToSwitch: { variable: "switch_0to10", source: "chosen" } } }, (await loadRoleInput(tenant, run, doc)).variables);
+    const sw = t.find((x) => x.id === "switch");
+    if (sw?.status !== "ok" || sw.id !== "switch") throw new Error(JSON.stringify(sw));
+    expect(sw.boxCodes).toBe("8 to 10");
+    expect(sw.box).toBeCloseTo(100 / 9, 6);
+  });
 });
+
