@@ -2652,6 +2652,27 @@ def _se_prop(p, n_eff):
     return math.sqrt(p * (1 - p) / n_eff)
 
 
+def value_labels(file_bytes: bytes, source_filename: str, args=None) -> dict:
+    """Every variable's answer labels as the calculations see them (D2: the tracker role recogniser): the
+    file's own labels, then the confirmed codebook and questionnaire labels the app sends as the overlay,
+    applied by the same _apply_overlay every calculation uses. Codes are written as the engine writes them
+    (_format_code: 1.0 is "1"); a variable without labels is absent. At most 500 codes per variable, with
+    `cut` naming the variables that had more."""
+    args = args or {}
+    df, meta = _read(file_bytes, source_filename, overlay=args.get("overlay"), layout=args.get("layout"), selected_sheet=args.get("selectedSheet"))
+    labels = meta.variable_value_labels or {}
+    out, cut = {}, []
+    for name in df.columns:
+        mapping = labels.get(name)
+        if not mapping:
+            continue
+        items = list(mapping.items())
+        if len(items) > 500:
+            cut.append(name)
+        out[name] = {_format_code(code): str(text) for code, text in items[:500]}
+    return {"valueLabels": out, "cut": cut}
+
+
 def categories(file_bytes: bytes, source_filename: str, variable: str, overlay=None, layout=None, selected_sheet=None) -> dict:
     """Answer categories of one variable (label and unweighted count), in code
     order, for building groups such as top-2 box."""
@@ -2761,6 +2782,70 @@ def _cb_names(cell):
     return [name] if name else []
 
 
+# Question metadata a codebook may carry beside each variable (D2, 29 October 2026): the question it belongs
+# to (A1, F1), its question type and its multiple-response set. Grant's tracker packs give all three; the
+# tracker role recogniser (src/lib/trackerRoles.ts) reads them. Columns are found by header name only, and a
+# question column is taken for an ID only when its cells are short codes (a column headed "Question" that
+# holds the wording stays the label). A type that is none of the known kinds is kept as written, never
+# mapped to a guess.
+_CB_QID_HEADER_RE = re.compile(r"^(question( ?(id|no|number|code|ref))?|qid|q ?(no|number|id))$", re.I)
+_CB_QTYPE_HEADER_RE = re.compile(r"^(question ?type|q ?type|type of question|response ?type)$", re.I)
+_CB_MRSET_HEADER_RE = re.compile(r"^(mr ?set|mr ?group|multiple ?response ?(set|group)|response ?set)$", re.I)
+_CB_CONDITION_HEADER_RE = re.compile(r"^(universe|filter|base|asked (of|to)|routing|condition|derivation|derived from|skip( logic)?|selected value|unit)$", re.I)
+_CB_QID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,15}$")
+_CB_QTYPES = {
+    "categorical": "categorical", "single": "categorical", "single choice": "categorical", "single response": "categorical",
+    "select one": "categorical", "nominal": "categorical",
+    "multiple response": "multiple_response", "multi response": "multiple_response", "multi": "multiple_response",
+    "mr": "multiple_response", "select multiple": "multiple_response", "multiple select": "multiple_response",
+    "scale": "scale", "rating": "scale", "likert": "scale", "ordinal": "scale",
+    "continuous": "continuous", "numeric": "continuous", "number": "continuous", "integer": "continuous", "decimal": "continuous",
+    "text": "text", "open": "text", "open text": "text", "open ended": "text", "string": "text", "verbatim": "text",
+}
+
+
+def _cb_question_type(text):
+    """(normalised type or None, the type as written or None)."""
+    raw = _cb_text(text).strip() if text not in (None, "") else ""
+    if not raw:
+        return None, None
+    key = re.sub(r"[\s_\-]+", " ", raw.lower()).strip()
+    return _CB_QTYPES.get(key), raw
+
+
+def _cb_meta_columns(header, rows, taken):
+    """Positions of the question ID, question type and MR set columns under a header row, or None each."""
+    cols = {"qid": None, "qtype": None, "mrset": None}
+    for i, c in enumerate(header):
+        if i in taken or not c:
+            continue
+        c = re.sub(r"[_\-]+", " ", c).strip()
+        if cols["qtype"] is None and _CB_QTYPE_HEADER_RE.match(c):
+            cols["qtype"] = i
+        elif cols["mrset"] is None and _CB_MRSET_HEADER_RE.match(c):
+            cols["mrset"] = i
+        elif cols["qid"] is None and _CB_QID_HEADER_RE.match(c):
+            cells = [r[i] for r in rows if i < len(r) and r[i]]
+            if cells and sum(1 for x in cells if _CB_QID_RE.match(x)) / len(cells) >= 0.8:
+                cols["qid"] = i
+    return cols
+
+
+def _cb_meta(row, cols):
+    """The question fields of one codebook row; keys present only when the column exists."""
+    out = {}
+    if cols.get("qid") is not None:
+        out["questionId"] = row[cols["qid"]] or None
+    if cols.get("qtype") is not None:
+        kind, raw = _cb_question_type(row[cols["qtype"]])
+        out["questionType"] = kind
+        if raw and not kind:
+            out["questionTypeAsWritten"] = raw
+    if cols.get("mrset") is not None:
+        out["mrSet"] = row[cols["mrset"]] or None
+    return out
+
+
 def _cb_sheet_items(grid, sheet):
     """Items from one sheet's grid, or [] when the sheet is not a codebook table."""
     rows = [[_cb_text(c) for c in r] for r in grid]
@@ -2775,13 +2860,14 @@ def _cb_sheet_items(grid, sheet):
         if pos["var"] is not None and pos["value"] is not None and (pos["vlabel"] is not None or pos["label"] is not None):
             items, order, last = {}, [], None
             vl = pos["vlabel"] if pos["vlabel"] is not None else pos["label"]
+            meta_cols = _cb_meta_columns([c.lower() for c in rows[h]], rows[h + 1:], {p for p in pos.values() if p is not None})
             for r in rows[h + 1:]:
                 name = _cb_name(r[pos["var"]]) or last
                 if not name:
                     continue
                 last = name
                 if name not in items:
-                    items[name] = {"variable": name, "label": "", "options": [], "note": None, "section": None, "sheet": sheet}
+                    items[name] = {"variable": name, "label": "", "options": [], "note": None, "section": None, "sheet": sheet, **_cb_meta(r, meta_cols)}
                     order.append(name)
                 if pos["label"] is not None and pos["vlabel"] is not None and r[pos["label"]] and not items[name]["label"]:
                     items[name]["label"] = r[pos["label"]]
@@ -2823,7 +2909,14 @@ def _cb_sheet_items(grid, sheet):
         name_col = likeliest
         if share(name_col, name_like) < 0.6:
             return []
-    others = [c for c in range(width) if c != name_col]
+    # A column the header names as the question's universe, filter or derivation holds conditions written
+    # "aware_b01=1", which read like an answer list; it is never the values or the label column (D2: Grant's
+    # tracker codebooks have a "universe" column, which gave attribute items an answer "aware_b01 = 1").
+    not_values = (
+        {i for i, c in enumerate(rows[header_row]) if _CB_CONDITION_HEADER_RE.match(re.sub(r"[_\-]+", " ", c.lower()).strip())}
+        if header_row is not None else set()
+    )
+    others = [c for c in range(width) if c != name_col and c not in not_values]
     # The values column holds answer lists, read or not (an unreadable list still marks its column, so
     # the item is reported incomplete rather than its list taken for a label; IS-F04).
     is_list = lambda x: bool(_cb_list(x)[0]) or _cb_list(x)[1]
@@ -2837,6 +2930,10 @@ def _cb_sheet_items(grid, sheet):
         label_col = header["label"]
     else:
         label_col = max(label_candidates, key=lambda c: sum(len(r[c]) for r in body))
+    meta_cols = (
+        _cb_meta_columns([c.lower() for c in rows[header_row]], rows[header_row + 1:], {name_col, label_col, values_col})
+        if header_row is not None else {}
+    )
     items, section = [], None
     for i, r in enumerate(rows):
         # The header row and anything above it are never variables (IS-F07, Codex: "VARIABLE NAME, LABEL"
@@ -2863,6 +2960,7 @@ def _cb_sheet_items(grid, sheet):
                 "unreadValues": values if unread else None,
                 "section": section,
                 "sheet": sheet,
+                **_cb_meta(r, meta_cols),
             })
     return items
 
@@ -2920,6 +3018,10 @@ def _codebook_from_json(file_bytes: bytes) -> dict:
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(f"This JSON codebook could not be read ({exc}).") from exc
     entries = None
+    # A separate list of answer labels beside the variables (Grant's tracker packs' metadata.json:
+    # "labels": [[variable, variable label, code, answer label], ...]), used for a variable whose own
+    # entry gives no values.
+    side_labels = _cb_json_side_labels(data.get("labels")) if isinstance(data, dict) else {}
     if isinstance(data, list):
         entries = data
     elif isinstance(data, dict):
@@ -2949,13 +3051,15 @@ def _codebook_from_json(file_bytes: bytes) -> dict:
         seen.add(name)
         values = _cb_first(e, _CB_VALUES_KEYS)
         label = _cb_first(e, _CB_LABEL_KEYS)
+        options = _cb_json_options(values) if values is not None else []
         items.append({
             "variable": name,
             "label": _cb_text(label) if isinstance(label, (str, int, float)) else "",
-            "options": _cb_json_options(values) if values is not None else [],
+            "options": options or side_labels.get(name, []),
             "note": None,
             "section": _cb_text(_cb_first(e, ("section", "group", "module"))) or None,
             "sheet": None,
+            **_cb_json_meta(e, label),
         })
     if not items:
         raise ValueError(
@@ -2963,6 +3067,49 @@ def _codebook_from_json(file_bytes: bytes) -> dict:
             "label and optionally its values), or an object keyed by variable name."
         )
     return {"items": items, "sheets": [], "skippedSheets": []}
+
+
+def _cb_json_side_labels(rows):
+    """{variable: [{code, label}]} from a list of [variable, code, label] or [variable, variable label, code,
+    label] rows, or of objects with a variable, a value and a label. Anything else gives nothing."""
+    out = {}
+    if not isinstance(rows, list):
+        return out
+    for r in rows:
+        if isinstance(r, (list, tuple)) and len(r) in (3, 4):
+            name, code, lab = (r[0], r[1], r[2]) if len(r) == 3 else (r[0], r[2], r[3])
+        elif isinstance(r, dict):
+            name = _cb_first(r, _CB_NAME_KEYS)
+            code = _cb_first(r, ("value", "code", "key"))
+            lab = _cb_first(r, ("value_label", "valuelabel", "label", "text"))
+        else:
+            continue
+        if not isinstance(name, (str, int, float)) or code is None or lab is None:
+            continue
+        out.setdefault(_cb_name(name), []).append({"code": _cb_code(code), "label": _cb_text(lab)})
+    return out
+
+
+def _cb_json_meta(entry, label):
+    """Question ID, question type and MR set from a JSON codebook entry. "question" is an ID only when it is a
+    short code and the label came from another key (it is otherwise the wording)."""
+    out = {}
+    qid = _cb_first(entry, ("question_id", "questionid", "qid", "question"))
+    if isinstance(qid, (str, int)) and qid is not label and _CB_QID_RE.match(_cb_text(qid)):
+        out["questionId"] = _cb_text(qid)
+    # A key given empty states "none" (not in a set), which differs from a codebook that has no such field.
+    keys = {str(k).lower() for k in entry}
+    qtype_keys = ("question_type", "questiontype", "qtype")
+    if keys.intersection(qtype_keys):
+        kind, raw = _cb_question_type(_cb_first(entry, qtype_keys))
+        out["questionType"] = kind
+        if raw and not kind:
+            out["questionTypeAsWritten"] = raw
+    mr_keys = ("mr_set", "mrset", "multiple_response_set")
+    if keys.intersection(mr_keys):
+        mr = _cb_first(entry, mr_keys)
+        out["mrSet"] = _cb_text(mr) if isinstance(mr, (str, int)) else None
+    return out
 
 
 def codebook_items(file_bytes: bytes, source_filename: str, args=None) -> dict:
@@ -5977,7 +6124,7 @@ _SIGNED_PATH = re.compile(
     re.IGNORECASE,
 )
 _SIGNATURE_LIFETIME_SECONDS = 300
-_SIGNED_ACTIONS = {"convert", "table", "indicators", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet"}
+_SIGNED_ACTIONS = {"convert", "table", "indicators", "dictionary", "categories", "columns", "crosstab", "respondent_quality", "codebook", "instrument_sheet", "value_labels"}
 
 
 def verify_parse_request(secret, header, action, bucket, storage_path, now=None):
@@ -6051,6 +6198,9 @@ class handler(BaseHTTPRequestHandler):
                 return
             if action == "instrument_sheet":
                 self._send_json(200, {"result": instrument_sheet(file_bytes, source_filename, body.get("args") or {})})
+                return
+            if action == "value_labels":
+                self._send_json(200, {"result": value_labels(file_bytes, source_filename, body.get("args") or {})})
                 return
             if action == "codebook":
                 self._send_json(200, {"result": codebook_items(file_bytes, source_filename, body.get("args") or {})})

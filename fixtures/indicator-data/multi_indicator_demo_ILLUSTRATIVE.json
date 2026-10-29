@@ -1,0 +1,182 @@
+{
+  "data_status": "FICTIONAL DEMONSTRATION ONLY. No values are World Bank, OECD, IMF or real-country statistics.",
+  "countries": [
+    "Country A",
+    "Country B",
+    "Country C"
+  ],
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+  ],
+  "source": "Demo dataset",
+  "demo_snapshot": "2026-10-29",
+  "observations_are": "invented values for layout evaluation; not measured data",
+  "indicators": [
+    {
+      "id": "gdp_per_capita",
+      "title": "GDP per capita",
+      "unit": "USD per person",
+      "definition": "GDP per capita, current USD (demo)",
+      "country_a_values": {
+        "2020": 4200,
+        "2021": 4470,
+        "2022": 4620,
+        "2023": 4930,
+        "2024": 5200
+      },
+      "peer_values_2024": {
+        "Country A": 5200,
+        "Country B": 6100,
+        "Country C": 4500
+      },
+      "last_change": 270,
+      "change_unit": "USD per person",
+      "axis_range": [
+        0,
+        6000
+      ],
+      "source": "Demo dataset",
+      "demo_snapshot": "2026-10-29",
+      "reference_year": 2024
+    },
+    {
+      "id": "inflation",
+      "title": "Consumer price inflation",
+      "unit": "% per year",
+      "definition": "Annual average CPI change",
+      "country_a_values": {
+        "2020": 4.4,
+        "2021": 6.8,
+        "2022": 7.2,
+        "2023": 5.1,
+        "2024": 3.9
+      },
+      "peer_values_2024": {
+        "Country A": 3.9,
+        "Country B": 5.2,
+        "Country C": 2.7
+      },
+      "last_change": -1.2,
+      "change_unit": "pp",
+      "axis_range": [
+        0,
+        10
+      ],
+      "source": "Demo dataset",
+      "demo_snapshot": "2026-10-29",
+      "reference_year": 2024
+    },
+    {
+      "id": "unemployment",
+      "title": "Unemployment",
+      "unit": "% of labour force",
+      "definition": "Total labour force, harmonised demo definition",
+      "country_a_values": {
+        "2020": 9.2,
+        "2021": 8.8,
+        "2022": 8.5,
+        "2023": 8.1,
+        "2024": 7.6
+      },
+      "peer_values_2024": {
+        "Country A": 7.6,
+        "Country B": 6.4,
+        "Country C": 9.2
+      },
+      "last_change": -0.5,
+      "change_unit": "pp",
+      "axis_range": [
+        0,
+        12
+      ],
+      "source": "Demo dataset",
+      "demo_snapshot": "2026-10-29",
+      "reference_year": 2024
+    },
+    {
+      "id": "fdi_income",
+      "title": "FDI income",
+      "unit": "% of GDP",
+      "definition": "FDI income receipts / GDP; not FDI inflows",
+      "country_a_values": {
+        "2020": 1.2,
+        "2021": 1.6,
+        "2022": 1.4,
+        "2023": 1.9,
+        "2024": 2.2
+      },
+      "peer_values_2024": {
+        "Country A": 2.2,
+        "Country B": 1.5,
+        "Country C": 2.8
+      },
+      "last_change": 0.3,
+      "change_unit": "pp",
+      "axis_range": [
+        0,
+        3
+      ],
+      "source": "Demo dataset",
+      "demo_snapshot": "2026-10-29",
+      "reference_year": 2024
+    },
+    {
+      "id": "iron_coverage",
+      "title": "Antenatal iron coverage",
+      "unit": "% of subgroup",
+      "definition": "Women with a birth in preceding 2 years",
+      "country_a_values": {
+        "2020": 71.0,
+        "2021": 75.5,
+        "2022": 80.0,
+        "2023": 84.5,
+        "2024": 89.0
+      },
+      "peer_values_2024": {
+        "Country A": 89.0,
+        "Country B": 82.0,
+        "Country C": 94.0
+      },
+      "last_change": 4.5,
+      "change_unit": "pp",
+      "axis_range": [
+        0,
+        100
+      ],
+      "source": "Demo dataset",
+      "demo_snapshot": "2026-10-29",
+      "reference_year": 2024
+    },
+    {
+      "id": "internet_use",
+      "title": "Internet use",
+      "unit": "% of population",
+      "definition": "Individuals using the internet",
+      "country_a_values": {
+        "2020": 56.0,
+        "2021": 60.0,
+        "2022": 65.0,
+        "2023": 70.0,
+        "2024": 76.0
+      },
+      "peer_values_2024": {
+        "Country A": 76.0,
+        "Country B": 83.0,
+        "Country C": 68.0
+      },
+      "last_change": 6.0,
+      "change_unit": "pp",
+      "axis_range": [
+        0,
+        100
+      ],
+      "source": "Demo dataset",
+      "demo_snapshot": "2026-10-29",
+      "reference_year": 2024
+    }
+  ]
+}

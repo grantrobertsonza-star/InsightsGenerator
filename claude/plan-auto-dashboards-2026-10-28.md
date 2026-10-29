@@ -161,3 +161,41 @@ it is shown.
 
 **Sequence:** the new statistics (NPS group difference test, accuracy against baseline, performance values
 for the quadrant) go with the other new measures (D2b); the redesigned Driver analysis and NPS tabs can go ahead as their own batch (D5) once those statistics exist, without waiting for the dashboard layout; D3 then reuses them.
+
+
+## D6: Indicator Analytics tile (Grant, 29 October 2026)
+
+Grant's visual plan ("Indicators dashboard", visual mockup 01): an Indicator Analytics tile under Analytics for
+World Bank (Data360), OECD and IMF indicator files, one indicator at a time. One reporting workspace; the source
+is a filter, not a separate app. Automatic first view, optional left-hand customisation (selected indicator and
+its definition, visible panels, add or remove series, advanced mapping, Reset to suggested layout).
+- Tabs: Overview, Trends, Compare, Data & sources. Filters: country, indicator, period, window, sources.
+- Headline figures: latest observed value (with its survey or period), change since the previous observation
+  (stated as "2022 vs 2014, not year-on-year", in percentage points for a percentage), observations in the trend
+  (missing years stay missing).
+- Observed trend chart: observed values only, no interpolation, source and code under the chart.
+- "What this view says": a descriptive summary, never causal, naming the gap between observations; no annual
+  path or significance inferred.
+- Definition and provenance: definition, breakdowns, unit multiplier, decimals, observation status, source
+  metadata date (not the observation vintage).
+- Labels: "Auto-generated", "Observed data only"; files loaded per provider ("OECD: metadata only", "IMF: no
+  file provided").
+- Builds on the indicator data type (batch 54, claude/indicator-data.md) and its checks (batch 68: withheld
+  values, calendar periods). Several indicators on one dashboard: Grant is designing it; to follow.
+- Reference values (Grant, 29 October 2026): `fixtures/indicator-data/Chart_Data_RH_ANCC_W_IRN_reference.json`
+  (DHS via World Bank Data360, metadata date 10 October 2026, built from `DHS_SD_WIDEF.csv` already in the
+  fixtures): the Kenya observed trend (2003 45.8, 2008 71.0, 2014 70.5, 2022 90.2), the 2022 cross-country
+  comparison, all 210 two-year-window observations, and the audit (607 observations, 71 countries, 213 series,
+  no duplicate keys, range 10.2 to 97.8; the OECD file is metadata only, no IMF file). The tile's figures are
+  checked against these, never against its own output.
+- Design handoff (Grant, 29 October 2026): `claude/indicators-dashboard-design-handoff-2026-10-29.md` and
+  `docs/design/Unified_Indicators_Visual_Plan-2026-10-29.pdf`: four screens (Overview, Compare, Trends, Data &
+  sources), the DHS mapping contract (full series key, observation key, windows 02/03/05 never pooled), the
+  canonical multi-provider model, generation states, format and trust rules, and acceptance tests A to J.
+- Multi-indicator target design (Grant, 29 October 2026: "the target design for multiple indicators"):
+  `claude/multi-indicator-dashboard-handoff-2026-10-29.md`, `docs/design/Multi_Indicator_Dashboard_Visual_Plan-2026-10-29.pdf`,
+  `fixtures/indicator-data/multi_indicator_demo_ILLUSTRATIVE.json` (fictional, layout checks only, labelled
+  "Illustrative data"). Screen 1: a KPI strip and a trend grid for every selected indicator at once; screen 2: a
+  country-by-indicator matrix for one common year and a peer chart per indicator. Each card keeps its own unit,
+  axis, source and year; nothing is pooled or ranked across measures; percentage changes in pp, GDP per capita in
+  USD per person. The single-indicator view is what one selected indicator shows.

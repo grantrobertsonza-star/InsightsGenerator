@@ -160,6 +160,9 @@ export type InstrumentReadResult = {
    * displayed as "0 parts of the document could not be read" - true of chunks specifically, but
    * read by anyone as "nothing went wrong", concealing the actual reason this read is incomplete. */
   incompleteItems: number;
+  /** D2: the codebook gave question numbers, types or sets, but they could not be stored because migration
+   * 0131 is not applied. Absent when there was nothing to store or it was stored. */
+  questionMetaNotStored?: boolean;
 };
 
 /** How long a claim on a read stands before another session may take it over (an abandoned read). */
@@ -311,6 +314,8 @@ type ReadRow = {
   routingText: string | null;
   routing: Routing | null;
   page: number | null;
+  /** D2: the question number, type and set a codebook gives for this variable; null when it gives none. */
+  questionMeta: QuestionMeta | null;
   /** IMP-012: this row's own options list was truncated - see the write loop below, which
    * uses it to avoid overwriting an existing, previously-complete item with this partial one. */
   truncated: boolean;
@@ -324,8 +329,35 @@ type ReadRows = { rows: ReadRow[]; failedChunks: number; invalidItems: number; t
  * variable name, so it links to the data file's variable of that name. Its text is the codebook's
  * label (or the name when it has none); its options are the answer codes and labels.
  */
+/** A codebook's question fields for one variable (codebook_items in api/parse-stats-file.py). questionType
+ * is null when the codebook wrote a type that is none of the known kinds; questionTypeAsWritten keeps it. */
+export type QuestionMeta = {
+  questionId?: string | null;
+  questionType?: "categorical" | "multiple_response" | "scale" | "continuous" | "text" | null;
+  questionTypeAsWritten?: string;
+  mrSet?: string | null;
+};
+
+const QUESTION_TYPES = new Set(["categorical", "multiple_response", "scale", "continuous", "text"]);
+
+/** The engine's question fields, checked; null when none is given. */
+export function questionMetaOf(it: { questionId?: unknown; questionType?: unknown; questionTypeAsWritten?: unknown; mrSet?: unknown }): QuestionMeta | null {
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : null);
+  const meta: QuestionMeta = {};
+  if ("questionId" in it) meta.questionId = text(it.questionId);
+  if ("questionType" in it) meta.questionType = typeof it.questionType === "string" && QUESTION_TYPES.has(it.questionType) ? (it.questionType as QuestionMeta["questionType"]) : null;
+  const asWritten = text(it.questionTypeAsWritten);
+  if (asWritten) meta.questionTypeAsWritten = asWritten;
+  if ("mrSet" in it) meta.mrSet = text(it.mrSet);
+  return Object.values(meta).some((v) => v !== null && v !== undefined) ? meta : null;
+}
+
 type EngineItem = {
   variable: string;
+  questionId?: string | null;
+  questionType?: string | null;
+  questionTypeAsWritten?: string;
+  mrSet?: string | null;
   label: string;
   options: { code: string; label: string }[];
   section: string | null;
@@ -356,6 +388,7 @@ function rowsFromEngineItems(items: EngineItem[]): ReadRows {
       routingText: it.routing ?? null,
       routing: null,
       page: null,
+      questionMeta: questionMetaOf(it),
       truncated,
     };
   });
@@ -518,6 +551,7 @@ async function readItemsWithModel(
         routingText,
         routing: parseRouting(routingText),
         page: (i as { page: number }).page,
+        questionMeta: null,
         truncated,
       });
     }
@@ -542,6 +576,7 @@ async function storeInstrumentRows(
 
   const itemKey = (code: string | null, text: string) => `${(code ?? "").toLowerCase()}|${text.toLowerCase().slice(0, 80)}`;
 
+  let questionMetaNotStored = false;
   const count = await withTenant(tenantId, async (client) => {
     // RR-03: the results are written only while this read still owns the document. The same row lock
     // the claim is taken under serialises this check with a newer claim: either the newer read claimed
@@ -564,6 +599,9 @@ async function storeInstrumentRows(
       [documentId],
     );
     const existingByKey = new Map(existing.rows.map((r) => [itemKey(r.code, r.item_text), r.id] as const));
+    const metaStored = await questionMetaAvailable(client);
+    if (!metaStored && rows.some((r) => r.questionMeta)) questionMetaNotStored = true;
+    const metaOf = (r: ReadRow) => (r.questionMeta ? JSON.stringify(r.questionMeta) : null);
     const matchedIds = new Set<string>();
 
     for (let n = 0; n < rows.length; n++) {
@@ -580,18 +618,20 @@ async function storeInstrumentRows(
         // but in a degraded form - the existing row's full data is preserved instead of
         // being replaced by a partial one.
         if (r.truncated) continue;
+        const params = [n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page, existingId];
         await client.query(
           `update instrument_items
            set item_order = $1, section = $2, code = $3, item_text = $4, response_options = $5,
-               routing_text = $6, routing = $7, page = $8
+               routing_text = $6, routing = $7, page = $8${metaStored ? ", question_meta = $10" : ""}
            where id = $9`,
-          [n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page, existingId],
+          metaStored ? [...params, metaOf(r)] : params,
         );
       } else {
+        const params = [tenantId, runId, documentId, n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page];
         await client.query(
-          `insert into instrument_items (tenant_id, run_id, document_id, item_order, section, code, item_text, response_options, routing_text, routing, page)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [tenantId, runId, documentId, n, r.section, r.code, r.text, JSON.stringify(r.options), r.routingText, r.routing ? JSON.stringify(r.routing) : null, r.page],
+          `insert into instrument_items (tenant_id, run_id, document_id, item_order, section, code, item_text, response_options, routing_text, routing, page${metaStored ? ", question_meta" : ""})
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11${metaStored ? ",$12" : ""})`,
+          metaStored ? [...params, metaOf(r)] : params,
         );
       }
     }
@@ -616,7 +656,7 @@ async function storeInstrumentRows(
     await client.query("insert into trace(tenant_id,run_id,event,detail) values($1,$2,'instrument_read_finished',$3)", [tenantId, runId, JSON.stringify({ documentId, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems, claimId: doc.claimId })]);
     return Number(r.rows[0]?.n ?? rows.length);
   });
-  return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems };
+  return { count, complete, failedChunks, incompleteItems: invalidItems + truncatedOptionItems, ...(questionMetaNotStored ? { questionMetaNotStored } : {}) };
 }
 
 /**
@@ -881,6 +921,15 @@ async function lockLinkDocuments(
 
 /** Whether migration 0125 (links through the codebook) is applied; checked, never assumed. */
 /** Whether migration 0130 has been applied: the link method check allows 'grid'. */
+/** Whether migration 0131 (instrument_items.question_meta) is applied. */
+export async function questionMetaAvailable(client: PoolClient): Promise<boolean> {
+  const r = await client.query<{ ok: boolean }>(
+    `select exists (select 1 from information_schema.columns
+                     where table_schema = current_schema() and table_name = 'instrument_items' and column_name = 'question_meta') as ok`,
+  );
+  return r.rows[0]?.ok === true;
+}
+
 async function gridLinksAvailable(client: PoolClient): Promise<boolean> {
   const r = await client.query<{ ok: boolean }>(
     `select exists (select 1 from pg_constraint where conrelid = 'instrument_links'::regclass and contype = 'c'
@@ -1051,6 +1100,8 @@ export type ConfirmedItem = {
   /** The codebook or questionnaire the item comes from, so labels can follow LABEL_SOURCE_ORDER. */
   documentId: string;
   instrumentType: string | null;
+  /** D2: the question number, type and set a codebook gave for the item; null without one or before migration 0131. */
+  questionMeta: QuestionMeta | null;
 };
 export async function getConfirmedItemsForData(tenantId: string, runId: string, dataDocumentId: string): Promise<ConfirmedItem[]> {
   try {
@@ -1061,12 +1112,13 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
       // are no such links and the column is absent, so the condition is left out.
       const withBasis = await codebookLinksAvailable(client);
       const basisHolds = withBasis ? `and ${CODEBOOK_BASIS_HOLDS("l")}` : "";
+      const withMeta = await questionMetaAvailable(client);
       // Ordered so every reader that takes the first item per variable or code takes it from the
       // strongest source: confirmed before suggested, then a codebook before a questionnaire
       // (labelSourceRank), then the earlier document, then the question's order in it.
-      const r = await client.query<{ variable: string; item_id: string; code: string | null; item_text: string; response_options: ItemOption[]; routing: Routing | null; routing_text: string | null; status: string; document_id: string; instrument_type: string | null; method: string; basis_code: string | null; basis_text: string | null }>(
+      const r = await client.query<{ variable: string; item_id: string; code: string | null; item_text: string; response_options: ItemOption[]; routing: Routing | null; routing_text: string | null; status: string; document_id: string; instrument_type: string | null; method: string; basis_code: string | null; basis_text: string | null; question_meta: unknown }>(
         `select l.variable, i.id as item_id, i.code, i.item_text, i.response_options, i.routing, i.routing_text, l.status,
-                i.document_id, d.instrument_type, l.method,
+                i.document_id, d.instrument_type, l.method, ${withMeta ? "i.question_meta" : "null::jsonb as question_meta"},
                 ${withBasis ? "(select bi.code from instrument_items bi where bi.id = l.basis_item_id) as basis_code, (select bi.item_text from instrument_items bi where bi.id = l.basis_item_id) as basis_text" : "null::text as basis_code, null::text as basis_text"}
          from instrument_links l join instrument_items i on i.id = l.item_id join documents d on d.id = i.document_id
          where l.run_id = $1 and l.data_document_id = $2
@@ -1081,7 +1133,7 @@ export async function getConfirmedItemsForData(tenantId: string, runId: string, 
       // current rule, so one made by the first rule for different questions is not used ("< 5000" vs "> 5000").
       return r.rows
         .filter((x) => x.method !== "codebook" || (x.basis_text !== null && wordingIdentical({ text: x.item_text, code: x.code }, { text: x.basis_text, code: x.basis_code })))
-        .map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed", documentId: x.document_id, instrumentType: x.instrument_type }));
+        .map((x) => ({ itemId: x.item_id, variable: x.variable, code: x.code, text: x.item_text, options: x.response_options ?? [], routing: x.routing, routingText: x.routing_text, confirmed: x.status === "confirmed", documentId: x.document_id, instrumentType: x.instrument_type, questionMeta: x.question_meta && typeof x.question_meta === "object" ? questionMetaOf(x.question_meta as Record<string, unknown>) : null }));
     });
   } catch (e) {
     // GTR-01: an undefined table or column alone does not show that this database has no

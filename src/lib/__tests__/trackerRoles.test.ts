@@ -116,3 +116,47 @@ describe("what the recogniser will not guess", () => {
     expect(r.measures.find((m) => m.group === "aware")?.byBrand).toEqual([{ code: "1", variable: "aw1" }, { code: "2", variable: "aw2" }, { code: "3", variable: "aw3" }]);
   });
 });
+
+// Codex D1-F01 (29 October 2026): a recommend question is "likelihood to recommend (0 to 10)" only when its
+// scale is a stated 0 to 10, by the rule the Net Promoter calculation uses (isZeroToTenScale); expected roles
+// written from the acceptance criteria, not from the recogniser.
+describe("D1-F01: the 0 to 10 recommend scale is validated, not just its top", () => {
+  const points = (from: number, to: number, extra: Record<string, string> = {}) => ({
+    ...Object.fromEntries(Array.from({ length: to - from + 1 }, (_, i) => [String(from + i), String(from + i)])),
+    ...extra,
+  });
+  const nonAnswers = { "98": "Don't know", "99": "Refused" };
+  const csmWith = (recommend: Partial<RoleVariable>[]): ReturnType<typeof recogniseTracker> =>
+    recogniseTracker([
+      { name: "sat", label: "Overall satisfaction with the company", valueLabels: { "1": "Very dissatisfied", "2": "Dissatisfied", "3": "Neutral", "4": "Satisfied", "5": "Very satisfied" }, numeric: true },
+      ...recommend.map((r, i) => ({ name: `rec${i + 1}`, label: "How likely are you to recommend the company?", numeric: true, ...r }) as RoleVariable),
+    ]);
+  it("genuine 0 to 10, with explicit non-answer codes, is the recommend question (positive control)", () => {
+    expect(csmWith([{ valueLabels: points(0, 10, nonAnswers) }]).csm.recommend0to10).toBe("rec1");
+  });
+  it("a 1 to 10 list and a 6 to 10 list are not 0 to 10", () => {
+    expect(csmWith([{ valueLabels: points(1, 10) }]).csm.recommend0to10).toBeNull();
+    expect(csmWith([{ valueLabels: points(6, 10) }]).csm.recommend0to10).toBeNull();
+  });
+  it("missing zero (1 to 10 with non-answer codes) is not 0 to 10", () => {
+    expect(csmWith([{ valueLabels: points(1, 10, nonAnswers) }]).csm.recommend0to10).toBeNull();
+  });
+  it("a list labelling only 0 and 10 is not assumed: the researcher is asked", () => {
+    const r = csmWith([{ valueLabels: { "0": "Not at all likely", "10": "Extremely likely" } }]);
+    expect(r.csm.recommend0to10).toBeNull();
+    expect(r.questions.map((q) => q.id)).toContain("csm:recommend-scale:rec1");
+  });
+  it("two genuine 0 to 10 recommend questions are asked about", () => {
+    const r = recogniseTracker([
+      { name: "rec_company", label: "Recommend the company to a friend", valueLabels: points(0, 10), numeric: true },
+      { name: "rec_app", label: "Recommend the app to a friend", valueLabels: points(0, 10), numeric: true },
+    ]);
+    expect(r.csm.recommend0to10).toBeNull();
+    expect(r.questions.map((q) => q.id)).toContain("csm:recommend");
+  });
+  it("a raw file: the wording must state 0 to 10; a name ending in 10 is not a stated scale", () => {
+    expect(recogniseTracker([{ name: "Recommend_0to10", label: "Recommend_0to10", numeric: true, distinct: 11 }]).csm.recommend0to10).toBe("Recommend_0to10");
+    expect(recogniseTracker([{ name: "recommend10", label: "recommend10", numeric: true, distinct: 10 }]).csm.recommend0to10).toBeNull();
+    expect(recogniseTracker([{ name: "Recommend_1to10", label: "Recommend_1to10", numeric: true, distinct: 10 }]).csm.recommend0to10).toBeNull();
+  });
+});

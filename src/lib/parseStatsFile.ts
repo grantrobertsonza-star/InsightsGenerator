@@ -169,7 +169,7 @@ type LocalWorker = {
  * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
  * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
  */
-const WORKER_PROTOCOL = 5; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators
+const WORKER_PROTOCOL = 6; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators; 6: value_labels
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
@@ -368,7 +368,7 @@ export async function sweepStatsCache(dir: string = tmpdir(), now: number = Date
 async function runLocalStatsPython<T>(
   storagePath: string,
   sourceFilename: string,
-  action: "convert" | "table" | "indicators" | "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet",
+  action: "convert" | "table" | "indicators" | "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet" | "value_labels",
   args: unknown = {},
 ): Promise<T> {
   // The same data file is read many times in a session (every table built,
@@ -860,7 +860,7 @@ export type CrosstabResult = {
  * the Python function; otherwise it runs the same code with local Python.
  */
 export async function runStatsTool<T>(
-  action: "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet",
+  action: "dictionary" | "crosstab" | "categories" | "columns" | "respondent_quality" | "codebook" | "instrument_sheet" | "value_labels",
   storagePath: string,
   sourceFilename: string,
   args: unknown = {},

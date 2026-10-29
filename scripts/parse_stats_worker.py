@@ -106,6 +106,8 @@ def main() -> int:
                 result = mod.driver_columns(data, name, args)
             elif action == "instrument_sheet":
                 result = mod.instrument_sheet(data, name, args)
+            elif action == "value_labels":
+                result = mod.value_labels(data, name, args)
             elif action == "codebook":
                 result = mod.codebook_items(data, name, args)
             elif action == "respondent_quality":

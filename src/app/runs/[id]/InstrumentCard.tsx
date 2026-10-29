@@ -53,6 +53,11 @@ const btnPrimary =
  * suggestion (instruments.confirmInstrumentLinks, Codex IR-04), and the message says so with the first
  * reason, rather than reporting only the ones confirmed.
  */
+/** D2: a codebook's question numbers, types and sets are read but not kept until migration 0131 is applied. */
+function metaNote(r: Record<string, unknown>): string {
+  return r.questionMetaNotStored ? " The question numbers, types and sets it gives were not saved: the database needs migration 0131." : "";
+}
+
 function confirmedMessage(r: Record<string, unknown>): string {
   const confirmed = Number(r.confirmed ?? 0);
   const refused = Array.isArray(r.refused) ? (r.refused as { reason: string }[]) : [];
@@ -216,7 +221,7 @@ export default function InstrumentCard({
               run(
                 () => readInstrumentAction(runId, documentId),
                 (r) => {
-                  if (r.complete) return `Read ${r.items} items.`;
+                  if (r.complete) return `Read ${r.items} items.${metaNote(r)}`;
                   const failedChunks = Number(r.failedChunks ?? 0);
                   const incompleteItems = Number(r.incompleteItems ?? 0);
                   // IMP-012: an incomplete read used to always be reported as a chunk count,
@@ -299,7 +304,7 @@ export default function InstrumentCard({
         <button className={btn} disabled={pending} onClick={() => run(
           () => readInstrumentAction(runId, documentId),
           r => r.complete
-            ? `Read ${r.items} items.`
+            ? `Read ${r.items} items.${metaNote(r)}`
             : `Read incomplete: ${r.failedChunks ?? 0} unread parts and ${r.incompleteItems ?? 0} incomplete items. Previously confirmed links were preserved.`,
         )}>
           {pending ? "Reading..." : "Read again"}

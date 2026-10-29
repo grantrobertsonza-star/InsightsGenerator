@@ -57,6 +57,16 @@ export function leadingNumber(label: string): number | null {
  * 0 to 10 scale (promoters 9-10, detractors 0-6, passives 7-8). Shared by the automatic descriptive-findings
  * funnel and the discrete NPS tool in Analytics, so both read the same number off the same table.
  */
+/**
+ * The Net Promoter scale: eleven or more answers, every one a number, including 0 and 10. The one rule for a
+ * 0 to 10 scale: computeNps refuses anything else, and the tracker role recogniser (trackerRoles.ts) offers a
+ * question as "likelihood to recommend (0 to 10)" only when its answer codes pass it (Codex D1-F01: a 1 to 10
+ * or 6 to 10 list was offered). Non-answer codes (98, 99) are left out by the caller before this check.
+ */
+export function isZeroToTenScale(points: (number | null)[]): boolean {
+  return points.length >= 11 && points.every((k) => k !== null) && points.includes(0) && points.includes(10);
+}
+
 export function computeNps(
   answers: CrosstabRow[],
   n0: number,
@@ -115,8 +125,7 @@ export function computeNps(
   designExact: boolean;
 } | null {
   const numbered = answers.map((r) => ({ r, k: leadingNumber(r.label) }));
-  const isNps = numbered.length >= 11 && numbered.every((x) => x.k !== null) && numbered.some((x) => x.k === 0) && numbered.some((x) => x.k === 10);
-  if (!isNps) return null;
+  if (!isZeroToTenScale(numbered.map((x) => x.k))) return null;
   const suppressed = numbered.some((x) => pctOf(x.r) == null);
   const pct = (lo: number, hi: number) => numbered.filter((x) => (x.k as number) >= lo && (x.k as number) <= hi).reduce((a, x) => a + (pctOf(x.r) ?? 0), 0);
   const prom = pct(9, 10);

@@ -8,6 +8,7 @@ Exit code is 0 when all checks pass.
 import importlib.util
 import math
 import os
+import json
 import sys
 import tempfile
 
@@ -949,6 +950,20 @@ for s in (1 / 1024, 1000.0):
 check("CT5K: a mean row's pctExact is the unrounded weighted mean", all(abs(sat_rows[0]["pctExact"][ci] - float((d48["w"][(d48["seg"] == code) & (d48["sat"] != 99)] * d48["sat"][(d48["seg"] == code) & (d48["sat"] != 99)]).sum() / d48["w"][(d48["seg"] == code) & (d48["sat"] != 99)].sum())) < 1e-9 for ci, code in enumerate([1.0, 2.0])))
 h48 = qs48["sat"].get("desc", {}).get("hist") or []
 check("CT5K: histogram bars carry pctExact that rounds to pct and adds to 100", bool(h48) and all(abs(round(b["pctExact"], 1) - b["pct"]) < 1e-9 for b in h48) and abs(sum(b["pctExact"] for b in h48) - 100) < 1e-9, str(h48[:2]))
+
+# D2 (29 October 2026): a codebook's question number, type and multiple-response set columns are kept by header
+# name; a universe column ("aware_b01=1") is a condition, never an answer list; a JSON codebook's separate
+# "labels" list gives the answers of a variable whose entry has none; value_labels gives every variable's answer
+# labels with codes as the engine writes them.
+_cb = psf.codebook_items(b"variable,label,question,question_type,mr_set,universe\nconsider_b08,Consideration BMW,F1,multiple_response,consider,All\nattr_a01_b01,Toyota associated with Reliable,I1,Multiple Response,attr_a01,aware_b01=1\nq9,Rating,Q9,matrix thing,,All\n", "cb.csv")["items"]
+check("D2: codebook question fields kept by header", [(i["variable"], i.get("questionId"), i.get("questionType"), i.get("mrSet")) for i in _cb] == [("consider_b08", "F1", "multiple_response", "consider"), ("attr_a01_b01", "I1", "multiple_response", "attr_a01"), ("q9", "Q9", None, None)], str(_cb))
+check("D2: an unknown question type is kept as written, never mapped", _cb[2].get("questionTypeAsWritten") == "matrix thing")
+check("D2: a universe column is not an answer list", all(i["options"] == [] for i in _cb), str([i["options"] for i in _cb]))
+check("D2: a 'Question' column holding wording is not a question number", all("questionId" not in i for i in psf.codebook_items(b"variable,label,question\nq1,Age,How old are you today?\nq2,Sex,What is your sex?\n", "c.csv")["items"]))
+_js = psf.codebook_items(json.dumps({"variables": [{"variable": "top", "label": "Top of mind", "question": "A1", "question_type": "categorical", "mr_set": ""}], "labels": [["top", "Top of mind", 1, "Toyota"], ["top", "Top of mind", 2, "BMW"]]}).encode(), "m.json")["items"]
+check("D2: JSON side labels and question fields", _js == [{"variable": "top", "label": "Top of mind", "options": [{"code": "1", "label": "Toyota"}, {"code": "2", "label": "BMW"}], "note": None, "section": None, "sheet": None, "questionId": "A1", "questionType": "categorical", "mrSet": None}], str(_js))
+_vl = psf.value_labels(b"id,brand,score\n1,1,5\n2,2,6\n", "v.csv", {"overlay": {"variableLabels": {}, "valueLabels": {"brand": {"1": "Toyota", "2.0": "BMW"}}, "questions": {}}})
+check("D2: value_labels applies the overlay by the engine's rule, codes as written by the engine", _vl == {"valueLabels": {"brand": {"1": "Toyota", "2": "BMW"}}, "cut": []}, str(_vl))
 
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

@@ -5,6 +5,9 @@
 // researcher, never guessed. The contract is claude/tracker-roles.md; the expected roles for the test packs
 // are claude/tracker-packs-role-spec-2026-10-28.md.
 
+import { isZeroToTenScale } from "./descriptiveFindings";
+import { brandFrameFromNames, DESIGN_VARIABLE, nameFamilies, nameWords, numberedBrandsWithoutNames, wordingOf } from "./trackerNameFamilies";
+
 /** One variable as the recogniser reads it: what the data file and a confirmed codebook say about it. */
 export type RoleVariable = {
   name: string;
@@ -23,6 +26,8 @@ export type RoleVariable = {
   numeric: boolean;
   weightLike?: boolean;
   text?: boolean;
+  /** How many different values the file holds (the reader's count); read when there are no answer labels. */
+  distinct?: number;
 };
 
 export type BrandFrame = {
@@ -47,7 +52,7 @@ export type PerBrandMeasure = {
   stageReason: string | null;
 };
 
-export type FunnelStage = "unaided_awareness" | "awareness" | "consideration" | "shortlist" | "first_choice" | "usage" | "acquisition" | "repeat" | "rejection" | "advertising" | "word_of_mouth" | "moment";
+export type FunnelStage = "unaided_awareness" | "awareness" | "consideration" | "shortlist" | "first_choice" | "trial" | "usage" | "frequent_usage" | "acquisition" | "repeat" | "rejection" | "advertising" | "word_of_mouth" | "moment";
 
 /** A brand-by-item grid: one group per item (an attribute, a buying situation), each with a variable per brand. */
 export type BrandGrid = { kind: "associations" | "moments"; items: { group: string; item: string; byBrand: { code: string; variable: string }[] }[] };
@@ -159,7 +164,7 @@ function stemOf(label: string, brand: { label: string }): string {
 const STAGE_WORDS: [FunnelStage, RegExp][] = [
   // Advertising first: "unprompted advertising recall" is about advertising, not brand awareness.
   ["advertising", /\badvert|\bad recall\b|\bads?\b/i],
-  ["word_of_mouth", /\bword of mouth\b|\bheard\b.*\b(said|say)\b/i],
+  ["word_of_mouth", /\bword of mouth\b|\bwom\b|\bheard\b.*\b(said|say)\b/i],
   ["moment", /\bcep links?\b|\bmental (availability|market share|penetration)\b|\bnetwork size\b/i],
   ["unaided_awareness", /\b(spontaneous|unaided|unprompted)\b.*\b(awareness|recall)\b|\b(awareness|recall)\b.*\b(spontaneous|unaided|unprompted)\b/i],
   ["awareness", /\b(prompted|aided)?\s*(awareness|recognition|aware|heard of)\b/i],
@@ -167,10 +172,15 @@ const STAGE_WORDS: [FunnelStage, RegExp][] = [
   ["shortlist", /\bshortlist/i],
   ["first_choice", /\bfirst choice\b|\bpreferred\b|\bmost likely to choose\b/i],
   ["rejection", /\bopinion\b|\bwould never\b|\breject/i],
-  // Repeat before acquisition: "repeat brand acquisition" is a repeat.
-  ["repeat", /\brepeat\b|\bprior same-brand\b|\bagain\b/i],
+  // Ever used before usage: having tried a brand is not using it now (D2, Grant's coffee tracker "ever used").
+  ["trial", /\bever (used|bought|tried|purchased)\b|\btried\b|\btrial\b/i],
+  // Frequent use before usage: "frequent" and "most often" are a stage of their own (the brand health funnel's
+  // "Frequent / repeat usage").
+  ["frequent_usage", /\bfrequent(ly)?\b|\bmost often\b|\bregular(ly)?\b/i],
+  // Repeat before acquisition: "repeat brand acquisition" and "previously acquired same brand" are repeats.
+  ["repeat", /\brepeat\b|\bprior same-brand\b|\bsame brand\b|\bagain\b/i],
   ["acquisition", /\bacquisition\b|\bacquired\b|\bbought\b|\bpurchased?\b|\bstart(ed)?\b/i],
-  ["usage", /\b(own|owner|ownership|use|used|usage|bank with|customer of|current)\b/i],
+  ["usage", /\b(own|owner|ownership|use|used|usage|bank with|customer of|current)\b|\bp3m\b|\bpast (3|three) months?\b/i],
 ];
 
 function stageOf(wording: string): { stage: FunnelStage; reason: string } | null {
@@ -184,7 +194,8 @@ function stageOf(wording: string): { stage: FunnelStage; reason: string } | null
 // ---- Recognition ------------------------------------------------------------------------------------------
 
 export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition {
-  const usable = variables.filter((v) => !v.weightLike && !v.text);
+  // Survey-design variables (module selection, selection probability, response status) are not answers.
+  const usable = variables.filter((v) => !v.weightLike && !v.text && !DESIGN_VARIABLE.test(v.label));
   const frame = findBrandFrame(usable);
   const questions: TrackerRecognition["questions"] = [];
   const measures: PerBrandMeasure[] = [];
@@ -232,7 +243,20 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
       }
     }
     for (const [kind, items] of gridItems) grids.push({ kind: kind as BrandGrid["kind"], items });
+  }
 
+  // A raw file with no answer lists (D2): the brands from the names and labels of the questions asked per brand.
+  let brandFrame = frame;
+  if (!frame) {
+    const named = recogniseFromNames(usable, measures, grids, otherLists);
+    if (named) brandFrame = named;
+    else if (numberedBrandsWithoutNames(usable)) {
+      questions.push({ id: "brand-names", text: "This file numbers its brands in the variable names (for example _b01 to _b10) without naming them. Add its codebook or labels file so the brands can be named." });
+    }
+  }
+
+  if (brandFrame) {
+    const frame = brandFrame;
     // A funnel stage claimed by two questions is the researcher's choice. Advertising, word of mouth and
     // moment measures come in several kinds (unprompted and prompted recall, CEP links and mental
     // availability), each shown on its own, so two of them are not a conflict.
@@ -250,10 +274,90 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   }
 
   const csm = recogniseCsm(usable, questions);
-  const isBrand = !!frame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
+  const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
-  return { type, frame, measures, grids, otherLists, csm, questions };
+  return { type, frame: brandFrame, measures, grids, otherLists, csm, questions };
+}
+
+/**
+ * The brand list and the per-brand questions of a raw file with no answer lists (D2; trackerNameFamilies.ts):
+ * a family of variables named after one brand whose items vary (Association_PlatoCoffee_GoodService, ...,
+ * moment_m1_b1, moment_m2_b1, ...) is that brand's row of a grid of attributes or buying situations, however many
+ * brands were asked; each other family whose names differ only in the brand is a question asked per brand; a
+ * family with no brand among its items or in its name is a list of its own (media, channels, moments).
+ * Fills measures, grids and otherLists; returns the brand list, or null when the names give none.
+ */
+function recogniseFromNames(usable: RoleVariable[], measures: PerBrandMeasure[], grids: BrandGrid[], otherLists: TrackerRecognition["otherLists"]): BrandFrame | null {
+  const nf = brandFrameFromNames(usable, (text) => stageOf(text) !== null);
+  if (!nf) return null;
+  const byName = new Map(usable.map((v) => [v.name, v]));
+  const order = new Map(nf.brands.map((b, i) => [b.code, i]));
+  const brandCodes = new Set(nf.brands.map((b) => b.code));
+  const nonBrandCodes = new Set(nf.nonBrand.map((c) => c.code));
+  const frame: BrandFrame = {
+    brands: nf.brands.map((b) => ({ code: b.code, label: clean(b.label) })),
+    nonBrandCodes: nf.nonBrand.map((c) => ({ code: c.code, label: clean(c.label), reason: `"${clean(c.label)}" is an answer, not a brand` })),
+    questions: [],
+  };
+  const parts = (t: string) => t.split("_");
+  const wordedItem = (v: RoleVariable, brandCode: string, itemCode: string) => {
+    if (!v.label || v.label.trim() === v.name) return nameWords(itemCode);
+    const brandLabel = frame.brands.find((b) => b.code === brandCode)?.label ?? "";
+    return clean(stemOf(v.label, { label: brandLabel }).replace(/^[\s:\-–]+|[\s:\-–]+$/g, "")) || nameWords(itemCode);
+  };
+  // Grids: families named after one brand whose items are attributes or buying situations
+  // (Association_PlatoCoffee_*, moment_*_b1), however many brands were asked about.
+  const gridItems = new Map<string, { kind: BrandGrid["kind"]; items: Map<string, BrandGrid["items"][number]> }>();
+  const inGrid = new Set<string>();
+  for (const f of nameFamilies(usable)) {
+    const tp = parts(f.template);
+    const at = tp.findIndex((p, i) => i !== f.slot && brandCodes.has(p));
+    if (at < 0 || tp.length < 3) continue;
+    const key = tp.map((p, i) => (i === at ? "#" : p)).join("_");
+    const kind: BrandGrid["kind"] = /moment|occasion|situation|\bcep\b|need/i.test(key) ? "moments" : "associations";
+    const grid = gridItems.get(key) ?? { kind, items: new Map() };
+    for (const m of f.members) {
+      if (/^(none|dk|other)$/i.test(m.code)) {
+        inGrid.add(m.variable); // "No attributes associated" belongs to the grid, as an answer, not an item
+        continue;
+      }
+      const v = byName.get(m.variable)!;
+      const item: BrandGrid["items"][number] = grid.items.get(m.code) ?? { group: tp.map((p, i) => (i === at ? "*" : i === f.slot ? m.code : p)).join("_"), item: wordedItem(v, tp[at], m.code), byBrand: [] };
+      if (!item.byBrand.some((b) => b.code === tp[at])) item.byBrand.push({ code: tp[at], variable: m.variable });
+      grid.items.set(m.code, item);
+      inGrid.add(m.variable);
+    }
+    gridItems.set(key, grid);
+  }
+  for (const { kind, items } of gridItems.values()) {
+    const list = [...items.values()].map((it) => ({ ...it, byBrand: it.byBrand.sort((a: { code: string }, b: { code: string }) => order.get(a.code)! - order.get(b.code)!) }));
+    const existing = grids.find((g) => g.kind === kind);
+    if (existing) existing.items.push(...list);
+    else grids.push({ kind, items: list });
+  }
+  // Questions asked once per brand: the brand families that are not grid cells.
+  for (const f of nf.families) {
+    if (f.members.every((m) => inGrid.has(m.variable))) continue;
+    const byBrand = f.members.filter((m) => brandCodes.has(m.code)).map((m) => ({ code: m.code, variable: m.variable })).sort((a, b) => order.get(a.code)! - order.get(b.code)!);
+    const outside = f.members.filter((m) => !brandCodes.has(m.code)).map((m) => m.variable);
+    const first = byName.get(byBrand[0].variable)!;
+    const brand = frame.brands.find((b) => b.code === byBrand[0].code)!;
+    const labelled = !!first.label && first.label.trim() !== first.name;
+    const stem = clean(stemOf(wordingOf(first), { label: labelled ? brand.label : nameWords(byBrand[0].code) }).replace(/[\s:\-–]+$/, ""));
+    const binary = first.questionType === "multiple_response" || isYesNo(first) || (!first.valueLabels && first.distinct !== undefined && first.distinct <= 2);
+    const st = stageOf(stem);
+    measures.push({ group: f.template, label: stem, byBrand, outside, shape: binary ? "binary" : "single", stage: st?.stage ?? null, stageReason: st?.reason ?? null });
+  }
+  // Lists whose items are no brand: a family with its varying part last, no brand in its name or its items.
+  const covered = new Set(nf.families.flatMap((f) => f.members.map((m) => m.variable)));
+  for (const f of nameFamilies(usable)) {
+    if (f.slot !== parts(f.template).length - 1) continue;
+    if (f.members.some((m) => brandCodes.has(m.code) || covered.has(m.variable))) continue;
+    if (parts(f.template).some((p) => brandCodes.has(p) || nonBrandCodes.has(p))) continue;
+    otherLists.push({ group: f.template, label: nameWords(f.template.replace(/_?\*$/, "")), reason: "its options are not the tracked brands" });
+  }
+  return frame;
 }
 
 function isYesNo(v: RoleVariable): boolean {
@@ -261,33 +365,80 @@ function isYesNo(v: RoleVariable): boolean {
   return codes.length > 0 && codes.length <= 2 && codes.every((c) => c === "0" || c === "1");
 }
 
-/** The highest code on a scale variable's answer list among plain numbers below the non-answer codes (98, 99). */
+/**
+ * Whether a variable is the 0 to 10 scale the Net Promoter calculation accepts (isZeroToTenScale, the one rule;
+ * Codex D1-F01). "yes": its answer codes below the non-answer codes (98, 99) pass that rule, or, in a raw file
+ * with no answer labels, its wording states "0 to 10" and it holds no more values than such a scale can.
+ * "partial": its answer list includes 0 and 10 but not every point between, so the scale is not stated in full;
+ * the researcher is asked. "no": anything else (1 to 10, 6 to 10, no 0, a top that is not 10). No endpoint is
+ * inferred that the file does not give.
+ */
+function zeroToTen(v: RoleVariable): "yes" | "partial" | "no" {
+  if (v.valueLabels) {
+    const codes = Object.keys(v.valueLabels).map(Number).filter((n) => Number.isFinite(n) && n < 90);
+    if (isZeroToTenScale(codes)) return "yes";
+    return codes.includes(0) && codes.includes(10) && codes.every((n) => Number.isInteger(n) && n >= 0 && n <= 10) ? "partial" : "no";
+  }
+  return /\b0\s*(?:to|-|–)\s*10\b/i.test(wordingOf(v)) && v.distinct !== undefined && v.distinct <= 13 ? "yes" : "no";
+}
+
+/** The top of a rating scale: the highest plain code on its answer list below the non-answer codes (98, 99), or
+ * for a raw file without answer labels the range its wording states ("0 to 10", "0to10", "(1-5)"). */
 function scaleTop(v: RoleVariable): number | null {
   const codes = Object.keys(v.valueLabels ?? {}).map(Number).filter((n) => Number.isInteger(n) && n < 90);
-  return codes.length ? Math.max(...codes) : null;
+  if (codes.length) return Math.max(...codes);
+  const stated = /\b(?:0|1)\s*(?:to|-|–)\s*(\d{1,2})\b/i.exec(wordingOf(v));
+  if (stated) return Number(stated[1]);
+  // A name that ends in its scale's size ("company_csat5", "continue5").
+  const suffix = /[a-z](3|4|5|7|10|11)$/i.exec(v.name);
+  return suffix ? Number(suffix[1]) : null;
 }
 
 /**
  * CSM roles from wording and answer lists: overall satisfaction (a rating of the company with a satisfied end),
  * likelihood to recommend on 0 to 10, likely to stay, likely to switch, and the driver battery (performance
- * ratings sharing one question). Two candidates for one role is a question for the researcher.
+ * ratings sharing one question). Two candidates for one role is a question for the researcher, except that
+ * among several overall satisfaction ratings the one about the company (or provider, bank, brand) is the
+ * relationship measure the others (call centre, agent, IVR) are parts of. A raw file without answer labels
+ * (D2) is read from its wording, its names' words when it has no labels, and the scale its wording states.
  */
 function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["questions"]): CsmRoles {
-  // Ratings only: a scale question or an answer list of three or more answers. A yes/no flag that mentions
-  // switching ("Makes switching simple") is an attribute, not a likelihood to switch.
+  // Ratings only: a scale question or an answer list of three or more answers; without answer labels, a number
+  // with three to eleven values. A yes/no flag that mentions switching ("Makes switching simple") is an
+  // attribute, not a likelihood to switch.
   const rated = variables.filter(
-    (v) => v.numeric && v.questionType !== "multiple_response" && !isYesNo(v) && (v.questionType === "scale" || Object.keys(v.valueLabels ?? {}).filter((c) => Number(c) < 90).length >= 3),
+    (v) =>
+      v.numeric &&
+      v.questionType !== "multiple_response" &&
+      !isYesNo(v) &&
+      (v.questionType === "scale" || Object.keys(v.valueLabels ?? {}).filter((c) => Number(c) < 90).length >= 3 || (!v.valueLabels && v.distinct !== undefined && v.distinct >= 3 && v.distinct <= 11)),
   );
-  const pick = (id: string, role: string, test: (v: RoleVariable) => boolean): string | null => {
-    const found = rated.filter(test);
-    if (found.length > 1) questions.push({ id: `csm:${id}`, text: `Which question is ${role}: ${found.map((v) => `${v.name} ("${v.label}")`).join(" or ")}?` });
+  const words = (v: RoleVariable) => wordingOf(v);
+  const pick = (id: string, role: string, test: (v: RoleVariable) => boolean, prefer?: (v: RoleVariable) => boolean): string | null => {
+    let found = rated.filter(test);
+    if (found.length > 1 && prefer && found.filter(prefer).length === 1) found = found.filter(prefer);
+    if (found.length > 1) questions.push({ id: `csm:${id}`, text: `Which question is ${role}: ${found.map((v) => `${v.name} ("${words(v)}")`).join(" or ")}?` });
     return found.length === 1 ? found[0].name : null;
   };
   const labels = (v: RoleVariable) => Object.values(v.valueLabels ?? {}).join(" ").toLowerCase();
-  const overallSatisfaction = pick("satisfaction", "overall satisfaction", (v) => /\bsatisf/i.test(v.label) && /\boverall\b|\bcompany\b|\bprovider\b|\bbank\b/i.test(v.label) && !/\bchannel\b|\bhandling\b|\bivr\b/i.test(v.label) && /satisf/.test(labels(v)));
-  const recommend0to10 = pick("recommend", "likelihood to recommend (0 to 10)", (v) => /\brecommend/i.test(v.label) && scaleTop(v) === 10);
-  const likelyToStay = pick("stay", "likely to stay", (v) => /\b(continue|stay|remain)\b/i.test(v.label) && !/\bswitch\b/i.test(v.label));
-  const likelyToSwitch = pick("switch", "likely to switch", (v) => /\bswitch/i.test(v.label) && !/\bprice\b/i.test(v.label));
+  const overallSatisfaction = pick(
+    "satisfaction",
+    "overall satisfaction",
+    (v) => /\bsatisf|\bcsat/i.test(words(v)) && /\boverall\b|\bcompany\b|\bprovider\b|\bbank\b/i.test(words(v)) && !/\bchannel\b|\bhandling\b|\bivr\b/i.test(words(v)) && (!v.valueLabels || /satisf/.test(labels(v))),
+    (v) => /\bcompany\b|\bprovider\b|\bbank\b|\bbrand\b/i.test(words(v)),
+  );
+  // The net promoter question is asked as a likelihood ("How likely ... recommend"); "recommend to a friend" in a
+  // word-of-mouth battery is one of its items. Only a stated 0 to 10 scale qualifies (zeroToTen, D1-F01); a
+  // recommend question whose list labels only some points is asked about, never assumed.
+  // Not only the ratings: a list labelling only its two ends has too few answers to count as a rating.
+  const recommends = variables.filter((v) => v.numeric && v.questionType !== "multiple_response" && !isYesNo(v) && /\brecommend/i.test(words(v)));
+  for (const v of recommends.filter((x) => zeroToTen(x) === "partial")) {
+    questions.push({ id: `csm:recommend-scale:${v.name}`, text: `Is ${v.name} ("${words(v)}") a 0 to 10 scale? Its answer list labels only ${Object.keys(v.valueLabels ?? {}).join(", ")}.` });
+  }
+  const recommend0to10 = pick("recommend", "likelihood to recommend (0 to 10)", (v) => /\brecommend/i.test(words(v)) && zeroToTen(v) === "yes", (v) => /\blikel\w*\b.*\brecommend|\bhow likely\b/i.test(words(v)));
+  const likelyToStay = pick("stay", "likely to stay", (v) => /\b(continue|stay|remain)\b/i.test(words(v)) && !/\bswitch\b/i.test(words(v)));
+  const likelyToSwitch = pick("switch", "likely to switch", (v) => /\bswitch/i.test(words(v)) && !/\bprice\b/i.test(words(v)));
+  const roles = new Set([overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch].filter(Boolean));
   // Drivers: a battery of performance ratings: one question, three or more items, one answer list running
   // from poor to excellent (a rating of how well something is done). Importance and agreement batteries have
   // other answer lists and are not drivers.
@@ -297,8 +448,21 @@ function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["
     if (v.questionId && /\bpoor\b/.test(l) && /\bexcellent\b/.test(l) && !/\bimportan/.test(l)) byQuestion.set(v.questionId, [...(byQuestion.get(v.questionId) ?? []), v]);
   }
   const sameList = (g: RoleVariable[]) => new Set(g.map((v) => JSON.stringify(v.valueLabels ?? {}))).size === 1;
-  const batteries = [...byQuestion.values()].filter((g) => g.length >= 3 && sameList(g)).sort((a, b) => b.length - a.length);
-  if (batteries.length > 1 && batteries[0].length === batteries[1].length) questions.push({ id: "csm:drivers", text: `Which ratings are the drivers: ${batteries.map((g) => g[0].questionId).join(" or ")}?` });
+  let batteries = [...byQuestion.values()].filter((g) => g.length >= 3 && sameList(g)).sort((a, b) => b.length - a.length);
+  let batteryName = (g: RoleVariable[]) => g[0].questionId ?? g[0].name;
+  // Without answer labels: ratings on one stated scale whose names differ in one part (AgentEmpathy_*_0to10).
+  if (batteries.length === 0) {
+    const ratedByName = new Map(rated.filter((v) => !v.valueLabels && !roles.has(v.name)).map((v) => [v.name, v]));
+    const fams = nameFamilies([...ratedByName.values()]).filter((f) => {
+      const vs = f.members.map((m) => ratedByName.get(m.variable)!);
+      // One scale: the same stated top, or none stated for any of them.
+      return !/\bimportan/i.test(f.template) && new Set(vs.map((v) => scaleTop(v))).size === 1;
+    });
+    batteries = fams.map((f) => f.members.map((m) => ratedByName.get(m.variable)!)).sort((a, b) => b.length - a.length);
+    const famName = new Map(fams.map((f) => [f.members[0].variable, nameWords(f.template.replace(/_?\*_?/g, " ").replace(/\b\d+ ?to ?\d+\b/gi, "").trim())]));
+    batteryName = (g) => famName.get(g[0].name) ?? g[0].name;
+  }
+  if (batteries.length > 1 && batteries[0].length === batteries[1].length) questions.push({ id: "csm:drivers", text: `Which ratings are the drivers: ${batteries.map((g) => `${batteryName(g)} (${g.length})`).join(", ")}?` });
   const drivers = batteries.length === 1 || (batteries.length > 1 && batteries[0].length > batteries[1].length) ? batteries[0].map((v) => v.name) : [];
   return { overallSatisfaction, recommend0to10, likelyToStay, likelyToSwitch, drivers };
 }

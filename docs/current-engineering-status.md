@@ -1,6 +1,19 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (batches 66, 67, 68, 53 and D1 on top of 16253c5b, the batch 54 to 65 stack Codex reviewed on 28 October): 66 smoke-helper wait (Codex's action-receipt finding), 67 new landing page, 68 indicator repairs NEW10K-F01 to F03, 53 grid questions and Confirm all (migration 0130), D1 tracker role recognition (not yet wired to a screen); implemented, ready for independent review. Open from 28 October: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (batch D2a on top of c5837288, which Codex verified on 29 October: NEW10K-F01 to F03 closed, 66, 67 and 53 pass, D1-F01 found): D2a repairs D1-F01 (a recommend scale is 0 to 10 only by the NPS rule), reads tracker roles from raw files with no codebook, keeps a codebook's question number, type and set (migration 0131), and stores dashboard choices per programme (migration 0132); not yet wired to a screen; implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+
+## Claude: batch D2a, main copy (2026-10-29)
+
+Implemented, ready for review, one commit on top of `c5837288`. Handover `claude/batchD2a-handover-2026-10-29.md`:
+D1-F01 (recommend role only for a stated 0 to 10 scale, by `isZeroToTenScale`, the rule `computeNps` uses; partly
+labelled lists asked about); tracker roles from raw files (brand list from names and labels, grids, CSM from names
+and stated scales; Grant's coffee workbooks, CSM baseline, banking CSM CSV, BMW as SPSS and as CSV); codebook
+question fields stored (migration 0131) and condition columns never an answer list; engine action `value_labels`;
+dashboard choices per programme with compare-and-swap, carried by identity, weighted by default, Reset to
+suggested (migration 0132). Gates on `7c4d6bcc`: tsc and eslint clean; self-test passed; library 2,358 passed,
+91 skipped, 0 failed; browser 140 passed, 1 skipped; smoke 1 passed. Also recorded: Grant's decisions of 29 October
+(`claude/decisions-2026-10-29.md`), the D6 indicator designs, the security backlog. Migrations 0131 and 0132 to apply
+after a backup.
 
 ## Claude: batches 66, 67, 68, 53 and D1, main copy (2026-10-29)
 
