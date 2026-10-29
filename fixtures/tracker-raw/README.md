@@ -10,3 +10,6 @@ values only; no respondent data. Grant (29 October 2026): "it will 90% be standa
 - bmw_car_spss_labels_only.json: the BMW pack's wave 1 (first 60 rows) written as SPSS with its variable and
   answer labels and nothing else (no question numbers, types or multiple-response sets).
 - bmw_car_csv_no_labels.json: the same wave as the plain CSV: brands only as _b01 to _b10.
+- bmw_car_workbook_wave1.json: the BMW pack's wave 1 workbook as delivered (Car_Brand_Tracker_Wave_1.xlsx: Respondents,
+  Codebook, Labels, MR sets and Read me sheets; its Labels sheet is headed "variable, label, value, value_label").
+- banking_csm_relationship_workbook.json: the banking CSM pack's Relationship wave 1 workbook as delivered, same layout.

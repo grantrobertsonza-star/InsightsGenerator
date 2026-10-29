@@ -495,7 +495,10 @@ NUMERIC_AS_CATEGORIES_MAX = 25
 # 14: Excel cells are read without merging logical TRUE/FALSE with 1/0 in a column holding both
 #     (_excel_sheet_grid, CAL-R1-F03); cached Excel dictionaries are rebuilt (minimumDictionaryVersion
 #     14 for .xlsx/.xls; CSV/TSV reading did not change and their version-13 copies stay valid).
-DICTIONARY_VERSION = 14
+# 15: a workbook's label sheet headed with underscores ("value_label") is read by its value-label column, not
+#     its variable-label column (_classify_header); cached Excel dictionaries are rebuilt (minimum 15 for
+#     .xlsx/.xls; other formats did not change).
+DICTIONARY_VERSION = 15
 ENGINE_VERSION = "2026.10.28-2"  # unrounded figures saved as countExact/pctExact/seExact; derived figures computed from them
 # The version of the rules that decide a table's figures and flags, recorded in every table's notes as
 # methodVersion. A table recorded with a different version (or none: built before this was recorded) was
@@ -598,6 +601,10 @@ def _classify_header(cells):
     for i, c in enumerate(cells):
         if not c:
             continue
+        # "value_label" and "variable-name" are the same headers as "value label" and "variable name" (Grant's
+        # tracker workbooks head their Labels sheet "variable, label, value, value_label"; with the underscore
+        # the value-label column was not found and every code took the variable's label).
+        c = re.sub(r"[_\-]+", " ", str(c)).strip()
         if pos["var"] is None and _VAR_COL_RE.match(c):
             pos["var"] = i
         elif pos["value"] is None and _VALUE_COL_RE.match(c):

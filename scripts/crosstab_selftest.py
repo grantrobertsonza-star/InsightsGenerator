@@ -965,5 +965,13 @@ check("D2: JSON side labels and question fields", _js == [{"variable": "top", "l
 _vl = psf.value_labels(b"id,brand,score\n1,1,5\n2,2,6\n", "v.csv", {"overlay": {"variableLabels": {}, "valueLabels": {"brand": {"1": "Toyota", "2.0": "BMW"}}, "questions": {}}})
 check("D2: value_labels applies the overlay by the engine's rule, codes as written by the engine", _vl == {"valueLabels": {"brand": {"1": "Toyota", "2": "BMW"}}, "cut": []}, str(_vl))
 
+# A workbook's Labels sheet headed with underscores ("variable, label, value, value_label", Grant's tracker packs):
+# each code takes its value label, not the variable's label (before: every brand code read "First choice brand").
+_lab = pd.DataFrame({"variable": ["brand", "brand", "brand"], "label": ["First choice brand"] * 3, "value": [1, 2, 3], "value_label": ["Toyota", "BMW", "Haval"]})
+_cbk = pd.DataFrame({"variable": ["brand"], "label": ["First choice brand"]})
+_bw = _wb({"Respondents": (pd.DataFrame({"brand": [1, 2, 3, 2]}), 0, True), "Codebook": (_cbk, 0, True), "Labels": (_lab, 0, True)})
+check("label sheet headed value_label: codes take their value labels", [c["label"] for c in psf.categories(_bw, "w5.xlsx", "brand")["categories"]] == ["Toyota", "BMW", "Haval"], str(psf.categories(_bw, "w5.xlsx", "brand")["categories"]))
+check("label sheet headed value_label: the variable keeps its own label", {v["name"]: v["label"] for v in psf.dictionary(_bw, "w5.xlsx")["variables"]}["brand"] == "First choice brand")
+
 print("\n%d failed" % len(fails) if fails else "\nAll checks passed")
 sys.exit(1 if fails else 0)

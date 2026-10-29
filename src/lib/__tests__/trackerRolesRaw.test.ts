@@ -112,3 +112,31 @@ describe("CSM from raw files", () => {
     expect(r.questions).toEqual([]);
   });
 });
+
+// The packs' own workbooks as delivered (29 October 2026): before the reader read a Labels sheet headed "value_label",
+// every answer code took its variable's label, so the BMW workbook gave no brand list and the CSM workbook a list
+// of "brands" all called "Services work accurately and reliably" and the wrong drivers.
+describe("the packs' workbooks with their own Codebook and Labels sheets", () => {
+  it("BMW wave 1: the ten brands by code, Other and None set aside, every funnel stage, 12 moments and 10 attributes", () => {
+    const r = recogniseTracker(raw("bmw_car_workbook_wave1"));
+    expect(r.type).toBe("brand");
+    expect(r.frame?.brands.map((b) => `${b.code}:${b.label}`)).toEqual(["1:Toyota", "2:Volkswagen", "3:Ford", "4:Hyundai", "5:Kia", "6:Nissan", "7:Suzuki", "8:BMW", "9:Mercedes-Benz", "10:Haval"]);
+    expect(r.frame?.nonBrandCodes.map((c) => c.code)).toEqual(["96", "98"]);
+    const s = stages(r);
+    expect([s.aware, s.consider, s.shortlist, s.firstchoice, s.owner, s.bought12]).toEqual(["awareness", "consideration", "shortlist", "first_choice", "usage", "acquisition"]);
+    expect(r.grids.find((g) => g.kind === "moments")?.items).toHaveLength(12);
+    expect(r.grids.find((g) => g.kind === "associations")?.items).toHaveLength(10);
+  });
+  it("banking CSM relationship: every role, the six labelled poor-to-excellent drivers (no question numbers), not the importance battery or contact counts", () => {
+    const r = recogniseTracker(raw("banking_csm_relationship_workbook"));
+    expect(r.type).toBe("csm");
+    expect(r.frame).toBeNull();
+    expect(r.csm).toEqual({
+      overallSatisfaction: "company_csat5",
+      recommend0to10: "recommend_0to10",
+      likelyToStay: "continue5",
+      likelyToSwitch: "switch_0to10",
+      drivers: ["company_driver_d01", "company_driver_d02", "company_driver_d03", "company_driver_d04", "company_driver_d05", "company_driver_d06"],
+    });
+  });
+});

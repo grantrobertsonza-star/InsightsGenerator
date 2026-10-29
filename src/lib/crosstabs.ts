@@ -231,13 +231,14 @@ export async function loadImportedVariableDictionary(tenantId: string, runId: st
  * as written, dates as ISO dates, and repeated names allocated by one rule, so every older cache of
  * such a file, in either layout, may name or type variables differently and is rebuilt. Versions 12 and
  * 13 changed which decimal spellings stay text; version 14 reads Excel logical cells apart from 1 and 0
- * (CAL-R1-F03), so an Excel file needs 14 and a CSV/TSV file 13.
+ * (CAL-R1-F03), so an Excel file needs 14 and a CSV/TSV file 13. Version 15 reads a label sheet headed
+ * "value_label" by that column (it used to give every code the variable's label), so an Excel file needs 15.
  * Rebuilding only replaces documents.variable_dictionary: the
  * researcher's own corrections live in documents.variable_overrides and are applied on top, so a
  * rebuild cannot lose them.
  */
 export function minimumDictionaryVersion(layout: DataSetup["layout"], sourceFilename = ""): number {
-  if (/\.(?:xlsx|xls)$/i.test(sourceFilename)) return 14;
+  if (/\.(?:xlsx|xls)$/i.test(sourceFilename)) return 15;
   if (/\.(?:csv|tsv|txt)$/i.test(sourceFilename)) return 13;
   if (/\.(?:sav|zsav)$/i.test(sourceFilename)) return 9;
   return layout === "columns_are_cases" ? 10 : 7;

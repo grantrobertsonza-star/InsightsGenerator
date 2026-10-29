@@ -175,7 +175,7 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("exact numbers in every spelli
     // The dictionary is rebuilt at the current version (DICTIONARY_VERSION) with four distinct values.
     expect(await numericFlag(doc, "big")).toBe(false);
     expect(await categories(doc, "big")).toEqual(counts);
-    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("14");
+    expect((await q("select variable_dictionary->>'version' as v from documents where id = $1", [doc]))[0].v).toBe("15");
     // Reading the file again while it is unreadable fails and keeps the earlier table, still withheld.
     const { extractAndStoreDocumentTables } = await import("../documentTables");
     const original = (await q("select storage_path from documents where id = $1", [doc]))[0].storage_path;

@@ -449,11 +449,14 @@ function recogniseCsm(variables: RoleVariable[], questions: TrackerRecognition["
   const byQuestion = new Map<string, RoleVariable[]>();
   for (const v of rated) {
     const l = labels(v);
-    if (v.questionId && /\bpoor\b/.test(l) && /\bexcellent\b/.test(l) && !/\bimportan/.test(l)) byQuestion.set(v.questionId, [...(byQuestion.get(v.questionId) ?? []), v]);
+    // One question: its codebook question ID, else its set, else its name less the last part (company_driver_d01
+    // is "company_driver"): a raw workbook with its own labels gives no question IDs.
+    const q = v.questionId ?? v.group ?? v.name.replace(/_[^_]+$/, "");
+    if (/\bpoor\b/.test(l) && /\bexcellent\b/.test(l) && !/\bimportan/.test(l)) byQuestion.set(q, [...(byQuestion.get(q) ?? []), v]);
   }
   const sameList = (g: RoleVariable[]) => new Set(g.map((v) => JSON.stringify(v.valueLabels ?? {}))).size === 1;
   let batteries = [...byQuestion.values()].filter((g) => g.length >= 3 && sameList(g)).sort((a, b) => b.length - a.length);
-  let batteryName = (g: RoleVariable[]) => g[0].questionId ?? g[0].name;
+  let batteryName = (g: RoleVariable[]) => g[0].questionId ?? g[0].group ?? g[0].name.replace(/_[^_]+$/, "");
   // Without answer labels: ratings on one stated scale whose names differ in one part (AgentEmpathy_*_0to10).
   if (batteries.length === 0) {
     const ratedByName = new Map(rated.filter((v) => !v.valueLabels && !roles.has(v.name)).map((v) => [v.name, v]));
