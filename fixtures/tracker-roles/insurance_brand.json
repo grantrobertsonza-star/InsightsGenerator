@@ -1,0 +1,7030 @@
+[
+{
+"name": "respondent_id",
+"label": "Unique synthetic respondent ID",
+"questionId": "SYS",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "wave",
+"label": "Wave",
+"questionId": "SYS",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "February 2026",
+"2": "June 2026",
+"3": "October 2026"
+}
+},
+{
+"name": "fieldwork_date",
+"label": "Interview date",
+"questionId": "SYS",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "synthetic",
+"label": "Synthetic record flag",
+"questionId": "SYS",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Synthetic demonstration"
+}
+},
+{
+"name": "weight",
+"label": "Relative synthetic analysis weight",
+"questionId": "SYS",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": true,
+"text": false
+},
+{
+"name": "age",
+"label": "Age in years",
+"questionId": "S1",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "age_band",
+"label": "Age group",
+"questionId": "S1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "18–24",
+"2": "25–34",
+"3": "35–49",
+"4": "50–69"
+}
+},
+{
+"name": "choice_role",
+"label": "Category choice responsibility",
+"questionId": "S2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Sole",
+"2": "Shared"
+}
+},
+{
+"name": "last_acquired",
+"label": "Most recent new or replacement policy start",
+"questionId": "S3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Past 12 months",
+"2": "13–36 months",
+"3": "37–60 months",
+"4": "More than 60 months",
+"5": "Never"
+}
+},
+{
+"name": "next_acquire",
+"label": "Expected next category start",
+"questionId": "S4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Within 12 months",
+"2": "13–36 months",
+"3": "Later",
+"4": "No plans or do not know"
+}
+},
+{
+"name": "gender",
+"label": "Gender",
+"questionId": "D1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Man",
+"2": "Woman",
+"3": "Another identity",
+"4": "Prefer not to say"
+}
+},
+{
+"name": "province",
+"label": "Province",
+"questionId": "D2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Gauteng",
+"2": "KwaZulu-Natal",
+"3": "Western Cape",
+"4": "Eastern Cape",
+"5": "Limpopo",
+"6": "Mpumalanga",
+"7": "North West",
+"8": "Free State",
+"9": "Northern Cape"
+}
+},
+{
+"name": "settlement",
+"label": "Settlement",
+"questionId": "D3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Metro or city",
+"2": "Town",
+"3": "Rural area"
+}
+},
+{
+"name": "income",
+"label": "Monthly household income before tax",
+"questionId": "D4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Below R15,000",
+"2": "R15,000–R29,999",
+"3": "R30,000–R49,999",
+"4": "R50,000–R79,999",
+"5": "R80,000 or more",
+"99": "Prefer not to say"
+}
+},
+{
+"name": "life_stage",
+"label": "Household life stage",
+"questionId": "D5",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Single without children",
+"2": "Couple without children",
+"3": "Dependent children",
+"4": "Other arrangement"
+}
+},
+{
+"name": "decision_style",
+"label": "Category decision style",
+"questionId": "C1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Preferred brand first",
+"2": "Brief comparison",
+"3": "Extensive comparison"
+}
+},
+{
+"name": "topmind",
+"label": "First spontaneously recalled brand",
+"questionId": "A1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Santam",
+"2": "Hollard",
+"3": "MiWay",
+"4": "Budget Insurance",
+"5": "Auto & General",
+"6": "Dialdirect",
+"7": "Discovery Insure",
+"8": "OUTsurance",
+"9": "Naked",
+"10": "King Price",
+"96": "Other",
+"98": "None"
+}
+},
+{
+"name": "awareness_verbatim",
+"label": "Awareness verbatim",
+"questionId": "A1/A2",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "cep_order",
+"label": "Cep order",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "brand_order",
+"label": "Brand order",
+"questionId": "A3",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "attribute_order",
+"label": "Attribute order",
+"questionId": "I1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "advertising_verbatim",
+"label": "Advertising verbatim",
+"questionId": "AD1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "cep_verbatim_c01",
+"label": "Brands recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c01",
+"label": "Insuring a newly purchased vehicle",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c01",
+"label": "Other brand recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c02",
+"label": "Brands recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c02",
+"label": "Protecting a home after moving",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c02",
+"label": "Other brand recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c03",
+"label": "Brands recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c03",
+"label": "Reducing premiums at renewal",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c03",
+"label": "Other brand recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c04",
+"label": "Brands recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c04",
+"label": "Replacing an insurer after a poor claims experience",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c04",
+"label": "Other brand recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c05",
+"label": "Brands recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c05",
+"label": "Finding cover that fits a fixed budget",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c05",
+"label": "Other brand recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c06",
+"label": "Brands recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c06",
+"label": "Understanding exactly what is covered",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c06",
+"label": "Other brand recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c07",
+"label": "Brands recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c07",
+"label": "Protecting valuable belongings",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c07",
+"label": "Other brand recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c08",
+"label": "Brands recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c08",
+"label": "Getting help quickly after an accident",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c08",
+"label": "Other brand recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c09",
+"label": "Brands recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c09",
+"label": "Protecting a growing household",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c09",
+"label": "Other brand recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c10",
+"label": "Brands recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c10",
+"label": "Choosing insurance online without paperwork",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c10",
+"label": "Other brand recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c11",
+"label": "Brands recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c11",
+"label": "Making sure a claim will be paid fairly",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c11",
+"label": "Other brand recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_verbatim_c12",
+"label": "Brands recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "relevant_c12",
+"label": "Combining motor and home cover",
+"questionId": "M2",
+"questionType": "multiple_response",
+"group": "category_situations",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_other_c12",
+"label": "Other brand recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "relevant_none",
+"label": "No relevant situation",
+"questionId": "M2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b01",
+"label": "Spontaneous awareness Santam",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b02",
+"label": "Spontaneous awareness Hollard",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b03",
+"label": "Spontaneous awareness MiWay",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b04",
+"label": "Spontaneous awareness Budget Insurance",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b05",
+"label": "Spontaneous awareness Auto & General",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b06",
+"label": "Spontaneous awareness Dialdirect",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b07",
+"label": "Spontaneous awareness Discovery Insure",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b08",
+"label": "Spontaneous awareness OUTsurance",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b09",
+"label": "Spontaneous awareness Naked",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "unaided_b10",
+"label": "Spontaneous awareness King Price",
+"questionId": "A1/A2",
+"questionType": "multiple_response",
+"group": "unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b01",
+"label": "Prompted resolved recognition Santam",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b02",
+"label": "Prompted resolved recognition Hollard",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b03",
+"label": "Prompted resolved recognition MiWay",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b04",
+"label": "Prompted resolved recognition Budget Insurance",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b05",
+"label": "Prompted resolved recognition Auto & General",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b06",
+"label": "Prompted resolved recognition Dialdirect",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b07",
+"label": "Prompted resolved recognition Discovery Insure",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b08",
+"label": "Prompted resolved recognition OUTsurance",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b09",
+"label": "Prompted resolved recognition Naked",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_b10",
+"label": "Prompted resolved recognition King Price",
+"questionId": "A3",
+"questionType": "multiple_response",
+"group": "aware",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b01",
+"label": "Consideration Santam",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b02",
+"label": "Consideration Hollard",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b03",
+"label": "Consideration MiWay",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b04",
+"label": "Consideration Budget Insurance",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b05",
+"label": "Consideration Auto & General",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b06",
+"label": "Consideration Dialdirect",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b07",
+"label": "Consideration Discovery Insure",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b08",
+"label": "Consideration OUTsurance",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b09",
+"label": "Consideration Naked",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_b10",
+"label": "Consideration King Price",
+"questionId": "F1",
+"questionType": "multiple_response",
+"group": "consider",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b01",
+"label": "Serious shortlist Santam",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b02",
+"label": "Serious shortlist Hollard",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b03",
+"label": "Serious shortlist MiWay",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b04",
+"label": "Serious shortlist Budget Insurance",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b05",
+"label": "Serious shortlist Auto & General",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b06",
+"label": "Serious shortlist Dialdirect",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b07",
+"label": "Serious shortlist Discovery Insure",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b08",
+"label": "Serious shortlist OUTsurance",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b09",
+"label": "Serious shortlist Naked",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_b10",
+"label": "Serious shortlist King Price",
+"questionId": "F2",
+"questionType": "multiple_response",
+"group": "shortlist",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b01",
+"label": "First choice Santam",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b02",
+"label": "First choice Hollard",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b03",
+"label": "First choice MiWay",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b04",
+"label": "First choice Budget Insurance",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b05",
+"label": "First choice Auto & General",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b06",
+"label": "First choice Dialdirect",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b07",
+"label": "First choice Discovery Insure",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b08",
+"label": "First choice OUTsurance",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b09",
+"label": "First choice Naked",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "firstchoice_b10",
+"label": "First choice King Price",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b01",
+"label": "Current category relationship Santam",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b02",
+"label": "Current category relationship Hollard",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b03",
+"label": "Current category relationship MiWay",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b04",
+"label": "Current category relationship Budget Insurance",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b05",
+"label": "Current category relationship Auto & General",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b06",
+"label": "Current category relationship Dialdirect",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b07",
+"label": "Current category relationship Discovery Insure",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b08",
+"label": "Current category relationship OUTsurance",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b09",
+"label": "Current category relationship Naked",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_b10",
+"label": "Current category relationship King Price",
+"questionId": "O1",
+"questionType": "multiple_response",
+"group": "current",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b01",
+"label": "Past 12 months category start Santam",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b02",
+"label": "Past 12 months category start Hollard",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b03",
+"label": "Past 12 months category start MiWay",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b04",
+"label": "Past 12 months category start Budget Insurance",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b05",
+"label": "Past 12 months category start Auto & General",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b06",
+"label": "Past 12 months category start Dialdirect",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b07",
+"label": "Past 12 months category start Discovery Insure",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b08",
+"label": "Past 12 months category start OUTsurance",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b09",
+"label": "Past 12 months category start Naked",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_b10",
+"label": "Past 12 months category start King Price",
+"questionId": "O3",
+"questionType": "multiple_response",
+"group": "started12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b01",
+"label": "Recent start with prior same-brand relationship Santam",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b02",
+"label": "Recent start with prior same-brand relationship Hollard",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b03",
+"label": "Recent start with prior same-brand relationship MiWay",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b04",
+"label": "Recent start with prior same-brand relationship Budget Insurance",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b05",
+"label": "Recent start with prior same-brand relationship Auto & General",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b06",
+"label": "Recent start with prior same-brand relationship Dialdirect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b07",
+"label": "Recent start with prior same-brand relationship Discovery Insure",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b08",
+"label": "Recent start with prior same-brand relationship OUTsurance",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b09",
+"label": "Recent start with prior same-brand relationship Naked",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "repeat_event_b10",
+"label": "Recent start with prior same-brand relationship King Price",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b01",
+"label": "Unprompted advertising recall after exposure Santam",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b02",
+"label": "Unprompted advertising recall after exposure Hollard",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b03",
+"label": "Unprompted advertising recall after exposure MiWay",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b04",
+"label": "Unprompted advertising recall after exposure Budget Insurance",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b05",
+"label": "Unprompted advertising recall after exposure Auto & General",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b06",
+"label": "Unprompted advertising recall after exposure Dialdirect",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b07",
+"label": "Unprompted advertising recall after exposure Discovery Insure",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b08",
+"label": "Unprompted advertising recall after exposure OUTsurance",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b09",
+"label": "Unprompted advertising recall after exposure Naked",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "ad_unaided_b10",
+"label": "Unprompted advertising recall after exposure King Price",
+"questionId": "AD1",
+"questionType": "multiple_response",
+"group": "ad_unaided",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b01",
+"label": "Prompted advertising recall Yes all sample Santam",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b02",
+"label": "Prompted advertising recall Yes all sample Hollard",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b03",
+"label": "Prompted advertising recall Yes all sample MiWay",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b04",
+"label": "Prompted advertising recall Yes all sample Budget Insurance",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b05",
+"label": "Prompted advertising recall Yes all sample Auto & General",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b06",
+"label": "Prompted advertising recall Yes all sample Dialdirect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b07",
+"label": "Prompted advertising recall Yes all sample Discovery Insure",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b08",
+"label": "Prompted advertising recall Yes all sample OUTsurance",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b09",
+"label": "Prompted advertising recall Yes all sample Naked",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "adrecall_b10",
+"label": "Prompted advertising recall Yes all sample King Price",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "aware_none",
+"label": "No tracked or other selection for aware",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "consider_none",
+"label": "No tracked or other selection for consider",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "shortlist_none",
+"label": "No tracked or other selection for shortlist",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_none",
+"label": "No tracked or other selection for current",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_none",
+"label": "No tracked or other selection for started12",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "current_other",
+"label": "Other brand current",
+"questionId": "O1/O3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "started12_other",
+"label": "Other brand started12",
+"questionId": "O1/O3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "first_choice",
+"label": "First choice brand",
+"questionId": "F3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Santam",
+"2": "Hollard",
+"3": "MiWay",
+"4": "Budget Insurance",
+"5": "Auto & General",
+"6": "Dialdirect",
+"7": "Discovery Insure",
+"8": "OUTsurance",
+"9": "Naked",
+"10": "King Price",
+"98": "No first choice yet"
+}
+},
+{
+"name": "main_brand",
+"label": "Main category provider",
+"questionId": "O2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Santam",
+"2": "Hollard",
+"3": "MiWay",
+"4": "Budget Insurance",
+"5": "Auto & General",
+"6": "Dialdirect",
+"7": "Discovery Insure",
+"8": "OUTsurance",
+"9": "Naked",
+"10": "King Price",
+"96": "Other"
+}
+},
+{
+"name": "start_channel",
+"label": "Most recent start channel",
+"questionId": "O5",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Insurer website",
+"2": "Insurer mobile app",
+"3": "Insurer call centre",
+"4": "Independent broker or adviser",
+"5": "Bank or affinity partner",
+"6": "Vehicle dealer or property intermediary",
+"7": "Other"
+}
+},
+{
+"name": "start_type",
+"label": "Type of most recent category start",
+"questionId": "O6",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "First eligible personal policy",
+"2": "Additional cover while retaining existing cover",
+"3": "Switch or replacement of an existing insurer"
+}
+},
+{
+"name": "journey_j01",
+"label": "Insurer website or app",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j02",
+"label": "Comparison or quote website",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j03",
+"label": "Broker or adviser",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j04",
+"label": "Comparing policy exclusions",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j05",
+"label": "Claims reviews",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j06",
+"label": "Friends or family",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "journey_j07",
+"label": "Comparing premiums and excesses",
+"questionId": "O7",
+"questionType": "multiple_response",
+"group": "purchase_journey",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b01",
+"label": "Brand opinion Santam",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b01",
+"label": "Previously used same brand Santam",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b01",
+"label": "Prompted advertising recall Santam",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b01",
+"label": "Word of mouth Santam",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b01",
+"label": "Santam recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b01",
+"label": "Santam recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b01",
+"label": "Santam recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b01",
+"label": "Santam recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b01",
+"label": "Santam recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b01",
+"label": "Santam recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b01",
+"label": "Santam recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b01",
+"label": "Santam recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b01",
+"label": "Santam recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b01",
+"label": "Santam recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b01",
+"label": "Santam recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b01",
+"label": "Santam recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b01",
+"label": "Number of CEP links Santam",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b01",
+"label": "At least one CEP link Santam",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b01",
+"label": "Santam associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b01",
+"label": "Santam associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b01",
+"label": "Santam associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b01",
+"label": "Santam associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b01",
+"label": "Santam associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b01",
+"label": "Santam associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b01",
+"label": "Santam associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b01",
+"label": "Santam associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b01",
+"label": "Santam associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b01",
+"label": "Santam associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b02",
+"label": "Brand opinion Hollard",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b02",
+"label": "Previously used same brand Hollard",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b02",
+"label": "Prompted advertising recall Hollard",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b02",
+"label": "Word of mouth Hollard",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b02",
+"label": "Hollard recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b02",
+"label": "Hollard recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b02",
+"label": "Hollard recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b02",
+"label": "Hollard recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b02",
+"label": "Hollard recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b02",
+"label": "Hollard recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b02",
+"label": "Hollard recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b02",
+"label": "Hollard recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b02",
+"label": "Hollard recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b02",
+"label": "Hollard recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b02",
+"label": "Hollard recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b02",
+"label": "Hollard recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b02",
+"label": "Number of CEP links Hollard",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b02",
+"label": "At least one CEP link Hollard",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b02",
+"label": "Hollard associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b02",
+"label": "Hollard associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b02",
+"label": "Hollard associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b02",
+"label": "Hollard associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b02",
+"label": "Hollard associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b02",
+"label": "Hollard associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b02",
+"label": "Hollard associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b02",
+"label": "Hollard associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b02",
+"label": "Hollard associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b02",
+"label": "Hollard associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b03",
+"label": "Brand opinion MiWay",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b03",
+"label": "Previously used same brand MiWay",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b03",
+"label": "Prompted advertising recall MiWay",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b03",
+"label": "Word of mouth MiWay",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b03",
+"label": "MiWay recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b03",
+"label": "MiWay recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b03",
+"label": "MiWay recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b03",
+"label": "MiWay recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b03",
+"label": "MiWay recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b03",
+"label": "MiWay recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b03",
+"label": "MiWay recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b03",
+"label": "MiWay recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b03",
+"label": "MiWay recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b03",
+"label": "MiWay recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b03",
+"label": "MiWay recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b03",
+"label": "MiWay recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b03",
+"label": "Number of CEP links MiWay",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b03",
+"label": "At least one CEP link MiWay",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b03",
+"label": "MiWay associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b03",
+"label": "MiWay associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b03",
+"label": "MiWay associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b03",
+"label": "MiWay associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b03",
+"label": "MiWay associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b03",
+"label": "MiWay associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b03",
+"label": "MiWay associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b03",
+"label": "MiWay associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b03",
+"label": "MiWay associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b03",
+"label": "MiWay associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b04",
+"label": "Brand opinion Budget Insurance",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b04",
+"label": "Previously used same brand Budget Insurance",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b04",
+"label": "Prompted advertising recall Budget Insurance",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b04",
+"label": "Word of mouth Budget Insurance",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b04",
+"label": "Budget Insurance recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b04",
+"label": "Budget Insurance recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b04",
+"label": "Budget Insurance recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b04",
+"label": "Budget Insurance recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b04",
+"label": "Budget Insurance recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b04",
+"label": "Budget Insurance recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b04",
+"label": "Budget Insurance recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b04",
+"label": "Budget Insurance recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b04",
+"label": "Budget Insurance recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b04",
+"label": "Budget Insurance recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b04",
+"label": "Budget Insurance recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b04",
+"label": "Budget Insurance recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b04",
+"label": "Number of CEP links Budget Insurance",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b04",
+"label": "At least one CEP link Budget Insurance",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b04",
+"label": "Budget Insurance associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b04",
+"label": "Budget Insurance associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b04",
+"label": "Budget Insurance associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b04",
+"label": "Budget Insurance associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b04",
+"label": "Budget Insurance associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b04",
+"label": "Budget Insurance associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b04",
+"label": "Budget Insurance associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b04",
+"label": "Budget Insurance associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b04",
+"label": "Budget Insurance associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b04",
+"label": "Budget Insurance associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b05",
+"label": "Brand opinion Auto & General",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b05",
+"label": "Previously used same brand Auto & General",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b05",
+"label": "Prompted advertising recall Auto & General",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b05",
+"label": "Word of mouth Auto & General",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b05",
+"label": "Auto & General recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b05",
+"label": "Auto & General recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b05",
+"label": "Auto & General recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b05",
+"label": "Auto & General recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b05",
+"label": "Auto & General recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b05",
+"label": "Auto & General recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b05",
+"label": "Auto & General recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b05",
+"label": "Auto & General recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b05",
+"label": "Auto & General recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b05",
+"label": "Auto & General recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b05",
+"label": "Auto & General recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b05",
+"label": "Auto & General recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b05",
+"label": "Number of CEP links Auto & General",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b05",
+"label": "At least one CEP link Auto & General",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b05",
+"label": "Auto & General associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b05",
+"label": "Auto & General associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b05",
+"label": "Auto & General associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b05",
+"label": "Auto & General associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b05",
+"label": "Auto & General associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b05",
+"label": "Auto & General associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b05",
+"label": "Auto & General associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b05",
+"label": "Auto & General associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b05",
+"label": "Auto & General associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b05",
+"label": "Auto & General associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b06",
+"label": "Brand opinion Dialdirect",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b06",
+"label": "Previously used same brand Dialdirect",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b06",
+"label": "Prompted advertising recall Dialdirect",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b06",
+"label": "Word of mouth Dialdirect",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b06",
+"label": "Dialdirect recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b06",
+"label": "Dialdirect recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b06",
+"label": "Dialdirect recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b06",
+"label": "Dialdirect recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b06",
+"label": "Dialdirect recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b06",
+"label": "Dialdirect recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b06",
+"label": "Dialdirect recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b06",
+"label": "Dialdirect recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b06",
+"label": "Dialdirect recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b06",
+"label": "Dialdirect recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b06",
+"label": "Dialdirect recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b06",
+"label": "Dialdirect recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b06",
+"label": "Number of CEP links Dialdirect",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b06",
+"label": "At least one CEP link Dialdirect",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b06",
+"label": "Dialdirect associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b06",
+"label": "Dialdirect associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b06",
+"label": "Dialdirect associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b06",
+"label": "Dialdirect associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b06",
+"label": "Dialdirect associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b06",
+"label": "Dialdirect associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b06",
+"label": "Dialdirect associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b06",
+"label": "Dialdirect associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b06",
+"label": "Dialdirect associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b06",
+"label": "Dialdirect associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b07",
+"label": "Brand opinion Discovery Insure",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b07",
+"label": "Previously used same brand Discovery Insure",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b07",
+"label": "Prompted advertising recall Discovery Insure",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b07",
+"label": "Word of mouth Discovery Insure",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b07",
+"label": "Discovery Insure recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b07",
+"label": "Discovery Insure recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b07",
+"label": "Discovery Insure recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b07",
+"label": "Discovery Insure recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b07",
+"label": "Discovery Insure recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b07",
+"label": "Discovery Insure recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b07",
+"label": "Discovery Insure recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b07",
+"label": "Discovery Insure recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b07",
+"label": "Discovery Insure recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b07",
+"label": "Discovery Insure recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b07",
+"label": "Discovery Insure recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b07",
+"label": "Discovery Insure recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b07",
+"label": "Number of CEP links Discovery Insure",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b07",
+"label": "At least one CEP link Discovery Insure",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b07",
+"label": "Discovery Insure associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b07",
+"label": "Discovery Insure associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b07",
+"label": "Discovery Insure associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b07",
+"label": "Discovery Insure associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b07",
+"label": "Discovery Insure associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b07",
+"label": "Discovery Insure associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b07",
+"label": "Discovery Insure associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b07",
+"label": "Discovery Insure associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b07",
+"label": "Discovery Insure associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b07",
+"label": "Discovery Insure associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b08",
+"label": "Brand opinion OUTsurance",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b08",
+"label": "Previously used same brand OUTsurance",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b08",
+"label": "Prompted advertising recall OUTsurance",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b08",
+"label": "Word of mouth OUTsurance",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b08",
+"label": "OUTsurance recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b08",
+"label": "OUTsurance recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b08",
+"label": "OUTsurance recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b08",
+"label": "OUTsurance recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b08",
+"label": "OUTsurance recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b08",
+"label": "OUTsurance recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b08",
+"label": "OUTsurance recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b08",
+"label": "OUTsurance recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b08",
+"label": "OUTsurance recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b08",
+"label": "OUTsurance recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b08",
+"label": "OUTsurance recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b08",
+"label": "OUTsurance recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b08",
+"label": "Number of CEP links OUTsurance",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b08",
+"label": "At least one CEP link OUTsurance",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b08",
+"label": "OUTsurance associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b08",
+"label": "OUTsurance associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b08",
+"label": "OUTsurance associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b08",
+"label": "OUTsurance associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b08",
+"label": "OUTsurance associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b08",
+"label": "OUTsurance associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b08",
+"label": "OUTsurance associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b08",
+"label": "OUTsurance associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b08",
+"label": "OUTsurance associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b08",
+"label": "OUTsurance associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b09",
+"label": "Brand opinion Naked",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b09",
+"label": "Previously used same brand Naked",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b09",
+"label": "Prompted advertising recall Naked",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b09",
+"label": "Word of mouth Naked",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b09",
+"label": "Naked recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b09",
+"label": "Naked recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b09",
+"label": "Naked recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b09",
+"label": "Naked recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b09",
+"label": "Naked recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b09",
+"label": "Naked recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b09",
+"label": "Naked recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b09",
+"label": "Naked recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b09",
+"label": "Naked recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b09",
+"label": "Naked recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b09",
+"label": "Naked recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b09",
+"label": "Naked recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b09",
+"label": "Number of CEP links Naked",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b09",
+"label": "At least one CEP link Naked",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b09",
+"label": "Naked associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b09",
+"label": "Naked associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b09",
+"label": "Naked associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b09",
+"label": "Naked associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b09",
+"label": "Naked associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b09",
+"label": "Naked associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b09",
+"label": "Naked associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b09",
+"label": "Naked associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b09",
+"label": "Naked associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b09",
+"label": "Naked associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "opinion_b10",
+"label": "Brand opinion King Price",
+"questionId": "R1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Would never choose",
+"2": "Would not usually choose",
+"3": "Might choose",
+"4": "Seriously consider",
+"5": "First choice",
+"9": "Know name no opinion"
+}
+},
+{
+"name": "repeat_b10",
+"label": "Previously used same brand King Price",
+"questionId": "O4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "adprompt_b10",
+"label": "Prompted advertising recall King Price",
+"questionId": "AD2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes",
+"9": "Not sure"
+}
+},
+{
+"name": "wom_b10",
+"label": "Word of mouth King Price",
+"questionId": "W1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Mainly positive",
+"2": "Mainly negative",
+"3": "Mixed",
+"4": "Neutral",
+"5": "Not heard"
+}
+},
+{
+"name": "cep_c01_b10",
+"label": "King Price recalled for Insuring a newly purchased vehicle",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c02_b10",
+"label": "King Price recalled for Protecting a home after moving",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c03_b10",
+"label": "King Price recalled for Reducing premiums at renewal",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c04_b10",
+"label": "King Price recalled for Replacing an insurer after a poor claims experience",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c05_b10",
+"label": "King Price recalled for Finding cover that fits a fixed budget",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c06_b10",
+"label": "King Price recalled for Understanding exactly what is covered",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c07_b10",
+"label": "King Price recalled for Protecting valuable belongings",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c08_b10",
+"label": "King Price recalled for Getting help quickly after an accident",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c09_b10",
+"label": "King Price recalled for Protecting a growing household",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c10_b10",
+"label": "King Price recalled for Choosing insurance online without paperwork",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c11_b10",
+"label": "King Price recalled for Making sure a claim will be paid fairly",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c11",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_c12_b10",
+"label": "King Price recalled for Combining motor and home cover",
+"questionId": "M1",
+"questionType": "multiple_response",
+"group": "cep_c12",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "cep_links_b10",
+"label": "Number of CEP links King Price",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "mental_b10",
+"label": "At least one CEP link King Price",
+"questionId": "Derived",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a01_b10",
+"label": "King Price associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a01",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a02_b10",
+"label": "King Price associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a02",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a03_b10",
+"label": "King Price associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a03",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a04_b10",
+"label": "King Price associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a04",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a05_b10",
+"label": "King Price associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a05",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a06_b10",
+"label": "King Price associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a06",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a07_b10",
+"label": "King Price associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a07",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a08_b10",
+"label": "King Price associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a08",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a09_b10",
+"label": "King Price associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a09",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_a10_b10",
+"label": "King Price associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "multiple_response",
+"group": "attr_a10",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a01",
+"label": "No brand associated with Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a01",
+"label": "Do not know for Pays valid claims fairly",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a02",
+"label": "No brand associated with Offers good value premiums",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a02",
+"label": "Do not know for Offers good value premiums",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a03",
+"label": "No brand associated with Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a03",
+"label": "Do not know for Explains cover and exclusions clearly",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a04",
+"label": "No brand associated with Provides helpful service",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a04",
+"label": "Do not know for Provides helpful service",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a05",
+"label": "No brand associated with Makes claims easy",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a05",
+"label": "Do not know for Makes claims easy",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a06",
+"label": "No brand associated with Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a06",
+"label": "Do not know for Provides reliable emergency assistance",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a07",
+"label": "No brand associated with Offers flexible cover",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a07",
+"label": "Do not know for Offers flexible cover",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a08",
+"label": "No brand associated with Has an easy digital experience",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a08",
+"label": "Do not know for Has an easy digital experience",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a09",
+"label": "No brand associated with Is trustworthy",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a09",
+"label": "Do not know for Is trustworthy",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_none_a10",
+"label": "No brand associated with Treats customers fairly",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "attr_dk_a10",
+"label": "Do not know for Treats customers fairly",
+"questionId": "I1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m01",
+"label": "YouTube",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m02",
+"label": "Facebook",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m03",
+"label": "Instagram",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m04",
+"label": "TikTok",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m05",
+"label": "X",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m06",
+"label": "LinkedIn",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m07",
+"label": "Broadcast television or DStv",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m08",
+"label": "Radio",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m09",
+"label": "Video streaming",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m10",
+"label": "Audio streaming or podcasts",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m11",
+"label": "Online news or category websites",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_m12",
+"label": "AI chatbots",
+"questionId": "P1",
+"questionType": "multiple_response",
+"group": "media",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "media_none",
+"label": "No listed media used",
+"questionId": "P1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "nps_main",
+"label": "Recommendation likelihood of main brand",
+"questionId": "I2",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "0",
+"1": "1",
+"2": "2",
+"3": "3",
+"4": "4",
+"5": "5",
+"6": "6",
+"7": "7",
+"8": "8",
+"9": "9",
+"10": "10",
+"99": "Do not know"
+}
+},
+{
+"name": "n_aware",
+"label": "Recognised brand repertoire",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "n_consider",
+"label": "Considered brand repertoire",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "n_started12",
+"label": "Acquired brand repertoire",
+"questionId": "Derived",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "category_active",
+"label": "Current in-scope category relationship",
+"questionId": "S5",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "product_p01",
+"label": "Motor",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "product_p02",
+"label": "Home buildings",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "product_p03",
+"label": "Home contents",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "product_p04",
+"label": "Portable possessions or all risk",
+"questionId": "X1",
+"questionType": "multiple_response",
+"group": "current_products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "Not selected",
+"1": "Selected"
+}
+},
+{
+"name": "experience_event",
+"label": "Main-provider experience event in past 12 months",
+"questionId": "X2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "experience_resolution",
+"label": "Resolution of most recent experience event",
+"questionId": "X3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Fully",
+"2": "Partly",
+"3": "Not resolved",
+"9": "In progress"
+}
+}
+]

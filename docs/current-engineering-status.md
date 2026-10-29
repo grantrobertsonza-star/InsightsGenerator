@@ -1,6 +1,21 @@
 # Current engineering status
 
-Updated: 2026-10-26. State: **READY_FOR_CODEX** (batches 31 and 32 on top of batch30 d744997): batch31 overview tiles, module roll-up and worker freshness; batch32 change tiers, rules registry and CI gates (no application code); implemented, ready for independent review; no migration. **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (batches 66, 67, 68, 53 and D1 on top of 16253c5b, the batch 54 to 65 stack Codex reviewed on 28 October): 66 smoke-helper wait (Codex's action-receipt finding), 67 new landing page, 68 indicator repairs NEW10K-F01 to F03, 53 grid questions and Confirm all (migration 0130), D1 tracker role recognition (not yet wired to a screen); implemented, ready for independent review. Open from 28 October: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+
+## Claude: batches 66, 67, 68, 53 and D1, main copy (2026-10-29)
+
+Implemented, ready for review, applied as separate commits on top of `16253c5b`. Handovers in `claude/`:
+`batch66-handover-2026-10-29.md` (the smoke helper waits for the clicked action's request to finish; control
+check with a held rejection and an answered decoy), `batch67-handover-2026-10-29.md` (Grant's landing page;
+Explore the platform enters the app), `batch68-handover-2026-10-29.md` (impossible months refused by engine and
+server with one calendar rule, chart never moves a period; fully confidential countries selectable; published
+indicator files read as Read), `batch53-handover-2026-10-29.md` (grid rows linked by their stem from column
+labels and confirmed codebook wording, migration 0130; Confirm all N for one question; links in file order),
+`d1-handover-2026-10-29.md` (tracker role recognition tested on four brand packs and a CSM pack). Migration
+0130 must be applied after 0126 to 0129; before it, no grid link is made. Gates on the final tree: tsc, eslint, engine self-test clean; library 2,315 passed, 0 failed; browser 140 passed, 1 skipped; smoke 1 passed.
+
+Batches 33 to 65 (26 to 28 October) are recorded in their handovers in `claude/` and in Codex's reviews in
+`docs/`; this file was not updated for them at the time.
 
 ## Claude: batch32 (change tiers, rules registry, CI gates), main copy (2026-10-26)
 

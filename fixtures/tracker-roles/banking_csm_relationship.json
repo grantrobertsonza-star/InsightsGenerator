@@ -1,0 +1,891 @@
+[
+{
+"name": "respondent_id",
+"label": "Anonymous customer ID",
+"questionId": "SYS",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "interview_date",
+"label": "Interview date",
+"questionId": "SYS",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "wave",
+"label": "Wave",
+"questionId": "SYS",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "February 2026",
+"2": "June 2026",
+"3": "October 2026"
+}
+},
+{
+"name": "company",
+"label": "Main company",
+"questionId": "S2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "FNB",
+"2": "Standard Bank",
+"3": "Absa",
+"4": "Nedbank",
+"5": "Capitec",
+"6": "Discovery Bank",
+"7": "GoTyme Bank (formerly TymeBank)"
+}
+},
+{
+"name": "weight",
+"label": "Synthetic customer weight",
+"questionId": "SYS",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": true,
+"text": false
+},
+{
+"name": "age",
+"label": "Age",
+"questionId": "S1",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "age_band",
+"label": "Age group",
+"questionId": "S1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "18–24",
+"2": "25–34",
+"3": "35–49",
+"4": "50–69"
+}
+},
+{
+"name": "gender",
+"label": "Gender",
+"questionId": "D1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Man",
+"2": "Woman",
+"3": "Another identity",
+"4": "Prefer not to say"
+}
+},
+{
+"name": "province",
+"label": "Province",
+"questionId": "D2",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Gauteng",
+"2": "KwaZulu-Natal",
+"3": "Western Cape",
+"4": "Eastern Cape",
+"5": "Limpopo",
+"6": "Mpumalanga",
+"7": "North West",
+"8": "Free State",
+"9": "Northern Cape"
+}
+},
+{
+"name": "income",
+"label": "Monthly household income",
+"questionId": "D3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Below R15,000",
+"2": "R15,000–R29,999",
+"3": "R30,000–R49,999",
+"4": "R50,000–R79,999",
+"5": "R80,000 or more",
+"99": "Prefer not to say"
+}
+},
+{
+"name": "settlement",
+"label": "Settlement",
+"questionId": "D4",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Metro or city",
+"2": "Town",
+"3": "Rural area"
+}
+},
+{
+"name": "segment",
+"label": "Synthetic demonstration segment",
+"questionId": "SYS",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Segment 1",
+"2": "Segment 2",
+"3": "Segment 3"
+}
+},
+{
+"name": "tenure_months",
+"label": "Relationship tenure",
+"questionId": "S2",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "company_csat5",
+"label": "Overall company satisfaction",
+"questionId": "R1",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very dissatisfied",
+"2": "Dissatisfied",
+"3": "Neither satisfied nor dissatisfied",
+"4": "Satisfied",
+"5": "Very satisfied",
+"99": "Do not know"
+}
+},
+{
+"name": "company_expectations5",
+"label": "Company versus expectations",
+"questionId": "R2",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Much worse",
+"2": "Worse",
+"3": "As expected",
+"4": "Better",
+"5": "Much better",
+"99": "Do not know"
+}
+},
+{
+"name": "fairness5",
+"label": "Treats customers fairly",
+"questionId": "R5",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Strongly disagree",
+"2": "Disagree",
+"3": "Neither agree nor disagree",
+"4": "Agree",
+"5": "Strongly agree",
+"99": "Do not know"
+}
+},
+{
+"name": "trust5",
+"label": "Trustworthy",
+"questionId": "R5",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Strongly disagree",
+"2": "Disagree",
+"3": "Neither agree nor disagree",
+"4": "Agree",
+"5": "Strongly agree",
+"99": "Do not know"
+}
+},
+{
+"name": "recommend_0to10",
+"label": "Likelihood to recommend",
+"questionId": "L1",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "0",
+"1": "1",
+"2": "2",
+"3": "3",
+"4": "4",
+"5": "5",
+"6": "6",
+"7": "7",
+"8": "8",
+"9": "9",
+"10": "10",
+"99": "Do not know"
+}
+},
+{
+"name": "continue5",
+"label": "Intend to continue as main provider",
+"questionId": "L2",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Definitely not",
+"2": "Probably not",
+"3": "Might or might not",
+"4": "Probably yes",
+"5": "Definitely yes",
+"99": "Do not know"
+}
+},
+{
+"name": "switch_0to10",
+"label": "Likelihood of switching main provider",
+"questionId": "L3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "0",
+"1": "1",
+"2": "2",
+"3": "3",
+"4": "4",
+"5": "5",
+"6": "6",
+"7": "7",
+"8": "8",
+"9": "9",
+"10": "10",
+"99": "Do not know"
+}
+},
+{
+"name": "price_switch5",
+"label": "Would switch for better price",
+"questionId": "L4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Strongly disagree",
+"2": "Disagree",
+"3": "Neither agree nor disagree",
+"4": "Agree",
+"5": "Strongly agree",
+"99": "Do not know"
+}
+},
+{
+"name": "grow_business5",
+"label": "Intend to use more services",
+"questionId": "L4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Strongly disagree",
+"2": "Disagree",
+"3": "Neither agree nor disagree",
+"4": "Agree",
+"5": "Strongly agree",
+"99": "Do not know"
+}
+},
+{
+"name": "complaint3m",
+"label": "Complaint in past 3 months",
+"questionId": "C1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "company_driver_d01",
+"label": "Services work accurately and reliably",
+"questionId": "R3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very poor",
+"2": "Poor",
+"3": "Adequate",
+"4": "Good",
+"5": "Excellent",
+"98": "Not applicable",
+"99": "Do not know"
+}
+},
+{
+"name": "importance_d01",
+"label": "Importance of Services work accurately and reliably",
+"questionId": "R4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Not important",
+"2": "Slightly important",
+"3": "Moderately important",
+"4": "Very important",
+"5": "Extremely important",
+"99": "Do not know"
+}
+},
+{
+"name": "company_driver_d02",
+"label": "Help is provided promptly",
+"questionId": "R3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very poor",
+"2": "Poor",
+"3": "Adequate",
+"4": "Good",
+"5": "Excellent",
+"98": "Not applicable",
+"99": "Do not know"
+}
+},
+{
+"name": "importance_d02",
+"label": "Importance of Help is provided promptly",
+"questionId": "R4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Not important",
+"2": "Slightly important",
+"3": "Moderately important",
+"4": "Very important",
+"5": "Extremely important",
+"99": "Do not know"
+}
+},
+{
+"name": "company_driver_d03",
+"label": "I feel confident about security",
+"questionId": "R3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very poor",
+"2": "Poor",
+"3": "Adequate",
+"4": "Good",
+"5": "Excellent",
+"98": "Not applicable",
+"99": "Do not know"
+}
+},
+{
+"name": "importance_d03",
+"label": "Importance of I feel confident about security",
+"questionId": "R4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Not important",
+"2": "Slightly important",
+"3": "Moderately important",
+"4": "Very important",
+"5": "Extremely important",
+"99": "Do not know"
+}
+},
+{
+"name": "company_driver_d04",
+"label": "The bank understands my needs",
+"questionId": "R3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very poor",
+"2": "Poor",
+"3": "Adequate",
+"4": "Good",
+"5": "Excellent",
+"98": "Not applicable",
+"99": "Do not know"
+}
+},
+{
+"name": "importance_d04",
+"label": "Importance of The bank understands my needs",
+"questionId": "R4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Not important",
+"2": "Slightly important",
+"3": "Moderately important",
+"4": "Very important",
+"5": "Extremely important",
+"99": "Do not know"
+}
+},
+{
+"name": "company_driver_d05",
+"label": "Banking channels are easy to access",
+"questionId": "R3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very poor",
+"2": "Poor",
+"3": "Adequate",
+"4": "Good",
+"5": "Excellent",
+"98": "Not applicable",
+"99": "Do not know"
+}
+},
+{
+"name": "importance_d05",
+"label": "Importance of Banking channels are easy to access",
+"questionId": "R4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Not important",
+"2": "Slightly important",
+"3": "Moderately important",
+"4": "Very important",
+"5": "Extremely important",
+"99": "Do not know"
+}
+},
+{
+"name": "company_driver_d06",
+"label": "Fees represent good value",
+"questionId": "R3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very poor",
+"2": "Poor",
+"3": "Adequate",
+"4": "Good",
+"5": "Excellent",
+"98": "Not applicable",
+"99": "Do not know"
+}
+},
+{
+"name": "importance_d06",
+"label": "Importance of Fees represent good value",
+"questionId": "R4",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Not important",
+"2": "Slightly important",
+"3": "Moderately important",
+"4": "Very important",
+"5": "Extremely important",
+"99": "Do not know"
+}
+},
+{
+"name": "company_reason_text",
+"label": "Reason for company rating",
+"questionId": "L5",
+"questionType": "text",
+"group": null,
+"numeric": false,
+"weightLike": false,
+"text": true
+},
+{
+"name": "product_p01",
+"label": "Transactional account",
+"questionId": "S3",
+"questionType": "multiple_response",
+"group": "products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "product_p02",
+"label": "Savings or investment account",
+"questionId": "S3",
+"questionType": "multiple_response",
+"group": "products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "product_p03",
+"label": "Credit card",
+"questionId": "S3",
+"questionType": "multiple_response",
+"group": "products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "product_p04",
+"label": "Loan or credit facility",
+"questionId": "S3",
+"questionType": "multiple_response",
+"group": "products",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_reason_r01",
+"label": "Fees or charges",
+"questionId": "C2",
+"questionType": "multiple_response",
+"group": "complaint_reasons",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_reason_r02",
+"label": "Payment or access failure",
+"questionId": "C2",
+"questionType": "multiple_response",
+"group": "complaint_reasons",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_reason_r03",
+"label": "Fraud or security concern",
+"questionId": "C2",
+"questionType": "multiple_response",
+"group": "complaint_reasons",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_reason_r04",
+"label": "Poor service",
+"questionId": "C2",
+"questionType": "multiple_response",
+"group": "complaint_reasons",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_reason_r05",
+"label": "Unclear information",
+"questionId": "C2",
+"questionType": "multiple_response",
+"group": "complaint_reasons",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_reason_r06",
+"label": "Other",
+"questionId": "C2",
+"questionType": "multiple_response",
+"group": "complaint_reasons",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "complaint_resolution",
+"label": "Complaint resolution",
+"questionId": "C3",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Fully",
+"2": "Partly",
+"3": "Unresolved",
+"9": "In progress"
+}
+},
+{
+"name": "complaint_handling_csat5",
+"label": "Complaint handling satisfaction",
+"questionId": "C3",
+"questionType": "scale",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"1": "Very dissatisfied",
+"2": "Dissatisfied",
+"3": "Neither satisfied nor dissatisfied",
+"4": "Satisfied",
+"5": "Very satisfied",
+"99": "Do not know"
+}
+},
+{
+"name": "channel_used_c01",
+"label": "Call centre",
+"questionId": "CH1",
+"questionType": "multiple_response",
+"group": "channel_use",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "channel_contacts_c01",
+"label": "Recalled interactions Call centre",
+"questionId": "CH2",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "channel_used_c02",
+"label": "Branch",
+"questionId": "CH1",
+"questionType": "multiple_response",
+"group": "channel_use",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "channel_contacts_c02",
+"label": "Recalled interactions Branch",
+"questionId": "CH2",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "channel_used_c03",
+"label": "Digital self service",
+"questionId": "CH1",
+"questionType": "multiple_response",
+"group": "channel_use",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "channel_contacts_c03",
+"label": "Recalled interactions Digital self service",
+"questionId": "CH2",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "channel_used_c04",
+"label": "Messaging or live chat",
+"questionId": "CH1",
+"questionType": "multiple_response",
+"group": "channel_use",
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+},
+{
+"name": "channel_contacts_c04",
+"label": "Recalled interactions Messaging or live chat",
+"questionId": "CH2",
+"questionType": "continuous",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false
+},
+{
+"name": "channel_none",
+"label": "No channel used in past 30 days",
+"questionId": "CH1",
+"questionType": "categorical",
+"group": null,
+"numeric": true,
+"weightLike": false,
+"text": false,
+"valueLabels": {
+"0": "No",
+"1": "Yes"
+}
+}
+]
