@@ -1,7 +1,7 @@
 // Page 02 of the brand tracking dashboard, "Moments & needs" (Grant's design, 29 October 2026), real browser on the
 // disposable stack. BMW wave 1 as SPSS with labels only (fixtures/tracker-packs/bmw_car):
 //   1. The dashboard opens on Brand overview (page 01 stays the default); Moments & needs is clickable in the menu,
-//      the pages not yet built are greyed "Coming next" and are not buttons.
+//      and since batch M4 every page of the menu is a button.
 //   2. Moments & needs: the same chips row; "Category moments" lists the twelve moments, highest first, each equal
 //      to the independent reference (src/lib/__tests__/helpers/moment_reference.py, weighted) to one decimal.
 //   3. "Moment x brand recall": six rows, the six most relevant moments by the reference; one column per compared
@@ -69,9 +69,8 @@ test("tracker dashboard page 02: category moments and moment by brand recall equ
     await expect(dash.getByTestId("tracker-compare")).toBeVisible({ timeout: 3 * 60_000 });
     const menu = dash.getByRole("navigation", { name: "Brand tracking sections" });
     await expect(menu.getByRole("button", { name: /Brand overview/ })).toHaveAttribute("aria-current", "page");
-    // Page 03 (Brand associations) is built too (batch M3); the first page still to come is Advertising & WOM.
-    await expect(menu.getByRole("button", { name: /Advertising & WOM/ })).toHaveCount(0);
-    await expect(menu.getByText("Advertising & WOM")).toHaveAttribute("title", "Coming next");
+    // Every page is built since batch M4: all six are buttons.
+    await expect(menu.getByRole("button")).toHaveCount(6);
 
     // 2. Moments & needs.
     await menu.getByRole("button", { name: /Moments & needs/ }).click();

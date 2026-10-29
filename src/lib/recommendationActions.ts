@@ -16,6 +16,10 @@ import {
 } from "./recommendationWrites";
 
 
+// SEC1: each status change and delete below names tenant_id, so another organisation's
+// recommendation matches no row and is left unchanged (the same no-op as a recommendation that no
+// longer exists), whether or not row-level security applies to the connection.
+
 /**
  * Unlike decision and objective candidates, recommendations have no single
  * "the accepted one" slot on the run: an insight set plausibly supports
@@ -27,9 +31,10 @@ import {
 export async function acceptRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2", [
+    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
       runId,
+      TENANT_ID,
     ]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -38,9 +43,10 @@ export async function acceptRecommendation(runId: string, recommendationId: stri
 export async function rejectRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("update recommendations set status = 'rejected' where id = $1 and run_id = $2", [
+    await client.query("update recommendations set status = 'rejected' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
       runId,
+      TENANT_ID,
     ]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -54,9 +60,10 @@ export async function rejectRecommendation(runId: string, recommendationId: stri
 export async function restoreRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2", [
+    await client.query("update recommendations set status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3", [
       recommendationId,
       runId,
+      TENANT_ID,
     ]);
   });
   revalidatePath(`/runs/${runId}`);
@@ -121,7 +128,7 @@ export async function addOwnRecommendation(
 export async function deleteRecommendation(runId: string, recommendationId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
-    await client.query("delete from recommendations where id = $1 and run_id = $2", [recommendationId, runId]);
+    await client.query("delete from recommendations where id = $1 and run_id = $2 and tenant_id = $3", [recommendationId, runId, TENANT_ID]);
   });
   revalidatePath(`/runs/${runId}`);
 }
@@ -147,7 +154,7 @@ export async function regenerateRecommendations(
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'recommendation_agent_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'recommendation_agent_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});
@@ -197,7 +204,7 @@ export async function regenerateSynthesizedRecommendations(
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'synthesized_recommendation_agent_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'synthesized_recommendation_agent_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});

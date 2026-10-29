@@ -23,6 +23,9 @@ import { requireTenantId } from "./requestContext";
 // - Clearing: a blank theme or note clears it (stored as null). A kind, once set, cannot be
 //   cleared here; the Findings page offers only the kinds. Null is not accepted for any of them.
 // A database failure still throws; the Findings page shows it beside the control (F02).
+// SEC1: every write names tenant_id as well as run_id, so another organisation's finding or project
+// matches no row and is refused with the same "no longer in this project" reply as a missing one,
+// whether or not row-level security applies to the connection.
 
 export type FindingEditResult = { ok: true } | { ok: false; error: string };
 
@@ -44,8 +47,8 @@ export async function setFindingStatus(runId: string, findingId: string, status:
   if (!isId(runId) || !isId(findingId)) return { ok: false, error: GONE };
   const saved = await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
-      "update findings set status = $1 where id = $2 and run_id = $3 returning id",
-      [status, findingId, runId],
+      "update findings set status = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id",
+      [status, findingId, runId, TENANT_ID],
     );
     if (r.rowCount === 0) return false;
     await recordHumanReview(client, r.rows.map((row) => row.id), reviewActionForStatus(status, false));
@@ -85,8 +88,8 @@ export async function setManyFindingStatuses(
   try {
     await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ id: string }>(
-        "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) returning id",
-        [status, runId, ids],
+        "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) and tenant_id = $4 returning id",
+        [status, runId, ids, TENANT_ID],
       );
       // Thrown inside the transaction so the rows already updated roll back.
       if ((r.rowCount ?? 0) < ids.length) throw new MissingFindings(ids.length - (r.rowCount ?? 0), ids.length);
@@ -116,8 +119,8 @@ async function editField(TENANT_ID: string, runId: string, findingId: string, co
   if (!isId(runId) || !isId(findingId)) return { ok: false, error: GONE };
   const saved = await withTenant(TENANT_ID, async (client) => {
     const r = await client.query<{ id: string }>(
-      `update findings set ${column} = $1 where id = $2 and run_id = $3 returning id`,
-      [value, findingId, runId],
+      `update findings set ${column} = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id`,
+      [value, findingId, runId, TENANT_ID],
     );
     if (r.rowCount === 0) return false;
     await recordHumanEdit(client, r.rows.map((row) => row.id), column);

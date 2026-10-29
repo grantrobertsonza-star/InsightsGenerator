@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { withTenant } from "./db";
+import { runOwned } from "./runOwnership";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { assertImportFileSupported } from "./importLimits";
 import { queueDocumentStorageCleanup, finishDocumentStorageCleanup } from "./documentStorageCleanup";
@@ -167,14 +168,17 @@ export async function storeUploadedDocument(
   // identity to check, so uploads behave exactly as before.
   const sha256 = contentSha256(buffer);
   const dedupe = await withTenant(tenantId, async (client) => {
+    // SEC1: ownership first. The duplicate probe answers with an existing file's name, so run before
+    // the check it would tell a caller another organisation's file name for a project it does not own.
+    if (!(await runOwned(client, tenantId, runId))) throw new Error("Project not found for upload.");
     const probe = await client.query<{ available: boolean }>(
       `select exists (select 1 from information_schema.columns
                       where table_name = 'documents' and column_name = 'content_sha256') as available`,
     );
     if (probe.rows[0]?.available !== true) return { available: false as const };
     const existing = await client.query<{ source_filename: string }>(
-      "select source_filename from documents where run_id = $1 and kind = $2 and content_sha256 = $3 limit 1",
-      [runId, kind, sha256],
+      "select source_filename from documents where run_id = $1 and tenant_id = $4 and kind = $2 and content_sha256 = $3 limit 1",
+      [runId, kind, sha256, tenantId],
     );
     return { available: true as const, existing: existing.rows[0]?.source_filename ?? null };
   });

@@ -4,6 +4,12 @@ Every tenant table has a row-level-security policy, but PostgreSQL skips those p
 
 The fix is for the app to connect as its own role: it can log in, is not a superuser, has no BYPASSRLS, owns no tables, belongs to no role that could bypass the policies, and has read and write grants only on tables protected by row-level security. Migrations, backups and other admin work keep using the owner connection.
 
+## What the code does today (SEC1, 29 October 2026)
+
+The app no longer relies on row-level security alone. The project lists, the project header, the program lists, every route under `/api/runs/[id]` and every write that a server action makes itself now name the signed-in organisation explicitly: the statement says `tenant_id = ...`, or the action first checks that the project (or program) belongs to the organisation (`src/lib/runOwnership.ts`). Another organisation's project answers exactly like a missing one. `src/lib/__tests__/tenantOwnershipCoverage.test.ts` fails when a new action writes without this, and `src/lib/__tests__/tenantScopingWithoutRls.db.test.ts` proves it on a real database through a connection that bypasses row-level security.
+
+This does not make the switch below optional. Library code that server actions call into still contains reads and writes scoped only by project or row id, and those rely on row-level security (see `claude/batchSEC1-handover-2026-10-29.md`, "Remaining"). Until the app connects as its own role, a gap in that code is not caught by the database. Switching the role is Grant's to do, with the steps below.
+
 ## One-time switch (about 10 minutes)
 
 Run every command from the app folder. Commands are shown for PowerShell, using `npm.cmd`/`node` as on this machine.

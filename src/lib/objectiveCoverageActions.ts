@@ -14,7 +14,7 @@ async function logError(runId: string, event: string, message: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
-      `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, $3, $4)`,
+      `insert into trace (tenant_id, run_id, event, detail) select $1, $2, $3, $4 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
       [TENANT_ID, runId, event, JSON.stringify({ message })],
     );
   }).catch(() => {});

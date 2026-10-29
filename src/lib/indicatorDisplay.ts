@@ -72,12 +72,13 @@ export function shownNumber(valueText: string, s: Pick<IndicatorSeriesSummary, "
   return Number(valueText) * scale * 10 ** (s.unitMult ?? 0);
 }
 
-const isPercent = (s: Pick<IndicatorSeriesSummary, "valueScale" | "unitCode" | "unitLabel">) =>
+/** Whether a series' values are percentages: a recorded value scale, or a unit naming a percentage. */
+export const isPercentUnit = (s: Pick<IndicatorSeriesSummary, "valueScale" | "unitCode" | "unitLabel">) =>
   s.valueScale !== null || /percent|%/i.test(`${s.unitCode ?? ""} ${s.unitLabel ?? ""}`) || s.unitCode === "PT";
 
 /** A shown number as text: one decimal for percentages, otherwise up to three significant decimals. */
 export function shownText(n: number, s: Pick<IndicatorSeriesSummary, "valueScale" | "unitCode" | "unitLabel">): string {
-  const pct = isPercent(s);
+  const pct = isPercentUnit(s);
   const text = Math.abs(n) >= 1 || n === 0
     ? n.toLocaleString("en-GB", { maximumFractionDigits: pct ? 1 : 2 })
     : n.toLocaleString("en-GB", { maximumSignificantDigits: 3 });

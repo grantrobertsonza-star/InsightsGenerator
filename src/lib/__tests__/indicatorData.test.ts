@@ -64,6 +64,8 @@ describe("mirrors of the engine rules", () => {
       "DHS_SD.csv": true,
       "DHS_SD_DATADICT.csv": false,
       "DHS_SD_WIDEF.csv": true,
+      // The whole wide download (D6 reference file), the same layout.
+      "DHS_SD_WIDEF_full.csv": true,
       "IMF_STA_IL_slice.csv": true,
       "IMF_STA_WPAIAX_slice.csv": true,
       "OECD_FDI_INC_AGGR_filtered_slice.csv": true,

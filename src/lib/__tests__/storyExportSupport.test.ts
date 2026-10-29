@@ -78,7 +78,8 @@ async function textOf(response: Response, kind: "docx" | "pptx"): Promise<string
     .replace(/&gt;/g, ">");
 }
 
-const params = { params: Promise.resolve({ id: "run-1" }) };
+// A real project id: the routes refuse an id that cannot name a project before reading anything (SEC1).
+const params = { params: Promise.resolve({ id: "00000000-0000-4000-8000-0000000000e1" }) };
 
 beforeEach(() => {
   state.statements = [];

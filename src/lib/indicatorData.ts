@@ -508,3 +508,214 @@ export async function loadIndicatorObservations(
     };
   });
 }
+
+/** One Indicator data file of a project and the state of its read, for a workspace across files (D6). */
+export type IndicatorFileSummary = {
+  documentId: string;
+  fileName: string;
+  /** documents.processing_status: null while the first read has not finished. */
+  processingStatus: string | null;
+  read: {
+    /** Null when no read was ever published (only a failed attempt). */
+    readId: string | null;
+    layout: IndicatorLayout | null;
+    provenance: Record<string, unknown>;
+    seriesCount: number;
+    observationCount: number;
+    areaCount: number;
+    noteCount: number;
+    publishedAt: string | null;
+    failure: string | null;
+    failedAt: string | null;
+  } | null;
+};
+
+/**
+ * Every Indicator data file of this project with its read state, in one snapshot (D6, Indicator Analytics).
+ * A file in the bin is in the bin's run and is not listed.
+ */
+export async function listIndicatorFiles(tenantId: string, runId: string): Promise<{ state: "unavailable"; message: string } | { state: "ready"; files: IndicatorFileSummary[] }> {
+  return withTenantRepeatableRead(tenantId, async (client) => {
+    if (!(await indicatorDataAvailable(client))) return { state: "unavailable", message: INDICATOR_NOT_AVAILABLE_MESSAGE };
+    const r = await client.query<{
+      id: string; source_filename: string; processing_status: string | null; has_read: boolean; read_id: string | null; layout: IndicatorLayout | null; provenance: Record<string, unknown> | null;
+      series_count: number | null; observation_count: number | null; areas: IndicatorArea[] | null; note_count: number; published_at: Date | null; failure: string | null; failed_at: Date | null;
+    }>(
+      `select d.id, d.source_filename, d.processing_status, r.document_id is not null as has_read, r.read_id, r.layout, r.provenance,
+              r.series_count, r.observation_count, r.areas, r.published_at, r.failure, r.failed_at,
+              (select count(*)::int from indicator_notes n where n.document_id = d.id and n.read_id = r.read_id) as note_count
+       from documents d left join indicator_reads r on r.document_id = d.id
+       where d.run_id = $1 and d.tenant_id = $2 and d.kind = 'indicator'
+       order by d.source_filename, d.id`,
+      [runId, tenantId],
+    );
+    return {
+      state: "ready",
+      files: r.rows.map((x) => ({
+        documentId: x.id,
+        fileName: x.source_filename,
+        processingStatus: x.processing_status,
+        read: x.has_read
+          ? {
+              readId: x.read_id,
+              layout: x.layout,
+              provenance: x.provenance ?? {},
+              seriesCount: x.series_count ?? 0,
+              observationCount: x.observation_count ?? 0,
+              areaCount: Array.isArray(x.areas) ? x.areas.length : 0,
+              noteCount: x.note_count,
+              publishedAt: x.published_at ? x.published_at.toISOString() : null,
+              failure: x.failure,
+              failedAt: x.failed_at ? x.failed_at.toISOString() : null,
+            }
+          : null,
+      })),
+    };
+  });
+}
+
+/** What every series of a read holds together: counted by the database over the stored observations. */
+export type IndicatorReadCoverage = {
+  observations: number;
+  areas: number;
+  /** Distinct series and area pairs with a value: a "series" as a publisher's full series key counts it. */
+  areaSeries: number;
+  indicators: number;
+  firstPeriod: string | null;
+  lastPeriod: string | null;
+  /** Lowest and highest stored value, only when every series has one unit, multiplier and scale; else null. */
+  valueRange: [string, string] | null;
+};
+
+export type IndicatorSeriesRead =
+  | { state: "unavailable"; message: string }
+  | { state: "not_read" }
+  | { state: "failed"; failure: string; failedAt: string }
+  | { state: "stale"; message: string }
+  | { state: "series_not_found"; message: string }
+  | {
+      state: "ready";
+      readId: string;
+      fileName: string;
+      layout: IndicatorLayout;
+      reader: string;
+      provenance: Record<string, unknown>;
+      publishedAt: string;
+      lastFailure: { failure: string; failedAt: string } | null;
+      areas: IndicatorArea[];
+      series: IndicatorSeriesSummary[];
+      /** The series asked for (or the first, when none was asked for); null when the read has none (notes). */
+      seriesKey: string | null;
+      /** Every observation of that series, every area, ordered by area and period. */
+      observations: IndicatorObservation[];
+      coverage: IndicatorReadCoverage;
+    };
+
+/**
+ * One series of a file's published read with every observation of it, for every area, in one repeatable-read
+ * snapshot with the read's series list and coverage (D6, Indicator Analytics). The series is asked for by its
+ * stored series key (identity), never by a label. With readId, a newer read since then answers stale, so the
+ * caller never mixes versions; a series key not in the read answers series_not_found rather than another
+ * series. Throws IndicatorDocumentNotFoundError when the file is not this project's Indicator data.
+ */
+export async function loadIndicatorSeriesRead(
+  tenantId: string,
+  runId: string,
+  documentId: string,
+  request: { readId: string | null; seriesKey: string | null },
+): Promise<IndicatorSeriesRead> {
+  return withTenantRepeatableRead(tenantId, async (client) => {
+    if (!(await indicatorDataAvailable(client))) return { state: "unavailable", message: INDICATOR_NOT_AVAILABLE_MESSAGE };
+    const doc = await client.query<{ source_filename: string }>("select source_filename from documents where id = $1 and run_id = $2 and tenant_id = $3 and kind = 'indicator'", [documentId, runId, tenantId]);
+    if (!doc.rows[0]) throw new IndicatorDocumentNotFoundError();
+    const read = (
+      await client.query<{ read_id: string | null; reader: string | null; layout: IndicatorLayout | null; provenance: Record<string, unknown>; areas: IndicatorArea[]; published_at: Date | null; failure: string | null; failed_at: Date | null }>(
+        "select read_id, reader, layout, provenance, areas, published_at, failure, failed_at from indicator_reads where document_id = $1",
+        [documentId],
+      )
+    ).rows[0];
+    if (request.readId !== null && read?.read_id !== request.readId) {
+      return { state: "stale", message: "This file was read again since the view was loaded. The view has been reloaded from the new read; check your choices." };
+    }
+    if (!read) return { state: "not_read" };
+    if (!read.read_id) return { state: "failed", failure: read.failure ?? "The file could not be read.", failedAt: (read.failed_at ?? new Date(0)).toISOString() };
+    const rows = await client.query<{
+      id: string; series_key: string; indicator_code: string | null; indicator_label: string | null; breakdowns: IndicatorBreakdown[]; unit_code: string | null; unit_label: string | null;
+      unit_mult: number | null; value_scale: "proportion" | "percent" | null; base_description: string | null; groups: IndicatorGroup[] | null; observation_count: number; area_codes: (string | null)[];
+    }>(
+      `select s.id, s.series_key, s.indicator_code, s.indicator_label, s.breakdowns, s.unit_code, s.unit_label, s.unit_mult, s.value_scale,
+              s.base_description, s.groups, s.observation_count,
+              coalesce((select array_agg(distinct o.area_code) from indicator_observations o where o.series_id = s.id), '{}') as area_codes
+       from indicator_series s where s.document_id = $1 and s.read_id = $2
+       order by s.indicator_code nulls last, s.indicator_label, s.series_key`,
+      [documentId, read.read_id],
+    );
+    const withheldAreas = new Map<string, Set<string | null>>();
+    for (const w of Array.isArray(read.provenance.withheld) ? (read.provenance.withheld as unknown[]) : []) {
+      if (!Array.isArray(w) || typeof w[0] !== "string") continue;
+      withheldAreas.set(w[0], (withheldAreas.get(w[0]) ?? new Set()).add(typeof w[1] === "string" ? w[1] : null));
+    }
+    const series: IndicatorSeriesSummary[] = rows.rows.map((x) => ({
+      id: x.id,
+      key: x.series_key,
+      indicatorCode: x.indicator_code,
+      indicatorLabel: x.indicator_label,
+      breakdowns: x.breakdowns,
+      unitCode: x.unit_code,
+      unitLabel: x.unit_label,
+      unitMult: x.unit_mult,
+      valueScale: x.value_scale,
+      baseDescription: x.base_description,
+      groups: x.groups,
+      observationCount: x.observation_count,
+      ...selectableAreas(x.area_codes, withheldAreas.get(x.series_key)),
+    }));
+    const chosen = request.seriesKey === null ? (series[0] ?? null) : (series.find((s) => s.key === request.seriesKey) ?? null);
+    if (request.seriesKey !== null && !chosen) return { state: "series_not_found", message: "The chosen series is not in this file's current read, so nothing else is shown in its place. Choose a series again." };
+    const observations = chosen
+      ? (
+          await client.query<{ area_code: string | null; period: string | null; value_text: string; status: string | null; note: string | null }>(
+            "select area_code, period, value_text, status, note from indicator_observations where series_id = $1 order by area_code nulls first, period nulls first",
+            [chosen.id],
+          )
+        ).rows.map((x) => ({ areaCode: x.area_code, period: x.period, valueText: x.value_text, status: x.status, note: x.note }))
+      : [];
+    const c = (
+      await client.query<{ observations: number; areas: number; area_series: number; indicators: number; first_period: string | null; last_period: string | null; min_value: string | null; max_value: string | null }>(
+        `select count(*)::int as observations, count(distinct o.area_code)::int as areas, count(distinct (o.series_id, o.area_code))::int as area_series,
+                count(distinct coalesce('code:' || s.indicator_code, 'label:' || s.indicator_label))::int as indicators,
+                min(o.period) as first_period, max(o.period) as last_period, min(o.value)::text as min_value, max(o.value)::text as max_value
+         from indicator_observations o join indicator_series s on s.id = o.series_id
+         where s.document_id = $1 and s.read_id = $2`,
+        [documentId, read.read_id],
+      )
+    ).rows[0];
+    // A range across series is only meaningful on one scale: one unit, multiplier and value scale throughout.
+    const oneScale = new Set(series.map((s) => JSON.stringify([s.unitCode, s.unitMult, s.valueScale]))).size === 1;
+    // The lowest and highest values as written: the value as stored in the file with that numeric value.
+    let valueRange: [string, string] | null = null;
+    if (oneScale && c.min_value !== null && c.max_value !== null) {
+      const ends = await client.query<{ lo: string; hi: string }>(
+        `select (select o.value_text from indicator_observations o join indicator_series s on s.id = o.series_id where s.document_id = $1 and s.read_id = $2 order by o.value asc, o.value_text limit 1) as lo,
+                (select o.value_text from indicator_observations o join indicator_series s on s.id = o.series_id where s.document_id = $1 and s.read_id = $2 order by o.value desc, o.value_text limit 1) as hi`,
+        [documentId, read.read_id],
+      );
+      valueRange = [ends.rows[0].lo, ends.rows[0].hi];
+    }
+    return {
+      state: "ready",
+      readId: read.read_id,
+      fileName: doc.rows[0].source_filename,
+      layout: read.layout as IndicatorLayout,
+      reader: read.reader ?? "",
+      provenance: read.provenance,
+      publishedAt: read.published_at!.toISOString(),
+      lastFailure: read.failure && read.failed_at ? { failure: read.failure, failedAt: read.failed_at.toISOString() } : null,
+      areas: read.areas,
+      series,
+      seriesKey: chosen?.key ?? null,
+      observations,
+      coverage: { observations: c.observations, areas: c.areas, areaSeries: c.area_series, indicators: c.indicators, firstPeriod: c.first_period, lastPeriod: c.last_period, valueRange },
+    };
+  });
+}

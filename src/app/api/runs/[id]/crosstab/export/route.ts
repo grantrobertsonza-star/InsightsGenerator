@@ -7,7 +7,7 @@ import { withTenant } from "@/lib/db";
 import { convertOfficeDocToPdf } from "@/lib/convertToPdf";
 import { addCrosstabSlides, CrosstabLayoutError } from "@/lib/crosstabSlides";
 import type { CrosstabResult, CrosstabRow } from "@/lib/parseStatsFile";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 type Cell = string | number | null;
 
@@ -246,6 +246,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const sp = new URL(request.url).searchParams;
   const tableId = sp.get("tableId");
   // Export all (Grant, 29 October 2026: "we also need to be able to export all tables not just one at a time"): the
@@ -263,7 +265,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   const data = await withTenant(TENANT_ID, async (client) => {
-    const run = await client.query<{ project_name: string | null }>("select project_name from runs where id = $1", [runId]);
+    const run = await client.query<{ project_name: string | null }>("select project_name from runs where id = $1 and tenant_id = $2", [runId, TENANT_ID]);
     if (run.rows.length === 0) return null;
     const tables = await client.query<{ id: string; label: string | null; source_file: string | null; crosstab: (CrosstabResult & { version?: number }) | null }>(
       `select t.id, t.label, d.source_filename as source_file, t.crosstab from document_tables t join documents d on d.id = t.document_id

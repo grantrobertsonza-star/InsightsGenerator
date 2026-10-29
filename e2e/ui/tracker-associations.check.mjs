@@ -1,7 +1,7 @@
 // Page 03 of the brand tracking dashboard, "Brand associations" (Grant's design, 29 October 2026), real browser on
 // the disposable stack. BMW wave 1 as SPSS with labels only (fixtures/tracker-packs/bmw_car):
 //   1. The dashboard opens on Brand overview (page 01 stays the default); Moments & needs and Brand associations are
-//      clickable in the menu, the later pages are greyed "Coming next" and are not buttons.
+//      clickable in the menu (since batch M4 every page is a button).
 //   2. Brand associations: the same chips row; the "Association profile" card says the associations are pick-any,
 //      each brand on its own awareness base and not agreement scores; ten attribute rows in the grid's order; the
 //      client's brand's value at the right of each row equal to the independent reference
@@ -9,7 +9,7 @@
 //      a legend naming each plotted brand; the footnote gives every plotted brand's aware base (reference counts)
 //      and says the positioning model appears only after a supported analysis.
 //   3. Compare: removing a brand removes its dots and its legend entry.
-//   4. At 760 wide the menu is replaced by page tabs (three built pages) and the page still fits.
+//   4. At 760 wide the menu is replaced by page tabs (all six pages since batch M4) and the page still fits.
 // Written 29 October 2026; not yet run.
 import { expect, test } from "@playwright/test";
 import { spawnSync } from "node:child_process";
@@ -70,8 +70,8 @@ test("tracker dashboard page 03: association profile equals the reference, each 
     const menu = dash.getByRole("navigation", { name: "Brand tracking sections" });
     await expect(menu.getByRole("button", { name: /Brand overview/ })).toHaveAttribute("aria-current", "page");
     await expect(menu.getByRole("button", { name: /Moments & needs/ })).toBeVisible();
-    await expect(menu.getByRole("button", { name: /Advertising & WOM/ })).toHaveCount(0);
-    await expect(menu.getByText("Advertising & WOM")).toHaveAttribute("title", "Coming next");
+    // Every page is built since batch M4: all six are buttons.
+    await expect(menu.getByRole("button")).toHaveCount(6);
 
     // 2. Brand associations.
     await menu.getByRole("button", { name: /Brand associations/ }).click();
@@ -114,7 +114,7 @@ test("tracker dashboard page 03: association profile equals the reference, each 
     await page.setViewportSize({ width: 760, height: 1000 });
     const tabs = dash.getByRole("group", { name: "Brand tracking pages" });
     await expect(tabs).toBeVisible();
-    await expect(tabs.getByRole("button")).toHaveCount(3);
+    await expect(tabs.getByRole("button")).toHaveCount(6);
     await tabs.getByRole("button", { name: "Brand associations" }).click();
     await expect(profile).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

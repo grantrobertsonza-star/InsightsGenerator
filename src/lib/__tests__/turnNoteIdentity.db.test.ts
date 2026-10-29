@@ -10,7 +10,9 @@ import { randomUUID } from "node:crypto";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 
 let currentTenant = "";
-vi.mock("../requestContext", () => ({
+vi.mock("../requestContext", async () => ({
+  // The export route also checks the project's tenant (SEC1); the real check runs on this database.
+  runBelongsToTenant: (await vi.importActual<typeof import("../requestContext")>("../requestContext")).runBelongsToTenant,
   requireTenantId: async () => currentTenant,
   routeRequestContext: async () => ({ tenantId: currentTenant }),
 }));

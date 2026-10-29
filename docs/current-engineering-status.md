@@ -1,6 +1,32 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD3c on top of BatchT2): the Brand tracking dashboard's page 02, Moments & needs (category relevance ranked, moment x brand recall for the six most relevant moments), and page 03, Brand associations (pick-any associations on each brand's own aware base), and the Brand Health tool's brand source as a multiple-response set (overlapping brand groups stated; tests across groups withheld). No migration.
+Updated: 2026-10-30. State: **READY_FOR_CODEX** (BatchD3e on top of BatchD3c): the Brand tracking dashboard's remaining pages (Advertising & WOM, Audience & media, Category overview), D6 Indicator Analytics (Overview, Trends, Compare, Data & sources), and SEC1, tenant ownership checked by the code on every listed read and write. No migration.
+
+## Claude: batch D3e, main copy (2026-10-30, night)
+
+Implemented, ready for review, on top of BatchD3c. Three parts, each with its handover:
+- Brand tracking dashboard, the remaining pages: `claude/batchM4-handover-2026-10-29.md` (Advertising & WOM, Audience &
+  media with the small-base rule, Category overview; contracts D3e to D3g in `claude/d2-design-2026-10-29.md`). Compared
+  with independent pandas readings of BMW wave 1, weighted and unweighted, to 1e-6.
+- D6 Indicator Analytics: `claude/batchD6-handover-2026-10-29.md`; contract `claude/indicator-analytics.md`. Every
+  figure equals Grant's reference (`fixtures/indicator-data/Chart_Data_RH_ANCC_W_IRN_reference.json`): Kenya's trend,
+  the 2022 comparison, the 210 two-year-window observations and the audit (607 observations, 71 areas, 213 series).
+  The indicator reader records more series attributes (`engine-indicators-2026.10.29`); files read before show them
+  as not recorded until read again.
+- SEC1, tenant ownership in the code: `claude/batchSEC1-handover-2026-10-29.md`. One helper (`runOwnership.ts`);
+  every listed read and write filters by tenant or checks ownership in the writing transaction; a source scan and a
+  database test run as a role that bypasses row-level security (11 of 13 failed before, 13 pass). The database role
+  switch in `docs/database-roles.md` is still Grant's to do.
+No migration.
+
+Gates on the exact tree:
+- On `99bfe4c` (the same code before the rebase onto the applied D3c): `npx tsc --noEmit` passed; `npx eslint src e2e
+  --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed; library 361 files (359 passed, 2 skipped),
+  2,705 tests passed, 91 skipped, 0 failed; browser suite 155 passed, 1 skipped, 1 failed; smoke 1 passed; objective
+  review acceptance passed. `over-limit-refusal.check.mjs`, which timed out in D3c's run, passed.
+- The failure was the new `tracker-category.check.mjs`: it opened Analytics while the wave label's save could still be
+  on its way, so the file was listed without "Wave 1:" (the label was saved; the database showed it). The check now
+  opens the page again until the labelled file is listed (a test-only change) and passes on the stack (1 passed).
 
 ## Claude: batch D3c, main copy (2026-10-29, night)
 

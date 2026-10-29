@@ -4,7 +4,7 @@ import { addFooter, addTitleSlide, safeFileStem } from "@/lib/deckSlides";
 import { CrosstabLayoutError } from "@/lib/crosstabSlides";
 import { FIELD_CELL_MARGIN, planFieldSlides } from "@/lib/fieldTableSlides";
 import { exportFields, loadMainRecommendations, parseScope, qualificationTags, scopeLabel, supportText } from "@/lib/mainRecommendationExport";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 // LAYOUT_16x9 is 10 x 5.625 inches; the shared footer rule sits at 5.22.
 const X = 0.5;
@@ -27,6 +27,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const scope = parseScope(new URL(request.url).searchParams.get("scope"));
   const data = await loadMainRecommendations(TENANT_ID, runId, scope);
   if (!data) return NextResponse.json({ error: "Project not found" }, { status: 404 });

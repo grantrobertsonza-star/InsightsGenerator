@@ -12,14 +12,15 @@ import { requireTenantId } from "./requestContext";
  * decisions, objectives, and recommendations: a researcher is overriding a
  * default, not clearing a backlog. Accept/reject here just flip that flag
  * in place, same as acceptRecommendation/rejectRecommendation; nothing is
- * archived until it's actually deleted.
+ * archived until it's actually deleted. SEC1: both name tenant_id, so another organisation's
+ * insight matches no row and is left unchanged, like one that no longer exists.
  */
 export async function acceptSynthesizedInsight(runId: string, synthesizedInsightId: string) {
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
-      "update synthesized_insights set review_status = 'accepted' where id = $1 and run_id = $2",
-      [synthesizedInsightId, runId]
+      "update synthesized_insights set review_status = 'accepted' where id = $1 and run_id = $2 and tenant_id = $3",
+      [synthesizedInsightId, runId, TENANT_ID]
     );
   });
   revalidatePath(`/runs/${runId}`);
@@ -29,8 +30,8 @@ export async function rejectSynthesizedInsight(runId: string, synthesizedInsight
   const TENANT_ID = await requireTenantId();
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
-      "update synthesized_insights set review_status = 'rejected' where id = $1 and run_id = $2",
-      [synthesizedInsightId, runId]
+      "update synthesized_insights set review_status = 'rejected' where id = $1 and run_id = $2 and tenant_id = $3",
+      [synthesizedInsightId, runId, TENANT_ID]
     );
   });
   revalidatePath(`/runs/${runId}`);
@@ -68,7 +69,7 @@ export async function checkStability(runId: string): Promise<{ ok: true } | { ok
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'insight_stability_check_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'insight_stability_check_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});

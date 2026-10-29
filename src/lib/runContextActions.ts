@@ -287,7 +287,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
         reread,
       };
       const recorded = await withTenant(TENANT_ID, async (client) => {
-        await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_error', $3)`, [
+        await client.query(`insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'brief_intake_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`, [
           TENANT_ID,
           runId,
           JSON.stringify(detail),
@@ -308,10 +308,11 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
 
   const counts = await withTenant(TENANT_ID, async (client) => {
     // Locked, so two saves at once cannot both add the same objective, and the import lineage read
-    // below is current; the row must exist.
+    // below is current; the row must exist and be this organisation's (SEC1: another tenant's
+    // project reads as not found, whether or not row-level security applies).
     const prev = await client.query<{ stated_objectives_text: string | null }>(
-      "select stated_objectives_text from runs where id = $1 for update",
-      [runId],
+      "select stated_objectives_text from runs where id = $1 and tenant_id = $2 for update",
+      [runId, TENANT_ID],
     );
     if (prev.rowCount !== 1) throw new Error("This project was not found.");
     const prevObjective = prev.rows[0]?.stated_objectives_text?.trim() ?? null;
@@ -376,7 +377,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
           };
           // Recorded in this transaction, after the fill that won, so a reload shows it until the
           // still-new document fills.
-          await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_error', $3)`, [
+          await client.query(`insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'brief_intake_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`, [
             TENANT_ID,
             runId,
             JSON.stringify(detail),
@@ -526,7 +527,7 @@ export async function saveRunContext(runId: string, formData: FormData): Promise
     if (fill) {
       // The record Set objectives shows as "Last filled from ..." (briefFillRecord.loadLastBriefFill),
       // and the import lineage above, written with the save they describe.
-      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'brief_intake_used', $3)`, [
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'brief_intake_used', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`, [
         TENANT_ID,
         runId,
         JSON.stringify({
@@ -665,10 +666,10 @@ export async function editStatedObjective(runId: string, oldText: string, newTex
     // (below) must see the same state the write replaces. Locking the run row for the whole
     // read-check-write serializes them: the second edit reads the first's result, so an edit
     // of a different line keeps both changes and a second edit of the same line finds its
-    // starting wording gone and is refused. The row must exist.
+    // starting wording gone and is refused. The row must exist and be this organisation's (SEC1).
     const r = await client.query<{ stated_objectives_text: string | null }>(
-      "select stated_objectives_text from runs where id = $1 for update",
-      [runId],
+      "select stated_objectives_text from runs where id = $1 and tenant_id = $2 for update",
+      [runId, TENANT_ID],
     );
     if (r.rowCount !== 1) throw new Error("This project was not found.");
     const lines = parseObjectiveLines(r.rows[0].stated_objectives_text ?? null);

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { withTenant, withTenantRead } from "./db";
+import { assertRunOwned } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
 import { waveOrderText, type OrderedWave } from "./waves";
@@ -203,6 +204,7 @@ export async function addWaveNpsFindingAction(runId: string, result: NpsResult):
     const segments = result.segments;
     if (!segments || segments.length === 0) return { ok: false, error: "No wave segments to post." };
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_nps_tool' and stated_stats->>'variable' = $2 and status <> 'rejected'",
         [runId, result.variable],
@@ -258,6 +260,7 @@ export async function removeWaveNpsFindingAction(runId: string, variable: string
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_nps_tool' and stated_stats->>'variable' = $2 and status <> 'rejected' returning id",
         [runId, variable],
@@ -305,6 +308,7 @@ export async function addWaveChartFindingAction(runId: string, result: ChartResu
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_chart_tool' and stated_stats->>'variable' = $2 and status <> 'rejected'",
         [runId, result.variable],
@@ -360,6 +364,7 @@ export async function removeWaveChartFindingAction(runId: string, variable: stri
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_chart_tool' and stated_stats->>'variable' = $2 and status <> 'rejected' returning id",
         [runId, variable],
@@ -486,6 +491,7 @@ export async function addWaveDriverFindingAction(runId: string, table: WaveDrive
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         "select count(*)::int as n from findings where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_driver_tool' and stated_stats->>'variable' = $2 and status <> 'rejected'",
         [runId, table.outcome],
@@ -541,6 +547,7 @@ export async function removeWaveDriverFindingAction(runId: string, outcome: stri
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'trend' and stated_stats->>'source' = 'wave_driver_tool' and stated_stats->>'variable' = $2 and status <> 'rejected' returning id",
         [runId, outcome],

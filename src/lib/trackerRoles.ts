@@ -82,6 +82,16 @@ export type TrackerRecognition = {
   otherLists: { group: string; label: string; reason: string }[];
   /** The category moments (stated relevance) question, found beside the moments grid (findCategoryMoments). */
   categoryMoments: CategoryMoments;
+  /** The prompted advertising recall question asked per brand (findAdvertisingRecall, page 04). */
+  advertisingRecall: AdvertisingRecall;
+  /** The age groups question (findAgeGroups, page 05). */
+  ageGroups: FoundQuestion;
+  /** The media use list (findMediaList, page 05). */
+  mediaUse: FoundList;
+  /** How category decisions are made (findDecisionStyle, page 08). */
+  decisionStyle: FoundQuestion;
+  /** The channel of the most recent acquisition (findAcquisitionChannel, page 08). */
+  acquisitionChannel: FoundQuestion;
   csm: CsmRoles;
   /** What the researcher must decide; never filled in by a guess. */
   questions: { id: string; text: string }[];
@@ -96,6 +106,32 @@ export type TrackerRecognition = {
  */
 export type CategoryMoments =
   | { status: "found"; group: string; label: string; items: { variable: string; item: string; gridGroup: string | null }[]; outside: string[] }
+  | { status: "ambiguous"; candidates: string[]; reason: string }
+  | { status: "not_found"; reason: string };
+
+/**
+ * The prompted advertising recall question (pack spec AD2, `adprompt_bYY`: 0 No, 1 Yes, 9 Not sure, asked of those
+ * aware of each brand): one labelled variable per brand whose wording, once the brand is taken out, is about
+ * advertising and is not unprompted recall. "found": its wording, its variable per brand code, and whether its
+ * answer lists have a "not sure" answer (kept apart from yes and no). "ambiguous": two such questions both keep
+ * "not sure" apart, or neither does, so which one was asked cannot be told. "not_found": none, with the reason.
+ */
+export type AdvertisingRecall =
+  | { status: "found"; label: string; byBrand: { code: string; variable: string }[]; keepsNotSure: boolean }
+  | { status: "ambiguous"; candidates: string[]; reason: string }
+  | { status: "not_found"; reason: string };
+
+/** A single-choice question asked once (not per brand) that the dashboard reads, found by its wording and answer
+ * list: "found" with its variable; "ambiguous" when two qualify (neither used); "not_found" with the reason. */
+export type FoundQuestion =
+  | { status: "found"; variable: string; label: string }
+  | { status: "ambiguous"; candidates: string[]; reason: string }
+  | { status: "not_found"; reason: string };
+
+/** A list of yes/no options asked once (not per brand) that the dashboard reads: "found" with its options in the
+ * file's order (an exclusive "None" or "Other" option left out); "ambiguous"; "not_found" with the reason. */
+export type FoundList =
+  | { status: "found"; group: string; label: string; options: { variable: string; label: string }[]; outside: string[] }
   | { status: "ambiguous"; candidates: string[]; reason: string }
   | { status: "not_found"; reason: string };
 
@@ -301,7 +337,167 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
   const claimed = new Set([...measures.flatMap((m) => [...m.byBrand.map((b) => b.variable), ...m.outside]), ...grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable)))]);
   const categoryMoments = findCategoryMoments(usable.filter((v) => !claimed.has(v.name)), grids);
-  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, csm, questions };
+  const advertisingRecall: AdvertisingRecall = brandFrame ? findAdvertisingRecall(usable, brandFrame) : { status: "not_found", reason: "No brand list was found in this file." };
+  // Questions asked once: never a per-brand question, a grid cell or a brand list question.
+  const askedOnce = usable.filter((v) => !claimed.has(v.name) && !(brandFrame?.questions ?? []).includes(v.name));
+  const ageGroups = findAgeGroups(askedOnce);
+  const mediaUse = findMediaList(askedOnce);
+  const decisionStyle = findDecisionStyle(askedOnce);
+  const acquisitionChannel = findAcquisitionChannel(askedOnce);
+  return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
+}
+
+/** A single-choice question's own wording, when it has an answer list of two or more answers that is not yes/no and
+ * a label of its own; null otherwise (a variable name alone is never read as wording). */
+function singleChoiceWording(v: RoleVariable): string | null {
+  if (!v.numeric || v.questionType === "multiple_response" || isYesNo(v) || Object.keys(v.valueLabels ?? {}).length < 2) return null;
+  const wording = labelAfterName(v);
+  return wording && wording !== v.name ? wording : null;
+}
+
+/** One qualifying single-choice question is found; two are ambiguous; none is not found, with `none` as the reason. */
+function oneQuestion(found: RoleVariable[], what: string, none: string): FoundQuestion {
+  if (found.length === 1) return { status: "found", variable: found[0].name, label: singleChoiceWording(found[0])! };
+  if (found.length > 1) return { status: "ambiguous", candidates: found.map((v) => v.name), reason: `${found.length} questions could be ${what} (${found.map((v) => `${v.name}, "${singleChoiceWording(v)}"`).join("; ")}), so which one to show cannot be told.` };
+  return { status: "not_found", reason: none };
+}
+
+/** An answer label that is an age range: "18-24", "18 to 24", "65+", "Under 18", "65 and over". */
+const AGE_RANGE = /^\s*(\d{1,3}\s*(?:-|\u2013|\u2014|to)\s*\d{1,3}\b|\d{1,3}\s*\+|(under|below|less than|younger than)\s+\d{1,3}\b|\d{1,3}\s+(and|or)\s+(over|older|above)\b)/i;
+
+/**
+ * The age groups question (page 05, "Audience & media"; pack spec S1 `age_band`): a single-choice question asked once
+ * whose wording names age ("Age group", "Age band", "Age") and whose answers are age ranges: at least two answers and
+ * 60% of the list (answers such as "Prefer not to say" may be the rest). Age in years without an answer list is not
+ * age groups. Never from a variable name alone.
+ */
+export function findAgeGroups(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    if (!wording || !/\bage\b/i.test(wording)) return false;
+    const labels = Object.values(v.valueLabels!);
+    const ranges = labels.filter((l) => AGE_RANGE.test(l)).length;
+    return ranges >= 2 && ranges >= labels.length * 0.6;
+  });
+  return oneQuestion(found, "age groups", "No question asked once whose wording names age and whose answers are age ranges (for example 18-24) was found.");
+}
+
+/**
+ * How decisions in the category are made (page 08, "Category overview"; pack spec C1 `decision_style`, "Typical vehicle
+ * decision style": Preferred brand first, Brief comparison, Extensive comparison): a single-choice question asked once
+ * whose own wording speaks of a decision style, making or process, or asks how the respondent decides or chooses.
+ * Never from a variable name alone; two candidates are ambiguous.
+ */
+export function findDecisionStyle(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    return !!wording && /\bdecision[- ](style|making|process|approach)\b|\bhow\b.*\b(decide|choose)\b/i.test(wording);
+  });
+  return oneQuestion(found, "how decisions are made", "No question asked once whose wording is about how category decisions are made (a decision style) was found.");
+}
+
+/**
+ * The channel of the most recent acquisition (page 08; pack spec O5 `acquisition_channel` / `start_channel`, codes 1 to
+ * 7, asked of recent acquirers): a single-choice question asked once whose own wording names a channel and an
+ * acquisition (acquired, bought, purchased, started, joined), or asks where the respondent bought or acquired. A list
+ * of channels is never the brand list (rule 1 needs its names in other questions' wording). Never from a variable
+ * name alone; two candidates are ambiguous.
+ */
+export function findAcquisitionChannel(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    if (!wording) return false;
+    const acquiring = /\b(acquisition|acquired?|start(ed)?|purchased?|bought|buy(ing)?|joined|sign(ed)? up)\b/i.test(wording);
+    return (/\bchannel\b/i.test(wording) && acquiring) || /\bwhere\b.*\b(acquired?|purchased?|bought|buy)\b/i.test(wording);
+  });
+  return oneQuestion(found, "the most recent acquisition channel", "No question asked once whose wording names the channel of an acquisition (for example \"Most recent acquisition channel\") was found.");
+}
+
+/** Option wording that names a medium: broadcast, print, outdoor, online platforms and streaming. */
+const MEDIA = /\b(youtube|facebook|instagram|tiktok|twitter|x|linkedin|whatsapp|snapchat|pinterest|threads|reddit|television|tv|dstv|radio|streaming|podcasts?|newspapers?|magazines?|cinema|billboards?|outdoor|press|news websites?|online news|social media|chatbots?)\b/i;
+
+/**
+ * The media use list (page 05; pack spec P1 `media_m01..m12`, MR set `media`, `media_none` outside it): a group
+ * (multiple-response set, else question ID) of three or more yes/no options asked once whose option wording names
+ * media (YouTube, Radio, Broadcast television, ...): at least three options and 60% of the options other than "None"
+ * or "Other". Two such lists are ambiguous. The options are read by their own label; a variable without one is not
+ * read (never by its name alone).
+ */
+export function findMediaList(askedOnce: RoleVariable[]): FoundList {
+  const sets = new Map<string, RoleVariable[]>();
+  for (const v of askedOnce) {
+    const key = v.group ?? (v.questionId ? `q:${v.questionId}` : null);
+    if (!key || !(v.questionType === "multiple_response" || isYesNo(v))) continue;
+    sets.set(key, [...(sets.get(key) ?? []), v]);
+  }
+  const found: Extract<FoundList, { status: "found" }>[] = [];
+  for (const [group, members] of sets) {
+    const worded = members.map((v) => ({ v, wording: labelAfterName(v) })).filter((x) => x.wording && x.wording !== x.v.name);
+    const options = worded.filter((x) => !NON_BRAND.test(clean(x.wording)));
+    const media = options.filter((x) => MEDIA.test(x.wording)).length;
+    if (members.length < 3 || media < 3 || media < options.length * 0.6) continue;
+    found.push({ status: "found", group, label: members[0].questionId ?? group, options: options.map((x) => ({ variable: x.v.name, label: clean(x.wording) })), outside: members.filter((m) => !options.some((o) => o.v === m)).map((m) => m.name) });
+  }
+  if (found.length === 1) return found[0];
+  if (found.length > 1) return { status: "ambiguous", candidates: found.map((f) => f.group), reason: `${found.length} lists name media (${found.map((f) => f.group).join(", ")}), so which one is media use cannot be told.` };
+  return { status: "not_found", reason: "No list of yes/no options asked once whose options name media (television, radio, YouTube, ...) was found." };
+}
+
+/** An answer label that means the respondent is not sure (pack spec: `adprompt_bYY` 9 = Not sure, a substantive
+ * answer reported on its own, never folded into no). Read from the label; the code is its identity. */
+const NOT_SURE = /^(not sure|unsure|not certain|don'?t know|do not know|can'?t (say|remember|recall)|cannot (say|remember|recall))\b/i;
+
+/** The codes of a variable's answer list labelled "not sure" (or don't know), in code order. */
+export function notSureCodes(v: Pick<RoleVariable, "valueLabels">): string[] {
+  return Object.entries(v.valueLabels ?? {})
+    .filter(([, l]) => NOT_SURE.test(clean(l)))
+    .map(([c]) => c)
+    .sort((a, b) => Number(a) - Number(b));
+}
+
+/**
+ * The prompted advertising recall question (page 04, "Advertising & WOM"). Variables are put together by their
+ * wording with the brand taken out (not by their group: a codebook can file the routed question and its derived
+ * all-sample indicator under one question ID, AD2), each naming one brand of the frame by its label; a wording
+ * whose stage is advertising (stageOf) and that is not unprompted, unaided or spontaneous recall, with an answer
+ * list, asked about at least three brands and 60% of the list, one variable per brand, qualifies. The pack has two:
+ * the question as asked (No, Yes, Not sure) and a derived yes indicator over all respondents (Selected). The one
+ * whose answers keep "not sure" apart is the question as asked (the plan: "not sure (code 9) kept apart"); when
+ * none does, a single qualifying wording is used. Otherwise "ambiguous". Never from a variable name alone: a
+ * variable without its own label is not read.
+ */
+export function findAdvertisingRecall(usable: RoleVariable[], frame: BrandFrame): AdvertisingRecall {
+  const families = new Map<string, { label: string; byBrand: Map<string, RoleVariable>; repeated: boolean }>();
+  for (const v of usable) {
+    const wording = labelAfterName(v);
+    if (!wording || wording === v.name || !v.valueLabels || Object.keys(v.valueLabels).length === 0) continue;
+    const code = brandNamed(wording, frame);
+    if (!code) continue;
+    const stem = stemOf(wording, frame.brands.find((b) => b.code === code)!);
+    if (stageOf(stem)?.stage !== "advertising" || /\b(unprompted|unaided|spontaneous)\b/i.test(stem)) continue;
+    const key = lower(stem);
+    const f = families.get(key) ?? { label: stem, byBrand: new Map(), repeated: false };
+    if (f.byBrand.has(code)) f.repeated = true;
+    else f.byBrand.set(code, v);
+    families.set(key, f);
+  }
+  const qualifying = [...families.values()].filter((f) => !f.repeated && f.byBrand.size >= Math.max(3, Math.ceil(frame.brands.length * 0.6)));
+  if (qualifying.length === 0) return { status: "not_found", reason: "No prompted advertising recall question asked about each brand (with its answer list) was recognised." };
+  const keeps = (f: (typeof qualifying)[number]) => [...f.byBrand.values()].every((v) => notSureCodes(v).length > 0);
+  const asked = qualifying.filter(keeps);
+  const pick = asked.length === 1 ? asked[0] : asked.length === 0 && qualifying.length === 1 ? qualifying[0] : null;
+  if (!pick) {
+    const named = (asked.length > 1 ? asked : qualifying).map((f) => f.label);
+    return { status: "ambiguous", candidates: named, reason: `${named.length} questions could be prompted advertising recall (${named.join("; ")}), so which one was asked cannot be told.` };
+  }
+  const byBrand = [...pick.byBrand.entries()].map(([code, v]) => ({ code, variable: v.name })).sort((a, b) => Number(a.code) - Number(b.code));
+  return { status: "found", label: pick.label, byBrand, keepsNotSure: keeps(pick) };
+}
+
+/** A variable's own wording: its label without a leading copy of its name ("relevant_c01. Replacing an unreliable car",
+ * as a CSV with a linked codebook reads, gives "Replacing an unreliable car"); "" when it has no label. */
+function labelAfterName(v: Pick<RoleVariable, "name" | "label">): string {
+  return v.label ? v.label.trim().replace(new RegExp(`^${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[.:\\-]\\s+`), "") : "";
 }
 
 /** A moment's wording reduced for comparison: letters and digits only, lower case ("Quiet Time Alone" and "quiet
@@ -337,7 +533,7 @@ export function findCategoryMoments(unclaimed: RoleVariable[], grids: BrandGrid[
   const wordings = (v: RoleVariable) => {
     // A label that repeats the variable's name before its wording ("relevant_c01. Replacing an unreliable car", as
     // a CSV with a linked codebook reads) is compared on the wording after the name.
-    const own = v.label ? v.label.trim().replace(new RegExp(`^${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[.:\\-]\\s+`), "") : "";
+    const own = labelAfterName(v);
     if (own && own !== v.name) return [own];
     const rest = v.name.split("_").slice(1).join("_");
     return rest ? [nameWords(rest), wordingOf(v)] : [wordingOf(v)];

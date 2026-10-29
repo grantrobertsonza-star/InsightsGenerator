@@ -50,6 +50,21 @@ codebook question fields, and many carry no answer labels at all.
    stated category moments, channels) is its own list: never brands, never attributes. The **category moments**
    question among them (`categoryMoments`, `findCategoryMoments`, D3c) is the one whose options are the same moments,
    in the same words, as the moments grid's items; see `claude/d2-design-2026-10-29.md`, D3c Moments & needs.
+5a. **Prompted advertising recall** (`advertisingRecall`, `findAdvertisingRecall`, D3e): per-brand variables put
+   together by their wording with the brand taken out (not by group: a codebook files the question as asked and its
+   derived yes indicator under one question ID); stage advertising, not unprompted, unaided or spontaneous; an
+   answer list; at least three brands and 60% of the list. The wording whose answers keep "not sure" apart is the
+   question as asked; otherwise a single wording; otherwise ambiguous. See `claude/d2-design-2026-10-29.md`, D3e.
+5b. **Age groups and media use** (`ageGroups`, `findAgeGroups`; `mediaUse`, `findMediaList`; D3f): asked once (no
+   per-brand question, grid cell or brand list question). Age groups: a single-choice question whose own wording
+   names age and whose answers are age ranges (two or more, 60% of the list). Media use: a group of three or more
+   yes/no options whose own labels name media (three or more, 60% of the options other than None or Other). Never
+   by a variable name alone; two candidates are ambiguous. See `claude/d2-design-2026-10-29.md`, D3f.
+5c. **Decision style and acquisition channel** (`decisionStyle`, `findDecisionStyle`; `acquisitionChannel`,
+   `findAcquisitionChannel`; D3g): single-choice questions asked once. Decision style: own wording about a decision
+   style, making, process or approach, or how the respondent decides or chooses. Acquisition channel: own wording
+   naming a channel and an acquisition (acquired, bought, purchased, started, joined), or where the respondent bought
+   or acquired. Never by a variable name alone; two candidates are ambiguous. See `claude/d2-design-2026-10-29.md`, D3g.
 6. **CSM roles.** Overall satisfaction (a satisfaction rating of the company, provider or bank, not of a
    channel, with a satisfied end on its answer list); likelihood to recommend on a stated 0 to 10 scale (Codex D1-F01: by `isZeroToTenScale` in
    `src/lib/descriptiveFindings.ts`, the rule the Net Promoter calculation uses: eleven or more answer codes below

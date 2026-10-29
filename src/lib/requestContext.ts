@@ -21,7 +21,8 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { pool } from "./db";
+import { pool, withTenantRead } from "./db";
+import { runOwned } from "./runOwnership";
 import { ACCESS_COOKIE, AuthRejectedError, AuthUnavailableError, ORGANISATION_COOKIE, REFRESH_COOKIE, userForAccessToken } from "./authSession";
 
 export type Membership = { tenantId: string; organisationName: string; role: "owner" | "member" };
@@ -144,22 +145,11 @@ export async function routeRequestContext(): Promise<RequestContext | Response> 
   }
 }
 
-/** True when run `runId` exists and belongs to tenant `tenantId` (row-level security also applies). */
+/**
+ * True when run `runId` exists, belongs to tenant `tenantId` and is not a project's bin. For a route
+ * handler or action that has no transaction of its own yet; inside one, call runOwnership.ts
+ * directly so the check shares the write's transaction.
+ */
 export async function runBelongsToTenant(tenantId: string, runId: string): Promise<boolean> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) return false;
-  const client = await pool.connect();
-  try {
-    await client.query("begin read only");
-    await client.query("select set_config('app.current_tenant_id', $1, true)", [tenantId]);
-    // A project's bin (migration 0115, documentBin.ts) is a run too, but never a project anyone opens.
-    // Read through to_jsonb so this works before the column exists.
-    const found = (await client.query(`select 1 from runs where id = $1 and tenant_id = $2 and (to_jsonb(runs)->>'bin_of') is null`, [runId, tenantId])).rowCount === 1;
-    await client.query("commit");
-    return found;
-  } catch (error) {
-    await client.query("rollback").catch(() => {});
-    throw error;
-  } finally {
-    client.release();
-  }
+  return withTenantRead(tenantId, (client) => runOwned(client, tenantId, runId, { excludeBin: true }));
 }

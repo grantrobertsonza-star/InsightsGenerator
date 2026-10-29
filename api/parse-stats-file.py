@@ -3760,7 +3760,7 @@ def instrument_sheet(file_bytes: bytes, source_filename: str, args=None) -> dict
 # the proportion scale are recorded for display and never applied to the stored value.
 # ---------------------------------------------------------------------------
 
-INDICATOR_READER = "engine-indicators-2026.10.28"
+INDICATOR_READER = "engine-indicators-2026.10.29"
 
 # SDMX columns with a fixed meaning in Data360 files. Everything else that is not a label partner
 # (X_LABEL of a column X) or, in the wide layout, a year column is a breakdown dimension.
@@ -3772,6 +3772,12 @@ _IND_ATTRIBUTES = {
     "DECIMALS", "TIME_FORMAT", "COMMENT_OBS", "COMMENT_TS", "UNIT_MULT", "OBS_STATUS", "OBS_CONF",
     "DATA_SOURCE", "SOURCE", "OBS_NOTE",
 }
+# Record attributes kept per series (D6, 29 October 2026), for the definition and provenance a dashboard
+# shows: the codes (with labels) each series' rows carry. A series is identified by INDICATOR and its
+# breakdowns; these columns are part of the published series key (STRUCTURE_ID, DATABASE_ID, AGG_METHOD,
+# UNIT_TYPE) or describe how its values are written (DECIMALS, TIME_FORMAT, OBS_CONF). More than one code
+# in a series is recorded as found, never resolved here: the reader of the series says it needs review.
+_IND_SERIES_ATTRIBUTES = ("STRUCTURE_ID", "DATABASE_ID", "AGG_METHOD", "UNIT_TYPE", "DECIMALS", "TIME_FORMAT", "OBS_CONF")
 # A dimension column is named as an SDMX code (upper case, digits, underscores); any other unexplained
 # column name (an OECD-style "Reference area" label column, say) is refused rather than read as one.
 _IND_CODE_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -4048,6 +4054,8 @@ def _ind_sdmx(grid, h, layout, b, line_of):
 
     sources = {}
     withheld = []
+    attribute_columns = [a for a in _IND_SERIES_ATTRIBUTES if a in col]
+    series_attributes = {}
     rows = 0
     width = len(header)
     for r in range(h + 1, len(grid)):
@@ -4075,6 +4083,12 @@ def _ind_sdmx(grid, h, layout, b, line_of):
         )
         if s["indicatorLabel"] is None and lab(row, indicator_col):
             s["indicatorLabel"] = lab(row, indicator_col)
+        for a in attribute_columns:
+            code = get(row, a)
+            if code:
+                found = series_attributes.setdefault(key, {}).setdefault(a, {})
+                if found.get(code) is None:
+                    found[code] = lab(row, a) or None
         b.add_area(area, lab(row, "REF_AREA"))
         status = get(row, "OBS_STATUS") or None
         if status and status not in b.statuses:
@@ -4099,6 +4113,9 @@ def _ind_sdmx(grid, h, layout, b, line_of):
         "dimensions": [{"column": d, "labelColumn": header[label_at[d]] if d in label_at else None} for d in dims],
         "ignoredColumns": ignored,
         "sources": [{"code": k or None, "label": v} for k, v in sorted(sources.items())],
+        # Which of _IND_SERIES_ATTRIBUTES the file has, and per series key the codes found in each.
+        "seriesAttributeColumns": attribute_columns,
+        "seriesAttributes": {k: {a: [{"code": c, "label": l} for c, l in sorted(v.items())] for a, v in attrs.items()} for k, attrs in series_attributes.items()},
     }
     if oecd:
         out["labelsKnown"] = bool(label_at)

@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { assertRunOwned } from "./runOwnership";
 
 /**
  * Both objectives and decisions work the same way: a run can genuinely have
@@ -37,8 +38,8 @@ import type { PoolClient } from "pg";
  * ownership check: no row for this tenant means nothing is changed.
  */
 export async function lockRunForContextChange(client: PoolClient, runId: string, tenantId: string): Promise<void> {
-  const owned = await client.query("select id from runs where id = $1 and tenant_id = $2 for update", [runId, tenantId]);
-  if (!owned.rowCount) throw new Error("That project is not available.");
+  // SEC1: the shared ownership check (runOwnership.ts), taking the row lock; throws RunNotFoundError.
+  await assertRunOwned(client, tenantId, runId, { lock: true });
 }
 
 export async function syncResearchObjective(client: PoolClient, runId: string) {

@@ -12,9 +12,12 @@
 // moved save reloads what is stored instead of overwriting it.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { loadBrandAssociationsAction, loadBrandMomentsAction, loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
+import { loadBrandAdvertisingAction, loadBrandAssociationsAction, loadBrandAudienceAction, loadCategoryOverviewAction, loadBrandMomentsAction, loadBrandOverviewAction, resetTrackerChoicesAction, saveTrackerChoicesAction } from "@/lib/trackerDashboardActions";
 import type { BrandMoments } from "@/lib/trackerMoments";
 import type { BrandAssociations } from "@/lib/trackerAssociations";
+import type { BrandAdvertising } from "@/lib/trackerAdvertising";
+import type { BrandAudience, ProfileRow } from "@/lib/trackerAudience";
+import type { CategoryOverview, Distribution } from "@/lib/trackerCategory";
 import type { BrandOverview, TimelinePoint } from "@/lib/trackerOverview";
 import type { TrackerChoices } from "@/lib/trackerDashboard";
 import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCsmFigures";
@@ -60,9 +63,8 @@ const CSM_ROLES: { role: CsmRole; label: string }[] = [
   { role: "likelyToSwitch", label: "Likely to switch" },
   { role: "company", label: "Company each customer rates" },
 ];
+/** The brand dashboard's pages, all built (batch M4); a page's number in the menu is its place here. */
 const BRAND_SECTIONS = ["Brand overview", "Moments & needs", "Brand associations", "Advertising & WOM", "Audience & media", "Category overview"];
-/** The brand dashboard's pages built so far, by their place in BRAND_SECTIONS; the others are shown as coming next. */
-const LIVE_SECTIONS = 3;
 
 // A change shown to one decimal: one that rounds to zero is "±0.0", never "−0.0".
 const signed = (v: number, digits = 1) => {
@@ -83,6 +85,22 @@ type Load = { state: "loading" } | { state: "failed"; error: string } | { state:
 type MomentsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; moments: BrandMoments };
 /** Page 03's figures, loaded the same way as page 02's. */
 type AssociationsLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; associations: BrandAssociations };
+/** Page 04's figures, loaded the same way as page 02's. */
+type AdvertisingLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; advertising: BrandAdvertising };
+/** Page 05's figures, loaded the same way as page 02's. */
+type AudienceLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; audience: BrandAudience };
+/** The Category overview page's figures, loaded the same way as page 02's. */
+type CategoryLoad = { state: "idle" } | { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; category: CategoryOverview };
+/** A word of mouth group's colour, from its wording (presentation only; the group's identity is its code). */
+function womColour(key: string, label: string): string {
+  if (key === "unaware") return "#e2e8f0";
+  if (/\bpositive\b/i.test(label)) return "#059669";
+  if (/\bnegative\b/i.test(label)) return "#dc2626";
+  if (/\bmixed\b/i.test(label)) return "#d97706";
+  if (/\bneutral\b/i.test(label)) return "#64748b";
+  if (/\bnot heard\b|\bnothing\b/i.test(label)) return "#cbd5e1";
+  return COMPARATOR_COLOURS[Math.abs([...key].reduce((h, c) => h * 31 + c.charCodeAt(0), 7)) % COMPARATOR_COLOURS.length];
+}
 /** The compared brands' dot colours on page 03, by their place among the brands compared; the client's brand is blue. */
 const COMPARATOR_COLOURS = ["#d97706", "#059669", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#475569", "#ea580c"];
 const FOCAL_COLOUR = "#2563eb";
@@ -204,14 +222,20 @@ export default function TrackerDashboardPanel({
   const [draft, setDraft] = useState<TrackerChoices>({});
   const [save, setSave] = useState<SaveState>({ state: "idle" });
   // The brand dashboard's page, by its place in BRAND_SECTIONS: 0 Brand overview (the default), 1 Moments & needs,
-  // 2 Brand associations.
+  // 2 Brand associations, 3 Advertising & WOM, 4 Audience & media, 5 Category overview.
   const [section, setSection] = useState(0);
   const [moments, setMoments] = useState<MomentsLoad>({ state: "idle" });
   const [associations, setAssociations] = useState<AssociationsLoad>({ state: "idle" });
+  const [advertising, setAdvertising] = useState<AdvertisingLoad>({ state: "idle" });
+  const [audience, setAudience] = useState<AudienceLoad>({ state: "idle" });
+  const [category, setCategory] = useState<CategoryLoad>({ state: "idle" });
   // Only the latest request may update the screen: a slow earlier load (or one for another file) is ignored.
   const latest = useRef(0);
   const latestMoments = useRef(0);
   const latestAssociations = useRef(0);
+  const latestAdvertising = useRef(0);
+  const latestAudience = useRef(0);
+  const latestCategory = useRef(0);
 
   const loadMoments = useCallback(async () => {
     const id = ++latestMoments.current;
@@ -229,15 +253,45 @@ export default function TrackerDashboardPanel({
     setAssociations(r.ok ? { state: "ready", associations: r.associations } : { state: "failed", error: r.error });
   }, [runId, documentId]);
 
+  const loadAdvertising = useCallback(async () => {
+    const id = ++latestAdvertising.current;
+    setAdvertising({ state: "loading" });
+    const r = await loadBrandAdvertisingAction(runId, documentId);
+    if (id !== latestAdvertising.current) return;
+    setAdvertising(r.ok ? { state: "ready", advertising: r.advertising } : { state: "failed", error: r.error });
+  }, [runId, documentId]);
+
+  const loadAudience = useCallback(async () => {
+    const id = ++latestAudience.current;
+    setAudience({ state: "loading" });
+    const r = await loadBrandAudienceAction(runId, documentId);
+    if (id !== latestAudience.current) return;
+    setAudience(r.ok ? { state: "ready", audience: r.audience } : { state: "failed", error: r.error });
+  }, [runId, documentId]);
+
+  const loadCategory = useCallback(async () => {
+    const id = ++latestCategory.current;
+    setCategory({ state: "loading" });
+    const r = await loadCategoryOverviewAction(runId, documentId);
+    if (id !== latestCategory.current) return;
+    setCategory(r.ok ? { state: "ready", category: r.category } : { state: "failed", error: r.error });
+  }, [runId, documentId]);
+
   const reload = useCallback(async () => {
     const id = ++latest.current;
     setLoad({ state: "loading" });
-    // Pages 02 and 03 depend on the same choices (weighting, brands, the awareness question): any answer still on
+    // Pages 02 to 06 depend on the same choices (weighting, brands, the stage questions): any answer still on
     // its way is dropped, and each page loads again when shown.
     latestMoments.current += 1;
     setMoments({ state: "idle" });
     latestAssociations.current += 1;
     setAssociations({ state: "idle" });
+    latestAdvertising.current += 1;
+    setAdvertising({ state: "idle" });
+    latestAudience.current += 1;
+    setAudience({ state: "idle" });
+    latestCategory.current += 1;
+    setCategory({ state: "idle" });
     const r = await loadBrandOverviewAction(runId, documentId, kind);
     if (id !== latest.current) return;
     if (!r.ok) return setLoad({ state: "failed", error: r.error });
@@ -253,6 +307,9 @@ export default function TrackerDashboardPanel({
       latest.current += 1;
       latestMoments.current += 1;
       latestAssociations.current += 1;
+      latestAdvertising.current += 1;
+      latestAudience.current += 1;
+      latestCategory.current += 1;
     };
   }, [reload]);
 
@@ -267,6 +324,24 @@ export default function TrackerDashboardPanel({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (kind === "brand" && section === 2 && associations.state === "idle") void loadAssociations();
   }, [kind, section, associations.state, loadAssociations]);
+
+  useEffect(() => {
+    // Page 04 likewise: calculated only when shown, once per load of the dashboard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (kind === "brand" && section === 3 && advertising.state === "idle") void loadAdvertising();
+  }, [kind, section, advertising.state, loadAdvertising]);
+
+  useEffect(() => {
+    // Page 05 likewise: calculated only when shown, once per load of the dashboard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (kind === "brand" && section === 4 && audience.state === "idle") void loadAudience();
+  }, [kind, section, audience.state, loadAudience]);
+
+  useEffect(() => {
+    // The Category overview likewise: calculated only when shown, once per load of the dashboard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (kind === "brand" && section === 5 && category.state === "idle") void loadCategory();
+  }, [kind, section, category.state, loadCategory]);
 
   const overview = load.state === "ready" ? load.overview : null;
   const dashboard = overview?.view.dashboard ?? null;
@@ -984,6 +1059,403 @@ export default function TrackerDashboardPanel({
     );
   })();
 
+  // ---- Brand tracking dashboard, page 04 "Advertising & WOM" (Grant's design, 29 October 2026) --------------
+  const advertisingView = overview && dashboard && (() => {
+    const a = advertising.state === "ready" ? advertising.advertising : null;
+    const pct = (v: number) => `${v.toFixed(1)}%`;
+    const weighting = a ? (a.weighted ? `Weighted by ${a.weightVar}${a.effectiveBase !== null ? `, effective base ${Math.round(a.effectiveBase)}` : ""}` : "Unweighted") : "";
+    const nText = (bases: (number | null)[]) => {
+      const known = [...new Set(bases.filter((b): b is number => b !== null))];
+      return known.length === 0 ? "" : known.length === 1 ? `n=${known[0].toLocaleString()}` : `n=${Math.min(...known).toLocaleString()} to ${Math.max(...known).toLocaleString()}`;
+    };
+    const recall = a?.recall.status === "ok" ? a.recall : null;
+    const wom = a?.wom.status === "ok" ? a.wom : null;
+    const focalRecall = recall && focal ? recall.brands.find((b) => b.code === focal.code) : undefined;
+    // Word of mouth bars: the client's brand first, then the list's order.
+    const womBrands = wom ? [...wom.brands].sort((x, y) => Number(y.code === focal?.code) - Number(x.code === focal?.code)) : [];
+    return (
+      <>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[2rem] font-bold leading-tight tracking-tight text-slate-900">Advertising &amp; WOM</h2>
+            <p className="mt-1 text-[15px] text-slate-500">See which brands people recall advertising for, and what they have heard about each brand.</p>
+          </div>
+          <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+            Customise dashboard
+          </button>
+        </div>
+        {brandChips(a ? a.weighted : overview.figures.weighted)}
+        {customising && customise}
+        {statusLine}
+        {advertising.state === "loading" || advertising.state === "idle" ? (
+          <p className="text-sm text-slate-500" role="status">
+            Calculating advertising recall and word of mouth from this file...
+          </p>
+        ) : advertising.state === "failed" ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" data-testid="tracker-advertising-failed">
+            <p>Advertising recall and word of mouth could not be calculated: {advertising.error}</p>
+            <button type="button" onClick={() => void loadAdvertising()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
+              Try again
+            </button>
+          </div>
+        ) : (
+          a && (
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <Card
+                title="Advertising recall"
+                subtitle={
+                  recall
+                    ? `Prompted recall among those asked about each brand; ${focalRecall?.base !== null && focalRecall?.base !== undefined ? `${brandLabel.get(focalRecall.code) ?? focalRecall.code} n=${focalRecall.base.toLocaleString()}, all brands ${nText(recall.brands.map((b) => b.base))}` : nText(recall.brands.map((b) => b.base))}. ${weighting}.`
+                    : "Prompted recall."
+                }
+                testId="tracker-ad-recall"
+              >
+                {a.recall.status !== "ok" ? (
+                  <UnavailableNote state={a.recall} testId="tracker-ad-recall-unavailable" />
+                ) : (
+                  <>
+                    <ol className="flex flex-col gap-2.5">
+                      {a.recall.brands.map((b) => {
+                        const isFocal = b.code === focal?.code;
+                        return (
+                          <li key={b.code} className={`grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)_3.5rem_5.5rem] items-center gap-3 rounded-md text-sm ${isFocal ? "bg-blue-50 font-semibold" : ""}`} data-testid="tracker-ad-recall-row" data-code={b.code} title={b.reason}>
+                            <span className={`truncate ${isFocal ? "text-blue-700" : "text-slate-700"}`}>{brandLabel.get(b.code) ?? b.code}</span>
+                            <span className="h-3 rounded bg-slate-100">
+                              <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, b.yes ?? 0))}%`, background: isFocal ? FOCAL_COLOUR : "#94a3b8" }} />
+                            </span>
+                            <span className="text-right tabular-nums text-slate-900" data-testid="tracker-ad-recall-yes">
+                              {b.yes === null ? <span className="text-slate-400">n/a</span> : pct(b.yes)}
+                            </span>
+                            <span className="text-right text-[11px] font-normal tabular-nums text-slate-500" data-testid="tracker-ad-recall-not-sure">
+                              {a.recall.status === "ok" && a.recall.keepsNotSure ? (b.notSure === null ? "" : `not sure ${pct(b.notSure)}`) : ""}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {a.recall.brands.some((b) => b.yes === null) && (
+                      <p className="mt-3 text-[11px] text-slate-500" data-testid="tracker-ad-recall-na">
+                        n/a: {a.recall.brands.filter((b) => b.yes === null).map((b) => `${brandLabel.get(b.code) ?? b.code}: ${b.reason ?? "Not available."}`).join(" ")}
+                      </p>
+                    )}
+                    <p className="mt-3 text-[11px] text-slate-500" data-testid="tracker-ad-recall-note">
+                      Share answering yes to &ldquo;{a.recall.label}&rdquo;.{" "}
+                      {a.recall.keepsNotSure ? "Not sure answers stay in the base and are shown apart, never counted as yes or no." : "This question has no not sure answer."} Self-reported recall is not verified ad exposure or an estimate of media effectiveness.
+                    </p>
+                  </>
+                )}
+              </Card>
+              <Card
+                title="Word of mouth"
+                subtitle={wom ? `Exclusive groups; all eligible respondents; ${nText(wom.brands.map((b) => b.base))}. ${weighting}.` : "Exclusive groups; all eligible respondents."}
+                testId="tracker-wom"
+              >
+                {a.wom.status !== "ok" ? (
+                  <UnavailableNote state={a.wom} testId="tracker-wom-unavailable" />
+                ) : (
+                  <>
+                    <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-700" aria-label="Legend" data-testid="tracker-wom-legend">
+                      {a.wom.groups.map((g) => (
+                        <li key={g.key} className="flex items-center gap-1.5">
+                          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: womColour(g.key, g.label) }} aria-hidden="true" />
+                          {g.label}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex flex-col gap-2.5">
+                      {womBrands.map((b) => {
+                        const isFocal = b.code === focal?.code;
+                        const name = brandLabel.get(b.code) ?? b.code;
+                        return (
+                          <div key={b.code} className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-3 text-sm" data-testid="tracker-wom-row" data-code={b.code}>
+                            <span className={`truncate ${isFocal ? "font-semibold text-blue-700" : "text-slate-700"}`}>{name}</span>
+                            {b.groups === null ? (
+                              <span className="text-xs text-slate-400" title={b.reason}>
+                                n/a
+                              </span>
+                            ) : (
+                              <span className="flex h-5 overflow-hidden rounded" role="img" aria-label={`${name}: ${b.groups.map((g) => `${g.label} ${pct(g.share)}`).join(", ")}`}>
+                                {b.groups.map((g) =>
+                                  g.share <= 0 ? null : (
+                                    <span key={g.key} className="block h-full" style={{ width: `${g.share}%`, background: womColour(g.key, g.label) }} title={`${g.label}: ${pct(g.share)}`} data-testid="tracker-wom-segment" data-key={g.key} />
+                                  ),
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {a.wom.brands.some((b) => b.groups === null) && (
+                      <p className="mt-3 text-[11px] text-slate-500" data-testid="tracker-wom-na">
+                        n/a: {a.wom.brands.filter((b) => b.groups === null).map((b) => `${brandLabel.get(b.code) ?? b.code}: ${b.reason ?? "Not available."}`).join(" ")}
+                      </p>
+                    )}
+                    {(() => {
+                      const mine = focal ? a.wom.brands.find((b) => b.code === focal.code) : undefined;
+                      return mine?.groups ? (
+                        <p className="mt-3 text-xs text-slate-700" data-testid="tracker-wom-focal">
+                          <span className="font-semibold text-blue-700">{focal!.label}:</span> {mine.groups.map((g) => `${g.label} ${pct(g.share)}`).join(" | ")}
+                        </p>
+                      ) : null;
+                    })()}
+                    <p className="mt-3 text-[11px] text-slate-500">
+                      Each respondent is in one group per brand: the answer to &ldquo;{a.wom.label}&rdquo;, or Unaware of the brand. The groups add to 100%. Hover a segment for its share.
+                    </p>
+                  </>
+                )}
+              </Card>
+            </div>
+          )
+        )}
+      </>
+    );
+  })();
+
+  // ---- Brand tracking dashboard, page 05 "Audience & media" (Grant's design, 29 October 2026) ---------------
+  const audienceView = overview && dashboard && (() => {
+    const a = audience.state === "ready" ? audience.audience : null;
+    const pct = (v: number) => `${v.toFixed(1)}%`;
+    const weighting = a ? (a.weighted ? `Weighted by ${a.weightVar}` : "Unweighted") : "";
+    const acq = a?.acquirers.status === "ok" ? a.acquirers : null;
+    const brandName = acq?.brand.label ?? focal?.label ?? "your brand";
+    const groupsText = acq
+      ? `${brandName} recent acquirers ("${acq.label}", n=${acq.n === null ? "n/a" : acq.n.toLocaleString()}) vs all eligible category respondents (n=${a?.categoryN?.toLocaleString() ?? "n/a"})`
+      : `All eligible category respondents (n=${a?.categoryN?.toLocaleString() ?? "n/a"})`;
+    // Paired bars: the acquirers (the client's colour) and the category (grey), each with its value.
+    const paired = (rows: ProfileRow[], testId: string) => (
+      <ol className="flex flex-col gap-3">
+        {rows.map((r) => (
+          <li key={r.key} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-3 text-sm" data-testid={testId} data-key={r.key}>
+            <span className="truncate text-slate-700" title={r.label}>
+              {r.label}
+            </span>
+            <span className="flex flex-col gap-1">
+              {(
+                [
+                  ["acquirers", r.acquirers, FOCAL_COLOUR],
+                  ["category", r.category, "#94a3b8"],
+                ] as const
+              ).map(([which, g, colour]) => (
+                <span key={which} className="grid grid-cols-[minmax(0,1fr)_3.5rem] items-center gap-2" title={g.reason}>
+                  <span className="h-2.5 rounded bg-slate-100">
+                    <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, g.share ?? 0))}%`, background: colour }} />
+                  </span>
+                  <span className="text-right text-xs tabular-nums text-slate-900" data-testid={`${testId}-${which}`}>
+                    {g.share === null ? <span className="text-slate-400">n/a</span> : pct(g.share)}
+                  </span>
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ol>
+    );
+    const legend = (
+      <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700" aria-label="Legend">
+        <li className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: FOCAL_COLOUR }} aria-hidden="true" />
+          {brandName} recent acquirers
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-400" aria-hidden="true" />
+          All eligible category respondents
+        </li>
+      </ul>
+    );
+    const naNote = (rows: ProfileRow[], testId: string) => {
+      const reasons = [...new Set(rows.filter((r) => r.acquirers.share === null).map((r) => r.acquirers.reason ?? "Not available."))];
+      return reasons.length > 0 ? (
+        <p className="mt-3 text-[11px] text-slate-500" data-testid={testId}>
+          Acquirers n/a: {reasons.join(" ")}
+        </p>
+      ) : null;
+    };
+    return (
+      <>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[2rem] font-bold leading-tight tracking-tight text-slate-900">Audience &amp; media</h2>
+            <p className="mt-1 text-[15px] text-slate-500">Compare who recently acquired your brand with everyone in the category.</p>
+          </div>
+          <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+            Customise dashboard
+          </button>
+        </div>
+        {brandChips(a ? a.weighted : overview.figures.weighted)}
+        {customising && customise}
+        {statusLine}
+        {audience.state === "loading" || audience.state === "idle" ? (
+          <p className="text-sm text-slate-500" role="status">
+            Calculating the audience profile and media use from this file...
+          </p>
+        ) : audience.state === "failed" ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" data-testid="tracker-audience-failed">
+            <p>The audience profile and media use could not be calculated: {audience.error}</p>
+            <button type="button" onClick={() => void loadAudience()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
+              Try again
+            </button>
+          </div>
+        ) : (
+          a && (
+            <>
+              {a.acquirers.status !== "ok" ? (
+                <UnavailableNote state={a.acquirers} testId="tracker-audience-acquirers-unavailable" />
+              ) : a.acquirers.n === null || a.acquirers.n === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-700" data-testid="tracker-audience-no-acquirers">
+                  {a.acquirers.reason ?? `No recent acquirers of ${brandName} could be counted.`}
+                </p>
+              ) : a.acquirers.level === "very_small" ? (
+                <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900" role="note" data-testid="tracker-audience-small-base" data-level="very_small">
+                  VERY SMALL BASE: {brandName} recent acquirers n={a.acquirers.n.toLocaleString()}. Descriptive illustration only. No significance, targeting or market inference.
+                </p>
+              ) : a.acquirers.level === "small" ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="note" data-testid="tracker-audience-small-base" data-level="small">
+                  SMALL BASE: {brandName} recent acquirers n={a.acquirers.n.toLocaleString()}. Read with caution; no significance test is applied.
+                </p>
+              ) : null}
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <Card title="Age profile" subtitle={`${groupsText}. ${weighting}.`} testId="tracker-audience-age">
+                  {a.age.status !== "ok" ? (
+                    <UnavailableNote state={a.age} testId="tracker-audience-age-unavailable" />
+                  ) : (
+                    <>
+                      {legend}
+                      {paired(a.age.rows, "tracker-audience-age-row")}
+                      {naNote(a.age.rows, "tracker-audience-age-na")}
+                      <p className="mt-3 text-[11px] text-slate-500">Share of each group with an answer to &ldquo;{a.age.label}&rdquo;; every answer is shown. A profile of the respondents, not of the market.</p>
+                    </>
+                  )}
+                </Card>
+                <Card title="Media use" subtitle={`Multiple response; media habits, not advertising effectiveness. ${groupsText}. ${weighting}.`} testId="tracker-audience-media">
+                  {a.media.status !== "ok" ? (
+                    <UnavailableNote state={a.media} testId="tracker-audience-media-unavailable" />
+                  ) : (
+                    <>
+                      {legend}
+                      {paired(a.media.rows, "tracker-audience-media-row")}
+                      {naNote(a.media.rows, "tracker-audience-media-na")}
+                      <p className="mt-3 text-[11px] text-slate-500">Ordered by use among all eligible respondents. Respondents who use none of the listed media stay in the base.</p>
+                    </>
+                  )}
+                </Card>
+              </div>
+            </>
+          )
+        )}
+      </>
+    );
+  })();
+
+  // ---- Brand tracking dashboard, "Category overview" (Grant's design, page 08, 29 October 2026) --------------
+  const categoryView = overview && dashboard && (() => {
+    const c = category.state === "ready" ? category.category : null;
+    const pct = (v: number) => `${v.toFixed(1)}%`;
+    const weighting = c ? (c.weighted ? `Weighted by ${c.weightVar}` : "Unweighted") : "";
+    const STAGE_WORD: Record<string, string> = { awareness: "Recognised", consideration: "Considered", acquisition: "Acquired" };
+    const shares = (d: Distribution, testId: string) =>
+      d.status !== "ok" ? (
+        <UnavailableNote state={d} testId={`${testId}-unavailable`} />
+      ) : d.answers.length === 0 ? (
+        <p className="text-xs text-slate-500">{d.reason ?? "No answers."}</p>
+      ) : (
+        <ol className="flex flex-col gap-2">
+          {d.answers.map((a) => (
+            <li key={a.code} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_3.5rem] items-center gap-2 text-sm" data-testid={`${testId}-row`} data-code={a.code}>
+              <span className="truncate text-slate-700" title={a.label}>
+                {a.label}
+              </span>
+              <span className="h-2.5 rounded bg-slate-100">
+                <span className="block h-full rounded bg-blue-600" style={{ width: `${Math.max(0, Math.min(100, a.share ?? 0))}%` }} />
+              </span>
+              <span className="text-right text-xs font-semibold tabular-nums text-slate-900" data-testid={`${testId}-share`}>
+                {a.share === null ? <span className="text-slate-400">n/a</span> : pct(a.share)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      );
+    return (
+      <>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[2rem] font-bold leading-tight tracking-tight text-slate-900">Category overview</h2>
+            <p className="mt-1 text-[15px] text-slate-500">How many brands people hold in mind, how they decide, and where recent acquirers acquired.</p>
+          </div>
+          <button type="button" onClick={() => setCustomising((v) => !v)} aria-expanded={customising} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+            Customise dashboard
+          </button>
+        </div>
+        {brandChips(c ? c.weighted : overview.figures.weighted)}
+        {customising && customise}
+        {statusLine}
+        {category.state === "loading" || category.state === "idle" ? (
+          <p className="text-sm text-slate-500" role="status">
+            Calculating the category overview from this file...
+          </p>
+        ) : category.state === "failed" ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" data-testid="tracker-category-failed">
+            <p>The category overview could not be calculated: {category.error}</p>
+            <button type="button" onClick={() => void loadCategory()} className="mt-2 rounded border border-red-300 bg-white px-2.5 py-1 text-xs">
+              Try again
+            </button>
+          </div>
+        ) : (
+          c && (
+            <section aria-label="Category" className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+              <Card title="Brand repertoire" subtitle={`Brands recognised, considered and acquired: mean per respondent, tracked brands only (Other excluded). ${weighting}.`} testId="tracker-category-repertoire">
+                <dl className="flex flex-col gap-3">
+                  {c.repertoire.map((r) => (
+                    <div key={r.stage} className="flex items-baseline justify-between gap-3" data-testid="tracker-category-repertoire-row" data-stage={r.stage}>
+                      <dt className="min-w-0 text-sm text-slate-600">
+                        {STAGE_WORD[r.stage]}
+                        {r.status === "ok" && <span className="block truncate text-[11px] text-slate-400" title={r.label}>{`${r.label}, ${r.brands} brands${r.base !== null ? `, n=${r.base.toLocaleString()}` : ""}`}</span>}
+                      </dt>
+                      <dd className="shrink-0 text-right">
+                        {r.status !== "ok" ? (
+                          <span className="text-xs font-semibold text-slate-500" title={r.reason} data-testid="tracker-category-repertoire-state">
+                            {r.status === "not_measured" ? "Not measured" : "Mapping needed"}
+                          </span>
+                        ) : r.mean === null ? (
+                          <span className="text-sm text-slate-400" title={r.reason}>
+                            n/a
+                          </span>
+                        ) : (
+                          <span className="text-[1.75rem] font-bold tabular-nums leading-none text-slate-900" data-testid="tracker-category-repertoire-mean">
+                            {r.mean.toFixed(1)}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {c.repertoire.some((r) => r.status !== "ok" || r.mean === null) && (
+                  <p className="mt-3 text-[11px] text-slate-500" data-testid="tracker-category-repertoire-na">
+                    {c.repertoire.filter((r) => r.status !== "ok" || r.mean === null).map((r) => `${STAGE_WORD[r.stage]}: ${r.reason ?? "Not available."}`).join(" ")}
+                  </p>
+                )}
+              </Card>
+              <Card
+                title="How decisions are made"
+                subtitle={c.decisionStyle.status === "ok" ? `Single response; all who answered "${c.decisionStyle.label}"${c.decisionStyle.base !== null ? `, n=${c.decisionStyle.base.toLocaleString()}` : ""}. ${weighting}.` : "Single response."}
+                testId="tracker-category-decision"
+              >
+                {shares(c.decisionStyle, "tracker-category-decision")}
+              </Card>
+              <Card
+                title="Most recent acquisition channel"
+                subtitle={c.acquisitionChannel.status === "ok" ? `Single response among those who answered "${c.acquisitionChannel.label}" (the question's own routing decides who was asked)${c.acquisitionChannel.base !== null ? `, n=${c.acquisitionChannel.base.toLocaleString()}` : ""}. ${weighting}.` : "Single response."}
+                testId="tracker-category-channel"
+              >
+                {shares(c.acquisitionChannel, "tracker-category-channel")}
+              </Card>
+            </section>
+          )
+        )}
+      </>
+    );
+  })();
+
   // ---- CSM dashboard (preview: "Customer experience dashboard") ------------------------------------------------
   const companyInfo = overview?.csmCompany && "companies" in overview.csmCompany ? overview.csmCompany : null;
   const scope = companyScope ?? companyInfo?.focal?.code ?? "all";
@@ -1331,25 +1803,18 @@ export default function TrackerDashboardPanel({
             <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Workspace</p>
             <p className="px-2 text-lg font-bold text-slate-900">Brand tracking</p>
             <p className="mb-4 truncate px-2 text-xs text-slate-500">{focal ? `${focal.label} / ${overview?.wave ?? ""}` : filename}</p>
-            {BRAND_SECTIONS.map((s, i) =>
-              i < LIVE_SECTIONS ? (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSection(i)}
-                  aria-current={i === section ? "page" : undefined}
-                  className={`flex items-baseline gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${i === section ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-700 hover:bg-slate-50"}`}
-                >
-                  <span className="text-xs font-semibold">{String(i + 1).padStart(2, "0")}</span>
-                  {s}
-                </button>
-              ) : (
-                <span key={s} title="Coming next" className="flex items-baseline gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400">
-                  <span className="text-xs font-semibold">{String(i + 1).padStart(2, "0")}</span>
-                  {s}
-                </span>
-              ),
-            )}
+            {BRAND_SECTIONS.map((s, i) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSection(i)}
+                aria-current={i === section ? "page" : undefined}
+                className={`flex items-baseline gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${i === section ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-700 hover:bg-slate-50"}`}
+              >
+                <span className="text-xs font-semibold">{String(i + 1).padStart(2, "0")}</span>
+                {s}
+              </button>
+            ))}
           </nav>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1368,9 +1833,9 @@ export default function TrackerDashboardPanel({
               </div>
             )}
             {kind === "brand" && (
-              // The section menu is beside the page on a wide screen; on a narrow one the built pages are tabs here.
-              <div className="flex gap-1.5 lg:hidden" role="group" aria-label="Brand tracking pages">
-                {BRAND_SECTIONS.slice(0, LIVE_SECTIONS).map((s, i) => (
+              // The section menu is beside the page on a wide screen; on a narrow one the pages are tabs here (they wrap).
+              <div className="flex flex-wrap gap-1.5 lg:hidden" role="group" aria-label="Brand tracking pages">
+                {BRAND_SECTIONS.map((s, i) => (
                   <button
                     key={s}
                     type="button"
@@ -1383,7 +1848,7 @@ export default function TrackerDashboardPanel({
                 ))}
               </div>
             )}
-            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : brandView) : csmView}
+            {kind === "brand" ? (section === 1 ? momentsView : section === 2 ? associationsView : section === 3 ? advertisingView : section === 4 ? audienceView : section === 5 ? categoryView : brandView) : csmView}
           </div>
         </div>
       </div>

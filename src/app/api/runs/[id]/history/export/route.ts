@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 import { csvField } from "@/lib/csvField";
 
 type ExportRow = {
@@ -42,11 +42,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   const [run, rows] = await withTenant(TENANT_ID, async (client) => {
     const runResult = await client.query<{ project_name: string | null; decision_statement: string | null }>(
-      "select project_name, decision_statement from runs where id = $1",
-      [runId]
+      "select project_name, decision_statement from runs where id = $1 and tenant_id = $2",
+      [runId, TENANT_ID]
     );
     const historyResult = await client.query<ExportRow>(
       `select

@@ -128,17 +128,17 @@ describe("decision-candidate human-edit provenance survives re-accept and regene
 
   it("edit -> re-accept (no new wording) -> regenerate -> reload: the human's edited wording is never deleted", async () => {
     const { rows } = makeFakeDb([
-      { id: "cand-1", run_id: "run-1", candidate_text: "Whether to expand warehouse capacity or outsource fulfillment.", status: "pending", edited: false, source: "ai_suggested" },
+      { id: "cand-1", run_id: "00000000-0000-4000-8000-0000000000e2", candidate_text: "Whether to expand warehouse capacity or outsource fulfillment.", status: "pending", edited: false, source: "ai_suggested" },
     ]);
 
     // 1. Edit: the researcher accepts with new wording.
-    await acceptDecisionCandidate("run-1", "cand-1", "Whether to build a second warehouse in-house or outsource fulfillment to a 3PL.");
+    await acceptDecisionCandidate("00000000-0000-4000-8000-0000000000e2", "cand-1", "Whether to build a second warehouse in-house or outsource fulfillment to a 3PL.");
     expect(rows[0].edited).toBe(true);
     expect(rows[0].candidate_text).toBe("Whether to build a second warehouse in-house or outsource fulfillment to a 3PL.");
 
     // 2. Re-accept with NO new wording - this is exactly the DEC-001 gap: the old code computed
     // `wasEdited` from this call's own (absent) edit alone and reset `edited` back to false.
-    await acceptDecisionCandidate("run-1", "cand-1");
+    await acceptDecisionCandidate("00000000-0000-4000-8000-0000000000e2", "cand-1");
     expect(rows[0].edited).toBe(true); // must still be true
     expect(rows[0].candidate_text).toBe("Whether to build a second warehouse in-house or outsource fulfillment to a 3PL.");
 
@@ -148,7 +148,7 @@ describe("decision-candidate human-edit provenance survives re-accept and regene
     mockLlmCandidates([
       { candidate_text: "Whether to raise prices or hold steady through the next quarter.", rationale: "Pricing pressure theme." },
     ]);
-    await generateDecisionCandidates("tenant-1", "run-1");
+    await generateDecisionCandidates("tenant-1", "00000000-0000-4000-8000-0000000000e2");
 
     // 4. Reload: the human-edited candidate survives, untouched, alongside the new AI suggestion.
     const reloaded = rows.find((r) => r.id === "cand-1");
@@ -160,20 +160,20 @@ describe("decision-candidate human-edit provenance survives re-accept and regene
 
   it("regression: a never-edited AI candidate is still correctly deleted on regenerate", async () => {
     const { rows } = makeFakeDb([
-      { id: "cand-untouched", run_id: "run-1", candidate_text: "Whether to launch in a new region or deepen the existing one.", status: "accepted", edited: false, source: "ai_suggested" },
+      { id: "cand-untouched", run_id: "00000000-0000-4000-8000-0000000000e2", candidate_text: "Whether to launch in a new region or deepen the existing one.", status: "accepted", edited: false, source: "ai_suggested" },
     ]);
     mockLlmCandidates([{ candidate_text: "Whether to rebrand or keep the current identity.", rationale: "Brand theme." }]);
-    await generateDecisionCandidates("tenant-1", "run-1");
+    await generateDecisionCandidates("tenant-1", "00000000-0000-4000-8000-0000000000e2");
     expect(rows.find((r) => r.id === "cand-untouched")).toBeUndefined();
     expect(rows.some((r) => r.candidate_text === "Whether to rebrand or keep the current identity.")).toBe(true);
   });
 
   it("re-accepting with wording that's typed back to match what's already stored still keeps edited true if it was already true", async () => {
     const { rows } = makeFakeDb([
-      { id: "cand-1", run_id: "run-1", candidate_text: "Whether to expand or hold.", status: "pending", edited: true, source: "ai_suggested" },
+      { id: "cand-1", run_id: "00000000-0000-4000-8000-0000000000e2", candidate_text: "Whether to expand or hold.", status: "pending", edited: true, source: "ai_suggested" },
     ]);
     // No edit this call (editedText omitted) on an already-edited candidate.
-    await acceptDecisionCandidate("run-1", "cand-1");
+    await acceptDecisionCandidate("00000000-0000-4000-8000-0000000000e2", "cand-1");
     expect(rows[0].edited).toBe(true);
   });
 });

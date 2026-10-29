@@ -99,7 +99,8 @@ async function slides(response: Response): Promise<string[]> {
   return Promise.all(names.map(async (n) => decode((await zip.file(n)!.async("string")).replace(/<\/a:p>/g, "\n"))));
 }
 
-const params = { params: Promise.resolve({ id: "run-1" }) };
+// A real project id: the routes refuse an id that cannot name a project before reading anything (SEC1).
+const params = { params: Promise.resolve({ id: "00000000-0000-4000-8000-0000000000e1" }) };
 const FRAMING_ALL =
   "Support no longer valid: this framing was written before a change to the evidence it rests on and is shown as it was generated. " +
   "Of the 4 insights it uses, 2 are no longer valid, 1 has changed since it was drafted and 1 is current. Regenerate the report to update it.";

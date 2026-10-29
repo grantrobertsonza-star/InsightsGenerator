@@ -145,7 +145,7 @@ export async function uploadDocumentsAction(runId: string, formData: FormData): 
       failed.push(`${file.name}: ${message}`);
       await withTenant(TENANT_ID, async (client) => {
         await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'upload_error', $3)`,
+          `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'upload_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
           // A storage write's underlying network cause, when there was one (batch 65), for diagnosis.
           [TENANT_ID, runId, JSON.stringify({ file: file.name, message, ...(error instanceof StorageWriteError && error.failureCause ? { cause: error.failureCause } : {}) })],
         );

@@ -7,6 +7,7 @@ import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
+import { assertRunOwned } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf } from "./descriptiveFindings";
@@ -250,6 +251,7 @@ export async function addChartFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       // Scoped by source_document_id too: two documents in the same run (two waves, say) can
       // each have their own variable of the same name, and without this a second document's
       // chart would be mistaken for an existing finding from the first.
@@ -315,6 +317,7 @@ export async function removeChartFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         `update findings set status = 'rejected'
          where run_id = $1 and pattern_type = 'level' and stated_stats->>'source' = 'chart_tool'

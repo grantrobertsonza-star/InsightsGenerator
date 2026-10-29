@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { loadDocumentFile, loadVariableDictionaryWithStatus, overlayFor } from "./crosstabs";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant, withTenantRead } from "./db";
+import { assertRunOwned } from "./runOwnership";
 import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
 import type { LabelOverlay } from "./labelOverlay";
 import { canonicalJson } from "./researchQualityRules";
@@ -295,6 +296,7 @@ export async function addScatterFindingAction(
     const stats = { ...finding.statedStats, basis: d.basis, ...(d.hashColumn ? {} : { basis_without_content_hash: true }) };
     const statsJson = JSON.stringify(stats);
     const result = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const doc = await client.query("select id from documents where id = $1 and run_id = $2 for update", [documentId, runId]);
       if (doc.rowCount !== 1) throw new Error("That data file is not in this project.");
       // Oldest first, a finding in use before a removed one: the one kept if earlier duplicates exist.
@@ -348,15 +350,15 @@ export async function addScatterFindingAction(
           `update findings set finding_text = $2,
              theme = ${provenance ? "case when human_edited_fields @> array['theme'] then theme else $3 end" : "$3"},
              stated_stats = $4
-           where id = $1`,
-          [target.id, text, finding.theme, nextJson],
+           where id = $1 and run_id = $5`,
+          [target.id, text, finding.theme, nextJson, runId],
         );
       } else if (old.basis !== d.basis || !!old.basis_without_content_hash !== !d.hashColumn) {
         // Same figures and wording from a changed basis (for example a relabelled answer that is
         // not missing): only the record of what they were computed from moves on.
-        await client.query("update findings set stated_stats = $2 where id = $1", [target.id, nextJson]);
+        await client.query("update findings set stated_stats = $2 where id = $1 and run_id = $3", [target.id, nextJson, runId]);
       }
-      if (reviving) await client.query("update findings set status = 'accepted' where id = $1", [target.id]);
+      if (reviving) await client.query("update findings set status = 'accepted' where id = $1 and run_id = $2", [target.id, runId]);
       if (reviving || changed) await recordHumanReview(client, [target.id], "tool_add");
       return { added: reviving, updated: changed };
     });
@@ -378,6 +380,7 @@ export async function removeScatterFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         `update findings set status = 'rejected' where ${SAME_FINDING} and status <> 'rejected' returning id`,
         [runId, xVar, yVar, weightVar || null, documentId],
@@ -476,6 +479,7 @@ export async function resolveScatterWordingReviewAction(
   const TENANT_ID = await requireTenantId();
   try {
     const result = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       // Ownership on the write itself: the file must be in this project and this organisation.
       const doc = await client.query("select id from documents where id = $1 and run_id = $2 and tenant_id = $3 for update", [documentId, runId, TENANT_ID]);
       if (doc.rowCount !== 1) return { ok: false as const, error: "That data file is not in this project. Nothing was changed." };
@@ -514,7 +518,7 @@ export async function resolveScatterWordingReviewAction(
       const { wording_review: _resolved, ...rest } = stats;
       void _resolved;
       if (choice === "keep") {
-        await client.query("update findings set stated_stats = $2 where id = $1", [f.id, JSON.stringify({ ...rest, wording_confirmed_for: figuresOf(stats) })]);
+        await client.query("update findings set stated_stats = $2 where id = $1 and run_id = $3", [f.id, JSON.stringify({ ...rest, wording_confirmed_for: figuresOf(stats) }), runId]);
       } else {
         const entry: ScatterWordingHistoryEntry = {
           text: f.finding_text,
@@ -530,11 +534,11 @@ export async function resolveScatterWordingReviewAction(
         await client.query(
           `update findings set finding_text = $2, stated_stats = $3,
                   human_edited_at = now(), human_edited_fields = array_remove(human_edited_fields, 'finding_text')
-            where id = $1`,
-          [f.id, review.suggested_text, JSON.stringify({ ...withoutConfirmation, wording_history: [...history, entry] })],
+            where id = $1 and run_id = $4`,
+          [f.id, review.suggested_text, JSON.stringify({ ...withoutConfirmation, wording_history: [...history, entry] }), runId],
         );
       }
-      await client.query("insert into trace (tenant_id, run_id, event, detail) values ($1, $2, $3, $4)", [
+      await client.query("insert into trace (tenant_id, run_id, event, detail) select $1, $2, $3, $4 where exists (select 1 from runs where id = $2 and tenant_id = $1)", [
         TENANT_ID,
         runId,
         choice === "keep" ? "scatter_wording_kept" : "scatter_wording_replaced",

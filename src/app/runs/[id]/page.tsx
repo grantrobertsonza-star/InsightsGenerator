@@ -150,6 +150,7 @@ import InstrumentAutoRead from "./InstrumentAutoRead";
 import AttachedInstruments, { QuestionnaireLinkingNote } from "./AttachedInstruments";
 import DocumentIndicatorsPanel from "./DocumentIndicatorsPanel";
 import IndicatorDataPanel from "./IndicatorDataPanel";
+import { IndicatorAnalyticsLauncher } from "./IndicatorAnalyticsPanel";
 import AcceptDataButton from "./AcceptDataButton";
 import CrosstabsSection, { type CrosstabDataset } from "./CrosstabsSection";
 import DataFileSection from "./DataFileSection";
@@ -213,6 +214,8 @@ import {
 import { latestVerdictLateral } from "@/lib/latestVerdict";
 import { getSampleFailedVerdicts, getVerdictSummary } from "@/lib/verdictSummary";
 import { requireTenantId } from "@/lib/requestContext";
+import { loadProgramOptions, loadProgramWaves, loadRunHeader, type RunHeader } from "@/lib/projectReads";
+import { updateProgramLinkAction } from "@/lib/programActions";
 
 // Opening an already-processed run used to take as long as processing it,
 // because these three self-heal checks (retry a framer or the
@@ -263,24 +266,7 @@ function refreshInBackground(
     .finally(() => inFlight.delete(runId));
 }
 
-type Run = {
-  id: string;
-  project_name: string | null;
-  business_problem: string | null;
-  research_objective: string | null;
-  decision_statement: string | null;
-  evidence_synthesis: string | null;
-  audience: string | null;
-  status: string;
-  entry_point: "generate" | "validate" | null;
-  initial_research_objective: string | null;
-  // OBJ-SET-M01: the current, editable list of stated objectives. Null on a
-  // pre-migration-0080 database (getRun falls back to a column-less query,
-  // same guard pattern used elsewhere for a not-yet-applied migration).
-  stated_objectives_text: string | null;
-  program_id: string | null;
-  wave_label: string | null;
-};
+type Run = RunHeader;
 
 type Document = {
   id: string;
@@ -356,39 +342,11 @@ type Finding = {
   routeText: string;
 };
 
+// SEC1: the header, program list and linked projects are filtered by tenant in the statement
+// itself (projectReads.ts), not only by row-level security; another organisation's project reads
+// as missing, so the page answers not found.
 async function getRun(runId: string): Promise<Run | null> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    try {
-      const result = await client.query<Run>(
-        `select id, project_name, business_problem, research_objective, decision_statement,
-                evidence_synthesis, audience, status, entry_point, initial_research_objective,
-                stated_objectives_text, program_id, wave_label
-         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
-        [runId],
-      );
-      return result.rows[0] ?? null;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/stated_objectives_text/.test(message)) throw error;
-      // Pre-migration-0080 database: same query without the new column.
-      const result = await client.query<Omit<Run, "stated_objectives_text">>(
-        `select id, project_name, business_problem, research_objective, decision_statement,
-                evidence_synthesis, audience, status, entry_point, initial_research_objective,
-                program_id, wave_label
-         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
-        [runId],
-      );
-      const row = result.rows[0];
-      // Pre-migration-0080, a run's current objective list lived in initial_research_objective
-      // (migration 0080's own backfill is `stated_objectives_text = initial_research_objective`
-      // for exactly this reason - see its comment). Hardcoding null here instead ignored that
-      // and made every existing project's objectives vanish from Setup's display with nothing
-      // to say why (OBJ-SET-005): falling back to the same column the migration itself treats
-      // as the legacy source of truth keeps them visible until the migration actually runs.
-      return row ? { ...row, stated_objectives_text: row.initial_research_objective } : null;
-    }
-  });
+  return loadRunHeader(await requireTenantId(), runId);
 }
 
 type Program = {
@@ -397,38 +355,14 @@ type Program = {
 };
 
 async function getPrograms(): Promise<Program[]> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<Program>(
-      "select id, name from programs order by name asc",
-    );
-    return result.rows;
-  });
+  return loadProgramOptions(await requireTenantId());
 }
 
-type ProgramWave = {
-  id: string;
-  project_name: string | null;
-  wave_label: string | null;
-};
-
-// Other waves already attached to this run's program, shown so linking a
-// run doesn't feel like shouting into the void: the researcher immediately
-// sees which other projects this one is now grouped with.
-async function getProgramWaves(
-  programId: string,
-  excludeRunId: string,
-): Promise<ProgramWave[]> {
-  const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const result = await client.query<ProgramWave>(
-      `select id, project_name, wave_label from runs
-       where program_id = $1 and id <> $2
-       order by created_at asc`,
-      [programId, excludeRunId],
-    );
-    return result.rows;
-  });
+// Other waves already attached to this run's program, shown so linking a run doesn't feel like
+// shouting into the void: the researcher immediately sees which other projects this one is now
+// grouped with.
+async function getProgramWaves(programId: string, excludeRunId: string) {
+  return loadProgramWaves(await requireTenantId(), programId, excludeRunId);
 }
 
 async function getReportReadStats(runId: string): Promise<Map<string, NonNullable<ReportReadStats>>> {
@@ -2111,8 +2045,8 @@ async function refreshObjectiveValidation(runId: string) {
     const has = await withTenantRead(TENANT_ID, async (client) => {
       const r = await client.query<{ n: boolean }>(
         `select (coalesce(trim(research_objective), '') <> '' or coalesce(trim(decision_statement), '') <> '') as n
-         from runs where id = $1 and (to_jsonb(runs)->>'bin_of') is null`,
-        [runId],
+         from runs where id = $1 and tenant_id = $2 and (to_jsonb(runs)->>'bin_of') is null`,
+        [runId, TENANT_ID],
       );
       return r.rows[0]?.n === true;
     });
@@ -2121,7 +2055,7 @@ async function refreshObjectiveValidation(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_validation_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
       );
     }).catch(() => {});
@@ -2156,7 +2090,7 @@ async function refreshInferredObjectives(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })],
       );
     }).catch(() => {});
@@ -2170,7 +2104,7 @@ async function refreshDecisionCandidates(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'decision_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'decision_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [
           TENANT_ID,
           runId,
@@ -2197,7 +2131,7 @@ async function stampSingleDocumentBatch(runId: string, mode: string) {
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_batch', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_batch', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ batch_id: randomUUID(), mode })],
       );
     });
@@ -2224,7 +2158,7 @@ async function recordSingleDocumentError(
   const message = error instanceof Error ? error.message : String(error);
   await withTenant(TENANT_ID, async (client) => {
     await client.query(
-      `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+      `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_errors', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
       [
         TENANT_ID,
         runId,
@@ -2720,7 +2654,7 @@ async function generateStoryReportAction(runId: string) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'story_narrative_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'story_narrative_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message })],
       );
     });
@@ -2731,7 +2665,7 @@ async function generateStoryReportAction(runId: string) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_validation_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_validation_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message })],
       );
     });
@@ -2745,63 +2679,11 @@ async function generateStoryReportAction(runId: string) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'methodology_extraction_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'methodology_extraction_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message })],
       );
     });
   }
-  revalidatePath(`/runs/${runId}`);
-}
-
-// Links (or re-links) this run to a program as one of its waves, or
-// creates a brand new program inline rather than making the researcher
-// detour to /programs first. Unlinking just clears both columns; nothing
-// about the run's own data changes either way, since tracking is an
-// attribute a project can pick up or drop at any time, never a separate
-// pipeline (see supabase/migrations/0026_programs.sql).
-async function updateProgramLinkAction(runId: string, formData: FormData) {
-  "use server";
-  const TENANT_ID = await requireTenantId();
-  const action = String(formData.get("action") ?? "link");
-
-  if (action === "unlink") {
-    await withTenant(TENANT_ID, async (client) => {
-      await client.query(
-        `update runs set program_id = null, wave_label = null where id = $1`,
-        [runId],
-      );
-    });
-    revalidatePath(`/runs/${runId}`);
-    return;
-  }
-
-  const waveLabelRaw = String(formData.get("waveLabel") ?? "").trim();
-  const waveLabel = waveLabelRaw.length > 0 ? waveLabelRaw : null;
-  const existingProgramId = String(formData.get("programId") ?? "").trim();
-  const newProgramName = String(formData.get("newProgramName") ?? "").trim();
-
-  let programId = existingProgramId.length > 0 ? existingProgramId : null;
-
-  if (!programId && newProgramName.length > 0) {
-    programId = await withTenant(TENANT_ID, async (client) => {
-      const result = await client.query<{ id: string }>(
-        `insert into programs (tenant_id, name) values ($1, $2) returning id`,
-        [TENANT_ID, newProgramName],
-      );
-      return result.rows[0].id;
-    });
-  }
-
-  if (!programId) {
-    return;
-  }
-
-  await withTenant(TENANT_ID, async (client) => {
-    await client.query(
-      `update runs set program_id = $1, wave_label = $2 where id = $3`,
-      [programId, waveLabel, runId],
-    );
-  });
   revalidatePath(`/runs/${runId}`);
 }
 
@@ -2920,7 +2802,7 @@ async function processRunAction(
   try {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_batch', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_batch', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ batch_id: randomUUID(), mode })],
       );
     });
@@ -3053,7 +2935,7 @@ async function processRunAction(
     try {
       await withTenant(TENANT_ID, async (client) => {
         await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+          `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_errors', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
           [TENANT_ID, runId, JSON.stringify({ errors })],
         );
       });
@@ -3080,7 +2962,7 @@ async function processRunAction(
         try {
           await withTenant(TENANT_ID, async (client) => {
             await client.query(
-              `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_stage_error', $3)`,
+              `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_stage_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
               [
                 TENANT_ID,
                 runId,
@@ -5883,6 +5765,10 @@ export default async function RunPage({
 
           <SectionPanel id="analytics">
             {moduleBar("analytics")}
+            {/* D6: the indicator dashboard reads every Indicator data file of the project (the file is a filter in it). */}
+            {documents.some((d) => d.kind === "indicator") && (
+              <IndicatorAnalyticsLauncher runId={id} fileCount={documents.filter((d) => d.kind === "indicator").length} />
+            )}
             {/* Grant's review, 2026-10-20: one header with the data file chooser and a grid of the
                 analyses, each opening its own workspace with "All analytics" to come back. */}
             <DataFileSection

@@ -24,7 +24,7 @@ import { summariseSupport, type InsightSupport } from "@/lib/supportStatusShared
 import { figureCheckLoadErrorNote, joinNotes, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
 import { latestVerdictLateral } from "@/lib/latestVerdict";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 import { latestMethodologyFailure } from "@/lib/methodologyStatus";
 
 type ConfidenceTier = "strong" | "moderate" | "exploratory" | null;
@@ -73,6 +73,8 @@ export async function GET(
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   // B39-F01: coverage reads its cited insights' support on its own connections, so it is read before
   // the export's transaction rather than inside it (a connection held while waiting for another).
@@ -88,8 +90,8 @@ export async function GET(
       methodology: string | null;
     }>(
       `select project_name, decision_statement, audience, business_problem, research_objective, entry_point, methodology
-       from runs where id = $1`,
-      [runId],
+       from runs where id = $1 and tenant_id = $2`,
+      [runId, TENANT_ID],
     );
 
     const narrativeResult = await client.query<{

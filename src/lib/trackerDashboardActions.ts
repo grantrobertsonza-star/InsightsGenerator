@@ -6,6 +6,9 @@ import { requireRequestContext } from "./requestContext";
 import { loadBrandOverview, type BrandOverview } from "./trackerOverview";
 import { loadBrandMoments } from "./trackerMoments";
 import { loadBrandAssociations } from "./trackerAssociations";
+import { loadBrandAdvertising } from "./trackerAdvertising";
+import { loadBrandAudience } from "./trackerAudience";
+import { loadCategoryOverview } from "./trackerCategory";
 import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type ExpectedDashboard, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
 
 type Fail = { ok: false; error: string };
@@ -55,6 +58,36 @@ export async function loadBrandAssociationsAction(runId: string, documentId: str
   const ctx = await requireRequestContext();
   try {
     return { ok: true, associations: await loadBrandAssociations(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Page 04 of the brand dashboard, Advertising & WOM (figures computed, nothing saved). */
+export async function loadBrandAdvertisingAction(runId: string, documentId: string): Promise<{ ok: true; advertising: Awaited<ReturnType<typeof loadBrandAdvertising>> } | Fail> {
+  const ctx = await requireRequestContext();
+  try {
+    return { ok: true, advertising: await loadBrandAdvertising(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Page 05 of the brand dashboard, Audience & media (figures computed, nothing saved). */
+export async function loadBrandAudienceAction(runId: string, documentId: string): Promise<{ ok: true; audience: Awaited<ReturnType<typeof loadBrandAudience>> } | Fail> {
+  const ctx = await requireRequestContext();
+  try {
+    return { ok: true, audience: await loadBrandAudience(ctx.tenantId, runId, documentId) };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** The brand dashboard's Category overview page (figures computed, nothing saved). */
+export async function loadCategoryOverviewAction(runId: string, documentId: string): Promise<{ ok: true; category: Awaited<ReturnType<typeof loadCategoryOverview>> } | Fail> {
+  const ctx = await requireRequestContext();
+  try {
+    return { ok: true, category: await loadCategoryOverview(ctx.tenantId, runId, documentId) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

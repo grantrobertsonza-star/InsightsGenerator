@@ -15,59 +15,18 @@ import SubmitButton from "@/components/SubmitButton";
 import { parseNumberedItems } from "@/lib/text";
 import { Pane, ThreePane } from "./runs/[id]/ThreePane";
 import { requireTenantId } from "@/lib/requestContext";
+import { loadProjectList, type ProjectListRow } from "@/lib/projectReads";
 import { loadTenantUsageOutsideProjects } from "@/lib/apiUsage";
 import { loadProjectOverviews, type ProjectOverview } from "@/lib/projectStageFacts";
 import { SECTIONS } from "@/lib/sectionStatus";
 import { StatePill, StateDisc, STATE_LOOK } from "@/components/StageLook";
 
-type Run = {
-  id: string;
-  project_name: string | null;
-  business_problem: string | null;
-  research_objective: string | null;
-  decision_statement: string | null;
-  audience: string | null;
-  status: string;
-  entry_point: "generate" | "validate" | null;
-  created_at: string;
-  findings_total: number;
-  findings_rejected: number;
-};
+type Run = ProjectListRow;
 
 async function getRuns(): Promise<Run[]> {
   const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    // Both queries are independent, so they go to the database together on
-    // the same connection (pg queues them) instead of one waiting on the other
-    // in code. The counts query only needs the findings table.
-    const runsPromise = client.query<
-      Omit<Run, "findings_total" | "findings_rejected">
-    >(
-      // A project's bin is a run too (migration 0115); it is never listed. to_jsonb works before the column exists.
-      "select id, project_name, business_problem, research_objective, decision_statement, audience, status, entry_point, created_at from runs where (to_jsonb(runs)->>'bin_of') is null order by created_at desc",
-    );
-    const countsPromise = client.query<{
-      run_id: string;
-      total: string;
-      rejected: string;
-    }>(
-      `select run_id, count(*) as total, count(*) filter (where status = 'rejected') as rejected
-       from findings
-       group by run_id`,
-    );
-    const [runsResult, countsResult] = await Promise.all([runsPromise, countsPromise]);
-    const countsByRun = new Map(
-      countsResult.rows.map((row) => [
-        row.run_id,
-        { total: Number(row.total), rejected: Number(row.rejected) },
-      ]),
-    );
-    return runsResult.rows.map((run) => ({
-      ...run,
-      findings_total: countsByRun.get(run.id)?.total ?? 0,
-      findings_rejected: countsByRun.get(run.id)?.rejected ?? 0,
-    }));
-  });
+  // SEC1: filtered by tenant in the statement itself (projectReads.ts), not only by row-level security.
+  return loadProjectList(TENANT_ID);
 }
 
 async function createRun(formData: FormData) {

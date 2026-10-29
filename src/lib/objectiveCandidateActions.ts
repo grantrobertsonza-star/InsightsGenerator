@@ -63,8 +63,8 @@ export async function acceptObjectiveCandidate(runId: string, candidateId: strin
     // wording can only move further from the original suggestion over time, never back, so
     // edited has no legitimate path from true to false.
     await client.query(
-      "update objective_candidates set status = 'accepted', candidate_text = $1, edited = edited or $2 where id = $3",
-      [finalText, wasEdited, candidateId]
+      "update objective_candidates set status = 'accepted', candidate_text = $1, edited = edited or $2 where id = $3 and run_id = $4",
+      [finalText, wasEdited, candidateId, runId]
     );
 
     // runs.stated_objectives_text (OBJ-SET-M01's "current mutable list") is otherwise only
@@ -323,7 +323,7 @@ export async function regenerateObjectiveCandidates(
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'objective_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'objective_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});

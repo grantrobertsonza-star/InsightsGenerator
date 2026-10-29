@@ -110,6 +110,19 @@ wexp = {dhs_key(r, y): r[y] for r in wrows for y in r if y.isdigit() and len(y) 
 check("DHS wide: every non-blank year cell, read with the csv module, is one observation", wm == wexp, f"{len(wm)} vs {len(wexp)}")
 check("DHS long and wide fixtures give identical observations", lm == wm, set(lm) ^ set(wm))
 check("DHS long and wide: identical series and areas", [s["key"] for s in long_r["series"]] == [s["key"] for s in wide_r["series"]] and long_r["areas"] == wide_r["areas"])
+# D6: record attributes kept per series, as the csv module reads them from each series' rows.
+wattr = wide_r["provenance"]["seriesAttributes"]
+check("D6: the attribute columns the file has are listed", wide_r["provenance"]["seriesAttributeColumns"] == ["STRUCTURE_ID", "DATABASE_ID", "AGG_METHOD", "UNIT_TYPE", "DECIMALS", "TIME_FORMAT", "OBS_CONF"], wide_r["provenance"]["seriesAttributeColumns"])
+wexp_attr = {}
+for r in wrows:
+    s = next(x for x in wide_r["series"] if [b["code"] for b in x["breakdowns"]] == [r["FREQ"], r["SEX"], r["AGE"], r["URBANISATION"], r["COMP_BREAKDOWN_1"], r["COMP_BREAKDOWN_2"], r["COMP_BREAKDOWN_3"]])
+    for a in ("STRUCTURE_ID", "DATABASE_ID", "AGG_METHOD", "UNIT_TYPE", "DECIMALS", "TIME_FORMAT", "OBS_CONF"):
+        wexp_attr.setdefault(s["key"], {}).setdefault(a, set()).add((r[a], r.get(a + "_LABEL") or None))
+check("D6: each series' attribute codes and labels equal its rows' cells", {k: {a: {(x["code"], x["label"]) for x in v} for a, v in attrs.items()} for k, attrs in wattr.items()} == wexp_attr)
+check("D6: DECIMALS 1 (One) and OBS_CONF PU (Public) for the two-year window", [x for k, v in wattr.items() if "ANCC_IRN_02" in k for x in (v["DECIMALS"], v["OBS_CONF"])] == [[{"code": "1", "label": "One"}], [{"code": "PU", "label": "Public"}]])
+two_codes = "\n".join(l.replace('"_Z","RATIO"', '"WT","RATIO"', 1) if i == 1 else l for i, l in enumerate(open(os.path.join(FIX, "DHS_SD_WIDEF.csv"), encoding="utf-8").read().splitlines())).encode()
+tc = psf.indicator_observations(two_codes, "DHS_SD_WIDEF.csv")
+check("D6: two AGG_METHOD codes in one series are both recorded, never resolved", any(len(v.get("AGG_METHOD", [])) == 2 for v in tc["provenance"]["seriesAttributes"].values()))
 
 # --- FinData wide slice -------------------------------------------------------------------------------
 fin = read("WB_FINDATA_WIDEF.csv")

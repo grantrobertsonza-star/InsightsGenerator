@@ -8,6 +8,7 @@ import type { CrosstabRequest } from "./parseStatsFile";
 import { resolveSurveyDesign, effectiveDesignChoice, type SurveyDesignChoice } from "./surveyDesign";
 import { loadDataSetupWithStatus } from "./dataSetup";
 import { withTenant } from "./db";
+import { assertRunOwned } from "./runOwnership";
 import { recordHumanReview } from "./findingProvenance";
 import { defaultWeight } from "./starterTables";
 import { baseOf, computeNps, leadingNumber } from "./descriptiveFindings";
@@ -337,6 +338,7 @@ export async function addNpsFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       // Scoped by source_document_id too, not just the variable name: two documents in the
       // same run (two waves, say) can each have their own variable with the same name, and
       // without this a second document's reading would be mistaken for an existing finding
@@ -434,6 +436,7 @@ export async function removeNpsFindingAction(runId: string, documentId: string, 
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         "update findings set status = 'rejected' where run_id = $1 and pattern_type = 'level' and stated_stats->>'testType' = 'nps' and stated_stats->>'source' = 'nps_tool' and stated_stats->>'variable' = $2 and source_document_id = $3 and status <> 'rejected' returning id",
         [runId, variable, documentId],

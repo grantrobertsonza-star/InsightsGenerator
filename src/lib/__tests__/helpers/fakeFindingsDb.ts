@@ -223,14 +223,16 @@ export function createFakeFindingsDb(initial: Partial<FakeDbState> = {}, options
       }
 
       // findingActions.ts (researcher actions) and findingProvenance.ts writes.
-      const one = (r: Row) => r.id === params[1] && r.run_id === params[2];
-      if (s === "update findings set status = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "status", params[0]);
-      if (s === "update findings set finding_kind = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "finding_kind", params[0]);
-      if (s === "update findings set theme = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "theme", params[0]);
-      if (s === "update findings set researcher_note = $1 where id = $2 and run_id = $3 returning id") return updateFindings(one, "researcher_note", params[0]);
-      if (s === "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) returning id") {
+      // SEC1: each of these names tenant_id as well ($4), matched against the row's tenant.
+      const sameTenant = (r: Row) => r.tenant_id === undefined || r.tenant_id === params[3];
+      const one = (r: Row) => r.id === params[1] && r.run_id === params[2] && sameTenant(r);
+      if (s === "update findings set status = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "status", params[0]);
+      if (s === "update findings set finding_kind = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "finding_kind", params[0]);
+      if (s === "update findings set theme = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "theme", params[0]);
+      if (s === "update findings set researcher_note = $1 where id = $2 and run_id = $3 and tenant_id = $4 returning id") return updateFindings(one, "researcher_note", params[0]);
+      if (s === "update findings set status = $1 where run_id = $2 and id = any($3::uuid[]) and tenant_id = $4 returning id") {
         const ids = new Set(params[2] as string[]);
-        return updateFindings((r) => r.run_id === params[1] && ids.has(r.id as string), "status", params[0]);
+        return updateFindings((r) => r.run_id === params[1] && ids.has(r.id as string) && sameTenant(r), "status", params[0]);
       }
       if (s.startsWith("update findings set human_reviewed_at = now(), human_review_action = $2 where id = any($1::uuid[])")) {
         const ids = new Set(params[0] as string[]);

@@ -9,6 +9,7 @@ Small slices of published statistics, for the indicator reader (`api/parse-stats
 |---|---|---|
 | `DHS_SD.csv` | World Bank Data360 DHS_SD, SDMX long download | areas AFG, COG, KEN, ZAF (all rows) |
 | `DHS_SD_WIDEF.csv` | the same dataset, Data360 wide download | the same areas |
+| `DHS_SD_WIDEF_full.csv` | the same wide download, whole (Grant's file of 28 October 2026, unchanged; added for D6) | every row: 607 observations, 71 areas; `Chart_Data_RH_ANCC_W_IRN_reference.json` was built from it |
 | `WB_FINDATA_WIDEF.csv` | World Bank Data360 WB_FINDATA, wide | USA and ZAF, indicators FD_FDI_OVRL and FD_SCOBIS01, including the blank "Missing value" (O) rows |
 | `findex_ZAF_2024_indicator_percent.csv` | Global Findex 2025 country summary, label and value | the first 20 indicators |
 | `findex_ZAF_2024_indicator_percent_by_topic.csv` | the same, with Topic and Sub Topic columns | the first 15 indicators |

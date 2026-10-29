@@ -4,55 +4,18 @@ import { revalidatePath } from "next/cache";
 import SubmitButton from "@/components/SubmitButton";
 import { ChartIcon, ArrowLeftIcon } from "@/components/icons";
 import { requireTenantId } from "@/lib/requestContext";
+import { loadProgramsWithWaves, type ProgramWithWaves } from "@/lib/projectReads";
 import ProgramControls from "./ProgramControls";
 
 // Same no-login-yet placeholder as every other page (see src/app/page.tsx).
 
 
-type ProgramWave = {
-  id: string;
-  project_name: string | null;
-  wave_label: string | null;
-  created_at: string;
-};
-
-type Program = {
-  id: string;
-  name: string;
-  created_at: string;
-  waves: ProgramWave[];
-};
+type Program = ProgramWithWaves;
 
 async function getPrograms(): Promise<Program[]> {
   const TENANT_ID = await requireTenantId();
-  return withTenantRead(TENANT_ID, async (client) => {
-    const programsResult = await client.query<{
-      id: string;
-      name: string;
-      created_at: string;
-    }>("select id, name, created_at from programs order by created_at desc");
-    // One query for all waves across every program, same "tally in one
-    // pass rather than a query per card" reasoning the project list uses
-    // for its findings counts.
-    const wavesResult = await client.query<
-      ProgramWave & { program_id: string }
-    >(
-      `select id, program_id, project_name, wave_label, created_at
-       from runs
-       where program_id is not null
-       order by created_at asc`,
-    );
-    const wavesByProgram = new Map<string, ProgramWave[]>();
-    for (const wave of wavesResult.rows) {
-      const list = wavesByProgram.get(wave.program_id) ?? [];
-      list.push(wave);
-      wavesByProgram.set(wave.program_id, list);
-    }
-    return programsResult.rows.map((program) => ({
-      ...program,
-      waves: wavesByProgram.get(program.id) ?? [],
-    }));
-  });
+  // SEC1: filtered by tenant in the statement itself (projectReads.ts), not only by row-level security.
+  return loadProgramsWithWaves(TENANT_ID);
 }
 
 async function createProgram(formData: FormData) {

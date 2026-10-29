@@ -7,7 +7,7 @@ import { summariseSupport, type SupportStatus } from "@/lib/supportStatusShared"
 import { loadSynthesizedInsightSources, sourceLine } from "@/lib/sourceAttribution";
 import { figureCheckLoadErrorNote, loadRunFigureChecksForExport } from "@/lib/figureChecks";
 import { figureCheckNote } from "@/lib/numberTrace";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 type ExportInsight = {
   id: string;
@@ -49,6 +49,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") === "all" ? "all" : "accepted";
 
@@ -57,7 +59,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       project_name: string | null;
       decision_statement: string | null;
       audience: string | null;
-    }>("select project_name, decision_statement, audience from runs where id = $1", [runId]);
+    }>("select project_name, decision_statement, audience from runs where id = $1 and tenant_id = $2", [runId, TENANT_ID]);
 
     const insightsResult = await client.query<ExportInsight>(
       `select id, confidence_tier, headline, implication, quality_score, review_status

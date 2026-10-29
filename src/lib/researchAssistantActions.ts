@@ -50,7 +50,7 @@ export async function sendAssistantMessage(
     const messageText = needsMigration0108(error instanceof Error ? error.message : String(error));
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'research_assistant_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'research_assistant_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: messageText })]
       );
     }).catch(() => {});
@@ -108,7 +108,7 @@ async function refreshDecisionCandidatesQuietly(runId: string) {
   } catch (error) {
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'decision_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'decision_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, JSON.stringify({ message: error instanceof Error ? error.message : String(error) })]
       );
     });
@@ -147,7 +147,7 @@ export async function uploadAssistantDocument(
       const message = error instanceof Error ? error.message : String(error);
       await withTenant(TENANT_ID, async (client) => {
         await client.query(
-          `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'process_run_errors', $3)`,
+          `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'process_run_errors', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
           [TENANT_ID, runId, JSON.stringify({ errors: [`${file.name}: ${message}`] })]
         );
       }).catch(() => {});

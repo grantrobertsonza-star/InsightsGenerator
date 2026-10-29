@@ -101,8 +101,8 @@ export async function acceptDecisionCandidate(
     const wasEdited = candidate.edited || editedThisCall;
 
     await client.query(
-      "update decision_candidates set status = 'accepted', candidate_text = $1, edited = $2 where id = $3",
-      [finalText, wasEdited, candidateId]
+      "update decision_candidates set status = 'accepted', candidate_text = $1, edited = $2 where id = $3 and run_id = $4",
+      [finalText, wasEdited, candidateId, runId]
     );
     await syncDecisionStatement(client, runId);
     await markDecisionRefreshPending(client, TENANT_ID, runId);
@@ -284,7 +284,7 @@ export async function regenerateDecisionCandidates(
     // banner, by whoever happened to click the button.
     await withTenant(TENANT_ID, async (client) => {
       await client.query(
-        `insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'decision_framer_error', $3)`,
+        `insert into trace (tenant_id, run_id, event, detail) select $1, $2, 'decision_framer_error', $3 where exists (select 1 from runs where id = $2 and tenant_id = $1)`,
         [TENANT_ID, runId, message]
       );
     }).catch(() => {});

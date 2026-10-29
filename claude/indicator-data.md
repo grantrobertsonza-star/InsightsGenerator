@@ -261,6 +261,16 @@ keeps ready, and the tab says the last attempt failed).
 - Display only: `shownNumber` = value x 100 for proportions x 10^unitMult; the stored value never
   changes.
 
+## Indicator Analytics (D6)
+
+The single-indicator dashboard on Analytics reads these files through `listIndicatorFiles` and
+`loadIndicatorSeriesRead` (indicatorData.ts, one snapshot, a series by its stored key). Its figures, states and
+wording are in `claude/indicator-analytics.md`. For it the engine (reader `engine-indicators-2026.10.29`) also keeps,
+per series of an SDMX or Data360 file, the codes and labels its rows carry in STRUCTURE_ID, DATABASE_ID, AGG_METHOD,
+UNIT_TYPE, DECIMALS, TIME_FORMAT and OBS_CONF (`provenance.seriesAttributes`, with the columns present in
+`provenance.seriesAttributeColumns`); several codes are recorded as found, never resolved by the reader. A file read
+before then has none: the dashboard says so and asks for the file to be read again.
+
 ## Freshness
 
 Indicator data feeds no finding, insight, recommendation, narrative or export in this batch, so nothing

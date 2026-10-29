@@ -74,17 +74,59 @@ export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes
   return observedCodes.length > 0 && observedCodes.every((c) => c === "0" || c === "1") ? "1" : null;
 }
 
+/** The per-brand questions of one shape the dashboard maps to a stage (the recogniser's stage, or the researcher's
+ * saved choice): one is the stage's question, several are the researcher's choice, none means the file has none. */
+export function stageClaims(rec: TrackerRecognition, dashboard: ResolvedDashboard, stage: FunnelStage, shape: "binary" | "single" = "binary"): TrackerRecognition["measures"] {
+  const stageOf = new Map(dashboard.stages.map((s) => [s.group, s.stage]));
+  return rec.measures.filter((m) => stageOf.get(m.group) === stage && m.shape === shape);
+}
+
 /** The stage measures the overview shows: one per stage, the researcher's choice where two questions claimed it. */
 export function overviewMeasures(rec: TrackerRecognition, dashboard: ResolvedDashboard) {
-  const stageOf = new Map(dashboard.stages.map((s) => [s.group, s.stage]));
   const shown: { stage: FunnelStage; measure: TrackerRecognition["measures"][number] }[] = [];
   const unresolved: FunnelStage[] = [];
   for (const stage of OVERVIEW_STAGES) {
-    const claims = rec.measures.filter((m) => stageOf.get(m.group) === stage && m.shape === "binary");
+    const claims = stageClaims(rec, dashboard, stage);
     if (claims.length === 1) shown.push({ stage, measure: claims[0] });
     else if (claims.length > 1) unresolved.push(stage);
   }
   return { shown, unresolved };
+}
+
+/** One answer of a single-choice question as a Cross tab reports it (the total column), by its raw code. */
+export type AnswerShare = {
+  code: string;
+  label: string;
+  /** Unrounded percentage of the question's valid answers; null when suppressed. */
+  share: number | null;
+  /** Unrounded weighted count (the unweighted count when the table is unweighted). */
+  weighted: number | null;
+  /** Unweighted number of respondents giving this answer. */
+  n: number | null;
+};
+
+/**
+ * Every answer of a single-choice question, read from the total column of a built Cross tab (so a table with a
+ * banner reads the same as one without), by raw code in the engine's order: each answer's unrounded share of the
+ * valid answers, weighted count and unweighted count, and the unweighted base of valid answers. Answers are
+ * identified by `rawCode`, never by label; a row without a raw code (a net, a mean) is not an answer. Null base and
+ * no answers, with the reason, when the question is not in the result.
+ */
+export function answersOf(result: CrosstabResult, variable: string): { base: number | null; answers: AnswerShare[]; reason?: string } {
+  const q = result.questions.find((x) => x.key === variable);
+  if (!q) return { base: null, answers: [], reason: "This question was not in the table the engine returned." };
+  const base = q.rows.find((r) => r.isBase && !r.isEffBase)?.total.count ?? null;
+  const answers = q.rows
+    .filter((r) => !r.isBase && !r.isNet && !r.isMean && !r.isScore && r.rawCode !== undefined)
+    // The unrounded figure when the engine gives one (null there means suppressed, never read from the rounded one).
+    .map((r) => ({
+      code: r.rawCode as string,
+      label: r.label,
+      share: r.total.pctExact !== undefined ? r.total.pctExact : r.total.pct,
+      weighted: r.total.countExact !== undefined ? r.total.countExact : r.total.count,
+      n: r.total.nCell ?? null,
+    }));
+  return { base, answers };
 }
 
 /**

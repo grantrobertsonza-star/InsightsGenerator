@@ -3,7 +3,7 @@ import PptxGenJS from "pptxgenjs";
 import { withTenant } from "@/lib/db";
 import { addTitleSlide, addFooter, safeFileStem } from "@/lib/deckSlides";
 import { findingSourceSql, formatFindingSource, sourceLine } from "@/lib/sourceAttribution";
-import { routeRequestContext } from "@/lib/requestContext";
+import { routeRequestContext, runBelongsToTenant } from "@/lib/requestContext";
 
 type ExportFinding = {
   finding_text: string;
@@ -45,6 +45,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (context instanceof Response) return context;
   const TENANT_ID = context.tenantId;
   const { id: runId } = await params;
+  // SEC1: another organisation's project answers exactly like a missing one, before anything is read.
+  if (!(await runBelongsToTenant(TENANT_ID, runId))) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") === "all" ? "all" : "accepted";
 
@@ -53,7 +55,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       project_name: string | null;
       decision_statement: string | null;
       audience: string | null;
-    }>("select project_name, decision_statement, audience from runs where id = $1", [runId]);
+    }>("select project_name, decision_statement, audience from runs where id = $1 and tenant_id = $2", [runId, TENANT_ID]);
 
     const findingsResult = await client.query<ExportFinding>(
       `select f.finding_text, f.finding_kind, f.origin, f.theme, f.status, f.researcher_note, f.data_type,

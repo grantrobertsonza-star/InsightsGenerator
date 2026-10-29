@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { withTenant } from "./db";
+import { assertRunOwned } from "./runOwnership";
 import { findingProvenanceAvailable, recordHumanReview } from "./findingProvenance";
 import { loadVariableDictionary } from "./crosstabs";
 import { defaultWeight } from "./starterTables";
@@ -229,8 +230,8 @@ export async function loadCsmModuleAction(
   try {
     const mapping = await withTenant(TENANT_ID, async (client) => {
       const r = await client.query<{ mapping: CsmMapping }>(
-        `select mapping from csm_modules where run_id = $1 and document_id = $2 limit 1`,
-        [runId, documentId],
+        `select mapping from csm_modules where run_id = $1 and document_id = $2 and tenant_id = $3 limit 1`,
+        [runId, documentId, TENANT_ID],
       );
       return r.rows[0]?.mapping ?? null;
     });
@@ -248,10 +249,16 @@ export async function saveCsmModuleAction(
   const TENANT_ID = await requireTenantId();
   try {
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
+      // SEC1: the upsert is keyed on document_id alone, so the file must be checked as this project's
+      // first; otherwise another organisation's document id would overwrite its saved mapping.
+      const doc = await client.query("select 1 from documents where id = $1 and run_id = $2 and tenant_id = $3", [documentId, runId, TENANT_ID]);
+      if (doc.rowCount !== 1) throw new Error("That data file is not in this project. Nothing was saved.");
       await client.query(
         `insert into csm_modules (tenant_id, run_id, document_id, mapping, updated_at)
          values ($1, $2, $3, $4, now())
-         on conflict (document_id) do update set mapping = $4, updated_at = now()`,
+         on conflict (document_id) do update set mapping = $4, updated_at = now()
+         where csm_modules.tenant_id = excluded.tenant_id and csm_modules.run_id = excluded.run_id`,
         [TENANT_ID, runId, documentId, JSON.stringify(mapping)],
       );
     });
@@ -321,6 +328,7 @@ export async function addCsmFindingAction(
     if (!text) return { ok: false, error: "There is nothing in this section to post yet." };
     const groupVar = dashboard.segmentVar;
     await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const existing = await client.query<{ n: number }>(
         `select count(*)::int as n from findings
          where run_id = $1 and pattern_type = 'level' and stated_stats->>'source' = 'csm_tool'
@@ -391,6 +399,7 @@ export async function removeCsmFindingAction(
   const TENANT_ID = await requireTenantId();
   try {
     const removed = await withTenant(TENANT_ID, async (client) => {
+      await assertRunOwned(client, TENANT_ID, runId);
       const r = await client.query<{ id: string }>(
         `update findings set status = 'rejected'
          where run_id = $1 and pattern_type = 'level' and stated_stats->>'source' = 'csm_tool'
