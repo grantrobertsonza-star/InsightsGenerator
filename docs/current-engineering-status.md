@@ -1,6 +1,13 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchUI1R on top of 6d00545d, which Codex reviewed on 29 October: D2A-F01 to F04 closed, UI1-F01 found): UI1R repairs UI1-F01 (an open tab follows a split saved in another tab); implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchUI1R2 on top of 1318db7a, which Codex reviewed on 29 October: UI1-F01 closed, UI1R-F01 found): UI1R2 repairs UI1R-F01 (a view reopened after another tab saved a split shows that value); implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+
+## Claude: batch UI1R2, main copy (2026-10-29)
+
+Implemented, ready for review, one commit on top of `1318db7a`. Handover `claude/batchUI1R2-handover-2026-10-29.md`:
+UI1R-F01, the split keeps an in-memory value only when storage refuses the write, so a view reopened after another
+tab saved a split shows the saved value. The browser check follows Codex's steps and failed on the UI1R code
+(received 28 for 70); it and chart-legend-fit pass on the repair. tsc and eslint clean. No migration.
 
 ## Claude: batch UI1R, main copy (2026-10-29)
 

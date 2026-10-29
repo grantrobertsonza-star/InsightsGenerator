@@ -26,14 +26,14 @@ function readSplit(key: string): number {
   }
 }
 
-// The split as an external store: this browser's saved value, with an in-memory fallback when storage is
-// blocked, and listeners told of every change, including one saved in another tab (Codex UI1-F01: the in-memory
-// value used to win over another tab's change, so an open view never followed it).
+// The split as an external store: this browser's saved value, read from storage every time, and listeners told of
+// every change, including one saved in another tab. The in-memory copy is used only when storage refuses the write
+// (a blocked browser), so it can never hide a value saved elsewhere: an open view follows another tab's change
+// (Codex UI1-F01), and a view opened later reads the value saved while it was closed (Codex UI1R-F01).
 const memorySplit = new Map<string, number>();
 const listeners = new Set<() => void>();
-/** Another tab saved or removed a split (or cleared storage): drop this tab's in-memory copy so the saved value is
- * read again, then tell the views. Other keys are ignored. With storage blocked no such event arrives, and the
- * in-memory value stands. */
+/** Another tab saved or removed a split (or cleared storage): tell the views, which read storage again. Other keys
+ * are ignored. With storage blocked no such event arrives, and this tab's in-memory value stands. */
 function onStorage(e: StorageEvent) {
   if (e.key === null) memorySplit.clear();
   else if (e.key.startsWith(KEY_PREFIX)) memorySplit.delete(e.key.slice(KEY_PREFIX.length));
@@ -43,11 +43,12 @@ function onStorage(e: StorageEvent) {
 const splitStore = {
   get: (key: string) => memorySplit.get(key) ?? readSplit(key),
   set: (key: string, v: number) => {
-    memorySplit.set(key, v);
     try {
       window.localStorage.setItem(KEY_PREFIX + key, String(v));
+      memorySplit.delete(key);
     } catch {
       // A browser that blocks storage keeps the split for this visit only.
+      memorySplit.set(key, v);
     }
     listeners.forEach((l) => l());
   },

@@ -7,6 +7,7 @@
 //   3. The importance quadrant fills its pane's width (it was a thumbnail beside its legend).
 //   4. At 1100 wide the panes stack and there is no divider.
 //   Also (Codex UI1-F01): a split saved in another open tab reaches this view; removing it returns to half.
+//   And (Codex UI1R-F01): a split saved in another tab while this view is closed is the one shown when it reopens.
 import { expect, test } from "@playwright/test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -117,7 +118,18 @@ test("NPS and drivers share a resizable split, and the quadrant fills its pane",
   // The value is passed in: the function runs in the page, where this check's own variables do not exist.
   await tab2.evaluate(([k, v]) => window.localStorage.setItem(k, v), [key, String(dragged)]);
   await expect(split).toHaveAttribute("data-split", String(dragged));
+  // Codex UI1R-F01: a value saved in another tab while this view is closed is the one shown when it reopens (this
+  // tab's own earlier value used to come back from memory). This tab moves the split last, then closes.
+  await handle.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(split).toHaveAttribute("data-split", String(dragged - 5));
+  await ws.getByRole("button", { name: /All analytics/ }).click();
+  await expect(ws).toHaveCount(0);
+  await tab2.evaluate((k) => window.localStorage.setItem(k, "70"), key);
   await tab2.close();
+  await section().getByRole("list", { name: "Analyses" }).getByRole("button", { name: /^Driver analysis/ }).click({ timeout: 60_000 });
+  await expect(ws.getByTestId("driver-report")).toBeVisible({ timeout: 2 * 60_000 });
+  await expect(ws.getByTestId("nps-driver-split")).toHaveAttribute("data-split", "70");
 
   // The split is kept for this browser: a reload shows the same proportion once the result is back.
   await page.reload({ waitUntil: "networkidle" });
@@ -126,7 +138,7 @@ test("NPS and drivers share a resizable split, and the quadrant fills its pane",
   await section().getByRole("list", { name: "Analyses" }).getByRole("button", { name: /^Driver analysis/ }).click({ timeout: 60_000 });
   const ws2 = page.getByRole("dialog", { name: "Analytics workspace" });
   await expect(ws2.getByTestId("driver-report")).toBeVisible({ timeout: 2 * 60_000 });
-  if (await ws2.getByTestId("nps-driver-split-handle").count()) await expect(ws2.getByTestId("nps-driver-split")).toHaveAttribute("data-split", String(dragged));
+  if (await ws2.getByTestId("nps-driver-split-handle").count()) await expect(ws2.getByTestId("nps-driver-split")).toHaveAttribute("data-split", "70");
 
   // 4. Narrow: stacked, no divider.
   await page.setViewportSize({ width: 1100, height: 1000 });
