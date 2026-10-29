@@ -11,8 +11,9 @@
 // owner's reason when the figure could not be calculated, never a zero or a silently dropped tile.
 //
 // Likely to switch: on a 0 to 10 scale the share answering 8, 9 or 10 (the pack's "risk"); on a shorter scale the
-// top two codes. Which codes count comes from the question's stated scale, never from the answers present
-// (boxCodesFor, Codex D3A-F01): an absent code counts 0; an unstated scale is "failed" with the reason. Don't-know and
+// top two codes. Which codes count comes from the question's scale, never from the answers present (boxCodesFor,
+// Codex D3A-F01): with an answer list the engine's declared substantive answers (boxScaleTop, D3AR-F01), else the
+// range the wording or name states; an absent code counts 0; an unstated scale is "failed" with the reason. Don't-know and
 // not-applicable answers are outside the base, as in a Cross tab.
 // Bases: the box tiles carry the distribution's effective base (the number answering when unweighted, Kish's
 // effective base when weighted), the NPS tile the number answering.
@@ -48,8 +49,8 @@ const NO_ROLE: Record<CsmTileId, string> = {
 };
 
 /**
- * The codes a box counts (Codex D3A-F01), from the question's stated scale (scaleTop: its answer list, else the
- * range its wording or name states), never from the answers the data happens to hold: likely to switch on a 0 to 10
+ * The codes a box counts (Codex D3A-F01), from the top of the question's scale (boxScaleTop: the engine's declared
+ * substantive answers, else the range its wording or name states), never from the answers the data happens to hold: likely to switch on a 0 to 10
  * scale is 8, 9 and 10; any other box is the top two codes. Null when the scale is not stated.
  */
 export function boxCodesFor(id: "satisfaction" | "stay" | "switch", top: number | null): { codes: number[]; text: string } | null {
@@ -58,13 +59,29 @@ export function boxCodesFor(id: "satisfaction" | "stay" | "switch", top: number 
   return { codes: [top - 1, top], text: "top two" };
 }
 
+/**
+ * The top of a question's answer scale (Codex D3AR-F01). With an answer list, it is the highest code of the engine's
+ * own distribution: the engine keeps every declared answer, chosen or not (a declared 5 nobody chose is a 0% row), and
+ * drops the codes it reads as non-answers (_non_answer_codes: "6 = Don't know" on a 1 to 5 scale), so the top is the
+ * scale's, never a non-answer's and never only what this wave happened to hold. scaleTop's own answer-list reading
+ * kept 6 and boxed 5 and 6, halving the figure. Without an answer list, the range the wording or name states.
+ */
+export function boxScaleTop(series: { bars: { rawCode?: string | null }[] }, roleVariable: RoleVariable | undefined): number | null {
+  const labelled = roleVariable?.valueLabels && Object.keys(roleVariable.valueLabels).length > 0;
+  if (labelled) {
+    const codes = series.bars.map((b) => Number(b.rawCode)).filter((n) => Number.isInteger(n));
+    return codes.length ? Math.max(...codes) : null;
+  }
+  return roleVariable ? scaleTop(roleVariable) : null;
+}
+
 async function boxTile(id: "satisfaction" | "stay" | "switch", runId: string, documentId: string, variable: string, weightVar: string | null, roleVariable: RoleVariable | undefined): Promise<CsmTile> {
-  const box = boxCodesFor(id, roleVariable ? scaleTop(roleVariable) : null);
-  if (!box) return { id, status: "failed", variable, error: `The scale of ${variable} is not stated (no answer list, and its wording or name gives no range such as "0 to 10"), so its top box cannot be fixed. Add its labels (a codebook or labels file), or choose another question.` };
   const r = await runDistributionAction(runId, documentId, variable, weightVar, null, "compute");
   if (!r.ok) return { id, status: "failed", variable, error: r.error };
   const series = r.result.series[0];
   if (!series) return { id, status: "failed", variable, error: "This question has no answers to read." };
+  const box = boxCodesFor(id, boxScaleTop(series, roleVariable));
+  if (!box) return { id, status: "failed", variable, error: `The scale of ${variable} is not stated (no answer list, and its wording or name gives no range such as "0 to 10"), so its top box cannot be fixed. Add its labels (a codebook or labels file), or choose another question.` };
   const share = shareOfCodes(series, box.codes);
   const mean = id === "switch" ? null : summarizeSeries(series, "mean");
   return { id, status: "ok", variable, label: r.result.label, mean: mean?.exact ?? null, box: share.exact, boxCodes: box.text, effectiveBase: series.n };

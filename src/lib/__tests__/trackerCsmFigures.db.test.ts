@@ -7,7 +7,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { createDisposableDb, TEST_DATABASE_URL, type DisposableDb } from "./helpers/disposableDb";
 import { PYTHON } from "./helpers/pythonEngine";
@@ -158,6 +159,53 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("D3 CSM tiles against the bank
     if (sw?.status !== "ok" || sw.id !== "switch") throw new Error(JSON.stringify(sw));
     expect(sw.boxCodes).toBe("8 to 10");
     expect(sw.box).toBeCloseTo(100 / 9, 6);
+  });
+
+  it("Codex D3AR-F01: a non-answer coded inside the scale's neighbourhood (6 = Don't know on 1 to 5; 11 = Refused on 0 to 10) never moves the box", async () => {
+    // Expected values, by hand from the rows written: satisfaction 20 at each of 1 to 5 and 10 at 6 (Don't know, not an
+    // answer): top two (4, 5) = 40 of 100 = 40%; weighted with weight 2 on code 5: (20 + 40) of (60 + 60) = 50%.
+    // Switching 10 at each of 0 to 10 and 15 at 11 (Refused): 8 to 10 = 30 of 110 = 27.27%.
+    const { loadTrackerDashboard } = await import("../trackerDashboards");
+    const { csmOverviewFigures } = await import("../trackerCsmFigures");
+    const { loadRoleInput } = await import("../trackerInput");
+    const out = path.join(mkdtempSync(path.join(tmpdir(), "dk-scale-")), "dk.sav");
+    const script = String.raw`
+import sys, pandas as pd, pyreadstat
+# 125 respondents: satisfaction 20 at each of 1 to 5, 10 at 6 (Don't know), 15 not asked; switching 10 at each of 0 to
+# 10 and 15 at 11 (Refused); weight 2 for those answering 5 on satisfaction, else 1.
+sat = [c for c in [1, 2, 3, 4, 5] for _ in range(20)] + [6] * 10 + [None] * 15
+sw = [k for k in range(11) for _ in range(10)] + [11] * 15
+w = [2.0 if c == 5 else 1.0 for c in sat]
+n = len(sat)
+df = pd.DataFrame({"id": range(1, n + 1), "overall_sat": [None if x is None else float(x) for x in sat], "switch_provider": [float(x) for x in sw], "wt": w})
+labels = {"overall_sat": {1: "Very dissatisfied", 2: "Dissatisfied", 3: "Neither", 4: "Satisfied", 5: "Very satisfied", 6: "Dont know"},
+          "switch_provider": {**{k: str(k) for k in range(11)}, 0: "Not at all likely", 10: "Extremely likely", 11: "Refused"}}
+pyreadstat.write_sav(df, sys.argv[1], column_labels=["Respondent", "Overall satisfaction with your provider (1 to 5)", "How likely are you to switch provider (0 to 10)", "Weight"], variable_value_labels=labels)
+`;
+    const made = spawnSync(PYTHON, ["-I", "-c", script, out], { encoding: "utf8" });
+    if (made.status !== 0) throw new Error(made.stderr);
+    const key = `${tenant}/${run}/${randomUUID()}-dk.sav`;
+    storage.objects.set(key, readFileSync(out));
+    const doc = (await q(
+      `insert into documents (tenant_id, run_id, kind, ingestion_type, source_filename, storage_path, data_setup) values ($1, $2, 'table', 'raw', 'dk.sav', $3, $4) returning id`,
+      [tenant, run, key, JSON.stringify({ layout: "rows_are_cases", unit: "respondents", method: "survey", accepted: true })],
+    ))[0].id as string;
+    const view = await loadTrackerDashboard(tenant, run, doc);
+    const vars = (await loadRoleInput(tenant, run, doc)).variables;
+    const roles = { ...view.dashboard.csm, overallSatisfaction: { variable: "overall_sat", source: "chosen" as const }, likelyToSwitch: { variable: "switch_provider", source: "chosen" as const } };
+    const unweighted = await csmOverviewFigures(tenant, run, doc, { ...view.dashboard, weighted: false, weightVar: "wt", csm: roles }, vars);
+    const sat = unweighted.find((x) => x.id === "satisfaction");
+    if (sat?.status !== "ok" || sat.id !== "satisfaction") throw new Error(JSON.stringify(sat));
+    expect(sat.boxCodes).toBe("top two");
+    expect(sat.box).toBeCloseTo(40, 6);
+    const sw = unweighted.find((x) => x.id === "switch");
+    if (sw?.status !== "ok" || sw.id !== "switch") throw new Error(JSON.stringify(sw));
+    expect(sw.boxCodes).toBe("8 to 10");
+    expect(sw.box).toBeCloseTo((30 / 110) * 100, 6);
+    const weighted = await csmOverviewFigures(tenant, run, doc, { ...view.dashboard, weighted: true, weightVar: "wt", csm: roles }, vars);
+    const wsat = weighted.find((x) => x.id === "satisfaction");
+    if (wsat?.status !== "ok" || wsat.id !== "satisfaction") throw new Error(JSON.stringify(wsat));
+    expect(wsat.box).toBeCloseTo(50, 6);
   });
 });
 

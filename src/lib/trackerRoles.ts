@@ -388,8 +388,10 @@ function zeroToTen(v: RoleVariable): "yes" | "partial" | "no" {
 
 /** The top of a rating scale: the highest plain code on its answer list below the non-answer codes (98, 99), or
  * for a raw file without answer labels the range its wording states ("0 to 10", "0to10", "(1-5)"). Never the
- * highest answer the data happens to hold (Codex D3A-F01: a sparse wave without 8 or 9 would move a top box). Also
- * read by the CSM tiles (trackerCsmFigures.ts) to fix which codes a box counts. */
+ * highest answer the data happens to hold (Codex D3A-F01: a sparse wave without 8 or 9 would move a top box). Used to
+ * recognise roles. A non-answer coded below 90 (6 = Don't know on 1 to 5) is not excluded here, so the CSM tiles take
+ * a labelled question's top from the engine's own answers instead (boxScaleTop, Codex D3AR-F01), and this only for a
+ * question without an answer list. */
 export function scaleTop(v: RoleVariable): number | null {
   const codes = Object.keys(v.valueLabels ?? {}).map(Number).filter((n) => Number.isInteger(n) && n < 90);
   if (codes.length) return Math.max(...codes);

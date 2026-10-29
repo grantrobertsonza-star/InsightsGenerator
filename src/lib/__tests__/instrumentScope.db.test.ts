@@ -159,11 +159,18 @@ describe.skipIf(!TEST_DATABASE_URL || !PYTHON_OK)("a link counts only while both
     try {
       await remover.query("begin");
       await remover.query("select id from documents where id = $1 for update", [cb]);
-      const confirming = confirmInstrumentLinks(tenant, run, cb, 0.9);
+      // Settled into a value at once: the refusal can arrive between the commit and the assertion below, and an
+      // unobserved rejection in that gap is reported by the runner as an unhandled error.
+      const confirming = confirmInstrumentLinks(tenant, run, cb, 0.9).then(
+        () => null,
+        (e: unknown) => e,
+      );
       await new Promise((r) => setTimeout(r, 400));
       await remover.query("update documents set run_id = $2, removed_at = now(), removed_from_run = $3 where id = $1", [cb, bin, run]);
       await remover.query("commit");
-      await expect(confirming).rejects.toThrow(/not in this project/);
+      const refused = await confirming;
+      expect(refused).toBeInstanceOf(Error);
+      expect((refused as Error).message).toMatch(/not in this project/);
     } finally {
       await remover.end();
     }

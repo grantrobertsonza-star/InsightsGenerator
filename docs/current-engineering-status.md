@@ -1,6 +1,19 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD3aR on top of 49cf6d1b): repairs Codex's R1/D3a review: R1-F01 workbook tables read before the label reader repair report an earlier method with the reason (Cross tabs, findings, insight support); D3A-F01 boxes count the codes the question's stated scale fixes (8 to 10 on 0 to 10), an unstated scale is a failed tile with the reason; D3A-F02 an explicit No or non-answer is never counted as selected; D3A-F03 a wave change compares the same stage, variable and brand code naming the same brand; two stale comments corrected. Implemented, ready for independent review. No new migration; 0131 and 0132 still to apply. **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD3aR2 on top of 755e3c4d): repairs Codex's D3aR review: D3AR-F01 a box's scale top on a labelled question is the top of the engine's own answers (declared answers kept, non-answers such as 6 = Don't know dropped), so 1 to 5 with 6 = Don't know gives 40%; D3AR-F02 the lone {0: No} inference applies only when every observed code is 0 or 1, so {0: No} with 0/2 is unavailable with the reason, never 0%. Implemented, ready for independent review. No new migration; 0131 and 0132 still to apply. **NOT READY for release.**
+
+## Claude: batch D3aR2, main copy (2026-10-29)
+
+Implemented, ready for review, on top of `755e3c4d`. Handover `claude/batchD3aR2-handover-2026-10-29.md`; review
+`docs/independent-d3ar-review-2026-10-29.md`. Gates on the exact tree (laptop code plus D3aR2; `94dc80f`):
+`npx tsc --noEmit` passed; `npx eslint src e2e --quiet` 0 errors; `python3 scripts/crosstab_selftest.py` all passed;
+library 316 files, 2,413 passed, 91 skipped, 0 failed, no errors; browser suite 143 passed, 1 skipped, 1 failed; smoke
+1 passed. The first library run passed every test but reported one unhandled rejection from a timing-dependent test
+(`instrumentScope.db.test.ts` 3, a confirmation racing a codebook removal); the test now settles the refusal at
+once, and the rerun is the count above. The browser failure is `waves-in-project.check.mjs`: a wave label typed into
+a newly imported file was reported as "changed elsewhere" while the file's first-view acceptance was saving, so the
+label was not kept. It is not in D3aR2's code (tracker figures only); it passed in D3aR's run and recurs under load
+(both failing runs had the library suite running beside them). It is being repaired with the next package.
 
 ## Claude: batch D3aR, main copy (2026-10-29)
 

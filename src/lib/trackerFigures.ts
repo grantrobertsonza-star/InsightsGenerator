@@ -52,9 +52,19 @@ export function selectedCode(v: Pick<RoleVariable, "valueLabels">, observedCodes
     const yes = Object.entries(labels).filter(([, l]) => /^(selected|yes|mentioned|chosen|ticked|checked)\b/i.test(l.trim()));
     if (yes.length === 1) return yes[0][0];
     // No positive label (Codex D3A-F02): code 1 counts as selected only when the labels say what 0 is, as the
-    // opposite of selected ("No", "Not selected", "Not mentioned"), and leave 1 unlabelled. A label on 1, or a 0
-    // labelled anything else ("Not applicable"), is never overruled: the variable is not available, with the reason.
-    if (yes.length === 0 && Object.keys(labels).length === 1 && labels["0"] !== undefined && labels["1"] === undefined && /^(no|not (selected|mentioned|chosen|ticked|checked))$/i.test(labels["0"].trim())) return "1";
+    // opposite of selected ("No", "Not selected", "Not mentioned"), leave 1 unlabelled, and the data holds no code
+    // but 0 and 1 (Codex D3AR-F02: {0: No} with codes 0 and 2 gave code 1, absent, and a 0% share). A label on 1, a
+    // 0 labelled anything else ("Not applicable") or another code in the data is never overruled: the variable is
+    // not available, with the reason. Data holding only 0 reads as nobody selected, as for an unlabelled 0/1 variable.
+    if (
+      yes.length === 0 &&
+      Object.keys(labels).length === 1 &&
+      labels["0"] !== undefined &&
+      labels["1"] === undefined &&
+      /^(no|not (selected|mentioned|chosen|ticked|checked))$/i.test(labels["0"].trim()) &&
+      observedCodes.every((c) => c === "0" || c === "1")
+    )
+      return "1";
     return null;
   }
   return observedCodes.length > 0 && observedCodes.every((c) => c === "0" || c === "1") ? "1" : null;

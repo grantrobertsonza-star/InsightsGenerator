@@ -9,8 +9,10 @@ vi.mock("../supabaseAdmin", () => ({ supabaseAdmin: {} }));
 vi.mock("../requestContext", async () => (await import("./helpers/testRequestContext")).testRequestContextModule());
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
-import { selectedCode, changesAgainst, type StageFigures } from "../trackerFigures";
-import { boxCodesFor } from "../trackerCsmFigures";
+import { selectedCode, changesAgainst, sharesFromResult, type StageFigures } from "../trackerFigures";
+import type { CrosstabResult } from "../parseStatsFile";
+import type { TrackerRecognition } from "../trackerRoles";
+import { boxCodesFor, boxScaleTop } from "../trackerCsmFigures";
 import { shareOfCodes } from "../csmMetrics";
 import { scaleTop } from "../trackerRoles";
 import type { ChartSeries } from "../chartActions";
@@ -61,6 +63,50 @@ describe("D3A-F02: an explicit No is never selected", () => {
     expect(selectedCode({ valueLabels: { "0": "Not selected" } }, ["0", "1"])).toBe("1");
     expect(selectedCode({}, ["0", "1"])).toBe("1");
     expect(selectedCode({}, ["1", "2"])).toBeNull();
+  });
+});
+
+describe("D3AR-F01: the box's scale top comes from the engine's own answers when the question has labels", () => {
+  const bars = (codes: string[]) => ({ bars: codes.map((c) => ({ rawCode: c })) });
+  it("1 to 5 with 6 = Don't know (dropped by the engine): top 5, box 4 and 5", () => {
+    const v = { name: "sat", label: "Overall satisfaction", numeric: true, valueLabels: { "1": "Very dissatisfied", "5": "Very satisfied", "6": "Dont know" } };
+    expect(scaleTop(v)).toBe(6);
+    expect(boxScaleTop(bars(["1", "2", "3", "4", "5"]), v)).toBe(5);
+    expect(boxCodesFor("satisfaction", boxScaleTop(bars(["1", "2", "3", "4", "5"]), v))?.codes).toEqual([4, 5]);
+  });
+  it("a declared top answer nobody chose still sets the top (the engine keeps it as a 0% row)", () => {
+    expect(boxScaleTop(bars(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]), { name: "sw", label: "Switch", numeric: true, valueLabels: { "0": "Not at all", "10": "Extremely" } })).toBe(10);
+  });
+  it("no answer list: the range the wording states; nothing stated: unknown", () => {
+    expect(boxScaleTop(bars(["1", "2", "3"]), { name: "sat", label: "Satisfaction (1 to 5)", numeric: true })).toBe(5);
+    expect(boxScaleTop(bars(["1", "2", "3"]), { name: "sat", label: "Satisfaction", numeric: true })).toBeNull();
+  });
+});
+
+describe("D3AR-F02: the lone-No inference needs a 0/1 domain", () => {
+  it("{0: No} with codes 0 and 2: not available (was code 1, absent)", () => {
+    expect(selectedCode({ valueLabels: { "0": "No" } }, ["0", "2"])).toBeNull();
+  });
+  it("{0: No} with 0 and 1, and with only 0 (nobody selected): code 1", () => {
+    expect(selectedCode({ valueLabels: { "0": "No" } }, ["0", "1"])).toBe("1");
+    expect(selectedCode({ valueLabels: { "0": "No" } }, ["0"])).toBe("1");
+  });
+  it("explicit labels are kept: reversed {0: Yes, 1: No} selects 0; a positive label absent from the data still selects it", () => {
+    expect(selectedCode({ valueLabels: { "0": "Yes", "1": "No" } }, ["0", "1", "2"])).toBe("0");
+    expect(selectedCode({ valueLabels: { "0": "No", "1": "Yes" } }, ["0"])).toBe("1");
+  });
+  it("the figure path: {0: No} with 40% at 0 and 60% at 2 is unavailable with the reason, never 0%", () => {
+    const result = {
+      questions: [{ key: "aware_b1", rows: [
+        { label: "Base", isBase: true, count: [100], pct: [null] },
+        { label: "No", rawCode: "0", count: [40], pct: [40], pctExact: [40] },
+        { label: "2", rawCode: "2", count: [60], pct: [60], pctExact: [60] },
+      ] }],
+    } as unknown as CrosstabResult;
+    const measures = [{ stage: "awareness" as const, measure: { group: "aware", label: "Aware", shape: "binary", byBrand: [{ code: "b1", variable: "aware_b1" }] } as unknown as TrackerRecognition["measures"][number] }];
+    const [stage] = sharesFromResult(result, measures, new Map([["aware_b1", { name: "aware_b1", label: "Aware", numeric: true, valueLabels: { "0": "No" } }]]), new Set(["b1"]));
+    expect(stage.byBrand[0].share).toBeNull();
+    expect(stage.byBrand[0].reason).toMatch(/could not be told/);
   });
 });
 
