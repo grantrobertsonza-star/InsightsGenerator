@@ -88,18 +88,82 @@ export async function bind({ page, target, testInfo }) {
   const findingCard = (finding) => page.locator(`[data-testid="finding-card"][data-finding-id="${finding.id}"]`);
   const insightCard = (insight) => page.locator(`[data-testid="synthesized-insight-card"][data-insight-id="${insight.id}"]`);
 
-  // Runs a click that triggers a Next.js server action and waits for that action's response.
-  // The cards update optimistically, so the visible state alone does not mean the change was
-  // stored; reloading before the response arrives can abort the save.
-  async function viaServerAction(click) {
-    const done = page.waitForResponse(
-      (r) => r.request().method() === "POST" && Boolean(r.request().headers()["next-action"]),
-      { timeout: STEP_TIMEOUT },
-    );
+  // Runs a click that triggers a Next.js server action and waits until that action's response has fully
+  // arrived. The cards update optimistically, so the visible state alone does not mean the change was
+  // stored, and reloading before the response arrives can read the page as it was before the save.
+  // Other server actions (section loads, progress reads) run at the same time, so the wait is tied to
+  // the action this click sends, recognised by `isClickedAction(request)` (Codex review of batches 54
+  // to 65: waiting for any action let a background read satisfy the wait while a rejection was still
+  // being written, and the reload showed the finding as accepted).
+  async function viaServerAction(click, isClickedAction) {
+    if (typeof isClickedAction !== "function") throw new Error("viaServerAction needs a test that recognises the clicked action");
+    const isIt = (request) => request.method() === "POST" && Boolean(request.headers()["next-action"]) && isClickedAction(request);
+    // "requestfinished" fires once the whole response body has arrived; "requestfailed" when that request never will.
+    // (Playwright's response.finished() did not settle for some streamed action responses, so it is not used.)
+    const done = new Promise((resolve, reject) => {
+      const stop = () => {
+        page.off("requestfinished", onFinished);
+        page.off("requestfailed", onFailed);
+        clearTimeout(timer);
+      };
+      const onFinished = (request) => {
+        if (!isIt(request)) return;
+        stop();
+        resolve(request);
+      };
+      // Next often aborts its own action request once it has read the result (seen on the disposable stack:
+      // "net::ERR_ABORTED" after a 200 response), so an aborted request whose response arrived counts as
+      // done. One aborted before any response is noted and the wait continues: the page may send it again,
+      // and the reload and its assertions decide what was stored.
+      const aborted = [];
+      const onFailed = async (request) => {
+        if (!isIt(request)) return;
+        if (await request.response()) {
+          stop();
+          resolve(request);
+        } else {
+          aborted.push(request.failure()?.errorText ?? "unknown");
+        }
+      };
+      const timer = setTimeout(() => {
+        stop();
+        reject(new Error(`The clicked server action did not finish in time${aborted.length ? ` (requests aborted before any response: ${aborted.join(", ")})` : ""}`));
+      }, STEP_TIMEOUT);
+      page.on("requestfinished", onFinished);
+      page.on("requestfailed", onFailed);
+    });
     await click();
-    const response = await done;
-    if (!response.ok()) throw new Error(`The server action answered HTTP ${response.status()}`);
+    const request = await done;
+    const response = await request.response();
+    if (!response || !response.ok()) throw new Error(`The server action answered HTTP ${response?.status() ?? "none"}`);
   }
+  // An action called with plain arguments sends them in its body as Next serialises them.
+  const withArguments = (...values) => (request) => {
+    const body = request.postData() ?? "";
+    return values.length > 0 && values.every((v) => v && body.includes(v));
+  };
+  // Every server action id the page has sent, so a click's own action can be told from the page's background reads.
+  const seenActionIds = new Set();
+  page.on("request", (r) => {
+    const id = r.headers()["next-action"];
+    if (id) seenActionIds.add(id);
+  });
+  // Run synthesis is a <form action> bound to the run: its request body is only the run id, which background
+  // reads also send, and React exposes no action id on the form. Its request is the first, after the click,
+  // with that body and an action id the page had not sent before; that id is remembered for later runs.
+  let synthesisActionId = null;
+  const synthesisSubmission = (runId) => {
+    const before = new Set(seenActionIds);
+    const body = JSON.stringify([runId]);
+    return (request) => {
+      const id = request.headers()["next-action"];
+      if ((request.postData() ?? "") !== body) return false;
+      if (synthesisActionId) return id === synthesisActionId;
+      if (before.has(id)) return false;
+      synthesisActionId = id;
+      return true;
+    };
+  };
 
   async function settle() {
     await page.waitForLoadState("networkidle", { timeout: STEP_TIMEOUT });
@@ -471,7 +535,7 @@ export async function bind({ page, target, testInfo }) {
     await expect(card).toHaveCount(1, { timeout: STEP_TIMEOUT });
     const finding = { id: await card.getAttribute("data-finding-id"), text: null };
     finding.text = squash(await findingCard(finding).locator("text=/the most common answer/").first().innerText());
-    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Accept", exact: true }).click());
+    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Accept", exact: true }).click(), withArguments(finding.id, "accepted"));
     await expect(findingCard(finding)).toHaveAttribute("data-review-status", "accepted", { timeout: STEP_TIMEOUT });
     // Confirm the stored state, not the optimistic one.
     await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
@@ -486,7 +550,7 @@ export async function bind({ page, target, testInfo }) {
     const card = findingCard(finding);
     await card.getByRole("button", { name: "+ Add note", exact: true }).click();
     await card.getByRole("textbox").fill(text);
-    await viaServerAction(() => card.getByRole("button", { name: "Save", exact: true }).click());
+    await viaServerAction(() => card.getByRole("button", { name: "Save", exact: true }).click(), withArguments(finding.id));
     // The note shows at once; only a reload proves it was stored.
     await expect(findingResearcherNote(finding)).toContainText(text);
     await page.waitForLoadState("networkidle");
@@ -511,7 +575,7 @@ export async function bind({ page, target, testInfo }) {
     for (let attempt = 0; attempt < 12 && ((await citing.count()) === 0 || (await accepted.count()) < wanted); attempt++) {
       // Waits for the synthesis action itself: once it has insights the section shows its overview,
       // so the button may no longer be on screen when it finishes.
-      await viaServerAction(() => page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click());
+      await viaServerAction(() => page.getByRole("button", { name: /^(Run synthesis|Re-run synthesis)$/ }).click(), synthesisSubmission(run.id));
       await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
       await openSection("Insights");
       if ((await citing.count()) === 0) await page.waitForTimeout(5_000);
@@ -575,7 +639,7 @@ export async function bind({ page, target, testInfo }) {
 
   async function rejectFinding(finding) {
     await openSection("Findings");
-    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Reject", exact: true }).click());
+    await viaServerAction(() => findingCard(finding).getByRole("button", { name: "Reject", exact: true }).click(), withArguments(finding.id, "rejected"));
     await expect(findingCard(finding)).toHaveAttribute("data-review-status", "rejected", { timeout: STEP_TIMEOUT });
     await page.reload({ waitUntil: "networkidle", timeout: STEP_TIMEOUT });
     await openSection("Findings");
