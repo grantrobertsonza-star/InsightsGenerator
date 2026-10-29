@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChartResult } from "@/lib/chartActions";
 import type { LegendPos } from "./ChartCustomize";
 import { ChartExportButtons, useSvgImageExport } from "./chartImageExport";
+import { fitText, legendLayout, wrapTitle } from "@/lib/chartTextLayout";
 
 /**
  * A slide-ready column chart of one variable's answer distribution, one series of columns per group
@@ -32,7 +33,11 @@ const PAD_R = 30;
 const PAD_TOP = 60;
 const PLOT_H = 320;
 const PAD_BOTTOM = 64;
-const LEGEND_H = 26;
+// One legend row; the legend wraps to as many rows as its entries need within the chart's width.
+const LEGEND_ROW_H = 18;
+const LEGEND_FONT = 10.5;
+const TITLE_FONT = 18;
+const TITLE_LINE_H = 22;
 // A bar narrower than this is where value labels start landing on top of their neighbour's, the
 // "wall of numbers" failure mode a fixed-width chart hits once there are several series and a dozen-plus
 // categories. Below it the chart still draws (categories can't be dropped), it just stops captioning
@@ -58,11 +63,6 @@ export default function ChartVisual({
   const grouped = result.grouped && series.length > 1;
   const categories = series[0]?.bars.map((b) => b.label) ?? [];
   const n = categories.length;
-  const legendH = grouped ? LEGEND_H : 0;
-  const legendTop = grouped && legendPos === "top" ? legendH : 0;
-  const legendBottom = grouped && legendPos === "bottom" ? legendH + 14 : 0;
-  const H = PAD_TOP + legendTop + PLOT_H + PAD_BOTTOM + legendBottom;
-
   // Width grows with how much is actually being plotted (categories x series) instead of squeezing an
   // arbitrary number of bars into a fixed canvas: every bar keeps at least MIN_BAR_W, and the chart scrolls
   // horizontally once that no longer fits the card rather than shrinking bars to a few illegible pixels.
@@ -73,11 +73,40 @@ export default function ChartVisual({
   // everything past the last bar left blank. A chart with plenty of categories still scrolls instead of
   // squeezing (the "wide" case below), it just no longer also forces that width on a two-bar chart.
   const plotW = n * colW;
-  const W = PAD_L + PAD_R + plotW;
+  // Legend labels keep the full group name up to a row's width (the n stays visible); entries wrap onto as many
+  // rows as they need, so none runs past the chart's edge (Grant, 29 October 2026: legends cut off).
+  const legendLabels = series.map((s) => `${s.name} (n=${s.n})`);
+  const widestEntry = Math.max(0, ...legendLabels.map((l) => 14 + l.length * LEGEND_FONT * 0.64));
+  const W = Math.max(PAD_L + PAD_R + plotW, grouped ? Math.min(PAD_L + PAD_R + widestEntry, BASE_W) : 0);
   const wide = W > BASE_W;
+  // A wide chart scrolls sideways at its full size, so only the part as wide as its card shows at first: the
+  // title and legend are laid out within that part (measured from the card), not across the whole scroll width,
+  // or most of the legend sat off screen. A chart that fits scales to the card, so all of it shows.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [frameW, setFrameW] = useState<number | null>(null);
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => setFrameW(Math.round(entries[0].contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const visibleW = wide ? Math.max(320, Math.min(W, frameW ?? BASE_W)) : W;
+  const legendW = visibleW - PAD_L - PAD_R / 2;
+  const shownLegend = legendLabels.map((l) => fitText(l, legendW - 14, LEGEND_FONT, true));
+  const legend = legendLayout(shownLegend.map((label) => ({ label })), legendW, LEGEND_FONT);
+  const legendH = grouped ? legend.rows * LEGEND_ROW_H + 8 : 0;
+  const legendTop = grouped && legendPos === "top" ? legendH : 0;
+  const legendBottom = grouped && legendPos === "bottom" ? legendH + 14 : 0;
+  // The title breaks onto a second line rather than running past the edge; past two lines it ends with an
+  // ellipsis, and the full title is the chart's tooltip.
+  const titleLines = wrapTitle(title, visibleW - 24, TITLE_FONT);
+  const titleExtra = Math.max(0, titleLines.length - 1) * TITLE_LINE_H;
+  const top = PAD_TOP + titleExtra;
+  const H = top + legendTop + PLOT_H + PAD_BOTTOM + legendBottom;
 
   const maxPct = Math.max(...series.flatMap((s) => s.bars.map((b) => b.pct)), 1) * 1.15;
-  const baseline = PAD_TOP + legendTop + PLOT_H;
+  const baseline = top + legendTop + PLOT_H;
   const xOf = (i: number) => PAD_L + (i + 0.5) * colW;
   const barW = MIN_BAR_W;
   const yOf = (pct: number) => baseline - (pct / maxPct) * PLOT_H;
@@ -98,10 +127,11 @@ export default function ChartVisual({
   const legendRow = (y: number) => (
     <g transform={`translate(${PAD_L}, ${y})`}>
       {series.map((s, j) => (
-        <g key={s.name} transform={`translate(${j * 150}, 0)`}>
+        <g key={s.name} transform={`translate(${legend.placements[j].x}, ${legend.placements[j].row * LEGEND_ROW_H})`} data-testid="chart-legend-entry">
+          <title>{legendLabels[j]}</title>
           <rect width="10" height="10" rx="2" fill={colorOf(j)} />
-          <text x="14" y="9" fontSize="10.5" fontWeight="600" fill="#334155" fontFamily="system-ui, -apple-system, sans-serif">
-            {s.name.length > 20 ? `${s.name.slice(0, 19)}…` : s.name} (n={s.n})
+          <text x="14" y="9" fontSize={LEGEND_FONT} fontWeight="600" fill="#334155" fontFamily="system-ui, -apple-system, sans-serif">
+            {shownLegend[j]}
           </text>
         </g>
       ))}
@@ -110,7 +140,7 @@ export default function ChartVisual({
 
   return (
     <div className="max-w-3xl space-y-3">
-      <div className={wide ? "overflow-x-auto rounded-xl border border-border bg-white" : "rounded-xl border border-border bg-white"}>
+      <div ref={frameRef} className={wide ? "overflow-x-auto rounded-xl border border-border bg-white" : "rounded-xl border border-border bg-white"}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
@@ -119,15 +149,20 @@ export default function ChartVisual({
           style={wide ? { display: "block" } : undefined}
           className={wide ? undefined : "w-full"}
         >
+          <title>{title}</title>
           <rect x="0" y="0" width={W} height={H} fill="#ffffff" />
-          <text x={W / 2} y="26" textAnchor="middle" fontSize="18" fontWeight="700" fill="#0f172a" fontFamily="system-ui, -apple-system, sans-serif">
-            {title}
+          <text x={visibleW / 2} y="26" textAnchor="middle" fontSize={TITLE_FONT} fontWeight="700" fill="#0f172a" fontFamily="system-ui, -apple-system, sans-serif" data-testid="chart-title">
+            {titleLines.map((line, k) => (
+              <tspan key={k} x={visibleW / 2} dy={k === 0 ? 0 : TITLE_LINE_H}>
+                {line}
+              </tspan>
+            ))}
           </text>
-          <text x={W / 2} y="44" textAnchor="middle" fontSize="11.5" fill="#64748b" fontFamily="system-ui, -apple-system, sans-serif">
+          <text x={visibleW / 2} y={44 + titleExtra} textAnchor="middle" fontSize="11.5" fill="#64748b" fontFamily="system-ui, -apple-system, sans-serif">
             {result.n.toLocaleString()} cases{result.weighted ? ", weighted" : ""}
             {result.grouped ? `, split by ${result.groupLabel}` : ""}
           </text>
-          {grouped && legendPos === "top" && legendRow(PAD_TOP + 6)}
+          {grouped && legendPos === "top" && legendRow(top + 6)}
           <line x1={PAD_L} y1={baseline} x2={W - PAD_R} y2={baseline} stroke="currentColor" opacity="0.3" />
           {categories.map((label, i) => {
             const cx = xOf(i);

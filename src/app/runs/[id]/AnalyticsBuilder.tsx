@@ -13,6 +13,7 @@ import {
   type NpsResult,
 } from "@/lib/npsActions";
 import NpsVisual from "./NpsVisual";
+import ResizableSplit from "./ResizableSplit";
 import WaveTrackingPanel from "./WaveTrackingPanel";
 import CsmAnalyticsPanel from "./CsmAnalyticsPanel";
 import BrandHealthAnalyticsPanel from "./BrandHealthAnalyticsPanel";
@@ -1923,14 +1924,11 @@ function AnalyticsWorkspace({
               </details>
               {error && <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-danger">{error}</p>}
               {message && <p className="mb-3 text-muted">{message}</p>}
-              <div
-                className={
-                  npsResult && npsResult.variable === outcome
-                    ? "grid grid-cols-1 items-start gap-4 xl:grid-cols-2"
-                    : undefined
-                }
-              >
-                {npsResult && npsResult.variable === outcome && (
+              <ResizableSplit
+                storageKey="nps-drivers"
+                testId="nps-driver-split"
+                left={
+                  npsResult && npsResult.variable === outcome ? (
                   <div className="space-y-2">
                     {npsResult.segments && npsResult.segments.length > 0 && (
                       <SegmentTabs options={npsResult.segments.map((s) => s.name)} value={npsSeg} onChange={setNpsSeg} />
@@ -1955,7 +1953,9 @@ function AnalyticsWorkspace({
                     </button>
                     )}
                   </div>
-                )}
+                  ) : null
+                }
+                right={
                 <div className="space-y-3">
                   {driverSlot && !report && (
                     <RestoreNotice
@@ -2013,7 +2013,8 @@ function AnalyticsWorkspace({
                     </>
                   )}
                 </div>
-              </div>
+                }
+              />
             </>
           )}
           {mode === "nps" && (
@@ -2564,7 +2565,9 @@ export function ReportView({
         </div>
       </details>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      {/* One below the other, each the width of the driver pane: side by side, a quadrant got half of an already
+          half-width pane (Grant, 29 October 2026: "the quadrant is tiny"). */}
+      <div className="space-y-4" data-testid="driver-quadrants">
         <Quadrant report={report} />
         <StatedQuadrant report={report} />
       </div>
@@ -2784,11 +2787,14 @@ function Quadrant({ report }: { report: DriverReport }) {
         </details>
         {status && <span className="text-[11px] text-muted">{status}</span>}
       </div>
-      <div className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-white p-3 sm:flex-row sm:items-center">
+      {/* The legend is a row above or below the chart, never a column beside it: beside it, it took most of a
+          narrow pane and left the chart a thumbnail (Grant, 29 October 2026: "the quadrant is tiny"). */}
+      <div className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-white p-3" data-testid="quadrant-frame">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H + TITLE_H}`}
-          className="w-full max-w-2xl"
+          className="w-full"
+          data-testid="quadrant-chart"
           style={{ order: legendPos === "top" ? 1 : 0 }}
           role="img"
           aria-label="Importance against performance by question"
@@ -2847,7 +2853,7 @@ function Quadrant({ report }: { report: DriverReport }) {
           </g>
         </svg>
         <div
-          className="flex shrink-0 flex-row flex-wrap gap-x-4 gap-y-2 sm:flex-col sm:gap-y-3"
+          className="flex flex-row flex-wrap justify-center gap-x-5 gap-y-2"
           style={{ order: legendPos === "top" ? 0 : 1 }}
         >
           {([QUAD.fix, QUAD.protect, QUAD.low1, QUAD.low2] as const).map((q) => (

@@ -1,6 +1,16 @@
 # Current engineering status
 
-Updated: 2026-10-29. State: **READY_FOR_CODEX** (batch D2a on top of c5837288, which Codex verified on 29 October: NEW10K-F01 to F03 closed, 66, 67 and 53 pass, D1-F01 found): D2a repairs D1-F01 (a recommend scale is 0 to 10 only by the NPS rule), reads tracker roles from raw files with no codebook, keeps a codebook's question number, type and set (migration 0131), and stores dashboard choices per programme (migration 0132); not yet wired to a screen; implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+Updated: 2026-10-29. State: **READY_FOR_CODEX** (BatchD2aR and BatchUI1 on top of c8bfac21, which Codex reviewed on 29 October: D1-F01 closed, D2A-F01 to F04 found): D2aR repairs D2A-F01 (saves and resets bound to the scope read), F02 (one stage list), F03 (unchanged weighting kept), F04 (CSM choices answer their questions); UI1 makes chart legends and titles fit, puts NPS and drivers in a resizable split and the importance quadrant at full width; implemented, ready for independent review. Open: the native two-file 120 MB upload (ECONNRESET, cause not located). **NOT READY for release.**
+
+## Claude: batches D2aR and UI1, main copy (2026-10-29)
+
+Implemented, ready for review, applied as two commits on top of `c8bfac21`. Handovers in `claude/`:
+`batchD2aR-handover-2026-10-29.md` (Codex D2A-F01 to F04, each with tests failing before the repair) and
+`batchUI1-handover-2026-10-29.md` (chart legends and titles inside the chart, also on wide scrolling charts;
+NPS and drivers in a draggable, keyboard-operable split; quadrants at full pane width). Gates on the combined tree
+`523f4de7`: tsc and eslint clean; self-test passed; library 2,377 passed, 91 skipped, 0 failed; browser 141 passed,
+1 skipped, 1 failed (review-action-failure, a navigation wait in an untouched area: passed in the two earlier full
+runs today and 3 of 3 when rerun alone); smoke 1 passed. No migration.
 
 ## Claude: batch D2a, main copy (2026-10-29)
 
