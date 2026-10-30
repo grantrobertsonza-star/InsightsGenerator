@@ -59,6 +59,7 @@ test("tracker conversion: ranked charts per step, BMW equal to the reference, ba
     // 1. Funnel by default; Conversion on request.
     const view = card.getByTestId("tracker-funnel-view");
     await expect(view.getByRole("button", { name: "Funnel" })).toHaveAttribute("aria-pressed", "true");
+    if (process.env.SHOT_DIR) await page.screenshot({ path: path.join(process.env.SHOT_DIR, "funnel-1440x900.png") });
     await view.getByRole("button", { name: "Conversion" }).click();
     await expect(view.getByRole("button", { name: "Conversion" })).toHaveAttribute("aria-pressed", "true");
     const steps = card.getByTestId("tracker-conversion-step");
@@ -84,6 +85,8 @@ test("tracker conversion: ranked charts per step, BMW equal to the reference, ba
     await expect(card.getByTestId("tracker-conversion-basis")).toContainText("Weighted by weight");
     await expect(card.getByTestId("tracker-conversion-nonnested")).toHaveCount(0);
     if (process.env.SHOT_DIR) await page.screenshot({ path: path.join(process.env.SHOT_DIR, "conversion-1440x900.png") });
+    await card.getByTestId("tracker-funnel-view").evaluate((el) => el.scrollIntoView({ block: "start" }));
+    if (process.env.SHOT_DIR) await page.screenshot({ path: path.join(process.env.SHOT_DIR, "conversion-charts-1440x900.png") });
     await card.getByTestId("tracker-conversion-step").first().scrollIntoViewIfNeeded();
     if (process.env.SHOT_DIR) await card.screenshot({ path: path.join(process.env.SHOT_DIR, "conversion-card.png") });
     await card.getByTestId("tracker-conversion-table").locator("summary").click();

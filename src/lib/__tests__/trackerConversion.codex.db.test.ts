@@ -1,6 +1,6 @@
 // The Conversion view against Codex's independent reference values (30 October 2026), computed person by person from
 // the raw BMW CSV files with a script of Codex's own, never from this app or from conversion_reference.py.
-// fixtures/tracker-packs/bmw_car/bmw-independent-reference.json is copied unchanged; its sha256 is checked so an edit
+// fixtures/tracker-packs/bmw_car/independent/codex-bmw-reference-2026-10-30.json is copied unchanged; its sha256 is checked so an edit
 // to the expected values cannot pass unnoticed.
 //
 // Codex's method (the file's `method.conversion`): for consecutive aware, consider, shortlist, first choice,
@@ -45,7 +45,7 @@ vi.mock("../supabaseAdmin", () => ({
 vi.setConfig({ testTimeout: 300_000, hookTimeout: 180_000 });
 const PYTHON_OK = spawnSync(PYTHON, ["-c", "import pandas, pyreadstat"], { encoding: "utf8" }).status === 0;
 const packPath = (n: string) => path.join(process.cwd(), "fixtures", "tracker-packs", "bmw_car", n);
-const CODEX_FILE = packPath("bmw-independent-reference.json");
+const CODEX_FILE = packPath("independent/codex-bmw-reference-2026-10-30.json");
 const CODEX_SHA256 = "bfe50f5eede27e9474fa7b309992a7937c7eba641dff9d38a7a875fb9b65f7a8";
 const WAVE_FILES: Record<"1" | "2", string> = { "1": "wave1_labels_only_compressed.sav", "2": "wave2_labels_only_compressed.sav" };
 

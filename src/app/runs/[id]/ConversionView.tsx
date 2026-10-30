@@ -48,6 +48,10 @@ const pct1 = (v: number) => `${v.toFixed(1)}%`;
 const n = (v: number | null) => (v === null ? "n/a" : v.toLocaleString());
 const stageWord = (s: FunnelStage) => conversionStageName(s).toLowerCase();
 const unknownN = (c: ConversionCell) => c.unknownAtTo.reduce((t, u) => t + u.n, 0);
+/** The table's "Unknown at later" cell. The later stage's answers were read only when the cell has a base; without one
+ * the count is not known, so it reads n/a, never 0. */
+const unknownCell = (c: ConversionCell) =>
+  c.base === null ? "n/a" : c.unknownAtTo.length === 0 ? "0" : c.unknownAtTo.map((u) => `${u.n} ${u.label ?? `code ${u.code}`}`).join(", ");
 
 /** What a bar says on hover or focus: the base and the counts behind it. */
 function cellDetail(c: ConversionCell, label: string): string {
@@ -92,7 +96,9 @@ function StepChart({ step, brandLabel, focalCode, focal }: { step: ConversionSte
               data-code={code}
               data-focal={isFocal ? "true" : undefined}
             >
-              <span className={`truncate text-right ${isFocal ? "text-blue-700" : "text-slate-600"}`}>{label(code)}</span>
+              <span className={`break-words text-right leading-tight ${isFocal ? "text-blue-700" : "text-slate-600"}`} data-testid="tracker-conversion-brand">
+                {label(code)}
+              </span>
               <span className="h-3 rounded bg-slate-100">
                 {c.conversion !== null && <span className="block h-full rounded" style={{ width: `${Math.max(0, Math.min(100, c.conversion))}%`, background: isFocal ? FOCAL_COLOUR : OTHER_COLOUR }} />}
               </span>
@@ -222,7 +228,7 @@ export function ConversionView({ runId, documentId, refreshKey }: { runId: strin
                       <td className="px-1.5 py-1 tabular-nums">{n(c.base)}</td>
                       <td className="px-1.5 py-1 tabular-nums">{n(c.atFrom)}</td>
                       <td className="px-1.5 py-1 tabular-nums">{n(c.converted)}</td>
-                      <td className="px-1.5 py-1 tabular-nums">{c.unknownAtTo.length === 0 ? "0" : c.unknownAtTo.map((u) => `${u.n} ${u.label ?? `code ${u.code}`}`).join(", ")}</td>
+                      <td className="px-1.5 py-1 tabular-nums">{unknownCell(c)}</td>
                       <td className="px-1.5 py-1 tabular-nums">{n(c.noAnswerAtTo)}</td>
                       <td className="px-1.5 py-1 tabular-nums">{n(c.nonNested)}</td>
                     </tr>

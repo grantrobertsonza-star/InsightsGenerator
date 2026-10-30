@@ -5653,7 +5653,8 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
         counts_exact, pcts_exact, ses_exact = [], [], []
         tot_n, tot_w, tot_eff = base_stats(valid_mask)
         tot_sel = float(wv[valid_mask & sel_mask].sum())
-        pt = tot_sel / tot_w if tot_w > 0 else float("nan")
+        # Capped at 1 for the reason given at pj below (R5conv).
+        pt = min(1.0, tot_sel / tot_w) if tot_w > 0 else float("nan")
         ps, sigs, ests, ses = [], [], [], []
         for k in range(K):
             vm = valid_mask & col_masks[k]
@@ -5722,7 +5723,8 @@ def crosstab(file_bytes: bytes, source_filename: str, args: dict) -> dict:
             vm_b = valid_mask & block_any[b]
             nb, swb, neb = base_stats(vm_b)
             selb = float(wv[vm_b & sel_mask].sum())
-            pb = selb / swb if swb > 0 else float("nan")
+            # Capped at 1 as pj is (R5conv).
+            pb = min(1.0, selb / swb) if swb > 0 else float("nan")
             nets.append({
                 "block": b,
                 "count": round(selb, 1),

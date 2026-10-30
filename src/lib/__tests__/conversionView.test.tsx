@@ -8,6 +8,9 @@
 //     with every base; a bar's base on hover and focus (title and aria-label);
 //   - a late answer for an earlier load never replaces the newer one (refreshKey changed while the first was pending);
 //   - a failed calculation says why and "Try again" recovers.
+//   - switching to another data file while the first file's answer is pending: the first file's answer, arriving
+//     later, never replaces the second's; a brand whose later stage was not read shows n/a (never 0) for its unknown
+//     answers, and a long brand name is shown in full (wrapped, not cut).
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { parseHTML } from "linkedom";
@@ -156,6 +159,32 @@ describe("Conversion view (mounted)", () => {
     await answerWith(3, { ok: true, conversion: answer(39.4) });
     expect(body.querySelector("[data-testid=tracker-conversion-failed]")).toBeNull();
     expect(all("[data-testid=tracker-conversion-step]")).toHaveLength(2);
+    await act(() => root.unmount());
+  });
+
+  it("another data file while the first is pending: only the second file's answer is shown; a cell not read reads n/a, never 0; long brand names in full", async () => {
+    held.length = 0;
+    const root = createRoot(container);
+    await act(() => root.render(createElement(View.ConversionView, { runId: "r", documentId: "doc-a", refreshKey: 1 })));
+    await act(() => root.render(createElement(View.ConversionView, { runId: "r", documentId: "doc-b", refreshKey: 1 })));
+    expect(held).toHaveLength(2);
+    const second = answer(39.4);
+    second.documentId = "doc-b";
+    second.dashboard = { ...second.dashboard, brands: [...BRANDS.slice(0, 3), { code: "9", label: "Kia Motors Corporation South Africa" }] };
+    if (second.conversion.status !== "ok") throw new Error("fixture");
+    // Kia not asked at the later stage of the first step: no base, so its unknown answers are not known.
+    second.conversion.steps[0].cells[3] = cell("9", null, { base: null, converted: null, noAnswerAtTo: null, nonNested: null, weightedBase: null, reason: "Not asked about this brand. (the later stage)" });
+    await answerWith(1, { ok: true, conversion: second });
+    await answerWith(0, { ok: true, conversion: answer(11.1) });
+    expect(text()).not.toContain("11.1%");
+    expect(text()).toContain("BMW converts 39% of aware respondents to consideration, 3rd of 3 brands; 1 brand not ranked (1 not available).");
+    const kiaRow = [...body.querySelectorAll("[data-testid=tracker-conversion-table] tbody tr")][3];
+    const kiaCells = [...kiaRow.querySelectorAll("td")].map((c) => c.textContent);
+    // Brand, Conversion, Base, At earlier, At both, Unknown at later, No answer at later, At later only.
+    expect(kiaCells).toEqual(["Kia Motors Corporation South Africa", "n/a", "n/a", "400", "n/a", "n/a", "n/a", "n/a"]);
+    const names = all("[data-testid=tracker-conversion-brand]");
+    expect(names.some((el) => el.textContent === "Kia Motors Corporation South Africa")).toBe(true);
+    expect(names.every((el) => !(el.getAttribute("class") ?? "").split(/\s+/).includes("truncate"))).toBe(true);
     await act(() => root.unmount());
   });
 });

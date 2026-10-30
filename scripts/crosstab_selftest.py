@@ -1091,7 +1091,8 @@ check("decision 9: a zero-padded identifier below a chosen header row keeps its 
 # weights are summed in different orders (the selected cases out of the whole weight column, the base out of the
 # valid cases), so their ratio can come out one rounding step above 1; the standard error then took the square root
 # of a negative number and the whole table failed ("math domain error"). Found by the brand dashboard's Conversion
-# view, where everyone considering a brand is also aware of it. The share must be read as exactly 100%.
+# view, where everyone considering a brand is also aware of it. The share must be read as exactly 100%, in the
+# column and in the total (whose share came out as 100.00000000000003% without the cap).
 _rng_full = np.random.default_rng(11)
 _nf = 997
 _full = pd.DataFrame({"stage1": (_rng_full.random(_nf) < 0.6).astype(float), "wt": np.exp(_rng_full.normal(0, 0.7, _nf))})
@@ -1105,8 +1106,8 @@ for _seed_w in range(12):
     try:
         _fr = psf.crosstab(open(_full_path, "rb").read(), "full.sav", {"columnVars": [], "rowItems": [{"key": "stage0", "label": "Stage 0", "vars": ["stage0"]}], "weightVar": "wt", "excludeDk": False, "filters": [{"variable": "stage1", "op": "between", "min": 1, "max": 1}]})
         _sel = [r for r in _fr["questions"][0]["rows"] if r.get("rawCode") in ("1", "1.0")][0]
-        if _sel["pctExact"][0] != 100.0 or _sel["pct"][0] != 100.0:
-            _full_fail.append((_seed_w, _sel["pctExact"][0]))
+        if _sel["pctExact"][0] != 100.0 or _sel["pct"][0] != 100.0 or _sel["total"]["pctExact"] != 100.0:
+            _full_fail.append((_seed_w, _sel["pctExact"][0], _sel["total"]["pctExact"]))
     except ValueError as exc:
         _full_fail.append((_seed_w, str(exc)))
 check("R5conv: a weighted share of 100% in a filtered table reads as exactly 100%, never a failed table", _full_fail == [], str(_full_fail))
