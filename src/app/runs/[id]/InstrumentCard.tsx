@@ -1,6 +1,6 @@
 "use client";
 
-import { matchOutcomeMessage, type MatchOutcome } from "@/lib/instrumentMatchMessage";
+import { automaticRecheckMessage, matchOutcomeMessage, type AutomaticRecheck, type MatchOutcome } from "@/lib/instrumentMatchMessage";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   chooseInstrumentLinkAction,
@@ -58,13 +58,9 @@ function metaNote(r: Record<string, unknown>): string {
   return (r.questionMetaNotStored ? " The question numbers, types and sets it gives were not saved: the database needs migration 0131." : "") + recheckNote(r);
 }
 
-/** Codex E1-F04: entries confirmed without a click whose answer list changed were checked again against every wave. */
+/** Codex E1-F04 and E1R-F01: what Read again found when it checked withdrawn automatic links again, wave by wave. */
 function recheckNote(r: Record<string, unknown>): string {
-  const c = r.automaticRecheck as { withdrawn: number; status: "done"; reconfirmed: number } | { withdrawn: number; status: "failed"; error: string } | undefined;
-  if (!c) return "";
-  const n = `${c.withdrawn} automatic link${c.withdrawn === 1 ? "" : "s"}`;
-  if (c.status === "failed") return ` ${n} whose answer list changed could not be checked again (${c.error}), so they are suggestions until you match the codebook again.`;
-  return ` ${n} whose answer list changed ${c.withdrawn === 1 ? "was" : "were"} checked again against every wave: ${c.reconfirmed} still fit and ${c.reconfirmed === 1 ? "is" : "are"} confirmed; the rest are suggestions to review.`;
+  return automaticRecheckMessage(r.automaticRecheck as AutomaticRecheck | undefined);
 }
 
 function confirmedMessage(r: Record<string, unknown>): string {
@@ -318,7 +314,7 @@ export default function InstrumentCard({
           () => readInstrumentAction(runId, documentId),
           r => r.complete
             ? `Read ${r.items} items.${metaNote(r)}`
-            : `Read incomplete: ${r.failedChunks ?? 0} unread parts and ${r.incompleteItems ?? 0} incomplete items. Previously confirmed links were preserved.`,
+            : `Read incomplete: ${r.failedChunks ?? 0} unread parts and ${r.incompleteItems ?? 0} incomplete items. Previously confirmed links were preserved.${recheckNote(r)}`,
         )}>
           {pending ? "Reading..." : "Read again"}
         </button>
@@ -353,7 +349,7 @@ export default function InstrumentCard({
       {read && !summary.readStatus && (
         <p role="status" className="text-amber-800">Reading coverage is unknown for these saved items. Read again to establish complete coverage; confirmed links are preserved.</p>
       )}
-      {shownMessage && <p className="text-foreground">{shownMessage}</p>}
+      {shownMessage && <p className="text-foreground" data-testid="instrument-message">{shownMessage}</p>}
       {shownError && <p className="text-danger">{shownError}</p>}
 
       {review && (

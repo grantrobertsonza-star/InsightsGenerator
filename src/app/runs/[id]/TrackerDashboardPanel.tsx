@@ -24,6 +24,7 @@ import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCs
 import type { FunnelStage } from "@/lib/trackerRoles";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
+import { ConversionView, FunnelViewSwitch, type FunnelView } from "./ConversionView";
 
 export type TrackerDashboardKind = "brand" | "csm";
 
@@ -224,6 +225,10 @@ export default function TrackerDashboardPanel({
   // The brand dashboard's page, by its place in BRAND_SECTIONS: 0 Brand overview (the default), 1 Moments & needs,
   // 2 Brand associations, 3 Advertising & WOM, 4 Audience & media, 5 Category overview.
   const [section, setSection] = useState(0);
+  // Page 01's funnel card: the stage shares, or the conversion between stages (ConversionView.tsx), which is calculated
+  // when first shown and then kept while the card switches back and forth.
+  const [funnelView, setFunnelView] = useState<FunnelView>("funnel");
+  const [conversionShown, setConversionShown] = useState(false);
   const [moments, setMoments] = useState<MomentsLoad>({ state: "idle" });
   const [associations, setAssociations] = useState<AssociationsLoad>({ state: "idle" });
   const [advertising, setAdvertising] = useState<AdvertisingLoad>({ state: "idle" });
@@ -722,11 +727,29 @@ export default function TrackerDashboardPanel({
         {shownStages.length > 0 && (
           <Card
             title="Compare the brand funnel"
-            subtitle={`${overview.figures.weighted ? "Weighted" : "Unweighted"}, all eligible respondents${base !== null ? `, n=${base.toLocaleString()} per brand` : ""}. Selected comparators, not a ranking.`}
+            subtitle={
+              funnelView === "conversion"
+                ? "Conversion between stages, every brand ranked."
+                : `${overview.figures.weighted ? "Weighted" : "Unweighted"}, all eligible respondents${base !== null ? `, n=${base.toLocaleString()} per brand` : ""}. Selected comparators, not a ranking.`
+            }
             testId="tracker-compare"
           >
-            {comparatorPicker}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="mb-3">
+              <FunnelViewSwitch
+                value={funnelView}
+                onChange={(v) => {
+                  setFunnelView(v);
+                  if (v === "conversion") setConversionShown(true);
+                }}
+              />
+            </div>
+            {conversionShown && (
+              <div className={funnelView === "conversion" ? "" : "hidden"}>
+                <ConversionView runId={runId} documentId={documentId} refreshKey={overview} />
+              </div>
+            )}
+            {funnelView === "funnel" && comparatorPicker}
+            <div className={`grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5 ${funnelView === "funnel" ? "grid" : "hidden"}`}>
               {shown.map((code) => {
                 const isFocal = focal?.code === code;
                 return (

@@ -69,7 +69,3 @@ extract-timing.log
 
 # browser smoke output (scripts/e2e/local-stack.mjs, playwright.config.mjs)
 /e2e-results/
-
-# Independent review evidence (Codex): archives of whole app copies. Kept out of git, and out of Tailwind's,
-# TypeScript's and ESLint's scans, which otherwise read every copy on every change.
-/work/

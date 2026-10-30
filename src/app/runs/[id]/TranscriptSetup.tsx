@@ -1,6 +1,6 @@
 "use client";
 
-import { saveSetupEdit, setupReadChanged, setupStructureChanged } from "@/lib/dataSetupRebase";
+import { createSetupEditQueue, setupReadChanged, setupStructureChanged, type SetupEditQueue } from "@/lib/dataSetupRebase";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { saveTranscriptSetupAction, withdrawTranscriptSetupAction } from "@/lib/codingAnalysisActions";
@@ -540,13 +540,21 @@ function LoadingHint({ ready }: { ready: boolean }) {
 function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
   const [choice, setChoice] = useState<DataSetup>(row.dataSetup ?? DEFAULT_DATA_SETUP);
   const [waveText, setWaveText] = useState(row.dataSetup?.wave ?? "");
-  const [pending, setPending] = useState(false);
+  // Edits sent and not yet answered: the form says "Saving" while any is, and "saved" only once none is.
+  const [pending, setPending] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // This file's edits are sent one at a time, each onto what the previous one saved (dataSetupRebase).
+  const queue = useRef<SetupEditQueue | null>(null);
+  if (queue.current === null) {
+    queue.current = createSetupEditQueue((setup, expected) => saveDataSetupAction(runId, row.documentId, setup, expected), row.dataSetup);
+  }
   const [layoutChanged, setLayoutChanged] = useState(false);
   // The header row control's own status: "saved" only once the save has succeeded (decision 9).
   const [headerStatus, setHeaderStatus] = useState<"saving" | "saved" | null>(null);
   const [autoAccepted, setAutoAccepted] = useState(false);
   const [autoFailed, setAutoFailed] = useState(false);
+  // The first-view acceptance met a set-up saved elsewhere (another page view accepted it first): that set-up is shown.
+  const [autoSuperseded, setAutoSuperseded] = useState(false);
   const router = useRouter();
   const autoRan = useRef(false);
   const readRan = useRef(false);
@@ -574,13 +582,21 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
     autoRan.current = true;
     void saveDataSetupAction(runId, row.documentId, { ...DEFAULT_DATA_SETUP, accepted: true }, { kind: "none" }).then((r) => {
       if (r.ok) {
+        queue.current?.adopt({ ...DEFAULT_DATA_SETUP, accepted: true });
         setChoice({ ...DEFAULT_DATA_SETUP, accepted: true });
         setAutoAccepted(true);
         router.refresh();
       } else if (r.conflict) {
         // A deliberate edit (or another tab) already set this file up since the page
-        // loaded - don't let this default-on-first-view save stomp it; just pick up
-        // whatever is actually there now.
+        // loaded - don't let this default-on-first-view save stomp it; pick up what is
+        // actually there now. The form shows and edits from that set-up: before R3e1 it kept
+        // the defaults it started with, so every later edit was sent against a version that
+        // was never saved.
+        if (r.current) {
+          queue.current?.adopt(r.current);
+          setChoice(r.current);
+          setAutoSuperseded(true);
+        }
         router.refresh();
       } else setAutoFailed(true);
     });
@@ -615,26 +631,27 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
   // Resolves true once the change is saved (after a rebase over a concurrent save too), false otherwise.
   async function save(next: DataSetup): Promise<boolean> {
     if (setupStructureChanged(choice, next)) next = { ...next, accepted: false };
-    const previous = choice;
+    const view = choice;
     setChoice(next);
     setError(null);
-    setPending(true);
-    // This file's set-up may change elsewhere (another save still in flight, or another tab) while this edit is
-    // made. saveSetupEdit applies the edit once more on top of what is saved when that save changed none of the
-    // fields this edit changed and did not change the structure an acceptance here was given to (Codex E1-F02);
-    // otherwise what is saved is shown with the reason, never the edit that lost the race over another's work.
-    const r = await saveSetupEdit((setup, expected) => saveDataSetupAction(runId, row.documentId, setup, expected), previous, next);
-    setPending(false);
+    setPending((n) => n + 1);
+    // Sent after this file's earlier edits are answered and applied to what they saved (createSetupEditQueue). This
+    // file's set-up may also change in another tab: saveSetupEdit applies the edit once more on top of what is saved
+    // when that save changed none of the fields this edit changed and did not change the structure an acceptance here
+    // was given to (Codex E1-F02); otherwise what is saved is shown with the reason, never the edit that lost.
+    const r = await queue.current!.edit(view, next);
+    setPending((n) => n - 1);
+    // An earlier edit's answer never replaces a newer edit already on screen; the newer edit's own answer will.
     if (r.status === "saved") {
-      setChoice(r.setup);
+      if (r.latest) setChoice(r.setup);
       if (setupReadChanged(r.savedOver, r.setup)) await readAgainForLayout();
       return true;
     } else if (r.status === "conflict") {
-      setChoice(r.current ?? previous);
+      if (r.latest) setChoice(r.current ?? view);
       setError("This file's set-up changed elsewhere just now; showing the latest version. Make your change again if it's still needed.");
     } else {
       // A failed first save keeps the edit on screen to try again; a failed re-application shows what is saved.
-      if (r.current) setChoice(r.current);
+      if (r.current && r.latest) setChoice(r.current);
       setError(r.error);
     }
     return false;
@@ -651,18 +668,20 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
   // While the first-view acceptance above is on its way, the file is being saved, not waiting for
   // review (the stage status block would otherwise ask for an acceptance already in flight). A
   // failed attempt leaves it needing review.
-  const autoPending = row.dataSetup === null && !autoAccepted && !autoFailed;
+  const autoPending = row.dataSetup === null && !autoAccepted && !autoFailed && !autoSuperseded;
   // The fields wait for that first-view acceptance: an edit made while it was on its way was lost to it (its
   // success set the defaults over the edit, and the edit's own save then conflicted with it), seen as a wave
   // label typed into a newly opened file disappearing under load (waves-in-project, 28 October 2026).
   const editable = ready && !autoPending;
-  useReportSetup(row.documentId, pending || autoPending ? "saving" : choice.accepted ? "accepted" : "needs_review", choice.wave ?? null, readError);
+  useReportSetup(row.documentId, pending > 0 || autoPending ? "saving" : choice.accepted ? "accepted" : "needs_review", choice.wave ?? null, readError);
 
   return (
     <div className="flex flex-col gap-4" data-testid="setup-form">
       <div>
         <h4 className="text-sm font-semibold text-foreground">Data setup</h4>
-        <p className="text-xs text-muted">Each change is saved as you make it.</p>
+        <p className="text-xs text-muted" role="status" data-testid="setup-save-status" data-saving={pending > 0 ? "true" : "false"}>
+          {pending > 0 ? "Saving your change..." : "Each change is saved as you make it."}
+        </p>
       </div>
       <div className={FIELDS}>
         <Field label="What a case is">
@@ -802,7 +821,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
         </p>
         <button
           type="button"
-          disabled={pending || !ready}
+          disabled={pending > 0 || !ready}
           onClick={() => void save({ ...choice, accepted: !choice.accepted })}
           className={
             choice.accepted
@@ -813,7 +832,7 @@ function DataSetupForm({ runId, row }: { runId: string; row: Row }) {
           {choice.accepted ? "Undo accept" : "Accept data"}
         </button>
       </div>
-      {error && <p className="text-[11px] text-danger">{error}</p>}
+      {error && <p role="alert" data-testid="setup-save-error" className="text-[11px] text-danger">{error}</p>}
       {readError && <p className="text-[11px] text-danger">Could not read this file: {readError}</p>}
     </div>
   );
