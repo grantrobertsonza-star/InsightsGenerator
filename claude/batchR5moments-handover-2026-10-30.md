@@ -140,7 +140,35 @@ What was missing at the checkpoint and was done in the cloud worktree:
 
 ## Gates (cloud worktree, final tree)
 
-GATES_PLACEHOLDER
+Run on the cloud worktree `/home/claude/r5moments-own` (Node 22.22.0, Python 3 with pandas, numpy, scipy and
+pyreadstat, PostgreSQL 16 on port 55432, local and disposable only), after `npm ci` and `npx next typegen`. The
+container was shared with several other sessions (load average about 10 on 2 cores, little free memory, and the disk
+full for a time), which is why some commands needed a heap cap or a second attempt; no result below is from a run that
+hit a dead database or a full disk.
+
+| Gate | Command | Result |
+|---|---|---|
+| Typecheck | `NODE_OPTIONS=--max-old-space-size=1800 npx tsc --noEmit` | exit 0 (earlier attempts without the cap were killed for memory, exit 137) |
+| Lint | `NODE_OPTIONS=--max-old-space-size=1200 npx eslint src e2e --quiet` | exit 0, 0 errors; the four files changed afterwards linted again, exit 0 |
+| Engine self-test | `python3 scripts/crosstab_selftest.py` | 564 PASS, 0 FAIL, "All checks passed" (includes the "moment reach" cases and the filtered 100% share repro) |
+| Library | `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres npx vitest run src/lib/__tests__ --pool=forks` | Test files 372 passed, 3 failed, 2 skipped (377); tests 2863 passed, 0 failed, 92 skipped (2955); 4005 s |
+| Library, the 3 failed files again | same command with `dictionaryCacheUpgrade.db.test.ts objectiveEvidenceReference.db.test.ts tenantIsolation.db.test.ts` | 3 files passed; 14 tests passed, 2 skipped |
+| Production build | `next build --webpack` with the disposable stack's public values (`NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:39457`, the font mock, a disposable migrated database) | exit 0 |
+| Browser, this feature | `SCREENSHOT_DIR=docs/screenshots/r5moments GOLDEN_SMOKE_TARGET_MANIFEST=e2e-results/target-manifest.json npx playwright test -c e2e/ui/ui-check.config.mjs --workers=1 e2e/ui/tracker-moment-profile.check.mjs`, stack `E2E_NEXT_START=<worktree> E2E_STORAGE_PORT=39457 E2E_APP_PORT=3457 node scripts/e2e/local-stack.mjs` | 1 passed (2.8 min) |
+| Browser, page 02 recall | the same with `e2e/ui/tracker-moments.check.mjs` | 1 passed (2.6 min), its first run |
+
+The 3 failed library files failed in a setup or clean-up hook ("Hook timed out in 10000ms"), not in a test: every one
+of their tests that ran passed, they touch nothing in this batch, and run on their own they pass. Recorded as a failed
+full-suite run, not explained away: a clean single full run on an unloaded machine is still to be done.
+
+Feature tests inside the library run: `trackerMomentProfile.db.test.ts` 6 passed, `trackerMomentCodexReference.db.test.ts`
+4 passed, `momentProfileView.test.ts` 16 passed, `momentProfileView.test.tsx` 8 passed (3 new), `trackerMoments.db.test.ts`
+5 passed, `trackerMoments.test.ts` 15 passed.
+
+Before the browser checks passed, two runs failed for the environment, not the app: one when the disk filled
+(ENOSPC from the stack and Playwright), one when an orphaned server of the first stack still held the port and the
+machine was overloaded (the Analytics file choice did not settle within the check's 2 minute retry; one browser page
+crashed). Disposable databases and roles of every stack started here were dropped and checked gone.
 
 ## Mocks and real
 
