@@ -141,6 +141,30 @@ const ROUTING_MIN_CASES = 50;
 const ROUTING_CLEAN = 0.95;
 const ROUTING_MAX_KEYS = 15;
 
+type RoutingGate = { codes: Uint8Array; counts: number[] };
+
+function routingGates(columns: CellValue[][]): (RoutingGate | null)[] {
+  return columns.map(column => {
+    const keys = new Map<string, number>();
+    const codes = new Uint8Array(column.length);
+    const counts: number[] = [];
+    for (let i = 0; i < column.length; i++) {
+      const value = column[i];
+      const key = isMissing(value) ? "\u2205" : String(value);
+      let code = keys.get(key);
+      if (code === undefined) {
+        if (keys.size >= ROUTING_MAX_KEYS) return null;
+        code = keys.size;
+        keys.set(key, code);
+        counts.push(0);
+      }
+      codes[i] = code;
+      counts[code] += 1;
+    }
+    return counts.length < 2 ? null : { codes, counts };
+  });
+}
+
 /**
  * Looks for a variable that explains why `target` is empty: a gate question
  * whose answers split the cases into "target nearly always empty" and
@@ -154,41 +178,28 @@ function findRoutingVariable(
   columns: CellValue[][],
   headers: string[],
   missingByVar: number[],
+  gates: (RoutingGate | null)[],
 ): string | null {
   const target = columns[targetIdx];
-  const targetMissing = target.map((v) => isMissing(v));
+  const missingRows: number[] = [];
+  for (let i = 0; i < target.length; i++) if (isMissing(target[i])) missingRows.push(i);
   const totalMissing = missingByVar[targetIdx];
   let best: { name: string; missing: number } | null = null;
   for (let w = 0; w < columns.length; w++) {
-    if (w === targetIdx) continue;
-    const keys = new Map<string, { n: number; miss: number }>();
-    let tooMany = false;
-    for (let i = 0; i < target.length; i++) {
-      const v = columns[w][i];
-      const key = isMissing(v) ? "\u2205" : String(v);
-      let g = keys.get(key);
-      if (!g) {
-        if (keys.size >= ROUTING_MAX_KEYS) {
-          tooMany = true;
-          break;
-        }
-        g = { n: 0, miss: 0 };
-        keys.set(key, g);
-      }
-      g.n += 1;
-      if (targetMissing[i]) g.miss += 1;
-    }
-    if (tooMany || keys.size < 2) continue;
+    const gate = gates[w];
+    if (w === targetIdx || !gate || (best && missingByVar[w] >= best.missing)) continue;
+    const missing = new Uint32Array(gate.counts.length);
+    for (const row of missingRows) missing[gate.codes[row]] += 1;
     let high = 0;
     let low = 0;
     let lowMissing = 0;
     let clean = true;
-    for (const g of keys.values()) {
-      const rate = g.miss / g.n;
+    for (let group = 0; group < gate.counts.length; group++) {
+      const rate = missing[group] / gate.counts[group];
       if (rate >= ROUTING_CLEAN) high += 1;
       else if (rate <= 1 - ROUTING_CLEAN) {
         low += 1;
-        lowMissing += g.miss;
+        lowMissing += missing[group];
       } else {
         clean = false;
         break;
@@ -196,7 +207,9 @@ function findRoutingVariable(
     }
     if (!clean || high === 0 || low === 0) continue;
     if (lowMissing > (1 - ROUTING_CLEAN) * totalMissing) continue;
-    if (!best || missingByVar[w] < best.missing) best = { name: headers[w], missing: missingByVar[w] };
+    best = { name: headers[w], missing: missingByVar[w] };
+    // A complete fitting gate cannot be improved; the original rule keeps the first equal fit.
+    if (best.missing === 0) return best.name;
   }
   return best ? best.name : null;
 }
@@ -260,9 +273,12 @@ export function computeTableQuality(
   // Survey routing: set aside variables whose gaps are explained by a gate question.
   if (kind === "raw" && cases >= ROUTING_MIN_CASES) {
     const missingByVar = perVariable.map((v) => v.missing);
+    // Gate membership is independent of the target. Reusing it avoids rebuilding the same
+    // string groups for every target in wide routed surveys.
+    const gates = perVariable.some(v => v.missingPct > MISSING_WARN_PCT && !v.constant) ? routingGates(columns) : [];
     perVariable.forEach((v, idx) => {
       if (v.missingPct > MISSING_WARN_PCT && !v.constant) {
-        v.routedBy = findRoutingVariable(idx, columns, headers, missingByVar);
+        v.routedBy = findRoutingVariable(idx, columns, headers, missingByVar, gates);
       }
     });
   }
