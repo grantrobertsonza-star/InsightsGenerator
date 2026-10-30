@@ -118,6 +118,9 @@ file (fixtures built from their codebooks), plus will-not-guess cases. CSM roles
 three or more answers): a yes/no attribute that mentions switching is not a likelihood to switch. `trackerRolesRaw.test.ts` (fixtures/tracker-raw) on Grant's raw files as the engine reads them:
 brand_tracker_Oct_2025.xlsx, Synthetic_Brand_Tracker_03_Rotated_Competitors.xlsx, csm_Wave1_Baseline.xlsx, the
 banking CSM relationship CSV without its codebook, and the BMW wave as SPSS with labels only and as a plain CSV.
-Not yet covered: the mobile CSM pack; the channel-grain CSM file; names separated by something other than "_"
+The CSM extension (R6, 30 October 2026) recognises a CSM file's grain (Relationship, Channel, Noncustomer) and the
+journey, emotion, preference, staying-reason, benchmark and noncustomer fields in its own owner,
+`src/lib/csmExtensionRoles.ts` (`claude/csm-extension.md`); this recogniser is unchanged by it.
+Not yet covered here: the mobile CSM pack; the channel-grain CSM file; names separated by something other than "_"
 (dots, camel case only); a brand list spread over several name parts. Roles are suggestions: the
 configuration that uses them (D2) saves the researcher's confirmations and keeps them across waves.
