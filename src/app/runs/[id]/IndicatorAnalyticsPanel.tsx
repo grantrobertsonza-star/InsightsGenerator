@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { indicatorAnalyticsAction, indicatorWorkspaceAction } from "@/lib/indicatorAnalyticsActions";
 import type { IndicatorAnalyticsReady, IndicatorAnalyticsView, IndicatorWorkspace } from "@/lib/indicatorAnalytics";
-import { MAX_TREND_PANELS, seriesKeyFor, type ObservedPoint } from "@/lib/indicatorAnalyticsFigures";
+import { MAX_TREND_PANELS, axisFraction, seriesKeyFor, type ObservedPoint } from "@/lib/indicatorAnalyticsFigures";
 import { createRequestOrder } from "@/lib/indicatorDisplay";
 import { useKeptOpen } from "./useKeptOpen";
 
@@ -491,15 +491,31 @@ function Card({ title, subtitle, children, testId }: { title: string; subtitle?:
   );
 }
 
-/** A dot per observed value on a calendar axis; no line, so nothing is drawn between observations. */
+/**
+ * A dot per observed value on the view's one time axis; no line, so nothing is drawn between observations. Every
+ * chart places a period by its share of that axis (axisFraction), never by its index in this chart, so one date is
+ * at one position in every panel (Codex D6-F02). When the axis is withheld, or a point is not on it, the chart is
+ * not drawn: the reason is shown and the observed values are listed in period order.
+ */
 function DotChart({ points, axis, valueAxis, percent, height = 220, label }: { points: ObservedPoint[]; axis: IndicatorAnalyticsReady["axis"]; valueAxis: IndicatorAnalyticsReady["valueAxis"]; percent: boolean; height?: number; label: string }) {
   const width = 640;
   const pad = { l: 40, r: 24, t: 24, b: 28 };
-  // Calendar periods are placed by date; any other spelling by order, evenly.
-  const xOf = (p: ObservedPoint, i: number) => {
-    if (axis && p.position !== null) return axis.max === axis.min ? (pad.l + width - pad.r) / 2 : pad.l + ((p.position - axis.min) / (axis.max - axis.min)) * (width - pad.l - pad.r);
-    return points.length === 1 ? (pad.l + width - pad.r) / 2 : pad.l + (i / (points.length - 1)) * (width - pad.l - pad.r);
-  };
+  const fractions = points.map((p) => axisFraction(p.position, axis));
+  const unplaced = points.findIndex((_, i) => fractions[i] === null);
+  if (unplaced >= 0) {
+    const reason = axis.state === "withheld" ? axis.reason : `Not placed on a time axis: ${points[unplaced].period} is outside this view's time axis.`;
+    return (
+      <div className="text-sm text-slate-700" data-testid="indicator-axis-withheld">
+        <p className="text-xs text-amber-800">{reason}</p>
+        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1" aria-label={label}>
+          {points.map((p) => (
+            <li key={p.period}>{`${p.period}: ${p.shown}${p.statusLabel ? ` (${p.statusLabel})` : ""}`}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  const xOf = (i: number) => pad.l + fractions[i]! * (width - pad.l - pad.r);
   const yOf = (v: number) => pad.t + (1 - (v - valueAxis.min) / (valueAxis.max - valueAxis.min || 1)) * (height - pad.t - pad.b);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => valueAxis.min + t * (valueAxis.max - valueAxis.min));
   return (
@@ -519,13 +535,13 @@ function DotChart({ points, axis, valueAxis, percent, height = 220, label }: { p
       )}
       {points.map((p, i) => (
         <g key={p.period}>
-          <circle cx={xOf(p, i)} cy={yOf(p.value)} r={5} fill={p.status && p.status !== "A" ? "white" : "#2563eb"} stroke="#2563eb" strokeWidth={2}>
+          <circle cx={xOf(i)} cy={yOf(p.value)} r={5} fill={p.status && p.status !== "A" ? "white" : "#2563eb"} stroke="#2563eb" strokeWidth={2}>
             <title>{`${p.period}${p.note ? `, ${p.note}` : ""}: ${p.shown}${p.statusLabel ? `, ${p.statusLabel}` : ""}`}</title>
           </circle>
-          <text x={xOf(p, i)} y={yOf(p.value) - 10} textAnchor="middle" fontSize="11" fontWeight="600" fill="#1d4ed8">
+          <text x={xOf(i)} y={yOf(p.value) - 10} textAnchor="middle" fontSize="11" fontWeight="600" fill="#1d4ed8">
             {p.shown.replace(/%$/, "")}
           </text>
-          <text x={xOf(p, i)} y={height - 8} textAnchor="middle" fontSize="10" fill="#64748b">
+          <text x={xOf(i)} y={height - 8} textAnchor="middle" fontSize="10" fill="#64748b">
             {p.period}
           </text>
         </g>
@@ -607,7 +623,7 @@ function TrendsView({ v }: { v: IndicatorAnalyticsReady }) {
     <div className="flex flex-col gap-4" data-testid="indicator-trends">
       <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-slate-700">
         <span className="font-semibold text-blue-700">Small multiples. </span>
-        One indicator and one series ({v.series.chosenText || v.series.fixedText}) across areas, each on the same calendar and value axis. {v.trends.rule ?? ""}
+        One indicator and one series ({v.series.chosenText || v.series.fixedText}) across areas, {v.axis.state === "calendar" ? "each on the same time axis and value axis." : `each on the same value axis. ${v.axis.reason}`} {v.trends.rule ?? ""}
       </p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {v.trends.panels.map((p) => (

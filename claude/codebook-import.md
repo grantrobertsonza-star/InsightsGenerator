@@ -273,6 +273,21 @@ researcher chose a file.
   meaning is never used as confirmed unchecked; after the read, `matchCodebookToDataFiles` checks them on every
   wave, confirming again where the list still covers the codes. If that check fails they stay suggestions and Read
   again says so; a failed read changes nothing.
+- **Per-wave outcome of the re-check (Codex E1R-F01, R3e1).** `matchCodebookToDataFiles` reports a wave it could
+  not check as `files[].status = "failed"` (or `"few_names"` when the codebook no longer describes it) instead of
+  throwing. `readInstrumentItems` judges `automaticRecheck` from those per-file outcomes, for the files that held a
+  withdrawn confirmation:
+  - every such file matched: `status: "done"`, `reconfirmed`, and `files` (an ordinary non-fit is part of a
+    completed check and stays a suggestion);
+  - any such file not matched: `status: "failed"`, `error` naming each file and its reason, `reconfirmed` from the
+    files that were checked, and `files`. The checked waves' results stand; the unchecked waves' links stay
+    suggestions;
+  - the matcher itself threw: `status: "failed"` with its error and no `files`.
+
+  The card's wording is `instrumentMatchMessage.automaticRecheckMessage`. It says "checked again against every wave"
+  only for `done`; otherwise it names each wave not checked with its reason, gives the checked waves' result, and,
+  for an operational failure, says to choose that wave under Data file and press Match again. The incomplete-read
+  message carries the same sentence.
 - **The researcher's decisions.** Any status the researcher sets records `decided_by = 'researcher'`:
   - matching never deletes, upgrades or confirms such a link, including one the researcher returned to a
     suggestion;

@@ -234,14 +234,19 @@ const STAGE_WORDS: [FunnelStage, RegExp][] = [
   ["trial", /\bever (used|bought|tried|purchased)\b|\btried\b|\btrial\b/i],
   // Frequent use before usage: "frequent" and "most often" are a stage of their own (the brand health funnel's
   // "Frequent / repeat usage").
-  ["frequent_usage", /\bfrequent(ly)?\b|\bmost often\b|\bregular(ly)?\b/i],
+  // "Most used" and "used most" (R5 coverage, 30 October 2026: the BMW pack's "Brand of most used household
+  // vehicle") are the brand used most often too; no per-brand question of the test packs says either.
+  ["frequent_usage", /\bfrequent(ly)?\b|\bmost often\b|\bmost used\b|\bused most\b|\bregular(ly)?\b/i],
   // Repeat before acquisition: "repeat brand acquisition" and "previously acquired same brand" are repeats.
   ["repeat", /\brepeat\b|\bprior same-brand\b|\bsame brand\b|\bagain\b/i],
   ["acquisition", /\bacquisition\b|\bacquired\b|\bbought\b|\bpurchased?\b|\bstart(ed)?\b/i],
   ["usage", /\b(own|owner|ownership|use|used|usage|bank with|customer of|current)\b|\bp3m\b|\bpast (3|three) months?\b/i],
 ];
 
-function stageOf(wording: string): { stage: FunnelStage; reason: string } | null {
+/** The stage a question's wording names (STAGE_WORDS, first match), with the words that decided it; null when none.
+ * Exported for the survey coverage review (surveyCoverage.ts), which applies it to the single-choice brand list
+ * questions (top of mind, first choice, main brand) that rule 1 reads as the brand list and gives no stage. */
+export function stageOf(wording: string): { stage: FunnelStage; reason: string } | null {
   for (const [stage, re] of STAGE_WORDS) {
     const m = re.exec(wording);
     if (m) return { stage, reason: `the question says "${m[0].trim()}"` };
@@ -335,16 +340,31 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
-  const claimed = new Set([...measures.flatMap((m) => [...m.byBrand.map((b) => b.variable), ...m.outside]), ...grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable)))]);
+  const claimed = claimedByBrandQuestions(measures, grids);
   const categoryMoments = findCategoryMoments(usable.filter((v) => !claimed.has(v.name)), grids);
   const advertisingRecall: AdvertisingRecall = brandFrame ? findAdvertisingRecall(usable, brandFrame) : { status: "not_found", reason: "No brand list was found in this file." };
-  // Questions asked once: never a per-brand question, a grid cell or a brand list question.
-  const askedOnce = usable.filter((v) => !claimed.has(v.name) && !(brandFrame?.questions ?? []).includes(v.name));
+  const askedOnce = askedOnceOf(usable, { frame: brandFrame, measures, grids });
   const ageGroups = findAgeGroups(askedOnce);
   const mediaUse = findMediaList(askedOnce);
   const decisionStyle = findDecisionStyle(askedOnce);
   const acquisitionChannel = findAcquisitionChannel(askedOnce);
   return { type, frame: brandFrame, measures, grids, otherLists, categoryMoments, advertisingRecall, ageGroups, mediaUse, decisionStyle, acquisitionChannel, csm, questions };
+}
+
+/** Variables a per-brand question or a brand grid has taken (each brand's variable and the question's outside ones). */
+function claimedByBrandQuestions(measures: PerBrandMeasure[], grids: BrandGrid[]): Set<string> {
+  return new Set([...measures.flatMap((m) => [...m.byBrand.map((b) => b.variable), ...m.outside]), ...grids.flatMap((g) => g.items.flatMap((i) => i.byBrand.map((b) => b.variable)))]);
+}
+
+/**
+ * The questions asked once: the file's usable variables (no weight, free text or survey-design variable) that are
+ * not a per-brand question, a grid cell or a brand list question. The one set the asked-once rules (age groups,
+ * media, decision style, acquisition channel, and the coverage review's gender, income, tenure and complaints) read.
+ */
+export function askedOnceOf(variables: RoleVariable[], rec: Pick<TrackerRecognition, "frame" | "measures" | "grids">): RoleVariable[] {
+  const claimed = claimedByBrandQuestions(rec.measures, rec.grids);
+  const listQuestions = new Set(rec.frame?.questions ?? []);
+  return variables.filter((v) => !v.weightLike && !v.text && !DESIGN_VARIABLE.test(v.label) && !claimed.has(v.name) && !listQuestions.has(v.name));
 }
 
 /** A single-choice question's own wording, when it has an answer list of two or more answers that is not yes/no and
@@ -411,6 +431,75 @@ export function findAcquisitionChannel(askedOnce: RoleVariable[]): FoundQuestion
     return (/\bchannel\b/i.test(wording) && acquiring) || /\bwhere\b.*\b(acquired?|purchased?|bought|buy)\b/i.test(wording);
   });
   return oneQuestion(found, "the most recent acquisition channel", "No question asked once whose wording names the channel of an acquisition (for example \"Most recent acquisition channel\") was found.");
+}
+
+/**
+ * The gender question (survey coverage review, R5, 30 October 2026; pack spec D1 `gender`: Man, Woman, Another
+ * identity, Prefer not to say): a single-choice question asked once whose own wording names gender or sex and whose
+ * answers name at least two of man, woman, male, female (or their plurals). Never from a variable name alone; two
+ * candidates are ambiguous.
+ */
+export function findGender(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    if (!wording || !/\b(gender|sex)\b/i.test(wording)) return false;
+    return Object.values(v.valueLabels!).filter((l) => /\b(man|men|woman|women|male|female)\b/i.test(l)).length >= 2;
+  });
+  return oneQuestion(found, "gender", "No question asked once whose wording names gender and whose answers name men and women was found.");
+}
+
+/**
+ * The income question (survey coverage review, R5; pack spec D3/D4 `income`, "Monthly household income": Below R15,000,
+ * R15,000-R29,999, ..., 99 Prefer not to say): a single-choice question asked once whose own wording names income or
+ * earnings and whose answers are amounts (two or more answers, and half the list, holding a number). Never from a
+ * variable name alone; two candidates are ambiguous.
+ */
+export function findIncome(askedOnce: RoleVariable[]): FoundQuestion {
+  const found = askedOnce.filter((v) => {
+    const wording = singleChoiceWording(v);
+    if (!wording || !/\b(income|earnings?|salary)\b/i.test(wording)) return false;
+    const labels = Object.values(v.valueLabels!);
+    const amounts = labels.filter((l) => /\d/.test(l)).length;
+    return amounts >= 2 && amounts >= labels.length * 0.5;
+  });
+  return oneQuestion(found, "income", "No question asked once whose wording names income and whose answers are amounts was found.");
+}
+
+/** Several questions asked once that together measure one thing (complaint incidence and its resolution). */
+export type FoundQuestions = { status: "found"; questions: { variable: string; label: string }[] } | { status: "not_found"; reason: string };
+
+/**
+ * How long the customer has been with the company (survey coverage review, R5; pack spec 3.2 `tenure_months`,
+ * "Relationship tenure"): a numeric question asked once whose wording (its label, else its name's words, as CSM roles
+ * are read in raw files, rule 12) names tenure, how long, customer since, or years or months as a customer or with the
+ * company. Every qualifying question is returned (a file may hold tenure in months and a banded tenure).
+ */
+export function findTenure(askedOnce: RoleVariable[]): FoundQuestions {
+  const found = askedOnce.filter((v) => v.numeric && v.questionType !== "multiple_response" && /\btenure\b|\bhow long\b|\bcustomer since\b|\b(years|months) (as a customer|with)\b|\blength of (the )?(relationship|time)\b/i.test(wordingOf(v)));
+  return found.length > 0
+    ? { status: "found", questions: found.map((v) => ({ variable: v.name, label: wordingOf(v) })) }
+    : { status: "not_found", reason: "No question asked once about how long the customer has been with the company (tenure) was found." };
+}
+
+/**
+ * Complaints and problem resolution (survey coverage review, R5; pack spec 3.2 C1 to C3 `complaint3m`,
+ * `complaint_resolution`; 3.3 `problem_present`, `problem_resolution`): a question asked once, not an option of a
+ * multiple-response list (a complaint as a reason for calling is a reason, not the incidence), whose wording names a
+ * complaint, problem or issue and which is either a yes/no question (did you complain, did you have a problem) or asks
+ * about its resolution. A rating of what the customer would do ("would complain to other consumers", 0 to 10) is
+ * neither. Every qualifying question is returned.
+ */
+export function findComplaints(askedOnce: RoleVariable[]): FoundQuestions {
+  const found = askedOnce.filter((v) => {
+    if (!v.numeric || v.questionType === "multiple_response") return false;
+    const wording = wordingOf(v);
+    if (!/\bcomplain\w*|\bproblems?\b|\bissues?\b/i.test(wording)) return false;
+    const yesNo = isYesNo(v) || (!v.valueLabels && v.distinct !== undefined && v.distinct <= 2);
+    return yesNo || /\bresol\w*|\bfixed\b|\bsolved\b/i.test(wording);
+  });
+  return found.length > 0
+    ? { status: "found", questions: found.map((v) => ({ variable: v.name, label: wordingOf(v) })) }
+    : { status: "not_found", reason: "No question asked once about complaints or problems (whether there was one, or how it was resolved) was found." };
 }
 
 /** Option wording that names a medium: broadcast, print, outdoor, online platforms and streaming. */

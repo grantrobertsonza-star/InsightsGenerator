@@ -8,7 +8,7 @@ import { extractDocumentText } from "./extractFindings";
 import { loadVariableDictionary } from "./crosstabs";
 import { answerCodesFit, codeFamily, codebookWordingMatches, matchableCode, matchItems, wordingIdentical, type ConfirmedCodebookEntry } from "./instrumentMatch";
 import { parseRouting, type Routing } from "./routingParse";
-import type { DataFileMatch } from "./instrumentMatchMessage";
+import type { AutomaticRecheck, DataFileMatch } from "./instrumentMatchMessage";
 import { deriveGotoRouting } from "./gotoRouting";
 import { buildLabelOverlay, type LabelOverlay } from "./labelOverlay";
 import { isPlainTableFileName } from "./parseTable";
@@ -166,9 +166,10 @@ export type InstrumentReadResult = {
   questionMetaNotStored?: boolean;
   /** Codex E1-F04: codebook entries confirmed without a click whose answer list or name changed in this read. Their
    * automatic confirmations were withdrawn when the read was saved and checked again against every linked data file
-   * (matchCodebookToDataFiles): `reconfirmed` of them fit again. "failed": the check could not run, so they stay
-   * suggestions until the codebook is matched again. Absent when no automatic confirmation was affected. */
-  automaticRecheck?: { withdrawn: number; status: "done"; reconfirmed: number } | { withdrawn: number; status: "failed"; error: string };
+   * (matchCodebookToDataFiles): `reconfirmed` of them fit again. "failed" (E1R-F01): the check could not run on at
+   * least one of those files, which `files` and `error` name; links there stay suggestions until the codebook is
+   * matched again, and the other files' results stand. Absent when no automatic confirmation was affected. */
+  automaticRecheck?: AutomaticRecheck;
 };
 
 /** How long a claim on a read stands before another session may take it over (an abandoned read). */
@@ -284,10 +285,22 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
   // The withdrawn confirmations are checked again by the matching owner, on every data file the codebook describes:
   // an entry whose answer list still covers every code the variable holds is confirmed automatically again, one that
   // no longer does stays a suggestion. Until this runs (or if it fails) they are suggestions, never confirmed.
+  let files: DataFileMatch[];
   try {
-    await matchCodebookToDataFiles(tenantId, runId, documentId);
+    ({ files } = await matchCodebookToDataFiles(tenantId, runId, documentId));
+  } catch (e) {
+    return { ...read, automaticRecheck: { withdrawn, status: "failed", error: e instanceof Error ? e.message : String(e) } };
+  }
+  // E1R-F01: the matcher reports a file it could not check as a per-file outcome rather than throwing, so the
+  // outcome is judged from those per-file results, limited to the files that held a withdrawn confirmation. A file
+  // the matcher did not list is no longer an active data file of the project; its links do not count anywhere.
+  const affected = new Set(automaticWithdrawn.map((w) => w.dataDocumentId));
+  const touched = files.filter((f) => affected.has(f.dataDocumentId));
+  const notChecked = touched.filter((f) => f.status !== "matched");
+  let reconfirmed: number;
+  try {
     // Counted by entry and data file: matching replaces a suggestion's row, so the withdrawn rows' ids do not last.
-    const reconfirmed = await withTenantRead(tenantId, async (client) => {
+    reconfirmed = await withTenantRead(tenantId, async (client) => {
       const r = await client.query<{ n: number }>(
         `select count(*)::int as n from instrument_links l
            join unnest($2::uuid[], $3::uuid[]) as w(item_id, data_document_id) on w.item_id = l.item_id and w.data_document_id = l.data_document_id
@@ -296,10 +309,15 @@ export async function readInstrumentItems(tenantId: string, runId: string, docum
       );
       return r.rows[0]?.n ?? 0;
     });
-    return { ...read, automaticRecheck: { withdrawn, status: "done", reconfirmed } };
   } catch (e) {
-    return { ...read, automaticRecheck: { withdrawn, status: "failed", error: e instanceof Error ? e.message : String(e) } };
+    // The matching ran, but its result could not be counted: reported as a failed check, never as done.
+    return { ...read, automaticRecheck: { withdrawn, status: "failed", error: e instanceof Error ? e.message : String(e), files: touched } };
   }
+  if (notChecked.length === 0) return { ...read, automaticRecheck: { withdrawn, status: "done", reconfirmed, files: touched } };
+  const error = notChecked
+    .map((f) => `${f.filename}: ${f.status === "failed" ? f.error : `only ${f.names} of the codebook's ${f.coded} names are its variables`}`)
+    .join("; ");
+  return { ...read, automaticRecheck: { withdrawn, status: "failed", error, reconfirmed, files: touched } };
 }
 
 async function readClaimedInstrument(

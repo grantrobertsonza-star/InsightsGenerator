@@ -10,11 +10,14 @@
 //   - Word of mouth about brand X: exclusive groups among all eligible respondents (every respondent who answered X's
 //     awareness question): one group per answer code of X's word of mouth question (trackerFigures.stageClaims,
 //     stage word_of_mouth, single response), every code the answer list or the data has, plus "Unaware" (X's
-//     awareness answer is not its aware code; pack spec W1: "unaware is a sixth reported state derived from blank").
-//     Each group is its weighted count divided by the weighted count of all eligible, so the groups add to 100. The
-//     groups are shown only when the file shows them to be exclusive and complete: every respondent aware of X has a
-//     word of mouth answer and no respondent unaware of X has one (read from one table of the word of mouth answer
-//     by awareness); otherwise that brand is n/a with the counts that break the rule, never a silent remainder.
+//     awareness answer is an explicit not aware code, trackerFigures.answerSides; pack spec W1: "unaware is a sixth
+//     reported state derived from blank"). Each group is its weighted count divided by the weighted count of all
+//     eligible, so the groups add to 100. An awareness answer that is neither aware nor explicitly not aware (don't
+//     know, refused, a code the answer list does not label: Codex D3E-F01) is unknown, never Unaware: when anyone
+//     gave one, that brand is n/a with the counts. The groups are shown only when the file shows them to be exclusive
+//     and complete: every respondent aware of X has a word of mouth answer and no respondent unaware of X has one
+//     (read from one table of the word of mouth answer by awareness); otherwise that brand is n/a with the counts
+//     that break the rule, never a silent remainder.
 // Figures come from the Cross tab engine through computeCrosstab (nothing saved), with the dashboard's weight and the
 // file's survey design, every answer read by its raw code. Unknown stays unknown: no recall question is "not_measured",
 // two candidates "mapping_needed"; no word of mouth question "not_measured", two or no awareness question mapped
@@ -24,7 +27,7 @@ import { loadDataSetupWithStatus } from "./dataSetup";
 import { effectiveDesignChoice, resolveSurveyDesign } from "./surveyDesign";
 import { loadTrackerDashboard } from "./trackerDashboards";
 import { loadRoleInput } from "./trackerInput";
-import { answersOf, overviewMeasures, selectedAnswerOf, selectedCode, stageClaims } from "./trackerFigures";
+import { answerSides, answersOf, overviewMeasures, selectedAnswerOf, stageClaims } from "./trackerFigures";
 import { notSureCodes } from "./trackerRoles";
 import type { CrosstabRequest, CrosstabResult } from "./parseStatsFile";
 import type { ResolvedDashboard } from "./trackerDashboard";
@@ -113,22 +116,47 @@ export function womFromResult(result: CrosstabResult, code: string, awareVar: st
   const aware = answersOf(result, awareVar);
   const wom = answersOf(result, womVar);
   if (aware.reason || wom.reason) return { code, base: null, groups: null, reason: aware.reason ?? wom.reason };
-  const awareCode = selectedCode(variables.get(awareVar) ?? {}, aware.answers.map((a) => a.code));
-  if (awareCode === null) return { code, base: aware.base, groups: null, reason: "Which awareness answer means aware could not be told from its codes and labels." };
+  // Codex D3E-F01: aware, unaware and unknown are each told from the answer list (trackerFigures.answerSides), never
+  // "unaware" for every code that is not the aware one. A respondent whose awareness is unknown (don't know, refused,
+  // a code the list does not label) is neither aware nor unaware, so the exclusive groups cannot be formed.
+  const sides = answerSides(variables.get(awareVar) ?? {}, aware.answers.map((a) => a.code));
+  if (sides === null) return { code, base: aware.base, groups: null, reason: "Which awareness answer means aware could not be told from its codes and labels." };
+  const awareCode = sides.selected;
   if (aware.base === null || aware.base !== result.total.n)
     return { code, base: aware.base, groups: null, reason: `${result.total.n - (aware.base ?? 0)} respondents have no awareness answer for this brand, so all eligible respondents cannot be split into exclusive groups.` };
+  const unknownGiven = sides.unknown
+    .map((u) => ({ ...u, n: aware.answers.find((a) => a.code === u.code)?.n ?? null, weighted: aware.answers.find((a) => a.code === u.code)?.weighted ?? null }))
+    // A listed code nobody gave changes nothing; a code without counts is not known to be empty.
+    .filter((u) => u.n === null || u.n > 0 || (u.weighted ?? 0) > 0);
+  if (unknownGiven.length > 0) {
+    const describe = (u: (typeof unknownGiven)[number]) =>
+      `${u.kind === "unlabelled" ? `code ${u.code}, which the answer list does not label` : `"${u.label}" (code ${u.code})`}: ${u.n ?? "an unknown number of"} respondents`;
+    const total = unknownGiven.every((u) => u.n !== null) ? `${unknownGiven.reduce((s, u) => s + (u.n ?? 0), 0)} respondents` : "Some respondents";
+    return {
+      code,
+      base: aware.base,
+      groups: null,
+      reason: `${total} gave an awareness answer that is neither aware nor unaware (${unknownGiven.map(describe).join("; ")}). They cannot be counted as Unaware, so the exclusive groups are not shown.`,
+    };
+  }
   const totalW = aware.answers.reduce((s, a) => s + (a.weighted ?? NaN), 0);
   if (!Number.isFinite(totalW) || totalW <= 0) return { code, base: aware.base, groups: null, reason: "The engine gave no weighted counts for the awareness answers." };
-  // The banner columns, by awareness code: every aware respondent answered word of mouth; no unaware one did.
+  // The banner columns, by awareness code: every aware respondent answered word of mouth; no unaware one did. Every
+  // banner column is aware or unaware here (unknown answers were refused above); a column of any other code is not
+  // expected and is refused rather than counted on either side.
   const womBase = result.questions.find((q) => q.key === womVar)!.rows.find((r) => r.isBase && !r.isEffBase)!;
   let awareNoAnswer = 0;
   let unawareWithAnswer = 0;
+  let otherColumn: string | null = null;
   result.columns.forEach((c, k) => {
     if (c.var !== awareVar) return;
     const answered = womBase.count[k] ?? 0;
     if (c.rawCode === awareCode) awareNoAnswer += c.n - answered;
-    else unawareWithAnswer += answered;
+    else if (c.rawCode !== undefined && sides.notSelected.includes(c.rawCode)) unawareWithAnswer += answered;
+    else if (c.n > 0) otherColumn = c.rawCode ?? c.name;
   });
+  if (otherColumn !== null)
+    return { code, base: aware.base, groups: null, reason: `The table has an awareness group (${otherColumn}) that is neither aware nor unaware, so the exclusive groups are not shown.` };
   if (awareNoAnswer > 0 || unawareWithAnswer > 0)
     return {
       code,
@@ -143,7 +171,7 @@ export function womFromResult(result: CrosstabResult, code: string, awareVar: st
     // A listed answer nobody gave is 0 of a known base: the base is every eligible respondent.
     return { key: c, label: labels[c] ?? a?.label ?? c, share: (100 * (a?.weighted ?? 0)) / totalW, n: a ? a.n : 0 };
   });
-  const unaware = aware.answers.filter((a) => a.code !== awareCode);
+  const unaware = aware.answers.filter((a) => sides.notSelected.includes(a.code));
   groups.push({ key: "unaware", label: "Unaware", share: (100 * unaware.reduce((s, a) => s + (a.weighted ?? 0), 0)) / totalW, n: unaware.reduce((s, a) => s + (a.n ?? 0), 0) });
   return { code, base: aware.base, groups };
 }

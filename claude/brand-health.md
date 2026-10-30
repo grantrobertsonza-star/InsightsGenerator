@@ -21,6 +21,10 @@ Rules (owner `brandHealthMetrics.normaliseBrandHealthMapping`, `brandHealthMetri
 - A mapping saved before 29 October 2026 has no `brandSet`; it reads as `brandSet: null`, otherwise unchanged.
 - Both named, or a field of the wrong type: refused with the reason. An unreadable saved mapping is reported on load,
   never replaced by an empty one.
+- The object fields `positioning` and `funnel` (Codex BH-F01, 30 October 2026): absent or null (a legacy mapping) reads
+  as empty (no axes, no stages); a plain object is read field by field, and a plain object without an axis is a valid
+  empty choice. Any other supplied value (a boolean, a number, a string, an array) is refused with the reason: on
+  save before any write (the saved mapping and its `updated_at` stay as they were), on load as a load error.
 - At the server-action boundary (save, build, the brand list for the picker) the set is checked against the file's
   dictionary: it must exist, be a multiple-response set (a dictionary without set kinds: every member a yes/no flag),
   have at least two members, and our brand, when picked, must be one of its members. Each failure is refused with
@@ -52,6 +56,19 @@ Base reported per brand (`n`): the effective (Kish) base of answering cases in t
 `runDistributionAction` reports it. A group with fewer than 10 answering cases has no figure (engine suppression),
 its base still reported. A brand group with nobody answering has no figure on a base of 0, never 0.
 
+Loyalty groups without an NPS (Codex BH-F02, 30 October 2026): every brand group the NPS tool cannot score is kept in
+`loyalty.unavailable` with its counts and the reason, and the loyalty card lists it under "Not shown"
+(`LoyaltyGroups` in the panel). The counts come from the calculation owner (`npsActions.runNpsAction`
+`unavailableSegments`: the banner column's respondents `groupN`, the group's unweighted valid answers `rawN` and their
+weighted sum), never from rounded shares. Reasons, in this order: no respondents in the group (`groupN` 0); suppressed
+for a small base (the engine shows no scale point below 10 valid answers, so no score; the count of valid answers is
+stated); none of the group's respondents gave a valid answer; the valid answers carry no weight. A suppressed group
+never carries a score. With a brand set, a member nobody selected (read unweighted when the members are resolved,
+`hasRespondents`) is an empty group: the engine refuses a one-group banner, so no figure split by that member is
+requested; its scores are null on a base of 0 and its loyalty row says no respondents, and the rest of the dashboard
+is still built (before 30 October 2026 that member failed the whole loyalty card, or the whole dashboard for a split
+funnel stage).
+
 Overlap: with a brand set, brand groups overlap and their bases do not sum to the total; respondents who selected no
 member are in no brand group. The dashboard states this (`overlapNote`) next to the brand selector, at the top of the
 dashboard, and on every card whose figures split respondents by brand groups (`sectionSplitsByBrandGroups`: loyalty
@@ -75,5 +92,7 @@ sentence in its text and the caveat tag `brand_groups_overlap` (label in `caveat
 - No revision check on save (`saveBrandHealthModuleAction` is a last-write-wins upsert, as before this change); two
   tabs saving the same file's mapping keep the later one.
 - A finding posted before the brand source changed is not marked stale; posting the section again refreshes its text.
+- A loyalty group under "Not shown" is not posted in the loyalty finding; the finding states our brand's NPS only
+  when ours has one (unchanged).
 - With a brand set, each split figure runs one engine call per brand (10 for owner_b), plus one per brand to read
   its selected code: the 60-row pack builds in about 4 seconds; larger files have not been timed.
