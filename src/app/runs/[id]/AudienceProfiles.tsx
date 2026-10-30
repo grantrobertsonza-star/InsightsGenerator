@@ -52,9 +52,7 @@ function Card({ title, subtitle, children, testId, data, actions }: { title: Rea
     <section className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" data-testid={testId} {...data}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="truncate text-[15px] font-semibold text-slate-900" title={typeof title === "string" ? title : undefined}>
-            {title}
-          </h3>
+          <h3 className="text-[15px] font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">{title}</h3>
           {subtitle && <p className="mt-0.5 text-[11px] text-slate-500">{subtitle}</p>}
         </div>
         {actions}
@@ -112,12 +110,13 @@ function Legend({ focal, comparison }: { focal: string; comparison: string }) {
   );
 }
 
-/** One compact two-series row: a label (truncated, full text on hover) and the two groups' bars with their values. */
+/** One compact two-series row: a label (wrapping onto further lines, never cut) and the two groups' bars with their
+ * values. */
 function PairRow({ label, a, b, testId, rowKey, marker }: { label: string; a: GroupShare; b: GroupShare; testId: string; rowKey: string; marker?: ReactNode }) {
   return (
     <li className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] items-center gap-2 text-xs" data-testid={testId} data-key={rowKey}>
-      <span className="flex min-w-0 items-center gap-1 text-slate-700">
-        <span className="truncate" title={label}>
+      <span className="flex min-w-0 items-center gap-1 leading-tight text-slate-700">
+        <span className="min-w-0 [overflow-wrap:anywhere]" data-testid={`${testId}-label`}>
           {label}
         </span>
         {marker}
@@ -453,8 +452,8 @@ export function MediaPage({ runId, documentId, loadKey, chrome }: { runId: strin
                     const ix = mediaIndex(r, focalLevel, comparisonLevel);
                     return (
                       <li key={r.key} className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)_3rem] items-center gap-2 text-xs" data-testid="tracker-audience-media-row" data-key={r.key} title={ix.reason}>
-                        <span className="flex min-w-0 items-center gap-1 text-slate-700">
-                          <span className="truncate" title={r.label}>
+                        <span className="flex min-w-0 items-center gap-1 leading-tight text-slate-700">
+                          <span className="min-w-0 [overflow-wrap:anywhere]" data-testid="tracker-audience-media-row-label">
                             {r.label}
                           </span>
                           {marker(r)}

@@ -5,8 +5,8 @@
 //     income not found with "Choose a question", a saved province not in this wave's file); Add a profile question
 //     lists the other questions by wording with the variable name, and choosing one saves the list with it added;
 //     Hide and the up arrow save the list without the card and reordered; while saving the controls are disabled.
-//   - Media: shares sorted by the focal share by default, then by the difference; index view with withheld n/a for a
-//     small base; the headline names only the tested differences; Compare to asks for Toyota's acquirers, and a late
+//   - Media: shares sorted by the focal share by default, then by the difference; long labels wrap (never cut);
+//     index view with withheld n/a for a small base; the headline names only the tested differences; Compare to asks for Toyota's acquirers, and a late
 //     answer for the earlier choice never replaces the newer one.
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
@@ -157,6 +157,9 @@ describe("Audience page (mounted)", () => {
     expect(text(cards[2])).toContain("Not found in this file.");
     expect(text(cards[2])).toContain("Choose a question");
     expect(text(cards[3])).toContain("Not in this wave’s file.");
+    // Answer labels wrap in full on the cards too.
+    expect(byTestId("tracker-audience-profile-row-label").map((l) => l.textContent)).toContain("Prefer not to say");
+    expect(body.querySelector(".truncate")).toBeNull();
     expect(byTestId("tracker-audience-small-base")[0].getAttribute("data-level")).toBe("very_small");
 
     // Add a profile question: the questions not shown, by wording with the variable name.
@@ -197,8 +200,11 @@ describe("Media page (mounted)", () => {
     const keys = () => byTestId("tracker-audience-media-row").map((r) => r.getAttribute("data-key"));
     expect(keys()).toEqual(["media_m03", "media_m01", "media_m05", "media_m12"]);
     expect(byTestId("tracker-media-headline")[0].textContent).toBe("BMW recent acquirers are more likely to use Instagram (83.3% vs 66.4%), and less likely to use Audio streaming or podcasts with a long label (27.5% vs 30.7%) than all eligible category respondents.");
-    // A long label is cut on screen with its full text on hover.
-    expect(body.querySelector('[title="Audio streaming or podcasts with a long label"]')).not.toBeNull();
+    // A long label wraps in full: never cut (no truncate class, no hover-only text).
+    const long = byTestId("tracker-audience-media-row-label").find((l) => l.textContent === "Audio streaming or podcasts with a long label")!;
+    expect(long).toBeDefined();
+    expect(long.getAttribute("class")).toContain("[overflow-wrap:anywhere]");
+    expect(body.querySelector(".truncate")).toBeNull();
 
     await choose("tracker-media-sort", "difference");
     expect(keys()).toEqual(["media_m03", "media_m01", "media_m05", "media_m12"]);
