@@ -109,6 +109,15 @@ function baseSizeCautionsFor(
     cautions.push(`${String(stats.group2Label ?? "Group 2")}'s base size was not available, so its stability could not be checked.`);
   }
 
+  // R5story: a single-group reading posted from the brand tracking dashboard (dashboardFindings.ts) states the
+  // smallest unweighted base among the figures its sentence gives, and is checked on it like a group's base.
+  if (typeof stats.readingBase === "number") {
+    const check = checkBaseSize(stats.readingBase, String(stats.readingBaseLabel ?? "The reading's base"));
+    checks.reading_base_size = check;
+    if (check.flag) cautions.push(check.flag);
+    if (check.tag) caveats.push(check.tag);
+  }
+
   // A one-way ANOVA pattern (bannerPlanComputation.ts, for a banner column
   // with more than two categories) has no n1/n2 at all -- it spans however
   // many groups the banner has -- so it gets its own base-size pass across
@@ -562,6 +571,21 @@ export async function verifyFindings(tenantId: string, runId: string): Promise<n
  * swallowed here instead of thrown.
  */
 export async function refreshVerdicts(tenantId: string, runId: string): Promise<number> {
+  // R5story: findings posted from the brand tracking dashboard are checked against their source (choices, mapping,
+  // data) before the pipeline's insight work reads them, so a changed source is marked for review first. A failed
+  // check is traced, never reported as "nothing changed", and does not stop verification.
+  try {
+    const { syncDashboardFindingFreshness } = await import("./dashboardFindings");
+    await syncDashboardFindingFreshness(tenantId, runId);
+  } catch (error) {
+    await withTenant(tenantId, async (client) => {
+      await client.query(`insert into trace (tenant_id, run_id, event, detail) values ($1, $2, 'dashboard_freshness_error', $3)`, [
+        tenantId,
+        runId,
+        JSON.stringify({ message: error instanceof Error ? error.message : String(error) }),
+      ]);
+    });
+  }
   try {
     return await verifyFindings(tenantId, runId);
   } catch (error) {

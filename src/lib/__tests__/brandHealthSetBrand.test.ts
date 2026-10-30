@@ -57,6 +57,38 @@ describe("normaliseBrandHealthMapping", () => {
     expect(normaliseBrandHealthMapping(null).ok).toBe(false);
     expect(normaliseBrandHealthMapping([legacy]).ok).toBe(false);
   });
+
+  // Codex BH-F01: a supplied positioning (or funnel) that is not a plain object used to read as an empty choice.
+  it("refuses a positioning or funnel that is a boolean, number, string or array; never reads it as an empty choice", () => {
+    for (const bad of [false, true, 0, 1, "", "nps_main", [], ["nps_main", "age_band"]]) {
+      expect(normaliseBrandHealthMapping({ ...legacy, positioning: bad }), `positioning ${JSON.stringify(bad)}`).toEqual({
+        ok: false,
+        error: "The saved Brand Health mapping could not be read: the positioning map is not a pair of axes.",
+      });
+      expect(normaliseBrandHealthMapping({ ...legacy, funnel: bad }), `funnel ${JSON.stringify(bad)}`).toEqual({
+        ok: false,
+        error: "The saved Brand Health mapping could not be read: the funnel is not a list of stages.",
+      });
+    }
+    expect(normaliseBrandHealthMapping({ ...legacy, funnel: { awareness: false } }).ok).toBe(false);
+    expect(normaliseBrandHealthMapping({ ...legacy, positioning: { xVar: false, yVar: null } }).ok).toBe(false);
+  });
+
+  it("accepts an absent or null positioning or funnel (legacy) and a plain object without axes as empty", () => {
+    const empty = { xVar: null, yVar: null };
+    const { positioning: _p, funnel: _f, ...noObjects } = legacy;
+    for (const [what, m] of [
+      ["absent", noObjects],
+      ["null", { ...legacy, positioning: null, funnel: null }],
+      ["empty object", { ...legacy, positioning: {}, funnel: {} }],
+      ["empty axes", { ...legacy, positioning: empty, funnel: {} }],
+    ] as const) {
+      const r = normaliseBrandHealthMapping(m);
+      expect(r.ok, what).toBe(true);
+      if (r.ok) expect([r.mapping.positioning, r.mapping.funnel], what).toEqual([empty, {}]);
+    }
+    expect(normaliseBrandHealthMapping({ ...legacy, positioning: { xVar: "q5" } })).toMatchObject({ ok: true, mapping: { positioning: { xVar: "q5", yVar: null } } });
+  });
 });
 
 describe("brandSetMembers", () => {

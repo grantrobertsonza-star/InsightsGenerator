@@ -24,6 +24,12 @@ import type { CompanyBox, CompanyNps, CsmTile, CsmTileId } from "@/lib/trackerCs
 import type { FunnelStage } from "@/lib/trackerRoles";
 import { searchVariables } from "@/lib/variableSearch";
 import { QuestionPicker, variableText } from "./QuestionPicker";
+// R5story: the dashboard as a story (post a card as a finding, AI insights, export slides). The controls live in
+// their own files; this panel only places them (see "R5story" below).
+import { DashboardFindingButton, DashboardStoryProvider } from "./DashboardFindingButton";
+import { DASHBOARD_PAGE_IDS } from "@/lib/trackerDashboardPageIds";
+import { DashboardInsightsButton } from "./DashboardInsightsPanel";
+import { DashboardExportButton } from "./DashboardExport";
 
 export type TrackerDashboardKind = "brand" | "csm";
 
@@ -106,10 +112,35 @@ const COMPARATOR_COLOURS = ["#d97706", "#059669", "#dc2626", "#7c3aed", "#0891b2
 const FOCAL_COLOUR = "#2563eb";
 type SaveState = { state: "idle" } | { state: "saving" } | { state: "saved" } | { state: "message"; tone: "error" | "warn"; text: string };
 
+// R5story: which registered dashboard card (src/lib/trackerDashboardCards.ts) each brand card is, by its test id; a
+// card listed here gets "Post as finding" beside its title. A new view adds its card here and registers it there.
+const STORY_CARDS: Record<string, [page: string, card: string]> = {
+  "tracker-compare": ["overview", "funnel"],
+  "tracker-timeline": ["overview", "trend"],
+  "tracker-moments-relevance": ["moments", "relevance"],
+  "tracker-moments-recall": ["moments", "recall"],
+  "tracker-associations-profile": ["associations", "profile"],
+  "tracker-ad-recall": ["advertising", "recall"],
+  "tracker-wom": ["advertising", "wom"],
+  "tracker-audience-age": ["audience", "age"],
+  "tracker-audience-media": ["audience", "media"],
+  "tracker-category-repertoire": ["category", "repertoire"],
+  "tracker-category-decision": ["category", "decision"],
+  "tracker-category-channel": ["category", "channel"],
+};
+
 function Card({ title, subtitle, children, testId, className = "" }: { title?: string; subtitle?: ReactNode; children: ReactNode; testId?: string; className?: string }) {
+  const story = testId ? STORY_CARDS[testId] : undefined;
   return (
     <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${className}`} data-testid={testId} aria-label={title}>
-      {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
+      {title && story ? (
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          <DashboardFindingButton page={story[0]} card={story[1]} label={title} />
+        </div>
+      ) : (
+        title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+      )}
       {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
       <div className={title || subtitle ? "mt-4" : ""}>{children}</div>
     </section>
@@ -678,6 +709,10 @@ export default function TrackerDashboardPanel({
         </p>
         {hiddenNote(blankStages.filter((id) => hidden.has(id)))}
         {!focal && dashboard.brands.length > 0 && <p className="text-xs text-slate-500">Choose your brand (the Brand chip) to see its figures in the tiles.</p>}
+        {/* R5story: the headline tiles post as one finding. */}
+        <div className="-mb-3 flex justify-end">
+          <DashboardFindingButton page="overview" card="kpis" label="your brand's headline figures" />
+        </div>
         <section aria-label="Your brand" className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-testid="tracker-kpis">
           {overview.stageTiles.map((t) => {
             const s = shownStages.find((x) => x.stage === t.stage);
@@ -1793,9 +1828,14 @@ export default function TrackerDashboardPanel({
             {overview?.wave ? ` / ${overview.wave}` : ""}
           </p>
         </div>
-        <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">
-          {closeLabel === "Close" ? "Close" : `← ${closeLabel}`}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* R5story: AI insights for the page shown, and the whole module as slides. */}
+          {kind === "brand" && <DashboardInsightsButton page={DASHBOARD_PAGE_IDS[section]} title={BRAND_SECTIONS[section]} />}
+          {kind === "brand" && <DashboardExportButton />}
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">
+            {closeLabel === "Close" ? "Close" : `← ${closeLabel}`}
+          </button>
+        </div>
       </div>
       <div className="flex min-h-0 flex-1">
         {kind === "brand" && (
@@ -1854,5 +1894,14 @@ export default function TrackerDashboardPanel({
       </div>
     </div>
   );
-  return typeof document === "undefined" ? null : createPortal(body, document.body);
+  // R5story: the story controls share one provider per open dashboard (this file, the client brand chosen now).
+  const withStory =
+    kind !== "brand" ? (
+      body
+    ) : (
+    <DashboardStoryProvider key={documentId} runId={runId} documentId={documentId} focalCode={focal?.code ?? null}>
+      {body}
+    </DashboardStoryProvider>
+    );
+  return typeof document === "undefined" ? null : createPortal(withStory, document.body);
 }

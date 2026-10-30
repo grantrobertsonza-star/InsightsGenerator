@@ -172,3 +172,45 @@ export async function renderChartImage(
 // Re-exported so callers (the export routes) can size the placed image
 // without re-deriving the base chart height Plot itself was given.
 export { CHART_HEIGHT };
+
+// R5story: a dashboard card's bars for the exported brand tracking deck (trackerModuleSlides.ts), drawn as one flat
+// SVG and rasterised by the same sharp step as the findings charts, so the deck's images come from one pipeline.
+// Horizontal bars in the dashboard's colours: the client's brand blue, the rest slate; a value the page could not
+// compute is drawn as "n/a" with no bar, never as a zero-length bar. Labels longer than the label column are
+// shortened in the middle for the picture only; the slide's text carries the full wording.
+export type BarsImageSpec = {
+  rows: { label: string; value: number | null; highlight?: boolean }[];
+  unit: "percent" | "points" | "brands";
+  /** The scale's top: 100 for shares; otherwise the largest value. */
+  max?: number;
+};
+
+export async function renderBarsImage(spec: BarsImageSpec, widthPx = 520): Promise<RenderedChartImage> {
+  const rowH = 26;
+  const top = 6;
+  const labelW = Math.round(widthPx * 0.38);
+  const valueW = 58;
+  const barW = widthPx - labelW - valueW - 12;
+  const height = top + Math.max(1, spec.rows.length) * rowH + 6;
+  const values = spec.rows.map((r) => r.value).filter((v): v is number => v !== null);
+  const max = spec.max ?? (spec.unit === "percent" ? 100 : Math.max(1e-9, ...values.map((v) => Math.abs(v))));
+  const fmt = (v: number) => (spec.unit === "percent" ? `${v.toFixed(1)}%` : spec.unit === "points" ? `${v > 0 ? "+" : v < 0 ? "-" : ""}${Math.abs(v).toFixed(1)}` : v.toFixed(1));
+  const chars = Math.floor(labelW / 7.4);
+  const shorten = (s: string) => (s.length <= chars ? s : `${s.slice(0, Math.ceil(chars / 2) - 2)}...${s.slice(s.length - Math.floor(chars / 2) + 2)}`);
+  const body = spec.rows
+    .map((r, i) => {
+      const y = top + i * rowH;
+      const w = r.value === null ? 0 : Math.max(1, (Math.abs(r.value) / max) * barW);
+      const colour = r.highlight ? "#2563eb" : "#94a3b8";
+      return (
+        `<text x="${labelW - 8}" y="${y + 17}" text-anchor="end" font-size="12" font-family="Carlito, Calibri, sans-serif" fill="${r.highlight ? "#1d4ed8" : "#334155"}" font-weight="${r.highlight ? 700 : 400}">${escapeXml(shorten(r.label))}</text>` +
+        `<rect x="${labelW}" y="${y + 5}" width="${barW}" height="15" rx="3" fill="#f1f5f9" />` +
+        (r.value === null ? "" : `<rect x="${labelW}" y="${y + 5}" width="${w.toFixed(1)}" height="15" rx="3" fill="${colour}" />`) +
+        `<text x="${labelW + barW + 8}" y="${y + 17}" font-size="12" font-family="Carlito, Calibri, sans-serif" font-weight="700" fill="${r.value === null ? "#94a3b8" : "#0f172a"}">${r.value === null ? "n/a" : escapeXml(fmt(r.value))}</text>`
+      );
+    })
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${height}"><rect width="100%" height="100%" fill="#ffffff" />${body}</svg>`;
+  const out = await rasterizeSvg(svg);
+  return { png: out.buffer, width: out.width, height: out.height };
+}

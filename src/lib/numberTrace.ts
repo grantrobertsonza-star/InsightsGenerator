@@ -452,6 +452,36 @@ const UNIVERSAL = /\b(all|every|everyone|everybody)\b[^.!?]*\b(population|always
 
 export type ExplainedFigure = { text: string; start: number; end: number; status: FigureStatus; reason: string };
 
+// R5story: a claim of statistical significance (or of a "meaningful", tested or real difference). Allowed only when
+// the evidence carries a significance flag for that comparison, which the caller states; see claimLanguage.
+const SIGNIFICANCE = /\b(statistically|significan(t|tly|ce)|p\s*[<=>]\s*0?\.\d+|confidence interval|margin of error|meaningful(ly)? (higher|lower|different|ahead|behind)|real difference|reliabl[ey] (higher|lower|different|ahead|behind))\b/i;
+
+/**
+ * Sentence-level claims in a whole text, every sentence (not only those holding a figure): a cause, a whole-population
+ * generalisation, and, unless `significanceAllowed` says the sentence's comparison carries a significance flag, a
+ * claim of significance. For model text that must not make these claims at all (AI insights on a dashboard page).
+ * `significanceAllowed(sentence)` decides per sentence; it defaults to never.
+ */
+export function claimLanguage(text: string, options: { significanceAllowed?: (sentence: string) => boolean } = {}): ExplainedFigure[] {
+  const out: ExplainedFigure[] = [];
+  const idx = sentenceIndex(text);
+  const ids = [...new Set(idx)];
+  for (const sid of ids) {
+    const start = idx.indexOf(sid);
+    const end = idx.lastIndexOf(sid) + 1;
+    const sentence = text.slice(start, end);
+    const at = (m: RegExpExecArray) => ({ text: m[0], start: start + m.index, end: start + m.index + m[0].length });
+    const causal = CAUSAL.exec(sentence);
+    if (causal) out.push({ ...at(causal), status: "unsupported", reason: `"${causal[0]}" claims a cause; a descriptive figure does not establish one` });
+    const universal = UNIVERSAL.exec(sentence);
+    if (universal) out.push({ ...at(universal), status: "unsupported", reason: "a sample estimate is stated as true of a whole population" });
+    const significance = SIGNIFICANCE.exec(sentence);
+    if (significance && !(options.significanceAllowed?.(sentence) ?? false))
+      out.push({ ...at(significance), status: "unsupported", reason: `"${significance[0]}" claims significance, but no significance test was run for this comparison` });
+  }
+  return out;
+}
+
 /** Every figure in `text` with its outcome (traced ones included), plus sentence-level findings. */
 export function explainFigures(
   text: string,

@@ -36,6 +36,15 @@ export const CAVEAT_LABELS: Record<string, string> = {
   // table has since been computed again with different figures, or without this comparison at all.
   superseded_by_recomputation: "Superseded: the table now gives different figures",
   not_reproduced_on_recomputation: "Not reproduced when the table was computed again",
+  // R5story (Grant, 30 October 2026): findings posted from the brand tracking dashboard
+  // (dashboardFindings.ts). A change against the previous wave is between independent samples and untested; a
+  // posted card whose dashboard choices, mapping or data changed since is marked for review; a card posted again
+  // with different figures leaves the earlier finding marked as superseded; an AI insight's wording was drafted by
+  // the model and accepted by the researcher.
+  wave_change_untested: "Change between waves, not tested for significance",
+  dashboard_source_changed: "Dashboard choices, mapping or data changed since posted",
+  dashboard_superseded: "Superseded: the dashboard now gives different figures",
+  ai_drafted_wording: "Wording drafted by AI, accepted by the researcher",
 };
 
 export function caveatLabel(caveat: string): string {
@@ -60,6 +69,11 @@ export const EXPORT_CAVEAT_ALLOWLIST: ReadonlySet<string> = new Set([
   "stage_ratio_population_comparability_unverified",
   // Named by the project owner (29 October 2026): the overlap of brand groups is stated wherever the figures go.
   "brand_groups_overlap",
+  // Named by the project owner (30 October 2026, R5story): an untested change between waves, and a dashboard
+  // finding whose source changed or that the dashboard now contradicts, are stated wherever the finding goes.
+  "wave_change_untested",
+  "dashboard_source_changed",
+  "dashboard_superseded",
 ]);
 
 /**

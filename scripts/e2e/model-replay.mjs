@@ -156,6 +156,26 @@ const handlers = {
       decision_indices: [0],
     })),
   }),
+  // R5story: AI insights for a brand tracking dashboard page restate up to three of the page's own figures from the
+  // delimited data block (value to one decimal, its wording and base); the summary and conclusions restate the first
+  // accepted inputs. Restates the input; judges nothing.
+  record_dashboard_insights: (content) => {
+    const json = /<<<UPLOADED_CONTENT source="[^"]*">>>\n([\s\S]*?)\n<<<END_UPLOADED_CONTENT>>>/.exec(content)?.[1];
+    let data = null;
+    try {
+      data = json ? JSON.parse(json) : null;
+    } catch {
+      data = null;
+    }
+    const figures = (data?.cards ?? []).filter((c) => c.status === "ok").flatMap((c) => c.figures ?? []).filter((f) => typeof f.value === "number" && f.unit === "%");
+    return {
+      insights: figures.slice(0, 3).map((f, i) => ({ title: ["Headline figure", "Second figure", "Third figure"][i], text: `${f.label} is ${f.value.toFixed(1)}% among ${f.baseOf}.` })),
+    };
+  },
+  record_dashboard_story: (content) => {
+    const lines = [...content.matchAll(/^\d+\. (.*)$/gm)].map((m) => m[1].trim()).slice(0, 2);
+    return { text: lines.join(" ") || "Nothing to summarise." };
+  },
   record_narrative: (_content, system) => {
     const insights = numbered(system, "\\([^)]*\\)\\s*Headline:\\s*");
     const lead = insights[0]?.line ?? "The accepted evidence";

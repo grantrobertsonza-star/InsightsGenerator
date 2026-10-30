@@ -10,6 +10,7 @@ import { loadBrandAssociations } from "./trackerAssociations";
 import { loadBrandAdvertising } from "./trackerAdvertising";
 import { loadBrandAudience } from "./trackerAudience";
 import { loadCategoryOverview } from "./trackerCategory";
+import { syncDashboardFreshnessForScopeOf } from "./dashboardFindings";
 import { loadTrackerDashboard, resetTrackerChoices, saveTrackerChoices, type ExpectedDashboard, type SaveResult, type TrackerDashboardView } from "./trackerDashboards";
 
 type Fail = { ok: false; error: string };
@@ -108,7 +109,11 @@ export async function saveTrackerChoicesAction(runId: string, documentId: string
   if (!expected) return { ok: false, error: STALE };
   try {
     const r = await saveTrackerChoices(ctx.tenantId, runId, documentId, expected, choices, ctx.email ?? ctx.userId);
-    if (r.saved) revalidatePath(`/runs/${runId}`);
+    if (r.saved) {
+      // R5story: findings posted from this programme's dashboards are marked for review when the choices change.
+      await syncDashboardFreshnessForScopeOf(ctx.tenantId, runId);
+      revalidatePath(`/runs/${runId}`);
+    }
     return { ok: true, ...r };
   } catch (e) {
     return { ok: false, error: message(e) };
@@ -122,7 +127,10 @@ export async function resetTrackerChoicesAction(runId: string, expectedRaw: unkn
   if (!expected || expected.revision === null) return { ok: false, error: STALE };
   try {
     const r = await resetTrackerChoices(ctx.tenantId, runId, expected, ctx.email ?? ctx.userId);
-    if (r.saved) revalidatePath(`/runs/${runId}`);
+    if (r.saved) {
+      await syncDashboardFreshnessForScopeOf(ctx.tenantId, runId);
+      revalidatePath(`/runs/${runId}`);
+    }
     return { ok: true, ...r };
   } catch (e) {
     return { ok: false, error: message(e) };
