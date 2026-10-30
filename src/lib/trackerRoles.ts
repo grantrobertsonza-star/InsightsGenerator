@@ -254,7 +254,10 @@ function stageOf(wording: string): { stage: FunnelStage; reason: string } | null
 
 export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition {
   // Survey-design variables (module selection, selection probability, response status) are not answers.
-  const usable = variables.filter((v) => !v.weightLike && !v.text && !DESIGN_VARIABLE.test(v.label));
+  // R6 CSM extension: the journey, benchmark, emotion, preference, staying-reason and noncustomer fields are their own
+  // constructs (csmExtensionRoles.ts), never a role here: journey or alternative-provider satisfaction is not the
+  // company's overall satisfaction, and the benchmark's channel list is not a brand list.
+  const usable = variables.filter((v) => !v.weightLike && !v.text && !DESIGN_VARIABLE.test(v.label) && !isCsmExtensionField(v.name));
   const frame = findBrandFrame(usable);
   const questions: TrackerRecognition["questions"] = [];
   const measures: PerBrandMeasure[] = [];
@@ -332,10 +335,7 @@ export function recogniseTracker(variables: RoleVariable[]): TrackerRecognition 
     }
   }
 
-  // R6 CSM extension: the journey, benchmark, emotion, preference, staying-reason and noncustomer fields are their own
-  // constructs (csmExtensionRoles.ts), never a company CSM role (journey or alternative-provider satisfaction is not
-  // the company's overall satisfaction).
-  const csm = recogniseCsm(usable.filter((v) => !isCsmExtensionField(v.name)), questions, !!brandFrame);
+  const csm = recogniseCsm(usable, questions, !!brandFrame);
   const isBrand = !!brandFrame && measures.filter((m) => m.stage && ["awareness", "unaided_awareness", "consideration", "shortlist", "first_choice", "usage"].includes(m.stage)).length >= 2;
   const isCsm = !!csm.overallSatisfaction && !!csm.recommend0to10;
   const type = isBrand && isCsm ? "brand_and_csm" : isBrand ? "brand" : isCsm ? "csm" : "unknown";
