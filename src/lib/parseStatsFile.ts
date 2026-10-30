@@ -1,3 +1,4 @@
+import { createJsonLineReader } from "./jsonLineReader";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { TableCell } from "./rowCells";
@@ -167,9 +168,9 @@ type LocalWorker = {
  * The worker conversation this code speaks: refuses unknown actions, asks to restart when its script
  * changes (batch 31). A worker kept on globalThis from before that (a dev server running since an
  * older version) cannot run the new script's guard, so it is recognised by the missing or older tag
- * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes.
+ * and replaced before it is used (Codex B31-F01). Raise this when the request or reply shape changes, or the JavaScript listener must be replaced.
  */
-const WORKER_PROTOCOL = 6; // 3: the respondent_quality action; 4: codebook and instrument_sheet; 5: indicators; 6: value_labels
+const WORKER_PROTOCOL = 7; // 7 replaces the old quadratic reply listener on a dev-server hot reload.
 
 const WORKER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 // Kept on globalThis so a hot reload does not leave an orphan worker behind.
@@ -210,41 +211,32 @@ function startWorker(): Promise<LocalWorker | null> {
         proc.kill();
         resolve(null);
       }, 60_000);
-      let buffer = "";
-      proc.stdout!.setEncoding("utf8");
-      proc.stdout!.on("data", (chunk: string) => {
-        buffer += chunk;
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          let msg: WorkerReply;
-          try {
-            msg = JSON.parse(line) as WorkerReply;
-          } catch {
-            continue;
-          }
-          if (msg.ready) {
-            if (!settled) {
-              settled = true;
-              clearTimeout(startupTimer);
-              workerHolder.__statsWorkerStarts = (workerHolder.__statsWorkerStarts ?? 0) + 1;
-              resolve(worker);
-            }
-            continue;
-          }
-          const p = msg.id !== undefined ? worker.pending.get(msg.id) : undefined;
-          if (!p) continue;
-          worker.pending.delete(msg.id as number);
-          clearTimeout(p.timer);
-          if (msg.restart) {
-            forgetWorker(worker);
-            p.reject(new WorkerRestarting("restart"));
-          } else if (msg.error !== undefined) p.reject(new Error(msg.error));
-          else p.resolve(msg.result);
+      proc.stdout!.on("data", createJsonLineReader((line) => {
+        let msg: WorkerReply;
+        try {
+          msg = JSON.parse(line) as WorkerReply;
+        } catch {
+          return;
         }
-      });
+        if (msg.ready) {
+          if (!settled) {
+            settled = true;
+            clearTimeout(startupTimer);
+            workerHolder.__statsWorkerStarts = (workerHolder.__statsWorkerStarts ?? 0) + 1;
+            resolve(worker);
+          }
+          return;
+        }
+        const p = msg.id !== undefined ? worker.pending.get(msg.id) : undefined;
+        if (!p) return;
+        worker.pending.delete(msg.id as number);
+        clearTimeout(p.timer);
+        if (msg.restart) {
+          forgetWorker(worker);
+          p.reject(new WorkerRestarting("restart"));
+        } else if (msg.error !== undefined) p.reject(new Error(msg.error));
+        else p.resolve(msg.result);
+      }));
       proc.on("error", (e: NodeJS.ErrnoException) => {
         if (!settled) {
           settled = true;

@@ -104,10 +104,10 @@ describe.skipIf(!PYTHON_OK)("the local statistics worker answers only with the c
     }
   });
 
-  it("through the app: a worker left running by older code is replaced before it answers (B31-F01)", async () => {
+  it.each([undefined, 6])("through the app: an older worker holder (%s) is replaced before it answers (B31-F01)", async (oldProtocol) => {
     const { runEngineConversion } = await import("../parseStatsFile");
-    // A stand-in for a worker started before batch 31: it reads every request as a "convert", as the
-    // old worker did, and has no protocol tag on its holder.
+    // Neither an untagged holder nor version 6 may retain its old JavaScript listener after reload.
+    // This stand-in must never answer a request, making reuse of either holder observable.
     const legacy = path.join(mkdtempSync(path.join(tmpdir(), "legacy-worker-")), "old_worker.py");
     writeFileSync(
       legacy,
@@ -124,7 +124,7 @@ describe.skipIf(!PYTHON_OK)("the local statistics worker answers only with the c
     await new Promise<void>((r) => proc.stdout!.once("data", () => r()));
     const holder = globalThis as { __statsWorker?: unknown; __statsWorkerLive?: { proc: { pid?: number; kill: () => void } } };
     holder.__statsWorkerLive?.proc.kill();
-    const old = { proc, pending: new Map(), nextId: 1 };
+    const old = { proc, pending: new Map(), nextId: 1, protocol: oldProtocol };
     holder.__statsWorker = Promise.resolve(old);
     holder.__statsWorkerLive = old as unknown as typeof holder.__statsWorkerLive;
     storage.objects.set("t/r/legacy.csv", Buffer.from("q,r\n5,6\n7,8\n"));
